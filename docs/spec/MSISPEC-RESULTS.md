@@ -175,7 +175,7 @@ Silent-failure cases a producer has to guard against itself:
 | CAB-08 | Not run | P2, needs an LZX reference set |
 | CAB-09 | Not run | P2 |
 | CAB-10 | Not run | P2, needs 2.1 GB fixtures |
-| RUN-01 | Confirmed | Labelled substitute (published `minimal.msi` not in the repo), [x64](msitest/results/RUN-01/x64-substitute/log.md) and [Intel](msitest/results/RUN-01/intel-substitute/log.md) |
+| RUN-01 | Confirmed | Labelled substitute (published `minimal.msi` not in the repository), [x64](msitest/results/RUN-01/x64-substitute/log.md) and [Intel](msitest/results/RUN-01/intel-substitute/log.md) |
 | RUN-02 | Confirmed | [empty version, REP 1401](msitest/results/RUN-02/empty-version-rep1401/log.md) deletes the file |
 | RUN-03 | Confirmed | [higher](msitest/results/RUN-03/higher/log.md) removes; equal, lower and fourth-field-only stay side by side |
 | RUN-04 | Confirmed | [LaunchCondition](msitest/results/RUN-04/launchcondition/log.md) and [type 19](msitest/results/RUN-04/type19/log.md): 1603, newer stays |

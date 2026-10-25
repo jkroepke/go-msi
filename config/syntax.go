@@ -13,6 +13,9 @@ var (
 	columnTypePattern = regexp.MustCompile(`^([sSlL])(\d+)$|^([iI])([24])$|^([vV])0$`)
 )
 
+// NilGUID is the all-zero GUID in the form NormalizeGUID returns.
+const NilGUID = "{00000000-0000-0000-0000-000000000000}"
+
 // NormalizeGUID returns s braced and upper case, or an error if s is not a GUID.
 func NormalizeGUID(s string) (string, error) {
 	if !guidPattern.MatchString(s) || strings.HasPrefix(s, "{") != strings.HasSuffix(s, "}") {

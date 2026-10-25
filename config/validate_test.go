@@ -114,6 +114,14 @@ func TestValidate(t *testing.T) {
 			strings.Replace(base, "version: 1.0.0", "version: 1.0.0.5", 1) + appComponent,
 			w, "product.version", "RUN-03",
 		},
+		"nil upgrade code": {
+			strings.Replace(base, "3f2504e0-4f89-41d3-9a0c-0305e82c3301", `"{00000000-0000-0000-0000-000000000000}"`, 1) + appComponent,
+			e, "product.upgradeCode", "nil GUID",
+		},
+		"nil related upgrade code": {
+			strings.Replace(base, "upgrade: {}", "upgrade: {related: [{upgradeCode: 00000000-0000-0000-0000-000000000000, maxVersion: 1.0.0}]}", 1) + appComponent,
+			e, "upgrade.related[0].upgradeCode", "nil GUID",
+		},
 		"pinned product code": {
 			strings.Replace(base, "  upgradeCode:", "  productCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3302\n  upgradeCode:", 1) + appComponent,
 			w, "product.productCode", "1638",

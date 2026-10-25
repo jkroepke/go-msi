@@ -75,4 +75,4 @@ as a concise description of the user-visible change and start it with `feat:`,
 Documentation lives in [`docs`](docs) and is published to the
 [wiki](https://github.com/jkroepke/go-msi/wiki) on every push to `main`.
 The first line of each file is removed on publish, because the wiki shows the
-file name as the page title.
+filename as the page title.

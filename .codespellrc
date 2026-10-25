@@ -1,0 +1,4 @@
+[codespell]
+skip = */.gitignores,*/package-lock.json,*/go.mod,*/go.sum,*.log,.git,*.json
+# fo: msiexec /fo option. nmae, valeu: misspelled keys in config tests.
+ignore-words-list = fo,nmae,valeu

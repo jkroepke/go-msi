@@ -19,8 +19,8 @@ jobs:
       actions: write
       contents: write
     steps:
-      # A tag created with GITHUB_TOKEN does not trigger the tag push run of the release workflow,
-      # but a workflow_dispatch does. Dispatch the release workflow on the new tag, so it runs
+      # A tag created with GITHUB_TOKEN does not trigger the tag push run of CI,
+      # but a workflow_dispatch does. Dispatch CI on the new tag, so it runs
       # exactly once without a GitHub App token.
       - name: Create Tag
         env:
@@ -32,4 +32,4 @@ jobs:
             -f "ref=refs/tags/$TAG" \
             -f "sha=$GITHUB_SHA"
 
-          gh workflow run release.yaml --ref "$TAG"
+          gh workflow run ci.yaml --ref "$TAG"
