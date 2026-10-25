@@ -545,3 +545,52 @@ func TestShorthandProductNameFolder(t *testing.T) {
 		t.Errorf("shared component hoisted again: %d components, path %s", len(cfg.Components), exe.Path(0))
 	}
 }
+
+func TestShorthandGoSharedWithoutID(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Parse([]byte(short), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	exe := &config.Component{Files: []*config.File{{Source: "hello.exe"}}}
+	cfg.Components = []*config.Component{exe}
+	cfg.Features = []*config.Feature{{ID: "F", Components: []*config.Component{exe}}}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := cfg.Features[0].Components[0].ID; got != "hello.exe" {
+		t.Errorf("feature refers to %q, want hello.exe", got)
+	}
+}
+
+func TestShorthandInstallDirOrder(t *testing.T) {
+	t.Parallel()
+
+	tree := "directories:\n  - id: CommonAppDataFolder\n    children: [{ id: DATADIR, name: Hello }]\n"
+	plugins := "  - { directory: ProgramFiles64Folder/Hello/plugins, files: [{ source: readme.txt }] }\n"
+	exe := "  - files: [{ source: hello.exe }]\n"
+
+	// The path through the install dir's folder reuses it in either order.
+	for _, comps := range []string{plugins + exe, exe + plugins} {
+		cfg := parseValid(t, short+tree+"components:\n"+comps)
+
+		got := dirPath(cfg.Directories, config.DefaultInstallDirID+"_plugins")
+		want := []string{"ProgramFiles64Folder", config.DefaultInstallDirID, config.DefaultInstallDirID + "_plugins"}
+
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("plugins path %v, want %v\n%s", got, want, comps)
+		}
+	}
+
+	// An explicit folder at the install dir's place is a warning.
+	explicit := "directories:\n  - id: ProgramFiles64Folder\n    children: [{ id: APPDIR, name: Hello }]\n" +
+		"components:\n  - { directory: APPDIR, files: [{ source: readme.txt }] }\n" + exe
+
+	if ds := validate(t, short+explicit); !find(ds, config.SeverityWarning, "product.name", "same folder") {
+		t.Errorf("no same-folder warning: %v", ds)
+	}
+}

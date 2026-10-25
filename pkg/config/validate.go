@@ -311,8 +311,12 @@ func (v *validator) directories(cfg *Config, r *refs) {
 	var walk func([]*Directory, string, bool)
 
 	walk = func(ds []*Directory, prefix string, top bool) {
+		names := make(map[string]string)
+
 		for i, d := range ds {
 			p := fmt.Sprintf("%s[%d]", prefix, i)
+
+			v.sameFolder(names, p, d, top)
 
 			if v.required(p+".id", d.ID) {
 				if !IsIdentifier(d.ID) || len(d.ID) > MaxIdentifierLength {
@@ -364,6 +368,30 @@ func (v *validator) directories(cfg *Config, r *refs) {
 	if cfg.Product.ARP.InstallLocation != "" && r.dirs[cfg.Product.ARP.InstallLocation] == nil {
 		v.errorf("product.arp.installLocation", "directory %q is not defined", cfg.Product.ARP.InstallLocation)
 	}
+}
+
+// sameFolder warns when two sibling directories name the same folder: the
+// rows install to one place, but setting one on the command line leaves the
+// other behind.
+func (v *validator) sameFolder(names map[string]string, dirPath string, dir *Directory, top bool) {
+	if top || dir.Name == "" {
+		return
+	}
+
+	long := strings.ToLower(longPart(dir.Name))
+	if other, dup := names[long]; dup {
+		field := dirPath + ".name"
+		if dir.origin != "" {
+			field = dir.origin
+		}
+
+		v.warnf(field, "directories %s and %s are the same folder; moving one with a property "+
+			"leaves the other behind, so use one id", other, dir.ID)
+
+		return
+	}
+
+	names[long] = dir.ID
 }
 
 func (v *validator) features(cfg *Config, r *refs) {

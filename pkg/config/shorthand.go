@@ -37,6 +37,16 @@ func expandShorthands(cfg *Config) {
 
 	cfg.InstallDir.expanded = true
 
+	// Add the install dir before any folder path, so that a path through
+	// the same folder reuses it whatever the order of the components.
+	for _, comp := range cfg.Components {
+		if tree.needsInstallDir(comp.Directory) {
+			tree.ensureInstallDir()
+
+			break
+		}
+	}
+
 	for i, comp := range cfg.Components {
 		tree.origin = comp.Path(i) + ".directory"
 		comp.Directory = tree.resolve(comp.Directory)
@@ -70,9 +80,9 @@ func hoistFeatureComponents(cfg *Config) {
 
 				// A Config built in Go may put the same component in
 				// components and in a feature.
+				// referenceFeatureComponents turns the entry into a reference
+				// once the component has an id.
 				if listed[comp] {
-					feature.Components[entry] = ComponentRef(comp.ID)
-
 					continue
 				}
 
@@ -446,6 +456,29 @@ func (t *dirTree) resolve(value string) string {
 	}
 
 	return parent.ID
+}
+
+// needsInstallDir reports whether resolve puts a directory value in the
+// install dir.
+func (t *dirTree) needsInstallDir(value string) bool {
+	switch {
+	case value == "", value == t.cfg.InstallDir.ID:
+		return true
+	case t.byID[value] != nil, standardFolders[value]:
+		return false
+	case strings.HasPrefix(value, "./"), strings.HasPrefix(value, `.\`):
+		return true
+	}
+
+	names := splitPath(value)
+	if len(names) == 0 {
+		return true
+	}
+
+	first := names[0]
+
+	return first == t.cfg.InstallDir.ID ||
+		(t.byID[first] == nil && !standardFolders[first] && !t.looksLikeID(first))
 }
 
 // looksLikeID reports whether a word that is not a known id was meant as
