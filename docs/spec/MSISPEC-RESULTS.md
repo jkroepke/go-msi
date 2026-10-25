@@ -125,6 +125,9 @@ Silent-failure cases a producer has to guard against itself:
 - Inline script actions (types 37/38) log "Return value 0" whatever their
   function returns; only syntax errors fail them. Return codes need a
   Binary-stored script (type 6) or a DLL (RUN-18).
+- An `MsiLockPermissionsEx` deny ACE for `BU` on a file makes the
+  uninstall exit 0; it logs `Info 1321 … insufficient privileges … System
+  Error 5` and leaves the file behind (SEC-01).
 
 ## Results by case
 
@@ -190,6 +193,7 @@ Silent-failure cases a producer has to guard against itself:
 | RUN-16 | Not run | Interactive full UI |
 | RUN-17 | Contradicted | 1401, 1501, 6551, 6601 and [1399](msitest/results/RUN-17/rep-1399/log.md) work; [5802](msitest/results/RUN-17/rep-5802/log.md) gives 2613 |
 | RUN-18 | Confirmed | EXE exit 1 fails unless Continue; [type-6 return 5](msitest/results/RUN-18/vbs-binary-return-5-immediate/log.md) ends with 0 and skips the rest; [deferred](msitest/results/RUN-18/vbs-binary-return-5-deferred/log.md) leaves files unregistered |
+| SEC-01 | Confirmed | File, [CreateFolder](msitest/results/SEC-01/createfolder/log.md), [Registry](msitest/results/SEC-01/registry/log.md) and [ServiceInstall](msitest/results/SEC-01/service/log.md) rows get the authored DACL; [`/fa` and `/fvomus` restore it](msitest/results/SEC-01/file/log.md); [owner and group](msitest/results/SEC-01/file-owner-group/log.md) are set; `[Property]` stays literal (1943) but [`<[%USERDOMAIN]\[%USERNAME]>`](msitest/results/SEC-01/account-angle-env/log.md) and [`<BUILTIN\Users>`](msitest/results/SEC-01/account-angle-builtin/log.md) resolve; invalid SDDL 1943, two true rows 1942, both tables 1941; [deny ACE for `BU`](msitest/results/SEC-01/file-deny-ace/log.md) leaves the file on uninstall |
 | SIG-01…06 | Not run | No `signtool` on the machine; signing is outside go-msi's scope |
 | INT-01…03 | Blocked | No WiX or msitools |
 | RUST-01 | Confirmed | Same as DB-04 |
