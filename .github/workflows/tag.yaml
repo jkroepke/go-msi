@@ -1,0 +1,35 @@
+name: Create Tag
+run-name: "${{ inputs.tag }}"
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create (e.g. v1.2.3)'
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  create:
+    runs-on: ubuntu-26.04
+    name: Create Tag
+    if: startsWith(inputs.tag, 'v')
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      # A tag created with GITHUB_TOKEN does not trigger the tag push run of the release workflow,
+      # but a workflow_dispatch does. Dispatch the release workflow on the new tag, so it runs
+      # exactly once without a GitHub App token.
+      - name: Create Tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh api --method POST "repos/$GH_REPO/git/refs" \
+            -f "ref=refs/tags/$TAG" \
+            -f "sha=$GITHUB_SHA"
+
+          gh workflow run release.yaml --ref "$TAG"

@@ -1,0 +1,44 @@
+name: Push to GH Wiki
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - docs/**
+      - .github/workflows/wiki.yaml
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: 'false'
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: 'true'
+          repository: ${{ github.repository }}.wiki
+          path: wiki.git
+
+      # docs/spec/msitest is the Windows test harness and its raw run logs, not documentation.
+      - name: sync wiki
+        run: rsync -av --delete --exclude=README.md --exclude=.git --exclude=spec/msitest/ docs/ wiki.git/
+
+      # The wiki shows the file name as the page title.
+      - name: remove header line
+        run: find wiki.git -name '*.md' -not -path 'wiki.git/.git/*' -exec sed -i '1d' {} +
+
+      - name: Commit files
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git diff-index --quiet HEAD || git commit -m "Automatically publish wiki" && git push
+        working-directory: wiki.git

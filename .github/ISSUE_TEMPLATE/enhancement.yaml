@@ -1,0 +1,56 @@
+name: ✨ Enhancement / Feature / Task
+description: Some feature is missing or incomplete.
+labels: [ ✨ enhancement ]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you submit this issue, please make sure you have read the documentation and searched for similar issues.
+        If you have done that, please fill out the template below.
+
+  - type: textarea
+    attributes:
+      label: Problem Statement
+      description: Without specifying a solution, describe what the project is missing today.
+      placeholder: |
+        go-msi cannot install a Windows service that runs as a virtual account.
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Proposed Solution
+      description: Describe the proposed solution to the problem above.
+      placeholder: |
+        - Accept `account: NT SERVICE\<name>` in the service configuration.
+        - Write the matching ServiceInstall row.
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Additional information
+      placeholder: |
+        Links to the Windows Installer documentation, or an MSI built by another tool that shows the behavior.
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Acceptance Criteria
+      placeholder: |
+        - [ ] As a user, I can configure the service account in the YAML configuration.
+        - [ ] The package installs, upgrades and uninstalls cleanly.
+        - [ ] Defaults are reasonably set.
+        - [ ] New settings are appropriately documented.
+        - [ ] No breaking change for existing configurations.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: documentation
+    attributes:
+      label: Preflight Checklist
+      options:
+        - required: true
+          #language=markdown
+          label: |
+            I could not find a solution in the [documentation](https://github.com/jkroepke/go-msi/wiki),
+            the existing issues or discussions.
