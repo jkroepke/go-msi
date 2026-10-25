@@ -36,7 +36,7 @@ is the schema itself.
 4. **Reproducible by default.** The same file, the same inputs and the same
    `SOURCE_DATE_EPOCH` give a byte-identical MSI. Nothing is random unless the
    author asks for it.
-5. **Nothing package-specific is built in.** windows_exporter's firewall rule,
+5. **Nothing package-specific is built-in.** windows_exporter's firewall rule,
    service recovery and event log source are generic helpers that any package
    can use.
 6. **Strict input.** Unknown keys are errors, so a typo never silently drops a
@@ -146,7 +146,7 @@ package:
 | `packageCode` | GUID or `auto` | `auto` | Digest of the finished database |
 | `description` | string | `<name> <version> installer` | Summary Subject |
 | `comments` | string | `This installer database contains the logic and data required to install <name>.` | Summary Comments |
-| `arp` | map | | `ARP*` properties: `comments`, `contact`, `helpLink`, `aboutLink`, `updateLink`, `icon` (an `icons` key), `noRepair`, `noModify`, `noRemove`, `size` (KB), `installLocation` (a directory id; schedules `ARPINSTALLLOCATION` after CostFinalize) |
+| `arp` | map | | `ARP*` properties: `comments`, `contact`, `helpLink`, `aboutLink`, `updateLink`, `icon` (an `icons` key), `noRepair`, `noModify`, `noRemove`, `size` (KB), `installLocation` (a directory ID; schedules `ARPINSTALLLOCATION` after CostFinalize) |
 
 GUIDs are accepted with or without braces and in any case. The builder writes
 them braced and upper case.
@@ -237,7 +237,7 @@ directories:
 - A 64-bit package that installs a component under `ProgramFilesFolder`,
   `CommonFilesFolder` or `SystemFolder` gets a warning (ICE80): those are the
   32-bit folders on 64-bit Windows.
-- `configurable: true` requires an upper-case id.
+- `configurable: true` requires an upper-case ID.
 
 ### 4.5 `features`
 
@@ -259,7 +259,7 @@ features:
         components: [FirewallException]
 ```
 
-- Feature ids are at most 38 characters; depth is at most 16.
+- Feature IDs are at most 38 characters; depth is at most 16.
 - `level: 0` disables a feature; `ADDLOCAL=ALL` cannot turn it on.
 - Every component is in at least one feature (ICE21).
 - `allowAdvertise` defaults to `false`; advertised installs are out of scope.
@@ -293,7 +293,7 @@ components:
 ```
 
 **GUIDs.** `auto` derives a UUIDv5 from the upgrade code, the bitness and
-the key path's canonical location (directory path and file name, or
+the key path's canonical location (directory path and filename, or
 registry root, key and value name). A changed key path therefore gets a new
 GUID, as the component rules require. A pinned GUID is kept as it is (the
 windows_exporter executable component keeps the GUID of its released
@@ -312,7 +312,7 @@ service must have the service executable as key file.
 | `source` | required | Path relative to the YAML file |
 | `name` | base name of `source` | `short|long` allowed |
 | `id` | the name, if it is a legal identifier and unique, else generated | File key |
-| `version` | `auto` | `auto`, a four-field version, the id of another file (companion), or `none`; never empty (section 2.2) |
+| `version` | `auto` | `auto`, a four-field version, the ID of another file (companion), or `none`; never empty (section 2.2) |
 | `language` | `auto` | From the PE resource; `none` for fonts |
 | `allowUnversionedExecutable` | `false` | Required to build a PE file with `version: none` or without a version resource |
 | `vital` | `true` | |
