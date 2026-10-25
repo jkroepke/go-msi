@@ -25,6 +25,15 @@ msival2.exe and evalcom2.dll use `{6E5E1910-8053-4660-B795-6B612E29BC58}`.
 Registering that CLSID under `HKLM\SOFTWARE\Classes\WOW6432Node\CLSID`
 (InprocServer32 evalcom2.dll, ThreadingModel Apartment) makes it work.
 
+CI (GitHub `windows-latest`, Windows Server 2025, 2026-10-25) installs
+winget package `Microsoft.WindowsSDK.10.0.28000` version 10.0.28000.2526
+(SDK 10.0.28000.1721) with `--override '/features OptionId.MSIInstallTools
+/quiet /norestart'`. Its `darice.cub` differs from the one above: SHA-256
+`0EB158691FCEE38DDA2E342A94E39164B9AE7943A286C031449F6D257875EC1B`. The
+msival2.exe comparison below used the 10.0.28000.2957 cub only; with the CI
+cub, the examples pass the same Error/Failure gate in `TestICEExamples` and
+ICE08 still reports the duplicate GUID (observed in CI).
+
 Go runner (`internal/ice`), first attempt:
 
 - `MsiOpenPackageExW` with `MSIOPENPACKAGEFLAGS_IGNOREMACHINESTATE`: every

@@ -70,7 +70,9 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "MsiVal2 install exited with $($p.ExitCode)" }
           New-Item -ItemType Directory -Force C:\ice | Out-Null
           Copy-Item (Join-Path ${env:ProgramFiles(x86)} 'MsiVal2\darice.cub') C:\ice\darice.cub
-          Get-FileHash C:\ice\darice.cub -Algorithm SHA256 | Format-List
+          # The cub of SDK manifest 10.0.28000.2526 (see the VAL-01 log).
+          $hash = (Get-FileHash C:\ice\darice.cub -Algorithm SHA256).Hash
+          if ($hash -ne '0EB158691FCEE38DDA2E342A94E39164B9AE7943A286C031449F6D257875EC1B') { throw "darice.cub has SHA-256 $hash" }
 
       - name: Use the ICE suite
         if: runner.os == 'Windows'
