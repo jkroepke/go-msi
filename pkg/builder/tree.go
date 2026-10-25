@@ -464,8 +464,6 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 		return err
 	}
 
-	b.writeDirectoryTable()
-
 	// Components in config order; rows are sorted by msidb anyway.
 	for _, comp := range b.cfg.Components {
 		info := b.components[comp.ID]
