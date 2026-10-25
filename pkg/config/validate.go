@@ -832,13 +832,13 @@ func (v *validator) service(p string, s *Service, keyFile *File, perUser bool) {
 
 // recoveryDuration checks a delay or reset period that sc.exe takes as a
 // whole number of units (milliseconds or seconds) in a 32-bit value.
-func (v *validator) recoveryDuration(field string, d Duration, unit time.Duration) {
+func (v *validator) recoveryDuration(field string, value Duration, unit time.Duration) {
 	switch {
-	case d < 0:
+	case value < 0:
 		v.errorf(field, "must not be negative")
-	case time.Duration(d)%unit != 0:
+	case time.Duration(value)%unit != 0:
 		v.errorf(field, "must be a whole number of %s", map[time.Duration]string{time.Millisecond: "milliseconds", time.Second: "seconds"}[unit])
-	case int64(time.Duration(d)/unit) > math.MaxInt32:
+	case int64(time.Duration(value)/unit) > math.MaxInt32:
 		v.errorf(field, "is too long for sc.exe")
 	}
 }
