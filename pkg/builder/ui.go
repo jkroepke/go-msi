@@ -371,7 +371,7 @@ func (d *uiDialog) innerHeader(title, description string) {
 	d.control(overlay("Title", 15, 6, 300, 15, styled(styleTitle, title)))
 
 	if description != "" {
-		d.control(overlay("Description", 25, 23, 320, 18, description))
+		d.control(overlay("Description", 25, 21, 300, 22, description))
 	}
 }
 
