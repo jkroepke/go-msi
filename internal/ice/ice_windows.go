@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"sync"
 	"syscall"
@@ -201,9 +202,11 @@ func openSession(database uint32) (uint32, func(), error) {
 
 	ret, _, _ := pMsiOpenPackageExW.Call(uintptr(unsafe.Pointer(name)), openPackageFlags, uintptr(unsafe.Pointer(&pkgHandle)))
 	if ret != 0 {
+		detail := lastError()
+
 		restore()
 
-		return 0, nil, fmt.Errorf("ice: MsiOpenPackageExW: error %d%s", ret, lastError())
+		return 0, nil, fmt.Errorf("ice: MsiOpenPackageExW: error %d%s", ret, detail)
 	}
 
 	return pkgHandle, func() { closeHandle(pkgHandle); restore() }, nil
@@ -241,7 +244,9 @@ func runAction(pkgHandle uint32, action, condition string) []Finding {
 
 	sinkMu.Unlock()
 
-	if ret != 0 && len(findings) == 0 {
+	// Most ICEs post an info line before they fail, so a failed action is
+	// reported unless it already posted a Failure of its own.
+	if ret != 0 && !slices.ContainsFunc(findings, func(f Finding) bool { return f.Type == Failure }) {
 		findings = append(findings, Finding{ICE: action, Type: Failure, Description: fmt.Sprintf("action returned %d%s", ret, lastError())})
 	}
 
@@ -342,7 +347,14 @@ func lastError() string {
 	size := uint32(1024)
 	buf := make([]uint16, size)
 
-	if ret, _, _ := pMsiFormatRecordW.Call(0, rec, uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size))); ret != 0 {
+	ret, _, _ := pMsiFormatRecordW.Call(0, rec, uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)))
+	if ret == errorMoreData {
+		size++
+		buf = make([]uint16, size)
+		ret, _, _ = pMsiFormatRecordW.Call(0, rec, uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)))
+	}
+
+	if ret != 0 {
 		return ""
 	}
 
