@@ -150,7 +150,7 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 	}
 
 	resRVA := order.Uint32(opt[dirOff+8*2:])
-	resSize := order.Uint32(opt[dirOff+8*2+4:])
+	resourceSize := order.Uint32(opt[dirOff+8*2+4:])
 
 	secs := make([]byte, 40*numSections)
 	if _, err := rdr.ReadAt(secs, optOff+int64(optSize)); err != nil {
@@ -169,11 +169,11 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 		})
 	}
 
-	if resRVA == 0 || resSize == 0 {
+	if resRVA == 0 || resourceSize == 0 {
 		return info, nil
 	}
 
-	res, err := img.read(resRVA, resSize)
+	res, err := img.read(resRVA, resourceSize)
 	if err != nil {
 		return nil, err
 	}

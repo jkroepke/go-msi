@@ -14,13 +14,13 @@ cp examples/minimal/msi.yaml "$work/"
 go run ./internal/testpe/cmd -o "$work/hello.exe"
 go run ./cmd/go-msi build -o "$work/minimal.msi" "$work/msi.yaml"
 
-WINE="${WINE:-$(command -v wine || command -v wine64)}"
+WINE="${WINE:-$(command -v wine || command -v wine64 || ls /usr/lib/wine/wine64)}"
 
 run() {
   if command -v xvfb-run >/dev/null; then xvfb-run -a "$WINE" "$@"; else "$WINE" "$@"; fi
 }
 
-run msiexec /i "$(winepath -w "$work/minimal.msi")" /qn /l*v "$(winepath -w "$work/install.log")" || {
+run msiexec /i "$("$WINE" winepath -w "$work/minimal.msi")" /qn /l*v "$("$WINE" winepath -w "$work/install.log")" || {
   echo "install failed; log follows" >&2
   iconv -f UTF-16 -t UTF-8 "$work/install.log" 2>/dev/null || cat "$work/install.log"
   exit 1
@@ -34,10 +34,10 @@ if [ ! -f "$installed" ]; then
 fi
 cmp "$installed" "$work/hello.exe"
 
-run msiexec /x "$(winepath -w "$work/minimal.msi")" /qn /l*v "$(winepath -w "$work/uninstall.log")"
+run msiexec /x "$("$WINE" winepath -w "$work/minimal.msi")" /qn /l*v "$("$WINE" winepath -w "$work/uninstall.log")"
 if [ -f "$installed" ]; then
   echo "hello.exe is still there after the uninstall" >&2
   exit 1
 fi
-wineserver -k || true
+"$WINE" wineboot -k 2>/dev/null || wineserver -k || true
 echo "wine: install and uninstall of examples/minimal succeeded"

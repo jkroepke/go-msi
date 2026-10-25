@@ -120,17 +120,17 @@ func ApplyDefaults(cfg *Config) {
 		}
 	}
 
-	eachFeature(cfg.Features, func(f *Feature, _ int) {
-		if f.Level == nil {
-			f.Level = ptr(1)
+	eachFeature(cfg.Features, func(feature *Feature, _ int) {
+		if feature.Level == nil {
+			feature.Level = new(1)
 		}
 
-		if f.Display == "" {
-			f.Display = "collapsed"
+		if feature.Display == "" {
+			feature.Display = "collapsed"
 		}
 
-		if f.AllowAbsent == nil {
-			f.AllowAbsent = ptr(true)
+		if feature.AllowAbsent == nil {
+			feature.AllowAbsent = new(true)
 		}
 	})
 

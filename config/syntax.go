@@ -131,17 +131,17 @@ func validLongName(s string) bool {
 }
 
 // isShortName checks an 8.3 name (specification section 11.3).
-func isShortName(s string) bool {
-	if strings.ContainsAny(s, `\/:*?"<>|+,;=[] `) {
+func isShortName(name string) bool {
+	if strings.ContainsAny(name, `\/:*?"<>|+,;=[] `) {
 		return false
 	}
 
-	base, ext, hasExt := strings.Cut(s, ".")
+	base, ext, hasExt := strings.Cut(name, ".")
 	if hasExt && (ext == "" || len(ext) > 3 || strings.Contains(ext, ".")) {
 		return false
 	}
 
-	for _, r := range s {
+	for _, r := range name {
 		if r < 0x21 || r > 0x7E {
 			return false
 		}
