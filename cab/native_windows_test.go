@@ -4,6 +4,7 @@ package cab_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
 	"math/rand"
@@ -307,8 +308,14 @@ func fdiExtract(t *testing.T, raw []byte) ([]extracted, error) {
 	return state.files, nil
 }
 
+// errLongPath marks an expand.exe failure on a machine without long paths
+// enabled, where the output path exceeds MAX_PATH.
+var errLongPath = errors.New("output path exceeds MAX_PATH")
+
 // expandExtract extracts raw with expand.exe into a temporary directory.
-func expandExtract(t *testing.T, raw []byte) (map[string][]byte, error) {
+// longestName is the longest cabinet name, used to tell a MAX_PATH failure
+// from a cabinet defect.
+func expandExtract(t *testing.T, raw []byte, longestName int) (map[string][]byte, error) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -325,6 +332,10 @@ func expandExtract(t *testing.T, raw []byte) (map[string][]byte, error) {
 
 	cmd := exec.CommandContext(t.Context(), filepath.Join(os.Getenv("SystemRoot"), "System32", "expand.exe"), "-F:*", src, out) //nolint:gosec // fixed Windows tool
 	if output, err := cmd.CombinedOutput(); err != nil {
+		if entries, _ := os.ReadDir(out); len(entries) == 0 && len(out)+1+longestName >= 260 {
+			return nil, fmt.Errorf("%w: expand.exe wrote nothing under the %d-byte path %s: %w\n%s", errLongPath, len(out), out, err, output)
+		}
+
 		return nil, fmt.Errorf("expand.exe: %w\n%s", err, output)
 	}
 
@@ -582,19 +593,19 @@ func TestNativeExpandExtracts(t *testing.T) { //nolint:paralleltest // the FDI c
 				t.Fatal(err)
 			}
 
-			got, err := expandExtract(t, raw)
-			if err != nil {
-				longest := 0
-				for _, f := range tc.files {
-					longest = max(longest, len(f.Name))
-				}
+			longest := 0
+			for _, f := range tc.files {
+				longest = max(longest, len(f.Name))
+			}
 
+			got, err := expandExtract(t, raw, longest)
+			if errors.Is(err, errLongPath) {
 				// A machine without long paths enabled cannot write a 255-byte name
-				// under the temporary directory; that is not a cabinet defect.
-				if len(t.TempDir())+len(`\out\`)+longest >= 260 {
-					t.Skipf("the extracted path exceeds MAX_PATH and expand.exe failed: %v", err)
-				}
+				// under the temporary directory; the FDI test covers the same bytes.
+				t.Skip(err)
+			}
 
+			if err != nil {
 				t.Fatal(err)
 			}
 
@@ -651,7 +662,9 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 
 			var ddf strings.Builder
 
-			ddf.WriteString(".OPTION EXPLICIT\r\n.Set CabinetNameTemplate=out.cab\r\n.Set DiskDirectoryTemplate=\"" + dir + "\"\r\n")
+			// makecab reads the directive file as ANSI, so it holds only relative
+			// paths; cmd.Dir makes them resolve under the (possibly non-ASCII) dir.
+			ddf.WriteString(".OPTION EXPLICIT\r\n.Set CabinetNameTemplate=out.cab\r\n.Set DiskDirectoryTemplate=.\r\n")
 
 			if comp == "stored" {
 				// makecab knows no CompressionType "NONE"; Compress=off writes typeCompress 0.
@@ -672,7 +685,7 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 					t.Fatal(err)
 				}
 
-				ddf.WriteString(`"` + path + `" ` + name + "\r\n")
+				ddf.WriteString(`"src\` + name + `" ` + name + "\r\n")
 			}
 
 			ddfPath := filepath.Join(dir, "cab.ddf")
@@ -806,24 +819,32 @@ func TestNativeFDIRejectsCorruption(t *testing.T) { //nolint:paralleltest // the
 
 	text := bytes.Repeat([]byte("checksums are verified by FDI\r\n"), 3000)
 
-	raw, err := cab.Write([]cab.File{{Name: "fil_a", Data: text}}, cab.Options{Compression: cab.MSZIP})
-	if err != nil {
-		t.Fatal(err)
+	// A stored folder has no decoder that could fail first, so only the
+	// checksum can make FDI refuse the flipped byte.
+	for _, comp := range []cab.Compression{cab.None, cab.MSZIP} {
+		raw, err := cab.Write([]cab.File{{Name: "fil_a", Data: text}}, cab.Options{Compression: comp})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := fdiExtract(t, raw); err != nil {
+			t.Fatalf("intact cabinet (compression %d): %v", comp, err)
+		}
+
+		bad := bytes.Clone(raw)
+		bad[len(bad)-1] ^= 0x40
+
+		_, err = fdiExtract(t, bad)
+		if err == nil {
+			t.Fatalf("FDI extracted a cabinet (compression %d) with a flipped payload byte", comp)
+		}
+
+		t.Logf("compression %d, corrupt last block: %v", comp, err)
+
+		if comp == cab.None && !strings.Contains(err.Error(), "FDIERROR_CORRUPT_CABINET") {
+			t.Errorf("stored cabinet with a flipped byte: want FDIERROR_CORRUPT_CABINET from the checksum, got %v", err)
+		}
 	}
-
-	if _, err := fdiExtract(t, raw); err != nil {
-		t.Fatalf("intact cabinet: %v", err)
-	}
-
-	bad := bytes.Clone(raw)
-	bad[len(bad)-1] ^= 0x40
-
-	_, err = fdiExtract(t, bad)
-	if err == nil {
-		t.Fatal("FDI extracted a cabinet with a flipped payload byte")
-	}
-
-	t.Logf("corrupt last block: %v", err)
 }
 
 func firstDiff(a, b []byte) int {
