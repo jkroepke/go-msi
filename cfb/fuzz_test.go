@@ -8,8 +8,8 @@ import (
 )
 
 // FuzzRead feeds corrupted compound files to the reader. It must return an
-// error or a file, never panic or loop, and every stream it reports must be
-// reachable by name.
+// error or a file, never panic or loop, and the streams it reads must
+// survive a write and a second read unchanged.
 func FuzzRead(f *testing.F) {
 	for _, version := range []int{3, 4} {
 		raw, err := cfb.Write([]cfb.Stream{
@@ -30,9 +30,35 @@ func FuzzRead(f *testing.F) {
 			return
 		}
 
-		for _, s := range file.Streams() {
-			if _, ok := file.Stream(s.Name); !ok {
-				t.Fatalf("stream %q is listed but cannot be opened", s.Name)
+		streams := file.Streams()
+
+		for _, stream := range streams {
+			if _, err := cfb.EncodeName(stream.Name); err != nil {
+				return // the writer is stricter than the reader
+			}
+		}
+
+		raw2, err := cfb.Write(streams, cfb.Options{Version: file.Version})
+		if err != nil {
+			if len(streams) == 0 {
+				return
+			}
+
+			t.Fatalf("write back %d streams: %v", len(streams), err)
+		}
+
+		again, err := cfb.Read(raw2)
+		if err != nil {
+			t.Fatalf("read back: %v", err)
+		}
+
+		if len(again.Streams()) != len(streams) {
+			t.Fatalf("read back %d streams, wrote %d", len(again.Streams()), len(streams))
+		}
+
+		for _, stream := range streams {
+			if got, ok := again.Stream(stream.Name); !ok || !bytes.Equal(got, stream.Data) {
+				t.Fatalf("stream %q changed in the round trip", stream.Name)
 			}
 		}
 	})

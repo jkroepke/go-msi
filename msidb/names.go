@@ -41,12 +41,8 @@ func alphaIndex(char rune) int {
 // EncodeStreamName encodes a decoded stream or table name. It fails when the
 // result exceeds 31 UTF-16 units, which is the engine's limit (DB-11).
 func EncodeStreamName(name string, table bool) (string, error) {
-	if name == "" {
-		return "", errors.New("msidb: empty stream name")
-	}
-
-	if !utf8.ValidString(name) {
-		return "", fmt.Errorf("msidb: stream name %q is not valid UTF-8", name)
+	if err := checkDecodedName(name); err != nil {
+		return "", err
 	}
 
 	var out []uint16
@@ -87,6 +83,18 @@ func EncodeStreamName(name string, table bool) (string, error) {
 	}
 
 	return string(utf16.Decode(out)), nil
+}
+
+func checkDecodedName(name string) error {
+	if name == "" {
+		return errors.New("msidb: empty stream name")
+	}
+
+	if !utf8.ValidString(name) {
+		return fmt.Errorf("msidb: stream name %q is not valid UTF-8", name)
+	}
+
+	return nil
 }
 
 // DecodeStreamName decodes an encoded directory entry name.

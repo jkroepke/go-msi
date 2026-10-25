@@ -42,14 +42,11 @@ func FuzzRead(f *testing.F) {
 		}
 
 		if readErr != nil {
-			// Open may be lazier than Read; reading every file must fail then.
-			_ = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
-				if err == nil && !d.IsDir() {
-					_, _ = fs.ReadFile(fsys, path)
-				}
-
-				return nil
-			})
+			// Open checks less up front than Read, so reading every file
+			// must fail at least once.
+			if readsAll(fsys) {
+				t.Fatalf("Read fails with %v, but Open reads every file", readErr)
+			}
 
 			return
 		}
@@ -64,6 +61,27 @@ func FuzzRead(f *testing.F) {
 			}
 		}
 	})
+}
+
+// readsAll reports whether every file of fsys can be read.
+func readsAll(fsys fs.FS) bool {
+	ok := true
+
+	_ = fs.WalkDir(fsys, ".", func(path string, entry fs.DirEntry, err error) error {
+		if err == nil && !entry.IsDir() {
+			_, err = fs.ReadFile(fsys, path)
+		}
+
+		if err != nil {
+			ok = false
+
+			return fs.SkipAll
+		}
+
+		return nil
+	})
+
+	return ok
 }
 
 // FuzzRoundTrip writes fuzzed files and reads them back unchanged.

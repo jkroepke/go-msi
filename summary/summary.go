@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"time"
 
@@ -73,16 +74,38 @@ const (
 	WordNoElevation = 0x8
 )
 
-const epochDelta = 116444736000000000 // 100 ns units between 1601 and 1970
+const (
+	epochSeconds = 11644473600 // seconds between 1601 and 1970
+	ticksPerSec  = 10000000    // FILETIME counts 100 ns ticks
+	maxSeconds   = math.MaxUint64/ticksPerSec - 1
+)
 
-// FileTime converts t to a Windows FILETIME value.
-func FileTime(t time.Time) uint64 {
-	return uint64(t.UTC().UnixNano()/100) + epochDelta
+// FileTime converts t to a Windows FILETIME value. Times outside the
+// FILETIME range (before 1601 or after the year 60056) give 0; Marshal
+// rejects them.
+func FileTime(when time.Time) uint64 {
+	sec, ok := fileTimeSeconds(when)
+	if !ok {
+		return 0
+	}
+
+	return sec*ticksPerSec + uint64(when.Nanosecond()/100) //nolint:gosec // Nanosecond is below 1e9
+}
+
+// fileTimeSeconds returns the seconds since 1601, computed without
+// UnixNano, which overflows outside 1678 to 2262.
+func fileTimeSeconds(when time.Time) (uint64, bool) {
+	unix := when.Unix()
+	if unix < -epochSeconds || unix > maxSeconds-epochSeconds {
+		return 0, false
+	}
+
+	return uint64(unix + epochSeconds), true
 }
 
 // FromFileTime converts a FILETIME to a UTC time.
 func FromFileTime(ft uint64) time.Time {
-	return time.Unix(0, int64(ft-epochDelta)*100).UTC() //nolint:gosec // FILETIME values of this era fit int64
+	return time.Unix(int64(ft/ticksPerSec)-epochSeconds, int64(ft%ticksPerSec)*100).UTC() //nolint:gosec // ft/1e7 fits int64
 }
 
 // Marshal serializes the properties. Strings are written in cp, which must
@@ -162,12 +185,16 @@ func Marshal(props []Property, codePage int) ([]byte, error) { //nolint:cyclop,g
 				buf = append(buf, 0)
 			}
 		case vtFILETIME:
-			t, ok := prop.Value.(time.Time)
+			when, ok := prop.Value.(time.Time)
 			if !ok {
 				return nil, fmt.Errorf("summary: PID %d wants a time, got %v", prop.ID, prop.Value)
 			}
 
-			buf = order.AppendUint64(buf, FileTime(t))
+			if _, ok := fileTimeSeconds(when); !ok {
+				return nil, fmt.Errorf("summary: PID %d: %v is outside the FILETIME range", prop.ID, when)
+			}
+
+			buf = order.AppendUint64(buf, FileTime(when))
 		}
 
 		values = append(values, buf)

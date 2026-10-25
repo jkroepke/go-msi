@@ -31,7 +31,9 @@ func FuzzUnmarshal(f *testing.F) {
 // FuzzRoundTrip marshals fuzzed strings and reads them back unchanged.
 func FuzzRoundTrip(f *testing.F) {
 	f.Add("Title", "Author ö", int64(0), 1252)
-	f.Add("", "Ж", int64(1<<40), 65001)
+	f.Add("", "Ж", int64(1<<40), 1251)
+	f.Add("x", "y", int64(10000000000), 1252)
+	f.Add("x", "y", int64(-11644473600), 1252)
 
 	f.Fuzz(func(t *testing.T, title, author string, unix int64, codePage int) {
 		when := time.Unix(unix, 0).UTC()
@@ -64,4 +66,29 @@ func FuzzRoundTrip(f *testing.F) {
 			t.Fatalf("created %v, wrote %v", got, when)
 		}
 	})
+}
+
+// TestFileTimeRange is the FuzzRoundTrip finding: FileTime used UnixNano,
+// which overflows silently outside 1678 to 2262.
+func TestFileTimeRange(t *testing.T) {
+	t.Parallel()
+
+	for _, when := range []time.Time{
+		time.Date(1601, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(1650, 6, 1, 0, 0, 0, 100, time.UTC),
+		time.Date(2286, 11, 20, 17, 46, 40, 0, time.UTC),
+		time.Date(30000, 1, 1, 0, 0, 0, 0, time.UTC),
+	} {
+		if got := summary.FromFileTime(summary.FileTime(when)); !got.Equal(when) {
+			t.Errorf("%v comes back as %v", when, got)
+		}
+	}
+
+	if got := summary.FileTime(time.Date(1600, 12, 31, 23, 59, 59, 0, time.UTC)); got != 0 {
+		t.Errorf("a time before 1601 gives %d, want 0", got)
+	}
+
+	if _, err := summary.Marshal([]summary.Property{{ID: summary.PIDCreated, Value: time.Date(1600, 1, 1, 0, 0, 0, 0, time.UTC)}}, 1252); err == nil {
+		t.Error("Marshal accepted a time before 1601")
+	}
 }
