@@ -269,9 +269,10 @@ Only the standard library `flag` package is used.
 | 8 | `ui`: built-in wizards (`minimal`, `featureTree`), generated dialogs, `artwork` bitmaps | PR 2 |
 | 9 | ICE-style checks that still need the UI tables; `_Validation` for UI | PR 2 |
 | 10 | External cabinets, several media, uncompressed files | later |
+| 11 | `sign`: Authenticode signing, verification and RFC 3161 timestamps (MSISPEC §12) | done |
 
-Out of scope for good: MSIX (nfpm), signing (relic, osslsigncode), patches,
-transforms, merge modules, bundles.
+Out of scope for good: MSIX (nfpm), patches, transforms, merge modules,
+bundles.
 
 ## 4. Decisions worth recording
 

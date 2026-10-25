@@ -22,7 +22,7 @@ in `go.mod`.
 
 - go-msi is pure Go. Never add cgo, and never add a dependency that needs it.
   The binary must build with `CGO_ENABLED=0` for Linux, macOS and Windows.
-- go-msi only builds MSI packages. It never runs them. Signing and MSIX are out
+- go-msi only builds and signs MSI packages. It never runs them. MSIX is out
   of scope.
 - go-msi is a clean-room implementation. Write code from the specification in
   [`docs/spec`](docs/spec) and from Microsoft's documentation. Never copy or

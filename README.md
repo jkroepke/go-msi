@@ -20,10 +20,10 @@ macOS and Windows, for example in a CI job next to the rest of your release.
   install in a broken state are rejected at build time.
 - **Reproducible.** The same configuration, inputs and `SOURCE_DATE_EPOCH`
   produce a byte-identical MSI.
-- **Focused.** go-msi only builds MSI packages. Sign them with a tool such as
-  [relic](https://github.com/sassoftware/relic) or
-  [osslsigncode](https://github.com/mtrojnar/osslsigncode). For MSIX packages,
-  use [nFPM](https://github.com/goreleaser/nfpm).
+- **Signed.** go-msi adds an Authenticode signature itself, with an RFC 3161
+  timestamp, so no Windows SDK or `signtool` is needed.
+- **Focused.** go-msi only builds MSI packages. For MSIX packages, use
+  [nFPM](https://github.com/goreleaser/nfpm).
 
 > [!NOTE]
 > go-msi is under active development. The YAML schema is defined, the MSI
@@ -71,6 +71,16 @@ go-msi validate msi.yaml
 go-msi build -o hello.msi msi.yaml
 ```
 
+To sign the package, pass a key and its certificate chain:
+
+```shell
+go-msi build --pfx codesign.pfx --password-env PFX_PASSWORD \
+  --timestamp-url http://timestamp.digicert.com -o hello.msi msi.yaml
+go-msi verify hello.msi
+```
+
+See [Signing](docs/signing.md) for PEM keys, `go-msi sign` and the Go API.
+
 A complete package with a Windows service, a firewall rule, an event log source
 and custom actions is in
 [`examples/windows_exporter`](examples/windows_exporter/msi.yaml).
@@ -80,8 +90,6 @@ and custom actions is in
 go-msi aims at simple, single-product installers such as an exporter or an
 agent with a service. These are not planned:
 
-- **Signing.** Use [relic](https://github.com/sassoftware/relic) or
-  [osslsigncode](https://github.com/mtrojnar/osslsigncode).
 - **MSIX and APPX.** Use [nFPM](https://github.com/goreleaser/nfpm).
 - **Running packages.** go-msi never installs or executes an MSI. Its
   Windows tests do, on CI runners only.
@@ -116,6 +124,7 @@ docker run --rm -v "$PWD:/work" ghcr.io/jkroepke/go-msi build -o hello.msi msi.y
 ## Documentation
 
 - [YAML schema](docs/design/yaml-schema.md)
+- [Signing](docs/signing.md)
 - [MSI specification](docs/spec/MSISPEC.md) and its
   [Windows test results](docs/spec/MSISPEC-RESULTS.md)
 
