@@ -588,16 +588,16 @@ func userRegistryKeyPath(c *Component, perUser bool) bool {
 
 // registryKeyPath returns the registry value that is the component's key
 // path, or nil when the key path is a file or the directory.
-func registryKeyPath(c *Component) *RegistryValue {
+func registryKeyPath(comp *Component) *RegistryValue {
 	switch {
-	case c.KeyPath == "" && len(c.Files) == 0 && len(c.Registry) > 0:
-		return c.Registry[0]
-	case c.KeyPath == "" || c.KeyPath == "directory":
+	case comp.KeyPath == "" && len(comp.Files) == 0 && len(comp.Registry) > 0:
+		return comp.Registry[0]
+	case comp.KeyPath == "" || comp.KeyPath == "directory":
 		return nil
 	}
 
-	for _, value := range c.Registry {
-		if value.ID == c.KeyPath {
+	for _, value := range comp.Registry {
+		if value.ID == comp.KeyPath {
 			return value
 		}
 	}
