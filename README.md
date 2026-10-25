@@ -86,7 +86,8 @@ agent with a service. These are not supported:
   bundles or bootstrappers.** Ship a new major-upgrade MSI instead of a patch.
 - **Multi-language packages.** A package has one language; there are no
   embedded language transforms. Not in schema v1.
-- **Spanned cabinets and LZX compression.** Cabinets are MSZIP or stored.
+- **Spanned cabinets.** Every cabinet holds one folder; cabinets are LZX
+  (the default), MSZIP or stored.
 - **Script custom actions** (VBScript, JScript). Use an executable or DLL
   action instead. Not in schema v1.
 - **Editing existing packages and WiX XML input.** `go-msi inspect` only

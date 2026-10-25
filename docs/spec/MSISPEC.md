@@ -315,7 +315,7 @@ Unverified:
 
 ## 5. Cabinets
 
-Files are stored in MSZIP-compressed Microsoft cabinets, embedded as database streams or placed beside the `.msi`.
+Files are stored in LZX- or MSZIP-compressed Microsoft cabinets, embedded as database streams or placed beside the `.msi`.
 
 ### Structure and checksum
 
@@ -333,7 +333,7 @@ Files are stored in MSZIP-compressed Microsoft cabinets, embedded as database st
 - Blocks hold exactly 32768 uncompressed bytes; a folder's last block holds 1–32768. An empty folder has `cCFData = 0`; never write `cbUncomp = 0`.
 - `date = ((year − 1980) << 9) | (month << 5) | day`, `time = (hour << 11) | (minute << 5) | (second >> 1)`, clamped to 0x0021/0x0000 … 0xFF9F/0xBF7D.
 - `attribs`: 0x01 read-only, 0x02 hidden, 0x04 system, 0x20 archive; never 0x40 (execute); 0x80 (UTF-8 name) only when a name byte is ≥ 0x80.
-- `typeCompress` low nibble: 0 none, 1 MSZIP, 2 Quantum, 3 LZX (window 15–21 in bits 8–12). Writers use 1 or 0; real packages used 0x0001 and 0x1503.
+- `typeCompress` low nibble: 0 none, 1 MSZIP, 2 Quantum, 3 LZX (window 15–21 in bits 8–12). Writers use 3 (LZX, window 21 by default), 1 or 0; real packages used 0x0001 and 0x1503.
 - Readers of other toolchains' packages MUST handle cabinet sets: flags 0x1/0x2 with the previous/next cabinet names, and `iFolder` 0xFFFD–0xFFFF for files continued across cabinets. Retail packages built by other toolchains use them with external LZX cabinets (reported); a reader that lacks them MUST fail with a clear message instead of extracting part of the set.
 
 ```
@@ -358,6 +358,26 @@ Each `ab` is `43 4B` ("CK") plus a raw RFC 1951 stream. Its last block has BFINA
 - Levels 0 and −2 ignore the dictionary, which is legal. A tested Go 1.27.3 encoder ends each stream with an empty fixed-Huffman final block, which is valid.
 - Decode with `flate.NewReaderDict(ab[2:], last 32768 bytes of history)` and `io.ReadFull` of `cbUncomp` bytes. <!-- codespell:ignore flate -->
 - A wrong history shows up as scattered wrong bytes in otherwise plausible files, or as "invalid chunk" errors in later blocks; an extractor regression did both on a real package (reported). Test decoding on a folder of more than two blocks with matches that reach back across block boundaries, and compare every extracted file with its source.
+
+### LZX
+
+`typeCompress = 3 | window << 8` with a window of 2^15 to 2^21 bytes. The bitstream is the LZX DELTA format of [MS-PATCH] without reference data (Documented, unverified where the cabinet tests below do not cover it). It differs from MS-PATCH in a cabinet as follows:
+
+- There is no chunk-size prefix: each CFDATA payload is one frame of 32768 uncompressed bytes (the last one shorter), and `cbData` gives its size. A frame ends padded with zero bits to a 16-bit boundary.
+- Windows are 2^15 to 2^21 bytes, with 30, 32, 34, 36, 38, 42 and 50 position slots. MS-PATCH lists only 2^17 and up.
+- The E8 header (1 bit, then the translation size as two 16-bit words when set) opens the folder's first frame. The window, the trees, the repeated offsets and the current block carry across the folder's frames; a new folder starts fresh.
+- MS-PATCH's extra-length field for matches of 257 bytes and more is LZX DELTA only. go-msi writes matches of at most 256 bytes, so that question never arises.
+
+What go-msi's writer does (`internal/lzx`):
+
+- E8 translation on, with the folder's length as the translation size; it applies to every frame of more than 10 bytes below 1 GiB, as MS-PATCH 2.2.2 says.
+- Verbatim or aligned offset blocks of 128 KiB, whichever is smaller; no uncompressed blocks. Matches never cross a 32 KiB frame boundary (MS-PATCH 2.1.5). An aligned offset block codes the low 3 footer bits of every slot with 3 or more footer bits through the aligned tree: MS-PATCH 2.6.3 says so for the encoder, while the decoder pseudocode in 2.7 reads "more than 3"; the cabinet tests decide it.
+- Path lengths are coded as deltas against the previous block (mod 17) and runs of zeros with codes 17 and 18; code 19, whose delta base MS-PATCH leaves open for runs, is never written (the reader accepts it, using the first element's previous length). Every tree has at least two codes (MS-PATCH 2.4).
+- Levels 7 to 9 (9 by default) use a cost-based parser over a binary-tree match finder, in 8 MiB segments that are parsed in parallel; the output does not depend on the number of workers.
+
+The reader follows the same rules and also reads uncompressed blocks: after the block header, 1 to 16 padding bits (16 when the stream is already aligned), R0, R1 and R2 as little-endian u32, the bytes, and a pad byte when the block size is odd.
+
+Measured on Windows Server 2025 with makecab.exe 5.00 (2026-10-25, LZX:21 against MSZIP): windows_exporter 0.32.0 (33.4 MB) 13.27 MB against 15.39 MB, Grafana Alloy 1.21.2 (414.6 MB) 75.28 MB against 106.86 MB; expand.exe was not slower on LZX. go-msi's writer gave 13.29 MB and 75.76 MB for the same files.
 
 ### Windows Installer usage
 

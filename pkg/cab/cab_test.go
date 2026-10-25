@@ -178,11 +178,58 @@ func TestErrors(t *testing.T) {
 		t.Error("empty name accepted")
 	}
 
-	if _, err := Write([]File{{Name: "x"}}, Options{Compression: 3}); err == nil {
-		t.Error("LZX accepted")
+	if _, err := Write([]File{{Name: "x"}}, Options{Compression: 2}); err == nil {
+		t.Error("Quantum accepted")
+	}
+
+	if _, err := Write([]File{{Name: "x"}}, Options{Compression: LZX, Window: 14}); err == nil {
+		t.Error("LZX window 2^14 accepted")
 	}
 
 	if _, err := Read([]byte("MSCF")); err == nil {
 		t.Error("truncated cabinet accepted")
+	}
+}
+
+func TestLZXRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	rng := rand.New(rand.NewSource(3)) //nolint:gosec // reproducible test data
+	random := make([]byte, 50000)
+	rng.Read(random)
+
+	text := bytes.Repeat([]byte("LZX matches reach back across CFDATA blocks.\r\n"), 3000)
+	files := []File{
+		{Name: "text", Data: text},
+		{Name: "empty"},
+		{Name: "random", Data: random},
+		{Name: "again", Data: text[:40000]},
+	}
+
+	for _, window := range []int{0, 15, 18} {
+		out, err := Write(files, Options{Compression: LZX, Window: window})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		want := uint16(0x1503)
+		if window != 0 {
+			want = uint16(3 | window<<8) //nolint:gosec // 15 to 21
+		}
+
+		if got := uint16(out[headerSize+6]) | uint16(out[headerSize+7])<<8; got != want {
+			t.Errorf("window %d: typeCompress %#x, want %#x", window, got, want)
+		}
+
+		back, err := Read(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for i, f := range back {
+			if f.Name != files[i].Name || !bytes.Equal(f.Data, files[i].Data) {
+				t.Errorf("window %d: file %d differs", window, i)
+			}
+		}
 	}
 }

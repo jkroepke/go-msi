@@ -248,7 +248,7 @@ func (v *validator) pkg(cfg *Config) {
 		v.errorf("package.codepage", "%d is not supported; use an ANSI code page or 65001", pkg.Codepage)
 	}
 
-	v.oneOf("package.compression", pkg.Compression, "mszip", "none")
+	v.oneOf("package.compression", pkg.Compression, Compressions()...)
 
 	if !plainFileName(pkg.Cabinet) {
 		v.errorf("package.cabinet", "%q is not a plain file name", pkg.Cabinet)

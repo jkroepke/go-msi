@@ -14,8 +14,9 @@ import (
 
 // FS is a read-only fs.FS over the files of a cabinet. Cabinet names use
 // backslashes between directories; FS maps them to slash-separated paths and
-// synthesises the directories. MSZIP is a block compression, not a container,
-// so there is no fs.FS for it: FS already serves decompressed bytes.
+// synthesises the directories. MSZIP and LZX are block compressions, not
+// containers, so there is no fs.FS for them: FS already serves decompressed
+// bytes.
 type FS struct {
 	files map[string]*File
 	dirs  map[string][]string // directory -> sorted child names

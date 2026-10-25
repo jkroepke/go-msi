@@ -4,6 +4,7 @@ package cab_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -458,6 +459,8 @@ func nativeCases() []nativeCase {
 		}},
 	}
 
+	cases = append(cases, lzxCases(when, random, text)...)
+
 	// Checksum tails: compressed sizes of 1, 2 and 3 bytes modulo 4.
 	for tail := range 4 {
 		cases = append(cases, nativeCase{
@@ -469,6 +472,87 @@ func nativeCases() []nativeCase {
 			},
 		})
 	}
+
+	return cases
+}
+
+// lzxCases cover the LZX encoder: every window size, both block types,
+// frame and block boundaries, E8 call translation near frame ends, matches
+// that reach back almost a whole window, and data that spans the encoder's
+// parallel segments.
+func lzxCases(when time.Time, random, text []byte) []nativeCase {
+	lzx := func(window int) cab.Options { return cab.Options{Compression: cab.LZX, Window: window} }
+
+	// x86-like data: E8 calls with near and far targets, repeated records,
+	// text and noise.
+	rng := rand.New(rand.NewSource(21)) //nolint:gosec // reproducible test data
+	code := make([]byte, 0, 3<<20)
+
+	for len(code) < 3<<20 {
+		switch rng.Intn(4) {
+		case 0:
+			target := uint32(rng.Intn(1<<22) - 1<<21) //nolint:gosec // two's complement call target
+			code = binary.LittleEndian.AppendUint32(append(code, 0xE8), target)
+		case 1:
+			code = append(code, text[:rng.Intn(200)]...)
+		case 2:
+			for range 4 {
+				code = binary.LittleEndian.AppendUint32(code, uint32(rng.Intn(16)*16)) //nolint:gosec // below 256
+			}
+		default:
+			code = append(code, random[:rng.Intn(64)]...)
+		}
+	}
+
+	// A random 64 KB chunk repeated almost a 2 MB window later.
+	far := make([]byte, 0, 1<<21+1<<16)
+	far = append(far, random[:65536]...)
+
+	for len(far) < 1<<21-100 {
+		far = append(far, byte(rng.Intn(256))) //nolint:gosec // below 256
+	}
+
+	far = append(far, random[:65536]...)
+
+	// E8 bytes in the last 10 bytes of frames and in short final frames.
+	calls := bytes.Repeat([]byte{0xE8, 0x00, 0x10, 0x00, 0x00}, 32768/5*3)
+	e8tail := append(bytes.Clone(calls[:32768+11]), 0xE8, 1, 2, 3, 4, 0xE8)
+
+	cases := make([]nativeCase, 0, 32)
+
+	for window := 15; window <= 21; window++ {
+		cases = append(cases, nativeCase{name: fmt.Sprintf("lzx-%d-code", window), opts: lzx(window), files: []cab.File{
+			{Name: "code.bin", Data: code[:min(len(code), 3<<window)], Time: when},
+			{Name: "text.txt", Data: text, Time: when},
+		}})
+	}
+
+	for _, block := range []int{1, 2} {
+		cases = append(cases, nativeCase{name: fmt.Sprintf("lzx-block-type-%d", block), opts: cab.WithLZXBlock(lzx(21), block), files: []cab.File{
+			{Name: "code.bin", Data: code[:1<<20], Time: when},
+		}})
+	}
+
+	cases = append(cases,
+		nativeCase{name: "lzx-small", opts: lzx(0), files: []cab.File{
+			{Name: "fil_a", Data: []byte("Hello, cabinet!\r\n"), Time: when},
+			{Name: "fil_b", Data: []byte("M"), Time: when},
+		}},
+		nativeCase{name: "lzx-empty-file-only", opts: lzx(0), files: []cab.File{{Name: "empty", Time: when}}},
+		nativeCase{name: "lzx-exactly-one-block", opts: lzx(0), files: []cab.File{{Name: "block", Data: text[:32768], Time: when}}},
+		nativeCase{name: "lzx-one-block-plus-one", opts: lzx(0), files: []cab.File{{Name: "block", Data: text[:32769], Time: when}}},
+		nativeCase{name: "lzx-random", opts: lzx(0), files: []cab.File{{Name: "random", Data: random, Time: when}}},
+		nativeCase{name: "lzx-far-match", opts: lzx(21), files: []cab.File{{Name: "far", Data: far, Time: when}}},
+		nativeCase{name: "lzx-e8-frame-ends", opts: lzx(0), files: []cab.File{{Name: "e8", Data: calls, Time: when}}},
+		nativeCase{name: "lzx-e8-short-tail", opts: lzx(0), files: []cab.File{{Name: "e8", Data: e8tail, Time: when}}},
+		nativeCase{name: "lzx-e8-tiny-tail", opts: lzx(0), files: []cab.File{{Name: "e8", Data: calls[:32768+10], Time: when}}},
+		nativeCase{name: "lzx-segments", opts: lzx(0), files: []cab.File{
+			{Name: "code1.bin", Data: code, Time: when},
+			{Name: "code2.bin", Data: code, Time: when},
+			{Name: "code3.bin", Data: code, Time: when},
+			{Name: "far.bin", Data: far, Time: when},
+		}},
+	)
 
 	return cases
 }
@@ -660,7 +744,7 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 
 	text := bytes.Repeat([]byte("MSZIP history crosses CFDATA blocks when makecab compresses it.\r\n"), 1500)
 
-	for _, comp := range []string{"MSZIP", "stored"} { //nolint:paralleltest // shared FDI state
+	for _, comp := range []string{"MSZIP", "stored", "LZX:15", "LZX:21"} { //nolint:paralleltest // shared FDI state
 		t.Run(comp, func(t *testing.T) {
 			dir := t.TempDir()
 			src := filepath.Join(dir, "src") // only the inputs, so cab.Files sees nothing else
@@ -678,6 +762,8 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 			if comp == "stored" {
 				// makecab knows no CompressionType "NONE"; Compress=off writes typeCompress 0.
 				ddf.WriteString(".Set Cabinet=on\r\n.Set Compress=off\r\n")
+			} else if kind, memory, ok := strings.Cut(comp, ":"); ok {
+				ddf.WriteString(".Set Cabinet=on\r\n.Set Compress=on\r\n.Set CompressionType=" + kind + "\r\n.Set CompressionMemory=" + memory + "\r\n")
 			} else {
 				ddf.WriteString(".Set Cabinet=on\r\n.Set Compress=on\r\n.Set CompressionType=" + comp + "\r\n")
 			}
@@ -883,4 +969,95 @@ func keys(m map[string][]byte) []string {
 	}
 
 	return out
+}
+
+// TestNativeLZXSystemBinaries compresses real x86-64 code, Windows' own
+// binaries, both ways: cabinet.dll must extract go-msi's LZX cabinet, and
+// cab.Read must extract makecab's. The log compares the sizes.
+func TestNativeLZXSystemBinaries(t *testing.T) { //nolint:paralleltest // the FDI callbacks share one package state
+	if testing.Short() {
+		t.Skip("native tests run without -short")
+	}
+
+	system := filepath.Join(os.Getenv("SystemRoot"), "System32")
+	dir := t.TempDir()
+
+	var (
+		files []cab.File
+		ddf   strings.Builder
+		total int
+	)
+
+	ddf.WriteString(".OPTION EXPLICIT\r\n.Set CabinetNameTemplate=out.cab\r\n.Set DiskDirectoryTemplate=" + dir + "\r\n")
+	ddf.WriteString(".Set Cabinet=on\r\n.Set Compress=on\r\n.Set CompressionType=LZX\r\n.Set CompressionMemory=21\r\n")
+	ddf.WriteString(".Set MaxDiskSize=0\r\n.Set FolderSizeThreshold=0\r\n.Set RptFileName=nul\r\n.Set InfFileName=nul\r\n")
+
+	for _, name := range []string{"ntoskrnl.exe", "shell32.dll", "kernel32.dll", "msi.dll", "cabinet.dll"} {
+		data, err := os.ReadFile(filepath.Join(system, name))
+		if err != nil {
+			t.Logf("skipping %s: %v", name, err)
+
+			continue
+		}
+
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		files = append(files, cab.File{Name: name, Data: data})
+		total += len(data)
+
+		ddf.WriteString(`"` + path + `" ` + name + "\r\n")
+	}
+
+	if len(files) == 0 {
+		t.Skip("no system binaries found")
+	}
+
+	ours, err := cab.Write(files, cab.Options{Compression: cab.LZX})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := fdiExtract(t, ours)
+	if err != nil {
+		t.Fatalf("cabinet.dll: %v", err)
+	}
+
+	for i, want := range files {
+		if i >= len(got) || got[i].Name != want.Name || !bytes.Equal(got[i].Data, want.Data) {
+			t.Errorf("%s: FDI output differs", want.Name)
+		}
+	}
+
+	ddfPath := filepath.Join(dir, "cab.ddf")
+	if err := os.WriteFile(ddfPath, []byte(ddf.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.CommandContext(t.Context(), filepath.Join(system, "makecab.exe"), "/F", ddfPath) //nolint:gosec // fixed Windows tool
+	cmd.Dir = dir
+
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("makecab.exe: %v\n%s", err, output)
+	}
+
+	theirs, err := os.ReadFile(filepath.Join(dir, "out.cab"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	back, err := cab.Read(theirs)
+	if err != nil {
+		t.Fatalf("cab.Read of makecab's LZX cabinet: %v", err)
+	}
+
+	for i, want := range files {
+		if i >= len(back) || back[i].Name != want.Name || !bytes.Equal(back[i].Data, want.Data) {
+			t.Errorf("%s: cab.Read of makecab's cabinet differs", want.Name)
+		}
+	}
+
+	t.Logf("%d files, %d bytes: go-msi LZX:21 %d bytes, makecab LZX:21 %d bytes", len(files), total, len(ours), len(theirs))
 }
