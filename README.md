@@ -84,6 +84,12 @@ it with Go:
 go install github.com/jkroepke/go-msi/cmd/go-msi@latest
 ```
 
+or run the container image for Linux on amd64 and arm64:
+
+```shell
+docker run --rm -v "$PWD:/work" ghcr.io/jkroepke/go-msi build -o hello.msi msi.yaml
+```
+
 ## Documentation
 
 - [YAML schema](docs/design/yaml-schema.md)
