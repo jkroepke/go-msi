@@ -133,6 +133,9 @@ type Directory struct {
 	Name         string       `yaml:"name"`
 	Configurable bool         `yaml:"configurable"`
 	Children     []*Directory `yaml:"children"`
+
+	// origin is the YAML path of the value a generated node comes from.
+	origin string
 }
 
 // Feature is a node of the feature tree.

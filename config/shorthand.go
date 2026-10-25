@@ -33,7 +33,8 @@ func expandShorthands(cfg *Config) {
 
 	cfg.InstallDir.expanded = true
 
-	for _, comp := range cfg.Components {
+	for i, comp := range cfg.Components {
+		tree.origin = comp.Path(i) + ".directory"
 		comp.Directory = tree.resolve(comp.Directory)
 	}
 
@@ -263,6 +264,10 @@ func findDirectory(dirs []*Directory, dirID string) *Directory {
 type dirTree struct {
 	cfg  *Config
 	byID map[string]*Directory
+	// origin is the YAML path of the value that new nodes come from.
+	origin string
+	// installOrigin is the YAML path of the install dir's name.
+	installOrigin string
 }
 
 func newDirTree(cfg *Config) *dirTree {
@@ -302,8 +307,12 @@ func (t *dirTree) installDir() {
 		install.Parent = defaultInstallParent(t.cfg.Package.Platform, perUser)
 	}
 
+	t.installOrigin = "installDir.name"
+
 	if install.Name == "" {
+		t.installOrigin = "product.name"
 		install.Name = t.cfg.Product.Name
+
 		if perUser {
 			install.Name = "Programs/" + install.Name
 		}
@@ -328,6 +337,11 @@ func (t *dirTree) ensureInstallDir() *Directory {
 	}
 
 	names := splitPath(install.Name)
+
+	origin := t.origin
+	t.origin = t.installOrigin
+
+	defer func() { t.origin = origin }()
 
 	parent := t.top(install.Parent)
 	for _, name := range names[:len(names)-1] {
@@ -411,6 +425,10 @@ func (t *dirTree) looksLikeID(word string) bool {
 }
 
 func (t *dirTree) knownIgnoringCase(value string) bool {
+	if strings.EqualFold(t.cfg.InstallDir.ID, value) {
+		return true
+	}
+
 	for known := range t.byID {
 		if strings.EqualFold(known, value) {
 			return true
@@ -482,7 +500,7 @@ func (t *dirTree) child(parent *Directory, name, dirID string) *Directory {
 		dirID = uniqueID(identifier(parent.ID+"_"+long), used)
 	}
 
-	dir := &Directory{ID: dirID, Name: name}
+	dir := &Directory{ID: dirID, Name: name, origin: t.origin}
 	parent.Children = append(parent.Children, dir)
 	t.byID[dirID] = dir
 

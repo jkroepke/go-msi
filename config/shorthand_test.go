@@ -484,3 +484,31 @@ func TestShorthandProfileKeyPath(t *testing.T) {
 		}
 	}
 }
+
+func TestShorthandGeneratedFolderErrors(t *testing.T) {
+	t.Parallel()
+
+	comp := "components:\n  - files: [{ source: hello.exe }]\n"
+
+	for doc, want := range map[string]string{
+		strings.Replace(short, "name: Hello", "name: Hello Inc.", 1) + comp:                           "product.name",
+		short + "installDir: Hello.\n" + comp:                                                         "installDir.name",
+		short + "components:\n  - { directory: ../x, createFolder: true }\n":                          "components[0].directory",
+		short + "features:\n  - id: F\n    components: [{ directory: 'a/b.', createFolder: true }]\n": "features[0].components[0].directory",
+	} {
+		diags := validate(t, doc)
+		if !find(diags, config.SeverityError, want, "not a valid folder name") {
+			t.Errorf("no error at %s: %v", want, diags)
+		}
+	}
+
+	// A case typo of the install dir is reported while the dir is not yet in
+	// the tree.
+	tree := strings.Replace(short, "package:\n  platform: x64\n", "package:\n  platform: x64\n"+
+		"directories:\n  - id: CommonAppDataFolder\n    children: [{ id: DATADIR, name: Data }]\n", 1)
+
+	diags := validate(t, tree+"components:\n  - { directory: installdir/bin, createFolder: true }\n")
+	if !find(diags, config.SeverityError, "components[0].directory", "is not defined") {
+		t.Errorf("lazy install dir typo not reported: %v", diags)
+	}
+}

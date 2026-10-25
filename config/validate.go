@@ -332,6 +332,8 @@ func (v *validator) directories(cfg *Config, r *refs) {
 			case top && d.Name != "":
 				v.errorf(p+".name", "a standard folder has no name")
 			case !top && !v.required(p+".name", d.Name):
+			case !top && !validName(d.Name) && d.origin != "":
+				v.errorf(d.origin, "%q is not a valid folder name", d.Name)
 			case !top && !validName(d.Name):
 				v.errorf(p+".name", "%q is not a valid name or short|long pair", d.Name)
 			}
