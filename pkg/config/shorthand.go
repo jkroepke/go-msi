@@ -530,12 +530,12 @@ func (t *dirTree) pathStart(names []string, forced bool) (*Directory, []string) 
 	return t.ensureInstallDir(), names
 }
 
-// top returns the top-level node of a standard folder, adding it if needed.
+// top returns the node of a standard folder, adding it at the top level if
+// needed.
 func (t *dirTree) top(folder string) *Directory {
-	for _, dir := range t.cfg.Directories {
-		if dir.ID == folder {
-			return dir
-		}
+	// The tree may nest standard folders under TARGETDIR.
+	if dir := t.byID[folder]; dir != nil {
+		return dir
 	}
 
 	dir := &Directory{ID: folder}

@@ -594,3 +594,25 @@ func TestShorthandInstallDirOrder(t *testing.T) {
 		t.Errorf("no same-folder warning: %v", ds)
 	}
 }
+
+func TestShorthandNestedStandardFolder(t *testing.T) {
+	t.Parallel()
+
+	tree := "directories:\n  - id: TARGETDIR\n    children:\n      - id: ProgramFiles64Folder\n" +
+		"        name: PFiles64\n        children: [{ id: APPDIR, name: Other }]\n"
+	comps := "components:\n  - files: [{ source: hello.exe }]\n" +
+		"  - { directory: ProgramFiles64Folder/x, files: [{ source: readme.txt }] }\n"
+
+	cfg := parseValid(t, short+tree+comps)
+
+	if len(cfg.Directories) != 1 {
+		t.Fatalf("standard folder added at the top level again: %d top-level directories", len(cfg.Directories))
+	}
+
+	for _, dirID := range []string{config.DefaultInstallDirID, "ProgramFiles64Folder_x"} {
+		want := []string{"TARGETDIR", "ProgramFiles64Folder", dirID}
+		if got := dirPath(cfg.Directories, dirID); !reflect.DeepEqual(got, want) {
+			t.Errorf("%s path %v, want %v", dirID, got, want)
+		}
+	}
+}
