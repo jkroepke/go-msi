@@ -284,6 +284,32 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+// TestVersionedFiles checks the "more than one versioned file" warning: auto
+// counts as versioned only on a PE file, so data files never trigger it.
+func TestVersionedFiles(t *testing.T) {
+	t.Parallel()
+
+	const warning = "more than one versioned file"
+
+	for name, tc := range map[string]struct {
+		files string
+		want  bool
+	}{
+		"two data files":        {"[{source: a.txt}, {source: b.txt}]", false},
+		"exe and data file":     {"[{source: app.exe}, {source: a.txt}]", false},
+		"two executables":       {"[{source: app.exe}, {source: helper.dll}]", true},
+		"explicit versions":     {"[{source: a.txt, version: 1.0.0.0}, {source: b.txt, version: 1.0.0.0}]", true},
+		"explicit none on exes": {"[{source: app.exe}, {source: helper.dll, version: none, allowUnversionedExecutable: true}]", false},
+	} {
+		doc := base + strings.Replace(appComponent, "    files:\n      - source: app.exe\n", "    files: "+tc.files+"\n", 1)
+
+		ds := validate(t, doc)
+		if got := find(ds, config.SeverityWarning, "components[0].files", warning); got != tc.want {
+			t.Errorf("%s: warning present = %v, want %v, got:\n%v", name, got, tc.want, ds)
+		}
+	}
+}
+
 func TestHelpers(t *testing.T) {
 	t.Parallel()
 

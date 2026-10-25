@@ -608,7 +608,7 @@ func (v *validator) componentFiles(cfg *Config, p string, c *Component, ids, tar
 
 		v.fileVersion(fp, f, c)
 
-		if f.Version != None {
+		if versionedFile(f) {
 			versioned++
 		}
 
@@ -635,6 +635,20 @@ func (v *validator) componentFiles(cfg *Config, p string, c *Component, ids, tar
 	}
 
 	return nil
+}
+
+// versionedFile reports whether the File row gets a Version: an explicit
+// version, or auto on a PE file, whose version resource the builder reads.
+// Auto on any other file stores no version.
+func versionedFile(f *File) bool {
+	switch f.Version {
+	case None:
+		return false
+	case Auto:
+		return peExtensions[strings.ToLower(path.Ext(fileName(f)))]
+	default:
+		return true
+	}
 }
 
 // fileVersion enforces the RUN-02 rule: a PE file is never unversioned by
