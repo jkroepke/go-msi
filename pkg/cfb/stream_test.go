@@ -273,7 +273,7 @@ func TestNestedStream(t *testing.T) {
 	raw, err := cfb.Write([]cfb.Stream{
 		{Name: "A", Data: []byte("root-A")},
 		{Name: "B", Data: []byte("root-B")},
-		{Name: "C", Data: []byte("root-C!!")},
+		{Name: "C", Data: bytes.Repeat([]byte("root-C!!"), 1024)}, // a large stream, in sectors
 	}, cfb.Options{Version: 3})
 	if err != nil {
 		t.Fatal(err)

@@ -125,8 +125,8 @@ func Entries(fsys fs.FS) ([]Entry, error)
 - `WriteTo` streams: CFFILE records follow from names and sizes, the folder
   data is compressed block by block from the concatenated `Open` readers (an
   entry that is shorter or longer than its declared `Size` is an error), and
-  the CFDATA count follows from the folder size, and only `cbCabinet` is
-  patched afterwards through the seeker. `Write` is `WriteTo` into memory with byte-identical output.
+  the CFDATA count follows from the folder size; only `cbCabinet` is patched
+  afterwards through the seeker. `Write` is `WriteTo` into memory with byte-identical output.
 - `Walk` decodes one block at a time and hands every file's bytes to `visit`
   as a reader; it serves verification without materializing the cabinet.
 

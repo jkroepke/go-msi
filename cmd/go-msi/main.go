@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/jkroepke/go-msi/pkg/builder"
+	"github.com/jkroepke/go-msi/pkg/cfb"
 	"github.com/jkroepke/go-msi/pkg/config"
 	"github.com/jkroepke/go-msi/pkg/msidb"
 	"github.com/jkroepke/go-msi/pkg/sign"
@@ -278,12 +279,25 @@ func cmdInspect(args []string, stdout, stderr io.Writer) error { //nolint:cyclop
 		return errors.New("inspect wants exactly one package")
 	}
 
-	data, err := os.ReadFile(flags.Arg(0))
+	// Open lazily: cabinets stay in the file and are listed by size.
+	pkg, err := os.Open(flags.Arg(0))
 	if err != nil {
-		return fmt.Errorf("read: %w", err)
+		return fmt.Errorf("open: %w", err)
 	}
 
-	database, err := msidb.Unmarshal(data)
+	defer pkg.Close()
+
+	stat, err := pkg.Stat()
+	if err != nil {
+		return fmt.Errorf("stat: %w", err)
+	}
+
+	file, err := cfb.Open(pkg, stat.Size())
+	if err != nil {
+		return fmt.Errorf("%s: %w", flags.Arg(0), err)
+	}
+
+	database, err := msidb.Decode(file)
 	if err != nil {
 		return fmt.Errorf("%s: %w", flags.Arg(0), err)
 	}
@@ -305,9 +319,13 @@ func cmdInspect(args []string, stdout, stderr io.Writer) error { //nolint:cyclop
 		_, _ = fmt.Fprintf(stdout, "summary %2d: %s\n", p.ID, formatValue(p.Value))
 	}
 
-	names := make([]string, 0, len(database.Streams))
+	names := make([]string, 0, len(database.Streams)+len(database.Sources))
 	for _, s := range database.Streams {
 		names = append(names, fmt.Sprintf("%s (%d bytes)", s.Name, len(s.Data)))
+	}
+
+	for _, s := range database.Sources {
+		names = append(names, fmt.Sprintf("%s (%d bytes)", s.Name, s.Size))
 	}
 
 	slices.Sort(names)

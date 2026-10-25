@@ -418,7 +418,7 @@ func (r *reader) chain(start uint32, limit int) ([]uint32, error) {
 	return out, nil
 }
 
-// Read parses a compound file and loads every root-level stream.
+// Read parses a compound file and loads every stream reachable from the root.
 func Read(raw []byte) (*File, error) {
 	file, err := Open(bytes.NewReader(raw), int64(len(raw)))
 	if err != nil {
