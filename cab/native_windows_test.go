@@ -199,21 +199,26 @@ var (
 			}
 
 			delta := int(int32(uint32(dist))) // long is 32 bits on Windows
+			pos := file.pos
 
 			switch int32(uint32(whence)) { // int: the upper half of the register is unspecified
 			case 0:
-				file.pos = delta
+				pos = delta
 			case 1:
-				file.pos += delta
+				pos += delta
 			case 2:
-				file.pos = len(file.data) + delta
-			}
-
-			if file.pos < 0 || file.pos > len(file.data) {
+				pos = len(file.data) + delta
+			default:
 				return ^uintptr(0)
 			}
 
-			return uintptr(file.pos)
+			if pos < 0 || pos > len(file.data) {
+				return ^uintptr(0)
+			}
+
+			file.pos = pos
+
+			return uintptr(pos)
 		})
 	cbNotify = syscall.NewCallback( //nolint:gochecknoglobals // see above
 		func(typ uintptr, note *fdiNotification) uintptr {
@@ -353,6 +358,10 @@ func expandExtract(t *testing.T, raw []byte, longestName int) (map[string][]byte
 
 		return err
 	})
+
+	if err == nil && len(files) == 0 && len(out)+1+longestName >= 260 {
+		return nil, fmt.Errorf("%w: expand.exe exited 0 but wrote nothing under the %d-byte path %s", errLongPath, len(out), out)
+	}
 
 	return files, err
 }
@@ -693,7 +702,7 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 				t.Fatal(err)
 			}
 
-			cmd := exec.CommandContext(t.Context(), filepath.Join(os.Getenv("SystemRoot"), "System32", "makecab.exe"), "/F", ddfPath) //nolint:gosec // fixed Windows tool
+			cmd := exec.CommandContext(t.Context(), filepath.Join(os.Getenv("SystemRoot"), "System32", "makecab.exe"), "/F", "cab.ddf") //nolint:gosec // fixed Windows tool
 			cmd.Dir = dir
 
 			if output, err := cmd.CombinedOutput(); err != nil {
@@ -707,6 +716,15 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 
 			t.Logf("makecab %s: %d bytes, folders %d, files %d, blocks %d, typeCompress %#x", comp, len(raw),
 				int(raw[0x1A])|int(raw[0x1B])<<8, int(raw[0x1C])|int(raw[0x1D])<<8, int(raw[36+4])|int(raw[36+5])<<8, int(raw[36+6])|int(raw[36+7])<<8)
+
+			wantType := uint16(cab.MSZIP)
+			if comp == "stored" {
+				wantType = uint16(cab.None)
+			}
+
+			if typ := uint16(raw[36+6]) | uint16(raw[36+7])<<8; typ != wantType {
+				t.Fatalf("makecab wrote typeCompress %#x, want %#x", typ, wantType)
+			}
 
 			files, err := cab.Read(raw)
 			if err != nil {
