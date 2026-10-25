@@ -193,7 +193,10 @@ Silent-failure cases a producer has to guard against itself:
 | RUN-16 | Not run | Interactive full UI |
 | RUN-17 | Contradicted | 1401, 1501, 6551, 6601 and [1399](msitest/results/RUN-17/rep-1399/log.md) work; [5802](msitest/results/RUN-17/rep-5802/log.md) gives 2613 |
 | RUN-18 | Confirmed | EXE exit 1 fails unless Continue; [type-6 return 5](msitest/results/RUN-18/vbs-binary-return-5-immediate/log.md) ends with 0 and skips the rest; [deferred](msitest/results/RUN-18/vbs-binary-return-5-deferred/log.md) leaves files unregistered |
-| SEC-01 | Confirmed | File, [CreateFolder](msitest/results/SEC-01/createfolder/log.md), [Registry](msitest/results/SEC-01/registry/log.md) and [ServiceInstall](msitest/results/SEC-01/service/log.md) rows get the authored DACL; [`/fa` and `/fvomus` restore it](msitest/results/SEC-01/file/log.md); [owner and group](msitest/results/SEC-01/file-owner-group/log.md) are set; `[Property]` stays literal (1943) but [`<[%USERDOMAIN]\[%USERNAME]>`](msitest/results/SEC-01/account-angle-env/log.md) and [`<BUILTIN\Users>`](msitest/results/SEC-01/account-angle-builtin/log.md) resolve; invalid SDDL 1943, two true rows 1942, both tables 1941; [deny ACE for `BU`](msitest/results/SEC-01/file-deny-ace/log.md) leaves the file on uninstall |
+| RUN-24 | Confirmed | Only `NeverOverwrite` + `Permanent` keeps an edit with early removal; `NeverOverwrite` alone loses the resource; [details](#use-case-gap-cases-run-24-to-run-27) |
+| RUN-25 | Confirmed | `AppSearch` into `INSTALLDIR` overrides the command line; the guarded type-51 form does not; no `Signature` table gives 2228/1603; [details](#use-case-gap-cases-run-24-to-run-27) |
+| RUN-26 | Confirmed | `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-run-24-to-run-27) |
+| RUN-27 | Confirmed | Per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-run-24-to-run-27) || SEC-01 | Confirmed | File, [CreateFolder](msitest/results/SEC-01/createfolder/log.md), [Registry](msitest/results/SEC-01/registry/log.md) and [ServiceInstall](msitest/results/SEC-01/service/log.md) rows get the authored DACL; [`/fa` and `/fvomus` restore it](msitest/results/SEC-01/file/log.md); [owner and group](msitest/results/SEC-01/file-owner-group/log.md) are set; `[Property]` stays literal (1943) but [`<[%USERDOMAIN]\[%USERNAME]>`](msitest/results/SEC-01/account-angle-env/log.md) and [`<BUILTIN\Users>`](msitest/results/SEC-01/account-angle-builtin/log.md) resolve; invalid SDDL 1943, two true rows 1942, both tables 1941; [deny ACE for `BU`](msitest/results/SEC-01/file-deny-ace/log.md) leaves the file on uninstall |
 | SIG-01 | Confirmed | Windows Server 2025 CI runner, `pkg/builder/nativetest/sign_windows_test.go`: go-msi recomputes the digest of a `signtool sign /fd SHA256` package; a go-msi signature passes WinVerifyTrust and `Get-AuthenticodeSignature` |
 | SIG-02 | Confirmed | `signtool` writes `MsiDigitalSignatureEx` by default, for `/fd SHA1` (20 bytes) and `/fd SHA256` (32 bytes); go-msi verifies P and D of both |
 | SIG-03 | Confirmed | A basic-mode go-msi signature stays valid after a v3 re-layout and a reversed stream order; signtool's extended signature stays valid after a v4 to v3 re-layout that keeps the directory times |
@@ -210,3 +213,58 @@ Silent-failure cases a producer has to guard against itself:
 | RUST-12 | Confirmed | Same as RUN-12 |
 | RUST-17 | Confirmed | Same as RUN-11 |
 | Other RUST-* | Not run | Test a candidate writer; go-msi has none yet |
+
+## Use-case gap cases (RUN-24 to RUN-27)
+
+Run on 2026-10-25 on Windows Server 2025 Standard Evaluation 10.0.26100 by
+[`msitest`](msitest/cases_gaps.go). They check the behaviour the YAML options
+`preserve`, `installDir.remember`, `purge` and per-step `recovery` rely on.
+Each line is the case's own `RESULT` line.
+
+**RUN-24, user edits across a major upgrade.** v1 installs `config.txt` and an
+HKLM value `Arguments` (each the key path of its own component, `MsiFileHash`
+on the file unless noted), the user rewrites both, v2 upgrades, then v2 is
+uninstalled.
+
+| Variant (v1 → v2 flags, RemoveExistingProducts) | After the upgrade | After the uninstall |
+| --- | --- | --- |
+| none, 1401 | v2 default | gone |
+| `NeverOverwrite`, 1401 | **gone** (v2 skips both components, then the removal of v1 deletes them) | gone |
+| `Permanent`, 1401 | v2 default | v2 default |
+| `NeverOverwrite` + `Permanent`, 1401 | user edit | user edit |
+| none, 6551 (with and without `MsiFileHash`) | v2 default | v2 default |
+| `NeverOverwrite`, 6551 | user edit | user edit |
+| none → `NeverOverwrite` + `Permanent`, 1401 | user edit | user edit |
+| none → `NeverOverwrite`, 6551 | user edit | user edit |
+
+**RUN-25, remembered install folder.** v1 is installed with
+`INSTALLDIR=C:\MsiSpecCustom\` and writes `[INSTALLDIR]` to the registry; v2
+upgrades.
+
+| Variant | v2 command line | v2 installs to |
+| --- | --- | --- |
+| no search | — | `Program Files\MsiSpecTest` |
+| `AppSearch` into `INSTALLDIR` | — | `C:\MsiSpecCustom` |
+| `AppSearch` into `INSTALLDIR` | `INSTALLDIR=C:\MsiSpecOther\` | `C:\MsiSpecCustom` (command line overridden) |
+| `AppSearch` into `REMEMBERED`, type 51 if `REMEMBERED AND NOT INSTALLDIR` | — | `C:\MsiSpecCustom` |
+| same | `INSTALLDIR=C:\MsiSpecOther\` | `C:\MsiSpecOther` |
+
+The first run of the four search variants failed with `Error 2228 … Unknown
+table 'Signature'` and 1603, with v1 left installed; the rerun with an empty
+`Signature` table gave the results above.
+
+**RUN-26, data folder removal.** The folder holds `app.log`, `state.db` and
+`sub\wal.bin`, written after install.
+
+| Variant | Real uninstall | Major upgrade (1401) | Uninstall after the upgrade |
+| --- | --- | --- | --- |
+| `RemoveFile` `*` and folder rows, mode 2 | `sub\wal.bin` and both folders stay | `app.log` and `state.db` **deleted** | `sub\wal.bin` stays |
+| `rmdir` action, `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE` | all gone | all kept | all gone |
+| same `AND DELETE_DATA="1"` | kept without the property, gone with `DELETE_DATA=1` | — | — |
+
+**RUN-27, `sc.exe failure`.** `reset= 3600 actions=
+restart/60000/restart/300000/restart/300000` reads back as `RESET_PERIOD 3600`
+and three restarts after 60 000, 300 000 and 300 000 ms; `reset= 86400
+actions= restart/1000/none/0` as one restart after 1000 ms; `reset= INFINITE`
+as `INFINITE`. Install and uninstall returned 0 in every variant.
+
