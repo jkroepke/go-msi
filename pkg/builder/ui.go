@@ -311,7 +311,9 @@ func (b *build) addedDialogs(wiz *wizard) {
 	for i, cfg := range b.cfg.UI.Dialogs {
 		path := fmt.Sprintf("ui.dialogs[%d]", i)
 
-		if _, taken := wiz.byName[cfg.ID]; taken {
+		// The license page's name stays reserved without a license, since
+		// the flow links step over it by name.
+		if _, taken := wiz.byName[cfg.ID]; taken || cfg.ID == dlgLicense {
 			b.errorf(path+".id", "%s is a wizard dialog", cfg.ID)
 
 			continue

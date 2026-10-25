@@ -738,7 +738,8 @@ shows (newer engines also read PNG, older ones only BMP and JPEG, section
 19.1 of the specification, RUN-22). The Bitmap control stretches a picture
 to its rectangle, so other sizes work as long as the ratio is kept: a ratio
 more than 5 % away from the control's is an error, a picture smaller than
-the size above is a warning, and a side above 8192 pixels is an error.
+the size above is a warning, and a side above 8192 pixels or more than
+4096×4096 pixels in all is an error.
 `colors` recolours the built-in pictures; a colour that is not given keeps
 its default. A license or theme without a wizard is an error.
 
