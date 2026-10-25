@@ -31,34 +31,34 @@ func seedCabinets(f *testing.F) {
 	}
 }
 
-// FuzzRead feeds corrupted cabinets to Read and Open. Neither may panic,
-// Open must not accept what Read rejects, and every file Read lists must be
-// readable through the fs.FS view.
+// FuzzRead feeds corrupted cabinets to Open. It must not panic, and every
+// file the fs.FS view lists must read back with the bytes Read returns.
 func FuzzRead(f *testing.F) {
 	seedCabinets(f)
 
 	f.Fuzz(func(t *testing.T, raw []byte) {
-		files, readErr := cab.Read(raw)
-
-		fsys, openErr := cab.Open(raw)
-		if openErr != nil {
+		fsys, err := cab.Open(raw)
+		if err != nil {
 			return
 		}
 
-		// Open is Read plus the fs.FS checks.
-		if readErr != nil {
-			t.Fatalf("Read fails with %v, but Open succeeds", readErr)
+		// Open is Read plus the fs.FS checks, so Read succeeds here.
+		files, err := cab.Read(raw)
+		if err != nil {
+			t.Fatalf("Open succeeds, but Read fails: %v", err)
 		}
 
 		for _, file := range files {
 			// The fs.FS view uses "/" for the cabinet's "\".
 			name := path.Clean(strings.ReplaceAll(file.Name, `\`, "/"))
-			if !fs.ValidPath(name) {
-				continue
+
+			got, err := fs.ReadFile(fsys, name)
+			if err != nil {
+				t.Fatalf("Read lists %q but the fs.FS cannot read it: %v", file.Name, err)
 			}
 
-			if _, err := fs.ReadFile(fsys, name); err != nil {
-				t.Fatalf("Read lists %q but the fs.FS cannot read it: %v", file.Name, err)
+			if !bytes.Equal(got, file.Data) {
+				t.Fatalf("%q: the fs.FS returns %d bytes that differ from Read's %d", file.Name, len(got), len(file.Data))
 			}
 		}
 	})
@@ -68,6 +68,8 @@ func FuzzRead(f *testing.F) {
 func FuzzRoundTrip(f *testing.F) {
 	f.Add("a.txt", []byte("hello"), "b", make([]byte, 0), true, uint16(0x20))
 	f.Add("x", bytes.Repeat([]byte{0}, 40000), "y", []byte("zz"), false, uint16(1))
+	f.Add("ü", []byte("a"), "z", []byte("b"), true, uint16(0))
+	f.Add("a", []byte("a"), "b", []byte("b"), false, uint16(0xFFFF))
 
 	when := time.Date(2026, 1, 2, 3, 4, 6, 0, time.UTC)
 
@@ -103,6 +105,15 @@ func FuzzRoundTrip(f *testing.F) {
 
 			if !bytes.Equal(out[i].Data, want[i].Data) {
 				t.Fatalf("file %d: data differs", i)
+			}
+
+			wantAttrs := attrs &^ 0x80 // the UTF-8 name flag is the writer's own
+			if attrs == 0 {
+				wantAttrs = cab.AttrArchive
+			}
+
+			if out[i].Attributes != wantAttrs {
+				t.Fatalf("file %d: attributes %#x, wrote %#x", i, out[i].Attributes, attrs)
 			}
 
 			if !out[i].Time.Equal(want[i].Time) {
