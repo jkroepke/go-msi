@@ -93,6 +93,8 @@ func TestParseErrors(t *testing.T) {
 		"property list":    {"schema: go-msi/v1\nproperties: {A: [1]}\n", "value or a mapping"},
 		"not a mapping":    {"- a\n", "mapping"},
 		"bad restartDelay": {"schema: go-msi/v1\ncomponents: [{services: [{recovery: {restartDelay: soon}}]}]\n", "duration"},
+		"bad step delay":   {"schema: go-msi/v1\ncomponents: [{services: [{recovery: {actions: [{restart: soon}]}}]}]\n", "duration"},
+		"bad step key":     {"schema: go-msi/v1\ncomponents: [{services: [{recovery: {actions: [{reboot: 1m}]}}]}]\n", "{restart: <delay>}"},
 	} {
 		_, err := config.Parse([]byte(tc.yaml), config.Options{})
 		if err == nil || !strings.Contains(err.Error(), tc.want) {

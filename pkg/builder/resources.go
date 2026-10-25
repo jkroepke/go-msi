@@ -264,17 +264,26 @@ func serviceID(prefix, name string) string {
 // actions (MSISPEC-RESULTS RUN-05).
 func (b *build) recoveryAction(info *componentInfo, svc *config.Service) {
 	rec := svc.Recovery
-	delay := strconv.FormatInt(int64(time.Duration(rec.RestartDelay)/time.Millisecond), 10)
 
 	var actions []string
 
 	for _, a := range rec.Actions {
-		switch a {
+		switch a.Action {
 		case "restart":
-			actions = append(actions, "restart/"+delay)
+			delay := rec.RestartDelay
+			if a.Restart != nil {
+				delay = *a.Restart
+			}
+
+			actions = append(actions, "restart/"+strconv.FormatInt(int64(time.Duration(delay)/time.Millisecond), 10))
 		default:
 			actions = append(actions, "none/0")
 		}
+	}
+
+	reset := int64(rec.ResetAfterDays) * 86400
+	if rec.ResetAfter != nil {
+		reset = int64(time.Duration(*rec.ResetAfter) / time.Second)
 	}
 
 	for len(actions) < 3 {
@@ -282,7 +291,7 @@ func (b *build) recoveryAction(info *componentInfo, svc *config.Service) {
 	}
 
 	sysDir := b.systemDir()
-	cmd := fmt.Sprintf(`"[%s]sc.exe" failure "%s" reset= %d actions= %s`, sysDir, svc.Name, rec.ResetAfterDays*86400, strings.Join(actions, "/"))
+	cmd := fmt.Sprintf(`"[%s]sc.exe" failure "%s" reset= %d actions= %s`, sysDir, svc.Name, reset, strings.Join(actions, "/"))
 	name := serviceID("ServiceRecovery", svc.Name)
 
 	b.addAction(&actionInfo{name: name, typ: caExec | caDeferred | caNoImpersonate | caContinue, source: sysDir, target: cmd})

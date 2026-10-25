@@ -6,6 +6,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jkroepke/go-msi/internal/condition"
 )
@@ -805,12 +806,40 @@ func (v *validator) service(p string, s *Service, keyFile *File, perUser bool) {
 		}
 
 		for j, a := range rec.Actions {
-			v.oneOf(fmt.Sprintf("%s.recovery.actions[%d]", p, j), a, "restart", "none")
+			ap := fmt.Sprintf("%s.recovery.actions[%d]", p, j)
+			v.oneOf(ap, a.Action, "restart", "none")
+
+			if a.Restart != nil {
+				v.recoveryDuration(ap+".restart", *a.Restart, time.Millisecond)
+			}
 		}
+
+		v.recoveryDuration(p+".recovery.restartDelay", rec.RestartDelay, time.Millisecond)
 
 		if rec.ResetAfterDays < 0 {
 			v.errorf(p+".recovery.resetAfterDays", "must not be negative")
 		}
+
+		if rec.ResetAfter != nil {
+			if rec.ResetAfterDays != 0 {
+				v.errorf(p+".recovery.resetAfter", "set resetAfter or resetAfterDays, not both")
+			}
+
+			v.recoveryDuration(p+".recovery.resetAfter", *rec.ResetAfter, time.Second)
+		}
+	}
+}
+
+// recoveryDuration checks a delay or reset period that sc.exe takes as a
+// whole number of units (milliseconds or seconds) in a 32-bit value.
+func (v *validator) recoveryDuration(field string, d Duration, unit time.Duration) {
+	switch {
+	case d < 0:
+		v.errorf(field, "must not be negative")
+	case time.Duration(d)%unit != 0:
+		v.errorf(field, "must be a whole number of %s", map[time.Duration]string{time.Millisecond: "milliseconds", time.Second: "seconds"}[unit])
+	case int64(time.Duration(d)/unit) > math.MaxInt32:
+		v.errorf(field, "is too long for sc.exe")
 	}
 }
 

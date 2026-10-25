@@ -419,3 +419,42 @@ func TestWindowsExporter(t *testing.T) {
 		t.Errorf("unexpected wizard diagnostic: %s", res.Diagnostics)
 	}
 }
+
+func TestServiceRecoverySteps(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "0.32.0.5", Languages: []int{1033}})
+	cfg := example(t, "windows_exporter", map[string]string{"VERSION": "0.32.0.5"}, map[string][]byte{
+		"windows_exporter.exe": exe,
+		"icon.ico":             append([]byte{0, 0, 1, 0, 1, 0}, bytes.Repeat([]byte{0xAB}, 64)...),
+	})
+
+	minute := config.Duration(time.Minute)
+	reset := config.Duration(24 * time.Hour)
+
+	var svc *config.Service
+
+	for _, comp := range cfg.Components {
+		for _, s := range comp.Services {
+			svc = s
+		}
+	}
+
+	svc.Recovery = &config.ServiceRecovery{
+		ResetAfter:   &reset,
+		RestartDelay: config.Duration(5 * time.Minute),
+		Actions:      []config.RecoveryAction{{Action: "restart", Restart: &minute}, {Action: "restart"}},
+	}
+
+	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	target := cell(t, database, "CustomAction", "Target", func(r []any) bool { return strings.HasPrefix(fmt.Sprint(r[0]), "ServiceRecovery") })
+
+	want := `failure "windows_exporter" reset= 86400 actions= restart/60000/restart/300000/none/0`
+	if !strings.HasSuffix(fmt.Sprint(target), want) {
+		t.Errorf("recovery command %q, want suffix %q", target, want)
+	}
+}

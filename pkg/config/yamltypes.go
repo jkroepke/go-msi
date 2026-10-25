@@ -126,6 +126,31 @@ func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+// UnmarshalYAML accepts a scalar action name or a one-key {restart: delay} map.
+func (a *RecoveryAction) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		if err := node.Decode(&a.Action); err != nil {
+			return fmt.Errorf("line %d: %w", node.Line, err)
+		}
+
+		return nil
+	}
+
+	if node.Kind != yaml.MappingNode || len(node.Content) != 2 || node.Content[0].Value != "restart" {
+		return fmt.Errorf("line %d: a recovery action is restart, none or {restart: <delay>}", node.Line)
+	}
+
+	var delay Duration
+	if err := node.Content[1].Decode(&delay); err != nil {
+		return fmt.Errorf("line %d: %w", node.Line, err)
+	}
+
+	a.Action = "restart"
+	a.Restart = &delay
+
+	return nil
+}
+
 // Property is one Property table entry and its flags.
 type Property struct {
 	Value  string `yaml:"value"`
