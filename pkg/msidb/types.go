@@ -254,8 +254,12 @@ func (t *Table) Add(values ...any) {
 
 // Database is a whole package database.
 type Database struct {
-	Tables   []*Table
-	Streams  []cfb.Stream
+	Tables  []*Table
+	Streams []cfb.Stream
+	// Sources are extra streams that MarshalTo copies from their readers
+	// instead of holding them in memory, such as a spooled cabinet. Decode
+	// lists the streams it left in the file here with a nil Open.
+	Sources  []cfb.Source
 	Summary  []summary.Property
 	Problems []string
 	Codepage int

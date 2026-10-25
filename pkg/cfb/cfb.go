@@ -9,12 +9,19 @@
 // ENDOFCHAIN. Identical input gives identical bytes.
 //
 // Only root-level streams are supported, which is all a package needs.
+//
+// WriteTo streams: it needs every stream's size up front, lays the file out
+// from the sizes alone and then copies the large streams through, so a
+// cabinet of any size passes through a few sectors of memory.
 package cfb
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"unicode"
 	"unicode/utf16"
@@ -57,6 +64,26 @@ var (
 type Stream struct {
 	Name string
 	Data []byte
+}
+
+// Source is one named root-level stream whose bytes WriteTo copies through
+// Open while it writes. Open is called once; the reader must deliver exactly
+// Size bytes.
+type Source struct {
+	Open func() (io.ReadCloser, error)
+	Name string
+	Size int64
+}
+
+// Layout reports where WriteTo put each stream.
+type Layout struct {
+	// Offsets maps each stream name to the file offset of its first byte.
+	// Every stream of this writer is contiguous, in the mini stream or in
+	// consecutive sectors, so the bytes at Offsets[name] through
+	// Offsets[name]+Size are the stream.
+	Offsets map[string]int64
+	// Size is the length of the file.
+	Size int64
 }
 
 // Options control the container layout.
@@ -142,53 +169,211 @@ func Compare(a, b string) int {
 }
 
 type entry struct {
+	open  func() (io.ReadCloser, error)
 	name  []uint16
-	data  []byte
+	small []byte // the data of a stream below miniCutoff
+	size  int64
 	left  int // index into the sorted entries, -1 for none
 	right int
 	depth int
 	start uint32
 }
 
+// Source converts an in-memory stream into a Source.
+func (s Stream) Source() Source {
+	return Source{
+		Name: s.Name,
+		Size: int64(len(s.Data)),
+		Open: func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(s.Data)), nil },
+	}
+}
+
 // Write builds a compound file holding the streams.
-func Write(streams []Stream, opts Options) ([]byte, error) { //nolint:maintidx,cyclop,gocyclo,gocognit // one pass over the format; splitting would scatter it
-	switch opts.Version {
-	case 0:
-		opts.Version = 4
-	case 3, 4:
-	default:
-		return nil, fmt.Errorf("cfb: version %d, want 3 or 4", opts.Version)
+func Write(streams []Stream, opts Options) ([]byte, error) {
+	sources := make([]Source, 0, len(streams))
+	for _, s := range streams {
+		sources = append(sources, s.Source())
 	}
 
-	if opts.CLSID == [16]byte{} {
-		opts.CLSID = CLSIDMSI
+	var buf bytes.Buffer
+
+	if _, err := WriteTo(&buf, sources, opts); err != nil {
+		return nil, err
 	}
 
-	sectorSize := 512
+	return buf.Bytes(), nil
+}
+
+// readSource reads a source whose size is known, checking the size.
+func readSource(src Source) ([]byte, error) {
+	reader, err := src.Open()
+	if err != nil {
+		return nil, fmt.Errorf("cfb: stream %q: %w", src.Name, err)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(reader, src.Size+1))
+	if cerr := reader.Close(); err == nil {
+		err = cerr
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("cfb: stream %q: %w", src.Name, err)
+	}
+
+	if int64(len(data)) != src.Size {
+		return nil, fmt.Errorf("cfb: stream %q delivered %d bytes, declared %d", src.Name, len(data), src.Size)
+	}
+
+	return data, nil
+}
+
+// sectorWriter writes whole sectors to w and counts them.
+type sectorWriter struct {
+	w    *bufio.Writer
+	size int
+	pos  int64
+}
+
+func (s *sectorWriter) write(p []byte) error {
+	n, err := s.w.Write(p)
+	s.pos += int64(n)
+
+	if err != nil {
+		return fmt.Errorf("cfb: write: %w", err)
+	}
+
+	return nil
+}
+
+// pad fills the current sector with zeros.
+func (s *sectorWriter) pad() error {
+	if rem := int(s.pos % int64(s.size)); rem != 0 {
+		return s.write(make([]byte, s.size-rem))
+	}
+
+	return nil
+}
+
+// words writes little-endian 32-bit values.
+func (s *sectorWriter) words(values []uint32) error {
+	buf := make([]byte, 4*len(values))
+	for i, v := range values {
+		binary.LittleEndian.PutUint32(buf[4*i:], v)
+	}
+
+	return s.write(buf)
+}
+
+// copyFrom copies exactly size bytes of a source and pads to the sector.
+func (s *sectorWriter) copyFrom(src Source) error {
+	reader, err := src.Open()
+	if err != nil {
+		return fmt.Errorf("cfb: stream %q: %w", src.Name, err)
+	}
+
+	copied, err := io.Copy(s.w, io.LimitReader(reader, src.Size))
+	s.pos += copied
+
+	if err != nil {
+		_ = reader.Close()
+
+		return fmt.Errorf("cfb: stream %q: %w", src.Name, err)
+	}
+
+	if copied != src.Size {
+		_ = reader.Close()
+
+		return fmt.Errorf("cfb: stream %q delivered %d bytes, declared %d", src.Name, copied, src.Size)
+	}
+
+	var probe [1]byte
+
+	extra, err := reader.Read(probe[:])
+	if extra > 0 {
+		_ = reader.Close()
+
+		return fmt.Errorf("cfb: stream %q is longer than its declared size", src.Name)
+	}
+
+	if err != nil && !errors.Is(err, io.EOF) {
+		_ = reader.Close()
+
+		return fmt.Errorf("cfb: stream %q: %w", src.Name, err)
+	}
+
+	if err := reader.Close(); err != nil {
+		return fmt.Errorf("cfb: stream %q: %w", src.Name, err)
+	}
+
+	return s.pad()
+}
+
+// plan is the sector layout computed from the stream sizes.
+type plan struct {
+	entries                                              []*entry
+	mini                                                 []byte
+	fat                                                  []uint32
+	sectorSize, top, blackDepth, numEntries              int
+	fatSectors, difatSectors, dirSectors, miniFATSectors int
+	miniStreamSectors, largeSectors, total               int
+	fatStart, difatStart, dirStart, miniFATStart         int
+	miniStreamStart, largeStart                          int
+}
+
+func (p *plan) sectorOffset(s int) int64 { return int64(s+1) * int64(p.sectorSize) }
+
+// chain links count sectors from start in the FAT.
+func (p *plan) chain(start, count int) {
+	for i := range count {
+		if i == count-1 {
+			p.fat[start+i] = endOfChain
+		} else {
+			p.fat[start+i] = uint32(start + i + 1) //nolint:gosec // bounded by the format limits checked earlier
+		}
+	}
+}
+
+// newPlan sorts the sources, builds the directory tree and lays out the
+// sectors. Streams below miniCutoff are read into memory here.
+func newPlan(sources []Source, opts Options) (*plan, error) { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
+	pln := &plan{sectorSize: 512}
 	if opts.Version == 4 {
-		sectorSize = 4096
+		pln.sectorSize = 4096
 	}
 
-	entries := make([]*entry, 0, len(streams))
+	pln.entries = make([]*entry, 0, len(sources))
 
-	for _, stream := range streams {
-		name, err := EncodeName(stream.Name)
+	for _, src := range sources {
+		name, err := EncodeName(src.Name)
 		if err != nil {
 			return nil, err
 		}
 
-		entries = append(entries, &entry{name: name, data: stream.Data, left: -1, right: -1})
+		if src.Size < 0 || src.Open == nil {
+			return nil, fmt.Errorf("cfb: stream %q has no size or source", src.Name)
+		}
+
+		ent := &entry{name: name, size: src.Size, open: src.Open, left: -1, right: -1}
+
+		if src.Size > 0 && src.Size < miniCutoff {
+			ent.small, err = readSource(src)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		pln.entries = append(pln.entries, ent)
 	}
 
-	slices.SortStableFunc(entries, func(a, b *entry) int { return CompareUnits(a.name, b.name) })
+	slices.SortStableFunc(pln.entries, func(a, b *entry) int { return CompareUnits(a.name, b.name) })
 
-	for i := 1; i < len(entries); i++ {
-		if CompareUnits(entries[i-1].name, entries[i].name) == 0 {
-			return nil, fmt.Errorf("cfb: duplicate stream name %q", string(utf16.Decode(entries[i].name)))
+	for i := 1; i < len(pln.entries); i++ {
+		if CompareUnits(pln.entries[i-1].name, pln.entries[i].name) == 0 {
+			return nil, fmt.Errorf("cfb: duplicate stream name %q", string(utf16.Decode(pln.entries[i].name)))
 		}
 	}
 
-	count := len(entries)
+	count := len(pln.entries)
 
 	// Balanced tree: the middle element is the top node, recursively.
 	var build func(lo, hi, depth int) int
@@ -199,7 +384,7 @@ func Write(streams []Stream, opts Options) ([]byte, error) { //nolint:maintidx,c
 		}
 
 		mid := low + (high-low)/2
-		e := entries[mid]
+		e := pln.entries[mid]
 		e.depth = depth
 		e.left = build(low, mid, depth+1)
 		e.right = build(mid+1, high, depth+1)
@@ -207,78 +392,104 @@ func Write(streams []Stream, opts Options) ([]byte, error) { //nolint:maintidx,c
 		return mid
 	}
 
-	top := build(0, count, 0)
+	pln.top = build(0, count, 0)
 
-	blackDepth := 0
-	for (1 << (blackDepth + 1)) <= count+1 {
-		blackDepth++
+	for (1 << (pln.blackDepth + 1)) <= count+1 {
+		pln.blackDepth++
 	}
 
 	// SID of sorted entry i is i+1; the root is SID 0.
-	numEntries := count + 1
-	perSector := sectorSize / entrySize
-	dirSectors := (numEntries + perSector - 1) / perSector
+	pln.numEntries = count + 1
+	perSector := pln.sectorSize / entrySize
+	pln.dirSectors = (pln.numEntries + perSector - 1) / perSector
 
 	// Pack small streams into the mini stream in SID order.
-	var mini []byte
-
-	largeSectors := 0
-
-	for _, ent := range entries {
+	for _, ent := range pln.entries {
 		switch {
-		case len(ent.data) == 0:
+		case ent.size == 0:
 			ent.start = endOfChain
-		case len(ent.data) < miniCutoff:
-			ent.start = uint32(len(mini) / miniSectorSize) //nolint:gosec // bounded by the format limits checked earlier
-			mini = append(mini, ent.data...)
+		case ent.size < miniCutoff:
+			ent.start = uint32(len(pln.mini) / miniSectorSize) //nolint:gosec // bounded by the format limits checked earlier
+			pln.mini = append(pln.mini, ent.small...)
 
-			if pad := len(mini) % miniSectorSize; pad != 0 {
-				mini = append(mini, make([]byte, miniSectorSize-pad)...)
+			if pad := len(pln.mini) % miniSectorSize; pad != 0 {
+				pln.mini = append(pln.mini, make([]byte, miniSectorSize-pad)...)
 			}
 		default:
-			largeSectors += (len(ent.data) + sectorSize - 1) / sectorSize
+			pln.largeSectors += int((ent.size + int64(pln.sectorSize) - 1) / int64(pln.sectorSize))
 		}
 	}
 
-	numMini := len(mini) / miniSectorSize
-	miniFATSectors := (numMini + sectorSize/4 - 1) / (sectorSize / 4)
-	miniStreamSectors := (len(mini) + sectorSize - 1) / sectorSize
+	numMini := len(pln.mini) / miniSectorSize
+	pln.miniFATSectors = (numMini + pln.sectorSize/4 - 1) / (pln.sectorSize / 4)
+	pln.miniStreamSectors = (len(pln.mini) + pln.sectorSize - 1) / pln.sectorSize
 
 	// Fixed point for the FAT and DIFAT sector counts.
-	fatSectors, difatSectors := 0, 0
-
 	for {
-		total := fatSectors + difatSectors + dirSectors + miniFATSectors + miniStreamSectors + largeSectors
-		fatCount := (total + sectorSize/4 - 1) / (sectorSize / 4)
+		total := pln.fatSectors + pln.difatSectors + pln.dirSectors + pln.miniFATSectors + pln.miniStreamSectors + pln.largeSectors
+		fatCount := (total + pln.sectorSize/4 - 1) / (pln.sectorSize / 4)
 
 		next := 0
 		if fatCount > 109 {
-			next = (fatCount - 109 + sectorSize/4 - 2) / (sectorSize/4 - 1)
+			next = (fatCount - 109 + pln.sectorSize/4 - 2) / (pln.sectorSize/4 - 1)
 		}
 
-		if fatCount == fatSectors && next == difatSectors {
+		if fatCount == pln.fatSectors && next == pln.difatSectors {
 			break
 		}
 
-		fatSectors, difatSectors = fatCount, next
+		pln.fatSectors, pln.difatSectors = fatCount, next
 	}
 
-	total := fatSectors + difatSectors + dirSectors + miniFATSectors + miniStreamSectors + largeSectors
-	if int64(total+1)*int64(sectorSize) > maxFileSize {
+	pln.total = pln.fatSectors + pln.difatSectors + pln.dirSectors + pln.miniFATSectors + pln.miniStreamSectors + pln.largeSectors
+	if int64(pln.total+1)*int64(pln.sectorSize) > maxFileSize {
 		return nil, errors.New("cfb: file would exceed 2 GB")
 	}
 
-	out := make([]byte, (total+1)*sectorSize)
+	pln.fatStart = 0
+	pln.difatStart = pln.fatSectors
+	pln.dirStart = pln.difatStart + pln.difatSectors
+	pln.miniFATStart = pln.dirStart + pln.dirSectors
+	pln.miniStreamStart = pln.miniFATStart + pln.miniFATSectors
+	pln.largeStart = pln.miniStreamStart + pln.miniStreamSectors
+
+	// FAT.
+	pln.fat = make([]uint32, pln.fatSectors*pln.sectorSize/4)
+	for i := range pln.fat {
+		pln.fat[i] = freeSect
+	}
+
+	for i := range pln.fatSectors {
+		pln.fat[pln.fatStart+i] = fatSect
+	}
+
+	for i := range pln.difatSectors {
+		pln.fat[pln.difatStart+i] = difSect
+	}
+
+	pln.chain(pln.dirStart, pln.dirSectors)
+	pln.chain(pln.miniFATStart, pln.miniFATSectors)
+	pln.chain(pln.miniStreamStart, pln.miniStreamSectors)
+
+	cur := pln.largeStart
+
+	for _, e := range pln.entries {
+		if e.size >= miniCutoff {
+			c := int((e.size + int64(pln.sectorSize) - 1) / int64(pln.sectorSize))
+			e.start = uint32(cur) //nolint:gosec // bounded by the format limits checked earlier
+			pln.chain(cur, c)
+			cur += c
+		}
+	}
+
+	return pln, nil
+}
+
+// header encodes the 512-byte header, padded to a sector.
+func (p *plan) header(opts Options) []byte {
+	out := make([]byte, p.sectorSize)
 	order := binary.LittleEndian
 
-	fatStart := 0
-	difatStart := fatSectors
-	dirStart := difatStart + difatSectors
-	miniFATStart := dirStart + dirSectors
-	miniStreamStart := miniFATStart + miniFATSectors
-	largeStart := miniStreamStart + miniStreamSectors
-
-	// Header.
 	copy(out, signature)
 	order.PutUint16(out[0x18:], 0x3E)
 	order.PutUint16(out[0x1A:], uint16(opts.Version)) //nolint:gosec // bounded by the format limits checked earlier
@@ -286,142 +497,75 @@ func Write(streams []Stream, opts Options) ([]byte, error) { //nolint:maintidx,c
 
 	if opts.Version == 4 {
 		order.PutUint16(out[0x1E:], 12)
-		order.PutUint32(out[0x28:], uint32(dirSectors)) //nolint:gosec // bounded by the format limits checked earlier
+		order.PutUint32(out[0x28:], uint32(p.dirSectors)) //nolint:gosec // bounded by the format limits checked earlier
 	} else {
 		order.PutUint16(out[0x1E:], 9)
 	}
 
 	order.PutUint16(out[0x20:], 6)
-	order.PutUint32(out[0x2C:], uint32(fatSectors))
-	order.PutUint32(out[0x30:], uint32(dirStart))
+	order.PutUint32(out[0x2C:], uint32(p.fatSectors)) //nolint:gosec // bounded by the format limits checked earlier
+	order.PutUint32(out[0x30:], uint32(p.dirStart))   //nolint:gosec // bounded by the format limits checked earlier
 	order.PutUint32(out[0x38:], miniCutoff)
 
-	if miniFATSectors > 0 {
-		order.PutUint32(out[0x3C:], uint32(miniFATStart)) //nolint:gosec // bounded by the format limits checked earlier
+	if p.miniFATSectors > 0 {
+		order.PutUint32(out[0x3C:], uint32(p.miniFATStart)) //nolint:gosec // bounded by the format limits checked earlier
 	} else {
 		order.PutUint32(out[0x3C:], endOfChain)
 	}
 
-	order.PutUint32(out[0x40:], uint32(miniFATSectors)) //nolint:gosec // bounded by the format limits checked earlier
+	order.PutUint32(out[0x40:], uint32(p.miniFATSectors)) //nolint:gosec // bounded by the format limits checked earlier
 
-	if difatSectors > 0 {
-		order.PutUint32(out[0x44:], uint32(difatStart))
+	if p.difatSectors > 0 {
+		order.PutUint32(out[0x44:], uint32(p.difatStart)) //nolint:gosec // bounded by the format limits checked earlier
 	} else {
 		order.PutUint32(out[0x44:], endOfChain)
 	}
 
-	order.PutUint32(out[0x48:], uint32(difatSectors))
+	order.PutUint32(out[0x48:], uint32(p.difatSectors)) //nolint:gosec // bounded by the format limits checked earlier
 
 	for i := range 109 {
 		v := uint32(freeSect)
-		if i < fatSectors {
-			v = uint32(fatStart + i)
+		if i < p.fatSectors {
+			v = uint32(p.fatStart + i) //nolint:gosec // bounded by the format limits checked earlier
 		}
 
 		order.PutUint32(out[0x4C+4*i:], v)
 	}
 
-	sectorOffset := func(s int) int { return (s + 1) * sectorSize }
+	return out
+}
 
-	// FAT.
-	fat := make([]uint32, fatSectors*sectorSize/4)
-	for i := range fat {
-		fat[i] = freeSect
-	}
+// difat encodes DIFAT sector i.
+func (p *plan) difat(difatIdx int) []uint32 {
+	per := p.sectorSize/4 - 1
+	words := make([]uint32, 0, per+1)
 
-	for i := range fatSectors {
-		fat[fatStart+i] = fatSect
-	}
+	for i := range per {
+		k := 109 + difatIdx*per + i
 
-	for i := range difatSectors {
-		fat[difatStart+i] = difSect
-	}
-
-	chain := func(start, count int) {
-		for i := range count {
-			if i == count-1 {
-				fat[start+i] = endOfChain
-			} else {
-				fat[start+i] = uint32(start + i + 1) //nolint:gosec // bounded by the format limits checked earlier
-			}
-		}
-	}
-
-	chain(dirStart, dirSectors)
-	chain(miniFATStart, miniFATSectors)
-	chain(miniStreamStart, miniStreamSectors)
-
-	cur := largeStart
-
-	for _, e := range entries {
-		if len(e.data) >= miniCutoff {
-			c := (len(e.data) + sectorSize - 1) / sectorSize
-			e.start = uint32(cur) //nolint:gosec // bounded by the format limits checked earlier
-			chain(cur, c)
-			copy(out[sectorOffset(cur):], e.data)
-			cur += c
-		}
-	}
-
-	for difatIdx := range difatSectors {
-		off := sectorOffset(difatStart + difatIdx)
-
-		for i := range sectorSize/4 - 1 {
-			k := 109 + difatIdx*(sectorSize/4-1) + i
-
-			v := uint32(freeSect)
-			if k < fatSectors {
-				v = uint32(fatStart + k) //nolint:gosec // bounded by the format limits checked earlier
-			}
-
-			order.PutUint32(out[off+4*i:], v)
+		v := uint32(freeSect)
+		if k < p.fatSectors {
+			v = uint32(p.fatStart + k) //nolint:gosec // bounded by the format limits checked earlier
 		}
 
-		if difatIdx == difatSectors-1 {
-			order.PutUint32(out[off+sectorSize-4:], endOfChain)
-		} else {
-			order.PutUint32(out[off+sectorSize-4:], uint32(difatStart+difatIdx+1))
-		}
+		words = append(words, v)
 	}
 
-	for i, v := range fat {
-		order.PutUint32(out[sectorOffset(fatStart)+4*i:], v)
+	if difatIdx == p.difatSectors-1 {
+		return append(words, endOfChain)
 	}
 
-	// MiniFAT and mini stream.
-	if miniFATSectors > 0 {
-		miniFAT := make([]uint32, miniFATSectors*sectorSize/4)
-		for i := range miniFAT {
-			miniFAT[i] = freeSect
-		}
+	return append(words, uint32(p.difatStart+difatIdx+1)) //nolint:gosec // bounded by the format limits checked earlier
+}
 
-		for _, e := range entries {
-			if len(e.data) > 0 && len(e.data) < miniCutoff {
-				c := (len(e.data) + miniSectorSize - 1) / miniSectorSize
-				startSector := int(e.start)
-
-				for k := range c {
-					if k == c-1 {
-						miniFAT[startSector+k] = endOfChain
-					} else {
-						miniFAT[startSector+k] = uint32(startSector + k + 1) //nolint:gosec // bounded by the format limits checked earlier
-					}
-				}
-			}
-		}
-
-		for i, v := range miniFAT {
-			order.PutUint32(out[sectorOffset(miniFATStart)+4*i:], v)
-		}
-
-		copy(out[sectorOffset(miniStreamStart):], mini)
-	}
-
-	// Directory.
-	dirOffset := sectorOffset(dirStart)
+// directory encodes the directory sectors.
+func (p *plan) directory(opts Options) []byte {
+	order := binary.LittleEndian
+	perSector := p.sectorSize / entrySize
+	out := make([]byte, p.dirSectors*p.sectorSize)
 
 	putEntry := func(sid int, name []uint16, typ, colour byte, left, right, child uint32, clsid []byte, start uint32, size uint64) {
-		rec := out[dirOffset+entrySize*sid : dirOffset+entrySize*(sid+1)]
+		rec := out[entrySize*sid : entrySize*(sid+1)]
 
 		for i, u := range name {
 			order.PutUint16(rec[2*i:], u)
@@ -451,27 +595,136 @@ func Write(streams []Stream, opts Options) ([]byte, error) { //nolint:maintidx,c
 	}
 
 	rootStart := uint32(endOfChain)
-	if miniStreamSectors > 0 {
-		rootStart = uint32(miniStreamStart) //nolint:gosec // bounded by the format limits checked earlier
+	if p.miniStreamSectors > 0 {
+		rootStart = uint32(p.miniStreamStart) //nolint:gosec // bounded by the format limits checked earlier
 	}
 
-	putEntry(0, utf16.Encode([]rune("Root Entry")), 5, 1, noStream, noStream, link(top), opts.CLSID[:], rootStart, uint64(len(mini)))
+	putEntry(0, utf16.Encode([]rune("Root Entry")), 5, 1, noStream, noStream, link(p.top), opts.CLSID[:], rootStart, uint64(len(p.mini)))
 
-	for i, ent := range entries {
+	for i, ent := range p.entries {
 		colour := byte(1)
-		if !opts.AllBlack && ent.depth >= blackDepth {
+		if !opts.AllBlack && ent.depth >= p.blackDepth {
 			colour = 0
 		}
 
-		putEntry(i+1, ent.name, 2, colour, link(ent.left), link(ent.right), noStream, nil, ent.start, uint64(len(ent.data)))
+		putEntry(i+1, ent.name, 2, colour, link(ent.left), link(ent.right), noStream, nil, ent.start, uint64(ent.size)) //nolint:gosec // sizes are non-negative
 	}
 
-	for k := numEntries; k < dirSectors*perSector; k++ {
-		e := out[dirOffset+entrySize*k:]
+	for k := p.numEntries; k < p.dirSectors*perSector; k++ {
+		e := out[entrySize*k:]
 		order.PutUint32(e[0x44:], noStream)
 		order.PutUint32(e[0x48:], noStream)
 		order.PutUint32(e[0x4C:], noStream)
 	}
 
-	return out, nil
+	return out
+}
+
+// miniFAT encodes the MiniFAT sectors.
+func (p *plan) miniFAT() []uint32 {
+	words := make([]uint32, p.miniFATSectors*p.sectorSize/4)
+	for i := range words {
+		words[i] = freeSect
+	}
+
+	for _, e := range p.entries {
+		if e.size > 0 && e.size < miniCutoff {
+			c := int((e.size + miniSectorSize - 1) / miniSectorSize)
+			startSector := int(e.start)
+
+			for k := range c {
+				if k == c-1 {
+					words[startSector+k] = endOfChain
+				} else {
+					words[startSector+k] = uint32(startSector + k + 1) //nolint:gosec // bounded by the format limits checked earlier
+				}
+			}
+		}
+	}
+
+	return words
+}
+
+// WriteTo writes a compound file holding the sources to w, in one pass:
+// header, FAT, DIFAT, directory, MiniFAT, mini stream and then the large
+// streams, each copied from its source. Streams below 4096 bytes are read
+// into memory for the mini stream; everything else passes through.
+func WriteTo(dst io.Writer, sources []Source, opts Options) (*Layout, error) { //nolint:cyclop // one pass over the format
+	switch opts.Version {
+	case 0:
+		opts.Version = 4
+	case 3, 4:
+	default:
+		return nil, fmt.Errorf("cfb: version %d, want 3 or 4", opts.Version)
+	}
+
+	if opts.CLSID == [16]byte{} {
+		opts.CLSID = CLSIDMSI
+	}
+
+	pln, err := newPlan(sources, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &sectorWriter{w: bufio.NewWriterSize(dst, 1<<16), size: pln.sectorSize}
+
+	if err := out.write(pln.header(opts)); err != nil {
+		return nil, err
+	}
+
+	if err := out.words(pln.fat); err != nil {
+		return nil, err
+	}
+
+	for i := range pln.difatSectors {
+		if err := out.words(pln.difat(i)); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := out.write(pln.directory(opts)); err != nil {
+		return nil, err
+	}
+
+	if pln.miniFATSectors > 0 {
+		if err := out.words(pln.miniFAT()); err != nil {
+			return nil, err
+		}
+
+		if err := out.write(pln.mini); err != nil {
+			return nil, err
+		}
+
+		if err := out.pad(); err != nil {
+			return nil, err
+		}
+	}
+
+	layout := &Layout{Offsets: make(map[string]int64, len(pln.entries))}
+
+	for _, ent := range pln.entries {
+		name := string(utf16.Decode(ent.name))
+
+		switch {
+		case ent.size == 0:
+			layout.Offsets[name] = out.pos
+		case ent.size < miniCutoff:
+			layout.Offsets[name] = pln.sectorOffset(pln.miniStreamStart) + int64(ent.start)*miniSectorSize
+		default:
+			layout.Offsets[name] = out.pos
+
+			if err := out.copyFrom(Source{Name: name, Size: ent.size, Open: ent.open}); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if err := out.w.Flush(); err != nil {
+		return nil, fmt.Errorf("cfb: write: %w", err)
+	}
+
+	layout.Size = out.pos
+
+	return layout, nil
 }

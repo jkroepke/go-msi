@@ -8,6 +8,7 @@
 package builder
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"slices"
@@ -22,14 +23,22 @@ import (
 
 // Options control a build.
 type Options struct {
-	BuildTime  time.Time
-	ToolName   string
+	BuildTime time.Time
+	ToolName  string
+	// Output is the path the package is written to. The cabinet and the
+	// package are written to temporary files beside it and the payload
+	// files stream through, so the build needs memory for the tables only,
+	// not for the files. The package replaces a file at Output only once it
+	// is verified; a failed build leaves nothing behind. When Output is
+	// empty the package is built in memory and returned in Result.Package.
+	Output     string
 	CFBVersion int
 	SkipVerify bool
 }
 
 // Result is a finished build.
 type Result struct {
+	// Package holds the bytes when Options.Output was empty.
 	Package     []byte
 	Database    *msidb.Database
 	Diagnostics config.Diagnostics
@@ -37,6 +46,8 @@ type Result struct {
 	PackageCode string
 	// Files lists every payload file in File.Sequence order.
 	Files []*fileInfo
+	// Size is the package length in bytes.
+	Size int64
 }
 
 // build holds the state of one build.
@@ -94,10 +105,12 @@ type fileInfo struct {
 	FileName  string
 	LongName  string
 	Key       string
-	Data      []byte
 	Attrs     int
 	Sequence  int
-	isPE      bool
+	// Size is the file length; digest its SHA-256.
+	Size   int64
+	digest [sha256.Size]byte
+	isPE   bool
 }
 
 type actionInfo struct {
@@ -187,12 +200,11 @@ func (b *build) run(res *Result) error {
 		}
 	}
 
-	pkg, database, err := b.finish()
+	database, err := b.finish(res)
 	if err != nil {
 		return err
 	}
 
-	res.Package = pkg
 	res.Database = database
 	res.ProductCode = b.productCode
 	res.PackageCode = b.packageCode

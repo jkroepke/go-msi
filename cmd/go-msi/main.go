@@ -218,10 +218,15 @@ func cmdBuild(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
+	if out == "" {
+		out = filepath.Join(cfg.BaseDir, cfg.Product.Name+"-"+cfg.Product.Version+".msi")
+	}
+
 	res, err := builder.Build(cfg, builder.Options{
 		CFBVersion: cfbVersion,
 		ToolName:   "go-msi " + version,
 		SkipVerify: skipVerify,
+		Output:     out,
 	})
 
 	printDiagnostics(stderr, res.Diagnostics)
@@ -230,21 +235,28 @@ func cmdBuild(args []string, stdout, stderr io.Writer) error {
 		return errors.New("build failed")
 	}
 
-	if out == "" {
-		out = filepath.Join(cfg.BaseDir, cfg.Product.Name+"-"+cfg.Product.Version+".msi")
-	}
+	if signing.enabled() {
+		// Signing works on the whole package; the build itself streamed it.
+		pkg, err := os.ReadFile(out)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", out, err)
+		}
 
-	if res.Package, err = signing.signBuild(res.Package, cfg.Product.Name); err != nil {
-		return err
-	}
+		signed, err := signing.signBuild(pkg, cfg.Product.Name)
+		if err != nil {
+			return err
+		}
 
-	if err := os.WriteFile(out, res.Package, 0o644); err != nil { //nolint:gosec // a package is world-readable
-		return fmt.Errorf("write %s: %w", out, err)
+		if err := writeAtomic(out, signed); err != nil {
+			return err
+		}
+
+		res.Size = int64(len(signed))
 	}
 
 	if !quiet {
 		_, _ = fmt.Fprintf(stdout, "%s: %d bytes, %d files, ProductCode %s, PackageCode %s\n",
-			out, len(res.Package), len(res.Files), res.ProductCode, res.PackageCode)
+			out, res.Size, len(res.Files), res.ProductCode, res.PackageCode)
 	}
 
 	return nil
