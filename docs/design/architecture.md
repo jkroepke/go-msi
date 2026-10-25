@@ -275,7 +275,9 @@ Pipeline, each step a file of its own:
     the output), the package with `msidb.MarshalTo` into a second temporary
     file, the package code (UUID v5 of the package's SHA-256) is patched into
     the summary stream at its `cfb.Layout` offset, then **verify**: `cfb.Open`
-    the package, `msidb.Decode` it, compare every table, `cab.Walk` the
+    the package, `msidb.Decode` it, compare every table column and every
+    cell (rows as a set, NULL/empty and the integer types folded, binary
+    cells by digest), `cab.Walk` the
     cabinet stream and compare every file's SHA-256 (computed once while
     hashing the source for `MsiFileHash`) with its source. Memory stays
     bounded by the tables plus a few compression blocks, whatever the payload
@@ -363,8 +365,9 @@ bundles.
   (§11.2 identity), short names hash parent and long name (§11.3), GUIDs are
   UUIDv5. Nothing depends on map iteration order or time.
 - **The builder verifies its own output** by re-reading it with the
-  independent readers in `msidb` and `cab`. This catches the two silent
-  failures of CAB-02 and CAB-04 without any Windows machine.
+  independent readers in `msidb` and `cab`, cell by cell. This catches the
+  two silent failures of CAB-02 and CAB-04 and a string pool or integer
+  encoding bug that keeps the row count, without any Windows machine.
 - **Windows-only code is test-only** (`//go:build windows` in
   `pkg/builder/nativetest`, `pkg/cab/native_windows_test.go` and the ICE
   runner `internal/ice`, which only tests import), so the product stays cross-OS.
