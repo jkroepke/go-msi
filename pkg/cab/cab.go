@@ -3,7 +3,9 @@
 // block, and no spanning across cabinets.
 //
 // The format is docs/spec/MSISPEC.md section 5. The writer is deterministic:
-// identical files and options give identical bytes with one Go version.
+// identical files and options give identical bytes with one Go version. It
+// streams: WriteTo reads every file once through its Open function and keeps
+// two blocks and the DEFLATE state in memory, however large the files are.
 package cab
 
 import (
@@ -15,6 +17,8 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	"github.com/jkroepke/go-msi/internal/spool"
 )
 
 // Compression selects the folder's compression type.
@@ -38,6 +42,10 @@ const (
 	// 65535 blocks of 32768 bytes, the split threshold of section 5.
 	maxFolder  = maxFiles * blockSize
 	maxNameLen = 255
+	// fileEntrySize is a CFFILE record without its name and NUL.
+	fileEntrySize = 16
+	// cbCabinetOffset is where the header holds the cabinet size.
+	cbCabinetOffset = 8
 )
 
 // File attributes.
@@ -49,11 +57,22 @@ const (
 	attrUTF8Name uint16 = 0x80
 )
 
-// File is one cabinet entry.
+// File is one cabinet entry held in memory.
 type File struct {
 	Time       time.Time
 	Name       string
 	Data       []byte
+	Attributes uint16
+}
+
+// Entry is one cabinet entry whose bytes WriteTo reads through Open while it
+// writes, so the file never has to be in memory. Open is called once; the
+// reader must deliver exactly Size bytes.
+type Entry struct {
+	Time       time.Time
+	Open       func() (io.ReadCloser, error)
+	Name       string
+	Size       int64
 	Attributes uint16
 }
 
@@ -80,6 +99,11 @@ func Checksum(data []byte, seed uint32) uint32 {
 	}
 
 	return acc ^ tail
+}
+
+// blockChecksum is the stored csum of one CFDATA record.
+func blockChecksum(data []byte, uncompressed int) uint32 {
+	return Checksum(data, 0) ^ (uint32(len(data)) | uint32(uncompressed)<<16) //nolint:gosec // bounded by the block size
 }
 
 // DOSTime converts t (in UTC) to the cabinet date and time words, clamped to
@@ -111,12 +135,6 @@ func DOSTime(when time.Time) (uint16, uint16) {
 func ParseDOSTime(date, tm uint16) time.Time {
 	return time.Date(1980+int(date>>9), time.Month(date>>5&0xF), int(date&0x1F),
 		int(tm>>11), int(tm>>5&0x3F), int(tm&0x1F)*2, 0, time.UTC)
-}
-
-type block struct {
-	data     []byte
-	uncomp   int
-	checksum uint32
 }
 
 // compressBlock produces one MSZIP block for chunk with dict as the DEFLATE
@@ -151,14 +169,37 @@ func compressBlock(chunk, dict []byte, level int) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Write builds a single-folder cabinet.
-func Write(files []File, opts Options) ([]byte, error) { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
-	if len(files) > maxFiles {
-		return nil, fmt.Errorf("cab: %d files, at most %d fit in one cabinet", len(files), maxFiles)
+// entry converts an in-memory file into a streaming entry.
+func (f File) entry() Entry {
+	return Entry{
+		Name:       f.Name,
+		Size:       int64(len(f.Data)),
+		Time:       f.Time,
+		Attributes: f.Attributes,
+		Open:       func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(f.Data)), nil },
+	}
+}
+
+// Write builds a single-folder cabinet in memory.
+func Write(files []File, opts Options) ([]byte, error) {
+	entries := make([]Entry, 0, len(files))
+	for _, f := range files {
+		entries = append(entries, f.entry())
 	}
 
+	var buf spool.Buffer
+
+	if _, err := WriteTo(&buf, entries, opts); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+// checkOptions validates the options and returns the DEFLATE level.
+func checkOptions(opts Options) (int, error) {
 	if opts.Compression != None && opts.Compression != MSZIP {
-		return nil, fmt.Errorf("cab: unsupported compression %d", opts.Compression)
+		return 0, fmt.Errorf("cab: unsupported compression %d", opts.Compression)
 	}
 
 	level := opts.Level
@@ -167,143 +208,414 @@ func Write(files []File, opts Options) ([]byte, error) { //nolint:cyclop,gocogni
 	}
 
 	if level < 1 || level > 9 {
-		return nil, fmt.Errorf("cab: DEFLATE level %d, want 1 to 9", level)
+		return 0, fmt.Errorf("cab: DEFLATE level %d, want 1 to 9", level)
 	}
 
-	var folder []byte
+	return level, nil
+}
 
-	for i, file := range files {
-		if file.Name == "" || len(file.Name) > maxNameLen {
-			return nil, fmt.Errorf("cab: file %d: name %q must be 1 to %d bytes", i, file.Name, maxNameLen)
-		}
-
-		if strings.IndexByte(file.Name, 0) >= 0 {
-			return nil, fmt.Errorf("cab: file %d: name %q contains NUL", i, file.Name)
-		}
-
-		if int64(len(folder))+int64(len(file.Data)) > maxFolder {
-			return nil, fmt.Errorf("cab: folder exceeds %d bytes (65535 blocks); split the files across cabinets", maxFolder)
-		}
-
-		folder = append(folder, file.Data...)
+// checkEntries validates the entries and returns the folder size.
+func checkEntries(entries []Entry) (int64, error) {
+	if len(entries) > maxFiles {
+		return 0, fmt.Errorf("cab: %d files, at most %d fit in one cabinet", len(entries), maxFiles)
 	}
 
-	var blocks []block
+	var folder int64
 
-	for offset := 0; offset < len(folder); offset += blockSize {
-		hi := min(offset+blockSize, len(folder))
-		chunk := folder[offset:hi]
-
-		var data []byte
-
-		if opts.Compression == MSZIP {
-			dict := folder[max(0, offset-blockSize):offset]
-
-			var err error
-
-			data, err = compressBlock(chunk, dict, level)
-			if err != nil {
-				return nil, err
-			}
-
-			if len(data) > maxBlockData {
-				return nil, fmt.Errorf("cab: compressed block of %d bytes exceeds %d", len(data), maxBlockData)
-			}
-		} else {
-			data = chunk
+	for i, ent := range entries {
+		if ent.Name == "" || len(ent.Name) > maxNameLen {
+			return 0, fmt.Errorf("cab: file %d: name %q must be 1 to %d bytes", i, ent.Name, maxNameLen)
 		}
 
-		cs := Checksum(data, 0) ^ (uint32(len(data)) | uint32(len(chunk))<<16) //nolint:gosec // bounded by the format limits checked earlier
-		blocks = append(blocks, block{data: data, uncomp: len(chunk), checksum: cs})
+		if strings.IndexByte(ent.Name, 0) >= 0 {
+			return 0, fmt.Errorf("cab: file %d: name %q contains NUL", i, ent.Name)
+		}
+
+		if ent.Size < 0 {
+			return 0, fmt.Errorf("cab: file %d: negative size", i)
+		}
+
+		if ent.Open == nil {
+			return 0, fmt.Errorf("cab: file %d: no Open function", i)
+		}
+
+		if folder+ent.Size > maxFolder {
+			return 0, fmt.Errorf("cab: folder exceeds %d bytes (65535 blocks); split the files across cabinets", maxFolder)
+		}
+
+		folder += ent.Size
 	}
 
+	return folder, nil
+}
+
+// fileEntry encodes one CFFILE record.
+func fileEntry(ent Entry, offset int64) []byte {
+	order := binary.LittleEndian
+	rec := make([]byte, fileEntrySize, fileEntrySize+len(ent.Name)+1)
+	order.PutUint32(rec, uint32(ent.Size))   //nolint:gosec // bounded by the folder limit checked earlier
+	order.PutUint32(rec[4:], uint32(offset)) //nolint:gosec // bounded by the folder limit checked earlier
+
+	date, tm := DOSTime(ent.Time)
+	order.PutUint16(rec[10:], date)
+	order.PutUint16(rec[12:], tm)
+
+	attr := ent.Attributes
+	if attr == 0 {
+		attr = AttrArchive
+	}
+
+	attr &^= attrUTF8Name
+
+	for i := range len(ent.Name) {
+		if ent.Name[i] >= 0x80 {
+			attr |= attrUTF8Name
+
+			break
+		}
+	}
+
+	order.PutUint16(rec[14:], attr)
+	rec = append(rec, ent.Name...)
+
+	return append(rec, 0)
+}
+
+// WriteTo writes a single-folder cabinet of entries to w. It opens and reads
+// each entry once, in order, holding two blocks and the DEFLATE state in
+// memory. The cabinet size in the header is known only at the end, so w must
+// seek. It returns the number of bytes written.
+func WriteTo(dst io.WriteSeeker, entries []Entry, opts Options) (int64, error) {
+	level, err := checkOptions(opts)
+	if err != nil {
+		return 0, err
+	}
+
+	folderBytes, err := checkEntries(entries)
+	if err != nil {
+		return 0, err
+	}
+
+	out := &countingWriter{w: dst}
+
+	if err := writeHeader(out, entries, folderBytes, opts); err != nil {
+		return 0, err
+	}
+
+	src := &concat{entries: entries}
+	defer src.Close()
+
+	if err := writeBlocks(out, src, folderBytes, opts.Compression, level); err != nil {
+		return 0, err
+	}
+
+	if out.n > maxCabinet {
+		return 0, errors.New("cab: cabinet exceeds 2 GiB")
+	}
+
+	var cbCabinet [4]byte
+
+	binary.LittleEndian.PutUint32(cbCabinet[:], uint32(out.n)) //nolint:gosec // checked against maxCabinet
+
+	if _, err := dst.Seek(cbCabinetOffset-out.n, io.SeekCurrent); err != nil {
+		return 0, fmt.Errorf("cab: seek: %w", err)
+	}
+
+	if _, err := dst.Write(cbCabinet[:]); err != nil {
+		return 0, fmt.Errorf("cab: write: %w", err)
+	}
+
+	if _, err := dst.Seek(out.n-cbCabinetOffset-4, io.SeekCurrent); err != nil {
+		return 0, fmt.Errorf("cab: seek: %w", err)
+	}
+
+	return out.n, nil
+}
+
+// writeHeader writes the CFHEADER, the CFFOLDER and the CFFILE records with
+// a zero cabinet size, which WriteTo patches at the end.
+func writeHeader(out *countingWriter, entries []Entry, folderBytes int64, opts Options) error {
+	order := binary.LittleEndian
 	coffFiles := headerSize + folderSize
 	dataStart := coffFiles
 
-	for _, f := range files {
-		dataStart += 17 + len(f.Name)
+	for _, ent := range entries {
+		dataStart += fileEntrySize + len(ent.Name) + 1
 	}
 
-	total := dataStart
-	for _, b := range blocks {
-		total += 8 + len(b.data)
-	}
+	numBlocks := int((folderBytes + blockSize - 1) / blockSize)
 
-	if total > maxCabinet {
-		return nil, errors.New("cab: cabinet exceeds 2 GiB")
-	}
-
-	order := binary.LittleEndian
-	out := make([]byte, 0, total)
-
-	hdr := make([]byte, headerSize)
+	hdr := make([]byte, headerSize+folderSize)
 	copy(hdr, "MSCF")
-	order.PutUint32(hdr[8:], uint32(total))
 	order.PutUint32(hdr[16:], uint32(coffFiles))
 	hdr[0x18], hdr[0x19] = 3, 1
 	order.PutUint16(hdr[0x1A:], 1)
-	order.PutUint16(hdr[0x1C:], uint16(len(files))) //nolint:gosec // the file count was checked against maxFiles
+	order.PutUint16(hdr[0x1C:], uint16(len(entries))) //nolint:gosec // the file count was checked against maxFiles
 	order.PutUint16(hdr[0x20:], opts.SetID)
-	out = append(out, hdr...)
+	order.PutUint32(hdr[headerSize:], uint32(dataStart))
+	order.PutUint16(hdr[headerSize+4:], uint16(numBlocks)) //nolint:gosec // at most 65535 blocks by the folder limit
+	order.PutUint16(hdr[headerSize+6:], uint16(opts.Compression))
 
-	fo := make([]byte, folderSize)
-	order.PutUint32(fo, uint32(dataStart))
-	order.PutUint16(fo[4:], uint16(len(blocks))) //nolint:gosec // bounded by the format limits checked earlier
-	order.PutUint16(fo[6:], uint16(opts.Compression))
-	out = append(out, fo...)
+	if _, err := out.Write(hdr); err != nil {
+		return err
+	}
 
-	offset := 0
+	var offset int64
 
-	for _, file := range files {
-		entry := make([]byte, 16)
-		order.PutUint32(entry, uint32(len(file.Data))) //nolint:gosec // bounded by the format limits checked earlier
-		order.PutUint32(entry[4:], uint32(offset))
-
-		date, tm := DOSTime(file.Time)
-		order.PutUint16(entry[10:], date)
-		order.PutUint16(entry[12:], tm)
-
-		attr := file.Attributes
-		if attr == 0 {
-			attr = AttrArchive
+	for _, ent := range entries {
+		if _, err := out.Write(fileEntry(ent, offset)); err != nil {
+			return err
 		}
 
-		attr &^= attrUTF8Name
+		offset += ent.Size
+	}
 
-		for i := range len(file.Name) {
-			if file.Name[i] >= 0x80 {
-				attr |= attrUTF8Name
+	return nil
+}
 
-				break
+// encodeBlock returns the CFDATA payload for chunk: the bytes themselves or
+// an MSZIP block with prev as the DEFLATE history.
+func encodeBlock(chunk, prev []byte, comp Compression, level int) ([]byte, error) {
+	if comp != MSZIP {
+		return chunk, nil
+	}
+
+	data, err := compressBlock(chunk, prev, level)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(data) > maxBlockData {
+		return nil, fmt.Errorf("cab: compressed block of %d bytes exceeds %d", len(data), maxBlockData)
+	}
+
+	return data, nil
+}
+
+// writeBlocks compresses the folder bytes from src into CFDATA records.
+func writeBlocks(out *countingWriter, src io.Reader, folderBytes int64, comp Compression, level int) error {
+	order := binary.LittleEndian
+	chunk, prev := make([]byte, blockSize), make([]byte, 0, blockSize)
+	rec := make([]byte, 8)
+
+	for remaining := folderBytes; remaining > 0; {
+		want := int(min(remaining, blockSize))
+
+		if _, err := io.ReadFull(src, chunk[:want]); err != nil {
+			return fmt.Errorf("cab: read: %w", err)
+		}
+
+		data, err := encodeBlock(chunk[:want], prev, comp, level)
+		if err != nil {
+			return err
+		}
+
+		order.PutUint32(rec, blockChecksum(data, want))
+		order.PutUint16(rec[4:], uint16(len(data))) //nolint:gosec // bounded by maxBlockData
+		order.PutUint16(rec[6:], uint16(want))
+
+		if _, err := out.Write(rec); err != nil {
+			return err
+		}
+
+		if _, err := out.Write(data); err != nil {
+			return err
+		}
+
+		remaining -= int64(want)
+		prev, chunk = chunk[:want], prev[:blockSize]
+	}
+
+	// The last entry has delivered its size; make sure it ends there, which
+	// also closes it.
+	var probe [1]byte
+
+	if extra, err := src.Read(probe[:]); extra > 0 || (err != nil && !errors.Is(err, io.EOF)) {
+		if err == nil {
+			err = errors.New("more bytes than the entries declared")
+		}
+
+		return fmt.Errorf("cab: read: %w", err)
+	}
+
+	return nil
+}
+
+// countingWriter counts the bytes written and wraps write errors.
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	written, err := c.w.Write(p)
+	c.n += int64(written)
+
+	if err != nil {
+		return written, fmt.Errorf("cab: write: %w", err)
+	}
+
+	return written, nil
+}
+
+// concat reads the entries back to back, checking that each delivers its
+// declared size.
+type concat struct {
+	cur     io.ReadCloser
+	entries []Entry
+	left    int64
+	index   int
+}
+
+func (c *concat) Read(buf []byte) (int, error) {
+	for {
+		if c.cur == nil {
+			if c.index >= len(c.entries) {
+				return 0, io.EOF
+			}
+
+			if err := c.open(); err != nil {
+				return 0, err
 			}
 		}
 
-		order.PutUint16(entry[14:], attr)
-		out = append(out, entry...)
-		out = append(out, file.Name...)
-		out = append(out, 0)
-		offset += len(file.Data)
-	}
+		if c.left == 0 {
+			if err := c.finish(); err != nil {
+				return 0, err
+			}
 
-	for _, blk := range blocks {
-		d := make([]byte, 8)
-		order.PutUint32(d, blk.checksum)
-		order.PutUint16(d[4:], uint16(len(blk.data))) //nolint:gosec // bounded by the format limits checked earlier
-		order.PutUint16(d[6:], uint16(blk.uncomp))    //nolint:gosec // bounded by the format limits checked earlier
-		out = append(out, d...)
-		out = append(out, blk.data...)
-	}
+			continue
+		}
 
-	return out, nil
+		read, err := c.readCurrent(buf)
+		if err != nil || read > 0 || c.left == 0 {
+			return read, err
+		}
+	}
 }
 
-// Read extracts the files of a cabinet written by this package or any other
-// tool that uses stored or MSZIP folders without spanning. It verifies every
-// non-zero block checksum.
-func Read(raw []byte) ([]File, error) { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
-	order := binary.LittleEndian
+// Close closes the entry that is open, if any; finish has closed the others.
+func (c *concat) Close() error {
+	if c.cur == nil {
+		return nil
+	}
 
-	if len(raw) < headerSize || string(raw[:4]) != "MSCF" {
+	err := c.cur.Close()
+	c.cur = nil
+
+	if err != nil {
+		return fmt.Errorf("%s: %w", c.entries[c.index].Name, err)
+	}
+
+	return nil
+}
+
+// readCurrent reads from the current entry, which must have bytes left.
+func (c *concat) readCurrent(buf []byte) (int, error) {
+	read, err := c.cur.Read(buf[:min(int64(len(buf)), c.left)])
+	c.left -= int64(read)
+
+	switch {
+	case errors.Is(err, io.EOF) && c.left > 0:
+		return read, fmt.Errorf("%s: %d bytes short of its declared size", c.entries[c.index].Name, c.left)
+	case errors.Is(err, io.EOF):
+		return read, nil
+	case err != nil:
+		return read, fmt.Errorf("%s: %w", c.entries[c.index].Name, err)
+	}
+
+	return read, nil
+}
+
+// open starts the current entry.
+func (c *concat) open() error {
+	ent := c.entries[c.index]
+
+	reader, err := ent.Open()
+	if err != nil {
+		return fmt.Errorf("%s: %w", ent.Name, err)
+	}
+
+	c.cur, c.left = reader, ent.Size
+
+	return nil
+}
+
+// finish checks that the current entry has no bytes beyond its size and
+// closes it.
+func (c *concat) finish() error {
+	name := c.entries[c.index].Name
+
+	var probe [1]byte
+
+	extra, err := c.cur.Read(probe[:])
+	if extra > 0 {
+		_ = c.Close()
+
+		return fmt.Errorf("%s: longer than its declared size", name)
+	}
+
+	if err != nil && !errors.Is(err, io.EOF) {
+		_ = c.Close()
+
+		return fmt.Errorf("%s: %w", name, err)
+	}
+
+	if err := c.Close(); err != nil {
+		return err
+	}
+
+	c.index++
+
+	return nil
+}
+
+// readAt fills p from r at off; a reader that reports io.EOF together with
+// the last bytes counts as a full read.
+func readAt(r io.ReaderAt, p []byte, off int64) error {
+	read, err := r.ReadAt(p, off)
+	if err != nil && (!errors.Is(err, io.EOF) || read != len(p)) {
+		return err //nolint:wrapcheck // callers add the record context
+	}
+
+	return nil
+}
+
+// header is a parsed CFHEADER with its folders and file records.
+type header struct {
+	folders []folderInfo
+	files   []fileRecord
+	size    int64
+}
+
+type folderInfo struct {
+	start  int64
+	blocks int
+	typ    Compression
+}
+
+// fileRecord is a parsed CFFILE.
+type fileRecord struct {
+	file   File
+	size   int64
+	offset int64
+	folder int
+}
+
+// parseHeader reads the header, folders and file records of a cabinet.
+func parseHeader(src io.ReaderAt, size int64) (*header, error) { //nolint:cyclop // one pass over the format
+	order := binary.LittleEndian
+	raw := make([]byte, headerSize)
+
+	if size < headerSize {
+		return nil, errors.New("cab: not a cabinet")
+	}
+
+	if err := readAt(src, raw, 0); err != nil {
+		return nil, fmt.Errorf("cab: header: %w", err)
+	}
+
+	if string(raw[:4]) != "MSCF" {
 		return nil, errors.New("cab: not a cabinet")
 	}
 
@@ -322,115 +634,329 @@ func Read(raw []byte) ([]File, error) { //nolint:cyclop,gocognit // one pass ove
 
 	numFolders := int(order.Uint16(raw[0x1A:]))
 	numFiles := int(order.Uint16(raw[0x1C:]))
-	coffFiles := int(order.Uint32(raw[0x10:]))
+	coffFiles := int64(order.Uint32(raw[0x10:]))
 
-	if headerSize+folderSize*numFolders > len(raw) || coffFiles > len(raw) {
+	if int64(headerSize+folderSize*numFolders) > size || coffFiles > size {
 		return nil, errors.New("cab: truncated header")
 	}
 
-	folders := make([][]byte, 0, numFolders)
+	hdr := &header{size: size, folders: make([]folderInfo, 0, numFolders)}
+	folderRaw := make([]byte, folderSize*numFolders)
 
-	for folder := range numFolders {
-		fo := raw[headerSize+folderSize*folder:]
-		start := int(order.Uint32(fo))
-		numData := int(order.Uint16(fo[4:]))
-		typ := Compression(order.Uint16(fo[6:]) & 0xF)
+	if err := readAt(src, folderRaw, headerSize); err != nil {
+		return nil, fmt.Errorf("cab: folders: %w", err)
+	}
+
+	dataStart := size
+
+	for i := range numFolders {
+		fo := folderRaw[folderSize*i:]
+		info := folderInfo{
+			start:  int64(order.Uint32(fo)),
+			blocks: int(order.Uint16(fo[4:])),
+			typ:    Compression(order.Uint16(fo[6:]) & 0xF),
+		}
+		hdr.folders = append(hdr.folders, info)
+		dataStart = min(dataStart, info.start)
+	}
+
+	if dataStart < coffFiles {
+		return nil, errors.New("cab: folder data starts before the file records")
+	}
+
+	// The records cannot be longer than numFiles maximal entries, whatever
+	// the folder offsets claim.
+	filesLen := min(dataStart-coffFiles, int64(numFiles)*(fileEntrySize+maxNameLen+1))
+	filesRaw := make([]byte, filesLen)
+
+	if err := readAt(src, filesRaw, coffFiles); err != nil {
+		return nil, fmt.Errorf("cab: file records: %w", err)
+	}
+
+	pos := 0
+
+	for range numFiles {
+		if pos+fileEntrySize > len(filesRaw) {
+			return nil, errors.New("cab: truncated file entry")
+		}
+
+		end := bytes.IndexByte(filesRaw[pos+fileEntrySize:], 0)
+		if end < 0 {
+			return nil, errors.New("cab: unterminated file name")
+		}
+
+		rec := fileRecord{
+			file: File{
+				Name:       string(filesRaw[pos+fileEntrySize : pos+fileEntrySize+end]),
+				Time:       ParseDOSTime(order.Uint16(filesRaw[pos+10:]), order.Uint16(filesRaw[pos+12:])),
+				Attributes: order.Uint16(filesRaw[pos+14:]) &^ attrUTF8Name,
+			},
+			size:   int64(order.Uint32(filesRaw[pos:])),
+			offset: int64(order.Uint32(filesRaw[pos+4:])),
+			folder: int(order.Uint16(filesRaw[pos+8:])),
+		}
+
+		if rec.folder >= numFolders {
+			return nil, fmt.Errorf("cab: file %q in folder %d (spanning is not supported)", rec.file.Name, rec.folder)
+		}
+
+		hdr.files = append(hdr.files, rec)
+		pos += fileEntrySize + end + 1
+	}
+
+	return hdr, nil
+}
+
+// blockReader decodes the CFDATA records of one folder in order. Each call to
+// next returns the uncompressed bytes of one block, valid until the next call.
+type blockReader struct {
+	r       io.ReaderAt
+	payload []byte
+	out     []byte
+	hist    []byte
+	pos     int64
+	size    int64
+	folder  int
+	index   int
+	blocks  int
+	typ     Compression
+}
+
+func newBlockReader(r io.ReaderAt, size int64, folder int, info folderInfo) *blockReader {
+	return &blockReader{
+		r: r, size: size, folder: folder, pos: info.start, blocks: info.blocks, typ: info.typ,
+		payload: make([]byte, maxBlockData), out: make([]byte, blockSize), hist: make([]byte, 0, blockSize),
+	}
+}
+
+// errorf names the current block in an error.
+func (b *blockReader) errorf(format string, args ...any) error {
+	return fmt.Errorf("cab: folder %d block %d: %s", b.folder, b.index, fmt.Sprintf(format, args...))
+}
+
+// record reads and checks the next CFDATA record, returning its payload and
+// uncompressed size.
+func (b *blockReader) record() ([]byte, int, error) {
+	order := binary.LittleEndian
+
+	var rec [8]byte
+
+	if b.pos+8 > b.size {
+		return nil, 0, b.errorf("truncated")
+	}
+
+	if err := readAt(b.r, rec[:], b.pos); err != nil {
+		return nil, 0, b.errorf("%v", err)
+	}
+
+	csum := order.Uint32(rec[:])
+	compressed := int(order.Uint16(rec[4:]))
+	uncompressed := int(order.Uint16(rec[6:]))
+
+	if b.pos+8+int64(compressed) > b.size {
+		return nil, 0, b.errorf("truncated")
+	}
+
+	if compressed > len(b.payload) {
+		return nil, 0, b.errorf("%d payload bytes exceed %d", compressed, maxBlockData)
+	}
+
+	if uncompressed > blockSize {
+		return nil, 0, b.errorf("%d uncompressed bytes exceed %d", uncompressed, blockSize)
+	}
+
+	payload := b.payload[:compressed]
+
+	if err := readAt(b.r, payload, b.pos+8); err != nil {
+		return nil, 0, b.errorf("%v", err)
+	}
+
+	if csum != 0 {
+		if want := blockChecksum(payload, uncompressed); want != csum {
+			return nil, 0, b.errorf("checksum %#x, want %#x", csum, want)
+		}
+	}
+
+	return payload, uncompressed, nil
+}
+
+// next decodes the next block, or returns io.EOF after the last one.
+func (b *blockReader) next() ([]byte, error) {
+	if b.index >= b.blocks {
+		return nil, io.EOF
+	}
+
+	payload, uncompressed, err := b.record()
+	if err != nil {
+		return nil, err
+	}
+
+	out := b.out[:uncompressed]
+
+	if err := b.decode(payload, out); err != nil {
+		return nil, err
+	}
+
+	// The DEFLATE history is the last 32 KiB of the folder, which spans more
+	// than one block when blocks are short.
+	if keep := blockSize - len(out); keep <= 0 {
+		b.hist = append(b.hist[:0], out...)
+	} else {
+		if len(b.hist) > keep {
+			b.hist = b.hist[:copy(b.hist, b.hist[len(b.hist)-keep:])]
+		}
+
+		b.hist = append(b.hist, out...)
+	}
+
+	b.pos += 8 + int64(len(payload))
+	b.index++
+
+	return out, nil
+}
+
+// decode fills out with the uncompressed bytes of payload.
+func (b *blockReader) decode(payload, out []byte) error {
+	switch b.typ {
+	case None:
+		if len(payload) != len(out) {
+			return b.errorf("stored block sizes differ")
+		}
+
+		copy(out, payload)
+	case MSZIP:
+		if len(payload) < 2 || payload[0] != 'C' || payload[1] != 'K' {
+			return b.errorf("missing CK signature")
+		}
+
+		inflater := flate.NewReaderDict(bytes.NewReader(payload[2:]), b.hist)
+
+		if _, err := io.ReadFull(inflater, out); err != nil {
+			return b.errorf("%v", err)
+		}
+	default:
+		return fmt.Errorf("cab: compression type %d is not supported", b.typ)
+	}
+
+	return nil
+}
+
+// folderReader serves the uncompressed bytes of a folder as a stream.
+type folderReader struct {
+	blocks *blockReader
+	buf    []byte
+}
+
+func (f *folderReader) Read(buf []byte) (int, error) {
+	for len(f.buf) == 0 {
+		out, err := f.blocks.next()
+		if err != nil {
+			return 0, err
+		}
+
+		f.buf = out
+	}
+
+	copied := copy(buf, f.buf)
+	f.buf = f.buf[copied:]
+
+	return copied, nil
+}
+
+// Read extracts the files of a cabinet written by this package or any other
+// tool that uses stored or MSZIP folders without spanning. It verifies every
+// non-zero block checksum. Files may share or overlap folder bytes.
+func Read(raw []byte) ([]File, error) {
+	hdr, err := parseHeader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		return nil, err
+	}
+
+	folders := make([][]byte, 0, len(hdr.folders))
+
+	for i, info := range hdr.folders {
+		blocks := newBlockReader(bytes.NewReader(raw), int64(len(raw)), i, info)
 
 		var out []byte
 
-		pos := start
-
-		for blockIdx := range numData {
-			if pos+8 > len(raw) {
-				return nil, fmt.Errorf("cab: folder %d block %d truncated", folder, blockIdx)
+		for {
+			block, err := blocks.next()
+			if errors.Is(err, io.EOF) {
+				break
 			}
 
-			csum := order.Uint32(raw[pos:])
-			compressed := int(order.Uint16(raw[pos+4:]))
-			uncompressed := int(order.Uint16(raw[pos+6:]))
-
-			if pos+8+compressed > len(raw) {
-				return nil, fmt.Errorf("cab: folder %d block %d truncated", folder, blockIdx)
+			if err != nil {
+				return nil, err
 			}
 
-			payload := raw[pos+8 : pos+8+compressed]
-
-			if csum != 0 {
-				if want := Checksum(payload, 0) ^ (uint32(compressed) | uint32(uncompressed)<<16); want != csum { //nolint:gosec // bounded
-					return nil, fmt.Errorf("cab: folder %d block %d checksum %#x, want %#x", folder, blockIdx, csum, want)
-				}
-			}
-
-			switch typ {
-			case None:
-				if compressed != uncompressed {
-					return nil, fmt.Errorf("cab: folder %d block %d: stored block sizes differ", folder, blockIdx)
-				}
-
-				out = append(out, payload...)
-			case MSZIP:
-				if len(payload) < 2 || payload[0] != 'C' || payload[1] != 'K' {
-					return nil, fmt.Errorf("cab: folder %d block %d: missing CK signature", folder, blockIdx)
-				}
-
-				hist := out
-				if len(hist) > blockSize {
-					hist = hist[len(hist)-blockSize:]
-				}
-
-				r := flate.NewReaderDict(bytes.NewReader(payload[2:]), hist)
-				buf := make([]byte, uncompressed)
-
-				if _, err := io.ReadFull(r, buf); err != nil {
-					return nil, fmt.Errorf("cab: folder %d block %d: %w", folder, blockIdx, err)
-				}
-
-				out = append(out, buf...)
-			default:
-				return nil, fmt.Errorf("cab: compression type %d is not supported", typ)
-			}
-
-			pos += 8 + compressed
+			out = append(out, block...)
 		}
 
 		folders = append(folders, out)
 	}
 
-	files := make([]File, 0, numFiles)
-	pos := coffFiles
+	files := make([]File, 0, len(hdr.files))
 
-	for range numFiles {
-		if pos+16 > len(raw) {
-			return nil, errors.New("cab: truncated file entry")
+	for _, rec := range hdr.files {
+		folder := folders[rec.folder]
+		if rec.offset+rec.size > int64(len(folder)) {
+			return nil, fmt.Errorf("cab: file %q extends past its folder", rec.file.Name)
 		}
 
-		size := int(order.Uint32(raw[pos:]))
-		off := int(order.Uint32(raw[pos+4:]))
-		folderIdx := int(order.Uint16(raw[pos+8:]))
-
-		end := bytes.IndexByte(raw[pos+16:], 0)
-		if end < 0 {
-			return nil, errors.New("cab: unterminated file name")
-		}
-
-		file := File{
-			Name:       string(raw[pos+16 : pos+16+end]),
-			Time:       ParseDOSTime(order.Uint16(raw[pos+10:]), order.Uint16(raw[pos+12:])),
-			Attributes: order.Uint16(raw[pos+14:]) &^ attrUTF8Name,
-		}
-
-		if folderIdx >= len(folders) {
-			return nil, fmt.Errorf("cab: file %q in folder %d (spanning is not supported)", file.Name, folderIdx)
-		}
-
-		if off+size > len(folders[folderIdx]) {
-			return nil, fmt.Errorf("cab: file %q extends past its folder", file.Name)
-		}
-
-		file.Data = append([]byte(nil), folders[folderIdx][off:off+size]...)
+		file := rec.file
+		file.Data = append([]byte(nil), folder[rec.offset:rec.offset+rec.size]...)
 		files = append(files, file)
-		pos += 17 + end
 	}
 
 	return files, nil
+}
+
+// Walk reads the cabinet in r in one pass and calls fn for every file in
+// folder order with a reader over its bytes, holding one block in memory at
+// a time. The File passed to fn has no Data. Walk serves cabinets whose files
+// lie back to back in their folders, which is how this package writes them;
+// files that overlap or repeat need Read.
+func Walk(src io.ReaderAt, size int64, visit func(File, io.Reader) error) error {
+	hdr, err := parseHeader(src, size)
+	if err != nil {
+		return err
+	}
+
+	for folderIdx, info := range hdr.folders {
+		stream := &folderReader{blocks: newBlockReader(src, size, folderIdx, info)}
+
+		var pos int64
+
+		for _, rec := range hdr.files {
+			if rec.folder != folderIdx {
+				continue
+			}
+
+			if rec.offset < pos {
+				return fmt.Errorf("cab: file %q overlaps the file before it; use Read", rec.file.Name)
+			}
+
+			if _, err := io.CopyN(io.Discard, stream, rec.offset-pos); err != nil {
+				return fmt.Errorf("cab: file %q: %w", rec.file.Name, err)
+			}
+
+			limited := io.LimitReader(stream, rec.size)
+
+			if err := visit(rec.file, limited); err != nil {
+				return err
+			}
+
+			if _, err := io.Copy(io.Discard, limited); err != nil {
+				return fmt.Errorf("cab: file %q: %w", rec.file.Name, err)
+			}
+
+			if limited.(*io.LimitedReader).N > 0 { //nolint:forcetypeassert // io.LimitReader returns *io.LimitedReader
+				return fmt.Errorf("cab: file %q extends past its folder", rec.file.Name)
+			}
+
+			pos = rec.offset + rec.size
+		}
+	}
+
+	return nil
 }

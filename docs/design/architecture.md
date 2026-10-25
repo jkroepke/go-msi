@@ -82,10 +82,23 @@ details and may change without notice. `pkg/builder/nativetest` sits under
 
 ```go
 type Stream struct { Name string; Data []byte }   // Name: 1–31 UTF-16 units
+type Source struct { Name string; Size int64; Open func() (io.ReadCloser, error) }
 type Options struct { Version int /* 3 or 4, default 4 */; CLSID [16]byte }
+type Layout struct { Offsets map[string]int64; Size int64 } // where each stream landed
 func Write(streams []Stream, o Options) ([]byte, error)
+func WriteTo(dst io.Writer, sources []Source, o Options) (*Layout, error)
 func Read(data []byte) (*File, error)              // File.Streams, File.Stream(name)
+func Open(src io.ReaderAt, size int64) (*File, error) // lazy: directory only
+func (f *File) Reader(name string) (*StreamReader, error) // io.ReaderAt/Reader/Seeker
 ```
+
+- `WriteTo` streams: the whole layout (sector counts, FAT, DIFAT, directory,
+  mini stream, large stream order) follows from the sizes alone, so the writer
+  emits sectors in order and copies each large stream from its `Open` reader
+  without holding it. `Write` is `WriteTo` into memory with byte-identical
+  output. `Layout.Offsets` lets the builder patch a stream in place later.
+- `Open` reads the header, FAT, MiniFAT and directory from an `io.ReaderAt`;
+  stream bodies are read on demand through `Reader`, which walks the chain.
 
 - Fixed writer choices from §2: sorted siblings, balanced red-black tree,
   SIDs in sorted order, sector order FAT → DIFAT → directory → MiniFAT →
@@ -100,10 +113,22 @@ func Read(data []byte) (*File, error)              // File.Streams, File.Stream(
 
 ```go
 type File struct { Name string; Data []byte; Time time.Time; Attributes uint16 }
+type Entry struct { Name string; Size int64; Time time.Time; Attributes uint16; Open func() (io.ReadCloser, error) }
 type Options struct { Compression Compression /* None, MSZIP */; Level int; SetID uint16 }
 func Write(files []File, o Options) ([]byte, error)
+func WriteTo(dst io.WriteSeeker, entries []Entry, o Options) (int64, error)
 func Read(data []byte) ([]File, error)
+func Walk(src io.ReaderAt, size int64, visit func(File, io.Reader) error) error
+func Entries(fsys fs.FS) ([]Entry, error)
 ```
+
+- `WriteTo` streams: CFFILE records follow from names and sizes, the folder
+  data is compressed block by block from the concatenated `Open` readers (an
+  entry that is shorter or longer than its declared `Size` is an error), and
+  the CFDATA count follows from the folder size; only `cbCabinet` is patched
+  afterwards through the seeker. `Write` is `WriteTo` into memory with byte-identical output.
+- `Walk` decodes one block at a time and hands every file's bytes to `visit`
+  as a reader; it serves verification without materializing the cabinet.
 
 - One folder, blocks of 32768 bytes, history carried across blocks, the
   stored fallback, "CK" prefix, checksum on every block (CAB-02, CAB-04).
@@ -130,9 +155,11 @@ type Type struct { Kind Kind; Nullable, Key, Localizable bool; Width int }
 func ParseType(idt string) (Type, error)         // "s72", "I2", "L0", "V0"
 type Column struct { Name string; Type Type }
 type Table struct { Name string; Columns []Column; Rows [][]any } // nil, string, int, []byte
-type Database struct { Codepage int; Tables []*Table; Streams []Stream; Summary []summary.Property }
+type Database struct { Codepage int; Tables []*Table; Streams []Stream; Sources []cfb.Source; Summary []summary.Property }
 func (db *Database) Marshal(o Options) ([]byte, error)
+func (db *Database) MarshalTo(dst io.Writer, o Options) (*cfb.Layout, error)
 func Unmarshal(data []byte) (*Database, error)
+func Decode(file *cfb.File) (*Database, error)   // lazy; cabinets stay as Sources
 func EncodeStreamName(name string, table bool) (string, error)
 func DecodeStreamName(encoded string) (name string, table bool)
 ```
@@ -145,7 +172,12 @@ references including `_Tables` and `_Columns`, reject a count above 32767
 reaches 65535 (DB-06), sort rows by stored keys, reject duplicate keys, then
 emit `_StringPool`, `_StringData`, `_Tables`, `_Columns`, one stream per
 non-empty table, one `Table.Key` stream per binary value, the summary stream
-and the extra streams (cabinets), through `cfb`.
+and the extra streams through `cfb`. `Streams` hold small extra streams in
+memory; `Sources` (cabinets) are copied from their readers by `MarshalTo`, so
+a package is never larger than its biggest table in memory. `Decode` reads an
+opened `cfb.File` lazily and lists streams it did not consume as `Sources`
+with a nil `Open`, so the inspector and the verifier see cabinets by name and
+size without loading them.
 
 Code pages: 0 (ASCII), 65001 (UTF-8) and the ANSI pages through
 `golang.org/x/text/encoding`; unmappable text is an error, never `?`.
@@ -236,11 +268,18 @@ Pipeline, each step a file of its own:
    pages, `ui.dialogs` inserted after their anchor, the maintenance menu, the
    end, cancel, error, files-in-use and Restart Manager dialogs, the bitmaps
    drawn by `artwork` from a palette, and the ICE-style self-checks.
-10. **Finish**: `_Validation` from `schema`, summary information, `msidb`
-    marshal, package code, then **verify**: `msidb.Unmarshal` the bytes,
-    compare every table, `cab.Read` the cabinet and compare every file's
-    SHA-256 with its source, re-check key order and refcounts. A package that
-    fails verification is not written.
+10. **Finish**: `_Validation` from `schema`, summary information, then the
+    streaming write: the cabinet is written with `cab.WriteTo` to a spool
+    (memory when `Options.Output` is empty, otherwise a temporary file next to
+    the output), the package with `msidb.MarshalTo` into a second temporary
+    file, the package code (UUID v5 of the package's SHA-256) is patched into
+    the summary stream at its `cfb.Layout` offset, then **verify**: `cfb.Open`
+    the package, `msidb.Decode` it, compare every table, `cab.Walk` the
+    cabinet stream and compare every file's SHA-256 (computed once while
+    hashing the source for `MsiFileHash`) with its source. Memory stays
+    bounded by the tables plus a few compression blocks, whatever the payload
+    size. The verified package is renamed onto `Options.Output`; a failed
+    build leaves an existing package untouched and no temporary files behind.
 
 Static ICE-style checks live next to the step that has the data (ICE03/06/32
 through `schema`, ICE18/19/21, ICE04/71, ICE27/63/77, ICE80, ICE87, ICE105).
@@ -253,6 +292,16 @@ through `schema`, ICE18/19/21, ICE04/71, ICE27/63/77, ICE80, ICE87, ICE105).
   `msidb.Unmarshal`; this is the cross-OS debugging tool.
 
 Only the standard library `flag` package is used.
+
+### 1.11 Internal helpers
+
+- `internal/spool`: the `Target` interface (`io.Writer`, `io.WriterAt`,
+  `io.ReaderAt`, `io.Seeker`) that both an `*os.File` and the in-memory
+  `Buffer` satisfy, so the builder writes, patches and verifies the same way
+  for a file and for `Result.Package`.
+- `internal/memtest`: a repeatable pattern reader and `PeakHeap`, which runs a
+  function under `debug.SetMemoryLimit` and samples the heap, for the
+  bounded-memory tests in `cab`, `cfb` and `builder` (skipped with `-short`).
 
 ## 2. Testing
 

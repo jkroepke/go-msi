@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/jkroepke/go-msi/internal/schema"
+	"github.com/jkroepke/go-msi/internal/spool"
 	"github.com/jkroepke/go-msi/pkg/cab"
 	"github.com/jkroepke/go-msi/pkg/cfb"
 	"github.com/jkroepke/go-msi/pkg/config"
@@ -134,7 +137,7 @@ func (b *build) customTables() error { //nolint:cyclop // one pass over the form
 
 // finish assembles the database, packs the cabinet, derives the package code
 // and verifies the package by reading it back.
-func (b *build) finish() ([]byte, *msidb.Database, error) { //nolint:cyclop // one pass over the format; splitting would scatter it
+func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop // one pass over the format; splitting would scatter it
 	// Written last: custom actions, firewall rules and service recovery add
 	// standard folders such as System64Folder after the tree is walked.
 	b.writeDirectoryTable()
@@ -146,7 +149,7 @@ func (b *build) finish() ([]byte, *msidb.Database, error) { //nolint:cyclop // o
 		tbl := b.tables[name]
 
 		if err := tbl.Validate(); err != nil {
-			return nil, nil, fmt.Errorf("table %s: %w", name, err)
+			return nil, fmt.Errorf("table %s: %w", name, err)
 		}
 
 		database.Tables = append(database.Tables, tbl)
@@ -156,13 +159,35 @@ func (b *build) finish() ([]byte, *msidb.Database, error) { //nolint:cyclop // o
 
 	slices.SortFunc(database.Tables, func(a, b *msidb.Table) int { return strings.Compare(a.Name, b.Name) })
 
+	// A symlink to an existing file at Output is written through: the
+	// temporary files go next to its target so that the final rename stays
+	// on one file system. A dangling symlink is replaced by the package.
+	output := b.opts.Output
+	if resolved, err := filepath.EvalSymlinks(output); err == nil {
+		output = resolved
+	}
+
+	target, closeTarget, err := b.newTarget("package", output)
+	if err != nil {
+		return nil, err
+	}
+
+	defer closeTarget()
+
 	if len(b.files) > 0 {
-		data, err := b.cabinet()
+		cabSpool, closeSpool, err := b.newTarget("cabinet", output)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
-		database.Streams = append(database.Streams, cfb.Stream{Name: b.cfg.Package.Cabinet, Data: data})
+		defer closeSpool()
+
+		source, err := b.cabinet(cabSpool)
+		if err != nil {
+			return nil, err
+		}
+
+		database.Sources = append(database.Sources, source)
 	}
 
 	auto := b.packageCode == ""
@@ -172,29 +197,130 @@ func (b *build) finish() ([]byte, *msidb.Database, error) { //nolint:cyclop // o
 
 	database.Summary = b.summaryProperties()
 
-	pkg, err := database.Marshal(msidb.Options{CFBVersion: b.opts.CFBVersion})
+	layout, err := database.MarshalTo(target, msidb.Options{CFBVersion: b.opts.CFBVersion})
 	if err != nil {
-		return nil, nil, fmt.Errorf("marshal database: %w", err)
+		return nil, fmt.Errorf("marshal database: %w", err)
 	}
 
 	if auto {
-		sum := sha256.Sum256(pkg)
-		b.packageCode = uuid5(namespacePackage, hex.EncodeToString(sum[:]))
-		database.Summary = b.summaryProperties()
-
-		pkg, err = database.Marshal(msidb.Options{CFBVersion: b.opts.CFBVersion})
-		if err != nil {
-			return nil, nil, fmt.Errorf("marshal database: %w", err)
+		if err := b.patchPackageCode(target, layout, database); err != nil {
+			return nil, err
 		}
 	}
 
 	if !b.opts.SkipVerify {
-		if err := b.verify(pkg, database); err != nil {
-			return nil, nil, fmt.Errorf("verification of the built package failed: %w", err)
+		if err := b.verify(target, layout.Size, database); err != nil {
+			return nil, fmt.Errorf("verification of the built package failed: %w", err)
 		}
 	}
 
-	return pkg, database, nil
+	res.Size = layout.Size
+
+	switch out := target.(type) {
+	case *spool.Buffer:
+		res.Package = out.Bytes()
+	case *os.File:
+		if err := commitOutput(out, output); err != nil {
+			return nil, err
+		}
+
+		// The cabinet spool is removed when finish returns; the returned
+		// database keeps the cabinet's name and size only.
+		for i := range database.Sources {
+			database.Sources[i].Open = nil
+		}
+	}
+
+	return database, nil
+}
+
+// patchPackageCode derives the automatic package code from a digest of the
+// package as written with the placeholder and writes the summary stream
+// again in place. The real code has the placeholder's length, so the stream
+// and the layout do not change.
+func (b *build) patchPackageCode(target spool.Target, layout *cfb.Layout, database *msidb.Database) error {
+	written, err := database.MarshalSummary()
+	if err != nil {
+		return fmt.Errorf("marshal database: %w", err)
+	}
+
+	hasher := sha256.New()
+
+	if _, err := io.Copy(hasher, io.NewSectionReader(target, 0, layout.Size)); err != nil {
+		return fmt.Errorf("digest of the package: %w", err)
+	}
+
+	b.packageCode = uuid5(namespacePackage, hex.EncodeToString(hasher.Sum(nil)))
+	database.Summary = b.summaryProperties()
+
+	data, err := database.MarshalSummary()
+	if err != nil {
+		return fmt.Errorf("marshal database: %w", err)
+	}
+
+	offset, ok := layout.Offsets[summary.StreamName]
+	if !ok {
+		return errors.New("marshal database: the summary stream has no offset")
+	}
+
+	if len(data) != len(written) {
+		return fmt.Errorf("marshal database: the summary stream changed from %d to %d bytes with the package code", len(written), len(data))
+	}
+
+	if _, err := target.WriteAt(data, offset); err != nil {
+		return fmt.Errorf("write the summary stream: %w", err)
+	}
+
+	return nil
+}
+
+// newTarget returns where a build product is written: memory when the
+// package stays in memory, otherwise a temporary file next to the output
+// (the package itself is written to the output path). output is the
+// resolved output path; the temporary files are created next to it. The
+// returned function
+// closes the file, and removes it unless it is the finished package.
+func (b *build) newTarget(kind, output string) (spool.Target, func(), error) {
+	if b.opts.Output == "" {
+		return &spool.Buffer{}, func() {}, nil
+	}
+
+	file, err := os.CreateTemp(filepath.Dir(output), ".go-msi-*."+kind)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create a temporary %s file: %w", kind, err)
+	}
+
+	// After commitOutput the package has moved and there is nothing to
+	// remove; a failed build leaves no file behind.
+	return file, func() {
+		_ = file.Close()
+		_ = os.Remove(file.Name())
+	}, nil
+}
+
+// commitOutput moves the finished package from its temporary file to path
+// (a symlink already resolved), so that an existing package is replaced only
+// by a verified one. An existing file keeps its mode.
+func commitOutput(file *os.File, path string) error {
+	mode := os.FileMode(0o644)
+
+	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+		mode = info.Mode().Perm()
+	}
+
+	if err := file.Chmod(mode); err != nil {
+		return fmt.Errorf("set the mode of %s: %w", path, err)
+	}
+
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close %s: %w", file.Name(), err)
+	}
+
+	if err := os.Rename(file.Name(), path); err != nil {
+		return fmt.Errorf("move the package to %s: %w", path, err)
+	}
+
+	return nil
 }
 
 func sortedTableNames(m map[string]*msidb.Table) []string {
@@ -208,12 +334,20 @@ func sortedTableNames(m map[string]*msidb.Table) []string {
 	return out
 }
 
-// cabinet packs every payload file in sequence order (section 11.6).
-func (b *build) cabinet() ([]byte, error) {
-	files := make([]cab.File, 0, len(b.files))
+// cabinet packs every payload file in sequence order (section 11.6) into
+// spool, streaming each file from disk, and returns the cabinet as a source
+// for the package.
+func (b *build) cabinet(target spool.Target) (cfb.Source, error) {
+	entries := make([]cab.Entry, 0, len(b.files))
 
 	for _, fi := range b.files {
-		files = append(files, cab.File{Name: fi.Key, Data: fi.Data, Time: b.opts.BuildTime, Attributes: cab.AttrArchive})
+		entries = append(entries, cab.Entry{
+			Name:       fi.Key,
+			Size:       fi.Size,
+			Time:       b.opts.BuildTime,
+			Attributes: cab.AttrArchive,
+			Open:       func() (io.ReadCloser, error) { return os.Open(fi.path) },
+		})
 	}
 
 	comp := cab.MSZIP
@@ -221,12 +355,16 @@ func (b *build) cabinet() ([]byte, error) {
 		comp = cab.None
 	}
 
-	data, err := cab.Write(files, cab.Options{Compression: comp})
+	size, err := cab.WriteTo(target, entries, cab.Options{Compression: comp})
 	if err != nil {
-		return nil, fmt.Errorf("cabinet: %w", err)
+		return cfb.Source{}, fmt.Errorf("cabinet: %w", err)
 	}
 
-	return data, nil
+	return cfb.Source{
+		Name: b.cfg.Package.Cabinet,
+		Size: size,
+		Open: func() (io.ReadCloser, error) { return io.NopCloser(io.NewSectionReader(target, 0, size)), nil },
+	}, nil
 }
 
 // summaryProperties builds the summary information (sections 4 and 11.1).
@@ -270,9 +408,15 @@ func (b *build) summaryProperties() []summary.Property {
 }
 
 // verify reads the finished package back and compares it with what was
-// written: tables, strings, summary and cabinet contents.
-func (b *build) verify(pkg []byte, want *msidb.Database) error { //nolint:cyclop // one pass over the format; splitting would scatter it
-	got, err := msidb.Unmarshal(pkg)
+// written: tables, strings, summary and cabinet contents. It reads through
+// the file, so a large cabinet is never in memory.
+func (b *build) verify(target spool.Target, size int64, want *msidb.Database) error { //nolint:cyclop // one pass over the format; splitting would scatter it
+	file, err := cfb.Open(target, size)
+	if err != nil {
+		return fmt.Errorf("read back: %w", err)
+	}
+
+	got, err := msidb.Decode(file)
 	if err != nil {
 		return fmt.Errorf("read back: %w", err)
 	}
@@ -308,28 +452,49 @@ func (b *build) verify(pkg []byte, want *msidb.Database) error { //nolint:cyclop
 		return nil
 	}
 
-	data, ok := got.Stream(b.cfg.Package.Cabinet)
-	if !ok {
-		return fmt.Errorf("cabinet stream %q is missing", b.cfg.Package.Cabinet)
+	encoded, err := msidb.EncodeStreamName(b.cfg.Package.Cabinet, false)
+	if err != nil {
+		return fmt.Errorf("cabinet stream: %w", err)
 	}
 
-	entries, err := cab.Read(data)
+	stream, err := file.Reader(encoded)
+	if err != nil {
+		return fmt.Errorf("cabinet stream %q is missing: %w", b.cfg.Package.Cabinet, err)
+	}
+
+	index := 0
+
+	err = cab.Walk(stream, stream.Size(), func(entry cab.File, data io.Reader) error {
+		if index >= len(b.files) {
+			return fmt.Errorf("cabinet holds more than %d files", len(b.files))
+		}
+
+		want := b.files[index]
+		index++
+
+		if entry.Name != want.Key {
+			return fmt.Errorf("cabinet entry %d is %q, want %q", index-1, entry.Name, want.Key)
+		}
+
+		hasher := sha256.New()
+
+		n, err := io.Copy(hasher, data)
+		if err != nil {
+			return fmt.Errorf("cabinet entry %s: %w", want.Key, err)
+		}
+
+		if n != want.Size || !bytes.Equal(hasher.Sum(nil), want.digest[:]) {
+			return fmt.Errorf("cabinet entry %s differs from its source", want.Key)
+		}
+
+		return nil
+	})
 	if err != nil {
 		return fmt.Errorf("cabinet: %w", err)
 	}
 
-	if len(entries) != len(b.files) {
-		return fmt.Errorf("cabinet holds %d files, want %d", len(entries), len(b.files))
-	}
-
-	for i, file := range b.files {
-		if entries[i].Name != file.Key {
-			return fmt.Errorf("cabinet entry %d is %q, want %q", i, entries[i].Name, file.Key)
-		}
-
-		if !bytes.Equal(entries[i].Data, file.Data) {
-			return fmt.Errorf("cabinet entry %s differs from its source", file.Key)
-		}
+	if index != len(b.files) {
+		return fmt.Errorf("cabinet holds %d files, want %d", index, len(b.files))
 	}
 
 	return nil

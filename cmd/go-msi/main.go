@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/jkroepke/go-msi/pkg/builder"
+	"github.com/jkroepke/go-msi/pkg/cfb"
 	"github.com/jkroepke/go-msi/pkg/config"
 	"github.com/jkroepke/go-msi/pkg/msidb"
 	"github.com/jkroepke/go-msi/pkg/sign"
@@ -218,33 +219,65 @@ func cmdBuild(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
+	if out == "" {
+		out = filepath.Join(cfg.BaseDir, cfg.Product.Name+"-"+cfg.Product.Version+".msi")
+	}
+
+	// Signing works on the whole package, so a signed build streams to a
+	// temporary file first and the signed bytes replace out atomically; a
+	// package already at out survives a failed signing.
+	target := out
+
+	if signing.enabled() {
+		tmp, err := os.CreateTemp(filepath.Dir(out), ".go-msi-*.unsigned")
+		if err != nil {
+			return fmt.Errorf("create a temporary file: %w", err)
+		}
+
+		target = tmp.Name()
+		_ = tmp.Close()
+
+		defer func() { _ = os.Remove(target) }()
+	}
+
 	res, err := builder.Build(cfg, builder.Options{
 		CFBVersion: cfbVersion,
 		ToolName:   "go-msi " + version,
 		SkipVerify: skipVerify,
+		Output:     target,
 	})
 
 	printDiagnostics(stderr, res.Diagnostics)
 
 	if err != nil {
-		return errors.New("build failed")
+		if res.Diagnostics.Err() != nil {
+			return errors.New("build failed")
+		}
+
+		return fmt.Errorf("build failed: %w", err)
 	}
 
-	if out == "" {
-		out = filepath.Join(cfg.BaseDir, cfg.Product.Name+"-"+cfg.Product.Version+".msi")
-	}
+	if signing.enabled() {
+		pkg, err := os.ReadFile(target)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", target, err)
+		}
 
-	if res.Package, err = signing.signBuild(res.Package, cfg.Product.Name); err != nil {
-		return err
-	}
+		signed, err := signing.signBuild(pkg, cfg.Product.Name)
+		if err != nil {
+			return err
+		}
 
-	if err := os.WriteFile(out, res.Package, 0o644); err != nil { //nolint:gosec // a package is world-readable
-		return fmt.Errorf("write %s: %w", out, err)
+		if err := writeAtomic(out, signed); err != nil {
+			return err
+		}
+
+		res.Size = int64(len(signed))
 	}
 
 	if !quiet {
 		_, _ = fmt.Fprintf(stdout, "%s: %d bytes, %d files, ProductCode %s, PackageCode %s\n",
-			out, len(res.Package), len(res.Files), res.ProductCode, res.PackageCode)
+			out, res.Size, len(res.Files), res.ProductCode, res.PackageCode)
 	}
 
 	return nil
@@ -266,12 +299,25 @@ func cmdInspect(args []string, stdout, stderr io.Writer) error { //nolint:cyclop
 		return errors.New("inspect wants exactly one package")
 	}
 
-	data, err := os.ReadFile(flags.Arg(0))
+	// Open lazily: cabinets stay in the file and are listed by size.
+	pkg, err := os.Open(flags.Arg(0))
 	if err != nil {
-		return fmt.Errorf("read: %w", err)
+		return fmt.Errorf("open: %w", err)
 	}
 
-	database, err := msidb.Unmarshal(data)
+	defer pkg.Close()
+
+	stat, err := pkg.Stat()
+	if err != nil {
+		return fmt.Errorf("stat: %w", err)
+	}
+
+	file, err := cfb.Open(pkg, stat.Size())
+	if err != nil {
+		return fmt.Errorf("%s: %w", flags.Arg(0), err)
+	}
+
+	database, err := msidb.Decode(file)
 	if err != nil {
 		return fmt.Errorf("%s: %w", flags.Arg(0), err)
 	}
@@ -293,9 +339,13 @@ func cmdInspect(args []string, stdout, stderr io.Writer) error { //nolint:cyclop
 		_, _ = fmt.Fprintf(stdout, "summary %2d: %s\n", p.ID, formatValue(p.Value))
 	}
 
-	names := make([]string, 0, len(database.Streams))
+	names := make([]string, 0, len(database.Streams)+len(database.Sources))
 	for _, s := range database.Streams {
 		names = append(names, fmt.Sprintf("%s (%d bytes)", s.Name, len(s.Data)))
+	}
+
+	for _, s := range database.Sources {
+		names = append(names, fmt.Sprintf("%s (%d bytes)", s.Name, s.Size))
 	}
 
 	slices.Sort(names)
@@ -539,7 +589,8 @@ func cmdSign(args []string, stdout, stderr io.Writer) error {
 
 // writeAtomic replaces path through a temporary file in the same
 // directory, so a failed write keeps the original package. An existing
-// file keeps its mode, and a symlink keeps pointing at the replaced file.
+// file keeps its mode, and a symlink to an existing file keeps pointing at
+// the replaced file.
 func writeAtomic(path string, data []byte) error {
 	mode := os.FileMode(0o644)
 

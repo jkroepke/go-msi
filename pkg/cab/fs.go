@@ -215,6 +215,48 @@ func Files(fsys fs.FS) ([]File, error) {
 	return files, nil
 }
 
+// Entries lists the regular files of fsys as streaming cabinet entries in
+// WalkDir order, with slashes turned into backslashes and the archive
+// attribute set. Each entry opens its file from fsys when the cabinet is
+// written, so nothing is read here.
+func Entries(fsys fs.FS) ([]Entry, error) {
+	var entries []Entry
+
+	err := fs.WalkDir(fsys, ".", func(name string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if entry.IsDir() {
+			return nil
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("cab: %s is not a regular file", name)
+		}
+
+		entries = append(entries, Entry{
+			Name:       strings.ReplaceAll(name, "/", `\`),
+			Size:       info.Size(),
+			Time:       info.ModTime().UTC(),
+			Attributes: AttrArchive,
+			Open:       func() (io.ReadCloser, error) { return fsys.Open(name) },
+		})
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cab: %w", err)
+	}
+
+	return entries, nil
+}
+
 type fileInfo struct {
 	file *File
 	name string
