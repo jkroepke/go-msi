@@ -605,6 +605,13 @@ func TestShorthandNestedStandardFolder(t *testing.T) {
 
 	cfg := parseValid(t, short+tree+comps)
 
+	// Standard folders with the same placeholder name are not one folder.
+	twins := "directories:\n  - id: TARGETDIR\n    children:\n" +
+		"      - { id: ProgramFiles64Folder, name: PFiles }\n      - { id: ProgramFilesFolder, name: PFiles }\n"
+	if ds := validate(t, short+twins+"components:\n  - files: [{ source: hello.exe }]\n"); len(ds) != 0 {
+		t.Errorf("standard folders reported: %v", ds)
+	}
+
 	if len(cfg.Directories) != 1 {
 		t.Fatalf("standard folder added at the top level again: %d top-level directories", len(cfg.Directories))
 	}

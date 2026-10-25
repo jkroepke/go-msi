@@ -374,7 +374,8 @@ func (v *validator) directories(cfg *Config, r *refs) {
 // rows install to one place, but setting one on the command line leaves the
 // other behind.
 func (v *validator) sameFolder(names map[string]string, dirPath string, dir *Directory, top bool) {
-	if top || dir.Name == "" {
+	// A standard folder's path comes from its property, not its name.
+	if top || dir.Name == "" || standardFolders[dir.ID] {
 		return
 	}
 
