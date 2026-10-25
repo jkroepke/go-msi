@@ -56,8 +56,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          # Pin the manifest version so a cache miss installs the same cub as
-          # the cached one; keep it in step with the cache key above.
+          # Pin the manifest version and keep it in step with the cache key
+          # above. The same manifest has still installed cubs with different
+          # hashes (VAL-01 log).
           winget install --id Microsoft.WindowsSDK.10.0.28000 --version 10.0.28000.2526 --exact `
             --silent --disable-interactivity --accept-package-agreements --accept-source-agreements `
             --override '/features OptionId.MSIInstallTools /quiet /norestart'
@@ -67,11 +68,11 @@ jobs:
           # The runner ends a pwsh step with exit $LASTEXITCODE.
           $global:LASTEXITCODE = 0
           $kits = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10'
-          # Prefer the pinned SDK's copy; another SDK's MsiVal2 would give a
-          # different cub, which the hash check in the next step rejects.
+          # Prefer the pinned SDK's copy of the MsiVal2 package.
           $msi = Get-ChildItem -Path $kits -Recurse -Filter 'MsiVal2-x86_en-us.msi' |
             Sort-Object { $_.FullName -notlike '*28000*' } | Select-Object -First 1
           if (-not $msi) { throw "no MsiVal2-x86_en-us.msi under $kits" }
+          Get-FileHash $msi.FullName -Algorithm SHA256 | Format-List
           $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$($msi.FullName)`" /qn /norestart"
           if ($p.ExitCode -ne 0) { throw "MsiVal2 install exited with $($p.ExitCode)" }
           New-Item -ItemType Directory -Force C:\ice | Out-Null
@@ -82,9 +83,9 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path C:\ice\darice.cub)) { throw 'C:\ice\darice.cub is missing' }
-          # The cub of SDK manifest 10.0.28000.2526 (see the VAL-01 log).
-          $hash = (Get-FileHash C:\ice\darice.cub -Algorithm SHA256).Hash
-          if ($hash -ne '0EB158691FCEE38DDA2E342A94E39164B9AE7943A286C031449F6D257875EC1B') { throw "darice.cub has SHA-256 $hash" }
+          # The same pinned manifest has given cubs with different hashes, so
+          # the hash is logged for the record but not enforced (VAL-01 log).
+          Get-FileHash C:\ice\darice.cub -Algorithm SHA256 | Format-List
           'GO_MSI_ICE_CUB=C:\ice\darice.cub' >> $env:GITHUB_ENV
           'GO_MSI_ICE_REQUIRED=1' >> $env:GITHUB_ENV
 
