@@ -15,8 +15,11 @@ never consulted (both are LGPL); Wine may run as a black-box test runtime.
 ## 1. Package map
 
 Each package under `pkg/` is independently usable. Every package has no cgo
-and no platform-specific code, and is tested on its own. Arrows point from a
-package to what it imports.
+and no platform-specific code, and every package except the test helpers is
+tested on its own. Arrows point from a package to what it imports. The
+diagram leaves out the test helpers: `internal/testpe` (and its
+`internal/testpe/cmd` generator) builds PE files for tests, and
+`pkg/builder/nativetest` holds only the Windows install and ICE tests.
 
 ```mermaid
 flowchart LR
@@ -67,7 +70,8 @@ and never reads YAML.
 Packages under `pkg/` are the importable API: `config`, `builder` and the
 format packages `msidb`, `cfb`, `summary` and `cab`. Packages under `internal/` (`schema`, `pe`,
 `condition`, `sequence`, `codepage`, `artwork`, `testpe`) are implementation
-details and may change without notice.
+details and may change without notice. `pkg/builder/nativetest` sits under
+`pkg/` only because it tests `pkg/builder`; it has no exported API.
 
 ### 1.1 `cfb`
 
