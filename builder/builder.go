@@ -170,6 +170,7 @@ func (b *build) run(res *Result) error {
 		b.launchConditions,
 		b.customActions,
 		b.firewall,
+		b.permissions,
 		b.streams,
 		b.customTables,
 		b.ui,
@@ -253,14 +254,4 @@ func sortedKeys(m map[string]bool) []string {
 	slices.Sort(out)
 
 	return out
-}
-
-// ui is a placeholder until the wizard tables are implemented: a package
-// that asks for a wizard still builds, but installs silently.
-func (b *build) ui() error {
-	if b.cfg.UI.Wizard != "none" || len(b.cfg.UI.Dialogs) > 0 {
-		b.warnf("ui", "the %s wizard is not implemented yet; the package has no user interface and installs as with /qn", b.cfg.UI.Wizard)
-	}
-
-	return nil
 }

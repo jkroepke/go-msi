@@ -77,6 +77,12 @@ func (b *build) customTables() error { //nolint:cyclop // one pass over the form
 			continue
 		}
 
+		if custom.Name == "LockPermissions" && b.hasRows(lockTableName) {
+			b.errorf(tablePath+".name", "LockPermissions and MsiLockPermissionsEx cannot both exist (ICE104, error 1941); use permissions")
+
+			continue
+		}
+
 		tbl := &msidb.Table{Name: custom.Name}
 
 		for _, col := range custom.Columns {

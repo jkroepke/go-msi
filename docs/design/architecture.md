@@ -202,7 +202,10 @@ Pipeline, each step a file of its own:
    typed kinds, firewall `netsh` actions with rollback, `ARPINSTALLLOCATION`.
 8. **Sequences**: the standard actions each used table needs (§9.3), the
    chains, `sequence.Number`, the window checks.
-9. **UI**: the built-in wizards and generated dialogs (a later step, see §3).
+9. **UI**: the wizard pages as table data (`builder/ui*.go`): the flow of
+   pages, `ui.dialogs` inserted after their anchor, the maintenance menu, the
+   end, cancel, error, files-in-use and Restart Manager dialogs, the bitmaps
+   drawn by `artwork` from a palette, and the ICE-style self-checks.
 10. **Finish**: `_Validation` from `schema`, summary information, `msidb`
     marshal, package code, then **verify**: `msidb.Unmarshal` the bytes,
     compare every table, `cab.Read` the cabinet and compare every file's
@@ -258,8 +261,8 @@ Only the standard library `flag` package is used.
 | 5 | `pe`, `condition`, `sequence` | this PR |
 | 6 | `builder` steps 1–8 and 10, `cmd/go-msi`, example builds | this PR |
 | 7 | CI: Linux, macOS and Windows runners, native tests, Wine job, mise | this PR |
-| 8 | `ui`: built-in wizards (`minimal`, `featureTree`) and generated dialogs | next PR |
-| 9 | ICE-style checks that still need the UI tables; `_Validation` for UI | next PR |
+| 8 | `ui`: built-in wizards (`minimal`, `featureTree`), generated dialogs, `artwork` bitmaps | PR 2 |
+| 9 | ICE-style checks that still need the UI tables; `_Validation` for UI | PR 2 |
 | 10 | External cabinets, several media, uncompressed files | later |
 
 Out of scope for good: MSIX (nfpm), signing (relic, osslsigncode), patches,
