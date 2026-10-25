@@ -14,12 +14,14 @@ never consulted (both are LGPL); Wine may run as a black-box test runtime.
 
 ## 1. Package map
 
-Each package under `pkg/` is independently usable. Every package has no cgo
-and no platform-specific non-test code, and every package except the test helpers is
-tested on its own. Arrows point from a package to what it imports. The
+Each package under `pkg/` is independently usable. Every package has no cgo,
+no package the product uses has platform-specific code, and every package
+except the test helpers is tested on its own. Arrows point from a package to what it imports. The
 diagram leaves out the test helpers: `internal/testpe` (and its
-`internal/testpe/cmd` generator) builds PE files for tests, and
-`pkg/builder/nativetest` holds only the Windows msi.dll and msiexec install tests.
+`internal/testpe/cmd` generator) builds PE files for tests, `internal/ice`
+runs the ICE suite through msi.dll (Windows only, used by tests only), and
+`pkg/builder/nativetest` holds only the Windows msi.dll, msiexec install and
+ICE tests.
 
 ```mermaid
 flowchart LR
@@ -72,7 +74,7 @@ and never reads YAML.
 
 Packages under `pkg/` are the importable API: `config`, `builder` and the
 format packages `msidb`, `cfb`, `summary` and `cab`. Packages under `internal/` (`schema`, `pe`,
-`condition`, `sequence`, `codepage`, `artwork`, `testpe`) are implementation
+`condition`, `sequence`, `codepage`, `artwork`, `testpe`, `ice`) are implementation
 details and may change without notice. `pkg/builder/nativetest` sits under
 `pkg/` only because it tests `pkg/builder`; it has no exported API.
 
@@ -312,4 +314,5 @@ bundles.
   independent readers in `msidb` and `cab`. This catches the two silent
   failures of CAB-02 and CAB-04 without any Windows machine.
 - **Windows-only code is test-only** (`//go:build windows` in
-  `pkg/builder/nativetest` and `pkg/cab/native_windows_test.go`), so the product stays cross-OS.
+  `pkg/builder/nativetest`, `pkg/cab/native_windows_test.go` and the ICE
+  runner `internal/ice`, which only tests import), so the product stays cross-OS.
