@@ -493,3 +493,42 @@ components:
 		}
 	}
 }
+
+func TestWithoutUpgrade(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Parse([]byte(`schema: go-msi/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+upgrade: false
+components:
+  - files: [{ source: hello.exe }]
+`), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.BaseDir = dir
+
+	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if tbl := database.Table("Upgrade"); tbl != nil && len(tbl.Rows) > 0 {
+		t.Errorf("Upgrade rows: %v", tbl.Rows)
+	}
+
+	for _, row := range rows(t, database, "InstallExecuteSequence") {
+		if row[0] == "RemoveExistingProducts" || row[0] == "FindRelatedProducts" {
+			t.Errorf("%s is scheduled without an upgrade", row[0])
+		}
+	}
+}
