@@ -429,6 +429,13 @@ An MSI producer creates each table from the standard schema and checks every val
 
 Other groups (COM, ODBC, security, signatures, patching, merge modules) are in chapter 05 §5.6. Never write rows into `AdvtUISequence`, and never emit both `LockPermissions` and `MsiLockPermissionsEx` (error 1941).
 
+`MsiLockPermissionsEx(MsiLockPermissionsEx s72, LockObject s72, Table s32, SDDLText l0, Condition S255)` secures a `File`, `CreateFolder` (LockObject = `Directory_`), `Registry` or `ServiceInstall` row; it has no action of its own and is applied by the action that creates the object (observed on Windows Server 2025, SEC-01):
+
+- The SDDL replaces the object's DACL. Owner and group become SYSTEM unless the SDDL sets them; `PAI` reads back as `P`, the ACL stays protected, and `CreateFolder` ACEs with `OICI` are inherited by files created later. A service also gets the SACL `S:(AU;FA;…;;;WD)`. Rights come back in canonical form (`FRFX` as `0x1200a9`), so compare SDDL semantically.
+- Repair (`/fa`, `/fvomus`) puts the authored ACL back after it was changed. A false `Condition` leaves the object with its inherited ACL.
+- `SDDLText` is not formatted: `[Property]` and `[LogonUser]` give error 1943, as does invalid SDDL. Writers MUST check SDDL syntax and reject `[`. Two true rows for one object give 1942. All three fail in `InstallFiles` and roll back.
+- A deny ACE for `BU` also denies the installer, which runs as SYSTEM, a member of Users: uninstall exits 0 with `Info 1321 … insufficient privileges` and leaves the file behind. Writers SHOULD warn on deny ACEs for `BU`, `AU` or `WD`.
+
 ### 6.3 `_Validation` and the schema files
 
 Validators (ICE03, ICE06, ICE32) read `_Validation`, the installer does not, and a complete database SHOULD include it. Its key is `Table s32` + `Column s32`. The other columns are `Nullable s4`, `MinValue I4`, `MaxValue I4`, `KeyTable S255`, `KeyColumn I2`, `Category S32`, `Set S255` and `Description S255`.
@@ -1782,7 +1789,7 @@ Every pitfall below has cost someone an install on a customer's machine. Each ro
 | RUN-16 | P2 | I | TrackDiskSpace dialog with a Text control reading `[INSTALLDIR]` with and without a trailing space | Full UI; observe whether the text updates after a folder change (section 7.2, W18). | Not run |
 | RUN-17 | P1 | A/I | `RemoveExistingProducts` at 1401, 1501, 6551, 6601 and at 5802 | Install over an older version; expect error 2613 only for 5802 (section 9.2). | Contradicted ([results](MSISPEC-RESULTS.md)) |
 | RUN-18 | P1 | I | Deferred custom action returning 259, 1602, 1603 and an EXE action exiting 1 with and without Continue | Verbose logs and exit codes; confirm 259 ends the install successfully and skips later actions (section 8.11). | Confirmed ([results](MSISPEC-RESULTS.md)) |
-| SEC-01 | P1 | I | `MsiLockPermissionsEx` on a File, CreateFolder, Registry and ServiceInstall row; deny ACE, owner and group, false condition, `[Property]` in SDDLText, invalid SDDL, two true rows for one object, and a package that also has `LockPermissions` | Install elevated; read the resulting SDDL with `Get-Acl` or `sc sdshow`, repair after resetting the ACL, and record the errors 1941, 1942 and 1943 (section 5). | Not run |
+| SEC-01 | P1 | I | `MsiLockPermissionsEx` on a File, CreateFolder, Registry and ServiceInstall row; deny ACE, owner and group, false condition, `[Property]` in SDDLText, invalid SDDL, two true rows for one object, and a package that also has `LockPermissions` | Install elevated; read the resulting SDDL with `Get-Acl` or `sc sdshow`, repair after resetting the ACL, and record the errors 1941, 1942 and 1943 (section 5). | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | SIG-01 | P0 | S/A | Unsigned control signed with a disposable RSA test certificate | Sign using `signtool sign /fd SHA256`; decode the PKCS#7, compute the logical MSI digest, verify with signtool and `Get-AuthenticodeSignature`. | Not run |
 | SIG-02 | P1 | S/A | Signed packages with and without MsiDigitalSignatureEx | Capture exact signature streams, compute the pre-hash P and the content digest D; determine whether SignTool emits DSE. | Not run |
 | SIG-03 | P1 | S/A | Repack a signed MSI with different sectors, order and timestamps | Keep logical stream bytes fixed; modify one metadata dimension per case. Compare basic vs extended signature validity. | Not run |
