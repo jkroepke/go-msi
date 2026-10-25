@@ -4,8 +4,6 @@ version: 2
 before:
   hooks:
     - go mod tidy -diff
-    - rm -rf 3rdpartylicenses
-    - go run github.com/google/go-licenses/v2@v2.0.1 save ./cmd/go-msi --save_path=3rdpartylicenses
 
 builds:
   - id: "go-msi"
@@ -34,13 +32,60 @@ archives:
   - id: go-msi
     ids:
       - go-msi
-    formats: ['tar.xz']
+    formats: ['tar.gz']
     format_overrides:
       - goos: windows
         formats: ['zip']
     files:
       - LICENSE
-      - 3rdpartylicenses/**/*
+
+dockers_v2:
+  - ids:
+      - go-msi
+    images:
+      - ghcr.io/jkroepke/go-msi
+    tags:
+      - '{{ .Version }}'
+      - '{{ if and .Tag (not .Prerelease) (not .IsSnapshot) (ne .Branch "main") }}latest{{end}}'
+      - '{{ if eq .Branch "main" }}main{{end}}'
+    labels:
+      "org.opencontainers.image.authors": 'Jan-Otto Kröpke https://github.com/jkroepke/'
+      "org.opencontainers.image.created": '{{.Date}}'
+      "org.opencontainers.image.description": 'Builds Windows Installer (MSI) packages from a YAML file, on Linux, macOS and Windows.'
+      "org.opencontainers.image.documentation": 'https://github.com/jkroepke/go-msi/wiki'
+      "org.opencontainers.image.licenses": 'Apache-2.0'
+      "org.opencontainers.image.revision": '{{.FullCommit}}'
+      "org.opencontainers.image.source": 'https://github.com/jkroepke/go-msi'
+      "org.opencontainers.image.title": '{{.ProjectName}}'
+      "org.opencontainers.image.vendor": 'Jan-Otto Kröpke'
+      "org.opencontainers.image.version": '{{.Version}}'
+    annotations:
+      "org.opencontainers.image.authors": 'Jan-Otto Kröpke https://github.com/jkroepke/'
+      "org.opencontainers.image.created": '{{.Date}}'
+      "org.opencontainers.image.description": 'Builds Windows Installer (MSI) packages from a YAML file, on Linux, macOS and Windows.'
+      "org.opencontainers.image.documentation": 'https://github.com/jkroepke/go-msi/wiki'
+      "org.opencontainers.image.licenses": 'Apache-2.0'
+      "org.opencontainers.image.revision": '{{.FullCommit}}'
+      "org.opencontainers.image.source": 'https://github.com/jkroepke/go-msi'
+      "org.opencontainers.image.title": '{{.ProjectName}}'
+      "org.opencontainers.image.vendor": 'Jan-Otto Kröpke'
+      "org.opencontainers.image.version": '{{.Version}}'
+    platforms:
+      - linux/amd64
+      - linux/arm64
+
+docker_signs:
+  - artifacts: ''
+    output: true
+    cmd: cosign
+    env:
+      - COSIGN_EXPERIMENTAL=1
+    args:
+      - sign
+      - '--oidc-issuer={{if index .Env "CI"}}https://token.actions.githubusercontent.com{{else}}https://oauth2.sigstore.dev/auth{{end}}'
+      - '--yes'
+      - '--use-signing-config=false'
+      - '${artifact}@${digest}'
 
 sboms:
   - artifacts: archive
