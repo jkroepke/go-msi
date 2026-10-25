@@ -494,7 +494,7 @@ The internal UI is pure data: UI-sequence rows open dialogs, dialogs hold contro
 5. The modeless progress dialog sits just before `ExecuteAction`. The installer publishes `ActionText`, `ActionData`, `SetProgress`, `TimeRemaining` and `ScriptInProgress`; `EventMapping` routes them.
 6. `ControlCondition` rows run when the dialog opens and when a property changes. A false row does nothing, so a toggle needs two complementary rows.
 
-- Wizard pages MUST be modal. `Control_Next` MUST form one closed ring through `Control_First`; static controls may stay out. A broken ring fails at run time with error 2834, "The next pointers on the dialog … do not form a single loop" (reported).
+- Wizard pages MUST be modal. `Control_Next` MUST form one closed ring through `Control_First`; static controls may stay out. A broken ring fails at runtime with error 2834, "The next pointers on the dialog … do not form a single loop" (reported).
 - Put every non-static control in the ring, including PathEdit and SelectionTree; leaving one out makes it a dead end for the keyboard. Static types are Billboard, Bitmap, GroupBox, Icon, Line, ProgressBar, Text and VolumeCostList. `Control_First` is the first control that takes focus, not the first control drawn.
 - Every `UIText` key a control or the installer uses MUST exist; otherwise the dialog shows "… is missing from the UIText Table" (reported).
 - Active controls (Edit, PathEdit, CheckBox, RadioButtonGroup, ListBox, SelectionTree, …) need a `Property` (error 2819). Bind public properties; make secure the ones the server needs.
@@ -582,7 +582,7 @@ Static package validation and Windows runtime tests verify different properties.
 - Platform `x64` or `Intel64` needs Page Count ≥ 200, `Arm64` ≥ 500. Component bit 256 does not move files: on 64-bit Windows `ProgramFilesFolder` is `C:\Program Files (x86)\`, so use `ProgramFiles64Folder` explicitly (ICE80).
 - `Arm64` packages need bit 256 like `x64`: without it their files and registry values land in the 32-bit views (reported). An `x64` package also installs on Arm64 Windows, which runs x64 code under emulation (reported).
 - `ProgramFiles6432Folder` is a WiX v4 alias, not a Windows Installer property. A WiX-aware producer resolves such aliases to `ProgramFilesFolder` or `ProgramFiles64Folder` from the platform and never emits them as Directory keys; otherwise the folder is created literally under `TARGETDIR`. WiX resolves the three aliases `ProgramFiles6432Folder`, `CommonFiles6432Folder` and `System6432Folder` to the 32-bit name on x86 and the 64-bit name otherwise (reported).
-- A dual-scope package decides at run time from `ALLUSERS` and `Privileged` (reported): type-51 actions before CostFinalize compute a per-user folder (`[LocalAppDataFolder]Apps\<name>`) and a per-machine one (`[ProgramFilesFolder]<name>` or the 64-bit folder), and the install folder takes the per-user value when `ALLUSERS=""` or `ALLUSERS=2 AND NOT Privileged`, and the per-machine value when `ALLUSERS=1` or `ALLUSERS=2 AND Privileged`. A scope page then sets `ALLUSERS` to `{}` or `1` and the folder property through control events.
+- A dual-scope package decides at runtime from `ALLUSERS` and `Privileged` (reported): type-51 actions before CostFinalize compute a per-user folder (`[LocalAppDataFolder]Apps\<name>`) and a per-machine one (`[ProgramFilesFolder]<name>` or the 64-bit folder), and the install folder takes the per-user value when `ALLUSERS=""` or `ALLUSERS=2 AND NOT Privileged`, and the per-machine value when `ALLUSERS=1` or `ALLUSERS=2 AND Privileged`. A scope page then sets `ALLUSERS` to `{}` or `1` and the folder property through control events.
 - Per-user rollback is incomplete (reported, WiX issue 8574, open): when a deferred action fails after `PublishProduct`, the rollback of `PublishProduct` cannot delete the `HKU\<SID>\Software\Microsoft\Installer\Products\…\SourceList` values (errors 1402, 1403), so the product stays in Apps & features while nothing is installed, and uninstall, repair and upgrade all fail until the registry is cleaned by hand. Schedule deferred actions that can fail before `RegisterProduct`, right after `InstallInitialize` or `InstallFiles`.
 
 What the engine sets and does at package open (reported):
@@ -876,7 +876,7 @@ Numbers are Microsoft's suggested ones; where the reference toolchain differs, t
 - RemoveExistingProducts (REP) follows FindRelatedProducts in one of four windows (ICE63). Window 1: between InstallValidate and InstallInitialize (WiX 1401). Window 2: right after InstallInitialize, before any script action (WiX 1501).
 - Window 3: right after InstallExecute(Again) (6550). Window 4: after InstallFinalize (WiX 6601, tutorial 6700).
 - Window 1 removes the old product first and copies reused files again. If removal fails, window 3 rolls back both products and window 4 only the removal.
-- REP anywhere else fails at run time with error 2613, "RemoveExistingProducts action sequenced incorrectly". A relative-scheduling algorithm that appends after-chains wherever a graph walk ends has put REP between InstallServices and StartServices (reported). Section 11.7 keeps every chain next to its anchor; the builder MUST also check the REP window after numbering.
+- REP anywhere else fails at runtime with error 2613, "RemoveExistingProducts action sequenced incorrectly". A relative-scheduling algorithm that appends after-chains wherever a graph walk ends has put REP between InstallServices and StartServices (reported). Section 11.7 keeps every chain next to its anchor; the builder MUST also check the REP window after numbering.
 
 ### 9.3 Table-driven actions
 
@@ -1135,7 +1135,7 @@ Extra files in the component only warn. Carry-over: a reference migration proces
 Observed v3: by File key case-insensitively within a disk (`Apple`, `banana`, `Cherry`, `date`). Observed v5: by directory path case-insensitively, then filename ordinally, then key (`README.txt, Setup.dll, Zeta.dll, app.exe`; every file of a WiX 5-built package).
 
 1. Group files by `DiskId`.
-2. Sort by the component's canonical directory path (section 11.4: standard keys as they are, other names lower-cased, joined with `\`), ordinal; then by file name, ordinal; then by key, ordinal (reported).
+2. Sort by the component's canonical directory path (section 11.4: standard keys as they are, other names lower-cased, joined with `\`), ordinal; then by filename, ordinal; then by key, ordinal (reported).
 3. Number from 1 across disks in ascending `DiskId`; `LastSequence` = the disk's highest number, 0 if empty (reported). A merge module has no `Media` rows and numbers its files from 1 into `#MergeModule.CABinet` (reported).
 
 - Explicit media: `Cabinet` = name, or `#` + name when embedded; NULL without compressed files.
@@ -1401,7 +1401,7 @@ All parsers should bound allocations and offsets, detect CFB chain cycles, valid
 
 ### Independence
 
-This document prescribes no language, build system, CLI, encoder, XML dialect or custom-action policy. Implementation recipes and example project architectures belong outside the shared format specification.
+This document prescribes no language, build tool, CLI, encoder, XML dialect or custom-action policy. Implementation recipes and example project architectures belong outside the shared format specification.
 
 Statements marked **(reported)** describe behaviour that third parties document or observe; this document references no third-party source code. An implementation that wants to stay independent of other toolchains' licences MUST NOT copy, translate or paraphrase code from WiX, msitools, Wine, libgsf or libgcab; the algorithms in sections 11.3, 11.4 and 11.7 are behaviour descriptions to be implemented from this text. Comparing packages black-box and running independent readers over them is fine; copying another toolchain's dialogs, texts, bitmaps, binaries or custom-action DLLs is not.
 
@@ -1526,9 +1526,9 @@ Windows Installer does most of what a package needs from its own tables. This se
 
 | Need | Native mechanism | Caveats (reported) |
 |---|---|---|
-| Files, folders, empty folders | `File`, `CreateFolder`, `RemoveFile` (with `*`/`?` wildcards for files of one folder), `RemoveFolder`, `DuplicateFile`, `MoveFile` | `RemoveFile` never recurses; folders filled at run time need a code action (17.2) |
+| Files, folders, empty folders | `File`, `CreateFolder`, `RemoveFile` (with `*`/`?` wildcards for files of one folder), `RemoveFolder`, `DuplicateFile`, `MoveFile` | `RemoveFile` never recurses; folders filled at runtime need a code action (17.2) |
 | Registry | `Registry` (`#`, `#%`, `#x`, `[~]` encodings of section 10.2), `RemoveRegistry` | Key deletion is `-` or `*` rows; a raw `REG_MULTI_SZ` search breaks public properties (8.7) |
-| INI files, `.url` files | `IniFile`, `RemoveIniFile` | An Internet shortcut is an INI file with `[InternetShortcut]` / `URL=`; WiX creates them through a DLL, `IniFile` rows do the same |
+| INI files, `.url` files | `IniFile`, `RemoveIniFile` | An internet shortcut is an INI file with `[InternetShortcut]` / `URL=`; WiX creates them through a DLL, `IniFile` rows do the same |
 | Environment | `Environment` | WiX does not rely on the engine's own `WM_SETTINGCHANGE` broadcast and sends another from a custom action "best effort" (reported); experiment W16 |
 | Shortcuts | `Shortcut`, `MsiShortcutProperty`, `Icon` | Advertised shortcuts need a file key path (ICE19) |
 | Services | `ServiceInstall`, `ServiceControl`, `MsiServiceConfig` (delayed start, SID type, pre-shutdown, failure flag) | `MsiServiceConfigFailureActions` restart and reboot actions do not work (10.3): `sc.exe failure` instead (17.3) |
@@ -1548,8 +1548,8 @@ WiX ships custom-action DLLs for these (reported). The right column is the DLL-f
 | Need | WiX custom action | Why the engine cannot | Without a DLL |
 |---|---|---|---|
 | Edit XML or other text files in place | `XmlFile`, `XmlConfig`, `FormatFiles` | No table edits file contents | Ship complete files, or a type-34 `cmd.exe`/PowerShell action without rollback |
-| Remove a folder tree created at run time | `RemoveFoldersEx` (immediate; adds temporary `RemoveFile` rows for each subfolder, skipping junctions) | `RemoveFile` and `RemoveFolder` take one folder each | `RemoveFile` rows for every folder known at build time |
-| Remove a registry tree created at run time | `RemoveRegistryKeysEx` | `RemoveRegistry` and `-` rows need known keys | — |
+| Remove a folder tree created at runtime | `RemoveFoldersEx` (immediate; adds temporary `RemoveFile` rows for each subfolder, skipping junctions) | `RemoveFile` and `RemoveFolder` take one folder each | `RemoveFile` rows for every folder known at build time |
+| Remove a registry tree created at runtime | `RemoveRegistryKeysEx` | `RemoveRegistry` and `-` rows need known keys | — |
 | Users, groups, group membership | `CreateUser`, `CreateGroup`, … with rollback and commit pairs | No table | — |
 | File shares, performance counters, event manifests | `CreateSmb`, `RegisterPerfCounterData`, `wevtutil` through `QuietExec` | No table | Event-log sources, which only need registry values, are native (10.3) |
 | Firewall rules, HTTP URL reservations, certificates | `FirewallExceptions`, `HttpCerts`, `WixHttpCa` | No table | `netsh advfirewall firewall` (17.3); `netsh http` similarly |
@@ -1665,7 +1665,7 @@ Every pitfall below has cost someone an install on a customer's machine. Each ro
 | Version check on a file under `SystemFolder` | Wrong result on Windows 10+ | **static:** warn on `Signature.MinVersion` for files in system folders | 8.6 |
 | Empty `Feature.Level`, feature depth over 16, more than 65536 components | Crash or refusal at build, or engine limits | **static:** defaults applied; counts checked | 8.5 |
 | Component without `ComponentId` carrying files that must go at uninstall | Files and `RemoveFile` rows stay behind after `REMOVE=ALL` (reported) | **static:** every component with files or registry values has a GUID unless it is meant to be permanent | 8.4 |
-| `Media` rows whose `LastSequence` does not grow with `DiskId`, or a `Cabinet` name that differs from the file name | File taken from the wrong cabinet, or 1603 (reported) | **static:** `LastSequence` strictly increasing by `DiskId`; external cabinet files present under the exact `Cabinet` name | 5 |
+| `Media` rows whose `LastSequence` does not grow with `DiskId`, or a `Cabinet` name that differs from the filename | File taken from the wrong cabinet, or 1603 (reported) | **static:** `LastSequence` strictly increasing by `DiskId`; external cabinet files present under the exact `Cabinet` name | 5 |
 | Environment `-` row whose value differs from what is on the machine at uninstall | Variable left behind (reported) | **static:** `-` rows carry the same value as their `=`/`+` counterpart, or no value | 8.13 |
 | Command-line value with an unbalanced quote in a documented install command | 1639 `ERROR_INVALID_COMMAND_LINE` (reported) | **static:** quote with doubled inner quotes, `P="""a"" b"`; test every documented command line | 8.7 |
 
@@ -1691,7 +1691,7 @@ Every pitfall below has cost someone an install on a customer's machine. Each ro
 |---|---|---|---|
 | `Control_Next` ring broken or missing a non-static control | Error 2834, "The next pointers on the dialog … do not form a single loop" | **ICE23**; **static:** walk the ring from `Control_First` | 7.2 |
 | `UIText` key missing | "… is missing from the UIText Table" on the dialog | **static:** every key a control or the engine uses exists | 7.2 |
-| Dialog reached only by `SpawnDialog`/`NewDialog` not in the package; sequence names a missing dialog | Error 2803 / 2810 at run time | **ICE27**, **ICE44** | 7.5 |
+| Dialog reached only by `SpawnDialog`/`NewDialog` not in the package; sequence names a missing dialog | Error 2803 / 2810 at runtime | **ICE27**, **ICE44** | 7.5 |
 | Package with a `Dialog` table but no error, FilesInUse or end dialogs; no `ListBox` table | ICE20 errors; silent failures | **ICE20**; **static:** the minimal set of section 7.4 | 7.4, 7.5 |
 | Package with no components showing a "please wait for costing" page | The page waits forever | **static:** warn on zero components with a UI | 7.2 |
 | Blank `ControlEvent.Condition`; `[Prop]` text on a TrackDiskSpace dialog without trailing space | Event never fires, or text not updated | **static:** write `1`; append the space | 7.2 |
@@ -1802,7 +1802,7 @@ These cases supplement the ones above. They are test hypotheses motivated by the
 | RUST-02 | P1 | S/A | One string referenced 65535, 65536, 70000 times | Generate a unique-key table referencing the same value. Inspect the stored refcount and native query completeness; a writer must reject overflow rather than clamp silently. | Contradicted ([results](MSISPEC-RESULTS.md)) |
 | RUST-03 | P0 | S/A | String IDs 65534–65537 in catalog and user tables | Generate enough distinct strings to cross the reference-width threshold. Verify the long-reference flag and 3-byte references in all table streams; detect 16-bit ID truncation. | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | RUST-04 | P0 | S/A | CP1252 `0xE9` and `0x80`, valid UTF-8 equivalents | Read and write matching independent fixtures; compare Unicode values from native queries, byte-exact decoded strings and no lossy replacement. | Confirmed ([results](MSISPEC-RESULTS.md)) |
-| RUST-05 | P0 | S/A/I | Database code page 1252 or 65001; non-ASCII Property, file name, table text | Serialize and reopen through the candidate tool; inspect the code-page header and raw string bytes, native query and installed path. Reject invalid code-page and encoding combinations. | Confirmed ([results](MSISPEC-RESULTS.md)) |
+| RUST-05 | P0 | S/A/I | Database code page 1252 or 65001; non-ASCII Property, filename, table text | Serialize and reopen through the candidate tool; inspect the code-page header and raw string bytes, native query and installed path. Reject invalid code-page and encoding combinations. | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | RUST-06 | P0 | S/A | Native `_Columns` with at least four different ordinal/name/type rows | Decode the raw column-major catalog, reconstruct the schema with the candidate reader, then write and reopen. Compare every schema row against a native Windows export. | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | RUST-07 | P0 | S/A | Valid catalog plus one malformed catalog row | Test parser errors, incomplete schema detection and whether a round trip silently drops bad rows. Accept only an explicit loss or error policy. | Not run |
 | RUST-08 | P0 | S/A/I | MSI with an empty table, a Binary DLL, an Icon stream and an embedded CAB | Read and write the unmodified MSI. Compare table catalog membership, every non-summary stream SHA-256, installed file and binary reference resolution. No silent data loss. | Not run |
