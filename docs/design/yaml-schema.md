@@ -281,7 +281,7 @@ features:
 - Feature IDs are at most 38 characters; depth is at most 16.
 - `level: 0` disables a feature; `ADDLOCAL=ALL` cannot turn it on.
 - Every component is in at least one feature (ICE21).
-- `allowAdvertise` defaults to `false`; advertised installs are out of scope.
+- `allowAdvertise` defaults to `false`; advertised installs are not in schema v1 (section 6).
 
 ### 4.6 `components`
 

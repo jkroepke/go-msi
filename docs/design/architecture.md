@@ -15,11 +15,11 @@ never consulted (both are LGPL); Wine may run as a black-box test runtime.
 ## 1. Package map
 
 Each package under `pkg/` is independently usable. Every package has no cgo
-and no platform-specific code, and every package except the test helpers is
+and no platform-specific non-test code, and every package except the test helpers is
 tested on its own. Arrows point from a package to what it imports. The
 diagram leaves out the test helpers: `internal/testpe` (and its
 `internal/testpe/cmd` generator) builds PE files for tests, and
-`pkg/builder/nativetest` holds only the Windows install and ICE tests.
+`pkg/builder/nativetest` holds only the Windows msi.dll and msiexec install tests.
 
 ```mermaid
 flowchart LR
@@ -62,6 +62,9 @@ flowchart LR
 | `internal/condition` | Parser for the condition grammar, used to reject conditions the engine would ignore | §8.8 | stdlib |
 | `internal/sequence` | Numbering of sequence tables: fixed standard actions plus before/after chains, overlap and window checks | §9.2, §11.7 | stdlib |
 | `pkg/builder` | The config-to-tables layer: identities, directories and short names, components and GUIDs, files, media and cabinets, registry, services, environment, upgrades, custom actions, helpers, `_Validation`, summary; then the package bytes and a verification pass | §6–§11 | everything above, plus `config`, `internal/artwork` and `go.yaml.in/yaml/v3` |
+| `pkg/config` | YAML decoding, defaults and validation into a `*config.Config` | | `internal/condition`, `go.yaml.in/yaml/v3` |
+| `internal/codepage` | ANSI code page encoders for the string pool and summary | §3, §4 | `golang.org/x/text` |
+| `internal/artwork` | Draws the wizard bitmaps (our own artwork, generated in code) | | stdlib |
 | `cmd/go-msi` | CLI: `build`, `validate`, `inspect` | | `builder`, `config`, `msidb` |
 
 `pkg/config` (PR #2) stays as it is: the builder consumes a validated `*config.Config`
@@ -189,8 +192,14 @@ after InstallFinalize, RUN-17), and ICE27 ordering.
 ### 1.9 `builder`
 
 ```go
-type Options struct { Vars map[string]string; SourceDateEpoch time.Time; Output string }
-type Result struct { Package []byte; Diagnostics config.Diagnostics; Tables []*msidb.Table }
+type Options struct { BuildTime time.Time; ToolName string; CFBVersion int; SkipVerify bool }
+type Result struct {
+    Package     []byte
+    Database    *msidb.Database
+    Diagnostics config.Diagnostics
+    ProductCode, PackageCode string
+    Files       []*fileInfo // payload files in File.Sequence order
+}
 func Build(cfg *config.Config, o Options) (*Result, error)
 ```
 
@@ -301,5 +310,5 @@ transforms, merge modules, bundles.
 - **The builder verifies its own output** by re-reading it with the
   independent readers in `msidb` and `cab`. This catches the two silent
   failures of CAB-02 and CAB-04 without any Windows machine.
-- **Windows-only code is test-only** (`//go:build windows` under
-  `pkg/builder/nativetest`), so the product stays cross-OS.
+- **Windows-only code is test-only** (`//go:build windows` in
+  `pkg/builder/nativetest` and `pkg/cab/native_windows_test.go`), so the product stays cross-OS.
