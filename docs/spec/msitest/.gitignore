@@ -1,0 +1,5 @@
+*.exe
+results/**/*
+!results/**/
+!results/**/log.md
+
