@@ -218,8 +218,9 @@ Silent-failure cases a producer has to guard against itself:
 ## Use-case gap cases (RUN-24 to RUN-27)
 
 Run on 2026-10-25 on Windows Server 2025 Standard Evaluation 10.0.26100 by
-[`msitest`](msitest/cases_gaps.go). They check the behaviour the YAML options
-`preserve`, `installDir.remember`, `purge` and per-step `recovery` rely on.
+[`msitest`](msitest/cases_gaps.go). They check the engine behaviour that per-step
+`recovery` relies on, and that the planned options for preserved
+configuration, a remembered install folder and data removal will rely on.
 The tables summarise the cases' `RESULT` lines; the
 per-variant `log.md` files also hold the `msiexec` log lines quoted below.
 
@@ -268,5 +269,9 @@ table 'Signature'` and 1603, with v1 left installed; the rerun with an empty
 restart/60000/restart/300000/restart/300000` reads back as `RESET_PERIOD 3600`
 and three restarts after 60 000, 300 000 and 300 000 ms; `reset= 86400
 actions= restart/1000/none/0` as one restart after 1000 ms; `reset= INFINITE`
-as `INFINITE`. Install and uninstall returned 0 in every variant.
+as `INFINITE`; `reset= 0 actions= restart/1000/restart/2000` as `RESET_PERIOD 0`
+and two restarts; `reset= 2147483647 actions= restart/2147483647` as both
+values unchanged. The action ignores the exit code of `sc.exe`, so these
+read-backs, not the install exit codes, are the evidence. Only the read-back
+is tested: what a reset of 0 does when the service fails is not.
 
