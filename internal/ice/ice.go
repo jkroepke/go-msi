@@ -1,7 +1,7 @@
 // Package ice runs Internal Consistency Evaluators (ICEs) against a package
 // with msi.dll, without MsiVal2 or Orca. It merges a validation file such as
-// Darice.cub into a copy of the package, opens that copy as an install session
-// that ignores the machine state, runs every action listed in the merged
+// Darice.cub into a copy of the package, opens that copy as an install session,
+// runs every action listed in the merged
 // _ICESequence table and collects the messages the actions post.
 //
 // It only exists for tests: go-msi never runs the packages it builds. Run

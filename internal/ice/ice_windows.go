@@ -39,7 +39,7 @@ const (
 	msidbOpenReadOnly         = uintptr(0)
 	msidbOpenTransact         = uintptr(1)
 	installUILevelNone        = uintptr(2)
-	ignoreMachineState        = uintptr(1) // MSIOPENPACKAGEFLAGS_IGNOREMACHINESTATE
+	openPackageFlags          = uintptr(0) // not IGNOREMACHINESTATE: its restricted engine refuses custom actions
 	conditionFalse            = uintptr(0)
 	conditionError            = uintptr(3)
 	installMessageTypeMask    = uintptr(0xFF000000)
@@ -127,8 +127,7 @@ func Run(pkg, cub string) ([]Finding, error) {
 
 	defer closeHandle(cubDB)
 
-	findings, err := merge(database, cubDB)
-	if err != nil {
+	if err := merge(database, cubDB); err != nil {
 		return nil, err
 	}
 
@@ -144,6 +143,8 @@ func Run(pkg, cub string) ([]Finding, error) {
 
 	defer release()
 
+	var findings []Finding
+
 	for _, row := range sequence {
 		findings = append(findings, runAction(pkgHandle, row[0], row[1])...)
 	}
@@ -151,36 +152,28 @@ func Run(pkg, cub string) ([]Finding, error) {
 	return findings, nil
 }
 
-// merge merges the validation file into the package. Row conflicts are listed
-// per table in _MergeErrors; the merge itself still goes through.
-func merge(database, cubDB uint32) ([]Finding, error) {
+// merge merges the validation file into the package. Row conflicts are
+// expected and harmless: Darice.cub carries a placeholder ProductCode and its
+// own _Validation rows, and the package's rows win, as with MsiVal2. The
+// conflict table is dropped again so the ICEs do not validate it.
+func merge(database, cubDB uint32) error {
 	ret, _, _ := pMsiDatabaseMergeW.Call(uintptr(database), uintptr(cubDB), uintptr(unsafe.Pointer(wstr("_MergeErrors"))))
 
 	switch ret {
 	case 0:
-		return nil, nil
+		return nil
 	case errorFunctionFailed:
-		rows, err := query(database, "SELECT `Table`, `NumRowMergeConflicts` FROM `_MergeErrors`")
-		if err != nil {
-			return nil, err
-		}
-
-		findings := make([]Finding, 0, len(rows))
-		for _, row := range rows {
-			findings = append(findings, Finding{ICE: "merge", Type: Failure, Description: row[1] + " row conflicts merging the validation file", Table: row[0]})
-		}
-
-		return findings, nil
+		return execute(database, "DROP TABLE `_MergeErrors`")
 	default:
-		return nil, fmt.Errorf("ice: MsiDatabaseMergeW: error %d", ret)
+		return fmt.Errorf("ice: MsiDatabaseMergeW: error %d", ret)
 	}
 }
 
 // messages collects what the handler receives during one session.
 var messages []message //nolint:gochecknoglobals // guarded by session; the handler appends through sink
 
-// openSession opens the merged database as a package that ignores the machine
-// state, with the external UI handler installed. release undoes all of it.
+// openSession opens the merged database as a package with the external UI
+// handler installed. release undoes all of it.
 func openSession(database uint32) (uint32, func(), error) {
 	callbackSet.Do(func() { uiCallback = syscall.NewCallback(handler) })
 
@@ -206,7 +199,7 @@ func openSession(database uint32) (uint32, func(), error) {
 
 	name := wstr("#" + strconv.FormatUint(uint64(database), 10))
 
-	ret, _, _ := pMsiOpenPackageExW.Call(uintptr(unsafe.Pointer(name)), ignoreMachineState, uintptr(unsafe.Pointer(&pkgHandle)))
+	ret, _, _ := pMsiOpenPackageExW.Call(uintptr(unsafe.Pointer(name)), openPackageFlags, uintptr(unsafe.Pointer(&pkgHandle)))
 	if ret != 0 {
 		restore()
 
@@ -264,6 +257,24 @@ func openDatabase(path string, mode uintptr) (uint32, error) {
 	}
 
 	return handle, nil
+}
+
+// execute runs a statement that returns no rows.
+func execute(database uint32, sql string) error {
+	var view uint32
+
+	ret, _, _ := pMsiDatabaseOpenViewW.Call(uintptr(database), uintptr(unsafe.Pointer(wstr(sql))), uintptr(unsafe.Pointer(&view)))
+	if ret != 0 {
+		return fmt.Errorf("ice: %s: error %d", sql, ret)
+	}
+
+	defer closeHandle(view)
+
+	if ret, _, _ := pMsiViewExecute.Call(uintptr(view), 0); ret != 0 {
+		return fmt.Errorf("ice: %s: MsiViewExecute error %d", sql, ret)
+	}
+
+	return nil
 }
 
 // query returns the first two columns of every row.
