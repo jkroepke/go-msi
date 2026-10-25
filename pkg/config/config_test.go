@@ -202,3 +202,26 @@ func TestRecoveryActionsMarshal(t *testing.T) {
 		t.Errorf("marshalled actions %q, want %q", got, want)
 	}
 }
+
+// FuzzVariable findings: a value that spells null emptied a string field,
+// and a value that is not valid UTF-8 reached the config.
+func TestVariableValues(t *testing.T) {
+	t.Parallel()
+
+	doc := "schema: go-msi/v1\nproduct:\n  name: ${V}\n  manufacturer: '${V}'\npackage: {platform: x64}\n"
+
+	for _, value := range []string{"null", "Null", "NULL", "~"} {
+		cfg, err := config.Parse([]byte(doc), config.Options{Vars: map[string]string{"V": value}})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if cfg.Product.Name != value || cfg.Product.Manufacturer != value {
+			t.Errorf("${V} = %q gives name %q and manufacturer %q", value, cfg.Product.Name, cfg.Product.Manufacturer)
+		}
+	}
+
+	if _, err := config.Parse([]byte(doc), config.Options{Vars: map[string]string{"V": "\xff"}}); err == nil {
+		t.Error("a variable that is not valid UTF-8 was accepted")
+	}
+}

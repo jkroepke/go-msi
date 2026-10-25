@@ -1,0 +1,72 @@
+//go:build windows
+
+package config_test
+
+import (
+	"strings"
+	"syscall"
+	"testing"
+	"unsafe"
+
+	"github.com/jkroepke/go-msi/pkg/config"
+)
+
+var (
+	advapi32                       = syscall.NewLazyDLL("advapi32.dll")                                       //nolint:gochecknoglobals // one DLL table for the file
+	pConvertStringSecurityDescToSD = advapi32.NewProc("ConvertStringSecurityDescriptorToSecurityDescriptorW") //nolint:gochecknoglobals // one DLL table for the file
+	kernel32                       = syscall.NewLazyDLL("kernel32.dll")                                       //nolint:gochecknoglobals // one DLL table for the file
+	pLocalFree                     = kernel32.NewProc("LocalFree")                                            //nolint:gochecknoglobals // one DLL table for the file
+)
+
+const sddlRevision1 = 1
+
+// nativeSDDL reports whether Windows parses the SDDL string.
+func nativeSDDL(t *testing.T, sddl string) bool {
+	t.Helper()
+
+	ptr, err := syscall.UTF16PtrFromString(sddl)
+	if err != nil {
+		return false
+	}
+
+	var desc uintptr
+
+	ret, _, _ := pConvertStringSecurityDescToSD.Call(uintptr(unsafe.Pointer(ptr)), sddlRevision1, uintptr(unsafe.Pointer(&desc)), 0)
+	if ret == 0 {
+		return false
+	}
+
+	_, _, _ = pLocalFree.Call(desc)
+
+	return true
+}
+
+// FuzzCheckSDDLNative compares CheckSDDL with the Windows SDDL parser: a
+// string CheckSDDL accepts must parse on Windows too, or the engine fails
+// with 1943 at install time. <account> forms are resolved by the engine and
+// left out.
+func FuzzCheckSDDLNative(f *testing.F) {
+	for _, seed := range []string{
+		"D:PAI(A;;FA;;;BA)(A;;FRFX;;;BU)", "O:BAG:BAD:(A;OICI;FA;;;SY)(A;OICI;0x1200a9;;;BU)",
+		"D:(A;;FA;;;S-1-5-21-1-2-3-500)", "D:(A;;KA;;;BA)S:(AU;SAFA;FA;;;WD)", "D:(A;;FA;;;BA)(D;;FW;;;BU)",
+		"D:(A;;FA;;;S-1-5)", "D:(A;;0xFFFFFFFFF;;;BA)", "D:(A;;FA;;;S-1-99999999999-1)", "D:(A;;FA;;;ba)",
+		"D:(A;;FA;;;BA)D:(A;;FA;;;BA)", "D:", "S:", "O:BA", "D:(OA;;FA;;;BA)", "D:(A;;FA;x;;BA)",
+		"D:(A;;FA;;;BA;x)", "D:(A;CI CI;FA;;;BA)", "D:P(A;;FA;;;BA)", "D:NO_ACCESS_CONTROL", "D:(A;;FAFA;;;BA)",
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, sddl string) {
+		if strings.ContainsAny(sddl, "<>") {
+			return
+		}
+
+		if _, err := config.CheckSDDL(sddl); err != nil {
+			return
+		}
+
+		if !nativeSDDL(t, sddl) {
+			t.Fatalf("CheckSDDL accepts %q, but Windows does not parse it", sddl)
+		}
+	})
+}
