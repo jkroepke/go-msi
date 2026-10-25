@@ -22,29 +22,99 @@ type poolEntry struct {
 // Unmarshal reads a package. It accepts what other writers emit (free pool
 // slots, unsorted pool, empty table streams) and records soft problems such
 // as refcount mismatches and unsorted rows in Database.Problems.
-func Unmarshal(data []byte) (*Database, error) { //nolint:maintidx,cyclop,gocyclo,gocognit // one pass over the format; splitting would scatter it
+func Unmarshal(data []byte) (*Database, error) {
 	file, err := cfb.Read(data)
 	if err != nil {
 		return nil, fmt.Errorf("msidb: %w", err)
 	}
 
+	return decodeFile(file, true)
+}
+
+// Decode reads the database of an opened compound file. It loads the table
+// streams, the summary and the binary streams that table cells reference,
+// and lists every other stream (such as a cabinet) in Database.Sources by
+// name with its size and a nil Open, leaving the bytes in the file for
+// cfb.File.Reader. Unmarshal loads those too.
+func Decode(file *cfb.File) (*Database, error) {
+	return decodeFile(file, false)
+}
+
+// streamData returns a stream's bytes, loading them on demand.
+func streamData(file *cfb.File, name string) ([]byte, error) {
+	data, ok := file.Stream(name)
+	if !ok {
+		return nil, fmt.Errorf("msidb: cannot read stream %q", name)
+	}
+
+	return data, nil
+}
+
+func decodeFile(file *cfb.File, loadAll bool) (*Database, error) { //nolint:maintidx,cyclop,gocyclo,gocognit // one pass over the format
 	if file.CLSID != cfb.CLSIDMSI {
 		return nil, fmt.Errorf("msidb: root CLSID %x is not the .msi CLSID", file.CLSID)
 	}
 
 	tableStreams := make(map[string][]byte)
 	otherStreams := make(map[string][]byte)
+	sizes := make(map[string]uint64)
+	stored := make(map[string]string) // decoded name -> name as stored in the file
 
 	var order []string
 
-	for _, s := range file.Streams() {
-		name, isTable := DecodeStreamName(s.Name)
-		if isTable {
-			tableStreams[name] = s.Data
-		} else {
-			otherStreams[name] = s.Data
+	for _, ent := range file.Entries {
+		if ent.Type != 2 || ent.Parent != 0 {
+			continue
+		}
+
+		name, isTable := DecodeStreamName(ent.Name)
+
+		switch {
+		case isTable:
+			data, err := streamData(file, ent.Name)
+			if err != nil {
+				return nil, err
+			}
+
+			tableStreams[name] = data
+		case loadAll || name == summary.StreamName:
+			data, err := streamData(file, ent.Name)
+			if err != nil {
+				return nil, err
+			}
+
+			otherStreams[name] = data
+			order = append(order, name)
+		default:
+			sizes[name] = ent.Size
+			stored[name] = ent.Name
 			order = append(order, name)
 		}
+	}
+
+	// binaryStream hands a table cell its stream, loading it on demand, and
+	// takes it out of the extra streams.
+	binaryStream := func(name string) ([]byte, bool) {
+		if data, ok := otherStreams[name]; ok {
+			delete(otherStreams, name)
+
+			return data, true
+		}
+
+		encoded, ok := stored[name]
+		if !ok {
+			return nil, false
+		}
+
+		// The stored name, not a re-encoding: the encoding is not canonical.
+		data, err := streamData(file, encoded)
+		if err != nil {
+			return nil, false
+		}
+
+		delete(sizes, name)
+
+		return data, true
 	}
 
 	poolStream, ok := tableStreams[TableStringPool]
@@ -237,7 +307,7 @@ func Unmarshal(data []byte) (*Database, error) { //nolint:maintidx,cyclop,gocycl
 			return nil, fmt.Errorf("msidb: table %s has no columns", name)
 		}
 
-		if err := decodeRows(tbl, tableStreams[name], longRefs, readRef, str, refs, otherStreams, database); err != nil {
+		if err := decodeRows(tbl, tableStreams[name], longRefs, readRef, str, refs, binaryStream, database); err != nil {
 			return nil, err
 		}
 
@@ -269,6 +339,10 @@ func Unmarshal(data []byte) (*Database, error) { //nolint:maintidx,cyclop,gocycl
 		if _, used := otherStreams[name]; used {
 			database.Streams = append(database.Streams, cfb.Stream{Name: name, Data: otherStreams[name]})
 		}
+
+		if size, left := sizes[name]; left {
+			database.Sources = append(database.Sources, cfb.Source{Name: name, Size: int64(size)}) //nolint:gosec // checked against the file size
+		}
 	}
 
 	return database, nil
@@ -276,7 +350,7 @@ func Unmarshal(data []byte) (*Database, error) { //nolint:maintidx,cyclop,gocycl
 
 func decodeRows( //nolint:cyclop,revive,gocognit // one pass over the format
 	tbl *Table, data []byte, longRefs bool, readRef func([]byte) uint32, str func(uint32) (string, error),
-	refs map[uint32]int, otherStreams map[string][]byte, database *Database,
+	refs map[uint32]int, binaryStream func(string) ([]byte, bool), database *Database,
 ) error {
 	rowSize := 0
 	for _, c := range tbl.Columns {
@@ -364,7 +438,7 @@ func decodeRows( //nolint:cyclop,revive,gocognit // one pass over the format
 
 			name := BinaryStreamName(tbl.Name, rows[rowIdx][:keys])
 
-			data, ok := otherStreams[name]
+			data, ok := binaryStream(name)
 			if !ok {
 				database.Problems = append(database.Problems, fmt.Sprintf("table %s row %d: binary stream %q is missing", tbl.Name, rowIdx, name))
 
@@ -372,8 +446,6 @@ func decodeRows( //nolint:cyclop,revive,gocognit // one pass over the format
 			}
 
 			rows[rowIdx][colIdx] = append([]byte(nil), data...)
-
-			delete(otherStreams, name)
 		}
 	}
 

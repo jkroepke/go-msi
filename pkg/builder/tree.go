@@ -1,12 +1,12 @@
 package builder
 
 import (
-	"bytes"
 	"crypto/md5" //nolint:gosec // MsiFileHash is defined as MD5
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,6 +17,10 @@ import (
 	"github.com/jkroepke/go-msi/internal/pe"
 	"github.com/jkroepke/go-msi/pkg/config"
 )
+
+// maxFileSize is the largest payload file: the cabinet stores sizes in 32
+// bits and a package cannot exceed 2 GB.
+const maxFileSize = 0x7FFFFFFF
 
 // Component attribute bits (section 8.4).
 const (
@@ -112,9 +116,8 @@ func (b *build) deriveProductCode() error {
 	}
 
 	for _, f := range b.files {
-		sum := sha256.Sum256(f.Data)
 		hasher.Write([]byte(f.Key))
-		hasher.Write(sum[:])
+		hasher.Write(f.digest[:])
 	}
 
 	for _, name := range sortedStringKeys(b.cfg.Icons) {
@@ -334,14 +337,29 @@ func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentI
 		path = filepath.Join(b.cfg.BaseDir, filepath.FromSlash(path))
 	}
 
-	data, err := os.ReadFile(path)
+	src, err := os.Open(path)
 	if err != nil {
 		b.errorf(diagPath+".source", "cannot read %s: %v", cfgFile.Source, err)
 
 		return nil
 	}
 
-	if len(data) > 0x7FFFFFFF {
+	defer src.Close()
+
+	stat, err := src.Stat()
+	if err != nil {
+		b.errorf(diagPath+".source", "cannot read %s: %v", cfgFile.Source, err)
+
+		return nil
+	}
+
+	if !stat.Mode().IsRegular() {
+		b.errorf(diagPath+".source", "%s is not a regular file", cfgFile.Source)
+
+		return nil
+	}
+
+	if stat.Size() > maxFileSize {
 		b.errorf(diagPath+".source", "%s is larger than 2 GB", cfgFile.Source)
 
 		return nil
@@ -352,11 +370,30 @@ func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentI
 		Component: comp,
 		cfg:       cfgFile,
 		path:      path,
-		Data:      data,
+		Size:      stat.Size(),
 		LongName:  config.FileLongName(cfgFile),
 	}
 
-	info, perr := pe.Parse(bytes.NewReader(data))
+	// One pass over the file gives the MsiFileHash MD5 and the SHA-256 that
+	// goes into the product code, without holding the file in memory.
+	md5Sum, sha := md5.New(), sha256.New() //nolint:gosec // MsiFileHash is defined as MD5
+
+	read, err := io.Copy(io.MultiWriter(md5Sum, sha), src)
+	if err != nil {
+		b.errorf(diagPath+".source", "cannot read %s: %v", cfgFile.Source, err)
+
+		return nil
+	}
+
+	if read != stat.Size() {
+		b.errorf(diagPath+".source", "%s changed while it was read: %d bytes, expected %d", cfgFile.Source, read, stat.Size())
+
+		return nil
+	}
+
+	copy(file.digest[:], sha.Sum(nil))
+
+	info, perr := pe.Parse(src)
 	file.isPE = perr == nil
 
 	switch cfgFile.Version {
@@ -391,7 +428,7 @@ func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentI
 	}
 
 	if file.Version == nil {
-		file.Hash = fileHash(data)
+		file.Hash = fileHash(md5Sum.Sum(nil), stat.Size())
 	}
 
 	if *cfgFile.Vital {
@@ -421,16 +458,15 @@ func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentI
 	return file
 }
 
-// fileHash computes the MsiFileHash words: MD5 as four little-endian int32,
-// zeros for an empty file (RUN-12).
-func fileHash(data []byte) *[4]int32 {
+// fileHash computes the MsiFileHash words from the file's MD5: four
+// little-endian int32, zeros for an empty file (RUN-12).
+func fileHash(sum []byte, size int64) *[4]int32 {
 	var out [4]int32
 
-	if len(data) == 0 {
+	if size == 0 {
 		return &out
 	}
 
-	sum := md5.Sum(data) //nolint:gosec // MsiFileHash is defined as MD5
 	for i := range out {
 		out[i] = int32(binary.LittleEndian.Uint32(sum[4*i:])) //nolint:gosec // the hash is stored as four signed words
 	}
@@ -500,7 +536,7 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 	}
 
 	for _, fi := range b.files {
-		b.table("File").Add(fi.Key, fi.Component.cfg.ID, fi.FileName, len(fi.Data), fi.Version, fi.Language, fi.Attrs, fi.Sequence)
+		b.table("File").Add(fi.Key, fi.Component.cfg.ID, fi.FileName, int(fi.Size), fi.Version, fi.Language, fi.Attrs, fi.Sequence)
 
 		if fi.Hash != nil {
 			b.table("MsiFileHash").Add(fi.Key, 0, int(fi.Hash[0]), int(fi.Hash[1]), int(fi.Hash[2]), int(fi.Hash[3]))
@@ -642,6 +678,10 @@ func (b *build) features() error {
 			parentID = parent.ID
 		}
 
+		// Display orders features in the selection tree: even values show a
+		// feature collapsed, odd values expanded and 0 hides it. Each feature
+		// takes the next even/odd pair so parity never depends on the
+		// display state of the features written before it.
 		display += 2
 
 		var disp any
@@ -654,8 +694,6 @@ func (b *build) features() error {
 		default:
 			disp = display
 		}
-
-		display++
 
 		attrs := 0
 

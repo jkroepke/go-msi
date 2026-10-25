@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 
@@ -136,7 +137,21 @@ func (p *pool) stored(c Column, value any) uint32 {
 }
 
 // Marshal serializes the database into a compound file.
-func (db *Database) Marshal(opts Options) ([]byte, error) { //nolint:maintidx,cyclop,gocyclo,gocognit // one pass over the format; splitting would scatter it
+func (db *Database) Marshal(opts Options) ([]byte, error) {
+	var buf bytes.Buffer
+
+	if _, err := db.MarshalTo(&buf, opts); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+// MarshalTo serializes the database into a compound file written to dst in one
+// pass. Tables and Streams are encoded in memory; Sources are copied through
+// from their readers, so a cabinet of any size needs no memory beyond a few
+// sectors. The layout says where each stream landed, by encoded name.
+func (db *Database) MarshalTo(dst io.Writer, opts Options) (*cfb.Layout, error) { //nolint:maintidx,cyclop,gocyclo,gocognit // one pass over the format
 	if !codepage.Supported(db.Codepage) {
 		return nil, fmt.Errorf("msidb: database code page %d is not supported", db.Codepage)
 	}
@@ -200,7 +215,7 @@ func (db *Database) Marshal(opts Options) ([]byte, error) { //nolint:maintidx,cy
 		return nil, err
 	}
 
-	var streams []cfb.Stream
+	var streams []cfb.Source
 
 	addStream := func(decoded string, table bool, data []byte) error {
 		name, err := EncodeStreamName(decoded, table)
@@ -208,7 +223,7 @@ func (db *Database) Marshal(opts Options) ([]byte, error) { //nolint:maintidx,cy
 			return err
 		}
 
-		streams = append(streams, cfb.Stream{Name: name, Data: data})
+		streams = append(streams, cfb.Stream{Name: name, Data: data}.Source())
 
 		return nil
 	}
@@ -315,30 +330,56 @@ func (db *Database) Marshal(opts Options) ([]byte, error) { //nolint:maintidx,cy
 		}
 	}
 
-	if db.Summary != nil {
-		codePage := db.Codepage
-		if !codepage.IsANSI(codePage) {
-			codePage = codepage.Windows1252
+	for _, src := range db.Sources {
+		if streamNames[src.Name] {
+			return nil, fmt.Errorf("msidb: stream %q written twice", src.Name)
 		}
 
-		if v, ok := summary.Get(db.Summary, summary.PIDCodepage).(int); ok {
-			codePage = v
-		}
+		streamNames[src.Name] = true
 
-		data, err := summary.Marshal(db.Summary, codePage)
+		name, err := EncodeStreamName(src.Name, false)
 		if err != nil {
-			return nil, fmt.Errorf("msidb: %w", err)
+			return nil, err
 		}
 
-		streams = append(streams, cfb.Stream{Name: summary.StreamName, Data: data})
+		streams = append(streams, cfb.Source{Name: name, Size: src.Size, Open: src.Open})
 	}
 
-	out, err := cfb.Write(streams, cfb.Options{Version: opts.CFBVersion, CLSID: cfb.CLSIDMSI})
+	if db.Summary != nil {
+		data, err := db.MarshalSummary()
+		if err != nil {
+			return nil, err
+		}
+
+		streams = append(streams, cfb.Stream{Name: summary.StreamName, Data: data}.Source())
+	}
+
+	layout, err := cfb.WriteTo(dst, streams, cfb.Options{Version: opts.CFBVersion, CLSID: cfb.CLSIDMSI})
 	if err != nil {
 		return nil, fmt.Errorf("msidb: %w", err)
 	}
 
-	return out, nil
+	return layout, nil
+}
+
+// MarshalSummary encodes the summary information stream the way MarshalTo
+// writes it, in the summary's own code page or the database's ANSI code page.
+func (db *Database) MarshalSummary() ([]byte, error) {
+	codePage := db.Codepage
+	if !codepage.IsANSI(codePage) {
+		codePage = codepage.Windows1252
+	}
+
+	if v, ok := summary.Get(db.Summary, summary.PIDCodepage).(int); ok {
+		codePage = v
+	}
+
+	data, err := summary.Marshal(db.Summary, codePage)
+	if err != nil {
+		return nil, fmt.Errorf("msidb: %w", err)
+	}
+
+	return data, nil
 }
 
 // encodeTable sorts the rows by their stored keys and writes the column-major
