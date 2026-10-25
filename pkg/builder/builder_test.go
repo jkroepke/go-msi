@@ -506,8 +506,15 @@ components:
 			t.Fatalf("%s: Display %v is not an int", id, row[4])
 		}
 
-		if display != want[id] {
-			t.Errorf("%s: Display %d, want %d", id, display, want[id])
+		expected, ok := want[id]
+		if !ok {
+			t.Fatalf("unexpected feature %s", id)
+		}
+
+		delete(want, id)
+
+		if display != expected {
+			t.Errorf("%s: Display %d, want %d", id, display, expected)
 		}
 
 		if display != 0 && seen[display] {
@@ -515,5 +522,9 @@ components:
 		}
 
 		seen[display] = true
+	}
+
+	for id := range want {
+		t.Errorf("feature %s is missing", id)
 	}
 }
