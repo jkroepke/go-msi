@@ -390,6 +390,19 @@ func TestWindowsExporter(t *testing.T) {
 		}
 	}
 
+	// Every EXE action's working directory has a Directory row (error 2727
+	// otherwise), including standard folders added after the tree walk.
+	dirs := map[any]bool{}
+	for _, row := range rows(t, database, "Directory") {
+		dirs[row[0]] = true
+	}
+
+	for _, row := range rows(t, database, "CustomAction") {
+		if typ, ok := row[1].(int); ok && typ&0x3F == 34 && !dirs[row[2]] {
+			t.Errorf("%s runs in %v, which has no Directory row", row[0], row[2])
+		}
+	}
+
 	if deferredActions != 6 {
 		t.Errorf("%d firewall/recovery actions, want 6", deferredActions)
 	}

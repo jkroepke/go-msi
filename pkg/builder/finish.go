@@ -135,6 +135,9 @@ func (b *build) customTables() error { //nolint:cyclop // one pass over the form
 // finish assembles the database, packs the cabinet, derives the package code
 // and verifies the package by reading it back.
 func (b *build) finish() ([]byte, *msidb.Database, error) { //nolint:cyclop // one pass over the format; splitting would scatter it
+	// Written last: custom actions, firewall rules and service recovery add
+	// standard folders such as System64Folder after the tree is walked.
+	b.writeDirectoryTable()
 	b.finishProperties()
 
 	database := &msidb.Database{Codepage: b.cfg.Package.Codepage}

@@ -1294,14 +1294,13 @@ An independent implementation recomputed the signed digest of three real vendor-
 
 This confirms SigOrder for ordinary names, the CLSID-last walk, the v4 pre-hash, and that root times are not hashed. No package has sub-storages, prefix names or a root name sorting before DSE.
 
-A Windows CI job with a self-signed test certificate settles the rest (chapter 11 §11). The independently calculated digest can be compared to that of `signtool sign /fd SHA256`, and `signtool verify /pa /v` must pass. `Get-AuthenticodeSignature` must report `Valid`, and `HashMismatch` once a single byte is flipped.
+A Windows CI job with a self-signed test certificate settles the rest (chapter 11 §11). On the Windows Server 2025 runner (observed, SIG-01…06): `signtool` writes DSE by default for SHA-1 and SHA-256; a proper prefix sorts first; DSE is hashed at its sorted position; the `SpcSipInfo` layout above is accepted; RSA with SHA-1/256/384/512, ECDSA P-256 and P-384, and RFC 3161 timestamps verify; a changed root CLSID gives `0x800B0003`. The independently calculated digest can be compared to that of `signtool sign /fd SHA256`, and `signtool verify /pa /v` must pass. `Get-AuthenticodeSignature` must report `Valid`, and `HashMismatch` once a single byte is flipped.
 
 ### Unverified
 
-- Whether `signtool` emits DSE by default (two SHA-256 vendor packages have it, an older SHA-1 one does not).
-- ECDSA keys; whether `rsaEncryption`, SpcSpOpusInfo and SpcStatementType are required; UAC display of programName; the `SpcSipInfo` layout; nested signatures with DSE.
+- Whether `rsaEncryption`, SpcSpOpusInfo and SpcStatementType are required; UAC display of programName; nested signatures with DSE.
+- ECDSA keys and SHA-384/512 on Windows Server 2016 (they pass on Server 2025, SIG-06).
 - Signature-stream exclusion at the root only or at every level (conflict). The writer strips them from sub-storages, so both rules agree.
-- Order of a name that is a proper prefix of another (spec: shorter first; writer SHOULD warn); position of P (conflict; spec: sorted).
 - Low-dword sizes for streams ≥ 4 GiB; layout independence on Windows; `MsiDigitalSignature.Hash` content; the signed-cabinet reserve layout.
 
 ### Signatures and edit or rewrite operations
@@ -1997,12 +1996,12 @@ Every pitfall below has cost someone an install on a customer's machine. Each ro
 | RUN-22 | P2 | I | Full-UI package with a `Hyperlink` control in and out of the `Control_Next` ring, a PNG `Bitmap`, and an exit-dialog CheckBox publishing `MsiLaunchApp [#file] arg` | `/qf` install; expect the link to open, the PNG to render, the launch to happen only when checked, and a 2834 verdict for the ring variant (sections 7.2, 19.1). | Not run |
 | RUN-23 | P1 | S/A/I | Template `Intel,x64;1033`, `x64,Intel;1033` and `Intel64,x64;1033` against the SUM-02 control | Native open and install on x64; Microsoft documents `Intel,x64` and `Intel64,x64` as invalid and the two-platform syntax as unsupported, while SUM-02 opened a list with one recognised token (sections 4, 19.4). | Not run |
 | SEC-01 | P1 | I | `MsiLockPermissionsEx` on a File, CreateFolder, Registry and ServiceInstall row (plus a service baseline without it); owner and group, deny ACE, false condition, `[Property]`, `<domain\user>` and `[%ENV]` in SDDLText, invalid SDDL, two true rows for one object, and a package that also has `LockPermissions` | Install elevated; read the SDDL with `Get-Acl` or `sc sdshow`, repair with `/fa` and `/fvomus` after resetting the ACL each time; expect the SDDL applied as authored and errors 1941, 1942 and 1943 as documented (section 6.2). | Confirmed ([results](MSISPEC-RESULTS.md)) |
-| SIG-01 | P0 | S/A | Unsigned control signed with a disposable RSA test certificate | Sign using `signtool sign /fd SHA256`; decode the PKCS#7, compute the logical MSI digest, verify with signtool and `Get-AuthenticodeSignature`. | Not run |
-| SIG-02 | P1 | S/A | Signed packages with and without MsiDigitalSignatureEx | Capture exact signature streams, compute the pre-hash P and the content digest D; determine whether SignTool emits DSE. | Not run |
-| SIG-03 | P1 | S/A | Repack a signed MSI with different sectors, order and timestamps | Keep logical stream bytes fixed; modify one metadata dimension per case. Compare basic vs extended signature validity. | Not run |
-| SIG-04 | P1 | S/A | Prefix-related stream names and names before/after DSE | Use valid signed fixtures; compute candidate stream sort orders and compare with Windows signature verification. | Not run |
-| SIG-05 | P1 | S/A | Nested storage containing a signature-named stream; CLSID mutation | Vary nested data, name and CLSID independently; check the signed digest and exclusion scope with the native verifier. | Not run |
-| SIG-06 | P2 | S/A | RSA SHA-256/384/512, ECDSA where supported | Sign and verify each combination; document Windows build, certificate and algorithm-specific failures. | Not run |
+| SIG-01 | P0 | S/A | Unsigned control signed with a disposable RSA test certificate | Sign using `signtool sign /fd SHA256`; decode the PKCS#7, compute the logical MSI digest, verify with signtool and `Get-AuthenticodeSignature`. | Confirmed (Server 2025) |
+| SIG-02 | P1 | S/A | Signed packages with and without MsiDigitalSignatureEx | Capture exact signature streams, compute the pre-hash P and the content digest D; determine whether SignTool emits DSE. | Confirmed (Server 2025) |
+| SIG-03 | P1 | S/A | Repack a signed MSI with different sectors, order and timestamps | Keep logical stream bytes fixed; modify one metadata dimension per case. Compare basic vs extended signature validity. | Confirmed (Server 2025) |
+| SIG-04 | P1 | S/A | Prefix-related stream names and names before/after DSE | Use valid signed fixtures; compute candidate stream sort orders and compare with Windows signature verification. | Confirmed (Server 2025) |
+| SIG-05 | P1 | S/A | Nested storage containing a signature-named stream; CLSID mutation | Vary nested data, name and CLSID independently; check the signed digest and exclusion scope with the native verifier. | Partly confirmed (Server 2025; CLSID only, no nested storages) |
+| SIG-06 | P2 | S/A | RSA SHA-256/384/512, ECDSA where supported | Sign and verify each combination; document Windows build, certificate and algorithm-specific failures. | Confirmed (Server 2025) |
 | INT-01 | P0 | S/A/I | Equivalent WiX and msitools packages | Pin version or commit; diff normalized table semantics, native open, install/uninstall and raw stream hashing. Identify producer-only decisions. | Blocked ([results](MSISPEC-RESULTS.md)) |
 | INT-02 | P1 | S/A | WiX MSI round-tripped by libmsi and then a native commit | Compare raw streams and decoded tables and native file extraction after each round trip; note semantic vs incidental changes. | Blocked ([results](MSISPEC-RESULTS.md)) |
 | INT-03 | P1 | S/A | Minimized failures from the msitools bug tracker (section 16) | Run identical malformed input through the native MSI API, msitools and an independent CFB/CAB reader; distinguish tool bugs from Windows rejection. | Blocked ([results](MSISPEC-RESULTS.md)) |

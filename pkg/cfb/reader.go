@@ -20,18 +20,26 @@ type File struct {
 
 // Entry is one directory entry.
 type Entry struct {
-	Name   string
-	Data   []byte
-	SID    int
-	Size   uint64
-	Parent int
-	Left   uint32
-	Right  uint32
-	Child  uint32
-	Start  uint32
-	CLSID  [16]byte
-	Type   byte
-	Colour byte
+	Name string
+	// RawName is the stored name without its terminator, UTF-16LE. It
+	// keeps units that Name cannot hold, such as lone surrogates.
+	RawName []byte
+	Data    []byte
+	SID     int
+	Size    uint64
+	Parent  int
+	// Created and Modified are the raw FILETIME fields at 0x64 and 0x6C;
+	// StateBits is the field at 0x60. The signature pre-hash covers them.
+	Created   uint64
+	Modified  uint64
+	CLSID     [16]byte
+	Left      uint32
+	Right     uint32
+	Child     uint32
+	Start     uint32
+	StateBits uint32
+	Type      byte
+	Colour    byte
 }
 
 // Streams returns the root-level streams in SID order.
@@ -180,6 +188,10 @@ func Read(raw []byte) (*File, error) { //nolint:maintidx,cyclop,gocyclo,gocognit
 				Start:  order.Uint32(rec[0x74:]),
 				Size:   order.Uint64(rec[0x78:]),
 				Parent: -1,
+
+				StateBits: order.Uint32(rec[0x60:]),
+				Created:   order.Uint64(rec[0x64:]),
+				Modified:  order.Uint64(rec[0x6C:]),
 			}
 
 			if major == 3 {
@@ -195,6 +207,7 @@ func Read(raw []byte) (*File, error) { //nolint:maintidx,cyclop,gocyclo,gocognit
 				}
 
 				ent.Name = string(utf16.Decode(units))
+				ent.RawName = bytes.Clone(rec[:nameLen-2])
 			}
 
 			file.Entries = append(file.Entries, ent)
