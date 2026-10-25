@@ -455,3 +455,41 @@ features:
 		t.Errorf("error does not name the feature path: %s", msg)
 	}
 }
+
+func TestTargetDirPaths(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg, err := config.Parse([]byte(`schema: go-msi/v1
+product: { name: A, manufacturer: B, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+installDir: { parent: TARGETDIR, name: Acme }
+components:
+  - files: [{ source: a.txt }]
+  - { directory: TARGETDIR/sub, files: [{ source: b.txt }] }
+`), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.BaseDir = dir
+
+	res := mustBuild(t, cfg)
+
+	database, err := msidb.Unmarshal(res.Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, id := range []string{"INSTALLDIR", "TARGETDIR_sub"} {
+		if cell(t, database, "Directory", "Directory_Parent", func(r []any) bool { return r[0] == id }) != "TARGETDIR" {
+			t.Errorf("%s is not below TARGETDIR", id)
+		}
+	}
+}

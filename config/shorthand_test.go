@@ -464,3 +464,23 @@ func TestShorthandReviewEdgeCases(t *testing.T) {
 		t.Errorf("first-segment typo not reported: %v", diags)
 	}
 }
+
+func TestShorthandProfileKeyPath(t *testing.T) {
+	t.Parallel()
+
+	reg := "registry: [{ root: HKCU, key: Software\\Acme, name: installed, type: dword, value: 1 }]"
+
+	for comp, ice38 := range map[string]bool{
+		"{ directory: ProgramMenuFolder/Acme, " + reg + " }":                             false,
+		"{ directory: ProgramMenuFolder/Acme, files: [{ source: a.txt }], " + reg + " }": true,
+	} {
+		diags := validate(t, short+"components:\n  - "+comp+"\n")
+		if find(diags, config.SeverityWarning, "components[0].directory", "ICE38") != ice38 {
+			t.Errorf("%s: ICE38 warning = %v, want %v: %v", comp, !ice38, ice38, diags)
+		}
+
+		if !find(diags, config.SeverityWarning, "components[0].directory", "ICE64") {
+			t.Errorf("%s: no ICE64 warning: %v", comp, diags)
+		}
+	}
+}

@@ -146,7 +146,13 @@ func (b *build) directories() error {
 
 	walk = func(ds []*config.Directory, parent *dirInfo) {
 		for _, dir := range ds {
-			if _, dup := b.dirs[dir.ID]; dup {
+			if existing, dup := b.dirs[dir.ID]; dup {
+				// A top-level TARGETDIR node only carries children for the
+				// root the builder already added.
+				if parent == nil && dir.ID == targetDir {
+					walk(dir.Children, existing)
+				}
+
 				continue
 			}
 

@@ -467,10 +467,15 @@ func (v *validator) components(cfg *Config, r *refs) {
 					v.errorf(p+".directory", "a per-user package cannot install under %s (ICE105)", top)
 				}
 
-				if profileFolders[top] && !userRegistryKeyPath(c, perUser) {
+				switch {
+				case !profileFolders[top]:
+				case !userRegistryKeyPath(c, perUser):
 					v.warnf(p+".directory", "a component in the user profile (%s) needs an HKCU registry value "+
 						"as key path (ICE38), and its folders need RemoveFolder rows (ICE64), which go-msi "+
 						"does not write yet", top)
+				default:
+					v.warnf(p+".directory", "the folders of a component in the user profile (%s) need "+
+						"RemoveFolder rows (ICE64), which go-msi does not write yet", top)
 				}
 			}
 		}
@@ -572,16 +577,32 @@ func (v *validator) permissions(field string, perm *Permissions) bool {
 	return true
 }
 
-// userRegistryKeyPath reports whether the component's key path is a
-// registry value under HKCU (HKMU is HKCU in a per-user package).
+// userRegistryKeyPath reports whether the component's key path, resolved as
+// the builder does, is a registry value under HKCU (HKMU is HKCU in a
+// per-user package).
 func userRegistryKeyPath(c *Component, perUser bool) bool {
+	key := registryKeyPath(c)
+
+	return key != nil && (key.Root == "HKCU" || perUser && key.Root == "HKMU")
+}
+
+// registryKeyPath returns the registry value that is the component's key
+// path, or nil when the key path is a file or the directory.
+func registryKeyPath(c *Component) *RegistryValue {
+	switch {
+	case c.KeyPath == "" && len(c.Files) == 0 && len(c.Registry) > 0:
+		return c.Registry[0]
+	case c.KeyPath == "" || c.KeyPath == "directory":
+		return nil
+	}
+
 	for _, value := range c.Registry {
-		if value.ID == c.KeyPath && (value.Root == "HKCU" || perUser && value.Root == "HKMU") {
-			return true
+		if value.ID == c.KeyPath {
+			return value
 		}
 	}
 
-	return false
+	return nil
 }
 
 func keyFileByRef(c *Component, ref string) *File {
