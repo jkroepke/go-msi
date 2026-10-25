@@ -2,6 +2,7 @@ package cfb_test
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/jkroepke/go-msi/cfb"
@@ -108,5 +109,27 @@ func TestInvalidUTF8Name(t *testing.T) {
 
 	if _, err := cfb.Write([]cfb.Stream{{Name: "\xff"}}, cfb.Options{}); err == nil {
 		t.Fatal("Write accepted a name that is not valid UTF-8")
+	}
+}
+
+// TestReadCaseDuplicate is a FuzzRead finding: Read accepted two root
+// streams whose names differ only in ASCII case, which Write rejects.
+func TestReadCaseDuplicate(t *testing.T) {
+	t.Parallel()
+
+	raw, err := cfb.Write([]cfb.Stream{{Name: "Aa", Data: []byte("1")}, {Name: "Bb", Data: []byte("2")}}, cfb.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	name := []byte{'B', 0, 'b', 0}
+	if bytes.Count(raw, name) != 1 {
+		t.Fatal("cannot find the directory entry")
+	}
+
+	raw = bytes.Replace(raw, name, []byte{'A', 0, 'A', 0}, 1)
+
+	if _, err := cfb.Read(raw); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("Read: %v, want a duplicate stream name error", err)
 	}
 }

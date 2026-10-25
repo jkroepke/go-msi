@@ -3,6 +3,8 @@ package cab_test
 import (
 	"bytes"
 	"io/fs"
+	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +21,7 @@ func seedCabinets(f *testing.F) {
 			{Name: "a.txt", Data: []byte("hello"), Time: when},
 			{Name: "b.bin", Data: bytes.Repeat([]byte("0123456789"), 7000), Time: when},
 			{Name: "empty", Time: when},
+			{Name: `dir\x.txt`, Data: []byte("in a folder"), Time: when},
 		}, cab.Options{Compression: comp})
 		if err != nil {
 			f.Fatal(err)
@@ -28,8 +31,9 @@ func seedCabinets(f *testing.F) {
 	}
 }
 
-// FuzzRead feeds corrupted cabinets to Read and Open. Both must return an
-// error or a result, never panic, and must agree on the file list.
+// FuzzRead feeds corrupted cabinets to Read and Open. Neither may panic,
+// Open must not accept what Read rejects, and every file Read lists must be
+// readable through the fs.FS view.
 func FuzzRead(f *testing.F) {
 	seedCabinets(f)
 
@@ -41,47 +45,23 @@ func FuzzRead(f *testing.F) {
 			return
 		}
 
+		// Open is Read plus the fs.FS checks.
 		if readErr != nil {
-			// Open checks less up front than Read, so reading every file
-			// must fail at least once.
-			if readsAll(fsys) {
-				t.Fatalf("Read fails with %v, but Open reads every file", readErr)
-			}
-
-			return
+			t.Fatalf("Read fails with %v, but Open succeeds", readErr)
 		}
 
 		for _, file := range files {
-			if !fs.ValidPath(file.Name) {
+			// The fs.FS view uses "/" for the cabinet's "\".
+			name := path.Clean(strings.ReplaceAll(file.Name, `\`, "/"))
+			if !fs.ValidPath(name) {
 				continue
 			}
 
-			if _, err := fs.ReadFile(fsys, file.Name); err != nil {
+			if _, err := fs.ReadFile(fsys, name); err != nil {
 				t.Fatalf("Read lists %q but the fs.FS cannot read it: %v", file.Name, err)
 			}
 		}
 	})
-}
-
-// readsAll reports whether every file of fsys can be read.
-func readsAll(fsys fs.FS) bool {
-	ok := true
-
-	_ = fs.WalkDir(fsys, ".", func(path string, entry fs.DirEntry, err error) error {
-		if err == nil && !entry.IsDir() {
-			_, err = fs.ReadFile(fsys, path)
-		}
-
-		if err != nil {
-			ok = false
-
-			return fs.SkipAll
-		}
-
-		return nil
-	})
-
-	return ok
 }
 
 // FuzzRoundTrip writes fuzzed files and reads them back unchanged.
