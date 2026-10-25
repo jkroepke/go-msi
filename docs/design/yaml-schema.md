@@ -141,7 +141,7 @@ package:
 | `manufacturer` | string | required | `Manufacturer` and summary Author |
 | `version` | string | required | `major.minor.build[.revision]`, at most 255.255.65535; a fourth field warns (section 2.2) |
 | `language` | int | `1033` | One LCID; 0 is neutral |
-| `upgradeCode` | GUID | required | Never changes for a product |
+| `upgradeCode` | GUID | required | Never changes for a product; the nil GUID is rejected |
 | `productCode` | GUID or `auto` | `auto` | Section 2.2 |
 | `packageCode` | GUID or `auto` | `auto` | Digest of the finished database |
 | `description` | string | `<name> <version> installer` | Summary Subject |

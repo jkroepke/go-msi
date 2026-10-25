@@ -160,9 +160,7 @@ func (v *validator) product(cfg *Config) {
 		v.errorf("product.language", "%d is not an LCID", *p.Language)
 	}
 
-	if v.required("product.upgradeCode", p.UpgradeCode) {
-		v.guid("product.upgradeCode", p.UpgradeCode)
-	}
+	v.upgradeCode("product.upgradeCode", p.UpgradeCode)
 
 	if p.ProductCode != Auto {
 		v.guid("product.productCode", p.ProductCode)
@@ -188,6 +186,24 @@ func (v *validator) product(cfg *Config) {
 func (v *validator) guid(path, s string) {
 	if _, err := NormalizeGUID(s); err != nil {
 		v.errorf(path, "%v", err)
+	}
+}
+
+// upgradeCode requires a GUID other than the nil GUID: products sharing an
+// upgrade code upgrade each other, so a placeholder copied from an example
+// would tie unrelated products together.
+func (v *validator) upgradeCode(key, s string) {
+	if !v.required(key, s) {
+		return
+	}
+
+	g, err := NormalizeGUID(s)
+
+	switch {
+	case err != nil:
+		v.errorf(key, "%v", err)
+	case g == NilGUID:
+		v.errorf(key, "the nil GUID is a placeholder, not an upgrade code; generate a new GUID")
 	}
 }
 
@@ -267,9 +283,7 @@ func (v *validator) upgrade(cfg *Config) {
 	for i, rel := range u.Related {
 		p := fmt.Sprintf("upgrade.related[%d]", i)
 
-		if v.required(p+".upgradeCode", rel.UpgradeCode) {
-			v.guid(p+".upgradeCode", rel.UpgradeCode)
-		}
+		v.upgradeCode(p+".upgradeCode", rel.UpgradeCode)
 
 		if rel.MinVersion == "" && rel.MaxVersion == "" {
 			v.errorf(p, "minVersion or maxVersion is required")
