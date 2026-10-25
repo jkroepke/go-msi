@@ -303,7 +303,8 @@ A component's `directory` is a directory ID, a standard folder, or a folder
 path. A path starts at its first segment when that is a directory ID or a
 standard folder, and in the install dir otherwise; `./` forces the install
 dir. A single upper-case word is always an ID, and so is a word that
-matches a known ID or standard folder in another case, so typos such as
+matches a known ID or standard folder in another case; the same holds for
+the first segment of a path, so typos such as
 `INSTALDIR` or `ProgramFiles64folder` fail validation instead of creating a
 folder. Folders a path
 names are added below their parent with IDs from the parent ID and the name

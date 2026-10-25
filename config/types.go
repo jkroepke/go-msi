@@ -5,7 +5,10 @@
 // everything that can be checked without reading the referenced input files.
 package config
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 // SchemaV1 is the only schema identifier this package accepts.
 const SchemaV1 = "go-msi/v1"
@@ -172,8 +175,21 @@ type Component struct {
 
 	// ref marks a features[].components entry written as an id.
 	ref bool
+	// defined marks a component decoded from a YAML mapping.
+	defined bool
 	// origin is the YAML path of a component defined inside a feature.
 	origin string
+}
+
+// Path returns the component's YAML path, given its index in
+// Config.Components: components[i], or its place in a feature for a
+// component defined there.
+func (c *Component) Path(index int) string {
+	if c.origin != "" {
+		return c.origin
+	}
+
+	return "components[" + strconv.Itoa(index) + "]"
 }
 
 // Permissions secures an installed object with an SDDL string through

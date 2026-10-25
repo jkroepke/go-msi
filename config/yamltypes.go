@@ -245,7 +245,13 @@ func (c *Component) UnmarshalYAML(unmarshal func(any) error) error {
 		return nil
 	}
 
-	return publicTypeNames(unmarshal((*rawComponent)(c)))
+	if err := unmarshal((*rawComponent)(c)); err != nil {
+		return publicTypeNames(err)
+	}
+
+	c.defined = true
+
+	return nil
 }
 
 // UnmarshalYAML accepts true for the standard policy and false for none.

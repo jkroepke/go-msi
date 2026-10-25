@@ -60,7 +60,7 @@ func hoistFeatureComponents(cfg *Config) {
 
 				// A Config built in Go refers to a component with an entry
 				// that carries nothing but the id.
-				if reflect.DeepEqual(*comp, Component{ID: comp.ID}) {
+				if !comp.defined && reflect.DeepEqual(*comp, Component{ID: comp.ID}) {
 					comp.ref = true
 
 					continue
@@ -159,10 +159,7 @@ func serviceArguments(cfg *Config) {
 	}
 
 	for c, comp := range cfg.Components {
-		compPath := fmt.Sprintf("components[%d]", c)
-		if comp.origin != "" {
-			compPath = comp.origin
-		}
+		compPath := comp.Path(c)
 
 		for svcIndex, svc := range comp.Services {
 			conditional := 0
@@ -382,15 +379,15 @@ func (t *dirTree) resolve(value string) string {
 		return value
 	}
 
-	// A single upper-case word is meant as an id, and one that differs from
-	// a known id only in case is a typo. Leave both for the validator to
-	// report instead of creating a folder.
-	if IsIdentifier(value) && (IsPublicProperty(value) || t.knownIgnoringCase(value)) {
-		return value
-	}
-
 	forced := strings.HasPrefix(value, "./") || strings.HasPrefix(value, `.\`)
 	names := splitPath(value)
+
+	// An upper-case first segment is meant as an id, and one that differs
+	// from a known id only in case is a typo. Leave both for the validator
+	// to report instead of creating a folder.
+	if !forced && len(names) > 0 && t.looksLikeID(names[0]) {
+		return value
+	}
 
 	parent, names := t.pathStart(names, forced)
 	if parent == nil {
@@ -403,6 +400,14 @@ func (t *dirTree) resolve(value string) string {
 	}
 
 	return parent.ID
+}
+
+// looksLikeID reports whether a word that is not a known id was meant as
+// one: it is upper case, or a known id or standard folder in another case.
+func (t *dirTree) looksLikeID(word string) bool {
+	known := t.byID[word] != nil || standardFolders[word] || word == t.cfg.InstallDir.ID
+
+	return !known && IsIdentifier(word) && (IsPublicProperty(word) || t.knownIgnoringCase(word))
 }
 
 func (t *dirTree) knownIgnoringCase(value string) bool {
@@ -425,6 +430,10 @@ func (t *dirTree) knownIgnoringCase(value string) bool {
 func (t *dirTree) pathStart(names []string, forced bool) (*Directory, []string) {
 	if forced || len(names) == 0 {
 		return t.ensureInstallDir(), names
+	}
+
+	if names[0] == t.cfg.InstallDir.ID {
+		return t.ensureInstallDir(), names[1:]
 	}
 
 	if dir := t.byID[names[0]]; dir != nil {

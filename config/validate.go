@@ -426,10 +426,7 @@ func (v *validator) components(cfg *Config, r *refs) {
 	perUser := cfg.Package.Scope == ScopePerUser
 
 	for i, c := range cfg.Components {
-		p := fmt.Sprintf("components[%d]", i)
-		if c.origin != "" {
-			p = c.origin
-		}
+		p := c.Path(i) //nolint:varnamelen // the YAML path, named p throughout this file
 
 		if c.ref {
 			v.errorf(p, "%q: a component here is a mapping; ids only refer to components from features", c.ID)

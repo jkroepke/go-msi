@@ -428,3 +428,39 @@ func TestShorthandStrictDecoding(t *testing.T) {
 		}
 	}
 }
+
+func TestShorthandReviewEdgeCases(t *testing.T) {
+	t.Parallel()
+
+	tree := strings.Replace(short, "package:\n  platform: x64\n", "package:\n  platform: x64\n"+
+		"directories:\n  - id: ProgramFiles64Folder\n    children: [{ id: OTHER, name: Other }]\n", 1)
+
+	// A path through the lazily added install dir starts in it.
+	cfg := parseValid(t, tree+"components:\n  - { directory: INSTALLDIR/bin, createFolder: true }\n")
+	if got := dirPath(cfg.Directories, cfg.Components[0].Directory); !reflect.DeepEqual(got,
+		[]string{"ProgramFiles64Folder", "INSTALLDIR", "INSTALLDIR_bin"}) {
+		t.Errorf("lazy install dir path = %v", got)
+	}
+
+	// {id: X} in a feature is an empty component, not a reference.
+	cfg = parseValid(t, short+"features: [{ id: F, components: [{ id: Empty }] }]\n")
+	if len(cfg.Components) != 1 || cfg.Components[0].ID != "Empty" {
+		t.Errorf("components = %+v", cfg.Components)
+	}
+
+	// Null entries are errors, not panics.
+	for _, doc := range []string{
+		short + "features: [{ id: F, components: [~] }]\n",
+		short + "components: [~]\n",
+	} {
+		if _, err := config.Parse([]byte(doc), config.Options{}); err == nil || !strings.Contains(err.Error(), "empty entry") {
+			t.Errorf("null entry: %v", err)
+		}
+	}
+
+	// A typo in a path's first segment is reported.
+	diags := validate(t, short+"components:\n  - { directory: CommonAppdataFolder/Hello/logs, createFolder: true }\n")
+	if !find(diags, config.SeverityError, "components[0].directory", "is not defined") {
+		t.Errorf("first-segment typo not reported: %v", diags)
+	}
+}

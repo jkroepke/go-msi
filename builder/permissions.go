@@ -1,8 +1,6 @@
 package builder
 
 import (
-	"fmt"
-
 	"github.com/jkroepke/go-msi/config"
 )
 
@@ -20,7 +18,7 @@ const (
 // a bad string, so config.CheckSDDL has already validated every one.
 func (b *build) permissions() error {
 	for i, comp := range b.cfg.Components {
-		b.lockComponent(fmt.Sprintf("components[%d]", i), comp, b.components[comp.ID])
+		b.lockComponent(comp.Path(i), comp, b.components[comp.ID])
 	}
 
 	for _, file := range b.files {

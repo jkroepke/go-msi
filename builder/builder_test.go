@@ -428,3 +428,30 @@ func TestWindowsExporter(t *testing.T) {
 		t.Errorf("unexpected wizard diagnostic: %s", res.Diagnostics)
 	}
 }
+
+func TestInlineComponentPaths(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Parse([]byte(`schema: go-msi/v1
+product: { name: A, manufacturer: B, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+features:
+  - id: Main
+    components:
+      - files: [{ source: missing.exe }]
+`), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.BaseDir = t.TempDir()
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err == nil {
+		t.Fatal("built without the input file")
+	}
+
+	if msg := fmt.Sprint(err, res.Diagnostics); !strings.Contains(msg, "features[0].components[0].files[0]") {
+		t.Errorf("error does not name the feature path: %s", msg)
+	}
+}
