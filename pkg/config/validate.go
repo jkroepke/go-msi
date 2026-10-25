@@ -404,17 +404,7 @@ func (v *validator) features(cfg *Config, r *refs) {
 		for i, f := range fs {
 			p := fmt.Sprintf("%s[%d]", prefix, i)
 
-			if v.required(p+".id", f.ID) {
-				if !IsIdentifier(f.ID) || len(f.ID) > MaxFeatureIDLength {
-					v.errorf(p+".id", "%q is not an identifier of at most %d characters", f.ID, MaxFeatureIDLength)
-				}
-
-				if seen[f.ID] {
-					v.errorf(p+".id", "feature %s is defined twice", f.ID)
-				}
-
-				seen[f.ID] = true
-			}
+			v.featureID(p, f.ID, seen)
 
 			if depth > MaxFeatureDepth {
 				v.errorf(p, "features nest at most %d deep", MaxFeatureDepth)
@@ -426,19 +416,7 @@ func (v *validator) features(cfg *Config, r *refs) {
 
 			v.oneOf(p+".display", f.Display, "expanded", "collapsed", "hidden")
 
-			if f.Directory != "" {
-				if d := r.dirs[f.Directory]; d == nil {
-					v.errorf(p+".directory", "directory %q is not defined", f.Directory)
-				} else if !d.Configurable {
-					v.errorf(p+".directory", "directory %s must be configurable", f.Directory)
-				}
-			}
-
-			for j, c := range f.Components {
-				if r.components[c.ID] == nil {
-					v.errorf(fmt.Sprintf("%s.components[%d]", p, j), "component %q is not defined", c.ID)
-				}
-			}
+			v.featureRefs(p, f, r)
 
 			walk(f.Features, p+".features", depth+1)
 		}
@@ -448,6 +426,40 @@ func (v *validator) features(cfg *Config, r *refs) {
 
 	if len(cfg.Components) > 0 && len(cfg.Features) == 0 {
 		v.errorf("features", "at least one feature is required")
+	}
+}
+
+// featureID checks a feature's id and records it in seen.
+func (v *validator) featureID(featurePath, featureID string, seen map[string]bool) {
+	if !v.required(featurePath+".id", featureID) {
+		return
+	}
+
+	if !IsIdentifier(featureID) || len(featureID) > MaxFeatureIDLength {
+		v.errorf(featurePath+".id", "%q is not an identifier of at most %d characters", featureID, MaxFeatureIDLength)
+	}
+
+	if seen[featureID] {
+		v.errorf(featurePath+".id", "feature %s is defined twice", featureID)
+	}
+
+	seen[featureID] = true
+}
+
+// featureRefs checks the directory and components a feature refers to.
+func (v *validator) featureRefs(featurePath string, feature *Feature, known *refs) {
+	if feature.Directory != "" {
+		if d := known.dirs[feature.Directory]; d == nil {
+			v.errorf(featurePath+".directory", "directory %q is not defined", feature.Directory)
+		} else if !d.Configurable {
+			v.errorf(featurePath+".directory", "directory %s must be configurable", feature.Directory)
+		}
+	}
+
+	for j, c := range feature.Components {
+		if known.components[c.ID] == nil {
+			v.errorf(fmt.Sprintf("%s.components[%d]", featurePath, j), "component %q is not defined", c.ID)
+		}
 	}
 }
 
