@@ -38,8 +38,41 @@ jobs:
       - name: go build
         run: go build ./...
 
+      # The full ICE suite (darice.cub) comes with MsiVal2 in the Windows SDK
+      # and may not be redistributed, so it is fetched here and checked by
+      # hash. When Microsoft ships a new SDK the hashes change: update them
+      # after checking the new files on Windows.
+      - name: Install the ICE suite
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          SDK_URL: https://go.microsoft.com/fwlink/?linkid=2382519
+          SDK_SHA256: E8E264ACA8BC34ABDF592352BF09F986A85CDB96DB0EFBA405CA9E149181FE61
+          MSIVAL2_SHA256: 74BCFD1B9DEB0AF32EC8A1CE95D7340DC2F6FE0510D534A92AEE6E7F111D9C26
+          CUB_SHA256: 9C5E0525F68E8522860D106FE4C7BD77B1742F70E37EA0962687B1C1D5E2293B
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Assert-Hash($path, $want) {
+            $got = (Get-FileHash -Algorithm SHA256 $path).Hash
+            if ($got -ne $want) { throw "$path has SHA-256 $got, want $want" }
+          }
+          Invoke-WebRequest -Uri $env:SDK_URL -OutFile C:\winsdksetup.exe
+          Assert-Hash C:\winsdksetup.exe $env:SDK_SHA256
+          # A long layout path fails with exit code 2002.
+          $p = Start-Process C:\winsdksetup.exe -Wait -PassThru -ArgumentList '/features OptionId.MSIInstallTools /layout C:\sdk /quiet /norestart'
+          if ($p.ExitCode -ne 0) { throw "winsdksetup /layout exited with $($p.ExitCode)" }
+          $msi = 'C:\sdk\Installers\MsiVal2-x86_en-us.msi'
+          Assert-Hash $msi $env:MSIVAL2_SHA256
+          $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$msi`" /qn /norestart"
+          if ($p.ExitCode -ne 0) { throw "MsiVal2 install exited with $($p.ExitCode)" }
+          $cub = Join-Path ${env:ProgramFiles(x86)} 'MsiVal2\darice.cub'
+          Assert-Hash $cub $env:CUB_SHA256
+          "GO_MSI_ICE_CUB=$cub" >> $env:GITHUB_ENV
+          'GO_MSI_ICE_REQUIRED=1' >> $env:GITHUB_ENV
+
       # Windows runs the native tests too: they open the built packages with
-      # msi.dll and install them with msiexec. They are skipped with -short.
+      # msi.dll, run the ICE suite and install them with msiexec. They are
+      # skipped with -short.
       - name: go test
         shell: bash
         run: go test ./... ${{ runner.os != 'Windows' && '-short' || '' }} -shuffle=on -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./...
