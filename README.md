@@ -78,7 +78,7 @@ and custom actions is in
 ## Out of scope
 
 go-msi aims at simple, single-product installers such as an exporter or an
-agent with a service. These are not planned:
+agent with a service. These are not supported:
 
 - **Signing.** Use [relic](https://github.com/sassoftware/relic) or
   [osslsigncode](https://github.com/mtrojnar/osslsigncode).
@@ -88,10 +88,10 @@ agent with a service. These are not planned:
 - **Transforms (`.mst`), patches (`.msp`), merge modules (`.msm`) and
   bundles or bootstrappers.** Ship a new major-upgrade MSI instead of a patch.
 - **Multi-language packages.** A package has one language; there are no
-  embedded language transforms.
+  embedded language transforms. Not in schema v1.
 - **Spanned cabinets and LZX compression.** Cabinets are MSZIP or stored.
 - **Script custom actions** (VBScript, JScript). Use an executable or DLL
-  action instead.
+  action instead. Not in schema v1.
 - **Editing existing packages and WiX XML input.** `go-msi inspect` only
   reads packages to help debugging.
 - **Hand-built dialogs.** The UI is a built-in wizard plus optional form
