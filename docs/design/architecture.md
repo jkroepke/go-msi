@@ -1,8 +1,10 @@
 # go-msi writer architecture and implementation plan
 
 go-msi turns one YAML file ([`yaml-schema.md`](yaml-schema.md)) into an
-`.msi` package. It only builds packages: it never opens, installs or executes
-one, except in tests that run on a disposable Windows machine. Everything is
+`.msi` package. It only builds packages and reads them back (`inspect`, the
+self-check): it never installs or executes one. Only its tests do: the
+Windows tests without `-short` (elevated) and the Wine test
+`hack/test-wine.sh`. Everything is
 pure Go with no cgo and builds and runs on Linux, macOS and Windows.
 
 The rules come from [`docs/spec/MSISPEC.md`](../spec/MSISPEC.md) and the
@@ -13,7 +15,8 @@ never consulted (both are LGPL); Wine may run as a black-box test runtime.
 ## 1. Package map
 
 Each package under `pkg/` is independently usable. Every package has no cgo
-and no platform-specific code, and is tested on its own. Arrows point from a package to what it imports.
+and no platform-specific code, and is tested on its own. Arrows point from a
+package to what it imports.
 
 ```mermaid
 flowchart LR
@@ -26,9 +29,13 @@ flowchart LR
     builder --> condition
     builder --> sequence
     builder --> summary
+    builder --> artwork
     msidb["msidb<br/>string pool, tables, streams"] --> cfb
     msidb --> summary
-    summary["summary<br/>OLE property set"]
+    msidb --> codepage
+    summary["summary<br/>OLE property set"] --> codepage
+    codepage["codepage<br/>ANSI code pages"]
+    artwork["artwork<br/>wizard bitmaps"]
     cfb["cfb<br/>compound file"]
     cab["cab<br/>MSCAB, MSZIP"]
     schema["schema<br/>standard tables, _Validation"]
@@ -54,8 +61,8 @@ flowchart LR
 `pkg/config` (PR #2) stays as it is: the builder consumes a validated `*config.Config`
 and never reads YAML.
 
-Packages under `pkg/` are the importable API (config, builder and the format
-packages its results expose). Packages under `internal/` (`schema`, `pe`,
+Packages under `pkg/` are the importable API: `config`, `builder` and the
+format packages `msidb`, `cfb`, `summary` and `cab`. Packages under `internal/` (`schema`, `pe`,
 `condition`, `sequence`, `codepage`, `artwork`, `testpe`) are implementation
 details and may change without notice.
 
@@ -245,8 +252,8 @@ Only the standard library `flag` package is used.
   the built package with `msi.dll` (`MsiOpenDatabaseW`, views over every table,
   `MsiGetSummaryInformationW`, `MsiRecordReadStream` on the cabinet) and
   install and uninstall the minimal example silently (`msiexec /i … /qn`,
-  verify the file, `/x`, verify removal). The runner is disposable, so
-  installing there is allowed.
+  verify the file, `/x`, verify removal). The install test needs elevation and
+  is skipped with `-short`.
 - **Wine runner** (`ubuntu-latest`, `mise` installs Go; `apt` installs
   Wine): `wine msiexec /i minimal.msi /qn` as a black box, then check the file
   in the Wine prefix. `mise.toml` carries the Go version and the tasks
