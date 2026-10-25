@@ -17,7 +17,7 @@ import (
 // header starts every converted document: ANSI with one fallback character
 // per \u escape and Courier New at 8 points, a fixed-width font that keeps
 // the layout of hand-wrapped license files.
-const header = `{\rtf1\ansi\ansicpg1252\deff0\uc1{\fonttbl{\f0\fmodern\fcharset0 Courier New;}}` + "\n" + `\viewkind4\pard\f0\fs16 `
+const header = `{\rtf1\ansi\ansicpg1252\deff0\uc1{\fonttbl{\f0\fmodern\fcharset0 Courier New;}}` + "\n" + `\f0\fs16 `
 
 // IsRTF reports whether data is a rich text document.
 func IsRTF(data []byte) bool {

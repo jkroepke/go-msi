@@ -697,7 +697,7 @@ ui:
 ```
 
 `license` adds `LicenseAgreementDlg` after the welcome page: the license in a
-ScrollableText control, an "I accept" check box bound to `LicenseAccepted`,
+ScrollableText control, an "I accept" checkbox bound to `LicenseAccepted`,
 Print (`MsiPrint`) and Back, Next and Cancel. Next is disabled until the box
 is checked. A file that starts with `{\rtf` is embedded as it is, after two
 checks: it must be 7-bit ASCII, because the Control table stores text in the
@@ -731,7 +731,7 @@ ui:
 These are the sizes that other installer toolkits use for the same two
 pictures, so existing artwork fits unchanged. A picture is BMP (any header
 version, 1 to 32 bits, uncompressed or bit fields), PNG or JPEG, chosen by
-its content rather than its file name. The builder decodes it, blends
+its content rather than its filename. The builder decodes it, blends
 transparent pixels onto `paper`, and always writes an uncompressed 24-bit
 bitmap with a BITMAPINFOHEADER, the form every Windows Installer version
 shows (newer engines also read PNG, older ones only BMP and JPEG, section
