@@ -6,10 +6,11 @@
 // carry the sizes), window sizes 2^15 to 2^21, and the E8 header at the start
 // of the folder. The encoder stays inside the subset both formats agree on:
 // matches of at most 256 bytes (so the LZXD extra-length field never applies),
-// no match crosses a 32 KB frame, and no uncompressed blocks.
+// no match crosses a 32 KB frame, and uncompressed blocks only where a
+// compressed frame would exceed MaxFrame.
 //
 // The format is docs/spec/MSISPEC.md section 5. cabinet.dll is the reference
-// decoder; cab/native_windows_test.go checks the encoder against it.
+// decoder; pkg/cab/native_windows_test.go checks the encoder against it.
 package lzx
 
 import (
@@ -21,6 +22,10 @@ import (
 // FrameSize is the uncompressed size of every frame but the last. A cabinet
 // stores one frame per CFDATA block.
 const FrameSize = 32768
+
+// MaxFrame is the largest compressed frame a cabinet allows: the CFDATA
+// limit of [MS-CAB] for LZX, 6144 bytes above the frame size.
+const MaxFrame = FrameSize + 6144
 
 // Window sizes a cabinet allows, as powers of two.
 const (

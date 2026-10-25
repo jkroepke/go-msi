@@ -191,6 +191,37 @@ func TestErrors(t *testing.T) {
 	}
 }
 
+// TestLZXIncompressibleShift writes data whose first frame would exceed the
+// CFDATA limit when compressed with its block's trees.
+func TestLZXIncompressibleShift(t *testing.T) {
+	t.Parallel()
+
+	rng := rand.New(rand.NewSource(2)) //nolint:gosec // reproducible test data
+	data := make([]byte, 4*blockSize)
+
+	for i := range data {
+		if i < blockSize {
+			data[i] = byte(101 + rng.Intn(155)) //nolint:gosec // below 256
+		} else {
+			data[i] = byte(rng.Intn(101)) //nolint:gosec // below 101
+		}
+	}
+
+	out, err := Write([]File{{Name: "shift", Data: data}}, Options{Compression: LZX})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	back, err := Read(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(back[0].Data, data) {
+		t.Fatal("round trip differs")
+	}
+}
+
 func TestLZXRoundTrip(t *testing.T) {
 	t.Parallel()
 

@@ -23,6 +23,9 @@ const (
 	optimalNice  = 64
 	treeHashBits = 18
 	segmentSize  = 64 * blockSpan
+	// maxWorkers caps the default worker count: each worker holds about
+	// 25 MB of match finder state for a 2 MB window.
+	maxWorkers = 8
 )
 
 type pair struct {
@@ -73,11 +76,11 @@ func newOptimal(data []byte, opts Options) *optimal {
 // parseOptimal parses data in segments and hands every block's tokens to
 // emit in order.
 func parseOptimal(data []byte, opts Options, emit func([]token)) {
-	segments := (len(data) + segmentSize - 1) / segmentSize
+	segments := (len(data) + opts.segment - 1) / opts.segment
 
 	workers := opts.Workers
 	if workers <= 0 {
-		workers = runtime.GOMAXPROCS(0)
+		workers = min(runtime.GOMAXPROCS(0), maxWorkers)
 	}
 
 	workers = min(workers, segments)
@@ -97,7 +100,7 @@ func parseOptimal(data []byte, opts Options, emit func([]token)) {
 		wg.Go(func() {
 			parser := newOptimal(data, opts)
 			for seg := range jobs {
-				results[seg] <- parser.segment(seg)
+				results[seg] <- parser.segment(seg, opts.segment)
 			}
 		})
 	}
@@ -123,10 +126,10 @@ func parseOptimal(data []byte, opts Options, emit func([]token)) {
 	wg.Wait()
 }
 
-// segment parses one segment into blocks of tokens.
-func (p *optimal) segment(seg int) [][]token {
-	start := seg * segmentSize
-	end := min(start+segmentSize, len(p.data))
+// segment parses segment seg of the given size into blocks of tokens.
+func (p *optimal) segment(seg, size int) [][]token {
+	start := seg * size
+	end := min(start+size, len(p.data))
 
 	for i := range p.head {
 		p.head[i] = -1

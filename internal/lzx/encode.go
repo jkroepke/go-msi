@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/bits"
+	"slices"
 )
 
 var errTooLarge = errors.New("lzx: data exceeds 2 GiB")
@@ -17,12 +18,16 @@ type Options struct {
 	// Level trades speed for size, 1 to 9; 0 means 9. Levels 1 to 6 parse
 	// lazily, 7 to 9 search for the cheapest token sequence.
 	Level int
-	// Block forces every block to one type, verbatim (1) or aligned
-	// offset (2); 0 picks the smaller per block. Tests use it to cover both.
+	// Block forces every block to one type, verbatim (1), aligned offset
+	// (2) or uncompressed (3); 0 picks the smaller per block. Tests use it
+	// to cover each type.
 	Block int
 	// Workers bounds the goroutines of the optimal parser; 0 means
-	// GOMAXPROCS. The output does not depend on it.
+	// GOMAXPROCS, at most maxWorkers. The output does not depend on it.
 	Workers int
+	// segment is the optimal parser's segment size; 0 means segmentSize.
+	// Tests shrink it to cover several segments with little data.
+	segment int
 }
 
 const (
@@ -185,8 +190,12 @@ func (opts Options) check() (Options, error) {
 		return opts, fmt.Errorf("lzx: level %d, want 1 to 9", opts.Level)
 	}
 
-	if opts.Block < 0 || opts.Block > blockAligned {
-		return opts, fmt.Errorf("lzx: block type %d, want 0 to 2", opts.Block)
+	if opts.Block < 0 || opts.Block > blockStored {
+		return opts, fmt.Errorf("lzx: block type %d, want 0 to 3", opts.Block)
+	}
+
+	if opts.segment == 0 {
+		opts.segment = segmentSize
 	}
 
 	return opts, nil
@@ -217,7 +226,7 @@ func Compress(data []byte, opts Options) ([][]byte, error) {
 		e8(src[off:min(off+FrameSize, len(src))], off, e8size, true)
 	}
 
-	out := newWriter(len(src), opts)
+	out := newWriter(src, opts)
 
 	out.bits.write(1, 1)
 	out.bits.write(uint32(e8size)>>16, 16)
@@ -238,6 +247,7 @@ func Compress(data []byte, opts Options) ([][]byte, error) {
 
 // writer turns token blocks into frames.
 type writer struct {
+	src      []byte // the E8-translated data, for uncompressed blocks
 	frames   [][]byte
 	prevMain []uint8
 	prevLen  []uint8
@@ -249,11 +259,12 @@ type writer struct {
 	rep      repState
 }
 
-func newWriter(total int, opts Options) *writer {
+func newWriter(src []byte, opts Options) *writer {
 	slots := numSlots(opts.Window)
 
 	return &writer{
-		total:    total,
+		src:      src,
+		total:    len(src),
 		block0:   opts.Block,
 		slots:    slots,
 		prevMain: make([]uint8, numChars+8*slots),
@@ -262,8 +273,96 @@ func newWriter(total int, opts Options) *writer {
 	}
 }
 
-// block writes the tokens of one block, verbatim or aligned offset.
+// writerState is what a block changes in the writer.
+type writerState struct {
+	prevMain, prevLen []uint8
+	bits              bitWriter
+	frames, pos       int
+	rep               repState
+}
+
+func (w *writer) save() writerState {
+	stream := w.bits
+	stream.out = slices.Clone(stream.out)
+
+	return writerState{
+		prevMain: slices.Clone(w.prevMain),
+		prevLen:  slices.Clone(w.prevLen),
+		bits:     stream,
+		frames:   len(w.frames),
+		pos:      w.pos,
+		rep:      w.rep,
+	}
+}
+
+func (w *writer) restore(state writerState) {
+	copy(w.prevMain, state.prevMain)
+	copy(w.prevLen, state.prevLen)
+	w.bits, w.frames, w.pos, w.rep = state.bits, w.frames[:state.frames], state.pos, state.rep
+}
+
+// block writes one block. Blocks start and end on frame boundaries, so when
+// a compressed frame would exceed MaxFrame the block is written again as an
+// uncompressed block.
 func (w *writer) block(tokens []token) {
+	if w.block0 != blockStored {
+		state := w.save()
+		w.compressed(tokens)
+
+		fits := true
+		for _, frame := range w.frames[state.frames:] {
+			fits = fits && len(frame) <= MaxFrame
+		}
+
+		if fits {
+			return
+		}
+
+		w.restore(state)
+	}
+
+	size := 0
+	for _, tok := range tokens {
+		size += tok.length()
+	}
+
+	w.stored(size)
+}
+
+// stored writes the next size bytes as an uncompressed block ([MS-PATCH]
+// 2.3.2.1): after the header, 1 to 16 bits pad to a 16-bit boundary, the
+// repeated offsets follow as three 32-bit words, then the bytes and a pad
+// byte if their count is odd. Each frame's bytes go into that frame. The
+// repeated offsets and the previous trees stay as they are.
+func (w *writer) stored(size int) {
+	w.bits.write(blockStored, 3)
+	w.bits.write(uint32(size), 24) //nolint:gosec // at most blockSpan
+
+	if w.bits.n == 0 {
+		w.bits.write(0, 16)
+	} else {
+		w.bits.align()
+	}
+
+	for _, r := range w.rep {
+		w.bits.out = binary.LittleEndian.AppendUint32(w.bits.out, r)
+	}
+
+	for left := size; left > 0; {
+		chunk := min(left, FrameSize-w.pos%FrameSize)
+		w.bits.out = append(w.bits.out, w.src[w.pos:w.pos+chunk]...)
+		left -= chunk
+
+		if left == 0 && size%2 == 1 {
+			w.bits.out = append(w.bits.out, 0)
+		}
+
+		w.advance(chunk)
+	}
+}
+
+// compressed writes the tokens of one block, verbatim or aligned offset.
+func (w *writer) compressed(tokens []token) {
 	stats := count(tokens, w.rep, w.slots)
 	mainLens := buildLengths(stats.main, maxCodeLen)
 	lenLens := buildLengths(stats.len, maxCodeLen)

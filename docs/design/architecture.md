@@ -117,7 +117,7 @@ func (f *File) Reader(name string) (*StreamReader, error) // io.ReaderAt/Reader/
 ```go
 type File struct { Name string; Data []byte; Time time.Time; Attributes uint16 }
 type Entry struct { Name string; Size int64; Time time.Time; Attributes uint16; Open func() (io.ReadCloser, error) }
-type Options struct { Compression Compression /* None, MSZIP */; Level int; SetID uint16 }
+type Options struct { Compression Compression /* None, MSZIP, LZX */; Level int; Window int; SetID uint16 }
 func Write(files []File, o Options) ([]byte, error)
 func WriteTo(dst io.WriteSeeker, entries []Entry, o Options) (int64, error)
 func Read(data []byte) ([]File, error)

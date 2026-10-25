@@ -480,6 +480,24 @@ func nativeCases() []nativeCase {
 // frame and block boundaries, E8 call translation near frame ends, matches
 // that reach back almost a whole window, and data that spans the encoder's
 // parallel segments.
+// alphabetShift is incompressible data whose first frame uses other byte
+// values than the rest of its LZX block: compressed with the block's trees,
+// that frame would exceed the CFDATA limit, so the encoder stores the block.
+func alphabetShift() []byte {
+	rng := rand.New(rand.NewSource(2)) //nolint:gosec // reproducible test data
+	out := make([]byte, 4*32768)
+
+	for i := range out {
+		if i < 32768 {
+			out[i] = byte(101 + rng.Intn(155)) //nolint:gosec // below 256
+		} else {
+			out[i] = byte(rng.Intn(101)) //nolint:gosec // below 101
+		}
+	}
+
+	return out
+}
+
 func lzxCases(when time.Time, random, text []byte) []nativeCase {
 	lzx := func(window int) cab.Options { return cab.Options{Compression: cab.LZX, Window: window} }
 
@@ -527,7 +545,7 @@ func lzxCases(when time.Time, random, text []byte) []nativeCase {
 		}})
 	}
 
-	for _, block := range []int{1, 2} {
+	for _, block := range []int{1, 2, 3} {
 		cases = append(cases, nativeCase{name: fmt.Sprintf("lzx-block-type-%d", block), opts: cab.WithLZXBlock(lzx(21), block), files: []cab.File{
 			{Name: "code.bin", Data: code[:1<<20], Time: when},
 		}})
@@ -542,6 +560,7 @@ func lzxCases(when time.Time, random, text []byte) []nativeCase {
 		nativeCase{name: "lzx-exactly-one-block", opts: lzx(0), files: []cab.File{{Name: "block", Data: text[:32768], Time: when}}},
 		nativeCase{name: "lzx-one-block-plus-one", opts: lzx(0), files: []cab.File{{Name: "block", Data: text[:32769], Time: when}}},
 		nativeCase{name: "lzx-random", opts: lzx(0), files: []cab.File{{Name: "random", Data: random, Time: when}}},
+		nativeCase{name: "lzx-stored-fallback", opts: lzx(0), files: []cab.File{{Name: "shift", Data: alphabetShift(), Time: when}}},
 		nativeCase{name: "lzx-far-match", opts: lzx(21), files: []cab.File{{Name: "far", Data: far, Time: when}}},
 		nativeCase{name: "lzx-e8-frame-ends", opts: lzx(0), files: []cab.File{{Name: "e8", Data: calls, Time: when}}},
 		nativeCase{name: "lzx-e8-short-tail", opts: lzx(0), files: []cab.File{{Name: "e8", Data: e8tail, Time: when}}},

@@ -85,10 +85,11 @@ func TestRoundTrip(t *testing.T) {
 		"text":        bytes.Repeat([]byte("The quick brown fox jumps over the lazy dog. 0123456789\r\n"), 9000),
 		"e8-tail":     append(bytes.Repeat([]byte{0xE8, 0x10, 0, 0, 0}, 7000), 0xE8, 1, 2, 3, 4),
 		"block-split": x86ish(blockSpan+FrameSize+5, 3),
+		"shift":       alphabetShift(),
 	}
 
 	for name, data := range inputs {
-		for _, opts := range []Options{{}, {Window: 15, Level: 1}, {Window: 16, Block: blockVerb}, {Window: 18, Block: blockAligned}, {Window: 21, Level: 4, Block: blockAligned}} {
+		for _, opts := range []Options{{}, {Window: 15, Level: 1}, {Window: 16, Block: blockVerb}, {Window: 18, Block: blockAligned}, {Window: 21, Level: 4, Block: blockAligned}, {Window: 17, Block: blockStored}} {
 			t.Run(fmt.Sprintf("%s/w%d-l%d-b%d", name, opts.Window, opts.Level, opts.Block), func(t *testing.T) {
 				t.Parallel()
 
@@ -102,7 +103,7 @@ func TestRoundTrip(t *testing.T) {
 				}
 
 				for i, f := range frames {
-					if len(f)%2 != 0 || len(f) > FrameSize+6144 {
+					if len(f)%2 != 0 || len(f) > MaxFrame {
 						t.Fatalf("frame %d is %d bytes", i, len(f))
 					}
 				}
@@ -116,6 +117,45 @@ func TestRoundTrip(t *testing.T) {
 					t.Fatalf("round trip differs at %d", firstDiff(got, data))
 				}
 			})
+		}
+	}
+}
+
+// alphabetShift is incompressible data whose first frame uses other byte
+// values than the rest of its block, so that the block's trees code that
+// frame with long literal codes: compressed, it would exceed MaxFrame.
+func alphabetShift() []byte {
+	rng := rand.New(rand.NewSource(2)) //nolint:gosec // reproducible test data
+	out := make([]byte, 4*FrameSize)
+
+	for i := range out {
+		if i < FrameSize {
+			out[i] = byte(101 + rng.Intn(155)) //nolint:gosec // below 256
+		} else {
+			out[i] = byte(rng.Intn(101)) //nolint:gosec // below 101
+		}
+	}
+
+	return out
+}
+
+// TestOverflowStored checks that a block whose compressed frame would exceed
+// MaxFrame is written as an uncompressed block.
+func TestOverflowStored(t *testing.T) {
+	t.Parallel()
+
+	data := alphabetShift()
+
+	for _, level := range []int{1, 9} {
+		frames, err := Compress(data, Options{Level: level})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// The E8 header takes 33 bits, so the block type is bits 14-12 of
+		// the third 16-bit word.
+		if typ := binary.LittleEndian.Uint16(frames[0][4:]) >> 12 & 7; typ != blockStored {
+			t.Fatalf("level %d: block type %d, want %d", level, typ, blockStored)
 		}
 	}
 }
@@ -231,7 +271,7 @@ func FuzzDecode(f *testing.F) {
 func FuzzRoundTrip(f *testing.F) {
 	f.Add([]byte("hello hello hello"), uint8(0))
 	f.Fuzz(func(t *testing.T, data []byte, mode uint8) {
-		opts := Options{Window: MinWindow + int(mode%7), Level: 1 + int(mode/7%9), Block: int(mode / 63 % 3)}
+		opts := Options{Window: MinWindow + int(mode%7), Level: 1 + int(mode/7%9), Block: int(mode / 63 % 4)}
 
 		frames, err := Compress(data, opts)
 		if err != nil {
@@ -272,14 +312,20 @@ func TestSlotTables(t *testing.T) {
 func TestWorkersDeterministic(t *testing.T) {
 	t.Parallel()
 
-	data := x86ish(segmentSize+3*blockSpan+77, 13)
+	// Small segments keep the test fast under the race detector.
+	opts := Options{Window: 17, Level: optimalLevel, segment: 2 * blockSpan}
+	data := x86ish(3*opts.segment+blockSpan+77, 13)
 
-	one, err := Compress(data, Options{Level: optimalLevel, Workers: 1})
+	opts.Workers = 1
+
+	one, err := Compress(data, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	three, err := Compress(data, Options{Level: optimalLevel, Workers: 3})
+	opts.Workers = 3
+
+	three, err := Compress(data, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +340,7 @@ func TestWorkersDeterministic(t *testing.T) {
 		}
 	}
 
-	if got := decodeAll(t, one, MaxWindow, len(data)); !bytes.Equal(got, data) {
+	if got := decodeAll(t, one, opts.Window, len(data)); !bytes.Equal(got, data) {
 		t.Fatalf("round trip differs at %d", firstDiff(got, data))
 	}
 }

@@ -364,20 +364,20 @@ Each `ab` is `43 4B` ("CK") plus a raw RFC 1951 stream. Its last block has BFINA
 `typeCompress = 3 | window << 8` with a window of 2^15 to 2^21 bytes. The bitstream is the LZX DELTA format of [MS-PATCH] without reference data (Documented, unverified where the cabinet tests below do not cover it). It differs from MS-PATCH in a cabinet as follows:
 
 - There is no chunk-size prefix: each CFDATA payload is one frame of 32768 uncompressed bytes (the last one shorter), and `cbData` gives its size. A frame ends padded with zero bits to a 16-bit boundary.
-- Windows are 2^15 to 2^21 bytes, with 30, 32, 34, 36, 38, 42 and 50 position slots. MS-PATCH lists only 2^17 and up.
-- The E8 header (1 bit, then the translation size as two 16-bit words when set) opens the folder's first frame. The window, the trees, the repeated offsets and the current block carry across the folder's frames; a new folder starts fresh.
+- Windows are 2^15 to 2^21 bytes, with 30, 32, 34, 36, 38, 42 and 50 position slots. MS-PATCH lists only 2^17 and up; 30 and 32 follow its two slots per window bit (unverified).
+- The E8 header (1 bit, then the translation size as two 16-bit words when set) opens the folder's first frame. The window, the trees, the repeated offsets and the current block carry across the folder's frames. A new folder starting fresh is not in MS-PATCH (unverified).
 - MS-PATCH's extra-length field for matches of 257 bytes and more is LZX DELTA only. go-msi writes matches of at most 256 bytes, so that question never arises.
 
 What go-msi's writer does (`internal/lzx`):
 
 - E8 translation on, with the folder's length as the translation size; it applies to every frame of more than 10 bytes below 1 GiB, as MS-PATCH 2.2.2 says.
-- Verbatim or aligned offset blocks of 128 KiB, whichever is smaller; no uncompressed blocks. Matches never cross a 32 KiB frame boundary (MS-PATCH 2.1.5). An aligned offset block codes the low 3 footer bits of every slot with 3 or more footer bits through the aligned tree: MS-PATCH 2.6.3 says so for the encoder, while the decoder pseudocode in 2.7 reads "more than 3"; the cabinet tests decide it.
+- Verbatim or aligned offset blocks of 128 KiB, whichever is smaller. A block is written uncompressed instead when one of its compressed frames would exceed 32768 + 6144 bytes, the CFDATA limit; incompressible data whose byte distribution changes inside a block does that. Matches never cross a 32 KiB frame boundary (MS-PATCH 2.1.5). An aligned offset block codes the low 3 footer bits of every slot with 3 or more footer bits through the aligned tree: MS-PATCH 2.6.3 says so for the encoder, while the decoder pseudocode in 2.7 reads "more than 3"; the cabinet tests decide it.
 - Path lengths are coded as deltas against the previous block (mod 17) and runs of zeros with codes 17 and 18; code 19, whose delta base MS-PATCH leaves open for runs, is never written (the reader accepts it, using the first element's previous length). Every tree has at least two codes (MS-PATCH 2.4).
 - Levels 7 to 9 (9 by default) use a cost-based parser over a binary-tree match finder, in 8 MiB segments that are parsed in parallel; the output does not depend on the number of workers.
 
 The reader follows the same rules and also reads uncompressed blocks: after the block header, 1 to 16 padding bits (16 when the stream is already aligned), R0, R1 and R2 as little-endian u32, the bytes, and a pad byte when the block size is odd.
 
-Measured on Windows Server 2025 with makecab.exe 5.00 (2026-10-25, LZX:21 against MSZIP): windows_exporter 0.32.0 (33.4 MB) 13.27 MB against 15.39 MB, Grafana Alloy 1.21.2 (414.6 MB) 75.28 MB against 106.86 MB; expand.exe was not slower on LZX. go-msi's writer gave 13.29 MB and 75.76 MB for the same files.
+Measured on Windows Server 2025 with makecab.exe 5.00 (2026-10-25, LZX:21 against MSZIP; the log is not yet under `msitest/results`): windows_exporter 0.32.0 (33.4 MB) 13.27 MB against 15.39 MB, Grafana Alloy 1.21.2 (414.6 MB) 75.28 MB against 106.86 MB; expand.exe was not slower on LZX. go-msi's writer gave 13.29 MB and 75.76 MB for the same files, measured on Linux; that cabinet.dll reads them is unverified until the native cabinet tests run on Windows.
 
 ### Windows Installer usage
 
