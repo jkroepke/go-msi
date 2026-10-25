@@ -193,10 +193,10 @@ Silent-failure cases a producer has to guard against itself:
 | RUN-16 | Not run | Interactive full UI |
 | RUN-17 | Contradicted | 1401, 1501, 6551, 6601 and [1399](msitest/results/RUN-17/rep-1399/log.md) work; [5802](msitest/results/RUN-17/rep-5802/log.md) gives 2613 |
 | RUN-18 | Confirmed | EXE exit 1 fails unless Continue; [type-6 return 5](msitest/results/RUN-18/vbs-binary-return-5-immediate/log.md) ends with 0 and skips the rest; [deferred](msitest/results/RUN-18/vbs-binary-return-5-deferred/log.md) leaves files unregistered |
-| RUN-24 | Confirmed | Early removal: only `NeverOverwrite` + `Permanent` in both versions keeps an edit; `NeverOverwrite` alone loses the resource. Late removal: `NeverOverwrite` alone keeps it, also when added later; [details](#use-case-gap-cases-run-24-to-run-27) |
-| RUN-25 | Confirmed | `AppSearch` into `INSTALLDIR` overrides the command line; the guarded type-51 form does not; no `Signature` table gives 2228/1603; [details](#use-case-gap-cases-run-24-to-run-27) |
-| RUN-26 | Confirmed | `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-run-24-to-run-27) |
-| RUN-27 | Confirmed | Per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-run-24-to-run-27) |
+| RUN-24 | Confirmed | [never-early](msitest/results/RUN-24/never-early/log.md), [never-late](msitest/results/RUN-24/never-late/log.md), [neverperm-early](msitest/results/RUN-24/neverperm-early/log.md); early removal: only `NeverOverwrite` + `Permanent` in both versions keeps an edit; `NeverOverwrite` alone loses the resource. Late removal: `NeverOverwrite` alone keeps it, also when added later; [details](#use-case-gap-cases-run-24-to-run-27) |
+| RUN-25 | Confirmed | [direct-cmdline](msitest/results/RUN-25/direct-cmdline/log.md), [guarded-cmdline](msitest/results/RUN-25/guarded-cmdline/log.md), [direct-nosignature](msitest/results/RUN-25/direct-nosignature/log.md); `AppSearch` into `INSTALLDIR` overrides the command line; the guarded type-51 form does not; no `Signature` table gives 2228/1603; [details](#use-case-gap-cases-run-24-to-run-27) |
+| RUN-26 | Confirmed | [removefile-upgrade](msitest/results/RUN-26/removefile-upgrade/log.md), [purge-upgrade](msitest/results/RUN-26/purge-upgrade/log.md); `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-run-24-to-run-27) |
+| RUN-27 | Confirmed | [per-step](msitest/results/RUN-27/per-step/log.md); per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-run-24-to-run-27) |
 | SEC-01 | Confirmed | File, [CreateFolder](msitest/results/SEC-01/createfolder/log.md), [Registry](msitest/results/SEC-01/registry/log.md) and [ServiceInstall](msitest/results/SEC-01/service/log.md) rows get the authored DACL; [`/fa` and `/fvomus` restore it](msitest/results/SEC-01/file/log.md); [owner and group](msitest/results/SEC-01/file-owner-group/log.md) are set; `[Property]` stays literal (1943) but [`<[%USERDOMAIN]\[%USERNAME]>`](msitest/results/SEC-01/account-angle-env/log.md) and [`<BUILTIN\Users>`](msitest/results/SEC-01/account-angle-builtin/log.md) resolve; invalid SDDL 1943, two true rows 1942, both tables 1941; [deny ACE for `BU`](msitest/results/SEC-01/file-deny-ace/log.md) leaves the file on uninstall |
 | VAL-01 | Confirmed | [log](msitest/results/VAL-01/msival2-compare/log.md); the Go runner and `msival2.exe` agree on all three packages (1, 25 and 26 warning and error findings; Info lines left out); ICE08 reports the duplicate GUID |
 | SIG-01 | Confirmed | Windows Server 2025 CI runner, `pkg/builder/nativetest/sign_windows_test.go`: go-msi recomputes the digest of a `signtool sign /fd SHA256` package; a go-msi signature passes WinVerifyTrust and `Get-AuthenticodeSignature` |
@@ -222,8 +222,9 @@ Run on 2026-10-25 on Windows Server 2025 Standard Evaluation 10.0.26100 by
 [`msitest`](msitest/cases_gaps.go). They check the engine behaviour that per-step
 `recovery` relies on, and that the planned options for preserved
 configuration, a remembered install folder and data removal will rely on.
-The tables summarise the cases' `RESULT` lines; the
-per-variant `log.md` files also hold the `msiexec` log lines quoted below.
+The tables summarise the cases' `RESULT` lines; the per-variant
+[`log.md`](msitest/results) files under `RUN-24` to `RUN-27` hold them and the
+`msiexec` log lines quoted below.
 
 **RUN-24, user edits across a major upgrade.** v1 installs `config.txt` and an
 HKLM value `Arguments` (each the key path of its own component, `MsiFileHash`
