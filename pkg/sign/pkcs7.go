@@ -290,6 +290,11 @@ func parseAttributes(set []byte) (map[string][]byte, error) {
 		}
 
 		key := attr.Type.String()
+
+		if attr.Values.Class != asn1.ClassUniversal || attr.Values.Tag != asn1.TagSet {
+			return nil, fmt.Errorf("sign: attribute %s values are not a SET", key)
+		}
+
 		if _, dup := out[key]; dup {
 			return nil, fmt.Errorf("sign: attribute %s appears twice", key)
 		}

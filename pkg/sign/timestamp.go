@@ -41,6 +41,14 @@ type accuracy struct {
 	Micros  int `asn1:"optional,tag:1"`
 }
 
+// ErrTimestampUnavailable wraps failures to reach the time-stamping
+// authority or a non-200 answer, as opposed to a bad reply.
+var ErrTimestampUnavailable = errors.New("sign: timestamp authority unavailable")
+
+// defaultClient is used without Options.HTTPClient; a stalled authority
+// must not hang a build.
+var defaultClient = &http.Client{Timeout: time.Minute} //nolint:gochecknoglobals // shared client
+
 // maxResponse caps the timestamp reply.
 const maxResponse = 1 << 20
 
@@ -106,18 +114,18 @@ func postTimestampRequest(ctx context.Context, opts *Options, req []byte) ([]byt
 
 	client := opts.HTTPClient
 	if client == nil {
-		client = http.DefaultClient
+		client = defaultClient
 	}
 
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("sign: timestamp: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrTimestampUnavailable, err)
 	}
 
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("sign: timestamp: %s answered %s", opts.TimestampURL, resp.Status)
+		return nil, fmt.Errorf("%w: %s answered %s", ErrTimestampUnavailable, opts.TimestampURL, resp.Status)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))

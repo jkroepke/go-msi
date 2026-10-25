@@ -22,7 +22,7 @@ macOS and Windows, for example in a CI job next to the rest of your release.
   produce a byte-identical MSI.
 - **Signed.** go-msi adds an Authenticode signature itself, with an RFC 3161
   timestamp, so no Windows SDK or `signtool` is needed.
-- **Focused.** go-msi only builds MSI packages. For MSIX packages, use
+- **Focused.** go-msi only builds and signs MSI packages. For MSIX packages, use
   [nFPM](https://github.com/goreleaser/nfpm).
 
 > [!NOTE]

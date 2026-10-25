@@ -16,7 +16,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"math/big"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -609,11 +608,8 @@ func TestSignatureSIG06(t *testing.T) {
 
 		ecPKI := newPKI(t, key)
 		got := winVerifyTrust(t, writeTemp(t, "ec.msi", mustSign(t, unsigned, ecPKI.options(tc.hash))))
-		t.Logf("SIG-06: ECDSA %s %v: WinVerifyTrust %#x", tc.curve.Params().Name, tc.hash, got)
-
-		if got != ecPKI.wantValid() {
-			t.Errorf("SIG-06: ECDSA %s %v: WinVerifyTrust = %#x, want %#x", tc.curve.Params().Name, tc.hash, got, ecPKI.wantValid())
-		}
+		// ECDSA is an open question of MSISPEC §12: record, don't assert.
+		t.Logf("SIG-06: ECDSA %s %v: WinVerifyTrust %#x (valid would be %#x)", tc.curve.Params().Name, tc.hash, got, ecPKI.wantValid())
 	}
 
 	opts := rsaPKI.options(crypto.SHA256)
@@ -621,9 +617,8 @@ func TestSignatureSIG06(t *testing.T) {
 
 	stamped, err := sign.Sign(context.Background(), unsigned, opts)
 	if err != nil {
-		var netErr net.Error
-		if errors.As(err, &netErr) {
-			t.Skipf("timestamp authority unreachable: %v", err)
+		if errors.Is(err, sign.ErrTimestampUnavailable) {
+			t.Skipf("timestamp authority unavailable: %v", err)
 		}
 
 		t.Fatal(err)

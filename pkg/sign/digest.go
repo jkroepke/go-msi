@@ -36,26 +36,38 @@ func nameBytes(name string) []byte {
 	return out
 }
 
-// sigOrder compares names as UTF-16LE bytes, unsigned, with no length rule
-// or case mapping. A proper prefix sorts first.
-func sigOrder(a, b *cfb.Entry) int {
-	return bytes.Compare(nameBytes(a.Name), nameBytes(b.Name))
+// rawName is the UTF-16LE name of an entry as stored.
+func rawName(ent *cfb.Entry) []byte {
+	if ent.RawName != nil {
+		return ent.RawName
+	}
+
+	return nameBytes(ent.Name)
 }
 
-// children returns the streams and storages directly inside sid, in
-// SigOrder.
-func children(file *cfb.File, sid int) []*cfb.Entry {
-	var out []*cfb.Entry
+// tree lists the streams and storages inside each storage, in SigOrder:
+// UTF-16LE bytes, unsigned, with no length rule or case mapping, a proper
+// prefix first. It is built once per walk.
+type tree map[int][]*cfb.Entry
+
+func newTree(file *cfb.File) tree {
+	out := make(tree)
 
 	for _, ent := range file.Entries {
-		if ent.Parent == sid && ent.SID != sid && (ent.Type == typeStream || ent.Type == typeStorage) {
-			out = append(out, ent)
+		if ent.Parent >= 0 && ent.SID != ent.Parent && (ent.Type == typeStream || ent.Type == typeStorage) {
+			out[ent.Parent] = append(out[ent.Parent], ent)
 		}
 	}
 
-	slices.SortFunc(out, sigOrder)
+	for _, list := range out {
+		slices.SortStableFunc(list, sigOrder)
+	}
 
 	return out
+}
+
+func sigOrder(a, b *cfb.Entry) int {
+	return bytes.Compare(rawName(a), rawName(b))
 }
 
 // newHash returns a fresh hash for one of the supported algorithms.
@@ -95,6 +107,8 @@ func contentDigest(file *cfb.File, algo crypto.Hash, skipEx bool) ([]byte, error
 		return nil, err
 	}
 
+	kids := newTree(file)
+
 	var walk func(sid, depth int) error
 
 	walk = func(sid, depth int) error {
@@ -102,7 +116,7 @@ func contentDigest(file *cfb.File, algo crypto.Hash, skipEx bool) ([]byte, error
 			return errors.New("sign: storages nested too deep")
 		}
 
-		for _, ent := range children(file, sid) {
+		for _, ent := range kids[sid] {
 			switch {
 			case sid == 0 && ent.Type == typeStream && (ent.Name == StreamSignature || skipEx && ent.Name == StreamSignatureEx):
 				continue
@@ -152,6 +166,8 @@ func preHash(file *cfb.File, algo crypto.Hash) ([]byte, error) { //nolint:cyclop
 	_, _ = hsh.Write(root.CLSID[:])
 	putU32(root.StateBits)
 
+	kids := newTree(file)
+
 	var walk func(sid, depth int) error
 
 	walk = func(sid, depth int) error {
@@ -159,12 +175,12 @@ func preHash(file *cfb.File, algo crypto.Hash) ([]byte, error) { //nolint:cyclop
 			return errors.New("sign: storages nested too deep")
 		}
 
-		for _, ent := range children(file, sid) {
+		for _, ent := range kids[sid] {
 			if sid == 0 && ent.Type == typeStream && (ent.Name == StreamSignature || ent.Name == StreamSignatureEx) {
 				continue
 			}
 
-			_, _ = hsh.Write(nameBytes(ent.Name))
+			_, _ = hsh.Write(rawName(ent))
 
 			if ent.Type == typeStream {
 				putU32(uint32(ent.Size)) //nolint:gosec // the low 32 bits are hashed by definition

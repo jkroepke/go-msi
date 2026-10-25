@@ -209,6 +209,10 @@ func cmdBuild(args []string, stdout, stderr io.Writer) error {
 		return errors.New("build wants exactly one msi.yaml")
 	}
 
+	if err := signing.check(); err != nil {
+		return err
+	}
+
 	cfg, err := load.load(flags.Arg(0))
 	if err != nil {
 		return err
@@ -379,6 +383,19 @@ func (s *signFlags) register(flags *flag.FlagSet) {
 
 func (s *signFlags) enabled() bool { return s.pfx != "" || s.cert != "" || s.key != "" }
 
+// check refuses signing options that would be ignored.
+func (s *signFlags) check() error {
+	if !s.enabled() && (s.timestampURL != "" || s.description != "" || s.url != "" || s.passwordEnv != "" || s.hash != "sha256") {
+		return errors.New("signing options need --pfx, or --cert and --key")
+	}
+
+	if s.passwordEnv != "" && s.pfx == "" {
+		return errors.New("--password-env only applies to --pfx")
+	}
+
+	return nil
+}
+
 func (s *signFlags) options() (sign.Options, error) {
 	opts := sign.Options{TimestampURL: s.timestampURL, Description: s.description, URL: s.url}
 
@@ -457,7 +474,10 @@ func (s *signFlags) sign(pkg []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	signed, err := sign.Sign(context.Background(), pkg, opts)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	signed, err := sign.Sign(ctx, pkg, opts)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // sign errors carry their prefix
 	}
@@ -487,6 +507,10 @@ func cmdSign(args []string, stdout, stderr io.Writer) error {
 		return errors.New("sign wants exactly one package")
 	}
 
+	if err := signing.check(); err != nil {
+		return err
+	}
+
 	in := flags.Arg(0)
 	if out == "" {
 		out = in
@@ -502,12 +526,45 @@ func cmdSign(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	if err := os.WriteFile(out, signed, 0o644); err != nil { //nolint:gosec // a package is world-readable
-		return fmt.Errorf("write %s: %w", out, err)
+	if err := writeAtomic(out, signed); err != nil {
+		return err
 	}
 
 	if !quiet {
 		return printSignature(stdout, out, signed)
+	}
+
+	return nil
+}
+
+// writeAtomic replaces path through a temporary file in the same
+// directory, so a failed write keeps the original package.
+func writeAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".go-msi-*.msi")
+	if err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+
+	defer func() { _ = os.Remove(tmp.Name()) }()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+
+	if err := tmp.Chmod(0o644); err != nil {
+		_ = tmp.Close()
+
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
 	}
 
 	return nil

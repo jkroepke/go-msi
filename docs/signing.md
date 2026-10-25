@@ -36,7 +36,8 @@ or revocation; Windows does that at install time.
   `\u0005MsiDigitalSignatureEx`. The signature covers the stream contents and
   the root CLSID, not the container layout, so re-laying out the file keeps it
   valid.
-- RSA keys of at least 2048 bits with PKCS #1 v1.5, or ECDSA keys.
+- RSA keys of at least 2048 bits with PKCS #1 v1.5. ECDSA keys are
+  experimental: whether Windows accepts them is still being tested (SIG-06).
 - `SpcSpOpusInfo` with the description and URL, and the individual
   code-signing `SpcStatementType`.
 - RSA signatures without a timestamp are deterministic: the same package and

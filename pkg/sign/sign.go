@@ -36,8 +36,8 @@ type Options struct {
 	// Rand is the entropy source for the signature and the timestamp
 	// nonce. Nil means crypto/rand.
 	Rand io.Reader
-	// HTTPClient sends the timestamp request. Nil means
-	// http.DefaultClient.
+	// HTTPClient sends the timestamp request. Nil means a client with a
+	// one-minute timeout.
 	HTTPClient *http.Client
 	// Description is the program name shown in the UAC prompt
 	// (SpcSpOpusInfo.programName). Optional.

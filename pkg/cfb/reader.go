@@ -20,11 +20,14 @@ type File struct {
 
 // Entry is one directory entry.
 type Entry struct {
-	Name   string
-	Data   []byte
-	SID    int
-	Size   uint64
-	Parent int
+	Name string
+	// RawName is the stored name without its terminator, UTF-16LE. It
+	// keeps units that Name cannot hold, such as lone surrogates.
+	RawName []byte
+	Data    []byte
+	SID     int
+	Size    uint64
+	Parent  int
 	// Created and Modified are the raw FILETIME fields at 0x64 and 0x6C;
 	// StateBits is the field at 0x60. The signature pre-hash covers them.
 	Created   uint64
@@ -204,6 +207,7 @@ func Read(raw []byte) (*File, error) { //nolint:maintidx,cyclop,gocyclo,gocognit
 				}
 
 				ent.Name = string(utf16.Decode(units))
+				ent.RawName = bytes.Clone(rec[:nameLen-2])
 			}
 
 			file.Entries = append(file.Entries, ent)

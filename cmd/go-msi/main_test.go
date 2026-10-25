@@ -194,6 +194,8 @@ func TestSignVerify(t *testing.T) {
 		"bad hash":     {"sign", "--pfx", pfxFile, "--hash", "md5", unsigned},
 		"missing env":  {"sign", "--pfx", pfxFile, "--password-env", "GO_MSI_TEST_UNSET_VARIABLE", unsigned},
 		"cert only":    {"sign", "--cert", certFile, unsigned},
+		"no key build": {"build", "--timestamp-url", "http://example.com", yaml},
+		"env with pem": {"sign", "--cert", certFile, "--key", keyFile, "--password-env", "HOME", unsigned},
 		"no package":   {"verify"},
 		"missing file": {"verify", filepath.Join(dir, "missing.msi")},
 	} {
