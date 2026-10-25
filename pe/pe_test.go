@@ -2,6 +2,7 @@ package pe
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/jkroepke/go-msi/internal/testpe"
@@ -60,7 +61,7 @@ func TestNoTranslations(t *testing.T) {
 
 func TestNotPE(t *testing.T) {
 	for _, b := range [][]byte{nil, []byte("hello"), append([]byte("MZ"), make([]byte, 100)...)} {
-		if _, err := Parse(bytes.NewReader(b)); err != ErrNotPE {
+		if _, err := Parse(bytes.NewReader(b)); !errors.Is(err, ErrNotPE) {
 			t.Errorf("%q: %v", b, err)
 		}
 

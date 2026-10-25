@@ -1,6 +1,7 @@
 package msidb
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -40,7 +41,7 @@ func alphaIndex(r rune) int {
 // result exceeds 31 UTF-16 units, which is the engine's limit (DB-11).
 func EncodeStreamName(name string, table bool) (string, error) {
 	if name == "" {
-		return "", fmt.Errorf("msidb: empty stream name")
+		return "", errors.New("msidb: empty stream name")
 	}
 
 	var out []uint16
@@ -66,14 +67,14 @@ func EncodeStreamName(name string, table bool) (string, error) {
 
 		if i+1 < len(rs) {
 			if b := alphaIndex(rs[i+1]); b >= 0 {
-				out = append(out, uint16(pairBase+a+(b<<6)))
+				out = append(out, uint16(pairBase+a+(b<<6))) //nolint:gosec // bounded by the format limits checked earlier
 				i++
 
 				continue
 			}
 		}
 
-		out = append(out, uint16(singleBase+a))
+		out = append(out, uint16(singleBase+a)) //nolint:gosec // bounded by the format limits checked earlier
 	}
 
 	if len(out) > maxEncoded {

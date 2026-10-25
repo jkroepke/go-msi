@@ -50,7 +50,7 @@ func parseVersion(s string) (ms, ls uint32) {
 	for i, p := range strings.Split(s, ".") {
 		if i < 4 {
 			n, _ := strconv.Atoi(p)
-			f[i] = uint32(n)
+			f[i] = uint32(n) //nolint:gosec // version fields are small
 		}
 	}
 
@@ -85,32 +85,32 @@ func versionInfo(o Options) []byte {
 	if o.Languages != nil {
 		var trans []byte
 		for _, l := range o.Languages {
-			trans = le.AppendUint32(trans, uint32(l)|0x04B0<<16)
+			trans = le.AppendUint32(trans, uint32(l)|0x04B0<<16) //nolint:gosec // a language ID is 16 bits
 		}
 
-		v := make([]byte, 6)
+		v := []byte{0, 0, 0, 0, 0, 0}
 		v = append(v, u16s("Translation")...)
 		v = pad4(v)
 		v = append(v, trans...)
-		le.PutUint16(v, uint16(len(v)))
-		le.PutUint16(v[2:], uint16(len(trans)))
+		le.PutUint16(v, uint16(len(v)))         //nolint:gosec // a resource is far below 64 KiB
+		le.PutUint16(v[2:], uint16(len(trans))) //nolint:gosec // a resource is far below 64 KiB
 
-		vfi := make([]byte, 6)
+		vfi := []byte{0, 0, 0, 0, 0, 0}
 		vfi[4] = 1
 		vfi = append(vfi, u16s("VarFileInfo")...)
 		vfi = pad4(vfi)
 		vfi = append(vfi, v...)
-		le.PutUint16(vfi, uint16(len(vfi)))
+		le.PutUint16(vfi, uint16(len(vfi))) //nolint:gosec // a resource is far below 64 KiB
 		children = append(children, pad4(vfi)...)
 	}
 
-	out := make([]byte, 6)
+	out := []byte{0, 0, 0, 0, 0, 0}
 	out = append(out, u16s("VS_VERSION_INFO")...)
 	out = pad4(out)
 	out = append(out, fixed...)
 	out = pad4(out)
 	out = append(out, children...)
-	le.PutUint16(out, uint16(len(out)))
+	le.PutUint16(out, uint16(len(out))) //nolint:gosec // a resource is far below 64 KiB
 	le.PutUint16(out[2:], 52)
 
 	return out
@@ -149,7 +149,7 @@ func Build(o Options) []byte {
 
 		lang := uint32(1033)
 		if len(o.Languages) > 0 {
-			lang = uint32(o.Languages[0])
+			lang = uint32(o.Languages[0]) //nolint:gosec // a language ID is 16 bits
 		}
 
 		// Offsets: root 0 (24 bytes), type dir 24, name dir 48, data entry 72, data 88.
@@ -157,7 +157,7 @@ func Build(o Options) []byte {
 		rsrc = append(rsrc, dir(1, 0x80000000|48)...)
 		rsrc = append(rsrc, dir(lang, 72)...)
 		rsrc = le.AppendUint32(rsrc, rsrcRVA+88)
-		rsrc = le.AppendUint32(rsrc, uint32(len(vi)))
+		rsrc = le.AppendUint32(rsrc, uint32(len(vi))) //nolint:gosec // a resource is small
 		rsrc = le.AppendUint32(rsrc, 0)
 		rsrc = le.AppendUint32(rsrc, 0)
 		rsrc = append(rsrc, vi...)
@@ -183,8 +183,8 @@ func Build(o Options) []byte {
 	opt := pe[24:]
 	le.PutUint16(opt, 0x20B)
 	opt[2] = 14
-	le.PutUint32(opt[4:], uint32(textRaw))
-	le.PutUint32(opt[8:], uint32(rsrcRaw))
+	le.PutUint32(opt[4:], uint32(textRaw)) //nolint:gosec // section sizes are small
+	le.PutUint32(opt[8:], uint32(rsrcRaw)) //nolint:gosec // section sizes are small
 	le.PutUint32(opt[16:], textRVA)
 	le.PutUint32(opt[20:], textRVA)
 	le.PutUint64(opt[24:], 0x140000000)
@@ -192,7 +192,7 @@ func Build(o Options) []byte {
 	le.PutUint32(opt[36:], fileAlign)
 	le.PutUint16(opt[40:], 6)
 	le.PutUint16(opt[48:], 6)
-	le.PutUint32(opt[56:], rsrcRVA+uint32(roundUp(max(len(rsrc), 1), sectionAlign)))
+	le.PutUint32(opt[56:], rsrcRVA+uint32(roundUp(max(len(rsrc), 1), sectionAlign))) //nolint:gosec // bounded by the format limits checked earlier
 	le.PutUint32(opt[60:], headersSize)
 	le.PutUint32(opt[64:], o.Checksum)
 	le.PutUint16(opt[68:], 3) // console subsystem
@@ -204,7 +204,7 @@ func Build(o Options) []byte {
 
 	if len(rsrc) > 0 {
 		le.PutUint32(opt[112+8*2:], rsrcRVA)
-		le.PutUint32(opt[112+8*2+4:], uint32(len(rsrc)))
+		le.PutUint32(opt[112+8*2+4:], uint32(len(rsrc))) //nolint:gosec // bounded by the format limits checked earlier
 	}
 
 	sec := pe[24+240:]
@@ -217,8 +217,8 @@ func Build(o Options) []byte {
 		le.PutUint32(s[36:], flags)
 	}
 
-	writeSection(sec, ".text", uint32(len(text)), textRVA, uint32(textRaw), headersSize, 0x60000020)
-	writeSection(sec[40:], ".rsrc", uint32(max(len(rsrc), 1)), rsrcRVA, uint32(rsrcRaw), uint32(headersSize+textRaw), 0x40000040)
+	writeSection(sec, ".text", uint32(len(text)), textRVA, uint32(textRaw), headersSize, 0x60000020)                              //nolint:gosec // small
+	writeSection(sec[40:], ".rsrc", uint32(max(len(rsrc), 1)), rsrcRVA, uint32(rsrcRaw), uint32(headersSize+textRaw), 0x40000040) //nolint:gosec // small
 
 	copy(out[headersSize:], text)
 	copy(out[headersSize+textRaw:], rsrc)

@@ -67,7 +67,7 @@ func Encode(s string, cp int) ([]byte, error) {
 	case UTF8:
 		return []byte(s), nil
 	case ASCII:
-		for i := 0; i < len(s); i++ {
+		for i := range len(s) {
 			if s[i] >= 0x80 {
 				return nil, fmt.Errorf("codepage: %q is not ASCII and the database code page is 0", s)
 			}

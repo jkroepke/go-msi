@@ -10,36 +10,28 @@ import (
 
 // File is a parsed compound file.
 type File struct {
-	// Version is 3 or 4.
-	Version int
-	// SectorSize is 512 or 4096.
+	byName     map[string]*Entry
+	Entries    []*Entry
+	streams    []Stream
+	Version    int
 	SectorSize int
-	// CLSID of the root storage.
-	CLSID [16]byte
-	// Entries are the directory entries in SID order, unused ones included.
-	Entries []*Entry
-
-	streams []Stream
-	byName  map[string]*Entry
+	CLSID      [16]byte
 }
 
 // Entry is one directory entry.
 type Entry struct {
-	SID    int
 	Name   string
-	Type   byte // 0 unused, 1 storage, 2 stream, 5 root
-	Colour byte
+	Data   []byte
+	SID    int
+	Size   uint64
+	Parent int
 	Left   uint32
 	Right  uint32
 	Child  uint32
-	CLSID  [16]byte
 	Start  uint32
-	Size   uint64
-	// Parent is the SID of the containing storage, or -1 when the entry is
-	// not reachable from the root.
-	Parent int
-	// Data holds the stream's bytes for streams reachable from the root.
-	Data []byte
+	CLSID  [16]byte
+	Type   byte
+	Colour byte
 }
 
 // Streams returns the root-level streams in SID order.
@@ -57,9 +49,9 @@ func (f *File) Stream(name string) ([]byte, bool) {
 
 type reader struct {
 	raw     []byte
-	ss      int
 	fat     []uint32
 	miniFAT []uint32
+	ss      int
 }
 
 func (r *reader) sectorOffset(n uint32) (int, error) {
@@ -74,7 +66,7 @@ func (r *reader) sectorOffset(n uint32) (int, error) {
 func (r *reader) chain(start uint32, limit int) ([]uint32, error) {
 	var out []uint32
 
-	seen := map[uint32]bool{}
+	seen := make(map[uint32]bool)
 
 	for s := start; s != endOfChain; {
 		if s >= 0xFFFFFFFA || int(s) >= len(r.fat) || seen[s] {
@@ -109,7 +101,7 @@ func Read(raw []byte) (*File, error) {
 	major := int(le.Uint16(raw[0x1A:]))
 	shift := le.Uint16(raw[0x1E:])
 
-	if !(major == 3 && shift == 9) && !(major == 4 && shift == 12) {
+	if (major != 3 || shift != 9) && (major != 4 || shift != 12) {
 		return nil, fmt.Errorf("cfb: unsupported version %d with sector shift %d", major, shift)
 	}
 
@@ -118,7 +110,7 @@ func Read(raw []byte) (*File, error) {
 	}
 
 	r := &reader{raw: raw, ss: 1 << shift}
-	f := &File{Version: major, SectorSize: r.ss, byName: map[string]*Entry{}}
+	f := &File{Version: major, SectorSize: r.ss, byName: make(map[string]*Entry)}
 
 	numFAT := le.Uint32(raw[0x2C:])
 	firstDir := le.Uint32(raw[0x30:])
@@ -127,13 +119,13 @@ func Read(raw []byte) (*File, error) {
 
 	var fatSectors []uint32
 
-	for i := 0; i < 109 && uint32(len(fatSectors)) < numFAT; i++ {
+	for i := 0; i < 109 && uint32(len(fatSectors)) < numFAT; i++ { //nolint:gosec // bounded by the format limits checked earlier
 		fatSectors = append(fatSectors, le.Uint32(raw[0x4C+4*i:]))
 	}
 
-	seenDIFAT := map[uint32]bool{}
+	seenDIFAT := make(map[uint32]bool)
 
-	for d := firstDIFAT; d != endOfChain && d != freeSect && uint32(len(fatSectors)) < numFAT; {
+	for d := firstDIFAT; d != endOfChain && d != freeSect && uint32(len(fatSectors)) < numFAT; { //nolint:gosec // bounded by the format limits checked earlier
 		if seenDIFAT[d] {
 			return nil, errors.New("cfb: DIFAT loop")
 		}
@@ -145,7 +137,7 @@ func Read(raw []byte) (*File, error) {
 			return nil, fmt.Errorf("cfb: DIFAT: %w", err)
 		}
 
-		for i := 0; i < r.ss/4-1 && uint32(len(fatSectors)) < numFAT; i++ {
+		for i := 0; i < r.ss/4-1 && uint32(len(fatSectors)) < numFAT; i++ { //nolint:gosec // bounded by the format limits checked earlier
 			fatSectors = append(fatSectors, le.Uint32(raw[off+4*i:]))
 		}
 
@@ -158,7 +150,7 @@ func Read(raw []byte) (*File, error) {
 			return nil, fmt.Errorf("cfb: FAT: %w", err)
 		}
 
-		for i := 0; i < r.ss/4; i++ {
+		for i := range r.ss / 4 {
 			r.fat = append(r.fat, le.Uint32(raw[off+4*i:]))
 		}
 	}
@@ -174,7 +166,7 @@ func Read(raw []byte) (*File, error) {
 			return nil, fmt.Errorf("cfb: directory: %w", err)
 		}
 
-		for i := 0; i < r.ss/entrySize; i++ {
+		for i := range r.ss / entrySize {
 			e := raw[off+entrySize*i : off+entrySize*(i+1)]
 			nameLen := int(le.Uint16(e[0x40:]))
 
@@ -198,7 +190,7 @@ func Read(raw []byte) (*File, error) {
 
 			if nameLen >= 2 && nameLen <= 64 {
 				units := make([]uint16, 0, nameLen/2-1)
-				for j := 0; j < nameLen/2-1; j++ {
+				for j := range nameLen/2 - 1 {
 					units = append(units, le.Uint16(e[2*j:]))
 				}
 
@@ -228,7 +220,7 @@ func Read(raw []byte) (*File, error) {
 				return nil, fmt.Errorf("cfb: MiniFAT: %w", err)
 			}
 
-			for i := 0; i < r.ss/4; i++ {
+			for i := range r.ss / 4 {
 				r.miniFAT = append(r.miniFAT, le.Uint32(raw[off+4*i:]))
 			}
 		}
@@ -317,12 +309,12 @@ func Read(raw []byte) (*File, error) {
 
 			e.Data = e.Data[:e.Size]
 		default:
-			c, err := r.chain(e.Start, int(e.Size)/r.ss+2)
+			c, err := r.chain(e.Start, int(e.Size)/r.ss+2) //nolint:gosec // sizes were checked against the file length
 			if err != nil {
 				return nil, fmt.Errorf("cfb: stream %q: %w", e.Name, err)
 			}
 
-			if uint64(len(c))*uint64(r.ss) < e.Size {
+			if uint64(len(c))*uint64(r.ss) < e.Size { //nolint:gosec // both are non-negative
 				return nil, fmt.Errorf("cfb: stream %q is shorter than its size", e.Name)
 			}
 

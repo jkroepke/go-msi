@@ -2,16 +2,18 @@ package sequence
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
 func names(seq []Numbered) string {
-	s := ""
+	var sb strings.Builder
+
 	for _, n := range seq {
-		s += fmt.Sprintf("%s=%d ", n.Name, n.Sequence)
+		fmt.Fprintf(&sb, "%s=%d ", n.Name, n.Sequence)
 	}
 
-	return s
+	return sb.String()
 }
 
 // The examples of docs/spec/MSISPEC.md section 11.7.

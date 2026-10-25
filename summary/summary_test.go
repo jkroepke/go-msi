@@ -11,20 +11,20 @@ func sample() []Property {
 	when := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	return []Property{
-		{PIDWordCount, 2},
-		{PIDCodepage, 1252},
-		{PIDTitle, "Installation Database"},
-		{PIDSubject, "Hello"},
-		{PIDAuthor, "Example"},
-		{PIDKeywords, "Installer"},
-		{PIDComments, "This installer database contains the logic and data required to install Hello."},
-		{PIDTemplate, "x64;1033"},
-		{PIDRevision, "{12345678-1234-1234-1234-123456789ABC}"},
-		{PIDCreated, when},
-		{PIDLastSaved, when},
-		{PIDPageCount, 500},
-		{PIDAppName, "go-msi"},
-		{PIDSecurity, 2},
+		{ID: PIDWordCount, Value: 2},
+		{ID: PIDCodepage, Value: 1252},
+		{ID: PIDTitle, Value: "Installation Database"},
+		{ID: PIDSubject, Value: "Hello"},
+		{ID: PIDAuthor, Value: "Example"},
+		{ID: PIDKeywords, Value: "Installer"},
+		{ID: PIDComments, Value: "This installer database contains the logic and data required to install Hello."},
+		{ID: PIDTemplate, Value: "x64;1033"},
+		{ID: PIDRevision, Value: "{12345678-1234-1234-1234-123456789ABC}"},
+		{ID: PIDCreated, Value: when},
+		{ID: PIDLastSaved, Value: when},
+		{ID: PIDPageCount, Value: 500},
+		{ID: PIDAppName, Value: "go-msi"},
+		{ID: PIDSecurity, Value: 2},
 	}
 }
 
@@ -69,7 +69,7 @@ func TestRoundTrip(t *testing.T) {
 		t.Errorf("values: %+v", props)
 	}
 
-	if got := Get(props, PIDCreated).(time.Time); !got.Equal(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) {
+	if got, ok := Get(props, PIDCreated).(time.Time); !ok || !got.Equal(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Errorf("created %v", got)
 	}
 
@@ -80,27 +80,27 @@ func TestRoundTrip(t *testing.T) {
 }
 
 func TestErrors(t *testing.T) {
-	if _, err := Marshal([]Property{{PIDTitle, "x"}}, 1252); err == nil {
+	if _, err := Marshal([]Property{{ID: PIDTitle, Value: "x"}}, 1252); err == nil {
 		t.Error("missing code page accepted")
 	}
 
-	if _, err := Marshal([]Property{{PIDCodepage, 1252}}, 65001); err == nil {
+	if _, err := Marshal([]Property{{ID: PIDCodepage, Value: 1252}}, 65001); err == nil {
 		t.Error("UTF-8 summary code page accepted")
 	}
 
-	if _, err := Marshal([]Property{{PIDCodepage, 1252}, {PIDCodepage, 1252}}, 1252); err == nil {
+	if _, err := Marshal([]Property{{ID: PIDCodepage, Value: 1252}, {ID: PIDCodepage, Value: 1252}}, 1252); err == nil {
 		t.Error("duplicate PID accepted")
 	}
 
-	if _, err := Marshal([]Property{{PIDCodepage, 1252}, {PIDTitle, "日本"}}, 1252); err == nil {
+	if _, err := Marshal([]Property{{ID: PIDCodepage, Value: 1252}, {ID: PIDTitle, Value: "日本"}}, 1252); err == nil {
 		t.Error("unmappable text accepted")
 	}
 
-	if _, err := Marshal([]Property{{PIDCodepage, 1252}, {PIDTitle, 5}}, 1252); err == nil {
+	if _, err := Marshal([]Property{{ID: PIDCodepage, Value: 1252}, {ID: PIDTitle, Value: 5}}, 1252); err == nil {
 		t.Error("wrong type accepted")
 	}
 
-	if _, err := Marshal([]Property{{PIDCodepage, 1252}, {10, 1}}, 1252); err == nil {
+	if _, err := Marshal([]Property{{ID: PIDCodepage, Value: 1252}, {ID: 10, Value: 1}}, 1252); err == nil {
 		t.Error("PID 10 accepted")
 	}
 

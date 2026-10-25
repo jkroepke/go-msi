@@ -13,8 +13,8 @@ import (
 
 // Error is a syntax error with its position.
 type Error struct {
-	Pos int
 	Msg string
+	Pos int
 }
 
 func (e *Error) Error() string {
@@ -36,8 +36,8 @@ const (
 )
 
 type token struct {
-	kind tokenKind
 	text string
+	kind tokenKind
 	pos  int
 }
 
@@ -70,32 +70,32 @@ func (l *lexer) next() (token, error) {
 	case c == '(':
 		l.pos++
 
-		return token{tokLParen, "(", start}, nil
+		return token{kind: tokLParen, text: "(", pos: start}, nil
 	case c == ')':
 		l.pos++
 
-		return token{tokRParen, ")", start}, nil
+		return token{kind: tokRParen, text: ")", pos: start}, nil
 	case c == '"':
 		end := strings.IndexByte(l.s[l.pos+1:], '"')
 		if end < 0 {
-			return token{}, &Error{start, "unterminated string"}
+			return token{}, &Error{Pos: start, Msg: "unterminated string"}
 		}
 
 		l.pos += end + 2
 
-		return token{tokString, l.s[start:l.pos], start}, nil
+		return token{kind: tokString, text: l.s[start:l.pos], pos: start}, nil
 	case c == '%' || c == '$' || c == '?' || c == '&' || c == '!':
 		l.pos++
 
 		if l.pos >= len(l.s) || !isIdentStart(rune(l.s[l.pos])) {
-			return token{}, &Error{start, fmt.Sprintf("%q must be followed by a name", c)}
+			return token{}, &Error{Pos: start, Msg: fmt.Sprintf("%q must be followed by a name", c)}
 		}
 
 		for l.pos < len(l.s) && isIdentPart(rune(l.s[l.pos])) {
 			l.pos++
 		}
 
-		return token{tokPrefix, l.s[start:l.pos], start}, nil
+		return token{kind: tokPrefix, text: l.s[start:l.pos], pos: start}, nil
 	case c == '~' || c == '=' || c == '<' || c == '>':
 		p := l.pos
 		if c == '~' {
@@ -107,7 +107,7 @@ func (l *lexer) next() (token, error) {
 			case '=':
 				l.pos = p + 1
 
-				return token{tokOp, l.s[start:l.pos], start}, nil
+				return token{kind: tokOp, text: l.s[start:l.pos], pos: start}, nil
 			case '<':
 				if p+1 < len(l.s) && (l.s[p+1] == '>' || l.s[p+1] == '=' || l.s[p+1] == '<') {
 					l.pos = p + 2
@@ -115,7 +115,7 @@ func (l *lexer) next() (token, error) {
 					l.pos = p + 1
 				}
 
-				return token{tokOp, l.s[start:l.pos], start}, nil
+				return token{kind: tokOp, text: l.s[start:l.pos], pos: start}, nil
 			case '>':
 				if p+1 < len(l.s) && (l.s[p+1] == '=' || l.s[p+1] == '<' || l.s[p+1] == '>') {
 					l.pos = p + 2
@@ -123,11 +123,11 @@ func (l *lexer) next() (token, error) {
 					l.pos = p + 1
 				}
 
-				return token{tokOp, l.s[start:l.pos], start}, nil
+				return token{kind: tokOp, text: l.s[start:l.pos], pos: start}, nil
 			}
 		}
 
-		return token{}, &Error{start, "'~' must be followed by a comparison operator"}
+		return token{}, &Error{Pos: start, Msg: "'~' must be followed by a comparison operator"}
 	case c == '-' || (c >= '0' && c <= '9'):
 		l.pos++
 		for l.pos < len(l.s) && (l.s[l.pos] >= '0' && l.s[l.pos] <= '9' || l.s[l.pos] == '.') {
@@ -135,10 +135,10 @@ func (l *lexer) next() (token, error) {
 		}
 
 		if l.s[start:l.pos] == "-" {
-			return token{}, &Error{start, "'-' is not a number"}
+			return token{}, &Error{Pos: start, Msg: "'-' is not a number"}
 		}
 
-		return token{tokNumber, l.s[start:l.pos], start}, nil
+		return token{kind: tokNumber, text: l.s[start:l.pos], pos: start}, nil
 	}
 
 	r := []rune(l.s[l.pos:])[0]
@@ -154,13 +154,13 @@ func (l *lexer) next() (token, error) {
 
 		text := l.s[start:l.pos]
 		if keywords[strings.ToUpper(text)] {
-			return token{tokKeyword, strings.ToUpper(text), start}, nil
+			return token{kind: tokKeyword, text: strings.ToUpper(text), pos: start}, nil
 		}
 
-		return token{tokIdent, text, start}, nil
+		return token{kind: tokIdent, text: text, pos: start}, nil
 	}
 
-	return token{}, &Error{start, fmt.Sprintf("unexpected character %q", r)}
+	return token{}, &Error{Pos: start, Msg: fmt.Sprintf("unexpected character %q", r)}
 }
 
 type parser struct {
@@ -196,7 +196,7 @@ func Check(s string) error {
 	}
 
 	if p.tok.kind != tokEOF {
-		return &Error{p.tok.pos, fmt.Sprintf("unexpected %q", p.tok.text)}
+		return &Error{Pos: p.tok.pos, Msg: fmt.Sprintf("unexpected %q", p.tok.text)}
 	}
 
 	return nil
@@ -250,7 +250,7 @@ func (p *parser) term() error {
 		}
 
 		if p.tok.kind != tokRParen {
-			return &Error{p.tok.pos, "missing ')'"}
+			return &Error{Pos: p.tok.pos, Msg: "missing ')'"}
 		}
 
 		return p.advance()
@@ -276,11 +276,11 @@ func (p *parser) value() error {
 	case tokIdent, tokNumber, tokString, tokPrefix:
 		return p.advance()
 	case tokEOF:
-		return &Error{p.tok.pos, "unexpected end of condition"}
+		return &Error{Pos: p.tok.pos, Msg: "unexpected end of condition"}
 	case tokKeyword:
-		return &Error{p.tok.pos, fmt.Sprintf("unexpected keyword %s", p.tok.text)}
+		return &Error{Pos: p.tok.pos, Msg: "unexpected keyword " + p.tok.text}
 	default:
-		return &Error{p.tok.pos, fmt.Sprintf("unexpected %q", p.tok.text)}
+		return &Error{Pos: p.tok.pos, Msg: fmt.Sprintf("unexpected %q", p.tok.text)}
 	}
 }
 

@@ -4,7 +4,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
+	"strings"
 
 	"github.com/jkroepke/go-msi/cfb"
 	"github.com/jkroepke/go-msi/codepage"
@@ -12,10 +13,10 @@ import (
 )
 
 type poolEntry struct {
+	text     string
 	length   int
 	refcount int
 	long     bool
-	text     string
 }
 
 // Unmarshal reads a package. It accepts what other writers emit (free pool
@@ -31,8 +32,8 @@ func Unmarshal(data []byte) (*Database, error) {
 		return nil, fmt.Errorf("msidb: root CLSID %x is not the .msi CLSID", f.CLSID)
 	}
 
-	tableStreams := map[string][]byte{}
-	otherStreams := map[string][]byte{}
+	tableStreams := make(map[string][]byte)
+	otherStreams := make(map[string][]byte)
 
 	var order []string
 
@@ -136,7 +137,7 @@ func Unmarshal(data []byte) (*Database, error) {
 		return v
 	}
 
-	refs := map[uint32]int{}
+	refs := make(map[uint32]int)
 
 	// _Tables.
 	tablesData := tableStreams[TableTables]
@@ -144,7 +145,7 @@ func Unmarshal(data []byte) (*Database, error) {
 		return nil, errors.New("msidb: _Tables stream has a bad length")
 	}
 
-	tables := map[string]*Table{}
+	tables := make(map[string]*Table)
 
 	var tableOrder []string
 
@@ -177,13 +178,13 @@ func Unmarshal(data []byte) (*Database, error) {
 
 	type colRow struct {
 		table  string
-		number int
 		column Column
+		number int
 	}
 
 	colRows := make([]colRow, n)
 
-	for r := 0; r < n; r++ {
+	for r := range n {
 		tid := readRef(colsData[r*refWidth:])
 		num := int(le.Uint16(colsData[n*refWidth+r*2:])) - 0x8000
 		nid := readRef(colsData[n*(refWidth+2)+r*refWidth:])
@@ -206,15 +207,15 @@ func Unmarshal(data []byte) (*Database, error) {
 			return nil, fmt.Errorf("msidb: _Columns: table %s column %s: %w", tname, cname, err)
 		}
 
-		colRows[r] = colRow{tname, num, Column{Name: cname, Type: t}}
+		colRows[r] = colRow{table: tname, column: Column{Name: cname, Type: t}, number: num}
 	}
 
-	sort.SliceStable(colRows, func(i, j int) bool {
-		if colRows[i].table != colRows[j].table {
-			return colRows[i].table < colRows[j].table
+	slices.SortStableFunc(colRows, func(a, b colRow) int {
+		if a.table != b.table {
+			return strings.Compare(a.table, b.table)
 		}
 
-		return colRows[i].number < colRows[j].number
+		return a.number - b.number
 	})
 
 	for _, cr := range colRows {
@@ -305,7 +306,7 @@ func decodeRows(t *Table, data []byte, longRefs bool, readRef func([]byte) uint3
 	for ci, c := range t.Columns {
 		w := c.Type.storageWidth(longRefs)
 
-		for r := 0; r < n; r++ {
+		for r := range n {
 			b := data[off+r*w:]
 
 			var v uint32
@@ -342,7 +343,7 @@ func decodeRows(t *Table, data []byte, longRefs bool, readRef func([]byte) uint3
 			case KindInt16:
 				rows[r][ci] = int(v) - 0x8000
 			case KindInt32:
-				rows[r][ci] = int(int32(v ^ 0x80000000))
+				rows[r][ci] = int(int32(v ^ 0x80000000)) //nolint:gosec // the stored form is the biased two's complement
 			}
 		}
 
@@ -370,6 +371,7 @@ func decodeRows(t *Table, data []byte, longRefs bool, readRef func([]byte) uint3
 			}
 
 			rows[r][ci] = append([]byte(nil), b...)
+
 			delete(otherStreams, name)
 		}
 	}

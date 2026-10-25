@@ -12,7 +12,7 @@ import (
 func TestChecksumVector(t *testing.T) {
 	// The vector is the CFDATA checksum of a stored 22-byte block.
 	b := []byte("Hello, cabinet!\r\nMSI\r\n")
-	if got := Checksum(b, 0) ^ (uint32(len(b)) | uint32(len(b))<<16); got != 0x25411F35 {
+	if got := Checksum(b, 0) ^ (uint32(len(b)) | uint32(len(b))<<16); got != 0x25411F35 { //nolint:gosec // bounded by the format limits checked earlier
 		t.Errorf("checksum %#x, want 0x25411F35", got)
 	}
 }
@@ -51,14 +51,14 @@ func TestStoredVector(t *testing.T) {
 
 func TestMSZIPCrossBlockHistory(t *testing.T) {
 	// Three blocks with matches that reach back across block boundaries.
-	rng := rand.New(rand.NewSource(7))
+	rng := rand.New(rand.NewSource(7)) //nolint:gosec // reproducible test data
 	pattern := make([]byte, 5000)
 	rng.Read(pattern)
 
 	var data []byte
 	for len(data) < 70000 {
 		data = append(data, pattern...)
-		data = append(data, byte(len(data)))
+		data = append(data, byte(len(data))) //nolint:gosec // truncation is intended
 	}
 
 	files := []File{{Name: "fil_readme", Data: []byte("README: cross-block MSZIP\r\n")}, {Name: "fil_data", Data: data}}
@@ -88,7 +88,7 @@ func TestMSZIPCrossBlockHistory(t *testing.T) {
 }
 
 func TestStoredFallbackOnRandomData(t *testing.T) {
-	rng := rand.New(rand.NewSource(3))
+	rng := rand.New(rand.NewSource(3)) //nolint:gosec // reproducible test data
 	data := make([]byte, 40000)
 	rng.Read(data)
 

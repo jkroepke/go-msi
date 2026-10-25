@@ -6,15 +6,16 @@
 package sequence
 
 import (
+	"errors"
 	"fmt"
-	"sort"
+	"slices"
 )
 
 // Limits of the Sequence column.
 const (
 	MaxSequence = 32767
-	// Termination actions use -1 (success), -2 (user exit), -3 (fatal error)
-	// and -4 (suspend).
+	// MinTermination is the lowest termination number: termination actions
+	// use -1 (success), -2 (user exit), -3 (fatal error) and -4 (suspend).
 	MinTermination = -4
 )
 
@@ -23,9 +24,9 @@ const (
 type Action struct {
 	Name      string
 	Condition string
-	Sequence  int
 	Before    string
 	After     string
+	Sequence  int
 }
 
 // Numbered is a scheduled action.
@@ -36,21 +37,22 @@ type Numbered struct {
 }
 
 type node struct {
-	action        Action
-	before, after []*node
-	fixed         bool
-	visiting      bool
-	expanded      []*node
+	action   Action
+	before   []*node
+	after    []*node
+	expanded []*node
+	fixed    bool
+	visiting bool
 }
 
 // Number assigns sequence numbers. The result is sorted by number.
 func Number(actions []Action) ([]Numbered, error) {
-	nodes := map[string]*node{}
+	nodes := make(map[string]*node)
 	ordered := make([]*node, 0, len(actions))
 
 	for _, a := range actions {
 		if a.Name == "" {
-			return nil, fmt.Errorf("sequence: action without a name")
+			return nil, errors.New("sequence: action without a name")
 		}
 
 		if _, dup := nodes[a.Name]; dup {
@@ -107,7 +109,7 @@ func Number(actions []Action) ([]Numbered, error) {
 
 	// Every relative node must reach a fixed node through its anchors.
 	for _, n := range ordered {
-		seen := map[*node]bool{}
+		seen := make(map[*node]bool)
 		cur := n
 
 		for !cur.fixed {
@@ -162,8 +164,9 @@ func Number(actions []Action) ([]Numbered, error) {
 	}
 
 	type block struct {
-		lo, hi int
-		name   string
+		name string
+		lo   int
+		hi   int
 	}
 
 	var blocks []block
@@ -202,14 +205,14 @@ func Number(actions []Action) ([]Numbered, error) {
 			return nil, fmt.Errorf("sequence: the actions after %s would need numbers above %d", n.action.Name, MaxSequence)
 		}
 
-		blocks = append(blocks, block{lo, hi, n.action.Name})
+		blocks = append(blocks, block{name: n.action.Name, lo: lo, hi: hi})
 
 		for i, c := range chain {
 			result = append(result, Numbered{Name: c.action.Name, Condition: c.action.Condition, Sequence: lo + i})
 		}
 	}
 
-	sort.Slice(blocks, func(i, j int) bool { return blocks[i].lo < blocks[j].lo })
+	slices.SortFunc(blocks, func(a, b block) int { return a.lo - b.lo })
 
 	for i := 1; i < len(blocks); i++ {
 		if blocks[i].lo <= blocks[i-1].hi {
@@ -218,7 +221,7 @@ func Number(actions []Action) ([]Numbered, error) {
 		}
 	}
 
-	sort.SliceStable(result, func(i, j int) bool { return result[i].Sequence < result[j].Sequence })
+	slices.SortStableFunc(result, func(a, b Numbered) int { return a.Sequence - b.Sequence })
 
 	return result, nil
 }

@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -47,23 +48,17 @@ const (
 
 // File is one cabinet entry.
 type File struct {
-	// Name is the entry name, for Windows Installer the File table key.
-	Name string
-	Data []byte
-	// Time is the entry's timestamp, written in UTC fields. The zero time
-	// means 1980-01-01T00:00:00Z.
-	Time time.Time
-	// Attributes defaults to AttrArchive when zero.
+	Time       time.Time
+	Name       string
+	Data       []byte
 	Attributes uint16
 }
 
 // Options control the writer.
 type Options struct {
+	Level       int
 	Compression Compression
-	// Level is the DEFLATE level for MSZIP, 1 to 9. 0 means 9.
-	Level int
-	// SetID is written to the header; 0 is fine for embedded cabinets.
-	SetID uint16
+	SetID       uint16
 }
 
 // Checksum computes the CFDATA checksum over b with the given seed.
@@ -71,7 +66,7 @@ func Checksum(b []byte, seed uint32) uint32 {
 	acc := seed
 	n := len(b) / 4
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		acc ^= binary.LittleEndian.Uint32(b[4*i:])
 	}
 
@@ -101,8 +96,8 @@ func DOSTime(t time.Time) (date, tm uint16) {
 		return 0xFF9F, 0xBF7D
 	}
 
-	date = uint16((t.Year()-1980)<<9 | int(t.Month())<<5 | t.Day())
-	tm = uint16(t.Hour()<<11 | t.Minute()<<5 | t.Second()>>1)
+	date = uint16((t.Year()-1980)<<9 | int(t.Month())<<5 | t.Day()) //nolint:gosec // the year was clamped to 1980…2107
+	tm = uint16(t.Hour()<<11 | t.Minute()<<5 | t.Second()>>1)       //nolint:gosec // fits 16 bits by construction
 
 	return date, tm
 }
@@ -141,7 +136,8 @@ func compressBlock(chunk, dict []byte, level int) ([]byte, error) {
 
 	if buf.Len() > len(chunk)+2+5 {
 		stored := make([]byte, 0, len(chunk)+7)
-		stored = append(stored, 'C', 'K', 1, byte(len(chunk)), byte(len(chunk)>>8), byte(^len(chunk)), byte(^len(chunk)>>8))
+		n := len(chunk)                                                                  // at most 32768
+		stored = append(stored, 'C', 'K', 1, byte(n), byte(n>>8), byte(^n), byte(^n>>8)) //nolint:gosec // bounded by the block size
 		stored = append(stored, chunk...)
 
 		return stored, nil
@@ -176,7 +172,7 @@ func Write(files []File, o Options) ([]byte, error) {
 			return nil, fmt.Errorf("cab: file %d: name %q must be 1 to %d bytes", i, f.Name, maxNameLen)
 		}
 
-		if bytes.IndexByte([]byte(f.Name), 0) >= 0 {
+		if strings.IndexByte(f.Name, 0) >= 0 {
 			return nil, fmt.Errorf("cab: file %d: name %q contains NUL", i, f.Name)
 		}
 
@@ -212,7 +208,7 @@ func Write(files []File, o Options) ([]byte, error) {
 			data = chunk
 		}
 
-		cs := Checksum(data, 0) ^ (uint32(len(data)) | uint32(len(chunk))<<16)
+		cs := Checksum(data, 0) ^ (uint32(len(data)) | uint32(len(chunk))<<16) //nolint:gosec // bounded by the format limits checked earlier
 		blocks = append(blocks, block{data: data, uncomp: len(chunk), checksum: cs})
 	}
 
@@ -241,13 +237,13 @@ func Write(files []File, o Options) ([]byte, error) {
 	le.PutUint32(h[16:], uint32(coffFiles))
 	h[0x18], h[0x19] = 3, 1
 	le.PutUint16(h[0x1A:], 1)
-	le.PutUint16(h[0x1C:], uint16(len(files)))
+	le.PutUint16(h[0x1C:], uint16(len(files))) //nolint:gosec // the file count was checked against maxFiles
 	le.PutUint16(h[0x20:], o.SetID)
 	out = append(out, h...)
 
 	fo := make([]byte, folderSize)
 	le.PutUint32(fo, uint32(dataStart))
-	le.PutUint16(fo[4:], uint16(len(blocks)))
+	le.PutUint16(fo[4:], uint16(len(blocks))) //nolint:gosec // bounded by the format limits checked earlier
 	le.PutUint16(fo[6:], uint16(o.Compression))
 	out = append(out, fo...)
 
@@ -255,7 +251,7 @@ func Write(files []File, o Options) ([]byte, error) {
 
 	for _, f := range files {
 		e := make([]byte, 16)
-		le.PutUint32(e, uint32(len(f.Data)))
+		le.PutUint32(e, uint32(len(f.Data))) //nolint:gosec // bounded by the format limits checked earlier
 		le.PutUint32(e[4:], uint32(offset))
 
 		date, tm := DOSTime(f.Time)
@@ -269,7 +265,7 @@ func Write(files []File, o Options) ([]byte, error) {
 
 		attr &^= attrUTF8Name
 
-		for i := 0; i < len(f.Name); i++ {
+		for i := range len(f.Name) {
 			if f.Name[i] >= 0x80 {
 				attr |= attrUTF8Name
 
@@ -287,8 +283,8 @@ func Write(files []File, o Options) ([]byte, error) {
 	for _, b := range blocks {
 		d := make([]byte, 8)
 		le.PutUint32(d, b.checksum)
-		le.PutUint16(d[4:], uint16(len(b.data)))
-		le.PutUint16(d[6:], uint16(b.uncomp))
+		le.PutUint16(d[4:], uint16(len(b.data))) //nolint:gosec // bounded by the format limits checked earlier
+		le.PutUint16(d[6:], uint16(b.uncomp))    //nolint:gosec // bounded by the format limits checked earlier
 		out = append(out, d...)
 		out = append(out, b.data...)
 	}
@@ -329,7 +325,7 @@ func Read(c []byte) ([]File, error) {
 
 	folders := make([][]byte, 0, numFolders)
 
-	for fi := 0; fi < numFolders; fi++ {
+	for fi := range numFolders {
 		fo := c[headerSize+folderSize*fi:]
 		start := int(le.Uint32(fo))
 		numData := int(le.Uint16(fo[4:]))
@@ -339,7 +335,7 @@ func Read(c []byte) ([]File, error) {
 
 		p := start
 
-		for k := 0; k < numData; k++ {
+		for k := range numData {
 			if p+8 > len(c) {
 				return nil, fmt.Errorf("cab: folder %d block %d truncated", fi, k)
 			}
@@ -355,7 +351,7 @@ func Read(c []byte) ([]File, error) {
 			ab := c[p+8 : p+8+cb]
 
 			if csum != 0 {
-				if want := Checksum(ab, 0) ^ (uint32(cb) | uint32(un)<<16); want != csum {
+				if want := Checksum(ab, 0) ^ (uint32(cb) | uint32(un)<<16); want != csum { //nolint:gosec // bounded by the format limits checked earlier
 					return nil, fmt.Errorf("cab: folder %d block %d checksum %#x, want %#x", fi, k, csum, want)
 				}
 			}
@@ -398,7 +394,7 @@ func Read(c []byte) ([]File, error) {
 	files := make([]File, 0, numFiles)
 	p := coffFiles
 
-	for i := 0; i < numFiles; i++ {
+	for range numFiles {
 		if p+16 > len(c) {
 			return nil, errors.New("cab: truncated file entry")
 		}

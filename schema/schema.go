@@ -8,7 +8,7 @@ package schema
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -17,15 +17,15 @@ import (
 
 // ColumnDef is a column with its _Validation row.
 type ColumnDef struct {
-	Name        string
-	Type        msidb.Type
-	Category    string
-	KeyTable    string
-	KeyColumn   int
 	MinValue    *int
 	MaxValue    *int
+	Name        string
+	Category    string
+	KeyTable    string
 	Set         string
 	Description string
+	Type        msidb.Type
+	KeyColumn   int
 }
 
 // TableDef is a standard table.
@@ -45,7 +45,8 @@ func (d *TableDef) Table() *msidb.Table {
 }
 
 // Categories is the _Validation.Category set the toolchains write.
-const Categories = "Text;Formatted;Template;Condition;Guid;Path;Version;Language;Identifier;Binary;UpperCase;LowerCase;Filename;Paths;AnyPath;WildCardFilename;RegPath;CustomSource;Property;Cabinet;Shortcut;DefaultDir;FormattedSDDLText;Integer;DoubleInteger;TimeDate"
+const Categories = "Text;Formatted;Template;Condition;Guid;Path;Version;Language;Identifier;Binary;UpperCase;LowerCase;Filename;" +
+	"Paths;AnyPath;WildCardFilename;RegPath;CustomSource;Property;Cabinet;Shortcut;DefaultDir;FormattedSDDLText;Integer;DoubleInteger;TimeDate"
 
 // Each line: Name|Type|K (key) or empty|Category|KeyTable|KeyColumn|Min|Max|Set|Description.
 var defs = map[string][]string{
@@ -91,7 +92,7 @@ var defs = map[string][]string{
 		"Action|s72|K|Identifier||||||Primary key, name of action, normally appears in sequence table unless private use.",
 		"Type|i2|||||1|32767||The numeric custom action type, consisting of source location, code type, entry, option flags.",
 		"Source|S72||CustomSource||||||The table reference of the source of the code.",
-		"Target|S255||Formatted||||||Excecution parameter, depends on the type of custom action",
+		"Target|S255||Formatted||||||Execution parameter, depends on the type of custom action",
 		"ExtendedType|I4|||||0|2147483647||A numeric custom action type that extends code type or option flags of the Type column.",
 	},
 	"Directory": {
@@ -103,7 +104,7 @@ var defs = map[string][]string{
 		"Environment|s72|K|Identifier||||||Unique identifier for the environmental variable setting",
 		"Name|l255||Text||||||The name of the environmental value.",
 		"Value|L255||Formatted||||||The value to set in the environmental settings.",
-		"Component_|s72||Identifier|Component|1||||Foreign key into the Component table referencing component that controls the installing of the environmental value.",
+		"Component_|s72||Identifier|Component|1||||Foreign key into the Component table referencing component that controls the installing of the.",
 	},
 	"Error": {
 		"Error|i2|K||||0|32767||Integer error number, obtained from header file IError(...) macros.",
@@ -227,13 +228,16 @@ var defs = map[string][]string{
 
 var sequenceColumns = []string{
 	"Action|s72|K|Identifier||||||Name of action to invoke, either in the engine or the handler DLL.",
-	"Condition|S255||Condition||||||Optional expression which skips the action if evaluates to expFalse.If the expression syntax is invalid, the engine will terminate, returning iesBadActionData.",
+	"Condition|S255||Condition||||||Optional expression which skips the action if evaluates to expFalse.",
 	"Sequence|I2|||||-4|32767||Number that determines the sort order in which the actions are to be executed.  Leave blank to suppress action.",
 }
 
-var tables = map[string]*TableDef{}
+var tables = parseTables()
 
-func init() {
+// parseTables turns the DSL lines into table definitions.
+func parseTables() map[string]*TableDef {
+	out := make(map[string]*TableDef, len(defs))
+
 	for name, lines := range defs {
 		def := &TableDef{Name: name}
 
@@ -255,8 +259,10 @@ func init() {
 			def.Columns = append(def.Columns, c)
 		}
 
-		tables[name] = def
+		out[name] = def
 	}
+
+	return out
 }
 
 func optInt(s string) *int {
@@ -297,7 +303,7 @@ func Names() []string {
 		out = append(out, n)
 	}
 
-	sort.Strings(out)
+	slices.Sort(out)
 
 	return out
 }
@@ -309,7 +315,7 @@ func Names() []string {
 func Validation(present []*msidb.Table) *msidb.Table {
 	v := New("_Validation")
 
-	names := map[string]*msidb.Table{}
+	names := make(map[string]*msidb.Table)
 	for _, t := range present {
 		names[t.Name] = t
 	}
@@ -321,14 +327,15 @@ func Validation(present []*msidb.Table) *msidb.Table {
 		sorted = append(sorted, n)
 	}
 
-	sort.Strings(sorted)
+	slices.Sort(sorted)
 
 	for _, name := range sorted {
 		t := names[name]
 
 		if def, ok := tables[name]; ok {
 			for _, c := range def.Columns {
-				v.Add(name, c.Name, nullable(c.Type), optCell(c.MinValue), optCell(c.MaxValue), orNil(c.KeyTable), keyCol(c.KeyColumn), orNil(c.Category), orNil(c.Set), orNil(c.Description))
+				v.Add(name, c.Name, nullable(c.Type), optCell(c.MinValue), optCell(c.MaxValue), orNil(c.KeyTable), keyCol(c.KeyColumn),
+					orNil(c.Category), orNil(c.Set), orNil(c.Description))
 			}
 
 			continue

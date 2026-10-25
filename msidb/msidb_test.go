@@ -15,13 +15,13 @@ import (
 func TestStreamNames(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		table bool
 		want  []rune
+		table bool
 	}{
-		{"Property", true, []rune{0x4840, 0x4559, 0x44F2, 0x4568, 0x4737}},
-		{"_Tables", true, []rune{0x4840, 0x3F7F, 0x4164, 0x422F, 0x4836}},
-		{"cab1.cab", false, []rune{0x4126, 0x3865, 0x41BE, 0x4164}},
-		{"My-File", false, []rune{0x4716, 0x002D, 0x430F, 0x422F}},
+		{name: "Property", table: true, want: []rune{0x4840, 0x4559, 0x44F2, 0x4568, 0x4737}},
+		{name: "_Tables", table: true, want: []rune{0x4840, 0x3F7F, 0x4164, 0x422F, 0x4836}},
+		{name: "cab1.cab", table: false, want: []rune{0x4126, 0x3865, 0x41BE, 0x4164}},
+		{name: "My-File", table: false, want: []rune{0x4716, 0x002D, 0x430F, 0x422F}},
 	} {
 		got, err := EncodeStreamName(tc.name, tc.table)
 		if err != nil {
@@ -134,7 +134,7 @@ func TestRoundTrip(t *testing.T) {
 		t.Errorf("code page %d", back.Codepage)
 	}
 
-	names := []string{}
+	names := make([]string, 0, len(back.Tables))
 	for _, tb := range back.Tables {
 		names = append(names, tb.Name)
 	}
@@ -165,7 +165,7 @@ func TestRoundTrip(t *testing.T) {
 		t.Errorf("Manufacturer row lost: %v", prop.Rows)
 	}
 
-	if b := back.Table("Binary"); !bytes.Equal(b.Rows[0][1].([]byte), []byte("MZ-not-really")) {
+	if b := back.Table("Binary"); !bytes.Equal(fmt.Append(nil, b.Rows[0][1]), fmt.Append(nil, []byte("MZ-not-really"))) {
 		t.Errorf("Binary %v", b.Rows)
 	}
 
@@ -236,7 +236,8 @@ func TestLongString(t *testing.T) {
 	pool, _ := f.Stream(poolName)
 
 	n := 80000
-	want := []byte{0, 0, 1, 0, byte(n), byte(n >> 8), byte(n >> 16), 0}
+
+	want := []byte{0, 0, 1, 0, byte(n), byte(n >> 8), byte(n >> 16), 0} //nolint:gosec // 3-byte reference
 	if !bytes.Contains(pool, want) {
 		t.Errorf("long entry not found in %x", pool)
 	}
@@ -246,7 +247,7 @@ func TestLongReferences(t *testing.T) {
 	db := &Database{Codepage: 1252}
 	tb := &Table{Name: "T", Columns: []Column{Col("K", "s72", true), Col("V", "S72", false)}}
 
-	for i := 0; i < 65540; i++ {
+	for i := range 65540 {
 		tb.Add(fmt.Sprintf("k%06d", i), "same")
 	}
 
@@ -337,7 +338,7 @@ func TestUnmarshalDetectsUnsortedRows(t *testing.T) {
 	// Swap the two Media rows' DiskId cells (bytes 0-1 and 2-3 of the stream).
 	mediaName, _ := EncodeStreamName("Media", true)
 
-	var streams []cfb.Stream
+	streams := make([]cfb.Stream, 0, len(f.Streams()))
 
 	for _, s := range f.Streams() {
 		if s.Name == mediaName {

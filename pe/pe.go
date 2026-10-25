@@ -23,21 +23,13 @@ const (
 
 // Info describes a PE file.
 type Info struct {
-	// Machine is the COFF machine type.
-	Machine uint16
-	// Is64Bit reports a PE32+ optional header.
-	Is64Bit bool
-	// HasChecksum reports a non-zero optional-header checksum.
-	HasChecksum bool
-	// HasVersion reports an RT_VERSION resource with VS_FIXEDFILEINFO.
-	HasVersion bool
-	// FileVersion is "a.b.c.d" from VS_FIXEDFILEINFO, or "".
-	FileVersion string
-	// ProductVersion is "a.b.c.d" from VS_FIXEDFILEINFO, or "".
+	FileVersion    string
 	ProductVersion string
-	// Languages are the low words of the VarFileInfo Translation values in
-	// stored order without duplicates.
-	Languages []int
+	Languages      []int
+	Machine        uint16
+	Is64Bit        bool
+	HasChecksum    bool
+	HasVersion     bool
 }
 
 // Language returns the File.Language value: the decimal languages joined
@@ -93,7 +85,7 @@ type image struct {
 	sections []section
 }
 
-func (im *image) read(rva uint32, size uint32) ([]byte, error) {
+func (im *image) read(rva, size uint32) ([]byte, error) {
 	for _, s := range im.sections {
 		end := s.virtualAddress + max(s.virtualSize, s.rawSize)
 		if rva >= s.virtualAddress && rva+size <= end {
@@ -167,7 +159,7 @@ func Parse(r io.ReaderAt) (*Info, error) {
 
 	im := &image{r: r}
 
-	for i := 0; i < numSections; i++ {
+	for i := range numSections {
 		s := secs[40*i:]
 		im.sections = append(im.sections, section{
 			virtualSize:    le.Uint32(s[8:]),
@@ -209,7 +201,7 @@ func findEntry(res []byte, dir uint32, id int) (target uint32, ok bool, err erro
 		return 0, false, errors.New("pe: resource directory entries out of range")
 	}
 
-	for i := 0; i < named+ids; i++ {
+	for i := range named + ids {
 		name := le.Uint32(entries[8*i:])
 		off := le.Uint32(entries[8*i+4:])
 
@@ -249,7 +241,7 @@ func parseVersion(im *image, res []byte, resRVA uint32, info *Info) error {
 
 	var data []byte
 
-	if dataRVA >= resRVA && dataRVA+dataSize <= resRVA+uint32(len(res)) {
+	if dataRVA >= resRVA && dataRVA+dataSize <= resRVA+uint32(len(res)) { //nolint:gosec // bounded by the format limits checked earlier
 		data = res[dataRVA-resRVA : dataRVA-resRVA+dataSize]
 	} else {
 		data, err = im.read(dataRVA, dataSize)
@@ -347,7 +339,7 @@ func parseVarFileInfo(b []byte, off int, info *Info) {
 		koff = align4(koff)
 
 		if key == "Translation" {
-			seen := map[int]bool{}
+			seen := make(map[int]bool)
 
 			for p := koff; p+4 <= koff+valueLen && p+4 <= len(b); p += 4 {
 				lang := int(le.Uint16(b[p:]))

@@ -5,7 +5,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
+	"strings"
 
 	"github.com/jkroepke/go-msi/cfb"
 	"github.com/jkroepke/go-msi/codepage"
@@ -29,16 +30,16 @@ type Options struct {
 
 // pool assigns string IDs and counts references.
 type pool struct {
-	cp       int
 	bytes    map[string][]byte
 	ids      map[string]uint32
 	refs     map[string]int
 	ordered  []string
+	cp       int
 	longRefs bool
 }
 
 func newPool(cp int) *pool {
-	return &pool{cp: cp, bytes: map[string][]byte{}, ids: map[string]uint32{}, refs: map[string]int{}}
+	return &pool{cp: cp, bytes: make(map[string][]byte), ids: make(map[string]uint32), refs: make(map[string]int)}
 }
 
 // use records one reference to s.
@@ -68,7 +69,7 @@ func (p *pool) assign() error {
 		p.ordered = append(p.ordered, s)
 	}
 
-	sort.Slice(p.ordered, func(i, j int) bool { return bytes.Compare(p.bytes[p.ordered[i]], p.bytes[p.ordered[j]]) < 0 })
+	slices.SortFunc(p.ordered, func(a, b string) int { return bytes.Compare(p.bytes[a], p.bytes[b]) })
 
 	for i, s := range p.ordered {
 		p.ids[s] = uint32(i + 1)
@@ -88,7 +89,7 @@ func (p *pool) id(s string) uint32 { return p.ids[s] }
 func (p *pool) marshal() (poolStream, dataStream []byte) {
 	le := binary.LittleEndian
 
-	hdr := uint32(p.cp)
+	hdr := uint32(p.cp) //nolint:gosec // bounded by the format limits checked earlier
 	if p.longRefs {
 		hdr |= 0x80000000
 	}
@@ -97,14 +98,14 @@ func (p *pool) marshal() (poolStream, dataStream []byte) {
 
 	for _, s := range p.ordered {
 		b := p.bytes[s]
-		ref := uint16(p.refs[s])
+		ref := uint16(p.refs[s]) //nolint:gosec // bounded by the format limits checked earlier
 
 		if len(b) > 0xFFFF {
 			poolStream = le.AppendUint16(poolStream, 0)
 			poolStream = le.AppendUint16(poolStream, ref)
-			poolStream = le.AppendUint32(poolStream, uint32(len(b)))
+			poolStream = le.AppendUint32(poolStream, uint32(len(b))) //nolint:gosec // bounded by the format limits checked earlier
 		} else {
-			poolStream = le.AppendUint16(poolStream, uint16(len(b)))
+			poolStream = le.AppendUint16(poolStream, uint16(len(b))) //nolint:gosec // bounded by the format limits checked earlier
 			poolStream = le.AppendUint16(poolStream, ref)
 		}
 
@@ -122,11 +123,11 @@ func (p *pool) stored(c Column, v any) uint32 {
 
 	switch c.Type.Kind {
 	case KindString:
-		return p.id(v.(string))
+		return p.id(v.(string)) //nolint:forcetypeassert // normalizeCell checked the type
 	case KindInt16:
-		return uint32(int32(v.(int))+0x8000) & 0xFFFF
+		return uint32(v.(int)+0x8000) & 0xFFFF //nolint:forcetypeassert,gosec // normalizeCell checked the type and range
 	case KindInt32:
-		return uint32(int32(v.(int))) ^ 0x80000000
+		return uint32(int32(v.(int))) ^ 0x80000000 //nolint:forcetypeassert,gosec // normalizeCell checked the type and range
 	default:
 		return 1
 	}
@@ -142,7 +143,7 @@ func (db *Database) Marshal(o Options) ([]byte, error) {
 		return nil, errors.New("msidb: UTF-16 database code pages are not valid")
 	}
 
-	seen := map[string]bool{}
+	seen := make(map[string]bool)
 
 	for _, t := range db.Tables {
 		if err := t.Validate(); err != nil {
@@ -162,7 +163,7 @@ func (db *Database) Marshal(o Options) ([]byte, error) {
 	}
 
 	tables := append([]*Table(nil), db.Tables...)
-	sort.Slice(tables, func(i, j int) bool { return tables[i].Name < tables[j].Name })
+	slices.SortFunc(tables, func(a, b *Table) int { return strings.Compare(a.Name, b.Name) })
 
 	p := newPool(db.Codepage)
 
@@ -252,7 +253,7 @@ func (db *Database) Marshal(o Options) ([]byte, error) {
 		}
 	}
 
-	streamNames := map[string]bool{}
+	streamNames := make(map[string]bool)
 
 	for _, t := range tables {
 		if len(t.Rows) == 0 {
@@ -288,7 +289,12 @@ func (db *Database) Marshal(o Options) ([]byte, error) {
 
 				streamNames[name] = true
 
-				if err := addStream(name, false, row[bi].([]byte)); err != nil {
+				data, ok := row[bi].([]byte)
+				if !ok {
+					return nil, fmt.Errorf("msidb: table %s: binary cell holds %T", t.Name, row[bi])
+				}
+
+				if err := addStream(name, false, data); err != nil {
 					return nil, fmt.Errorf("msidb: table %s: %w", t.Name, err)
 				}
 			}
@@ -347,7 +353,7 @@ func (p *pool) encodeTable(t *Table) ([]byte, error) {
 	}
 
 	less := func(a, b []uint32) int {
-		for i := 0; i < keys; i++ {
+		for i := range keys {
 			if a[i] != b[i] {
 				if a[i] < b[i] {
 					return -1
@@ -360,7 +366,7 @@ func (p *pool) encodeTable(t *Table) ([]byte, error) {
 		return 0
 	}
 
-	sort.SliceStable(rows, func(i, j int) bool { return less(rows[i].stored, rows[j].stored) < 0 })
+	slices.SortStableFunc(rows, func(a, b sortedRow) int { return less(a.stored, b.stored) })
 
 	for i := 1; i < len(rows); i++ {
 		if less(rows[i-1].stored, rows[i].stored) == 0 {
@@ -378,11 +384,11 @@ func (p *pool) encodeTable(t *Table) ([]byte, error) {
 
 			switch w {
 			case 2:
-				out = append(out, byte(v), byte(v>>8))
+				out = append(out, byte(v), byte(v>>8)) //nolint:gosec // truncation to the column width is the encoding
 			case 3:
-				out = append(out, byte(v), byte(v>>8), byte(v>>16))
+				out = append(out, byte(v), byte(v>>8), byte(v>>16)) //nolint:gosec // truncation to the column width is the encoding
 			case 4:
-				out = append(out, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
+				out = append(out, byte(v), byte(v>>8), byte(v>>16), byte(v>>24)) //nolint:gosec // truncation to the column width is the encoding
 			}
 		}
 	}
@@ -404,7 +410,7 @@ func describeKeys(t *Table, stored []uint32, p *pool) []any {
 		case c.Type.Kind == KindInt16:
 			out = append(out, int(v)-0x8000)
 		default:
-			out = append(out, int(int32(v^0x80000000)))
+			out = append(out, int(int32(v^0x80000000))) //nolint:gosec // the stored form is the biased two's complement
 		}
 	}
 

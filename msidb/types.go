@@ -139,7 +139,7 @@ func (t Type) Word() uint16 {
 
 	switch t.Kind {
 	case KindString:
-		w = 0x0D00 | uint16(t.Width)
+		w = 0x0D00 | uint16(t.Width) //nolint:gosec // bounded by the format limits checked earlier
 		if t.Localizable {
 			w |= 0x0200
 		}
@@ -226,6 +226,7 @@ type Table struct {
 // Keys returns the number of primary key columns.
 func (t *Table) Keys() int {
 	n := 0
+
 	for _, c := range t.Columns {
 		if c.Type.Key {
 			n++
@@ -253,17 +254,11 @@ func (t *Table) Add(values ...any) {
 
 // Database is a whole package database.
 type Database struct {
-	// Codepage of every string (0 ASCII, 65001 UTF-8 or an ANSI page).
-	Codepage int
 	Tables   []*Table
-	// Streams are extra streams such as embedded cabinets, with decoded names
-	// (the name without the "#" of Media.Cabinet).
-	Streams []cfb.Stream
-	// Summary is the summary information; nil writes no summary stream.
-	Summary []summary.Property
-	// Problems lists what Unmarshal found questionable but readable, such as
-	// refcounts that do not match or unsorted rows.
+	Streams  []cfb.Stream
+	Summary  []summary.Property
 	Problems []string
+	Codepage int
 }
 
 // Table returns the named table, or nil.
@@ -296,7 +291,7 @@ func normalizeCell(c Column, v any) (any, error) {
 			return nil, fmt.Errorf("column %s is not nullable", c.Name)
 		}
 
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil is the NULL cell
 	}
 
 	switch c.Type.Kind {
@@ -311,7 +306,7 @@ func normalizeCell(c Column, v any) (any, error) {
 				return nil, fmt.Errorf("column %s is not nullable", c.Name)
 			}
 
-			return nil, nil
+			return nil, nil //nolint:nilnil // an empty string is the NULL cell
 		}
 
 		return s, nil
@@ -370,7 +365,7 @@ func (t *Table) Validate() error {
 	}
 
 	keys, binaries := 0, 0
-	seen := map[string]bool{}
+	seen := make(map[string]bool)
 
 	for i, c := range t.Columns {
 		if c.Name == "" || len(c.Name) > maxColumnName {

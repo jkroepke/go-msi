@@ -130,8 +130,8 @@ func validLongName(s string) bool {
 		strings.TrimRight(s, ". ") == s
 }
 
-// validShortName checks an 8.3 name (specification section 11.3).
-func validShortName(s string) bool {
+// isShortName checks an 8.3 name (specification section 11.3).
+func isShortName(s string) bool {
 	if strings.ContainsAny(s, `\/:*?"<>|+,;=[] `) {
 		return false
 	}
@@ -157,5 +157,5 @@ func validName(s string) bool {
 		return validLongName(s)
 	}
 
-	return validShortName(short) && validLongName(long)
+	return isShortName(short) && validLongName(long)
 }

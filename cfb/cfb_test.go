@@ -3,6 +3,7 @@ package cfb
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"math/rand"
@@ -23,12 +24,12 @@ func vectorStreams() []Stream {
 
 func TestVectorA2(t *testing.T) {
 	for _, tc := range []struct {
+		sha     string
 		version int
 		size    int
-		sha     string
 	}{
-		{3, 7680, "37d8668bf78bc6da2c9b3c6fa3da9c0ffb6824baee21bf13ff9b02dd74e08aed"},
-		{4, 28672, "acb3c3db476f1d8aebfac49e89b86895756faa24288228a61f617d3c4d54956a"},
+		{version: 3, size: 7680, sha: "37d8668bf78bc6da2c9b3c6fa3da9c0ffb6824baee21bf13ff9b02dd74e08aed"},
+		{version: 4, size: 28672, sha: "acb3c3db476f1d8aebfac49e89b86895756faa24288228a61f617d3c4d54956a"},
 	} {
 		out, err := Write(vectorStreams(), Options{Version: tc.version})
 		if err != nil {
@@ -81,13 +82,13 @@ func TestDefaultVersionIs4(t *testing.T) {
 }
 
 func TestRoundTrip(t *testing.T) {
-	rng := rand.New(rand.NewSource(1))
+	rng := rand.New(rand.NewSource(1)) //nolint:gosec // reproducible test data
 
 	for _, version := range []int{3, 4} {
 		for _, count := range []int{0, 1, 2, 7, 40, 300} {
 			var streams []Stream
 
-			for i := 0; i < count; i++ {
+			for i := range count {
 				size := 0
 
 				switch i % 5 {
@@ -211,12 +212,14 @@ func TestReadRejectsGarbage(t *testing.T) {
 	out, _ := Write(vectorStreams(), Options{Version: 3})
 
 	bad := append([]byte(nil), out...)
+
 	bad[0] = 0
 	if _, err := Read(bad); err == nil {
 		t.Error("bad signature accepted")
 	}
 
 	bad = append([]byte(nil), out...)
+
 	bad[0x1E] = 10
 	if _, err := Read(bad); err == nil {
 		t.Error("bad sector shift accepted")
@@ -227,6 +230,7 @@ func TestReadRejectsGarbage(t *testing.T) {
 	f, _ := Read(out)
 	dirOff := (int(readU32(out, 0x30)) + 1) * 512
 	copy(bad[dirOff+128*int(f.Entries[2].Left)+0x44:], []byte{2, 0, 0, 0})
+
 	if _, err := Read(bad); err == nil {
 		t.Error("sibling loop accepted")
 	}
@@ -256,10 +260,7 @@ func TestEmptyStreamAnyStartSector(t *testing.T) {
 
 	for _, start := range []uint32{0, freeSect, 12345} {
 		bad := append([]byte(nil), out...)
-		bad[dirOff+128*sid+0x74] = byte(start)
-		bad[dirOff+128*sid+0x75] = byte(start >> 8)
-		bad[dirOff+128*sid+0x76] = byte(start >> 16)
-		bad[dirOff+128*sid+0x77] = byte(start >> 24)
+		binary.LittleEndian.PutUint32(bad[dirOff+128*sid+0x74:], start)
 
 		g, err := Read(bad)
 		if err != nil {

@@ -7,7 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/jkroepke/go-msi/codepage"
@@ -61,8 +61,8 @@ var expectedType = map[int]uint16{
 // Property is one summary property. Value is int (I2 for PID 1, I4
 // otherwise), string or time.Time (UTC).
 type Property struct {
-	ID    int
 	Value any
+	ID    int
 }
 
 // Word Count flags (PID 15).
@@ -82,7 +82,7 @@ func FileTime(t time.Time) uint64 {
 
 // FromFileTime converts a FILETIME to a UTC time.
 func FromFileTime(ft uint64) time.Time {
-	return time.Unix(0, int64(ft-epochDelta)*100).UTC()
+	return time.Unix(0, int64(ft-epochDelta)*100).UTC() //nolint:gosec // FILETIME values of this era fit int64
 }
 
 // Marshal serializes the properties. Strings are written in cp, which must
@@ -93,7 +93,7 @@ func Marshal(props []Property, cp int) ([]byte, error) {
 	}
 
 	sorted := append([]Property(nil), props...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].ID < sorted[j].ID })
+	slices.SortFunc(sorted, func(a, b Property) int { return a.ID - b.ID })
 
 	hasCodepage := false
 
@@ -121,8 +121,8 @@ func Marshal(props []Property, cp int) ([]byte, error) {
 
 	for _, p := range sorted {
 		vt := expectedType[p.ID]
-		v := make([]byte, 4)
-		le.PutUint16(v, vt)
+		v := le.AppendUint16(nil, vt)
+		v = append(v, 0, 0)
 
 		switch vt {
 		case vtI2:
@@ -131,14 +131,14 @@ func Marshal(props []Property, cp int) ([]byte, error) {
 				return nil, fmt.Errorf("summary: PID %d wants a 16-bit integer, got %v", p.ID, p.Value)
 			}
 
-			v = append(v, byte(n), byte(n>>8), 0, 0)
+			v = append(v, byte(n), byte(n>>8), 0, 0) //nolint:gosec // range checked above
 		case vtI4:
 			n, ok := p.Value.(int)
 			if !ok || n < -2147483648 || n > 2147483647 {
 				return nil, fmt.Errorf("summary: PID %d wants a 32-bit integer, got %v", p.ID, p.Value)
 			}
 
-			v = le.AppendUint32(v, uint32(int32(n)))
+			v = le.AppendUint32(v, uint32(int32(n))) //nolint:gosec // range checked above; two's complement is the encoding
 		case vtLPSTR:
 			s, ok := p.Value.(string)
 			if !ok {
@@ -154,7 +154,7 @@ func Marshal(props []Property, cp int) ([]byte, error) {
 				return nil, fmt.Errorf("summary: PID %d: %w", p.ID, err)
 			}
 
-			v = le.AppendUint32(v, uint32(len(b)+1))
+			v = le.AppendUint32(v, uint32(len(b)+1)) //nolint:gosec // bounded by the format limits checked earlier
 			v = append(v, b...)
 			v = append(v, 0)
 
@@ -187,14 +187,14 @@ func Marshal(props []Property, cp int) ([]byte, error) {
 	copy(out[0x1C:], fmtid[:])
 	le.PutUint32(out[0x2C:], 0x30)
 
-	out = le.AppendUint32(out, uint32(sectionSize))
-	out = le.AppendUint32(out, uint32(n))
+	out = le.AppendUint32(out, uint32(sectionSize)) //nolint:gosec // bounded by the format limits checked earlier
+	out = le.AppendUint32(out, uint32(n))           //nolint:gosec // bounded by the format limits checked earlier
 
 	offset := 8 + 8*n
 
 	for i, p := range sorted {
-		out = le.AppendUint32(out, uint32(p.ID))
-		out = le.AppendUint32(out, uint32(offset))
+		out = le.AppendUint32(out, uint32(p.ID))   //nolint:gosec // bounded by the format limits checked earlier
+		out = le.AppendUint32(out, uint32(offset)) //nolint:gosec // bounded by the format limits checked earlier
 		offset += len(values[i])
 	}
 
@@ -267,13 +267,13 @@ func Unmarshal(data []byte) ([]Property, error) {
 				return nil, fmt.Errorf("summary: PID %d truncated", e.pid)
 			}
 
-			props = append(props, Property{e.pid, int(le.Uint16(v))})
+			props = append(props, Property{ID: e.pid, Value: int(le.Uint16(v))})
 		case vtI4:
 			if len(v) < 4 {
 				return nil, fmt.Errorf("summary: PID %d truncated", e.pid)
 			}
 
-			props = append(props, Property{e.pid, int(int32(le.Uint32(v)))})
+			props = append(props, Property{ID: e.pid, Value: int(int32(le.Uint32(v)))}) //nolint:gosec // VT_I4 is a signed 32-bit value
 		case vtLPSTR:
 			if len(v) < 4 {
 				return nil, fmt.Errorf("summary: PID %d truncated", e.pid)
@@ -289,13 +289,13 @@ func Unmarshal(data []byte) ([]Property, error) {
 				return nil, fmt.Errorf("summary: PID %d: %w", e.pid, err)
 			}
 
-			props = append(props, Property{e.pid, s})
+			props = append(props, Property{ID: e.pid, Value: s})
 		case vtFILETIME:
 			if len(v) < 8 {
 				return nil, fmt.Errorf("summary: PID %d truncated", e.pid)
 			}
 
-			props = append(props, Property{e.pid, FromFileTime(le.Uint64(v))})
+			props = append(props, Property{ID: e.pid, Value: FromFileTime(le.Uint64(v))})
 		case 0, 1: // VT_EMPTY, VT_NULL: absent
 		default:
 			return nil, fmt.Errorf("summary: PID %d has variant type %#x", e.pid, vt)

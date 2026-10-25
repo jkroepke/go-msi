@@ -15,7 +15,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"unicode"
 	"unicode/utf16"
 )
@@ -173,7 +173,7 @@ func Write(streams []Stream, o Options) ([]byte, error) {
 		entries = append(entries, &entry{name: name, data: s.Data, left: -1, right: -1})
 	}
 
-	sort.SliceStable(entries, func(i, j int) bool { return CompareUnits(entries[i].name, entries[j].name) < 0 })
+	slices.SortStableFunc(entries, func(a, b *entry) int { return CompareUnits(a.name, b.name) })
 
 	for i := 1; i < len(entries); i++ {
 		if CompareUnits(entries[i-1].name, entries[i].name) == 0 {
@@ -222,7 +222,7 @@ func Write(streams []Stream, o Options) ([]byte, error) {
 		case len(e.data) == 0:
 			e.start = endOfChain
 		case len(e.data) < miniCutoff:
-			e.start = uint32(len(mini) / miniSectorSize)
+			e.start = uint32(len(mini) / miniSectorSize) //nolint:gosec // bounded by the format limits checked earlier
 			mini = append(mini, e.data...)
 
 			if pad := len(mini) % miniSectorSize; pad != 0 {
@@ -274,12 +274,12 @@ func Write(streams []Stream, o Options) ([]byte, error) {
 	// Header.
 	copy(out, signature)
 	le.PutUint16(out[0x18:], 0x3E)
-	le.PutUint16(out[0x1A:], uint16(o.Version))
+	le.PutUint16(out[0x1A:], uint16(o.Version)) //nolint:gosec // bounded by the format limits checked earlier
 	le.PutUint16(out[0x1C:], 0xFFFE)
 
 	if o.Version == 4 {
 		le.PutUint16(out[0x1E:], 12)
-		le.PutUint32(out[0x28:], uint32(dirSectors))
+		le.PutUint32(out[0x28:], uint32(dirSectors)) //nolint:gosec // bounded by the format limits checked earlier
 	} else {
 		le.PutUint16(out[0x1E:], 9)
 	}
@@ -290,12 +290,12 @@ func Write(streams []Stream, o Options) ([]byte, error) {
 	le.PutUint32(out[0x38:], miniCutoff)
 
 	if miniFATSectors > 0 {
-		le.PutUint32(out[0x3C:], uint32(miniFATStart))
+		le.PutUint32(out[0x3C:], uint32(miniFATStart)) //nolint:gosec // bounded by the format limits checked earlier
 	} else {
 		le.PutUint32(out[0x3C:], endOfChain)
 	}
 
-	le.PutUint32(out[0x40:], uint32(miniFATSectors))
+	le.PutUint32(out[0x40:], uint32(miniFATSectors)) //nolint:gosec // bounded by the format limits checked earlier
 
 	if difatSectors > 0 {
 		le.PutUint32(out[0x44:], uint32(difatStart))
@@ -305,7 +305,7 @@ func Write(streams []Stream, o Options) ([]byte, error) {
 
 	le.PutUint32(out[0x48:], uint32(difatSectors))
 
-	for i := 0; i < 109; i++ {
+	for i := range 109 {
 		v := uint32(freeSect)
 		if i < fatSectors {
 			v = uint32(fatStart + i)
@@ -322,20 +322,20 @@ func Write(streams []Stream, o Options) ([]byte, error) {
 		fat[i] = freeSect
 	}
 
-	for i := 0; i < fatSectors; i++ {
+	for i := range fatSectors {
 		fat[fatStart+i] = fatSect
 	}
 
-	for i := 0; i < difatSectors; i++ {
+	for i := range difatSectors {
 		fat[difatStart+i] = difSect
 	}
 
 	chain := func(start, count int) {
-		for i := 0; i < count; i++ {
+		for i := range count {
 			if i == count-1 {
 				fat[start+i] = endOfChain
 			} else {
-				fat[start+i] = uint32(start + i + 1)
+				fat[start+i] = uint32(start + i + 1) //nolint:gosec // bounded by the format limits checked earlier
 			}
 		}
 	}
@@ -349,22 +349,22 @@ func Write(streams []Stream, o Options) ([]byte, error) {
 	for _, e := range entries {
 		if len(e.data) >= miniCutoff {
 			c := (len(e.data) + ss - 1) / ss
-			e.start = uint32(cur)
+			e.start = uint32(cur) //nolint:gosec // bounded by the format limits checked earlier
 			chain(cur, c)
 			copy(out[sectorOffset(cur):], e.data)
 			cur += c
 		}
 	}
 
-	for x := 0; x < difatSectors; x++ {
+	for x := range difatSectors {
 		off := sectorOffset(difatStart + x)
 
-		for i := 0; i < ss/4-1; i++ {
+		for i := range ss/4 - 1 {
 			k := 109 + x*(ss/4-1) + i
 
 			v := uint32(freeSect)
 			if k < fatSectors {
-				v = uint32(fatStart + k)
+				v = uint32(fatStart + k) //nolint:gosec // bounded by the format limits checked earlier
 			}
 
 			le.PutUint32(out[off+4*i:], v)
@@ -393,11 +393,11 @@ func Write(streams []Stream, o Options) ([]byte, error) {
 				c := (len(e.data) + miniSectorSize - 1) / miniSectorSize
 				st := int(e.start)
 
-				for k := 0; k < c; k++ {
+				for k := range c {
 					if k == c-1 {
 						miniFAT[st+k] = endOfChain
 					} else {
-						miniFAT[st+k] = uint32(st + k + 1)
+						miniFAT[st+k] = uint32(st + k + 1) //nolint:gosec // bounded by the format limits checked earlier
 					}
 				}
 			}
@@ -420,7 +420,7 @@ func Write(streams []Stream, o Options) ([]byte, error) {
 			le.PutUint16(e[2*i:], u)
 		}
 
-		le.PutUint16(e[0x40:], uint16(2*(len(name)+1)))
+		le.PutUint16(e[0x40:], uint16(2*(len(name)+1))) //nolint:gosec // bounded by the format limits checked earlier
 		e[0x42] = typ
 		e[0x43] = colour
 		le.PutUint32(e[0x44:], left)
@@ -440,12 +440,12 @@ func Write(streams []Stream, o Options) ([]byte, error) {
 			return noStream
 		}
 
-		return uint32(k + 1)
+		return uint32(k + 1) //nolint:gosec // bounded by the format limits checked earlier
 	}
 
 	rootStart := uint32(endOfChain)
 	if miniStreamSectors > 0 {
-		rootStart = uint32(miniStreamStart)
+		rootStart = uint32(miniStreamStart) //nolint:gosec // bounded by the format limits checked earlier
 	}
 
 	putEntry(0, utf16.Encode([]rune("Root Entry")), 5, 1, noStream, noStream, link(top), o.CLSID[:], rootStart, uint64(len(mini)))

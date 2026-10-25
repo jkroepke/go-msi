@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -9,7 +10,7 @@ import (
 
 func TestDefinitions(t *testing.T) {
 	categories := map[string]bool{}
-	for _, c := range strings.Split(Categories, ";") {
+	for c := range strings.SplitSeq(Categories, ";") {
 		categories[c] = true
 	}
 
@@ -39,7 +40,7 @@ func TestDefinitions(t *testing.T) {
 			}
 
 			if c.KeyTable != "" {
-				for _, kt := range strings.Split(c.KeyTable, ";") {
+				for kt := range strings.SplitSeq(c.KeyTable, ";") {
 					if _, ok := Lookup(kt); !ok && kt != "ODBCDataSource" {
 						t.Errorf("%s.%s: key table %s is not defined", name, c.Name, kt)
 					}
@@ -67,7 +68,7 @@ func TestValidation(t *testing.T) {
 
 	count := map[string]int{}
 	for _, r := range v.Rows {
-		count[r[0].(string)]++
+		count[fmt.Sprint(r[0])]++
 	}
 
 	if count["Property"] != 2 || count["Media"] != 6 || count["_Validation"] != 10 || count["MyTable"] != 2 || count["_SummaryInformation"] != 2 || len(count) != 5 {
