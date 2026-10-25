@@ -48,6 +48,8 @@ func (d *TableDef) Table() *msidb.Table {
 const Categories = "Text;Formatted;Template;Condition;Guid;Path;Version;Language;Identifier;Binary;UpperCase;LowerCase;Filename;" +
 	"Paths;AnyPath;WildCardFilename;RegPath;CustomSource;Property;Cabinet;Shortcut;DefaultDir;FormattedSDDLText;Integer;DoubleInteger;TimeDate"
 
+const controlRef = "Control_|s50|K|Identifier|Control|2||||A foreign key to the Control table, name of the control."
+
 // Each line: Name|Type|K (key) or empty|Category|KeyTable|KeyColumn|Min|Max|Set|Description.
 var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 	"_Validation": {
@@ -75,6 +77,52 @@ var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 	"Binary": {
 		"Name|s72|K|Identifier||||||Unique key identifying the binary data.",
 		"Data|v0||Binary||||||The unformatted binary data.",
+	},
+	"CheckBox": {
+		"Property|s72|K|Identifier||||||A named property to be tied to the item.",
+		"Value|S64||Formatted||||||The value string associated with the item.",
+	},
+	"Control": {
+		"Dialog_|s72|K|Identifier|Dialog|1||||External key to the Dialog table, name of the dialog.",
+		"Control|s50|K|Identifier||||||Name of the control. This name must be unique within a dialog, but can repeat on different dialogs.",
+		"Type|s20||Identifier||||||The type of the control.",
+		"X|i2|||||0|32767||Horizontal coordinate of the upper left corner of the bounding rectangle of the control.",
+		"Y|i2|||||0|32767||Vertical coordinate of the upper left corner of the bounding rectangle of the control.",
+		"Width|i2|||||0|32767||Width of the bounding rectangle of the control.",
+		"Height|i2|||||0|32767||Height of the bounding rectangle of the control.",
+		"Attributes|I4|||||0|2147483647||A 32-bit word that specifies the attribute flags to be applied to this control.",
+		"Property|S50||Identifier||||||The name of a defined property to be linked to this control.",
+		"Text|L0||Formatted||||||A string used to set the initial text contained within a control (if appropriate).",
+		"Control_Next|S50||Identifier|Control|2||||The name of an other control on the same dialog. This link defines the tab order of the controls.",
+		"Help|L50||Text||||||The help strings used with the button. The text is optional.",
+	},
+	"ControlCondition": {
+		"Dialog_|s72|K|Identifier|Dialog|1||||A foreign key to the Dialog table, name of the dialog.",
+		controlRef,
+		"Action|s50|K|Text|||||Default;Disable;Enable;Hide;Show|The desired action to be taken on the specified control.",
+		"Condition|s255|K|Condition||||||A standard conditional statement that specifies under which conditions the action should be triggered.",
+	},
+	"ControlEvent": {
+		"Dialog_|s72|K|Identifier|Dialog|1||||A foreign key to the Dialog table, name of the dialog.",
+		controlRef,
+		"Event|s50|K|Formatted||||||An identifier that specifies the type of the event that should take place when the user interacts with control " +
+			"specified by the first two entries.",
+		"Argument|s255|K|Formatted||||||A value to be used as a modifier when triggering a particular event.",
+		"Condition|S255|K|Condition||||||A standard conditional statement that specifies under which conditions an event should be triggered.",
+		"Ordering|I2|||||0|2147483647||An integer used to order several events tied to the same control. Can be left blank.",
+	},
+	"Dialog": {
+		"Dialog|s72|K|Identifier||||||Name of the dialog.",
+		"HCentering|i2|||||0|100||Horizontal position of the dialog on a 0-100 scale. 0 means left end, 100 means right end of the screen, 50 center.",
+		"VCentering|i2|||||0|100||Vertical position of the dialog on a 0-100 scale. 0 means top end, 100 means bottom end of the screen, 50 center.",
+		"Width|i2|||||0|32767||Width of the bounding rectangle of the dialog.",
+		"Height|i2|||||0|32767||Height of the bounding rectangle of the dialog.",
+		"Attributes|I4|||||0|2147483647||A 32-bit word that specifies the attribute flags to be applied to this dialog.",
+		"Title|L128||Formatted||||||A text string specifying the title to be displayed in the title bar of the dialog's window.",
+		"Control_First|s50||Identifier|Control|2||||Defines the control that has the focus when the dialog is created.",
+		"Control_Default|S50||Identifier|Control|2||||Defines the default control. Hitting return is equivalent to pushing this button.",
+		"Control_Cancel|S50||Identifier|Control|2||||Defines the cancel control. Hitting escape or clicking on the close icon on the dialog is equivalent " +
+			"to pushing this button.",
 	},
 	"Component": {
 		"Component|s72|K|Identifier||||||Primary key used to identify a particular component record.",
@@ -105,6 +153,12 @@ var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 		"Name|l255||Text||||||The name of the environmental value.",
 		"Value|L255||Formatted||||||The value to set in the environmental settings.",
 		"Component_|s72||Identifier|Component|1||||Foreign key into the Component table referencing component that controls the installing of the.",
+	},
+	"EventMapping": {
+		"Dialog_|s72|K|Identifier|Dialog|1||||A foreign key to the Dialog table, name of the Dialog.",
+		controlRef,
+		"Event|s50|K|Identifier||||||An identifier that specifies the type of the event that the control subscribes to.",
+		"Attribute|s50||Identifier||||||The name of the control attribute, that is set when this event is received.",
 	},
 	"Error": {
 		"Error|i2|K||||0|32767||Integer error number, obtained from header file IError(...) macros.",
@@ -142,6 +196,13 @@ var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 		"Condition|s255|K|Condition||||||Expression which must evaluate to TRUE in order for install to commence.",
 		"Description|l255||Formatted||||||Localizable text to display when condition fails and install must abort.",
 	},
+	"ListBox": {
+		"Property|s72|K|Identifier||||||A named property to be tied to this item. All the items tied to the same property become part of the same listbox.",
+		"Order|i2|K||||1|32767||A positive integer used to determine the ordering of the items within one list..The integers do not have to be consecutive.",
+		"Value|s64||Formatted||||||The value string associated with this item. Selecting the line will set the associated property to this value.",
+		"Text|L64||Text||||||The visible text to be assigned to the item. Optional. If this entry or the entire column is missing, the text is the same " +
+			"as the value.",
+	},
 	"Media": {
 		"DiskId|i2|K||||1|32767||Primary key, integer to determine sort order for table.",
 		"LastSequence|i4|||||0|2147483647||File sequence number for the last file for this media.",
@@ -169,6 +230,17 @@ var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 	"Property": {
 		"Property|s72|K|Identifier||||||Name of property, uppercase if settable by launcher or loader.",
 		"Value|l0||Text||||||String value for property.",
+	},
+	"RadioButton": {
+		"Property|s72|K|Identifier||||||A named property to be tied to this radio button. All the buttons tied to the same property become part of the same group.",
+		"Order|i2|K||||1|32767||A positive integer used to determine the ordering of the items within one list..The integers do not have to be consecutive.",
+		"Value|s64||Formatted||||||The value string associated with this button. Selecting the button will set the associated property to this value.",
+		"X|i2|||||0|32767||The horizontal coordinate of the upper left corner of the bounding rectangle of the radio button.",
+		"Y|i2|||||0|32767||The vertical coordinate of the upper left corner of the bounding rectangle of the radio button.",
+		"Width|i2|||||0|32767||The width of the button.",
+		"Height|i2|||||0|32767||The height of the button.",
+		"Text|L64||Text||||||The visible title to be assigned to the radio button.",
+		"Help|L50||Text||||||The help strings used with the button. The text is optional.",
 	},
 	"Registry": {
 		"Registry|s72|K|Identifier||||||Primary key, non-localized token.",
@@ -214,6 +286,18 @@ var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 		"Arguments|S255||Formatted||||||Arguments for the service. Separate by [~].",
 		"Component_|s72||Identifier|Component|1||||Required foreign key into the Component Table that controls the startup of the service",
 		"Description|L255||Text||||||Description of service.",
+	},
+	"TextStyle": {
+		"TextStyle|s72|K|Identifier||||||Name of the style. The primary key of this table. This name is embedded in the texts to indicate a style change.",
+		"FaceName|s32||Text||||||A string indicating the name of the font used. Required. The string must be at most 31 characters long.",
+		"Size|i2|||||0|32767||The size of the font used. This size is given in our units (1/12 of the system font height). Assuming that the system font " +
+			"is set to 12 point size, this is equivalent to the point size.",
+		"Color|I4|||||0|16777215||A long integer indicating the color of the string in the RGB format (Red, Green, Blue each 0-255, RGB = R + 256*G + 256^2*B).",
+		"StyleBits|I2|||||0|15||A combination of style bits.",
+	},
+	"UIText": {
+		"Key|s72|K|Identifier||||||A unique key that identifies the particular string.",
+		"Text|L255||Text||||||The localized version of the string.",
 	},
 	"Upgrade": {
 		"UpgradeCode|s38|K|Guid||||||The UpgradeCode GUID belonging to the products in this set.",

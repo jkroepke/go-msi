@@ -508,7 +508,7 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 	// Every scheduled name must be a standard action or a custom action.
 	for _, table := range sequenceTables {
 		for _, action := range b.schedules[table] {
-			if _, std := standardActions[action.Name]; std || b.action(action.Name) != nil {
+			if _, std := standardActions[action.Name]; std || b.action(action.Name) != nil || b.isDialog(action.Name) {
 				continue
 			}
 

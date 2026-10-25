@@ -402,8 +402,7 @@ func TestWindowsExporter(t *testing.T) {
 		t.Errorf("template %v", summary.Get(database.Summary, summary.PIDTemplate))
 	}
 
-	// The example asks for a wizard the builder does not have yet.
-	if !strings.Contains(fmt.Sprint(res.Diagnostics), "wizard") {
-		t.Error("expected a wizard warning")
+	if strings.Contains(fmt.Sprint(res.Diagnostics), "wizard") {
+		t.Errorf("unexpected wizard diagnostic: %s", res.Diagnostics)
 	}
 }

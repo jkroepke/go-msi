@@ -557,13 +557,17 @@ ui:
           label: Port to listen on
 ```
 
-The wizards are written from scratch for go-msi. `minimal` has welcome,
-verify, progress and finish; `featureTree` adds the feature tree with Browse
-and disk cost. Both include maintenance (Change and Remove), cancel, user
-exit, fatal error, files in use, out of disk and the error dialog. Added
+The wizards are written from scratch for go-msi, including the bitmaps,
+which the `artwork` package draws from a colour palette at build time.
+`minimal` has welcome, ready, progress and finish; `featureTree` adds the
+feature tree (`CustomizeDlg`) with Browse and disk usage. Both include
+maintenance (Repair and Remove; Change with the feature tree), cancel, user
+exit, fatal error, files in use, Restart Manager and the error dialog. Added
 dialogs are laid out automatically: one label and one edit field per
-property, Back, Next and Cancel. `none` writes no UI tables; silent installs
-never depend on the UI in any mode.
+property (at most four per dialog), Back, Next and Cancel. `after` names the
+page the dialog follows: `WelcomeDlg`, `CustomizeDlg` or an added dialog.
+`none` writes no UI tables; silent installs never depend on the UI in any
+mode. Without feature selection (`none`, `minimal`) `ARPNOMODIFY` is set.
 
 ### 4.13 `tables`
 
