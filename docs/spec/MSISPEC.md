@@ -389,11 +389,17 @@ How the engine picks and opens media (reported):
 - Stored cabinet (chapter 04 §16.2): `fil_a` (`Hello, cabinet!\r\n`), `fil_b` (`MSI\r\n`), setID 0x1234, 2024-06-15 13:45:30, attribs 0x20/0x21. 118 bytes, SHA-256 `81e6018c16afa762ca19768c9c3ce0eed5aa44b5ef26ea555da92a248bbe4ace`.
 - MSZIP cabinet (§16.3): `fil_readme` (28 bytes) and `fil_data` (70000) give blocks of 32768, 32768 and 4492. Go 1.27.3 level 9: 3310 bytes, SHA-256 `d325dfc5a0f4310ee08bf54d8d7dfb98e4586cc601240574d8baf7be10f22cec`. Random data takes the stored fallback (`cbData` 32775).
 
+Observed with `cabinet.dll` FDI and `expand.exe` on Windows Server 2025 (`cab/native_windows_test.go`, run by CI on every change):
+
+- FDI extracts the cabinets written by the rules above byte for byte and reports the written names, sizes, dates and attributes: stored and MSZIP folders, Go's DEFLATE streams with their empty final block, an empty folder (`cCFData = 0`) holding only empty files, empty files between and after other files, files ending on and crossing the 32 KiB block boundary, the stored fallback (`cbData` 32775), 2000 files, a 255-byte `szName`, a UTF-8 name with attribute 0x80, and the clamped dates 0x0021/0x0000 and 0xFF9F/0xBF7D.
+- FDI verifies `csum`: a flipped payload byte fails the extraction. Checksums of blocks with 1, 2 and 3 trailing bytes match the big-endian tail rule above.
+- `makecab.exe` writes MSZIP folders whose blocks this package reads with the cross-block history, and it records an odd second rounded *up* to the next even one, where the rule above truncates; both are valid.
+
 Unverified:
 
-- `cabinet.dll` handling of minor version ≠ 3, `cbCabinet` mismatches, short non-final blocks, reserve bytes in checksums, and Go's empty final block.
-- Whether Windows Installer accepts type 0, installs empty files from empty folders, and ignores cabinet dates and attributes.
-- The 255-byte `szName` limit, the 2 GiB − 1 cabinet limit, and files above 2 GiB.
+- `cabinet.dll` handling of minor version ≠ 3, `cbCabinet` mismatches, short non-final blocks, and reserve bytes in checksums.
+- Whether Windows Installer itself (as opposed to FDI) accepts type 0, installs empty files from empty folders, and ignores cabinet dates and attributes.
+- The 2 GiB − 1 cabinet limit and files above 2 GiB; `Write` stops a folder at 0x7FFF8000 bytes because `cCFData` is a u16.
 - Long external cabinet names, shared or over-full cabinets, folder skipping, and prompt-free multi-cabinet installs.
 
 ## 6. Database schema
