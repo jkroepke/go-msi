@@ -59,6 +59,39 @@ func fileState(p string) string {
 
 const preserveKey = `SOFTWARE\MsiSpecTest\preserve`
 
+// squashGUID is the form the engine uses for registry key names: each of the
+// first three groups reversed, then the two hex digits of each later byte
+// swapped.
+func squashGUID(guid string) string {
+	g := strings.Trim(strings.ReplaceAll(guid, "-", ""), "{}")
+	rev := func(s string) string {
+		b := []byte(s)
+		for i, j := 0, len(b)-1; i < j; i, j = i+1, j-1 {
+			b[i], b[j] = b[j], b[i]
+		}
+		return string(b)
+	}
+	out := rev(g[0:8]) + rev(g[8:12]) + rev(g[12:16])
+	for i := 16; i < 32; i += 2 {
+		out += string(g[i+1]) + string(g[i])
+	}
+	return out
+}
+
+// forgetComponents deletes the machine registration of components a
+// permanent variant left behind. Without it the next variant that reuses
+// the GUID finds the component still installed (its SYSTEM client is never
+// removed) and behaves differently.
+func forgetComponents(c *caseLog, guids ...string) {
+	for _, g := range guids {
+		key := `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Components\` + squashGUID(g)
+		if strings.Contains(cmdOut("reg.exe", "query", key, "/reg:64"), "REG_") {
+			c.logf("  removing leftover component registration %s", g)
+			exec.Command("reg.exe", "delete", key, "/f", "/reg:64").Run()
+		}
+	}
+}
+
 // caseRun24: does a component with neverOverwrite and/or permanent keep a
 // file and a registry value the user edited across a major upgrade, for an
 // early (1401) and a late (6551) RemoveExistingProducts?
@@ -80,6 +113,14 @@ func caseRun24() {
 		{"never-retrofit-late", 0, attrNeverOverwrite, "6551", true},
 	} {
 		c := newCase("RUN-24", v.name)
+		// Each variant has its own component GUIDs, so that a permanent
+		// registration of one variant cannot change the next (the GUIDs of
+		// the first harness version are cleaned up too).
+		name := "upg-" + v.name
+		cfgGUID := guidFor(name + "f_cfg" + upgradeUC)
+		regGUID := guidFor(name + "-preserve-reg" + upgradeUC)
+		legacy := []string{guidFor("upgf_cfg" + upgradeUC), guidFor("upg-preserve-reg" + upgradeUC)}
+		forgetComponents(c, append(legacy, cfgGUID, regGUID)...)
 		dir := filepath.Join(pf64(), "MsiSpecTest")
 		cfg := filepath.Join(dir, "config.txt")
 		os.Remove(cfg)
@@ -87,12 +128,13 @@ func caseRun24() {
 		mk := func(file, version string, bits int) (*pkg, string) {
 			data := []byte(version + "-default\r\n")
 			return upgradePkg(c, file, version, v.rep, func(p *pkg) {
+				p.Name = name
 				p.Files = []payload{
 					{Key: "f_readme", Name: "readme.txt", Data: []byte("readme " + version + "\r\n")},
 					{Key: "f_cfg", Name: "config.txt", Data: data},
 				}
 				p.CompAttr = map[string]int{"f_cfg": bits}
-				p.Extra["Component"] = [][]string{{"C_reg", guidFor("upg-preserve-reg" + upgradeUC), "INSTALLDIR", fmt.Sprint(attr64 | attrRegKeyPath | bits), "", "R_args"}}
+				p.Extra["Component"] = [][]string{{"C_reg", regGUID, "INSTALLDIR", fmt.Sprint(attr64 | attrRegKeyPath | bits), "", "R_args"}}
 				p.Extra["Registry"] = [][]string{{"R_args", "2", preserveKey, "Arguments", version + "-default", "C_reg"}}
 				p.Extra["FeatureComponents"] = [][]string{{"Main", "C_reg"}}
 				if v.hash {
@@ -114,7 +156,9 @@ func caseRun24() {
 			registered(p2.ProductCode), exists(filepath.Join(dir, "readme.txt")), fileState(cfg), regValue(preserveKey, "Arguments"))
 		removeProduct(c, p2.ProductCode)
 		removeProduct(c, p1.ProductCode)
+		forgetComponents(c, cfgGUID, regGUID)
 		os.Remove(cfg)
+		os.Remove(filepath.Join(dir, "readme.txt"))
 		os.Remove(dir)
 		exec.Command("reg.exe", "delete", `HKLM\SOFTWARE\MsiSpecTest`, "/f", "/reg:64").Run()
 		c.close()
