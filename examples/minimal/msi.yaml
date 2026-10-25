@@ -1,0 +1,31 @@
+# The smallest useful package: one executable, silent install only.
+schema: go-msi/v1
+
+product:
+  name: Hello
+  manufacturer: Example
+  version: 1.0.0
+  upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301
+
+package:
+  platform: x64
+
+upgrade: {}
+
+directories:
+  - id: ProgramFiles64Folder
+    children:
+      - id: INSTALLDIR
+        name: Hello
+        configurable: true
+
+features:
+  - id: Main
+    title: Hello
+    components: [Hello]
+
+components:
+  - id: Hello
+    directory: INSTALLDIR
+    files:
+      - source: hello.exe

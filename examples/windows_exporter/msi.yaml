@@ -1,0 +1,235 @@
+# windows_exporter, the reference package and first acceptance test.
+#
+#   go-msi build --var VERSION=0.32.0.5 --var ARCH=x64 \
+#     --var BINARY=windows_exporter.exe -o windows_exporter-0.32.0.5-amd64.msi msi.yaml
+schema: go-msi/v1
+
+vars:
+  ARCH: x64
+  BINARY: windows_exporter.exe
+  ICON: icon.ico
+
+product:
+  name: windows_exporter
+  manufacturer: prometheus-community
+  version: ${VERSION}
+  language: 1033
+  upgradeCode: 66a6eb5b-1fc2-4b14-a362-5ceec6413308
+  arp:
+    icon: icon.ico
+    comments: Prometheus exporter for Windows machines
+    helpLink: https://github.com/prometheus-community/windows_exporter/issues
+    aboutLink: https://github.com/prometheus-community/windows_exporter
+    noRepair: true
+    size: 10000
+    installLocation: APPLICATIONFOLDER
+
+package:
+  platform: ${ARCH}
+  scope: perMachine
+  installerVersion: "5.0"
+  cabinet: windows_exporter.cab
+
+upgrade:
+  allowSameVersion: true
+  downgrade: error
+  removeOld: afterInstallInitialize
+
+directories:
+  - id: ProgramFiles64Folder
+    children:
+      - id: APPLICATIONFOLDER
+        name: windows_exporter
+        configurable: true
+        children:
+          - id: TEXTFILEDIR
+            name: textfile_inputs
+
+features:
+  - id: DefaultFeature
+    title: windows_exporter ${VERSION}
+    description: The binary and configuration files for windows_exporter
+    level: 1
+    display: expanded
+    directory: APPLICATIONFOLDER
+    allowAbsent: false
+    components: [Executable, TextfileDirectory]
+    features:
+      - id: FirewallException
+        title: Firewall Exception
+        description: Allow windows_exporter to listen on a port
+        level: 2
+        display: expanded
+        components: [FirewallException]
+
+components:
+  - id: Executable
+    directory: APPLICATIONFOLDER
+    # The GUID of the released packages, the same on amd64 and arm64.
+    guid: 5546455E-B5EA-5AF8-A21A-AA526F04D083
+    transitive: true
+    files:
+      - source: ${BINARY}
+        name: windows_exporter.exe
+        checksum: true
+    services:
+      - name: windows_exporter
+        displayName: windows_exporter
+        description: Exports Prometheus metrics about the system
+        start: auto
+        delayedAutoStart: true
+        errorControl: normal
+        vital: true
+        account: '[SERVICE_ACCOUNT]'
+        password: '[SERVICE_PASSWORD]'
+        arguments: '[ConfigFileFlag] [CollectorsFlag] [ListenFlag] [MetricsPathFlag] [TextfileDirsFlag] [ExtraFlags]'
+        dependencies: [wmiApSrv]
+        failureActionsOnNonCrashFailures: true
+        control:
+          startOnInstall: true
+          stopOnInstall: true
+          stopOnUninstall: true
+          deleteOnUninstall: true
+          wait: true
+        recovery:
+          resetAfterDays: 0
+          actions: [restart, restart, restart]
+          restartDelay: 60s
+    eventLog:
+      # The exporter calls eventlog.Open("windows_exporter").
+      - source: windows_exporter
+        messageFile: '%SystemRoot%\System32\EventCreate.exe'
+        typesSupported: 7
+
+  - id: TextfileDirectory
+    directory: TEXTFILEDIR
+    guid: D03EF58A-9CBF-4165-AD39-D143E9B27E14
+    createFolder: true
+
+  # Empty component that carries the FirewallException feature's state.
+  - id: FirewallException
+    directory: APPLICATIONFOLDER
+    guid: 9F522655-AC0E-42D2-A512-A7B19EBEC7F7
+    keyPath: directory
+
+properties:
+  ENABLED_COLLECTORS: {}
+  EXTRA_FLAGS: {}
+  CONFIG_FILE: config.yaml
+  LISTEN_ADDR: {}
+  LISTEN_PORT: "9182"
+  METRICS_PATH: {}
+  TEXTFILE_DIRS: {}
+  REMOTE_ADDR: {}
+  SERVICE_ACCOUNT: {}
+  SERVICE_PASSWORD: { hidden: true }
+  # The Restart Manager would shut down every process holding a package
+  # file; ServiceControl and KillProcess already stop this installation.
+  MSIRESTARTMANAGERCONTROL: Disable
+
+customActions:
+  # Rerunning the MSI on an installed product reinstalls everything.
+  - id: SetMaintenance
+    setProperty: { name: MAINTENANCE, value: "true" }
+    schedule:
+      - { sequence: execute, before: SetReinstallAll, condition: Installed AND (NOT REMOVE) AND (NOT UPGRADINGPRODUCTCODE) }
+  - id: SetReinstallAll
+    setProperty: { name: REINSTALL, value: ALL }
+    schedule:
+      - { sequence: execute, before: SetReinstallMode, condition: MAINTENANCE }
+  - id: SetReinstallMode
+    setProperty: { name: REINSTALLMODE, value: amus }
+    schedule:
+      - { sequence: execute, before: LaunchConditions, condition: MAINTENANCE }
+
+  - id: CheckExtraFlags
+    error: The parameter '--config.file' must not be included in EXTRA_FLAGS. Use CONFIG_FILE instead. Please remove it and try again.
+    schedule:
+      - { sequence: execute, before: InstallInitialize, condition: EXTRA_FLAGS AND (EXTRA_FLAGS >< "--config.file") }
+
+  # The service command line, assembled after InstallFiles.
+  - id: SetCollectorsFlag
+    setProperty: { name: CollectorsFlag, value: '--collectors.enabled [ENABLED_COLLECTORS]' }
+    schedule: [{ sequence: execute, after: InstallFiles, condition: ENABLED_COLLECTORS }]
+  - id: SetExtraFlags
+    setProperty: { name: ExtraFlags, value: '[EXTRA_FLAGS]' }
+    schedule: [{ sequence: execute, after: InstallFiles, condition: EXTRA_FLAGS }]
+  - id: SetConfigFileNonDefault
+    setProperty: { name: ConfigFile_NonDefault, value: '[CONFIG_FILE]' }
+    schedule: [{ sequence: execute, after: InstallFiles, condition: CONFIG_FILE AND CONFIG_FILE<>"config.yaml" }]
+  - id: SetConfigFileDefault
+    setProperty: { name: ConfigFile_Default, value: '[APPLICATIONFOLDER]config.yaml' }
+    schedule: [{ sequence: execute, after: InstallFiles, condition: CONFIG_FILE="config.yaml" }]
+  - id: SetConfigFileFlag
+    setProperty: { name: ConfigFileFlag, value: '--config.file="[ConfigFile_NonDefault][ConfigFile_Default]"' }
+    schedule: [{ sequence: execute, after: InstallFiles, condition: ConfigFile_NonDefault OR ConfigFile_Default }]
+  - id: SetListenFlag
+    setProperty: { name: ListenFlag, value: '--web.listen-address="[LISTEN_ADDR]:[LISTEN_PORT]"' }
+    schedule: [{ sequence: execute, after: InstallFiles, condition: LISTEN_ADDR<>"" OR LISTEN_PORT<>9182 }]
+  - id: SetMetricsPathFlag
+    setProperty: { name: MetricsPathFlag, value: '--telemetry.path="[METRICS_PATH]"' }
+    schedule: [{ sequence: execute, after: InstallFiles, condition: METRICS_PATH }]
+  - id: SetTextfileDirsFlag
+    setProperty: { name: TextfileDirsFlag, value: '--collector.textfile.directories="[TEXTFILE_DIRS]"' }
+    schedule: [{ sequence: execute, after: InstallFiles, condition: TEXTFILE_DIRS }]
+
+  # config.yaml is not owned by a component, so it survives upgrades and
+  # uninstall.
+  - id: CreateConfigFile
+    exec:
+      command: '"[%ComSpec]" /c TYPE NUL >>"[ConfigFile_Default]"'
+      directory: APPLICATIONFOLDER
+    execute: deferred
+    impersonate: false
+    return: check
+    schedule:
+      - { sequence: execute, before: InstallServices, condition: ConfigFile_Default }
+
+  # Kill only processes that run this installation's binary, so a copy
+  # elsewhere or a Kubernetes HostProcess container keeps running.
+  - id: KillProcess
+    exec:
+      command: >-
+        "[System64Folder]WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive
+        -ExecutionPolicy Bypass -Command "Get-Process -Name windows_exporter -ErrorAction SilentlyContinue
+        | Where-Object Path -EQ '[APPLICATIONFOLDER]windows_exporter.exe' | Stop-Process -Force"
+      directory: System64Folder
+    execute: deferred
+    impersonate: false
+    return: ignore
+    schedule:
+      - { sequence: execute, before: RemoveFiles }
+
+icons:
+  icon.ico: ${ICON}
+
+firewall:
+  - name: windows_exporter
+    description: windows_exporter HTTP endpoint
+    component: FirewallException
+    program: '[#windows_exporter.exe]'
+    protocol: tcp
+    port: '[LISTEN_PORT]'
+    remoteAddresses: '[REMOTE_ADDR]'
+    profiles: all
+
+ui:
+  wizard: featureTree
+  dialogs:
+    - id: ConfigDlg
+      title: windows_exporter configuration
+      description: This page contains configuration related to windows_exporter
+      after: CustomizeDlg
+      fields:
+        - property: ENABLED_COLLECTORS
+          label: >-
+            Comma-separated list of collectors to use. Use '[\[]defaults[\]]' as a placeholder for all
+            the collectors enabled by default. If value is empty, the exporter default will be used.
+        - property: EXTRA_FLAGS
+          label: Additional command line flags
+        - property: LISTEN_PORT
+          label: Port to listen
+        - property: CONFIG_FILE
+          label: >-
+            Path to config file. If empty, no config will be used. If set to 'config.yaml',
+            then the config.yaml at the install path will be used.
