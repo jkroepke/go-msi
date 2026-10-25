@@ -74,7 +74,7 @@ func run(args []string, stdout, stderr io.Writer) int { //nolint:cyclop // one c
 	case "validate":
 		err = cmdValidate(args[1:], stderr)
 	case "inspect":
-		err = cmdInspect(args[1:], stdout)
+		err = cmdInspect(args[1:], stdout, stderr)
 	case "sign":
 		err = cmdSign(args[1:], stdout, stderr)
 	case "verify":
@@ -250,9 +250,9 @@ func cmdBuild(args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
-func cmdInspect(args []string, stdout io.Writer) error { //nolint:cyclop // one pass over the format; splitting would scatter it
+func cmdInspect(args []string, stdout, stderr io.Writer) error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	flags := flag.NewFlagSet("inspect", flag.ContinueOnError)
-	flags.SetOutput(stdout)
+	flags.SetOutput(stderr)
 
 	var table string
 
