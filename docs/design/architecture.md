@@ -272,7 +272,7 @@ Only the standard library `flag` package is used.
   install and uninstall the minimal example silently (`msiexec /i … /qn`,
   verify the file, `/x`, verify removal). They also run the full ICE suite
   on the examples through `internal/ice`, with the `darice.cub` that CI
-  installs from the Windows SDK (cached and checked by SHA-256). The install
+  installs from the Windows SDK (cached; its SHA-256 is logged). The install
   test needs elevation; all of them are skipped with `-short`.
 - **Wine runner** (`ubuntu-latest`, `mise` installs Go; `apt` installs
   Wine): `wine msiexec /i minimal.msi /qn` as a black box, then check the file

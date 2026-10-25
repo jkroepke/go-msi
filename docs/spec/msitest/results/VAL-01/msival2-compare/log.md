@@ -28,8 +28,11 @@ Registering that CLSID under `HKLM\SOFTWARE\Classes\WOW6432Node\CLSID`
 CI (GitHub `windows-latest`, Windows Server 2025, 2026-10-25) installs
 winget package `Microsoft.WindowsSDK.10.0.28000` version 10.0.28000.2526
 (SDK 10.0.28000.1721) with `--override '/features OptionId.MSIInstallTools
-/quiet /norestart'`. Its `darice.cub` differs from the one above: SHA-256
-`0EB158691FCEE38DDA2E342A94E39164B9AE7943A286C031449F6D257875EC1B`. The
+/quiet /norestart'`. Its `darice.cub` differs from the one above. Two runs with the same pinned
+manifest installed cubs with different SHA-256 values,
+`0EB158691FCEE38DDA2E342A94E39164B9AE7943A286C031449F6D257875EC1B` and
+`8B0285750835A42EF47AA0E27B8E93B3877F7F6C26BB6B28F4E5D23A68C16BC8` (observed,
+cause unknown), so CI logs the cub's hash and does not enforce one. The
 msival2.exe comparison below used the 10.0.28000.2957 cub only; with the CI
 cub, the examples pass the same Error/Failure gate in `TestICEExamples` and
 ICE08 still reports the duplicate GUID (observed in CI).
