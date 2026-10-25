@@ -389,7 +389,7 @@ How the engine picks and opens media (reported):
 - Stored cabinet (chapter 04 §16.2): `fil_a` (`Hello, cabinet!\r\n`), `fil_b` (`MSI\r\n`), setID 0x1234, 2024-06-15 13:45:30, attribs 0x20/0x21. 118 bytes, SHA-256 `81e6018c16afa762ca19768c9c3ce0eed5aa44b5ef26ea555da92a248bbe4ace`.
 - MSZIP cabinet (§16.3): `fil_readme` (28 bytes) and `fil_data` (70000) give blocks of 32768, 32768 and 4492. Go 1.27.3 level 9: 3310 bytes, SHA-256 `d325dfc5a0f4310ee08bf54d8d7dfb98e4586cc601240574d8baf7be10f22cec`. Random data takes the stored fallback (`cbData` 32775).
 
-Observed with `cabinet.dll` FDI and `expand.exe` on Windows Server 2025 (`cab/native_windows_test.go`, run by CI on every change):
+Observed with `cabinet.dll` FDI and `expand.exe` on Windows Server 2025 (`pkg/cab/native_windows_test.go`, run by CI on every change):
 
 - FDI extracts the cabinets written by the rules above byte for byte and reports the written names, sizes, dates and attributes: stored and MSZIP folders, Go's DEFLATE streams with their empty final block, an empty folder (`cCFData = 0`) holding only empty files, empty files between and after other files, files ending on and crossing the 32 KiB block boundary, the stored fallback (`cbData` 32775), 2000 files, a 255-byte `szName`, a UTF-8 name with attribute 0x80, and the clamped dates 0x0021/0x0000 and 0xFF9F/0xBF7D.
 - FDI verifies `csum`: a flipped payload byte fails the extraction. Checksums of blocks with 1, 2 and 3 trailing bytes match the big-endian tail rule above.
@@ -446,16 +446,16 @@ Other groups (COM, ODBC, security, signatures, patching, merge modules) are in c
 - Invalid SDDL gives 1943, two true rows for one object 1942, and both permission tables in one package 1941; each fails in `InstallFiles` with 1603 (observed, SEC-01).
 - A deny ACE for `BU` on a file makes uninstall log `Info 1321 … insufficient privileges … System Error 5`, exit 0 and leave the file behind (observed, SEC-01). Writers SHOULD warn on deny ACEs for broad groups (recommended; only `BU` was tested).
 
-### 6.3 `_Validation` and the schema files
+### 6.3 `_Validation` and the table definitions
 
 Validators (ICE03, ICE06, ICE32) read `_Validation`, the installer does not, and a complete database SHOULD include it. Its key is `Table s32` + `Column s32`. The other columns are `Nullable s4`, `MinValue I4`, `MaxValue I4`, `KeyTable S255`, `KeyColumn I2`, `Category S32`, `Set S255` and `Description S255`.
 
 - Write one row per column of every table present, including its own ten, and none for absent columns (ICE06). Toolchain packages add two rows for the pseudo-table `_SummaryInformation` (observed).
 - `Nullable` is `Y` or `N`; `KeyTable` may name several tables, separated by `;`. `KeyColumn` is 1-based (1..32). `Category` is null for integers and `Binary` for streams.
 - The Set of `_Validation.Category` MUST be the toolchain's 26 names. They include `DefaultDir`, `FormattedSDDLText`, `Integer`, `DoubleInteger` and `TimeDate`; Microsoft's current [Column Data Types](https://learn.microsoft.com/en-us/windows/win32/msi/column-data-types) page also lists 26 categories but a different set: it has neither `KeyFormatted` nor `URL` (section 19.4); where those two names come from is unverified.
-- `schema/tables.json` (`formatVersion` 1) holds the 97 non-UI tables and their 445 columns; `schema/ui-tables.json` holds the 14 UI tables in the same format.
-- Each column lists `name`, `type`, `primaryKey`, `description` and its exact `_Validation` values (`category`, `minValue`, `maxValue`, `keyTable`, `keyColumn`, `set`). `"verified"` and `"unverified"` flags mark confidence.
-- System tables (`_Tables`, `_Columns`, `_Streams`, `_Storages`) are in neither file, and they are synthesized by the database storage layer.
+- The table definitions are Go code: the `defs` map in `internal/schema/schema.go`, one `Name|Type|Key|Category|…` row per column. They cover the 40 standard tables the builder can write (199 columns), not every table of the reference.
+- Each column carries its name, column type, primary-key flag, description and its exact `_Validation` values (`Category`, `MinValue`, `MaxValue`, `KeyTable`, `KeyColumn`, `Set`).
+- System tables (`_Tables`, `_Columns`, `_Streams`, `_Storages`) are not in `defs`, and they are synthesized by the database storage layer.
 
 ### 6.4 Value syntaxes that trip builders up
 
@@ -1210,7 +1210,7 @@ The separator defaults to `;`. Create cannot combine with `[~]`, so append or pr
 
 ### 11.10 `_Validation`, modules and validation
 
-- `_Validation` has a row for every column of every output table, including itself and empty tables (observed: always). Values come from `schema/*.json`; custom tables use their declared metadata.
+- `_Validation` has a row for every column of every output table, including itself and empty tables (observed: always). Values come from `internal/schema` (`schema.go`); custom tables use their declared metadata.
 - Output tables: those with rows, those ensured, and those a used library defines (observed v3: empty `ListBox` and `Signature`). Empty tables have no data stream.
 - Merge modules: modularizable keys get `.` + module GUID with `-` → `_`, formatted references are rewritten, files go in `MergeModule.CABinet`. Consuming modules is rejected.
 - A built-in static validator runs after binding; errors fail the build, and checks can be skipped. Full detail: chapter 10 §8–§15.
@@ -1624,7 +1624,7 @@ A policy block gives a different message ("The system administrator has set poli
 
 ## 18. Reference chapters
 
-The detailed chapters and schema files referred to above are not contained in this repository. Their contents and hash vectors are therefore reference claims until the complete source inputs and validation artifacts are published.
+The detailed chapters referred to above are not contained in this repository. Their contents and hash vectors are therefore reference claims until the complete source inputs and validation artifacts are published.
 
 | Chapter | Subject |
 | --- | --- |

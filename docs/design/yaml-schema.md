@@ -138,12 +138,12 @@ package:
 
 ### 3.2 Editor support
 
-[`config/schema.json`](../../config/schema.json) is a JSON Schema of this
+[`pkg/config/schema.json`](../../pkg/config/schema.json) is a JSON Schema of this
 format. Editors that use the YAML language server pick it up from a comment
 in the first line:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/config/schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/pkg/config/schema.json
 schema: go-msi/v1
 ```
 
@@ -367,7 +367,7 @@ features:
 - `level: 0` disables a feature; `ADDLOCAL=ALL` cannot turn it on.
 - Every component is in at least one feature (ICE21). A component used by
   two features is defined once in `components` and named by ID in both.
-- `allowAdvertise` defaults to `false`; advertised installs are out of scope.
+- `allowAdvertise` defaults to `false`; advertised installs are not in schema v1 (section 6).
 
 ### 4.6 `components`
 
@@ -724,7 +724,10 @@ the generated tables, and the cabinet round trip.
 
 ## 6. Not in version 1
 
-Patches, transforms, merge modules, bundles, multiple languages in one
-package, advertised installs, script custom actions, and a top-level file
-harvester. A future `schema: go-msi/v2` can add them without changing the
-meaning of a v1 file.
+Multiple languages in one package, advertised installs, script custom
+actions, and a top-level file harvester. A future `schema: go-msi/v2` can add
+them without changing the meaning of a v1 file.
+
+Patches, transforms, merge modules and bundles are out of scope for good
+(see [Out of scope](../../README.md#out-of-scope) and
+[architecture.md](architecture.md)).
