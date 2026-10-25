@@ -1,0 +1,51 @@
+name: ❓ Question
+description: Something is not clear.
+labels: [ ❓ question ]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you submit this issue, please make sure you have read the documentation and searched for similar issues.
+        If you have done that, please fill out the template below.
+
+  - type: textarea
+    attributes:
+      label: Question
+      description: What would you like to know?
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Environment
+      description: |
+        examples:
+        - **go-msi Version**: 0.1.0
+        - **Build OS / Arch**: Linux / amd64
+        - **Install OS**: Windows Server 2025
+      value: |
+        - go-msi Version:
+        - Build OS / Arch:
+        - Install OS:
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: go-msi configuration
+      description: |
+        The YAML configuration passed to go-msi. Remove secrets and internal names.
+      render: yaml
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: documentation
+    attributes:
+      label: Preflight Checklist
+      options:
+        - required: true
+          #language=markdown
+          label: |
+            I could not find a solution in the [documentation](https://github.com/jkroepke/go-msi/wiki),
+            the existing issues or discussions.

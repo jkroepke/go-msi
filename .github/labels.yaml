@@ -1,0 +1,49 @@
+# Labels of this repository, synced by .github/workflows/labels.yaml.
+# Labels missing here are deleted on sync. from_name renames the GitHub default
+# label, so issues and pull requests keep it.
+# pr-check.yaml requires one of the release labels on every pull request,
+# and release.yml groups the release notes by them.
+
+# Release labels
+- name: "💥 breaking-change"
+  color: "b60205"
+  description: "Changes that break existing configurations or behavior"
+- name: "✨ enhancement"
+  from_name: "enhancement"
+  color: "a2eeef"
+  description: "New feature or request"
+- name: "🐞 bug"
+  from_name: "bug"
+  color: "d73a4a"
+  description: "Something is not working"
+- name: "📖 docs"
+  from_name: "documentation"
+  color: "0075ca"
+  description: "Improvements or additions to documentation"
+- name: "🛠️ dependencies"
+  color: "0366d6"
+  description: "Pull requests that update a dependency"
+- name: "chore"
+  color: "ededed"
+  description: "Maintenance, excluded from the release notes"
+
+# Issue labels
+- name: "❓ question"
+  from_name: "question"
+  color: "d876e3"
+  description: "Further information is requested"
+- name: "duplicate"
+  color: "cfd3d7"
+  description: "This issue or pull request already exists"
+- name: "invalid"
+  color: "e4e669"
+  description: "This does not seem right"
+- name: "wontfix"
+  color: "ffffff"
+  description: "This will not be worked on"
+- name: "good first issue"
+  color: "7057ff"
+  description: "Good for newcomers"
+- name: "help wanted"
+  color: "008672"
+  description: "Extra attention is needed"

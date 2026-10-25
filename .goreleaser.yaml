@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+
+version: 2
+before:
+  hooks:
+    - go mod tidy -diff
+    - rm -rf 3rdpartylicenses
+    - go run github.com/google/go-licenses/v2@v2.0.1 save ./cmd/go-msi --save_path=3rdpartylicenses
+
+builds:
+  - id: "go-msi"
+    binary: go-msi
+    main: ./cmd/go-msi
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X main.version={{.Version}}
+        -X main.commit={{.Commit}}
+        -X main.date={{.Date}}
+
+archives:
+  - id: go-msi
+    ids:
+      - go-msi
+    formats: ['tar.xz']
+    format_overrides:
+      - goos: windows
+        formats: ['zip']
+    files:
+      - LICENSE
+      - 3rdpartylicenses/**/*
+
+sboms:
+  - artifacts: archive
+
+report_sizes: true
+
+metadata:
+  mod_timestamp: "{{ .CommitTimestamp }}"
+
+gomod:
+  proxy: true
+
+release:
+  draft: true
+  replace_existing_draft: true
+  prerelease: auto
+
+changelog:
+  use: github-native
+
+# https://goreleaser.com/customization/attestations/
+checksum:
+  name_template: "checksums.txt"
