@@ -453,9 +453,9 @@ Validators (ICE03, ICE06, ICE32) read `_Validation`, the installer does not, and
 - Write one row per column of every table present, including its own ten, and none for absent columns (ICE06). Toolchain packages add two rows for the pseudo-table `_SummaryInformation` (observed).
 - `Nullable` is `Y` or `N`; `KeyTable` may name several tables, separated by `;`. `KeyColumn` is 1-based (1..32). `Category` is null for integers and `Binary` for streams.
 - The Set of `_Validation.Category` MUST be the toolchain's 26 names. They include `DefaultDir`, `FormattedSDDLText`, `Integer`, `DoubleInteger` and `TimeDate`; Microsoft's current [Column Data Types](https://learn.microsoft.com/en-us/windows/win32/msi/column-data-types) page also lists 26 categories but a different set: it has neither `KeyFormatted` nor `URL` (section 19.4); where those two names come from is unverified.
-- `internal/schema/tables.json` (`formatVersion` 1) holds the 97 non-UI tables and their 445 columns; `internal/schema/ui-tables.json` holds the 14 UI tables in the same format.
-- Each column lists `name`, `type`, `primaryKey`, `description` and its exact `_Validation` values (`category`, `minValue`, `maxValue`, `keyTable`, `keyColumn`, `set`). `"verified"` and `"unverified"` flags mark confidence.
-- System tables (`_Tables`, `_Columns`, `_Streams`, `_Storages`) are in neither file, and they are synthesized by the database storage layer.
+- The table definitions are Go code: the `defs` map in `internal/schema/schema.go`, one `Name|Type|Key|Category|…` row per column. They cover the 40 standard tables the builder can write (199 columns), not every table of the reference.
+- Each column carries its name, column type, primary-key flag, description and its exact `_Validation` values (`Category`, `MinValue`, `MaxValue`, `KeyTable`, `KeyColumn`, `Set`).
+- System tables (`_Tables`, `_Columns`, `_Streams`, `_Storages`) are not in `defs`, and they are synthesized by the database storage layer.
 
 ### 6.4 Value syntaxes that trip builders up
 
@@ -1210,7 +1210,7 @@ The separator defaults to `;`. Create cannot combine with `[~]`, so append or pr
 
 ### 11.10 `_Validation`, modules and validation
 
-- `_Validation` has a row for every column of every output table, including itself and empty tables (observed: always). Values come from `internal/schema/*.json`; custom tables use their declared metadata.
+- `_Validation` has a row for every column of every output table, including itself and empty tables (observed: always). Values come from `internal/schema` (`schema.go`); custom tables use their declared metadata.
 - Output tables: those with rows, those ensured, and those a used library defines (observed v3: empty `ListBox` and `Signature`). Empty tables have no data stream.
 - Merge modules: modularizable keys get `.` + module GUID with `-` → `_`, formatted references are rewritten, files go in `MergeModule.CABinet`. Consuming modules is rejected.
 - A built-in static validator runs after binding; errors fail the build, and checks can be skipped. Full detail: chapter 10 §8–§15.
