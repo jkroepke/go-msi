@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -119,6 +120,11 @@ func TestOutputFile(t *testing.T) {
 
 	if through, err := os.ReadFile(target); err != nil || !bytes.Equal(through, data) {
 		t.Errorf("the symlink target does not hold the package: %v", err)
+	}
+
+	// Windows reports only the read-only attribute as permission bits.
+	if runtime.GOOS == "windows" {
+		return
 	}
 
 	if info, err := os.Stat(target); err != nil || info.Mode().Perm() != 0o600 {

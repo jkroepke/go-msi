@@ -589,7 +589,8 @@ func cmdSign(args []string, stdout, stderr io.Writer) error {
 
 // writeAtomic replaces path through a temporary file in the same
 // directory, so a failed write keeps the original package. An existing
-// file keeps its mode, and a symlink keeps pointing at the replaced file.
+// file keeps its mode, and a symlink to an existing file keeps pointing at
+// the replaced file.
 func writeAtomic(path string, data []byte) error {
 	mode := os.FileMode(0o644)
 

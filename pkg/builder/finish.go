@@ -159,8 +159,9 @@ func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop /
 
 	slices.SortFunc(database.Tables, func(a, b *msidb.Table) int { return strings.Compare(a.Name, b.Name) })
 
-	// A symlink at Output is written through: the temporary files go next
-	// to its target so that the final rename stays on one file system.
+	// A symlink to an existing file at Output is written through: the
+	// temporary files go next to its target so that the final rename stays
+	// on one file system. A dangling symlink is replaced by the package.
 	output := b.opts.Output
 	if resolved, err := filepath.EvalSymlinks(output); err == nil {
 		output = resolved
