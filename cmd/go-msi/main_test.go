@@ -215,7 +215,8 @@ func TestFlagErrorsGoToStderr(t *testing.T) {
 			t.Errorf("%s: exit 0 for an unknown flag", cmd)
 		}
 
-		if stdout.Len() != 0 || !strings.Contains(stderr.String(), "no-such-flag") {
+		// "Usage of" is the FlagSet's own output; run adds the error line.
+		if stdout.Len() != 0 || !strings.Contains(stderr.String(), "Usage of "+cmd) {
 			t.Errorf("%s: stdout %q, stderr %q", cmd, stdout.String(), stderr.String())
 		}
 	}
