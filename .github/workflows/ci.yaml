@@ -41,9 +41,18 @@ jobs:
       # The full ICE suite (darice.cub) comes with MsiVal2 in the Windows SDK
       # and may not be redistributed, so it is installed here. winget checks
       # the SDK installer against the hash in its manifest; only the MSI
-      # tools feature is installed, and it ships the MsiVal2 package.
-      - name: Install the ICE suite
+      # tools feature is installed, and it ships the MsiVal2 package. The
+      # ICE runner needs nothing but darice.cub, so only that file is cached.
+      - name: Cache the ICE suite
         if: runner.os == 'Windows'
+        id: ice-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: C:\ice
+          key: ice-Microsoft.WindowsSDK.10.0.28000-v1
+
+      - name: Install the ICE suite
+        if: runner.os == 'Windows' && steps.ice-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -56,9 +65,15 @@ jobs:
           if (-not $msi) { throw "no MsiVal2-x86_en-us.msi under $kits" }
           $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$($msi.FullName)`" /qn /norestart"
           if ($p.ExitCode -ne 0) { throw "MsiVal2 install exited with $($p.ExitCode)" }
-          $cub = Join-Path ${env:ProgramFiles(x86)} 'MsiVal2\darice.cub'
-          if (-not (Test-Path $cub)) { throw "$cub is missing" }
-          "GO_MSI_ICE_CUB=$cub" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force C:\ice | Out-Null
+          Copy-Item (Join-Path ${env:ProgramFiles(x86)} 'MsiVal2\darice.cub') C:\ice\darice.cub
+
+      - name: Use the ICE suite
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path C:\ice\darice.cub)) { throw 'C:\ice\darice.cub is missing' }
+          'GO_MSI_ICE_CUB=C:\ice\darice.cub' >> $env:GITHUB_ENV
           'GO_MSI_ICE_REQUIRED=1' >> $env:GITHUB_ENV
 
       # Windows runs the native tests too: they open the built packages with
