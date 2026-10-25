@@ -18,9 +18,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jkroepke/go-msi/builder"
-	"github.com/jkroepke/go-msi/config"
-	"github.com/jkroepke/go-msi/msidb"
+	"github.com/jkroepke/go-msi/pkg/builder"
+	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/go-msi/pkg/msidb"
 )
 
 // Set by the linker at release time.
