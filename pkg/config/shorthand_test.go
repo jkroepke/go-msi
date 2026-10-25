@@ -623,3 +623,77 @@ func TestShorthandNestedStandardFolder(t *testing.T) {
 		}
 	}
 }
+
+func TestShorthandFeatureDefault(t *testing.T) {
+	t.Parallel()
+
+	feature := func(fields string) string {
+		return short + "features:\n  - { id: F, " + fields + "components: [{ files: [{ source: hello.exe }] }] }\n"
+	}
+
+	for value, level := range map[string]int{"on": 1, "off": 2, "disabled": 0} {
+		cfg := parseValid(t, feature("default: "+value+", "))
+		if got := *cfg.Features[0].Level; got != level {
+			t.Errorf("default %s: level %d, want %d", value, got, level)
+		}
+	}
+
+	if ds := validate(t, feature("default: off, level: 3, ")); !find(ds, config.SeverityError, "features[0].default", "not both") {
+		t.Errorf("default with level: %v", ds)
+	}
+
+	if ds := validate(t, feature("default: maybe, ")); !find(ds, config.SeverityError, "features[0].default", "") {
+		t.Errorf("invalid default: %v", ds)
+	}
+}
+
+func TestShorthandFeatureFirewall(t *testing.T) {
+	t.Parallel()
+
+	rule := "{ name: %s, program: '[#hello.exe]', protocol: tcp, port: '9182' }"
+	doc := short + "features:\n  - id: Main\n    components: [{ files: [{ source: hello.exe }] }]\n" +
+		"    features:\n      - id: Fw\n        default: off\n        firewall: [" + fmt.Sprintf(rule, "a") + ", " + fmt.Sprintf(rule, "b") + "]\n" +
+		"      - id: Fw2\n        firewall: [" + fmt.Sprintf(rule, "c") + "]\n"
+
+	cfg := parseValid(t, doc)
+
+	carriers := map[string]string{}
+
+	for _, comp := range cfg.Components {
+		if feature := comp.FirewallFeature(); feature != "" {
+			carriers[feature] = comp.ID
+
+			if comp.Directory != config.DefaultInstallDirID || comp.KeyPath != config.KeyPathDirectory {
+				t.Errorf("carrier %s: directory %s, keyPath %s", comp.ID, comp.Directory, comp.KeyPath)
+			}
+		}
+	}
+
+	if carriers["Fw"] != "Fw_Firewall" || carriers["Fw2"] != "Fw2_Firewall" {
+		t.Fatalf("carriers: %v", carriers)
+	}
+
+	want := map[string]string{"a": "Fw_Firewall", "b": "Fw_Firewall", "c": "Fw2_Firewall"}
+	for _, fw := range cfg.Firewall {
+		if fw.Component != want[fw.Name] {
+			t.Errorf("rule %s follows %q, want %s", fw.Name, fw.Component, want[fw.Name])
+		}
+	}
+
+	if sub := cfg.Features[0].Features[0]; len(sub.Firewall) != 0 || len(sub.Components) != 1 || sub.Components[0].ID != "Fw_Firewall" {
+		t.Errorf("feature Fw: %d rules, components %v", len(sub.Firewall), sub.Components)
+	}
+
+	// Errors in a rule name its place under the feature.
+	bad := short + "components: [{ files: [{ source: hello.exe }] }]\nfeatures:\n  - id: Fw\n" +
+		"    firewall:\n      - { name: a, protocol: tcp }\n      - { name: b, component: hello.exe, program: x, protocol: tcp }\n"
+
+	diags := validate(t, bad)
+	if !find(diags, config.SeverityError, "features[0].firewall[0].program", "required") {
+		t.Errorf("no error at the rule's path: %v", diags)
+	}
+
+	if !find(diags, config.SeverityError, "features[0].firewall[1].component", "remove component") {
+		t.Errorf("component on a feature rule accepted: %v", diags)
+	}
+}

@@ -14,12 +14,24 @@ const (
 	DefaultInstallDirID = "INSTALLDIR"
 	DefaultFeatureID    = "MainFeature"
 
+	// KeyPathDirectory is the keyPath of a component keyed on its directory.
+	KeyPathDirectory = "directory"
+
 	// productNamePath is the YAML path of an install dir name taken from
 	// the product name.
 	productNamePath = "product.name"
 
 	maxGeneratedIDLength = 60
-	hashSuffixLength     = 9 // "_" and 8 hex digits
+
+	// FeatureOn, FeatureOff and FeatureDisabled are the values of
+	// features[].default.
+	FeatureOn       = "on"
+	FeatureOff      = "off"
+	FeatureDisabled = "disabled"
+
+	// featureLevelOff is the level of a feature that is off by default.
+	featureLevelOff  = 2
+	hashSuffixLength = 9 // "_" and 8 hex digits
 )
 
 // expandShorthands rewrites the short forms of a file into the explicit
@@ -31,6 +43,7 @@ const (
 // idempotent.
 func expandShorthands(cfg *Config) {
 	hoistFeatureComponents(cfg)
+	featureFirewall(cfg)
 
 	tree := newDirTree(cfg)
 	tree.installDir()
@@ -53,9 +66,53 @@ func expandShorthands(cfg *Config) {
 	}
 
 	componentIDs(cfg)
+
+	for _, rule := range cfg.Firewall {
+		if rule.carrier != nil && !rule.ownComponent {
+			rule.Component = rule.carrier.ID
+		}
+	}
+
 	referenceFeatureComponents(cfg)
 	defaultFeature(cfg)
 	serviceArguments(cfg)
+}
+
+// featureFirewall moves the firewall rules written under features to
+// cfg.Firewall. Each such feature gets an empty component in the install dir
+// whose state the rules follow.
+func featureFirewall(cfg *Config) {
+	var walk func([]*Feature, string)
+
+	walk = func(features []*Feature, prefix string) {
+		for i, feature := range features {
+			featurePath := fmt.Sprintf("%s[%d]", prefix, i)
+
+			if len(feature.Firewall) > 0 {
+				carrier := &Component{
+					KeyPath:         KeyPathDirectory,
+					origin:          featurePath + ".firewall",
+					firewallFeature: feature.ID,
+				}
+
+				cfg.Components = append(cfg.Components, carrier)
+				feature.Components = append(feature.Components, carrier)
+
+				for j, rule := range feature.Firewall {
+					rule.origin = fmt.Sprintf("%s.firewall[%d]", featurePath, j)
+					rule.ownComponent = rule.Component != ""
+					rule.carrier = carrier
+				}
+
+				cfg.Firewall = append(cfg.Firewall, feature.Firewall...)
+				feature.Firewall = nil
+			}
+
+			walk(feature.Features, featurePath+".features")
+		}
+	}
+
+	walk(cfg.Features, "features")
 }
 
 // hoistFeatureComponents appends the components defined inside features to
@@ -142,6 +199,8 @@ func componentIDs(cfg *Config) {
 		base := "Component"
 
 		switch {
+		case comp.firewallFeature != "":
+			base = comp.firewallFeature + "_Firewall"
 		case keyFileByRef(comp, comp.KeyPath) != nil:
 			base = fileName(keyFileByRef(comp, comp.KeyPath))
 		case len(comp.Files) > 0:

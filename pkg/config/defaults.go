@@ -94,7 +94,8 @@ func ApplyDefaults(cfg *Config) {
 
 	eachFeature(cfg.Features, func(feature *Feature, _ int) {
 		if feature.Level == nil {
-			feature.Level = new(1)
+			feature.Level = new(defaultLevel(feature.Default))
+			feature.levelFromDefault = feature.Default != ""
 		}
 
 		if feature.Display == "" {
@@ -178,6 +179,21 @@ func defaultUpgrade(upg *Upgrade) {
 		if upg.Related[i].IncludeMin == nil {
 			upg.Related[i].IncludeMin = new(true)
 		}
+	}
+}
+
+// defaultLevel is the feature level for a default: on installs the feature
+// at the default INSTALLLEVEL of 1, off needs a higher INSTALLLEVEL or
+// ADDLOCAL, and disabled is level 0. An invalid value, which the validator
+// reports, gives 1.
+func defaultLevel(value string) int {
+	switch value {
+	case FeatureOff:
+		return featureLevelOff
+	case FeatureDisabled:
+		return 0
+	default:
+		return 1
 	}
 }
 

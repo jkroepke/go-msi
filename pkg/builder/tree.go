@@ -695,6 +695,10 @@ func (b *build) componentGUID(path string, info *componentInfo) error { //nolint
 	var location string
 
 	switch {
+	case comp.FirewallFeature() != "":
+		// The generated component of a feature's firewall rules shares
+		// the install dir with other components keyed on it.
+		location = "firewall|" + comp.FirewallFeature()
 	case info.keyFile != nil:
 		location = "file|" + info.dir.canonical + "\\" + strings.ToLower(info.keyFile.LongName)
 	case info.keyPath != nil:

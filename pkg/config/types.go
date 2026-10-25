@@ -140,9 +140,12 @@ type Directory struct {
 
 // Feature is a node of the feature tree.
 type Feature struct {
-	ID             string `yaml:"id"`
-	Title          string `yaml:"title"`
-	Description    string `yaml:"description"`
+	ID          string `yaml:"id"`
+	Title       string `yaml:"title"`
+	Description string `yaml:"description"`
+	// Default is on, off or disabled: whether the feature is installed by
+	// default. ApplyDefaults turns it into Level 1, 2 or 0.
+	Default        string `yaml:"default"`
 	Level          *int   `yaml:"level"`
 	Display        string `yaml:"display"`
 	Directory      string `yaml:"directory"`
@@ -154,6 +157,13 @@ type Feature struct {
 	// entry only carries an ID.
 	Components []*Component `yaml:"components"`
 	Features   []*Feature   `yaml:"features"`
+	// Firewall are rules that follow the feature's state. ApplyDefaults
+	// moves them to Config.Firewall, with a generated component that
+	// carries the state.
+	Firewall []*FirewallRule `yaml:"firewall"`
+
+	// levelFromDefault records that Level was derived from Default.
+	levelFromDefault bool
 }
 
 // Component is a unit that is installed, repaired and removed together.
@@ -182,6 +192,15 @@ type Component struct {
 	defined bool
 	// origin is the YAML path of a component defined inside a feature.
 	origin string
+	// firewallFeature is the feature whose firewall rules a generated
+	// component carries.
+	firewallFeature string
+}
+
+// FirewallFeature returns the feature whose firewall rules the component
+// carries, for a component generated from features[].firewall, else "".
+func (c *Component) FirewallFeature() string {
+	return c.firewallFeature
 }
 
 // Path returns the component's YAML path, given its index in
@@ -384,6 +403,22 @@ type FirewallRule struct {
 	Port            string     `yaml:"port"`
 	RemoteAddresses string     `yaml:"remoteAddresses"`
 	Profiles        StringList `yaml:"profiles"`
+
+	// origin is the YAML path of a rule written under a feature.
+	origin string
+	// ownComponent records that a rule under a feature named a component.
+	ownComponent bool
+	// carrier is the generated component of a rule under a feature.
+	carrier *Component
+}
+
+// Path returns the YAML path of the rule at index in Config.Firewall.
+func (r *FirewallRule) Path(index int) string {
+	if r.origin != "" {
+		return r.origin
+	}
+
+	return "firewall[" + strconv.Itoa(index) + "]"
 }
 
 // UI selects the built-in wizard and adds dialogs to it.

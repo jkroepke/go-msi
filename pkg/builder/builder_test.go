@@ -698,3 +698,74 @@ components:
 		t.Errorf("feature %s is missing", featureID)
 	}
 }
+
+func TestFeatureFirewall(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rule := "[{ name: %s, program: '[#hello.exe]', protocol: tcp, port: '80' }]"
+
+	cfg, err := config.Parse([]byte(`schema: go-msi/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+features:
+  - id: Main
+    components:
+      - files: [{ source: hello.exe }]
+      - createFolder: true
+  - id: Web
+    default: off
+    firewall: `+fmt.Sprintf(rule, "web")+`
+  - id: Api
+    firewall: `+fmt.Sprintf(rule, "api")+`
+`), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.BaseDir = dir
+
+	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The carriers share INSTALLDIR with a directory-keyed component, yet
+	// each has its own component code.
+	codes := map[any]string{}
+
+	for _, row := range rows(t, database, "Component") {
+		if other, dup := codes[row[1]]; dup {
+			t.Errorf("%s and %s share the component code %v", row[0], other, row[1])
+		}
+
+		codes[row[1]] = fmt.Sprint(row[0])
+	}
+
+	if level := cell(t, database, "Feature", "Level", func(r []any) bool { return r[0] == "Web" }); level != 2 {
+		t.Errorf("Web level %v, want 2", level)
+	}
+
+	for feature, component := range map[string]string{"Web": "Web_Firewall", "Api": "Api_Firewall"} {
+		if cell(t, database, "FeatureComponents", "Component_", func(r []any) bool { return r[0] == feature }) != component {
+			t.Errorf("%s does not carry %s", feature, component)
+		}
+	}
+
+	var conditions strings.Builder
+	for _, row := range rows(t, database, "InstallExecuteSequence") {
+		fmt.Fprintln(&conditions, row[1])
+	}
+
+	for _, want := range []string{"$Web_Firewall=3", "$Api_Firewall=3"} {
+		if !strings.Contains(conditions.String(), want) {
+			t.Errorf("no action conditioned on %s", want)
+		}
+	}
+}

@@ -690,89 +690,7 @@
     "firewall": {
       "type": "array",
       "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "component": {
-            "type": "string",
-            "description": "The rule follows this component's state."
-          },
-          "program": {
-            "type": "string"
-          },
-          "protocol": {
-            "anyOf": [
-              {
-                "enum": [
-                  "tcp",
-                  "udp",
-                  "any"
-                ]
-              },
-              {
-                "$ref": "#/$defs/var"
-              }
-            ]
-          },
-          "port": {
-            "type": [
-              "string",
-              "number"
-            ]
-          },
-          "remoteAddresses": {
-            "type": "string",
-            "description": "Empty means any."
-          },
-          "profiles": {
-            "anyOf": [
-              {
-                "anyOf": [
-                  {
-                    "enum": [
-                      "all",
-                      "domain",
-                      "private",
-                      "public"
-                    ]
-                  },
-                  {
-                    "$ref": "#/$defs/var"
-                  }
-                ]
-              },
-              {
-                "type": "array",
-                "items": {
-                  "anyOf": [
-                    {
-                      "enum": [
-                        "all",
-                        "domain",
-                        "private",
-                        "public"
-                      ]
-                    },
-                    {
-                      "$ref": "#/$defs/var"
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        },
-        "required": [
-          "name",
-          "component",
-          "program"
-        ],
-        "additionalProperties": false
+        "$ref": "#/$defs/firewallRule"
       }
     },
     "ui": {
@@ -967,9 +885,24 @@
         "description": {
           "type": "string"
         },
+        "default": {
+          "anyOf": [
+            {
+              "enum": [
+                "on",
+                "off",
+                "disabled"
+              ]
+            },
+            {
+              "$ref": "#/$defs/var"
+            }
+          ],
+          "description": "Whether the feature is installed by default: on is level 1, off is level 2, disabled is level 0. Use it or level, not both."
+        },
         "level": {
           "$ref": "#/$defs/int",
-          "description": "0 disables the feature.",
+          "description": "0 disables the feature. Use it or default, not both.",
           "default": 1
         },
         "display": {
@@ -1017,6 +950,13 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/feature"
+          }
+        },
+        "firewall": {
+          "type": "array",
+          "description": "Rules that follow the feature's state, without component.",
+          "items": {
+            "$ref": "#/$defs/firewallRule"
           }
         }
       },
@@ -1612,6 +1552,90 @@
           "description": "Secures the component's directory; needs a CreateFolder row (createFolder: true or a directory key path)."
         }
       },
+      "additionalProperties": false
+    },
+    "firewallRule": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "component": {
+          "type": "string",
+          "description": "The rule follows this component's state. Required at the top level; a rule under a feature follows the feature."
+        },
+        "program": {
+          "type": "string"
+        },
+        "protocol": {
+          "anyOf": [
+            {
+              "enum": [
+                "tcp",
+                "udp",
+                "any"
+              ]
+            },
+            {
+              "$ref": "#/$defs/var"
+            }
+          ]
+        },
+        "port": {
+          "type": [
+            "string",
+            "number"
+          ]
+        },
+        "remoteAddresses": {
+          "type": "string",
+          "description": "Empty means any."
+        },
+        "profiles": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "domain",
+                    "private",
+                    "public"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/var"
+                }
+              ]
+            },
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "all",
+                      "domain",
+                      "private",
+                      "public"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/var"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "program"
+      ],
       "additionalProperties": false
     }
   }
