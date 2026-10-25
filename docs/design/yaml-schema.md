@@ -131,6 +131,25 @@ package:
   platform: ${ARCH}
 ```
 
+### 3.2 Editor support
+
+[`config/schema.json`](../../config/schema.json) is a JSON Schema of this
+format. Editors that use the YAML language server pick it up from a comment
+in the first line:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/config/schema.json
+schema: go-msi/v1
+```
+
+The JSON Schema checks keys, types, enums and syntax such as GUIDs, and
+rejects the nil GUID as an upgrade code. Editors see the file before
+variable substitution, so every typed value also accepts a string with a
+`${NAME}` variable. References between sections, lengths that depend on
+other values and the rules of section 2 are checked only by
+`config.Validate`, which stays the authority. A test keeps the JSON Schema
+in step with the Go types.
+
 ## 4. Sections
 
 ### 4.1 `product`

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/config/schema.json
 # windows_exporter, the reference package and first acceptance test.
 #
 #   go-msi build --var VERSION=0.32.0.5 --var ARCH=x64 \

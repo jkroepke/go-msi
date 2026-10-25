@@ -1,0 +1,19 @@
+package config
+
+import (
+	"bytes"
+	_ "embed"
+)
+
+// schemaJSON is the JSON Schema of the YAML format, for editors. It accepts
+// ${NAME} wherever a typed value is expected, because editors see the file
+// before substitution, and it cannot express the cross-reference rules, so
+// Validate stays the authority.
+//
+//go:embed schema.json
+var schemaJSON []byte
+
+// JSONSchema returns the JSON Schema (draft 2020-12) of schema go-msi/v1.
+func JSONSchema() []byte {
+	return bytes.Clone(schemaJSON)
+}
