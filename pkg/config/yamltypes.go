@@ -126,6 +126,9 @@ func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+// recoveryRestart is the recovery action that restarts the service.
+const recoveryRestart = "restart"
+
 // UnmarshalYAML accepts a scalar action name or a one-key {restart: delay} map.
 func (a *RecoveryAction) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind == yaml.ScalarNode {
@@ -136,7 +139,7 @@ func (a *RecoveryAction) UnmarshalYAML(node *yaml.Node) error {
 		return nil
 	}
 
-	if node.Kind != yaml.MappingNode || len(node.Content) != 2 || node.Content[0].Value != "restart" {
+	if node.Kind != yaml.MappingNode || len(node.Content) != 2 || node.Content[0].Value != recoveryRestart {
 		return fmt.Errorf("line %d: a recovery action is restart, none or {restart: <delay>}", node.Line)
 	}
 
@@ -145,7 +148,7 @@ func (a *RecoveryAction) UnmarshalYAML(node *yaml.Node) error {
 		return fmt.Errorf("line %d: %w", node.Line, err)
 	}
 
-	a.Action = "restart"
+	a.Action = recoveryRestart
 	a.Restart = &delay
 
 	return nil
@@ -158,7 +161,7 @@ func (a RecoveryAction) MarshalYAML() (any, error) {
 		return a.Action, nil
 	}
 
-	return map[string]string{"restart": time.Duration(*a.Restart).String()}, nil
+	return map[string]string{recoveryRestart: time.Duration(*a.Restart).String()}, nil
 }
 
 // Property is one Property table entry and its flags.
