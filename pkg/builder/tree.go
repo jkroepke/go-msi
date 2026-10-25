@@ -151,11 +151,12 @@ func (b *build) deriveProductCode() error {
 	return nil
 }
 
-// hashInput writes label and the content of the input file at path (relative
-// to the YAML file) to hasher. An unreadable file contributes only its label;
-// the table loaders report the error with its YAML path later.
+// hashInput writes label and the content of the input file at path (absolute
+// or relative to the YAML file) to hasher. An unreadable file contributes
+// only its label; the table loaders report the error with its YAML path
+// later.
 func (b *build) hashInput(hasher io.Writer, label, path string) {
-	_, _ = io.WriteString(hasher, label)
+	_, _ = io.WriteString(hasher, label+"\x00")
 
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(b.cfg.BaseDir, filepath.FromSlash(path))
