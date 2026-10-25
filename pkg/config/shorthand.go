@@ -48,6 +48,11 @@ func expandShorthands(cfg *Config) {
 // cfg.Components. The feature entries are turned into references later, once
 // every component has an id.
 func hoistFeatureComponents(cfg *Config) {
+	listed := make(map[*Component]bool, len(cfg.Components))
+	for _, comp := range cfg.Components {
+		listed[comp] = true
+	}
+
 	var walk func([]*Feature, string)
 
 	walk = func(features []*Feature, prefix string) {
@@ -56,6 +61,14 @@ func hoistFeatureComponents(cfg *Config) {
 
 			for entry, comp := range feature.Components {
 				if comp.ref || comp.origin != "" {
+					continue
+				}
+
+				// A Config built in Go may put the same component in
+				// components and in a feature.
+				if listed[comp] {
+					feature.Components[entry] = ComponentRef(comp.ID)
+
 					continue
 				}
 
@@ -336,7 +349,7 @@ func (t *dirTree) ensureInstallDir() *Directory {
 		return nil
 	}
 
-	names := splitPath(install.Name)
+	names := t.installNames()
 
 	origin := t.origin
 	t.origin = t.installOrigin
@@ -352,6 +365,21 @@ func (t *dirTree) ensureInstallDir() *Directory {
 	dir.Configurable = true
 
 	return dir
+}
+
+// installNames returns the folders of the install dir's path. A name taken
+// from product.name is one folder, even if it contains a slash.
+func (t *dirTree) installNames() []string {
+	install := t.cfg.InstallDir
+	if t.installOrigin != "product.name" {
+		return splitPath(install.Name)
+	}
+
+	if t.cfg.Package.Scope == ScopePerUser {
+		return []string{"Programs", t.cfg.Product.Name}
+	}
+
+	return []string{t.cfg.Product.Name}
 }
 
 // validInstallDir reports whether the install dir can be generated: a public

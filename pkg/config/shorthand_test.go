@@ -497,7 +497,7 @@ func TestShorthandGeneratedFolderErrors(t *testing.T) {
 		short + "features:\n  - id: F\n    components: [{ directory: 'a/b.', createFolder: true }]\n": "features[0].components[0].directory",
 	} {
 		diags := validate(t, doc)
-		if !find(diags, config.SeverityError, want, "not a valid folder name") {
+		if !find(diags, config.SeverityError, want, "folder name") {
 			t.Errorf("no error at %s: %v", want, diags)
 		}
 	}
@@ -510,5 +510,38 @@ func TestShorthandGeneratedFolderErrors(t *testing.T) {
 	diags := validate(t, tree+"components:\n  - { directory: installdir/bin, createFolder: true }\n")
 	if !find(diags, config.SeverityError, "components[0].directory", "is not defined") {
 		t.Errorf("lazy install dir typo not reported: %v", diags)
+	}
+}
+
+func TestShorthandProductNameFolder(t *testing.T) {
+	t.Parallel()
+
+	comp := "components:\n  - files: [{ source: hello.exe }]\n"
+
+	for _, name := range []string{"TCP/IP Monitor", `'A\B'`, "'Acme: Tool'"} {
+		doc := strings.Replace(short, "name: Hello", "name: "+name, 1) + "  cabinet: app.cab\n" + comp
+
+		diags := validate(t, doc)
+		if !find(diags, config.SeverityError, "product.name", "set installDir.name") {
+			t.Errorf("%s: %v", name, diags)
+		}
+	}
+
+	// The same component in components and in a feature, as Go code writes it.
+	cfg, err := config.Parse([]byte(short), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	exe := &config.Component{ID: "Exe", Files: []*config.File{{Source: "a.exe"}}}
+	cfg.Components = []*config.Component{exe}
+	cfg.Features = []*config.Feature{{ID: "F", Components: []*config.Component{exe}}}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(cfg.Components) != 1 || exe.Path(0) != "components[0]" {
+		t.Errorf("shared component hoisted again: %d components, path %s", len(cfg.Components), exe.Path(0))
 	}
 }
