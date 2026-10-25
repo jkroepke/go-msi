@@ -86,7 +86,7 @@ func TestJSONSchemaRejectsMistakes(t *testing.T) {
 	sch := compileSchema(t)
 
 	for name, doc := range map[string]string{
-		"unknown key":      base + appComponent + "componets: []\n",
+		"unknown key":      base + appComponent + "extraKey: []\n",
 		"bad enum":         strings.Replace(base, "upgrade: {}", "upgrade: {downgrade: block}", 1) + appComponent,
 		"bad platform":     pkg("{platform: mips}") + appComponent,
 		"string for bool":  strings.Replace(base, "upgrade: {}", "upgrade: {allowSameVersion: yes please}", 1) + appComponent,
