@@ -24,7 +24,8 @@ func fileSDDL(path string) string {
 }
 
 func regSDDL(key string) string {
-	return psOut("(Get-Acl -LiteralPath 'Registry::HKEY_LOCAL_MACHINE\\" + key + "').Sddl")
+	// -LiteralPath does not resolve the Registry:: provider path on PowerShell 5.1.
+	return psOut("(Get-Acl -Path 'HKLM:\\" + key + "').Sddl")
 }
 
 func caseSec01() {
@@ -60,7 +61,6 @@ func caseSec01() {
 	}
 	vs := []variant{
 		fileVariant("file", fileSD, ""),
-		fileVariant("file-deny-ace", denySD, ""),
 		fileVariant("file-owner-group", ownerSD, ""),
 		fileVariant("file-condition-false", fileSD, "0"),
 		{name: "createfolder", desc: "CreateFolder row with inheritable ACEs; a file created inside afterwards",
@@ -130,6 +130,8 @@ func caseSec01() {
 				p.Extra["MsiLockPermissionsEx"] = [][]string{{"LP1", "f_perm", "File", fileSD, ""}}
 				p.Extra["LockPermissions"] = [][]string{{"f_perm", "File", "", "Administrators", "268435456"}}
 			}},
+		// Last: a deny ACE for BU also denies the installer, so uninstall leaves the file behind.
+		fileVariant("file-deny-ace", denySD, ""),
 	}
 
 	only := os.Getenv("ONLY")
@@ -172,7 +174,16 @@ func caseSec01() {
 			}
 		}
 		u := runMsiexec(c, "uninstall.log", "/x", m)
-		c.logf("RESULT %s: install %d, uninstall %d, install dir left: %v", v.name, r.Exit, u.Exit, exists(instDir(p)))
+		left := filepath.Join(instDir(p), "perm.txt")
+		c.logf("RESULT %s: install %d, uninstall %d, perm.txt left: %v", v.name, r.Exit, u.Exit, exists(left))
+		if exists(left) {
+			c.logf("  leftover perm.txt SDDL: %s", fileSDDL(left))
+		}
+		if exists(instDir(p)) {
+			exec.Command("takeown.exe", "/f", instDir(p), "/r", "/d", "y").Run()
+			exec.Command("icacls.exe", instDir(p), "/reset", "/t", "/c").Run()
+			c.logf("  cleanup: remove install dir -> %v", os.RemoveAll(instDir(p)))
+		}
 		if v.svc && svcState() != "not installed" {
 			exec.Command("sc.exe", "stop", svcName).Run()
 			c.logf("  cleanup: sc delete -> %s", oneLine(scq("delete", svcName)))
