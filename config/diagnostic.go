@@ -1,0 +1,100 @@
+package config
+
+import (
+	"fmt"
+	"strings"
+)
+
+// Severity of a Diagnostic.
+type Severity int
+
+// Severities. Errors fail the build; warnings are reported.
+const (
+	SeverityWarning Severity = iota
+	SeverityError
+)
+
+func (s Severity) String() string {
+	if s == SeverityError {
+		return "error"
+	}
+
+	return "warning"
+}
+
+// Diagnostic is one validation finding.
+type Diagnostic struct {
+	Severity Severity
+	// Path is the YAML path, such as components[0].files[1].version.
+	Path    string
+	Message string
+}
+
+func (d Diagnostic) String() string {
+	return fmt.Sprintf("%s: %s: %s", d.Severity, d.Path, d.Message)
+}
+
+// Diagnostics is the result of Validate.
+type Diagnostics []Diagnostic
+
+// Err returns an error listing every error-level diagnostic, or nil.
+func (ds Diagnostics) Err() error {
+	var lines []string
+
+	for _, d := range ds {
+		if d.Severity == SeverityError {
+			lines = append(lines, d.Path+": "+d.Message)
+		}
+	}
+
+	if len(lines) == 0 {
+		return nil
+	}
+
+	return fmt.Errorf("invalid configuration:\n  %s", strings.Join(lines, "\n  "))
+}
+
+// Warnings returns the warning-level diagnostics.
+func (ds Diagnostics) Warnings() Diagnostics {
+	var out Diagnostics
+
+	for _, d := range ds {
+		if d.Severity == SeverityWarning {
+			out = append(out, d)
+		}
+	}
+
+	return out
+}
+
+type validator struct {
+	diags Diagnostics
+}
+
+func (v *validator) errorf(path, format string, args ...any) {
+	v.diags = append(v.diags, Diagnostic{SeverityError, path, fmt.Sprintf(format, args...)})
+}
+
+func (v *validator) warnf(path, format string, args ...any) {
+	v.diags = append(v.diags, Diagnostic{SeverityWarning, path, fmt.Sprintf(format, args...)})
+}
+
+func (v *validator) required(path, value string) bool {
+	if value == "" {
+		v.errorf(path, "required")
+
+		return false
+	}
+
+	return true
+}
+
+func (v *validator) oneOf(path, value string, allowed ...string) {
+	for _, a := range allowed {
+		if value == a {
+			return
+		}
+	}
+
+	v.errorf(path, "%q is not one of %s", value, strings.Join(allowed, ", "))
+}

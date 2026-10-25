@@ -1,0 +1,273 @@
+package config
+
+import "time"
+
+// Defaults of docs/design/yaml-schema.md section 4.
+const (
+	DefaultLanguage         = 1033
+	DefaultInstallerVersion = "5.0"
+	DefaultCodepage         = 1252
+	DefaultCompression      = "mszip"
+	DefaultRemoveOld        = "afterInstallInitialize"
+	DefaultUpgradeProperty  = "OLDERVERSIONBEINGUPGRADED"
+	DefaultNewerProperty    = "NEWERVERSIONDETECTED"
+	DefaultDowngradeMessage = "A later version of [ProductName] is already installed. Setup will now exit."
+	DefaultRestartDelay     = time.Minute
+
+	// Auto marks a value that the builder derives (GUIDs, file versions).
+	Auto = "auto"
+	// None marks an explicitly absent value.
+	None = "none"
+)
+
+func ptr[T any](v T) *T { return &v }
+
+// ApplyDefaults fills in every unset field with its default. It only sets
+// empty fields, so applying it twice changes nothing. Load and Validate call
+// it; a Config built in Go can call it directly.
+func ApplyDefaults(cfg *Config) {
+	p := &cfg.Product
+	if p.Language == nil {
+		p.Language = ptr(DefaultLanguage)
+	}
+
+	if p.ProductCode == "" {
+		p.ProductCode = Auto
+	}
+
+	if p.PackageCode == "" {
+		p.PackageCode = Auto
+	}
+
+	if p.Description == "" {
+		p.Description = p.Name + " " + p.Version + " installer"
+	}
+
+	if p.Comments == "" {
+		p.Comments = "This installer database contains the logic and data required to install " + p.Name + "."
+	}
+
+	pkg := &cfg.Package
+	if pkg.Scope == "" {
+		pkg.Scope = ScopePerMachine
+	}
+
+	if pkg.InstallerVersion == "" {
+		pkg.InstallerVersion = DefaultInstallerVersion
+	}
+
+	if pkg.Codepage == 0 {
+		pkg.Codepage = DefaultCodepage
+	}
+
+	if pkg.Compression == "" {
+		pkg.Compression = DefaultCompression
+	}
+
+	if pkg.Cabinet == "" {
+		pkg.Cabinet = p.Name + ".cab"
+	}
+
+	if pkg.LongFileNames == nil {
+		pkg.LongFileNames = ptr(true)
+	}
+
+	if pkg.Summary.Title == "" {
+		pkg.Summary.Title = "Installation Database"
+	}
+
+	if pkg.Summary.Keywords == "" {
+		pkg.Summary.Keywords = "Installer"
+	}
+
+	if pkg.Summary.Author == "" {
+		pkg.Summary.Author = p.Manufacturer
+	}
+
+	if u := cfg.Upgrade; u != nil {
+		if u.AllowSameVersion == nil {
+			u.AllowSameVersion = ptr(true)
+		}
+
+		if u.Downgrade == "" {
+			u.Downgrade = "error"
+		}
+
+		if u.DowngradeMessage == "" {
+			u.DowngradeMessage = DefaultDowngradeMessage
+		}
+
+		if u.RemoveOld == "" {
+			u.RemoveOld = DefaultRemoveOld
+		}
+
+		if u.MigrateFeatures == nil {
+			u.MigrateFeatures = ptr(true)
+		}
+
+		if u.Property == "" {
+			u.Property = DefaultUpgradeProperty
+		}
+
+		if u.NewerProperty == "" {
+			u.NewerProperty = DefaultNewerProperty
+		}
+
+		for i := range u.Related {
+			if u.Related[i].IncludeMin == nil {
+				u.Related[i].IncludeMin = ptr(true)
+			}
+		}
+	}
+
+	walkFeatures(cfg.Features, func(f *Feature, _ int) {
+		if f.Level == nil {
+			f.Level = ptr(1)
+		}
+
+		if f.Display == "" {
+			f.Display = "collapsed"
+		}
+
+		if f.AllowAbsent == nil {
+			f.AllowAbsent = ptr(true)
+		}
+	})
+
+	for _, c := range cfg.Components {
+		defaultComponent(c)
+	}
+
+	for _, ca := range cfg.CustomActions {
+		if ca.Execute == "" {
+			ca.Execute = "immediate"
+		}
+
+		if ca.Impersonate == nil {
+			ca.Impersonate = ptr(true)
+		}
+
+		// exec actions must state how their exit code is handled; the
+		// validator reports a missing value instead of defaulting it.
+		if ca.Return == "" && ca.Exec == nil && ca.ExecProperty == nil {
+			ca.Return = "check"
+		}
+
+		if ca.Exec != nil && ca.Exec.Directory == "" {
+			ca.Exec.Directory = "TARGETDIR"
+		}
+	}
+
+	for _, fw := range cfg.Firewall {
+		if fw.Protocol == "" {
+			fw.Protocol = "tcp"
+		}
+
+		if len(fw.Profiles) == 0 {
+			fw.Profiles = StringList{"all"}
+		}
+	}
+
+	if cfg.UI.Wizard == "" {
+		cfg.UI.Wizard = "none"
+	}
+}
+
+func defaultComponent(c *Component) {
+	if c.GUID == "" {
+		c.GUID = Auto
+	}
+
+	if c.Bitness == "" {
+		c.Bitness = Auto
+	}
+
+	for _, f := range c.Files {
+		if f.Version == "" {
+			f.Version = Auto
+		}
+
+		if f.Language == "" {
+			f.Language = Auto
+		}
+
+		if f.Vital == nil {
+			f.Vital = ptr(true)
+		}
+	}
+
+	for _, r := range c.Registry {
+		if r.Type == "" {
+			r.Type = "string"
+		}
+	}
+
+	for _, s := range c.Services {
+		if s.DisplayName == "" {
+			s.DisplayName = s.Name
+		}
+
+		if s.Type == "" {
+			s.Type = "ownProcess"
+		}
+
+		if s.Start == "" {
+			s.Start = "auto"
+		}
+
+		if s.ErrorControl == "" {
+			s.ErrorControl = "normal"
+		}
+
+		ctl := &s.Control
+		for _, b := range []**bool{&ctl.StartOnInstall, &ctl.StopOnInstall, &ctl.StopOnUninstall, &ctl.DeleteOnUninstall, &ctl.Wait} {
+			if *b == nil {
+				*b = ptr(true)
+			}
+		}
+
+		if s.Recovery != nil && s.Recovery.RestartDelay == 0 {
+			s.Recovery.RestartDelay = Duration(DefaultRestartDelay)
+		}
+	}
+
+	for _, e := range c.EventLog {
+		if e.Log == "" {
+			e.Log = "Application"
+		}
+
+		if e.TypesSupported == nil {
+			e.TypesSupported = ptr(7)
+		}
+	}
+
+	for _, e := range c.Environment {
+		if e.Action == "" {
+			e.Action = "set"
+		}
+
+		if e.Scope == "" {
+			e.Scope = "machine"
+		}
+
+		// A removal has nothing to undo at uninstall.
+		if e.RemoveOnUninstall == nil {
+			e.RemoveOnUninstall = ptr(e.Action != "remove")
+		}
+	}
+}
+
+// walkFeatures calls fn for every feature, depth first, with its depth
+// starting at 1.
+func walkFeatures(features []*Feature, fn func(*Feature, int)) {
+	var walk func([]*Feature, int)
+
+	walk = func(fs []*Feature, depth int) {
+		for _, f := range fs {
+			fn(f, depth)
+			walk(f.Features, depth+1)
+		}
+	}
+
+	walk(features, 1)
+}
