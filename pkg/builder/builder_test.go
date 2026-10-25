@@ -499,32 +499,32 @@ components:
 	seen := map[int]bool{}
 
 	for _, row := range rows(t, database, "Feature") {
-		id := fmt.Sprint(row[0])
+		featureID := fmt.Sprint(row[0])
 
 		display, ok := row[4].(int)
 		if !ok {
-			t.Fatalf("%s: Display %v is not an int", id, row[4])
+			t.Fatalf("%s: Display %v is not an int", featureID, row[4])
 		}
 
-		expected, ok := want[id]
+		expected, ok := want[featureID]
 		if !ok {
-			t.Fatalf("unexpected feature %s", id)
+			t.Fatalf("unexpected feature %s", featureID)
 		}
 
-		delete(want, id)
+		delete(want, featureID)
 
 		if display != expected {
-			t.Errorf("%s: Display %d, want %d", id, display, expected)
+			t.Errorf("%s: Display %d, want %d", featureID, display, expected)
 		}
 
 		if display != 0 && seen[display] {
-			t.Errorf("%s: Display %d is used twice", id, display)
+			t.Errorf("%s: Display %d is used twice", featureID, display)
 		}
 
 		seen[display] = true
 	}
 
-	for id := range want {
-		t.Errorf("feature %s is missing", id)
+	for featureID := range want {
+		t.Errorf("feature %s is missing", featureID)
 	}
 }
