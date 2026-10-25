@@ -193,7 +193,7 @@ Silent-failure cases a producer has to guard against itself:
 | RUN-16 | Not run | Interactive full UI |
 | RUN-17 | Contradicted | 1401, 1501, 6551, 6601 and [1399](msitest/results/RUN-17/rep-1399/log.md) work; [5802](msitest/results/RUN-17/rep-5802/log.md) gives 2613 |
 | RUN-18 | Confirmed | EXE exit 1 fails unless Continue; [type-6 return 5](msitest/results/RUN-18/vbs-binary-return-5-immediate/log.md) ends with 0 and skips the rest; [deferred](msitest/results/RUN-18/vbs-binary-return-5-deferred/log.md) leaves files unregistered |
-| RUN-24 | Confirmed | Only `NeverOverwrite` + `Permanent` keeps an edit with early removal; `NeverOverwrite` alone loses the resource; [details](#use-case-gap-cases-run-24-to-run-27) |
+| RUN-24 | Confirmed | Early removal: only `NeverOverwrite` + `Permanent` in both versions keeps an edit; `NeverOverwrite` alone loses the resource. Late removal: `NeverOverwrite` alone keeps it, also when added later; [details](#use-case-gap-cases-run-24-to-run-27) |
 | RUN-25 | Confirmed | `AppSearch` into `INSTALLDIR` overrides the command line; the guarded type-51 form does not; no `Signature` table gives 2228/1603; [details](#use-case-gap-cases-run-24-to-run-27) |
 | RUN-26 | Confirmed | `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-run-24-to-run-27) |
 | RUN-27 | Confirmed | Per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-run-24-to-run-27) |
@@ -236,10 +236,16 @@ uninstalled.
 | `NeverOverwrite`, 1401 | **gone** (v2 skips both components, then the removal of v1 deletes them) | gone |
 | `Permanent`, 1401 | v2 default | v2 default |
 | `NeverOverwrite` + `Permanent`, 1401 | user edit | user edit |
-| none, 6551 (with and without `MsiFileHash`) | v2 default | v2 default |
-| `NeverOverwrite`, 6551 | user edit | user edit |
-| none → `NeverOverwrite` + `Permanent`, 1401 | user edit | user edit |
-| none → `NeverOverwrite`, 6551 | user edit | user edit |
+| none, 6551 (with and without `MsiFileHash`) | v2 default | gone |
+| `NeverOverwrite`, 6551 | user edit | gone |
+| none → `NeverOverwrite` + `Permanent`, 1401 | **gone** | gone |
+| none → `NeverOverwrite`, 6551 | user edit | gone |
+
+The first two runs reused one pair of component GUIDs for every variant, and
+the permanent variants' SYSTEM-client registration changed every variant after
+them. Since 79eae09 each variant has its own GUIDs and the harness deletes the
+registrations a permanent variant leaves; two runs in a row then gave
+identical results, the ones above.
 
 **RUN-25, remembered install folder.** v1 is installed with
 `INSTALLDIR=C:\MsiSpecCustom\` and writes `[INSTALLDIR]` to the registry; v2
