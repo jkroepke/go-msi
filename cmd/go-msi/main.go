@@ -245,6 +245,9 @@ func cmdBuild(args []string, stdout, stderr io.Writer) error {
 
 		signed, err := signing.signBuild(pkg, cfg.Product.Name)
 		if err != nil {
+			// Build just created the file; do not leave an unsigned one.
+			_ = os.Remove(out)
+
 			return err
 		}
 

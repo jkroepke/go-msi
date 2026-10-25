@@ -304,6 +304,9 @@ func TestNestedStream(t *testing.T) {
 	binary.LittleEndian.PutUint64(entry(left)[0x78:], 0)                // storages have no size
 
 	nested := file.Entries[right]
+	if nested.Size < 4096 {
+		t.Fatalf("nested stream %q has %d bytes; the test wants one in sectors", nested.Name, nested.Size)
+	}
 
 	got, err := cfb.Read(raw)
 	if err != nil {
@@ -325,7 +328,8 @@ func TestNestedStream(t *testing.T) {
 }
 
 // TestDeepDirectory reads a file whose directory is a single chain of
-// sibling links, the deepest tree a directory of that size can form.
+// sibling links, the deepest tree a directory of that size can form, and
+// checks that the iterative walk reaches every entry.
 func TestDeepDirectory(t *testing.T) {
 	t.Parallel()
 

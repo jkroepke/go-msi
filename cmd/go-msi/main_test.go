@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -177,6 +178,21 @@ func TestSignVerify(t *testing.T) {
 
 	if code := run([]string{"verify", signed}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "signature valid (basic, SHA-256, no timestamp)") {
 		t.Errorf("verify: exit %d: %s %s", code, stdout.String(), stderr.String())
+	}
+
+	// A build whose signing fails leaves no unsigned package behind.
+	badKey := filepath.Join(dir, "bad.pfx")
+	if err := os.WriteFile(badKey, []byte("not a pfx"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	failed := filepath.Join(dir, "failed.msi")
+	if code := run([]string{"build", "-q", "-o", failed, "--pfx", badKey, yaml}, &stdout, &stderr); code == 0 {
+		t.Error("build with a bad key succeeded")
+	}
+
+	if _, err := os.Stat(failed); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the failed signing build left %s behind: %v", failed, err)
 	}
 
 	resigned := filepath.Join(dir, "resigned.msi")

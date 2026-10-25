@@ -215,6 +215,12 @@ func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop /
 		if err := commitOutput(out, b.opts.Output); err != nil {
 			return nil, err
 		}
+
+		// The cabinet spool is removed when finish returns; the returned
+		// database keeps the cabinet's name and size only.
+		for i := range database.Sources {
+			database.Sources[i].Open = nil
+		}
 	}
 
 	return database, nil
@@ -283,9 +289,20 @@ func (b *build) newTarget(kind string) (spool.Target, func(), error) {
 }
 
 // commitOutput moves the finished package from its temporary file to path,
-// so that an existing package is replaced only by a verified one.
+// so that an existing package is replaced only by a verified one. A symlink
+// at path is written through, and an existing file keeps its mode.
 func commitOutput(file *os.File, path string) error {
-	if err := file.Chmod(0o644); err != nil {
+	mode := os.FileMode(0o644)
+
+	if target, err := filepath.EvalSymlinks(path); err == nil {
+		path = target
+
+		if info, err := os.Stat(path); err == nil {
+			mode = info.Mode().Perm()
+		}
+	}
+
+	if err := file.Chmod(mode); err != nil {
 		return fmt.Errorf("set the mode of %s: %w", path, err)
 	}
 

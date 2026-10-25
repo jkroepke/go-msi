@@ -31,6 +31,8 @@ type Options struct {
 	// not for the files. The package replaces a file at Output only once it
 	// is verified; a failed build leaves nothing behind. When Output is
 	// empty the package is built in memory and returned in Result.Package.
+	// After a build to a file, Result.Database lists the cabinet by name
+	// and size only and cannot be marshalled again.
 	Output     string
 	CFBVersion int
 	SkipVerify bool
