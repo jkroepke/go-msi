@@ -242,11 +242,12 @@ uninstalled.
 | none → `NeverOverwrite` + `Permanent`, 1401 | **gone** | gone |
 | none → `NeverOverwrite`, 6551 | user edit | gone |
 
-The first two runs reused one pair of component GUIDs for every variant, and
-the permanent variants' SYSTEM-client registration changed every variant after
-them. Since 79eae09 each variant has its own GUIDs and the harness deletes the
-registrations a permanent variant leaves; two runs in a row then gave
-identical results, the ones above.
+The committed logs are from one run at 79eae09, where each variant has its
+own component GUIDs and the harness deletes the registration a permanent
+variant leaves (the `removing leftover component registration` lines).
+Reported, without kept logs: two earlier runs that reused one pair of GUIDs
+for every variant disagreed for the variants after `perm-early`, and a second
+run at 79eae09 gave the same `RESULT` lines as the committed one.
 
 **RUN-25, remembered install folder.** v1 is installed with
 `INSTALLDIR=C:\MsiSpecCustom\` and writes `[INSTALLDIR]` to the registry; v2
@@ -260,9 +261,10 @@ upgrades.
 | `AppSearch` into `REMEMBERED`, type 51 if `REMEMBERED AND NOT INSTALLDIR` | — | `C:\MsiSpecCustom` |
 | same | `INSTALLDIR=C:\MsiSpecOther\` | `C:\MsiSpecOther` |
 
-The first run of the four search variants failed with `Error 2228 … Unknown
-table 'Signature'` and 1603, with v1 left installed; the rerun with an empty
-`Signature` table gave the results above.
+Without a `Signature` table the direct search fails with `Error 2228 …
+Unknown table 'Signature'` and 1603, and v1 stays installed
+([direct-nosignature](msitest/results/RUN-25/direct-nosignature/log.md)); the
+other variants have an empty `Signature` table.
 
 **RUN-26, data folder removal.** The folder holds `app.log`, `state.db` and
 `sub\wal.bin`, written after install.

@@ -806,11 +806,15 @@ func (v *validator) service(p string, s *Service, keyFile *File, perUser bool) {
 		}
 
 		for j, a := range rec.Actions {
-			ap := fmt.Sprintf("%s.recovery.actions[%d]", p, j)
-			v.oneOf(ap, a.Action, "restart", "none")
+			step := fmt.Sprintf("%s.recovery.actions[%d]", p, j)
+			v.oneOf(step, a.Action, "restart", "none")
 
 			if a.Restart != nil {
-				v.recoveryDuration(ap+".restart", *a.Restart, time.Millisecond)
+				if a.Action != recoveryRestart {
+					v.errorf(step+".restart", "a delay is only allowed on a restart action")
+				}
+
+				v.recoveryDuration(step+".restart", *a.Restart, time.Millisecond)
 			}
 		}
 

@@ -3,6 +3,7 @@ package config_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jkroepke/go-msi/pkg/config"
 )
@@ -361,5 +362,26 @@ func TestHelpers(t *testing.T) {
 		if got := config.SummaryCodepage(db); got != want {
 			t.Errorf("SummaryCodepage(%d) = %d, want %d", db, got, want)
 		}
+	}
+}
+
+// TestRecoveryDelayOnNone covers a config built in Go, where a delay can be
+// set on a step that is not a restart.
+func TestRecoveryDelayOnNone(t *testing.T) {
+	t.Parallel()
+
+	doc := base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [none]}}]\n    files:", 1)
+
+	cfg, err := config.Parse([]byte(doc), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	delay := config.Duration(time.Minute)
+	cfg.Components[0].Services[0].Recovery.Actions[0].Restart = &delay
+
+	field := "components[0].services[0].recovery.actions[0].restart"
+	if ds := config.Validate(cfg); !find(ds, config.SeverityError, field, "only allowed on a restart") {
+		t.Errorf("diagnostics %v, want an error at %s", ds, field)
 	}
 }
