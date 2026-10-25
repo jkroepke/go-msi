@@ -61,8 +61,11 @@ jobs:
           winget install --id Microsoft.WindowsSDK.10.0.28000 --version 10.0.28000.2526 --exact `
             --silent --disable-interactivity --accept-package-agreements --accept-source-agreements `
             --override '/features OptionId.MSIInstallTools /quiet /norestart'
-          # 0x8A15002B: the package is already installed, which is fine.
-          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne -1978335189) { throw "winget exited with $LASTEXITCODE" }
+          # 0x8A150061 (-1978335135): the pinned version is already installed.
+          # The MsiVal2 search below still fails loudly if its feature is missing.
+          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne -1978335135) { throw "winget exited with $LASTEXITCODE" }
+          # The runner ends a pwsh step with exit $LASTEXITCODE.
+          $global:LASTEXITCODE = 0
           $kits = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10'
           $msi = Get-ChildItem -Path $kits -Recurse -Filter 'MsiVal2-x86_en-us.msi' | Select-Object -First 1
           if (-not $msi) { throw "no MsiVal2-x86_en-us.msi under $kits" }

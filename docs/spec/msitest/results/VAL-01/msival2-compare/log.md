@@ -47,7 +47,8 @@ Go runner (`internal/ice`), first attempt:
 
 Comparison, `msival2.exe <msi> darice.cub -f` against the Go runner (ICE,
 type, description; table, column and keys where msival2 prints them, which
-is ICE03 only):
+is ICE03 only). `-f` leaves out Info lines (type 3), so the Go counts
+leave them out too; the runner itself returns them:
 
 | Package | msival2 | Go | Differences |
 |---|---|---|---|

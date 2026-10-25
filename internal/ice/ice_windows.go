@@ -92,8 +92,9 @@ func handler(_, msgType uintptr, msg *uint16) uintptr {
 
 // Run validates the package at pkg with the evaluators in cub, for example
 // Darice.cub. Neither file is changed: the merge happens in a temporary copy.
-// It returns every message the ICE actions posted, in order. An ICE action
-// that fails to run is reported as a Failure finding.
+// It returns every ICE message the actions posted, in order, Info lines
+// included. An error message that is not an ICE message, or an action that
+// fails, is reported as a Failure finding.
 func Run(pkg, cub string) ([]Finding, error) {
 	session.Lock()
 	defer session.Unlock()
@@ -225,6 +226,12 @@ func runAction(pkgHandle uint32, action, condition string) []Finding {
 			return []Finding{{ICE: action, Type: Failure, Description: "condition does not parse: " + condition}}
 		}
 	}
+
+	// Drop what the engine posted before this action, such as while the
+	// package opened, so it is not blamed on this ICE.
+	sinkMu.Lock()
+	messages = messages[:0]
+	sinkMu.Unlock()
 
 	ret, _, _ := pMsiDoActionW.Call(uintptr(pkgHandle), uintptr(unsafe.Pointer(wstr(action))))
 
