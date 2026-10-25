@@ -792,6 +792,75 @@
             }
           ]
         },
+        "license": {
+          "type": "string",
+          "description": "A license file shown with an accept check box after the welcome page: RTF, or UTF-8 text converted to RTF."
+        },
+        "theme": {
+          "type": "object",
+          "properties": {
+            "banner": {
+              "type": "string",
+              "description": "BMP, PNG or JPEG for the top of the inner pages, 370x44 dialog units (493x58 pixels at 96 dpi)."
+            },
+            "dialog": {
+              "type": "string",
+              "description": "BMP, PNG or JPEG background of the welcome and finish pages, 370x234 dialog units (493x312 pixels at 96 dpi)."
+            },
+            "colors": {
+              "type": "object",
+              "description": "Colours of the built-in pictures as #RRGGBB.",
+              "properties": {
+                "dark": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^#[0-9A-Fa-f]{6}$"
+                    },
+                    {
+                      "$ref": "#/$defs/var"
+                    }
+                  ]
+                },
+                "light": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^#[0-9A-Fa-f]{6}$"
+                    },
+                    {
+                      "$ref": "#/$defs/var"
+                    }
+                  ]
+                },
+                "accent": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^#[0-9A-Fa-f]{6}$"
+                    },
+                    {
+                      "$ref": "#/$defs/var"
+                    }
+                  ]
+                },
+                "paper": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^#[0-9A-Fa-f]{6}$"
+                    },
+                    {
+                      "$ref": "#/$defs/var"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
         "dialogs": {
           "type": "array",
           "items": {

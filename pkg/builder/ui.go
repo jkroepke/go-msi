@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/jkroepke/go-msi/internal/artwork"
 	"github.com/jkroepke/go-msi/pkg/config"
 )
 
@@ -37,7 +36,11 @@ const (
 	ctlSunken   = 4
 	ctlIndirect = 8
 	ctlNoPrefix = 0x20000
-	ctlTransp   = 0x800000
+	// Bits above 0xFFFF mean different things per control type: on Text
+	// 0x10000 is Transparent and 0x20000 NoPrefix, on ProgressBar 0x10000 is
+	// Progress95, on CheckBox 0x20000 is PushLike, and 0x800000 is the
+	// PushButton elevation shield.
+	ctlTransp   = 0x10000
 	ctlProg95   = 0x10000
 	ctlFixedVol = 0x20000
 	ctlRemoteV  = 0x40000
@@ -55,7 +58,8 @@ const (
 
 	// Layout.
 	bannerHeight = 44
-	sideWidth    = 164
+	sideTextX    = 135
+	sideTextW    = 220
 	stripY       = 234
 	buttonY      = 243
 	buttonW      = 56
@@ -96,13 +100,14 @@ const (
 	ctlCancel = "Cancel"
 
 	binBanner = "BannerBmp"
-	binSide   = "SideBmp"
+	binDialog = "DialogBmp"
 
 	styleDefault = "DefaultFont"
 	styleTitle   = "TitleFont"
 	styleBig     = "BigFont"
 
 	propBrowse   = "_BrowseProperty"
+	propLicense  = "LicenseAccepted"
 	propRMOption = "RMOPTION"
 	propFilesUse = "FileInUseProcess"
 
@@ -118,6 +123,8 @@ const (
 	typDirCombo   = "DirectoryCombo"
 	typDirList    = "DirectoryList"
 	typPathEdit   = "PathEdit"
+	typScrollText = "ScrollableText"
+	typCheckBox   = "CheckBox"
 )
 
 // uiDialog is one dialog with its controls in drawing order.
@@ -165,6 +172,8 @@ type wizard struct {
 	dialogs []*uiDialog
 	byName  map[string]*uiDialog
 	radios  []uiRadio
+	// checkBoxes maps a CheckBox property to the value it sets.
+	checkBoxes map[string]string
 	// flow is the install path through the pages, from the welcome page
 	// to the ready page; added dialogs are inserted into it.
 	flow []string
@@ -259,7 +268,7 @@ func (b *build) ui() error {
 		return nil
 	}
 
-	wiz := &wizard{byName: make(map[string]*uiDialog)}
+	wiz := &wizard{byName: make(map[string]*uiDialog), checkBoxes: make(map[string]string)}
 	tree := b.cfg.UI.Wizard == "featureTree"
 
 	wiz.commonDialogs(tree, b.hasRows("Component"))
@@ -275,13 +284,22 @@ func (b *build) ui() error {
 		}
 	}
 
+	if license := b.license(); license != "" {
+		wiz.licenseDialog(license)
+		wiz.flow = slices.Insert(wiz.flow, 1, dlgLicense)
+	}
+
 	b.addedDialogs(wiz)
 	wiz.link()
+
+	banner, background := b.themePictures()
 
 	if err := b.diags.Err(); err != nil {
 		return err //nolint:wrapcheck // the diagnostics carry their own paths
 	}
 
+	b.table("Binary").Add(binBanner, banner)
+	b.table("Binary").Add(binDialog, background)
 	b.writeWizard(wiz)
 	b.checkUI(wiz)
 
@@ -355,11 +373,12 @@ func (d *uiDialog) innerHeader(title, description string) {
 	}
 }
 
-// sideHeader adds the side panel with a large title and a description.
+// sideHeader adds the dialog background, whose left part is the side
+// panel, with a large title and a description drawn over its right part.
 func (d *uiDialog) sideHeader(title, description string) {
-	d.control(bitmap("Side", 0, 0, sideWidth, stripY, binSide))
-	d.control(text("Title", sideWidth+16, 20, dlgWidth-sideWidth-30, 60, styled(styleBig, title)))
-	d.control(text("Description", sideWidth+16, 90, dlgWidth-sideWidth-30, 80, description))
+	d.control(bitmap("Background", 0, 0, dlgWidth, stripY, binDialog))
+	d.control(overlay("Title", sideTextX, 20, sideTextW, 60, styled(styleBig, title)))
+	d.control(overlay("Description", sideTextX, 90, sideTextW, 80, description))
 }
 
 // navigation adds the bottom line with Back, Next and Cancel; Next and
@@ -373,37 +392,56 @@ func (d *uiDialog) navigation() {
 	d.cancel = ctlCancel
 }
 
-// link wires Next and Back along the flow. The page after the welcome page
-// goes back to the maintenance menu when the product is installed, because
-// Change enters the flow there.
+// link wires Next and Back along the flow. Change in the maintenance menu
+// enters the flow at the page after the welcome page; that page goes back to
+// the menu when the product is installed. An installed product steps over
+// the license page: the pages around it link to each other under
+// Installed.
 func (w *wizard) link() {
+	entry := 1
+	if w.flow[entry] == dlgLicense {
+		entry++
+	}
+
 	for i, name := range w.flow {
 		page := w.byName[name]
 
 		if i > 0 {
-			back := page.find(ctlBack)
-			if i == 1 {
-				back.on(evNewDialog, w.flow[0], condNotInstalled)
-				back.on(evNewDialog, dlgMaintType, "Installed")
-			} else {
-				back.on(evNewDialog, w.flow[i-1], condAlways)
-			}
+			w.linkBack(page.find(ctlBack), i, entry)
 		}
 
 		if i+1 < len(w.flow) {
-			page.find(ctlNext).on(evNewDialog, w.flow[i+1], condAlways)
+			next := page.find(ctlNext)
+			if w.flow[i+1] == dlgLicense && i > 0 {
+				next.on(evNewDialog, dlgLicense, condNotInstalled)
+				next.on(evNewDialog, w.flow[i+2], "Installed")
+			} else {
+				next.on(evNewDialog, w.flow[i+1], condAlways)
+			}
 		}
 	}
 
 	if change := w.byName[dlgMaintType].find("Change"); change != nil {
-		change.on(evNewDialog, w.flow[1], condAlways)
+		change.on(evNewDialog, w.flow[entry], condAlways)
+	}
+}
+
+// linkBack wires the Back button of page i of the flow.
+func (w *wizard) linkBack(back *uiControl, i, entry int) {
+	switch {
+	case i == entry:
+		back.on(evNewDialog, w.flow[i-1], condNotInstalled)
+		back.on(evNewDialog, dlgMaintType, "Installed")
+	case w.flow[i-1] == dlgLicense:
+		back.on(evNewDialog, dlgLicense, condNotInstalled)
+		back.on(evNewDialog, w.flow[i-2], "Installed")
+	default:
+		back.on(evNewDialog, w.flow[i-1], condAlways)
 	}
 }
 
 // writeWizard emits the tables.
 func (b *build) writeWizard(wiz *wizard) {
-	b.table("Binary").Add(binBanner, artwork.EncodeBMP(artwork.Banner(artwork.Default())))
-	b.table("Binary").Add(binSide, artwork.EncodeBMP(artwork.Side(artwork.Default())))
 
 	styles := b.table("TextStyle")
 	styles.Add(styleDefault, "Tahoma", 8, nil, nil)
@@ -420,6 +458,13 @@ func (b *build) writeWizard(wiz *wizard) {
 	}
 
 	b.table("ListBox") // required with a Dialog table (ICE20), stays empty
+
+	if len(wiz.checkBoxes) > 0 {
+		boxes := b.table("CheckBox")
+		for _, property := range sortedStringKeys(wiz.checkBoxes) {
+			boxes.Add(property, wiz.checkBoxes[property])
+		}
+	}
 
 	radios := b.table("RadioButton")
 	for i, r := range wiz.radios {

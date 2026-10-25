@@ -1,0 +1,70 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/pkg/config/schema.json
+# Grafana Alloy as a service, with its license and its own wizard pictures.
+#
+#   go-msi build --var VERSION=1.5.0 -o alloy-installer-windows-amd64.msi msi.yaml
+#
+# The input files sit next to this file: alloy.exe, alloy-service.exe,
+# config.alloy, icon.ico, LICENSE.rtf (or a plain-text LICENSE, which is
+# converted to RTF), banner.bmp (493×58) and dialog.bmp (493×312, the left
+# 130 units are the picture, the page text is drawn from 135 units on).
+schema: go-msi/v1
+
+product:
+  name: Alloy
+  manufacturer: Grafana
+  version: ${VERSION}
+  upgradeCode: 1d3d3582-0035-49ee-93c1-483b2a5b007b
+  arp:
+    icon: icon.ico
+
+package:
+  platform: x64
+
+# C:\Program Files\GrafanaLabs\Alloy, changeable in the feature tree.
+installDir:
+  id: INSTALLLOCATION
+  name: GrafanaLabs/Alloy
+
+components:
+  - files:
+      - source: alloy.exe
+  - files:
+      - source: config.alloy
+  - files:
+      - source: icon.ico
+  - id: AlloyService
+    files:
+      - source: alloy-service.exe
+        id: alloy_service.exe   # a file key is an identifier, without "-"
+    services:
+      - name: Alloy
+        displayName: Alloy
+        description: Alloy by Grafana Labs
+        vital: true
+        recovery:
+          actions: [restart, restart, restart]
+          restartDelay: 1s
+    # The service wrapper reads the command line of alloy.exe from here.
+    registry:
+      - root: HKLM
+        key: Software\GrafanaLabs\Alloy
+        type: string
+        value: '[INSTALLLOCATION]alloy.exe'
+      - root: HKLM
+        key: Software\GrafanaLabs\Alloy
+        name: Arguments
+        type: multiString
+        value:
+          - run
+          - '[INSTALLLOCATION]config.alloy'
+          - --storage.path=C:\ProgramData\GrafanaLabs\Alloy\data
+
+icons:
+  icon.ico: icon.ico
+
+ui:
+  wizard: featureTree
+  license: LICENSE.rtf
+  theme:
+    banner: banner.bmp
+    dialog: dialog.bmp

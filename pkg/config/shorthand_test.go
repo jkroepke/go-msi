@@ -294,7 +294,7 @@ func TestShorthandIdempotent(t *testing.T) {
 		"upgrade off": short + "upgrade: false\ncomponents:\n  - files: [{ source: hello.exe }]\n",
 	}
 
-	for _, path := range []string{"../../examples/minimal/msi.yaml", "../../examples/windows_exporter/msi.yaml"} {
+	for _, path := range []string{"../../examples/minimal/msi.yaml", "../../examples/windows_exporter/msi.yaml", "../../examples/alloy/msi.yaml"} {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -1231,6 +1232,8 @@ func (v *validator) ui(cfg *Config) {
 		v.errorf("ui.dialogs", "dialogs need a wizard")
 	}
 
+	v.theme(cfg)
+
 	seen := map[string]bool{}
 
 	for i, d := range cfg.UI.Dialogs {
@@ -1264,6 +1267,30 @@ func (v *validator) ui(cfg *Config) {
 			if _, ok := cfg.Properties[f.Property]; f.Property != "" && !ok {
 				v.warnf(fp+".property", "%s is not declared in properties, so it is not secure", f.Property)
 			}
+		}
+	}
+}
+
+// colorPattern is the #RRGGBB form of the theme colours.
+var colorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+func (v *validator) theme(cfg *Config) {
+	none := cfg.UI.Wizard == "none"
+
+	if none && cfg.UI.License != "" {
+		v.errorf("ui.license", "a license page needs a wizard")
+	}
+
+	theme := &cfg.UI.Theme
+	if none && *theme != (Theme{}) {
+		v.errorf("ui.theme", "a theme needs a wizard")
+	}
+
+	for _, c := range []struct{ name, value string }{
+		{"dark", theme.Colors.Dark}, {"light", theme.Colors.Light}, {"accent", theme.Colors.Accent}, {"paper", theme.Colors.Paper},
+	} {
+		if c.value != "" && !colorPattern.MatchString(c.value) {
+			v.errorf("ui.theme.colors."+c.name, "%q is not a colour in the form #RRGGBB", c.value)
 		}
 	}
 }
