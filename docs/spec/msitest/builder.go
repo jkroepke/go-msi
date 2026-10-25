@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -36,6 +37,9 @@ var schema = map[string]tbl{
 	"CustomAction":           {Cols: []string{"Action s72", "Type i2", "Source S72", "Target S255", "ExtendedType I4"}, Keys: []string{"Action"}},
 	"Environment":            {Cols: []string{"Environment s72", "Name l255", "Value L255", "Component_ s72"}, Keys: []string{"Environment"}},
 	"MsiFileHash":            {Cols: []string{"File_ s72", "Options i2", "HashPart1 i4", "HashPart2 i4", "HashPart3 i4", "HashPart4 i4"}, Keys: []string{"File_"}},
+	"AppSearch":              {Cols: []string{"Property s72", "Signature_ s72"}, Keys: []string{"Property", "Signature_"}},
+	"RegLocator":             {Cols: []string{"Signature_ s72", "Root i2", "Key s255", "Name S255", "Type I2"}, Keys: []string{"Signature_"}},
+	"RemoveFile":             {Cols: []string{"FileKey s72", "Component_ s72", "FileName L255", "DirProperty s72", "InstallMode i2"}, Keys: []string{"FileKey"}},
 	"CreateFolder":           {Cols: []string{"Directory_ s72", "Component_ s72"}, Keys: []string{"Directory_", "Component_"}},
 }
 
@@ -66,6 +70,7 @@ type pkg struct {
 	CabMode        string // "makecab-mszip" (default), "makecab-none", "go-mszip", "go-stored", "go-nodict"
 	CabOverride    []byte
 	SkipCab        bool
+	CompAttr       map[string]int // extra Component attribute bits per file key
 }
 
 func newGUID() string {
@@ -290,7 +295,8 @@ func (p *pkg) build(out string) error {
 	for _, f := range p.Files {
 		seq++
 		ck := "C_" + f.Key
-		tables["Component"] = append(tables["Component"], []string{ck, guidFor(p.Name + f.Key + p.UpgradeCode), "INSTALLDIR", compAttr, "", f.Key})
+		attr, _ := strconv.Atoi(compAttr)
+		tables["Component"] = append(tables["Component"], []string{ck, guidFor(p.Name + f.Key + p.UpgradeCode), "INSTALLDIR", strconv.Itoa(attr | p.CompAttr[f.Key]), "", f.Key})
 		tables["File"] = append(tables["File"], []string{f.Key, ck, f.Name, fmt.Sprint(len(f.Data)), "", "", "0", fmt.Sprint(seq)})
 		tables["FeatureComponents"] = append(tables["FeatureComponents"], []string{"Main", ck})
 	}
