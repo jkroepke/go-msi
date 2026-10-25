@@ -14,6 +14,10 @@ const (
 	DefaultInstallDirID = "INSTALLDIR"
 	DefaultFeatureID    = "MainFeature"
 
+	// productNamePath is the YAML path of an install dir name taken from
+	// the product name.
+	productNamePath = "product.name"
+
 	maxGeneratedIDLength = 60
 	hashSuffixLength     = 9 // "_" and 8 hex digits
 )
@@ -323,7 +327,7 @@ func (t *dirTree) installDir() {
 	t.installOrigin = "installDir.name"
 
 	if install.Name == "" {
-		t.installOrigin = "product.name"
+		t.installOrigin = productNamePath
 		install.Name = t.cfg.Product.Name
 
 		if perUser {
@@ -371,7 +375,7 @@ func (t *dirTree) ensureInstallDir() *Directory {
 // from product.name is one folder, even if it contains a slash.
 func (t *dirTree) installNames() []string {
 	install := t.cfg.InstallDir
-	if t.installOrigin != "product.name" {
+	if t.installOrigin != productNamePath {
 		return splitPath(install.Name)
 	}
 

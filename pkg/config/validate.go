@@ -142,8 +142,8 @@ func (r *refs) topFolder(id string) string {
 func (v *validator) product(cfg *Config) {
 	p := cfg.Product
 
-	if v.required("product.name", p.Name) && len([]rune(p.Name)) > MaxProductNameLength {
-		v.errorf("product.name", "at most %d characters", MaxProductNameLength)
+	if v.required(productNamePath, p.Name) && len([]rune(p.Name)) > MaxProductNameLength {
+		v.errorf(productNamePath, "at most %d characters", MaxProductNameLength)
 	}
 
 	v.required("product.manufacturer", p.Manufacturer)
@@ -332,7 +332,7 @@ func (v *validator) directories(cfg *Config, r *refs) {
 			case top && d.Name != "":
 				v.errorf(p+".name", "a standard folder has no name")
 			case !top && !v.required(p+".name", d.Name):
-			case !top && !validName(d.Name) && d.origin == "product.name":
+			case !top && !validName(d.Name) && d.origin == productNamePath:
 				v.errorf(d.origin, "%q cannot be used as a folder name; set installDir.name", d.Name)
 			case !top && !validName(d.Name) && d.origin != "":
 				v.errorf(d.origin, "%q is not a valid folder name", d.Name)
