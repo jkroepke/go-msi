@@ -12,8 +12,8 @@ never consulted (both are LGPL); Wine may run as a black-box test runtime.
 
 ## 1. Package map
 
-Each package is independently usable, has no cgo and no platform-specific
-code, and is tested on its own. Arrows point from a package to what it imports.
+Each package under `pkg/` is independently usable. Every package has no cgo
+and no platform-specific code, and is tested on its own. Arrows point from a package to what it imports.
 
 ```mermaid
 flowchart LR
@@ -42,8 +42,8 @@ flowchart LR
 |---|---|---|---|
 | `pkg/cfb` | Compound File Binary v3/v4 writer and reader: sectors, FAT, DIFAT, mini stream, red-black directory tree, name comparison | §2 | stdlib |
 | `pkg/cab` | Cabinet writer and reader: one folder per cabinet, stored or MSZIP blocks with carried DEFLATE history, checksums on every block | §5 | stdlib (`compress/flate`) |
-| `pkg/summary` | `\u0005SummaryInformation` property-set writer and reader (PIDs 1–19, VT_I2/I4/LPSTR/FILETIME) | §4 | stdlib |
-| `pkg/msidb` | The database: column types, typed rows, stream-name encoding, string pool with code pages, catalog, column-major table streams, binary streams, embedded streams; plus a reader that decodes a package back into tables | §3 | `cfb`, `summary`, `golang.org/x/text` for code pages |
+| `pkg/summary` | `\u0005SummaryInformation` property-set writer and reader (PIDs 1–19, VT_I2/I4/LPSTR/FILETIME) | §4 | `internal/codepage` |
+| `pkg/msidb` | The database: column types, typed rows, stream-name encoding, string pool with code pages, catalog, column-major table streams, binary streams, embedded streams; plus a reader that decodes a package back into tables | §3 | `cfb`, `summary`, `internal/codepage`, `golang.org/x/text` for code pages |
 | `internal/schema` | Column definitions and `_Validation` metadata of every standard table the builder can write | §6 | stdlib |
 | `internal/pe` | PE version resource reader: file version, translations, "is this a PE file", PE checksum presence | §11.5 | stdlib |
 | `internal/condition` | Parser for the condition grammar, used to reject conditions the engine would ignore | §8.8 | stdlib |
@@ -240,7 +240,7 @@ Only the standard library `flag` package is used.
   numbers, attribute bits, `_Validation` coverage, file-to-cabinet order.
   Golden hashes guard determinism: two builds with the same
   `SOURCE_DATE_EPOCH` are byte-identical.
-- **Windows runner** (`.github/workflows/ci.yml`, `windows-latest`): the
+- **Windows runner** (`.github/workflows/ci.yaml`, `windows-latest`): the
   same tests, plus `//go:build windows` tests in `pkg/builder/nativetest` that open
   the built package with `msi.dll` (`MsiOpenDatabaseW`, views over every table,
   `MsiGetSummaryInformationW`, `MsiRecordReadStream` on the cabinet) and

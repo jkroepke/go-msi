@@ -626,7 +626,9 @@ the generated tables, and the cabinet round trip.
 
 ## 6. Not in version 1
 
-Patches, transforms, merge modules, bundles, multiple languages in one
-package, advertised installs, script custom actions, and a top-level file
-harvester. A future `schema: go-msi/v2` can add them without changing the
-meaning of a v1 file.
+Multiple languages in one package, advertised installs, script custom
+actions, and a top-level file harvester. A future `schema: go-msi/v2` can add
+them without changing the meaning of a v1 file.
+
+Patches, transforms, merge modules and bundles are out of scope for good
+(see the README and [architecture.md](architecture.md)).
