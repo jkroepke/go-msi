@@ -159,7 +159,14 @@ func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop /
 
 	slices.SortFunc(database.Tables, func(a, b *msidb.Table) int { return strings.Compare(a.Name, b.Name) })
 
-	target, closeTarget, err := b.newTarget("package")
+	// A symlink at Output is written through: the temporary files go next
+	// to its target so that the final rename stays on one file system.
+	output := b.opts.Output
+	if resolved, err := filepath.EvalSymlinks(output); err == nil {
+		output = resolved
+	}
+
+	target, closeTarget, err := b.newTarget("package", output)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +174,7 @@ func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop /
 	defer closeTarget()
 
 	if len(b.files) > 0 {
-		cabSpool, closeSpool, err := b.newTarget("cabinet")
+		cabSpool, closeSpool, err := b.newTarget("cabinet", output)
 		if err != nil {
 			return nil, err
 		}
@@ -212,7 +219,7 @@ func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop /
 	case *spool.Buffer:
 		res.Package = out.Bytes()
 	case *os.File:
-		if err := commitOutput(out, b.opts.Output); err != nil {
+		if err := commitOutput(out, output); err != nil {
 			return nil, err
 		}
 
@@ -268,14 +275,16 @@ func (b *build) patchPackageCode(target spool.Target, layout *cfb.Layout, databa
 
 // newTarget returns where a build product is written: memory when the
 // package stays in memory, otherwise a temporary file next to the output
-// (the package itself is written to the output path). The returned function
+// (the package itself is written to the output path). output is the
+// resolved output path; the temporary files are created next to it. The
+// returned function
 // closes the file, and removes it unless it is the finished package.
-func (b *build) newTarget(kind string) (spool.Target, func(), error) {
+func (b *build) newTarget(kind, output string) (spool.Target, func(), error) {
 	if b.opts.Output == "" {
 		return &spool.Buffer{}, func() {}, nil
 	}
 
-	file, err := os.CreateTemp(filepath.Dir(b.opts.Output), ".go-msi-*."+kind)
+	file, err := os.CreateTemp(filepath.Dir(output), ".go-msi-*."+kind)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create a temporary %s file: %w", kind, err)
 	}
@@ -288,18 +297,14 @@ func (b *build) newTarget(kind string) (spool.Target, func(), error) {
 	}, nil
 }
 
-// commitOutput moves the finished package from its temporary file to path,
-// so that an existing package is replaced only by a verified one. A symlink
-// at path is written through, and an existing file keeps its mode.
+// commitOutput moves the finished package from its temporary file to path
+// (a symlink already resolved), so that an existing package is replaced only
+// by a verified one. An existing file keeps its mode.
 func commitOutput(file *os.File, path string) error {
 	mode := os.FileMode(0o644)
 
-	if target, err := filepath.EvalSymlinks(path); err == nil {
-		path = target
-
-		if info, err := os.Stat(path); err == nil {
-			mode = info.Mode().Perm()
-		}
+	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+		mode = info.Mode().Perm()
 	}
 
 	if err := file.Chmod(mode); err != nil {

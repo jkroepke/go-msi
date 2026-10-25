@@ -90,6 +90,40 @@ func TestOutputFile(t *testing.T) {
 	if _, err := builder.Build(bad, builder.Options{BuildTime: buildTime, Output: filepath.Join(bad.BaseDir, "missing", "x.msi")}); err == nil {
 		t.Error("an output in a missing directory was accepted")
 	}
+
+	// A symlink at the output is written through, and the target keeps
+	// its mode.
+	targetDir := filepath.Join(cfg.BaseDir, "target")
+	if err := os.Mkdir(targetDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	target := filepath.Join(targetDir, "real.msi")
+	if err := os.WriteFile(target, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	link := filepath.Join(cfg.BaseDir, "link.msi")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if _, err := builder.Build(cfg, builder.Options{BuildTime: buildTime, Output: link}); err != nil {
+		t.Fatalf("build through a symlink: %v", err)
+	}
+
+	info, err := os.Lstat(link)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("the symlink was replaced: %v, %v", info, err)
+	}
+
+	if through, err := os.ReadFile(target); err != nil || !bytes.Equal(through, data) {
+		t.Errorf("the symlink target does not hold the package: %v", err)
+	}
+
+	if info, err := os.Stat(target); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("the target's mode changed: %v, %v", info.Mode(), err)
+	}
 }
 
 // TestLargePayloadBoundedMemory builds a package with a payload far larger

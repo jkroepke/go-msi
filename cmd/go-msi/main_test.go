@@ -180,7 +180,8 @@ func TestSignVerify(t *testing.T) {
 		t.Errorf("verify: exit %d: %s %s", code, stdout.String(), stderr.String())
 	}
 
-	// A build whose signing fails leaves no unsigned package behind.
+	// A build whose signing fails leaves no unsigned package behind and
+	// keeps a package that was already there.
 	badKey := filepath.Join(dir, "bad.pfx")
 	if err := os.WriteFile(badKey, []byte("not a pfx"), 0o600); err != nil {
 		t.Fatal(err)
@@ -193,6 +194,26 @@ func TestSignVerify(t *testing.T) {
 
 	if _, err := os.Stat(failed); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the failed signing build left %s behind: %v", failed, err)
+	}
+
+	before, err := os.ReadFile(unsigned)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if code := run([]string{"build", "-q", "-o", unsigned, "--pfx", badKey, yaml}, &stdout, &stderr); code == 0 {
+		t.Error("build with a bad key succeeded")
+	}
+
+	if kept, err := os.ReadFile(unsigned); err != nil || !bytes.Equal(kept, before) {
+		t.Errorf("the failed signing build touched the existing package: %v", err)
+	}
+
+	left, _ := os.ReadDir(dir)
+	for _, ent := range left {
+		if strings.HasPrefix(ent.Name(), ".go-msi-") {
+			t.Errorf("the failed signing build left %s behind", ent.Name())
+		}
 	}
 
 	resigned := filepath.Join(dir, "resigned.msi")

@@ -223,31 +223,48 @@ func cmdBuild(args []string, stdout, stderr io.Writer) error {
 		out = filepath.Join(cfg.BaseDir, cfg.Product.Name+"-"+cfg.Product.Version+".msi")
 	}
 
+	// Signing works on the whole package, so a signed build streams to a
+	// temporary file first and the signed bytes replace out atomically; a
+	// package already at out survives a failed signing.
+	target := out
+
+	if signing.enabled() {
+		tmp, err := os.CreateTemp(filepath.Dir(out), ".go-msi-*.unsigned")
+		if err != nil {
+			return fmt.Errorf("create a temporary file: %w", err)
+		}
+
+		target = tmp.Name()
+		_ = tmp.Close()
+
+		defer func() { _ = os.Remove(target) }()
+	}
+
 	res, err := builder.Build(cfg, builder.Options{
 		CFBVersion: cfbVersion,
 		ToolName:   "go-msi " + version,
 		SkipVerify: skipVerify,
-		Output:     out,
+		Output:     target,
 	})
 
 	printDiagnostics(stderr, res.Diagnostics)
 
 	if err != nil {
-		return errors.New("build failed")
+		if res.Diagnostics.Err() != nil {
+			return errors.New("build failed")
+		}
+
+		return fmt.Errorf("build failed: %w", err)
 	}
 
 	if signing.enabled() {
-		// Signing works on the whole package; the build itself streamed it.
-		pkg, err := os.ReadFile(out)
+		pkg, err := os.ReadFile(target)
 		if err != nil {
-			return fmt.Errorf("read %s: %w", out, err)
+			return fmt.Errorf("read %s: %w", target, err)
 		}
 
 		signed, err := signing.signBuild(pkg, cfg.Product.Name)
 		if err != nil {
-			// Build just created the file; do not leave an unsigned one.
-			_ = os.Remove(out)
-
 			return err
 		}
 
