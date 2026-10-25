@@ -608,7 +608,7 @@ func TestSignatureSIG06(t *testing.T) {
 
 		ecPKI := newPKI(t, key)
 		got := winVerifyTrust(t, writeTemp(t, "ec.msi", mustSign(t, unsigned, ecPKI.options(tc.hash))))
-		// ECDSA is an open question of MSISPEC §12: record, don't assert.
+		// ECDSA passes on Server 2025 but is untested on older Windows: record, don't assert.
 		t.Logf("SIG-06: ECDSA %s %v: WinVerifyTrust %#x (valid would be %#x)", tc.curve.Params().Name, tc.hash, got, ecPKI.wantValid())
 	}
 

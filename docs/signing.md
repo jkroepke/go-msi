@@ -36,8 +36,10 @@ or revocation; Windows does that at install time.
   `\u0005MsiDigitalSignatureEx`. The signature covers the stream contents and
   the root CLSID, not the container layout, so re-laying out the file keeps it
   valid.
-- RSA keys of at least 2048 bits with PKCS #1 v1.5. ECDSA keys are
-  experimental: whether Windows accepts them is still being tested (SIG-06).
+- RSA keys of at least 2048 bits with PKCS #1 v1.5, or ECDSA keys. Windows
+  Server 2025 accepts RSA with SHA-1/256/384/512 and ECDSA P-256 and P-384
+  (SIG-06). ECDSA and SHA-384/512 are not yet tested on older Windows
+  versions such as Server 2016; use RSA with SHA-256 to be safe.
 - `SpcSpOpusInfo` with the description and URL, and the individual
   code-signing `SpcStatementType`.
 - RSA signatures without a timestamp are deterministic: the same package and
