@@ -212,7 +212,7 @@ func TestJSONSchemaMatchesTypes(t *testing.T) {
 
 			for field := range typ.Fields() {
 				key, _, _ := strings.Cut(field.Tag.Get("yaml"), ",")
-				if key == "-" {
+				if key == "-" || !field.IsExported() {
 					continue
 				}
 

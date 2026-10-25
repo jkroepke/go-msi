@@ -14,7 +14,6 @@ product:
   name: windows_exporter
   manufacturer: prometheus-community
   version: ${VERSION}
-  language: 1033
   upgradeCode: 66a6eb5b-1fc2-4b14-a362-5ceec6413308
   arp:
     icon: icon.ico
@@ -27,91 +26,77 @@ product:
 
 package:
   platform: ${ARCH}
-  scope: perMachine
-  installerVersion: "5.0"
   cabinet: windows_exporter.cab
 
-upgrade:
-  allowSameVersion: true
-  downgrade: error
-  removeOld: afterInstallInitialize
-
-directories:
-  - id: ProgramFiles64Folder
-    children:
-      - id: APPLICATIONFOLDER
-        name: windows_exporter
-        configurable: true
-        children:
-          - id: TEXTFILEDIR
-            name: textfile_inputs
+# C:\Program Files\windows_exporter. APPLICATIONFOLDER is the property the
+# released packages use for it.
+installDir:
+  id: APPLICATIONFOLDER
+  name: windows_exporter
 
 features:
   - id: DefaultFeature
     title: windows_exporter ${VERSION}
     description: The binary and configuration files for windows_exporter
-    level: 1
     display: expanded
     directory: APPLICATIONFOLDER
     allowAbsent: false
-    components: [Executable, TextfileDirectory]
+    components:
+      - id: Executable
+        # The GUID of the released packages, the same on amd64 and arm64.
+        guid: 5546455E-B5EA-5AF8-A21A-AA526F04D083
+        transitive: true
+        files:
+          - source: ${BINARY}
+            name: windows_exporter.exe
+            checksum: true
+        services:
+          - name: windows_exporter
+            description: Exports Prometheus metrics about the system
+            delayedAutoStart: true
+            vital: true
+            account: '[SERVICE_ACCOUNT]'
+            password: '[SERVICE_PASSWORD]'
+            # Each piece is only added when its condition is true.
+            arguments:
+              - value: --config.file="[APPLICATIONFOLDER]config.yaml"
+                condition: CONFIG_FILE="config.yaml"
+              - value: --config.file="[CONFIG_FILE]"
+                condition: CONFIG_FILE AND CONFIG_FILE<>"config.yaml"
+              - value: --collectors.enabled [ENABLED_COLLECTORS]
+                condition: ENABLED_COLLECTORS
+              - value: --web.listen-address="[LISTEN_ADDR]:[LISTEN_PORT]"
+                condition: LISTEN_ADDR<>"" OR LISTEN_PORT<>9182
+              - value: --telemetry.path="[METRICS_PATH]"
+                condition: METRICS_PATH
+              - value: --collector.textfile.directories="[TEXTFILE_DIRS]"
+                condition: TEXTFILE_DIRS
+              - '[EXTRA_FLAGS]'
+            dependencies: [wmiApSrv]
+            failureActionsOnNonCrashFailures: true
+            recovery:
+              actions: [restart, restart, restart]
+              restartDelay: 60s
+        eventLog:
+          # The exporter calls eventlog.Open("windows_exporter").
+          - source: windows_exporter
+            messageFile: '%SystemRoot%\System32\EventCreate.exe'
+
+      - directory: textfile_inputs
+        guid: D03EF58A-9CBF-4165-AD39-D143E9B27E14
+        createFolder: true
+
     features:
       - id: FirewallException
         title: Firewall Exception
         description: Allow windows_exporter to listen on a port
         level: 2
         display: expanded
-        components: [FirewallException]
-
-components:
-  - id: Executable
-    directory: APPLICATIONFOLDER
-    # The GUID of the released packages, the same on amd64 and arm64.
-    guid: 5546455E-B5EA-5AF8-A21A-AA526F04D083
-    transitive: true
-    files:
-      - source: ${BINARY}
-        name: windows_exporter.exe
-        checksum: true
-    services:
-      - name: windows_exporter
-        displayName: windows_exporter
-        description: Exports Prometheus metrics about the system
-        start: auto
-        delayedAutoStart: true
-        errorControl: normal
-        vital: true
-        account: '[SERVICE_ACCOUNT]'
-        password: '[SERVICE_PASSWORD]'
-        arguments: '[ConfigFileFlag] [CollectorsFlag] [ListenFlag] [MetricsPathFlag] [TextfileDirsFlag] [ExtraFlags]'
-        dependencies: [wmiApSrv]
-        failureActionsOnNonCrashFailures: true
-        control:
-          startOnInstall: true
-          stopOnInstall: true
-          stopOnUninstall: true
-          deleteOnUninstall: true
-          wait: true
-        recovery:
-          resetAfterDays: 0
-          actions: [restart, restart, restart]
-          restartDelay: 60s
-    eventLog:
-      # The exporter calls eventlog.Open("windows_exporter").
-      - source: windows_exporter
-        messageFile: '%SystemRoot%\System32\EventCreate.exe'
-        typesSupported: 7
-
-  - id: TextfileDirectory
-    directory: TEXTFILEDIR
-    guid: D03EF58A-9CBF-4165-AD39-D143E9B27E14
-    createFolder: true
-
-  # Empty component that carries the FirewallException feature's state.
-  - id: FirewallException
-    directory: APPLICATIONFOLDER
-    guid: 9F522655-AC0E-42D2-A512-A7B19EBEC7F7
-    keyPath: directory
+        components:
+          # Empty component that carries the feature's state for the rule.
+          - id: FirewallException
+            guid: 9F522655-AC0E-42D2-A512-A7B19EBEC7F7
+            keyPath: directory
 
 properties:
   ENABLED_COLLECTORS: {}
@@ -148,43 +133,17 @@ customActions:
     schedule:
       - { sequence: execute, before: InstallInitialize, condition: EXTRA_FLAGS AND (EXTRA_FLAGS >< "--config.file") }
 
-  # The service command line, assembled after InstallFiles.
-  - id: SetCollectorsFlag
-    setProperty: { name: CollectorsFlag, value: '--collectors.enabled [ENABLED_COLLECTORS]' }
-    schedule: [{ sequence: execute, after: InstallFiles, condition: ENABLED_COLLECTORS }]
-  - id: SetExtraFlags
-    setProperty: { name: ExtraFlags, value: '[EXTRA_FLAGS]' }
-    schedule: [{ sequence: execute, after: InstallFiles, condition: EXTRA_FLAGS }]
-  - id: SetConfigFileNonDefault
-    setProperty: { name: ConfigFile_NonDefault, value: '[CONFIG_FILE]' }
-    schedule: [{ sequence: execute, after: InstallFiles, condition: CONFIG_FILE AND CONFIG_FILE<>"config.yaml" }]
-  - id: SetConfigFileDefault
-    setProperty: { name: ConfigFile_Default, value: '[APPLICATIONFOLDER]config.yaml' }
-    schedule: [{ sequence: execute, after: InstallFiles, condition: CONFIG_FILE="config.yaml" }]
-  - id: SetConfigFileFlag
-    setProperty: { name: ConfigFileFlag, value: '--config.file="[ConfigFile_NonDefault][ConfigFile_Default]"' }
-    schedule: [{ sequence: execute, after: InstallFiles, condition: ConfigFile_NonDefault OR ConfigFile_Default }]
-  - id: SetListenFlag
-    setProperty: { name: ListenFlag, value: '--web.listen-address="[LISTEN_ADDR]:[LISTEN_PORT]"' }
-    schedule: [{ sequence: execute, after: InstallFiles, condition: LISTEN_ADDR<>"" OR LISTEN_PORT<>9182 }]
-  - id: SetMetricsPathFlag
-    setProperty: { name: MetricsPathFlag, value: '--telemetry.path="[METRICS_PATH]"' }
-    schedule: [{ sequence: execute, after: InstallFiles, condition: METRICS_PATH }]
-  - id: SetTextfileDirsFlag
-    setProperty: { name: TextfileDirsFlag, value: '--collector.textfile.directories="[TEXTFILE_DIRS]"' }
-    schedule: [{ sequence: execute, after: InstallFiles, condition: TEXTFILE_DIRS }]
-
   # config.yaml is not owned by a component, so it survives upgrades and
   # uninstall.
   - id: CreateConfigFile
     exec:
-      command: '"[%ComSpec]" /c TYPE NUL >>"[ConfigFile_Default]"'
+      command: '"[%ComSpec]" /c TYPE NUL >>"[APPLICATIONFOLDER]config.yaml"'
       directory: APPLICATIONFOLDER
     execute: deferred
     impersonate: false
     return: check
     schedule:
-      - { sequence: execute, before: InstallServices, condition: ConfigFile_Default }
+      - { sequence: execute, before: InstallServices, condition: CONFIG_FILE="config.yaml" }
 
   # Kill only processes that run this installation's binary, so a copy
   # elsewhere or a Kubernetes HostProcess container keeps running.

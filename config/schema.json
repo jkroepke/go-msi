@@ -188,109 +188,144 @@
       "additionalProperties": false
     },
     "upgrade": {
-      "type": "object",
-      "description": "Major upgrade policy. Absent means no Upgrade rows.",
-      "properties": {
-        "allowSameVersion": {
-          "$ref": "#/$defs/bool",
-          "default": true
+      "anyOf": [
+        {
+          "$ref": "#/$defs/bool"
         },
-        "downgrade": {
-          "anyOf": [
-            {
-              "enum": [
-                "error",
-                "allow",
-                "ignore"
-              ]
+        {
+          "type": "object",
+          "description": "Major upgrade policy. Absent or true: the standard policy. false: no Upgrade rows.",
+          "properties": {
+            "allowSameVersion": {
+              "$ref": "#/$defs/bool",
+              "default": true
             },
-            {
-              "$ref": "#/$defs/var"
+            "downgrade": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "error",
+                    "allow",
+                    "ignore"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/var"
+                }
+              ],
+              "default": "error"
+            },
+            "downgradeMessage": {
+              "type": "string"
+            },
+            "removeOld": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "afterInstallValidate",
+                    "afterInstallInitialize",
+                    "afterInstallExecute",
+                    "afterInstallFinalize"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/var"
+                }
+              ],
+              "default": "afterInstallInitialize"
+            },
+            "migrateFeatures": {
+              "$ref": "#/$defs/bool",
+              "default": true
+            },
+            "property": {
+              "type": "string",
+              "default": "OLDERVERSIONBEINGUPGRADED"
+            },
+            "newerProperty": {
+              "type": "string",
+              "default": "NEWERVERSIONDETECTED"
+            },
+            "related": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "upgradeCode": {
+                    "$ref": "#/$defs/upgradeCode"
+                  },
+                  "minVersion": {
+                    "$ref": "#/$defs/version"
+                  },
+                  "maxVersion": {
+                    "$ref": "#/$defs/version"
+                  },
+                  "includeMin": {
+                    "$ref": "#/$defs/bool",
+                    "default": true
+                  },
+                  "includeMax": {
+                    "$ref": "#/$defs/bool",
+                    "default": false
+                  },
+                  "onlyDetect": {
+                    "$ref": "#/$defs/bool",
+                    "default": false
+                  },
+                  "property": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "upgradeCode"
+                ],
+                "additionalProperties": false,
+                "anyOf": [
+                  {
+                    "required": [
+                      "minVersion"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "maxVersion"
+                    ]
+                  }
+                ]
+              }
             }
-          ],
-          "default": "error"
-        },
-        "downgradeMessage": {
+          },
+          "additionalProperties": false
+        }
+      ],
+      "description": "Major upgrade policy. Absent or true: the standard policy. false: no Upgrade rows."
+    },
+    "installDir": {
+      "description": "The product's main folder and the default directory of every component. A string is the folder name.",
+      "anyOf": [
+        {
           "type": "string"
         },
-        "removeOld": {
-          "anyOf": [
-            {
-              "enum": [
-                "afterInstallValidate",
-                "afterInstallInitialize",
-                "afterInstallExecute",
-                "afterInstallFinalize"
-              ]
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/identifier",
+              "description": "Directory id and property. Default INSTALLDIR.",
+              "default": "INSTALLDIR"
             },
-            {
-              "$ref": "#/$defs/var"
+            "name": {
+              "type": "string",
+              "description": "Folder name; / separates nested folders. Default: product.name (Programs/<name> for perUser)."
+            },
+            "parent": {
+              "type": "string",
+              "description": "Standard folder. Default: ProgramFiles64Folder, ProgramFilesFolder on x86, LocalAppDataFolder for perUser."
             }
-          ],
-          "default": "afterInstallInitialize"
-        },
-        "migrateFeatures": {
-          "$ref": "#/$defs/bool",
-          "default": true
-        },
-        "property": {
-          "type": "string",
-          "default": "OLDERVERSIONBEINGUPGRADED"
-        },
-        "newerProperty": {
-          "type": "string",
-          "default": "NEWERVERSIONDETECTED"
-        },
-        "related": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "upgradeCode": {
-                "$ref": "#/$defs/upgradeCode"
-              },
-              "minVersion": {
-                "$ref": "#/$defs/version"
-              },
-              "maxVersion": {
-                "$ref": "#/$defs/version"
-              },
-              "includeMin": {
-                "$ref": "#/$defs/bool",
-                "default": true
-              },
-              "includeMax": {
-                "$ref": "#/$defs/bool",
-                "default": false
-              },
-              "onlyDetect": {
-                "$ref": "#/$defs/bool",
-                "default": false
-              },
-              "property": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "upgradeCode"
-            ],
-            "additionalProperties": false,
-            "anyOf": [
-              {
-                "required": [
-                  "minVersion"
-                ]
-              },
-              {
-                "required": [
-                  "maxVersion"
-                ]
-              }
-            ]
-          }
+          },
+          "additionalProperties": false
         }
-      },
-      "additionalProperties": false
+      ]
     },
     "directories": {
       "type": "array",
@@ -307,455 +342,7 @@
     "components": {
       "type": "array",
       "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "$ref": "#/$defs/identifier"
-          },
-          "directory": {
-            "$ref": "#/$defs/directoryRef"
-          },
-          "guid": {
-            "anyOf": [
-              {
-                "enum": [
-                  "auto",
-                  "none"
-                ]
-              },
-              {
-                "$ref": "#/$defs/guid"
-              }
-            ],
-            "default": "auto"
-          },
-          "files": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "source": {
-                  "type": "string",
-                  "description": "Path relative to the YAML file."
-                },
-                "name": {
-                  "type": "string",
-                  "description": "Defaults to the base name of source; `short|long` allowed."
-                },
-                "id": {
-                  "$ref": "#/$defs/identifier",
-                  "description": "File key."
-                },
-                "version": {
-                  "type": [
-                    "string",
-                    "number"
-                  ],
-                  "description": "auto, a four-field version, the id of another file (companion), or none. Never empty.",
-                  "minLength": 1,
-                  "default": "auto"
-                },
-                "language": {
-                  "type": [
-                    "string",
-                    "number"
-                  ],
-                  "description": "auto, none or a language list.",
-                  "default": "auto"
-                },
-                "allowUnversionedExecutable": {
-                  "$ref": "#/$defs/bool",
-                  "default": false
-                },
-                "vital": {
-                  "$ref": "#/$defs/bool",
-                  "default": true
-                },
-                "checksum": {
-                  "$ref": "#/$defs/bool",
-                  "default": false
-                },
-                "readOnly": {
-                  "$ref": "#/$defs/bool",
-                  "default": false
-                },
-                "hidden": {
-                  "$ref": "#/$defs/bool",
-                  "default": false
-                },
-                "system": {
-                  "$ref": "#/$defs/bool",
-                  "default": false
-                },
-                "permissions": {
-                  "$ref": "#/$defs/permissions"
-                }
-              },
-              "required": [
-                "source"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "registry": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "$ref": "#/$defs/identifier"
-                },
-                "root": {
-                  "anyOf": [
-                    {
-                      "enum": [
-                        "HKLM",
-                        "HKCU",
-                        "HKCR",
-                        "HKU",
-                        "HKMU"
-                      ]
-                    },
-                    {
-                      "$ref": "#/$defs/var"
-                    }
-                  ]
-                },
-                "key": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string",
-                  "description": "Empty means the default value."
-                },
-                "type": {
-                  "anyOf": [
-                    {
-                      "enum": [
-                        "string",
-                        "expandString",
-                        "multiString",
-                        "dword",
-                        "binary",
-                        "key"
-                      ]
-                    },
-                    {
-                      "$ref": "#/$defs/var"
-                    }
-                  ]
-                },
-                "value": {
-                  "anyOf": [
-                    {
-                      "type": [
-                        "string",
-                        "number"
-                      ]
-                    },
-                    {
-                      "type": "array",
-                      "items": {
-                        "type": [
-                          "string",
-                          "number"
-                        ]
-                      }
-                    }
-                  ],
-                  "description": "A list for multiString."
-                },
-                "append": {
-                  "$ref": "#/$defs/bool"
-                },
-                "prepend": {
-                  "$ref": "#/$defs/bool"
-                },
-                "removeOnUninstall": {
-                  "$ref": "#/$defs/bool"
-                },
-                "permissions": {
-                  "$ref": "#/$defs/permissions"
-                }
-              },
-              "required": [
-                "root",
-                "key"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "services": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "displayName": {
-                  "type": "string"
-                },
-                "description": {
-                  "type": "string"
-                },
-                "type": {
-                  "anyOf": [
-                    {
-                      "enum": [
-                        "ownProcess",
-                        "shareProcess"
-                      ]
-                    },
-                    {
-                      "$ref": "#/$defs/var"
-                    }
-                  ]
-                },
-                "start": {
-                  "anyOf": [
-                    {
-                      "enum": [
-                        "auto",
-                        "demand",
-                        "disabled"
-                      ]
-                    },
-                    {
-                      "$ref": "#/$defs/var"
-                    }
-                  ]
-                },
-                "delayedAutoStart": {
-                  "$ref": "#/$defs/bool"
-                },
-                "errorControl": {
-                  "anyOf": [
-                    {
-                      "enum": [
-                        "ignore",
-                        "normal",
-                        "critical"
-                      ]
-                    },
-                    {
-                      "$ref": "#/$defs/var"
-                    }
-                  ]
-                },
-                "vital": {
-                  "$ref": "#/$defs/bool"
-                },
-                "account": {
-                  "type": "string"
-                },
-                "password": {
-                  "type": "string",
-                  "description": "Should name a property, such as [SERVICE_PASSWORD]."
-                },
-                "arguments": {
-                  "type": "string"
-                },
-                "dependencies": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "failureActionsOnNonCrashFailures": {
-                  "$ref": "#/$defs/bool"
-                },
-                "control": {
-                  "type": "object",
-                  "properties": {
-                    "startOnInstall": {
-                      "$ref": "#/$defs/bool"
-                    },
-                    "stopOnInstall": {
-                      "$ref": "#/$defs/bool"
-                    },
-                    "stopOnUninstall": {
-                      "$ref": "#/$defs/bool"
-                    },
-                    "deleteOnUninstall": {
-                      "$ref": "#/$defs/bool",
-                      "default": true
-                    },
-                    "wait": {
-                      "$ref": "#/$defs/bool"
-                    }
-                  },
-                  "additionalProperties": false
-                },
-                "recovery": {
-                  "type": "object",
-                  "properties": {
-                    "resetAfterDays": {
-                      "$ref": "#/$defs/int"
-                    },
-                    "actions": {
-                      "type": "array",
-                      "items": {
-                        "anyOf": [
-                          {
-                            "enum": [
-                              "restart",
-                              "none"
-                            ]
-                          },
-                          {
-                            "$ref": "#/$defs/var"
-                          }
-                        ]
-                      }
-                    },
-                    "restartDelay": {
-                      "type": "string",
-                      "description": "A Go duration such as 60s or 1m.",
-                      "default": "1m"
-                    }
-                  },
-                  "additionalProperties": false
-                },
-                "permissions": {
-                  "$ref": "#/$defs/permissions"
-                }
-              },
-              "required": [
-                "name"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "eventLog": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "source": {
-                  "type": "string"
-                },
-                "log": {
-                  "type": "string"
-                },
-                "messageFile": {
-                  "type": "string"
-                },
-                "typesSupported": {
-                  "$ref": "#/$defs/int"
-                }
-              },
-              "required": [
-                "source",
-                "messageFile"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "environment": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string",
-                  "pattern": "^[^=+\\-!*]"
-                },
-                "value": {
-                  "type": [
-                    "string",
-                    "number"
-                  ]
-                },
-                "action": {
-                  "anyOf": [
-                    {
-                      "enum": [
-                        "set",
-                        "setIfAbsent",
-                        "append",
-                        "prepend",
-                        "remove"
-                      ]
-                    },
-                    {
-                      "$ref": "#/$defs/var"
-                    }
-                  ]
-                },
-                "scope": {
-                  "anyOf": [
-                    {
-                      "enum": [
-                        "machine",
-                        "user"
-                      ]
-                    },
-                    {
-                      "$ref": "#/$defs/var"
-                    }
-                  ]
-                },
-                "removeOnUninstall": {
-                  "$ref": "#/$defs/bool",
-                  "description": "Defaults to true, false for remove."
-                }
-              },
-              "required": [
-                "name"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "createFolder": {
-            "$ref": "#/$defs/bool"
-          },
-          "condition": {
-            "$ref": "#/$defs/condition"
-          },
-          "permanent": {
-            "$ref": "#/$defs/bool"
-          },
-          "neverOverwrite": {
-            "$ref": "#/$defs/bool"
-          },
-          "sharedDllRefCount": {
-            "$ref": "#/$defs/bool"
-          },
-          "transitive": {
-            "$ref": "#/$defs/bool"
-          },
-          "keyPath": {
-            "type": "string",
-            "description": "A file name, a registry id or \"directory\"."
-          },
-          "bitness": {
-            "anyOf": [
-              {
-                "enum": [
-                  "auto",
-                  "32",
-                  "64",
-                  32,
-                  64
-                ]
-              },
-              {
-                "$ref": "#/$defs/var"
-              }
-            ],
-            "default": "auto"
-          },
-          "folderPermissions": {
-            "$ref": "#/$defs/permissions",
-            "description": "Secures the component's directory; needs a CreateFolder row (createFolder: true or a directory key path)."
-          }
-        },
-        "required": [
-          "id",
-          "directory"
-        ],
-        "additionalProperties": false
+        "$ref": "#/$defs/component"
       }
     },
     "properties": {
@@ -1413,9 +1000,17 @@
         },
         "components": {
           "type": "array",
+          "description": "Component ids, or components defined in place.",
           "items": {
-            "type": "string",
-            "description": "A component id."
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "A component id."
+              },
+              {
+                "$ref": "#/$defs/component"
+              }
+            ]
           }
         },
         "features": {
@@ -1538,6 +1133,485 @@
       "required": [
         "sddl"
       ],
+      "additionalProperties": false
+    },
+    "component": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Default: generated from the key file's name, else the service name, else the directory."
+        },
+        "directory": {
+          "type": "string",
+          "description": "A directory id, a standard folder, or a folder path such as bin or CommonAppDataFolder/MyApp. Default: the install dir."
+        },
+        "guid": {
+          "anyOf": [
+            {
+              "enum": [
+                "auto",
+                "none"
+              ]
+            },
+            {
+              "$ref": "#/$defs/guid"
+            }
+          ],
+          "default": "auto"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "description": "Path relative to the YAML file."
+              },
+              "name": {
+                "type": "string",
+                "description": "Defaults to the base name of source; `short|long` allowed."
+              },
+              "id": {
+                "$ref": "#/$defs/identifier",
+                "description": "File key."
+              },
+              "version": {
+                "type": [
+                  "string",
+                  "number"
+                ],
+                "description": "auto, a four-field version, the id of another file (companion), or none. Never empty.",
+                "minLength": 1,
+                "default": "auto"
+              },
+              "language": {
+                "type": [
+                  "string",
+                  "number"
+                ],
+                "description": "auto, none or a language list.",
+                "default": "auto"
+              },
+              "allowUnversionedExecutable": {
+                "$ref": "#/$defs/bool",
+                "default": false
+              },
+              "vital": {
+                "$ref": "#/$defs/bool",
+                "default": true
+              },
+              "checksum": {
+                "$ref": "#/$defs/bool",
+                "default": false
+              },
+              "readOnly": {
+                "$ref": "#/$defs/bool",
+                "default": false
+              },
+              "hidden": {
+                "$ref": "#/$defs/bool",
+                "default": false
+              },
+              "system": {
+                "$ref": "#/$defs/bool",
+                "default": false
+              },
+              "permissions": {
+                "$ref": "#/$defs/permissions"
+              }
+            },
+            "required": [
+              "source"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "registry": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/identifier"
+              },
+              "root": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "HKLM",
+                      "HKCU",
+                      "HKCR",
+                      "HKU",
+                      "HKMU"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/var"
+                  }
+                ]
+              },
+              "key": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string",
+                "description": "Empty means the default value."
+              },
+              "type": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "string",
+                      "expandString",
+                      "multiString",
+                      "dword",
+                      "binary",
+                      "key"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/var"
+                  }
+                ]
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "string",
+                      "number"
+                    ]
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "number"
+                      ]
+                    }
+                  }
+                ],
+                "description": "A list for multiString."
+              },
+              "append": {
+                "$ref": "#/$defs/bool"
+              },
+              "prepend": {
+                "$ref": "#/$defs/bool"
+              },
+              "removeOnUninstall": {
+                "$ref": "#/$defs/bool"
+              },
+              "permissions": {
+                "$ref": "#/$defs/permissions"
+              }
+            },
+            "required": [
+              "root",
+              "key"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "type": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "ownProcess",
+                      "shareProcess"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/var"
+                  }
+                ]
+              },
+              "start": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "auto",
+                      "demand",
+                      "disabled"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/var"
+                  }
+                ]
+              },
+              "delayedAutoStart": {
+                "$ref": "#/$defs/bool"
+              },
+              "errorControl": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "ignore",
+                      "normal",
+                      "critical"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/var"
+                  }
+                ]
+              },
+              "vital": {
+                "$ref": "#/$defs/bool"
+              },
+              "account": {
+                "type": "string"
+              },
+              "password": {
+                "type": "string",
+                "description": "Should name a property, such as [SERVICE_PASSWORD]."
+              },
+              "arguments": {
+                "description": "The service command line: one string, or a list of pieces. A piece with a condition is only added when the condition is true.",
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "value": {
+                              "type": "string"
+                            },
+                            "condition": {
+                              "$ref": "#/$defs/condition"
+                            }
+                          },
+                          "required": [
+                            "value"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependencies": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "failureActionsOnNonCrashFailures": {
+                "$ref": "#/$defs/bool"
+              },
+              "control": {
+                "type": "object",
+                "properties": {
+                  "startOnInstall": {
+                    "$ref": "#/$defs/bool"
+                  },
+                  "stopOnInstall": {
+                    "$ref": "#/$defs/bool"
+                  },
+                  "stopOnUninstall": {
+                    "$ref": "#/$defs/bool"
+                  },
+                  "deleteOnUninstall": {
+                    "$ref": "#/$defs/bool",
+                    "default": true
+                  },
+                  "wait": {
+                    "$ref": "#/$defs/bool"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "recovery": {
+                "type": "object",
+                "properties": {
+                  "resetAfterDays": {
+                    "$ref": "#/$defs/int"
+                  },
+                  "actions": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "restart",
+                            "none"
+                          ]
+                        },
+                        {
+                          "$ref": "#/$defs/var"
+                        }
+                      ]
+                    }
+                  },
+                  "restartDelay": {
+                    "type": "string",
+                    "description": "A Go duration such as 60s or 1m.",
+                    "default": "1m"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "permissions": {
+                "$ref": "#/$defs/permissions"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "eventLog": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "log": {
+                "type": "string"
+              },
+              "messageFile": {
+                "type": "string"
+              },
+              "typesSupported": {
+                "$ref": "#/$defs/int"
+              }
+            },
+            "required": [
+              "source",
+              "messageFile"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "environment": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[^=+\\-!*]"
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "action": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "set",
+                      "setIfAbsent",
+                      "append",
+                      "prepend",
+                      "remove"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/var"
+                  }
+                ]
+              },
+              "scope": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "machine",
+                      "user"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/var"
+                  }
+                ]
+              },
+              "removeOnUninstall": {
+                "$ref": "#/$defs/bool",
+                "description": "Defaults to true, false for remove."
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "createFolder": {
+          "$ref": "#/$defs/bool"
+        },
+        "condition": {
+          "$ref": "#/$defs/condition"
+        },
+        "permanent": {
+          "$ref": "#/$defs/bool"
+        },
+        "neverOverwrite": {
+          "$ref": "#/$defs/bool"
+        },
+        "sharedDllRefCount": {
+          "$ref": "#/$defs/bool"
+        },
+        "transitive": {
+          "$ref": "#/$defs/bool"
+        },
+        "keyPath": {
+          "type": "string",
+          "description": "A file name, a registry id or \"directory\"."
+        },
+        "bitness": {
+          "anyOf": [
+            {
+              "enum": [
+                "auto",
+                "32",
+                "64",
+                32,
+                64
+              ]
+            },
+            {
+              "$ref": "#/$defs/var"
+            }
+          ],
+          "default": "auto"
+        },
+        "folderPermissions": {
+          "$ref": "#/$defs/permissions",
+          "description": "Secures the component's directory; needs a CreateFolder row (createFolder: true or a directory key path)."
+        }
+      },
       "additionalProperties": false
     }
   }

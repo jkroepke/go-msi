@@ -95,7 +95,7 @@ func newRefs(cfg *Config) *refs {
 
 	eachFeature(cfg.Features, func(f *Feature, _ int) {
 		for _, c := range f.Components {
-			r.inFeature[c] = true
+			r.inFeature[c.ID] = true
 		}
 	})
 
@@ -246,7 +246,7 @@ func (v *validator) pkg(cfg *Config) {
 
 func (v *validator) upgrade(cfg *Config) {
 	u := cfg.Upgrade
-	if u == nil {
+	if u == nil || u.Disabled {
 		return
 	}
 
@@ -346,6 +346,17 @@ func (v *validator) directories(cfg *Config, r *refs) {
 
 	walk(cfg.Directories, "directories", true)
 
+	if install := cfg.InstallDir; r.dirs[install.ID] == nil {
+		switch {
+		case !IsIdentifier(install.ID) || !IsPublicProperty(install.ID):
+			v.errorf("installDir.id", "%q must be an upper-case identifier, so that it can be set on the command line", install.ID)
+		case !standardFolders[install.Parent]:
+			v.errorf("installDir.parent", "%q is not a standard folder such as ProgramFiles64Folder", install.Parent)
+		case len(splitPath(install.Name)) == 0:
+			v.errorf("installDir.name", "required")
+		}
+	}
+
 	if cfg.Product.ARP.InstallLocation != "" && r.dirs[cfg.Product.ARP.InstallLocation] == nil {
 		v.errorf("product.arp.installLocation", "directory %q is not defined", cfg.Product.ARP.InstallLocation)
 	}
@@ -391,8 +402,8 @@ func (v *validator) features(cfg *Config, r *refs) {
 			}
 
 			for j, c := range f.Components {
-				if r.components[c] == nil {
-					v.errorf(fmt.Sprintf("%s.components[%d]", p, j), "component %q is not defined", c)
+				if r.components[c.ID] == nil {
+					v.errorf(fmt.Sprintf("%s.components[%d]", p, j), "component %q is not defined", c.ID)
 				}
 			}
 
@@ -416,6 +427,15 @@ func (v *validator) components(cfg *Config, r *refs) {
 
 	for i, c := range cfg.Components {
 		p := fmt.Sprintf("components[%d]", i)
+		if c.origin != "" {
+			p = c.origin
+		}
+
+		if c.ref {
+			v.errorf(p, "%q: a component here is a mapping; ids only refer to components from features", c.ID)
+
+			continue
+		}
 
 		if v.required(p+".id", c.ID) {
 			if !IsIdentifier(c.ID) || len(c.ID) > MaxIdentifierLength {

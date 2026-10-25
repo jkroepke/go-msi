@@ -84,41 +84,13 @@ func ApplyDefaults(cfg *Config) {
 		pkg.Summary.Author = p.Manufacturer
 	}
 
-	if u := cfg.Upgrade; u != nil {
-		if u.AllowSameVersion == nil {
-			u.AllowSameVersion = ptr(true)
-		}
+	expandShorthands(cfg)
 
-		if u.Downgrade == "" {
-			u.Downgrade = "error"
-		}
-
-		if u.DowngradeMessage == "" {
-			u.DowngradeMessage = DefaultDowngradeMessage
-		}
-
-		if u.RemoveOld == "" {
-			u.RemoveOld = DefaultRemoveOld
-		}
-
-		if u.MigrateFeatures == nil {
-			u.MigrateFeatures = ptr(true)
-		}
-
-		if u.Property == "" {
-			u.Property = DefaultUpgradeProperty
-		}
-
-		if u.NewerProperty == "" {
-			u.NewerProperty = DefaultNewerProperty
-		}
-
-		for i := range u.Related {
-			if u.Related[i].IncludeMin == nil {
-				u.Related[i].IncludeMin = ptr(true)
-			}
-		}
+	if cfg.Upgrade == nil {
+		cfg.Upgrade = &Upgrade{}
 	}
+
+	defaultUpgrade(cfg.Upgrade)
 
 	eachFeature(cfg.Features, func(feature *Feature, _ int) {
 		if feature.Level == nil {
@@ -170,6 +142,42 @@ func ApplyDefaults(cfg *Config) {
 
 	if cfg.UI.Wizard == "" {
 		cfg.UI.Wizard = "none"
+	}
+}
+
+func defaultUpgrade(upg *Upgrade) {
+	if upg.AllowSameVersion == nil {
+		upg.AllowSameVersion = new(true)
+	}
+
+	if upg.Downgrade == "" {
+		upg.Downgrade = "error"
+	}
+
+	if upg.DowngradeMessage == "" {
+		upg.DowngradeMessage = DefaultDowngradeMessage
+	}
+
+	if upg.RemoveOld == "" {
+		upg.RemoveOld = DefaultRemoveOld
+	}
+
+	if upg.MigrateFeatures == nil {
+		upg.MigrateFeatures = new(true)
+	}
+
+	if upg.Property == "" {
+		upg.Property = DefaultUpgradeProperty
+	}
+
+	if upg.NewerProperty == "" {
+		upg.NewerProperty = DefaultNewerProperty
+	}
+
+	for i := range upg.Related {
+		if upg.Related[i].IncludeMin == nil {
+			upg.Related[i].IncludeMin = new(true)
+		}
 	}
 }
 

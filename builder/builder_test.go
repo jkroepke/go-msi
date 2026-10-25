@@ -162,8 +162,8 @@ func TestMinimal(t *testing.T) {
 		t.Fatalf("cabinet: %v, %d entries", err, len(entries))
 	}
 
-	// Component: 64-bit attribute, key path is the file.
-	attrs := cell(t, database, "Component", "Attributes", func(r []any) bool { return r[0] == "Hello" })
+	// Component: id from the key file, 64-bit attribute, key path is the file.
+	attrs := cell(t, database, "Component", "Attributes", func(r []any) bool { return r[0] == "hello.exe" })
 	if attrs != 256 {
 		t.Errorf("Component.Attributes %v", attrs)
 	}
@@ -395,6 +395,20 @@ func TestWindowsExporter(t *testing.T) {
 	for _, name := range []string{"SetMaintenance", "SetReinstallAll", "SetReinstallMode"} {
 		if _, ok := seqOf[name]; !ok {
 			t.Errorf("%s not scheduled", name)
+		}
+	}
+
+	// Conditional service arguments are set right before InstallServices.
+	args := fmt.Sprint(cell(t, database, "ServiceInstall", "Arguments", func([]any) bool { return true }))
+	if args != "[Arg_windows_exporter_1] [Arg_windows_exporter_2] [Arg_windows_exporter_3] [Arg_windows_exporter_4] "+
+		"[Arg_windows_exporter_5] [Arg_windows_exporter_6] [EXTRA_FLAGS]" {
+		t.Errorf("ServiceInstall.Arguments %q", args)
+	}
+
+	for i := 1; i <= 6; i++ {
+		name := fmt.Sprintf("SetArg_windows_exporter_%d", i)
+		if n, ok := seqOf[name]; !ok || n <= seqOf["InstallFiles"] || n >= seqOf["InstallServices"] {
+			t.Errorf("%s at %d, want between InstallFiles and InstallServices", name, n)
 		}
 	}
 

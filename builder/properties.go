@@ -114,7 +114,7 @@ const (
 // upgrade writes the Upgrade rows and schedules the upgrade actions.
 func (b *build) upgrade() error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	upg := b.cfg.Upgrade
-	if upg == nil {
+	if upg == nil || upg.Disabled {
 		return nil
 	}
 

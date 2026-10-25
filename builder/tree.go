@@ -661,7 +661,7 @@ func (b *build) features() error {
 		tbl.Add(feature.ID, parentID, nullable(feature.Title), nullable(feature.Description), disp, *feature.Level, nullable(feature.Directory), attrs)
 
 		for _, c := range feature.Components {
-			featureComps.Add(feature.ID, c)
+			featureComps.Add(feature.ID, c.ID)
 		}
 	})
 

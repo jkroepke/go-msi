@@ -45,26 +45,14 @@ product:
 package:
   platform: x64
 
-upgrade: {}
-
-directories:
-  - id: ProgramFiles64Folder
-    children:
-      - id: INSTALLDIR
-        name: Hello
-        configurable: true
-
-features:
-  - id: Main
-    title: Hello
-    components: [Hello]
-
 components:
-  - id: Hello
-    directory: INSTALLDIR
-    files:
+  - files:
       - source: hello.exe
 ```
+
+The file goes to `C:\Program Files\Hello`, which `INSTALLDIR=…` can change,
+and a newer version replaces an installed one. Every default can be spelled
+out; the [YAML schema](docs/design/yaml-schema.md) lists them.
 
 ```shell
 go-msi validate msi.yaml

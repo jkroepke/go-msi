@@ -201,7 +201,7 @@ func (b *build) writeServices(info *componentInfo) { //nolint:cyclop,gocognit //
 		}
 
 		b.table("ServiceInstall").Add(installID, svc.Name, nullable(svc.DisplayName), typ, start, errCtl, nil, deps,
-			nullable(svc.Account), nullable(svc.Password), nullable(svc.Arguments), comp.ID, nullable(svc.Description))
+			nullable(svc.Account), nullable(svc.Password), nullable(svc.Arguments.String()), comp.ID, nullable(svc.Description))
 
 		if svc.Password != "" {
 			for _, prop := range propertyRefs(svc.Password) {
