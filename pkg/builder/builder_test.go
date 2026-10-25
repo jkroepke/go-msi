@@ -112,6 +112,11 @@ func TestMinimal(t *testing.T) {
 		t.Fatal("no package written")
 	}
 
+	wantFile := builder.File{Key: "hello.exe", Name: "hello.exe", Source: "hello.exe", Component: "hello.exe", Version: "1.0.0.0", Language: "1033", Size: int64(len(exe)), Sequence: 1}
+	if len(res.Files) != 1 || res.Files[0] != wantFile {
+		t.Errorf("file %+v, want %+v", res.Files[0], wantFile)
+	}
+
 	file, err := cfb.Read(res.Package)
 	if err != nil {
 		t.Fatal(err)
