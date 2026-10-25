@@ -631,6 +631,10 @@ func (b *build) features() error {
 			parentID = parent.ID
 		}
 
+		// Display orders features in the selection tree: even values show a
+		// feature collapsed, odd values expanded and 0 hides it. Each feature
+		// takes the next even/odd pair so parity never depends on the
+		// display state of the features written before it.
 		display += 2
 
 		var disp any
@@ -643,8 +647,6 @@ func (b *build) features() error {
 		default:
 			disp = display
 		}
-
-		display++
 
 		attrs := 0
 

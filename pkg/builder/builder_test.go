@@ -419,3 +419,112 @@ func TestWindowsExporter(t *testing.T) {
 		t.Errorf("unexpected wizard diagnostic: %s", res.Diagnostics)
 	}
 }
+
+// TestFeatureDisplay checks the Feature.Display parity the selection tree
+// relies on: even values show a feature collapsed, odd values expanded and 0
+// hides it, whatever the display state of the features before it.
+func TestFeatureDisplay(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	src := `schema: go-msi/v1
+product:
+  name: Hello
+  manufacturer: Example
+  version: 1.0.0
+  upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301
+package:
+  platform: x64
+upgrade: {}
+directories:
+  - id: ProgramFiles64Folder
+    children:
+      - id: INSTALLDIR
+        name: Hello
+features:
+  - id: Collapsed
+    title: Collapsed
+    components: [Hello]
+    features:
+      - id: Expanded
+        title: Expanded
+        display: expanded
+        components: [Hello]
+      - id: Hidden
+        title: Hidden
+        display: hidden
+        components: [Hello]
+  - id: Expanded2
+    title: Expanded2
+    display: expanded
+    components: [Hello]
+  - id: Collapsed2
+    title: Collapsed2
+    components: [Hello]
+components:
+  - id: Hello
+    directory: INSTALLDIR
+    files:
+      - source: hello.exe
+`
+
+	if err := os.WriteFile(filepath.Join(dir, "msi.yaml"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(filepath.Join(dir, "msi.yaml"), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]int{
+		"Collapsed":  2,
+		"Expanded":   5,
+		"Hidden":     0,
+		"Expanded2":  9,
+		"Collapsed2": 10,
+	}
+
+	seen := map[int]bool{}
+
+	for _, row := range rows(t, database, "Feature") {
+		featureID := fmt.Sprint(row[0])
+
+		display, ok := row[4].(int)
+		if !ok {
+			t.Fatalf("%s: Display %v is not an int", featureID, row[4])
+		}
+
+		expected, ok := want[featureID]
+		if !ok {
+			t.Fatalf("unexpected feature %s", featureID)
+		}
+
+		delete(want, featureID)
+
+		if display != expected {
+			t.Errorf("%s: Display %d, want %d", featureID, display, expected)
+		}
+
+		if display != 0 && seen[display] {
+			t.Errorf("%s: Display %d is used twice", featureID, display)
+		}
+
+		seen[display] = true
+	}
+
+	for featureID := range want {
+		t.Errorf("feature %s is missing", featureID)
+	}
+}
