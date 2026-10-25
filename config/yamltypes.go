@@ -1,7 +1,9 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -215,6 +217,24 @@ type (
 	rawArgument   Argument
 )
 
+// publicTypeNames rewrites decoding errors that name the raw types above,
+// so that messages say config.Component, not config.rawComponent.
+func publicTypeNames(err error) error {
+	var typeErr *yaml.TypeError
+	if !errors.As(err, &typeErr) {
+		return err
+	}
+
+	out := &yaml.TypeError{Errors: make([]string, len(typeErr.Errors))}
+	for i, msg := range typeErr.Errors {
+		out.Errors[i] = rawTypeName.ReplaceAllString(msg, "config.$1")
+	}
+
+	return out
+}
+
+var rawTypeName = regexp.MustCompile(`config\.raw([A-Z]\w*)`)
+
 // UnmarshalYAML accepts a component id as a reference, which is how
 // features[].components names a component defined elsewhere.
 func (c *Component) UnmarshalYAML(unmarshal func(any) error) error {
@@ -225,7 +245,7 @@ func (c *Component) UnmarshalYAML(unmarshal func(any) error) error {
 		return nil
 	}
 
-	return unmarshal((*rawComponent)(c))
+	return publicTypeNames(unmarshal((*rawComponent)(c)))
 }
 
 // UnmarshalYAML accepts true for the standard policy and false for none.
@@ -237,7 +257,7 @@ func (u *Upgrade) UnmarshalYAML(unmarshal func(any) error) error {
 		return nil
 	}
 
-	return unmarshal((*rawUpgrade)(u))
+	return publicTypeNames(unmarshal((*rawUpgrade)(u)))
 }
 
 // UnmarshalYAML accepts the folder name alone.
@@ -249,7 +269,7 @@ func (d *InstallDir) UnmarshalYAML(unmarshal func(any) error) error {
 		return nil
 	}
 
-	return unmarshal((*rawInstallDir)(d))
+	return publicTypeNames(unmarshal((*rawInstallDir)(d)))
 }
 
 // UnmarshalYAML accepts a whole command line or a list of pieces.
@@ -280,5 +300,5 @@ func (a *Argument) UnmarshalYAML(unmarshal func(any) error) error {
 		return nil
 	}
 
-	return unmarshal((*rawArgument)(a))
+	return publicTypeNames(unmarshal((*rawArgument)(a)))
 }

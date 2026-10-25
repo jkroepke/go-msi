@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -30,6 +31,8 @@ func expandShorthands(cfg *Config) {
 	tree := newDirTree(cfg)
 	tree.installDir()
 
+	cfg.InstallDir.expanded = true
+
 	for _, comp := range cfg.Components {
 		comp.Directory = tree.resolve(comp.Directory)
 	}
@@ -50,12 +53,20 @@ func hoistFeatureComponents(cfg *Config) {
 		for i, feature := range features {
 			featurePath := fmt.Sprintf("%s[%d]", prefix, i)
 
-			for j, comp := range feature.Components {
+			for entry, comp := range feature.Components {
 				if comp.ref || comp.origin != "" {
 					continue
 				}
 
-				comp.origin = fmt.Sprintf("%s.components[%d]", featurePath, j)
+				// A Config built in Go refers to a component with an entry
+				// that carries nothing but the id.
+				if reflect.DeepEqual(*comp, Component{ID: comp.ID}) {
+					comp.ref = true
+
+					continue
+				}
+
+				comp.origin = fmt.Sprintf("%s.components[%d]", featurePath, entry)
 				cfg.Components = append(cfg.Components, comp)
 			}
 
@@ -64,6 +75,12 @@ func hoistFeatureComponents(cfg *Config) {
 	}
 
 	walk(cfg.Features, "features")
+}
+
+// ComponentRef returns a features[].components entry that refers to the
+// component with the given id, for a Config built in Go.
+func ComponentRef(id string) *Component {
+	return &Component{ID: id, ref: true}
 }
 
 // referenceFeatureComponents replaces each component defined inside a feature
@@ -141,8 +158,13 @@ func serviceArguments(cfg *Config) {
 		used[ca.ID] = true
 	}
 
-	for _, comp := range cfg.Components {
-		for _, svc := range comp.Services {
+	for c, comp := range cfg.Components {
+		compPath := fmt.Sprintf("components[%d]", c)
+		if comp.origin != "" {
+			compPath = comp.origin
+		}
+
+		for svcIndex, svc := range comp.Services {
 			conditional := 0
 
 			for i, arg := range svc.Arguments {
@@ -156,6 +178,7 @@ func serviceArguments(cfg *Config) {
 				property := "Arg_" + strings.TrimPrefix(action, "SetArg_")
 
 				cfg.CustomActions = append(cfg.CustomActions, &CustomAction{
+					origin:      fmt.Sprintf("%s.services[%d].arguments[%d]", compPath, svcIndex, i),
 					ID:          action,
 					SetProperty: &SetProperty{Name: property, Value: arg.Value},
 					Schedule: []Placement{{
@@ -264,9 +287,13 @@ func newDirTree(cfg *Config) *dirTree {
 	return tree
 }
 
-// installDir fills in the install dir's defaults and adds it to the tree
-// unless the directories define its id.
+// installDir fills in the install dir's defaults. A package without a
+// directory tree, or one that sets installDir, gets the node right away;
+// otherwise it is added when a component lands in it. The first expansion
+// decides, so that a second one adds nothing.
 func (t *dirTree) installDir() {
+	eager := !t.cfg.InstallDir.expanded && (len(t.cfg.Directories) == 0 || t.cfg.InstallDir != InstallDir{})
+
 	install := &t.cfg.InstallDir
 	perUser := t.cfg.Package.Scope == ScopePerUser
 
@@ -285,17 +312,42 @@ func (t *dirTree) installDir() {
 		}
 	}
 
-	names := splitPath(install.Name)
-	if t.byID[install.ID] != nil || !standardFolders[install.Parent] || len(names) == 0 {
-		return
+	if eager {
+		t.ensureInstallDir()
 	}
+}
+
+// ensureInstallDir returns the install dir's node, adding it unless the
+// directories define its id. It adds nothing for an invalid installDir,
+// which the validator reports.
+func (t *dirTree) ensureInstallDir() *Directory {
+	install := t.cfg.InstallDir
+	if dir := t.byID[install.ID]; dir != nil {
+		return dir
+	}
+
+	if !validInstallDir(install) {
+		return nil
+	}
+
+	names := splitPath(install.Name)
 
 	parent := t.top(install.Parent)
 	for _, name := range names[:len(names)-1] {
 		parent = t.child(parent, name, "")
 	}
 
-	t.child(parent, names[len(names)-1], install.ID).Configurable = true
+	dir := t.child(parent, names[len(names)-1], install.ID)
+	dir.Configurable = true
+
+	return dir
+}
+
+// validInstallDir reports whether the install dir can be generated: a public
+// id, a standard parent folder and a name.
+func validInstallDir(install InstallDir) bool {
+	return IsIdentifier(install.ID) && IsPublicProperty(install.ID) &&
+		standardFolders[install.Parent] && len(splitPath(install.Name)) > 0
 }
 
 // defaultInstallParent is Program Files for the package's bitness, or the
@@ -318,7 +370,9 @@ func defaultInstallParent(platform Platform, perUser bool) string {
 // "./" forces a path, for a folder name that looks like an id.
 func (t *dirTree) resolve(value string) string {
 	switch {
-	case value == "":
+	case value == "", value == t.cfg.InstallDir.ID:
+		t.ensureInstallDir()
+
 		return t.cfg.InstallDir.ID
 	case t.byID[value] != nil:
 		return value
@@ -328,9 +382,10 @@ func (t *dirTree) resolve(value string) string {
 		return value
 	}
 
-	// A single upper-case word is meant as an id. Leave it for the
-	// validator to report instead of creating a folder from a typo.
-	if IsIdentifier(value) && IsPublicProperty(value) {
+	// A single upper-case word is meant as an id, and one that differs from
+	// a known id only in case is a typo. Leave both for the validator to
+	// report instead of creating a folder.
+	if IsIdentifier(value) && (IsPublicProperty(value) || t.knownIgnoringCase(value)) {
 		return value
 	}
 
@@ -350,10 +405,26 @@ func (t *dirTree) resolve(value string) string {
 	return parent.ID
 }
 
+func (t *dirTree) knownIgnoringCase(value string) bool {
+	for known := range t.byID {
+		if strings.EqualFold(known, value) {
+			return true
+		}
+	}
+
+	for known := range standardFolders {
+		if strings.EqualFold(known, value) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // pathStart returns the node a folder path starts at and the names below it.
 func (t *dirTree) pathStart(names []string, forced bool) (*Directory, []string) {
 	if forced || len(names) == 0 {
-		return t.byID[t.cfg.InstallDir.ID], names
+		return t.ensureInstallDir(), names
 	}
 
 	if dir := t.byID[names[0]]; dir != nil {
@@ -364,7 +435,7 @@ func (t *dirTree) pathStart(names []string, forced bool) (*Directory, []string) 
 		return t.top(names[0]), names[1:]
 	}
 
-	return t.byID[t.cfg.InstallDir.ID], names
+	return t.ensureInstallDir(), names
 }
 
 // top returns the top-level node of a standard folder, adding it if needed.

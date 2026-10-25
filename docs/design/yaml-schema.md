@@ -179,12 +179,13 @@ way:
 
 | Short form | Expands to |
 |---|---|
-| no `installDir` | `INSTALLDIR`, configurable, named after the product, under `ProgramFiles64Folder` (`ProgramFilesFolder` on x86, `LocalAppDataFolder\Programs` for `perUser`). Not added when `directories` already defines that id. |
+| no `installDir` | `INSTALLDIR`, configurable, named after the product, under `ProgramFiles64Folder` (`ProgramFilesFolder` on x86, `LocalAppDataFolder\Programs` for `perUser`). Not added when `directories` already defines that id (section 4.4). |
 | component without `directory` | the install dir |
 | `directory: bin` or `directory: CommonAppDataFolder/Hello/logs` | directory nodes for the path, with generated ids such as `INSTALLDIR_bin` (section 4.4) |
 | component without `id` | an id from the key file's name (`hello.exe`), else the first service name, else the directory id |
 | no `features` | one feature `MainFeature`, titled with the product name, holding every component, with the install dir as its configurable directory |
 | a component written inside `features[].components` | the same component in `components`, referenced by id |
+| `features[].components` entry that is only an id | a reference to that component; in Go, `config.ComponentRef(id)` |
 | no `upgrade` | the standard policy of section 4.3, as `upgrade: {}`; `upgrade: false` writes no Upgrade rows |
 | a service argument with a `condition` | a private property set by an immediate `setProperty` action before InstallServices under that condition (section 4.6) |
 
@@ -286,21 +287,31 @@ installDir:
   parent: ProgramFiles64Folder        # a standard folder, default by platform and scope
 ```
 
-The install dir is always configurable, so `msiexec /i … INSTALLDIR=D:\App`
-and the wizard's Browse button can move it. Its id must be upper case.
+The generated install dir is configurable, so `msiexec /i … INSTALLDIR=D:\App`
+and the wizard's Browse button can move it, and its id must be upper case.
+When `directories` defines the install dir's id, that node is used as
+written, including its `configurable` setting. A package with a directory
+tree and no `installDir` key gets the install dir only when a component
+lands in it, so an explicit tree never gains an unused folder.
+
+A per-user install dir lies in the user profile. Windows Installer wants an
+HKCU registry value as the key path of such components (ICE38) and
+RemoveFolder rows for their folders (ICE64); go-msi does not write either
+yet, and the validator warns about such components.
 
 A component's `directory` is a directory id, a standard folder, or a folder
 path. A path starts at its first segment when that is a directory id or a
 standard folder, and in the install dir otherwise; `./` forces the install
-dir. A single upper-case word is always an id, so a typo such as
-`INSTALDIR` fails validation instead of creating a folder. Folders a path
+dir. A single upper-case word is always an id, and so is a word that
+matches a known id or standard folder in another case, so typos such as
+`INSTALDIR` or `ProgramFiles64folder` fail validation instead of creating a
+folder. Folders a path
 names are added below their parent with ids from the parent id and the name
 (`INSTALLDIR_textfile_inputs`); a folder that already exists is reused.
 
 `directories` is the explicit tree, for directory ids that something else
 refers to or short names that must be pinned. Every node has an `id` (the
-Directory key and the property that holds its path) and a `name`. Every node has an `id` (the Directory key and
-the property that holds its path) and a `name`.
+Directory key and the property that holds its path) and a `name`.
 
 ```yaml
 directories:

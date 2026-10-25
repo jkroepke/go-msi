@@ -119,6 +119,9 @@ type InstallDir struct {
 	Name string `yaml:"name"`
 	// Parent is the standard folder the install dir is created in.
 	Parent string `yaml:"parent"`
+
+	// expanded is set by the first expandShorthands.
+	expanded bool
 }
 
 // Directory is a node of the install tree.
@@ -307,6 +310,10 @@ type CustomAction struct {
 	HideTarget   bool          `yaml:"hideTarget"`
 	Once         string        `yaml:"once"`
 	Schedule     []Placement   `yaml:"schedule"`
+
+	// origin is the YAML path of the service argument an action was
+	// generated from.
+	origin string
 }
 
 // SetProperty is a type 51 action.

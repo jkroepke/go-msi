@@ -594,8 +594,10 @@ func (b *build) checkSequences() { //nolint:cyclop // one pass over the format; 
 
 	seq := b.numbered[seqInstallExecute]
 
+	// Find returns 0 for an action that is not scheduled, as in a package
+	// without upgrade.
 	rep := sequence.Find(seq, "RemoveExistingProducts")
-	if rep < 0 {
+	if rep == 0 {
 		return
 	}
 

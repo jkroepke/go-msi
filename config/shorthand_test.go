@@ -1,6 +1,8 @@
 package config_test
 
 import (
+	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -280,15 +282,149 @@ func TestShorthandServiceArguments(t *testing.T) {
 func TestShorthandIdempotent(t *testing.T) {
 	t.Parallel()
 
+	docs := map[string]string{
+		"short": short + `features:
+  - id: Main
+    components:
+      - files: [{ source: svc.exe }]
+        services: [{ name: svc, arguments: [-a, { value: -b, condition: B }] }]
+      - { directory: data/logs, createFolder: true }
+`,
+		"per user":    short + "  scope: perUser\ncomponents:\n  - files: [{ source: hello.exe }]\n",
+		"upgrade off": short + "upgrade: false\ncomponents:\n  - files: [{ source: hello.exe }]\n",
+	}
+
 	for _, path := range []string{"../examples/minimal/msi.yaml", "../examples/windows_exporter/msi.yaml"} {
-		cfg := load(t, path, map[string]string{"VERSION": "1.0.0"})
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		once := *cfg
-		config.ApplyDefaults(cfg)
+		docs[path] = string(data)
+	}
 
-		if len(once.Directories) != len(cfg.Directories) || len(once.Components) != len(cfg.Components) ||
-			len(once.Features) != len(cfg.Features) || len(once.CustomActions) != len(cfg.CustomActions) {
-			t.Errorf("%s: a second ApplyDefaults changed the config", path)
+	vars := config.Options{Vars: map[string]string{"VERSION": "1.0.0"}}
+
+	for name, doc := range docs {
+		once, err := config.Parse([]byte(doc), vars)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+
+		twice, err := config.Parse([]byte(doc), vars)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+
+		config.ApplyDefaults(twice)
+
+		if !reflect.DeepEqual(once, twice) {
+			t.Errorf("%s: a second ApplyDefaults changed the config", name)
+		}
+	}
+}
+
+func TestShorthandGoReferences(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Parse([]byte(short+"components:\n  - { id: Foo, files: [{ source: foo.exe }] }\n"), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A Config changed in Go refers to components by id, with or without
+	// ComponentRef.
+	cfg.Features = []*config.Feature{{ID: "A", Components: []*config.Component{{ID: "Foo"}}},
+		{ID: "B", Components: []*config.Component{config.ComponentRef("Foo")}}}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(cfg.Components) != 1 {
+		t.Errorf("components = %d, want 1", len(cfg.Components))
+	}
+}
+
+func TestShorthandArgumentErrors(t *testing.T) {
+	t.Parallel()
+
+	svc := short + "components:\n  - files: [{ source: svc.exe }]\n    services: [{ name: svc, arguments: [%s] }]\n"
+
+	for arg, want := range map[string]string{
+		"{ value: x, condition: 'A ==' }": "components[0].services[0].arguments[0].condition",
+		"{ condition: A }":                "components[0].services[0].arguments[0].value",
+	} {
+		ds := validate(t, fmt.Sprintf(svc, arg))
+		if !find(ds, config.SeverityError, want, "") {
+			t.Errorf("%s: no error at %s: %v", arg, want, ds)
+		}
+	}
+}
+
+func TestShorthandInstallDirErrors(t *testing.T) {
+	t.Parallel()
+
+	comp := "components:\n  - files: [{ source: hello.exe }]\n"
+
+	for doc, want := range map[string]string{
+		short + "installDir: { id: appdir }\n" + comp:  "installDir.id",
+		short + "installDir: { parent: Foo }\n" + comp: "installDir.parent",
+	} {
+		diags := validate(t, doc)
+		if !find(diags, config.SeverityError, want, "") {
+			t.Errorf("no error at %s: %v", want, diags)
+		}
+
+		if errs := len(diags) - len(diags.Warnings()); errs != 1 {
+			t.Errorf("%s: want only the installDir error, got %v", want, diags)
+		}
+	}
+
+	// A per-user component in the profile gets the ICE38 warning.
+	ds := validate(t, short+"  scope: perUser\n"+comp)
+	if !find(ds, config.SeverityWarning, "components[0].directory", "ICE38") {
+		t.Errorf("no ICE38 warning: %v", ds)
+	}
+}
+
+func TestShorthandUnusedInstallDir(t *testing.T) {
+	t.Parallel()
+
+	// An explicit tree without the install dir's id gets no extra folder.
+	doc := strings.Replace(base, "INSTALLDIR", "APPDIR", 1) + strings.Replace(appComponent, "INSTALLDIR", "APPDIR", 1)
+	cfg := parseValid(t, doc)
+
+	if dirPath(cfg.Directories, config.DefaultInstallDirID) != nil {
+		t.Errorf("unused install dir added: %+v", cfg.Directories[0].Children)
+	}
+
+	// A case typo of a known id is reported, not turned into a folder.
+	ds := validate(t, base+"components:\n  - { id: App, directory: installdir, createFolder: true }\n")
+	if !find(ds, config.SeverityError, "components[0].directory", "is not defined") {
+		t.Errorf("case typo not reported: %v", ds)
+	}
+}
+
+func TestShorthandStrictDecoding(t *testing.T) {
+	t.Parallel()
+
+	for _, doc := range []string{
+		short + "features:\n  - id: F\n    components:\n      - bogus: 1\n",
+		short + "upgrade: { bogus: 1 }\n",
+		short + "upgrade: maybe\n",
+		short + "installDir: { bogus: 1 }\n",
+		short + "components:\n  - services: [{ name: s, arguments: [{ bogus: 1 }] }]\n",
+	} {
+		_, err := config.Parse([]byte(doc), config.Options{})
+		if err == nil {
+			t.Errorf("accepted:\n%s", doc)
+
+			continue
+		}
+
+		if strings.Contains(err.Error(), "config.raw") {
+			t.Errorf("internal type name in %v", err)
 		}
 	}
 }

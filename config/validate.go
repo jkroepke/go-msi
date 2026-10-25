@@ -454,9 +454,12 @@ func (v *validator) components(cfg *Config, r *refs) {
 		}
 
 		if v.required(p+".directory", c.Directory) {
-			if r.dirs[c.Directory] == nil {
+			switch {
+			case r.dirs[c.Directory] == nil && c.Directory == cfg.InstallDir.ID && !validInstallDir(cfg.InstallDir):
+				// Reported at installDir.
+			case r.dirs[c.Directory] == nil:
 				v.errorf(p+".directory", "directory %q is not defined", c.Directory)
-			} else {
+			default:
 				top := r.topFolder(c.Directory)
 				if cfg.Package.Platform.Is64Bit() && c.Bitness != "32" && folders32[top] {
 					v.warnf(p+".directory", "%s is the 32-bit folder on 64-bit Windows (ICE80); "+
@@ -465,6 +468,12 @@ func (v *validator) components(cfg *Config, r *refs) {
 
 				if perUser && perMachineFolders[top] {
 					v.errorf(p+".directory", "a per-user package cannot install under %s (ICE105)", top)
+				}
+
+				if profileFolders[top] && !userRegistryKeyPath(c, perUser) {
+					v.warnf(p+".directory", "a component in the user profile (%s) needs an HKCU registry value "+
+						"as key path (ICE38), and its folders need RemoveFolder rows (ICE64), which go-msi "+
+						"does not write yet", top)
 				}
 			}
 		}
@@ -564,6 +573,18 @@ func (v *validator) permissions(field string, perm *Permissions) bool {
 	}
 
 	return true
+}
+
+// userRegistryKeyPath reports whether the component's key path is a
+// registry value under HKCU (HKMU is HKCU in a per-user package).
+func userRegistryKeyPath(c *Component, perUser bool) bool {
+	for _, value := range c.Registry {
+		if value.ID == c.KeyPath && (value.Root == "HKCU" || perUser && value.Root == "HKMU") {
+			return true
+		}
+	}
+
+	return false
 }
 
 func keyFileByRef(c *Component, ref string) *File {
@@ -893,6 +914,12 @@ func (v *validator) customActions(cfg *Config, r *refs) {
 	for i, ca := range cfg.CustomActions {
 		p := fmt.Sprintf("customActions[%d]", i)
 
+		if ca.origin != "" {
+			v.generatedArgument(ca)
+
+			continue
+		}
+
 		if v.required(p+".id", ca.ID) {
 			if !IsIdentifier(ca.ID) || len(ca.ID) > MaxIdentifierLength {
 				v.errorf(p+".id", "%q is not an identifier", ca.ID)
@@ -1038,6 +1065,19 @@ func (v *validator) placement(p string, pl Placement, inScript bool, cfg *Config
 		if !hasCustomAction(cfg, anchor) && !hasDialog(cfg, anchor) {
 			v.errorf(p, "anchor %q is neither a standard action nor a custom action", anchor)
 		}
+	}
+}
+
+// generatedArgument checks the action made from a conditional service
+// argument at the argument's place in the file; the rest of the action is
+// generated and valid by construction.
+func (v *validator) generatedArgument(action *CustomAction) {
+	if action.SetProperty.Value == "" {
+		v.errorf(action.origin+".value", "required")
+	}
+
+	if err := condition.Check(action.Schedule[0].Condition); err != nil {
+		v.errorf(action.origin+".condition", "%v", err)
 	}
 }
 

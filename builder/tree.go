@@ -106,6 +106,11 @@ func (b *build) deriveProductCode() error {
 	hasher := sha256.New()
 	hasher.Write(yamlBytes)
 
+	// Disabled has no YAML key, so the marshaled config does not show it.
+	if b.cfg.Upgrade != nil && b.cfg.Upgrade.Disabled {
+		hasher.Write([]byte("upgrade:disabled"))
+	}
+
 	for _, f := range b.files {
 		sum := sha256.Sum256(f.Data)
 		hasher.Write([]byte(f.Key))

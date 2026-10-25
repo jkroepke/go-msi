@@ -267,6 +267,14 @@ func TestDeterministic(t *testing.T) {
 	if changed.PackageCode == first.PackageCode {
 		t.Error("package code did not change with the input")
 	}
+
+	// Turning the upgrade off changes the tables, so the product code too.
+	noUpgrade := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
+	noUpgrade.Upgrade.Disabled = true
+
+	if mustBuild(t, noUpgrade).ProductCode == first.ProductCode {
+		t.Error("product code did not change with upgrade: false")
+	}
 }
 
 func TestCFBVersion3(t *testing.T) {
