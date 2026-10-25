@@ -340,6 +340,27 @@ service must have the service executable as key file.
 
 Unversioned files get an `MsiFileHash` row automatically.
 
+**Permissions.** A file, registry value, service or the component's folder
+can carry a `permissions` block (`folderPermissions` on the component, which
+then needs a `CreateFolder` row: `createFolder: true` or a directory key
+path). It becomes one `MsiLockPermissionsEx` row; the authored DACL replaces
+the inherited one (specification section 6.2, SEC-01):
+
+```yaml
+files:
+  - source: windows_exporter.exe
+    permissions:
+      sddl: 'D:PAI(A;;FA;;;BA)(A;;FRFX;;;<BUILTIN\Users>)'
+      condition: LOCKDOWN=1      # optional; a false condition keeps the inherited ACL
+```
+
+The SDDL is checked at build time after each `<DOMAIN\account>` form, which
+the engine resolves (including `[%ENV]` inside it), is replaced by a
+placeholder SID. `[Property]` references are not expanded by the engine and
+are rejected. A deny ACE gets a warning, because SEC-01 saw a deny for
+`BUILTIN\Users` lock the installer out of its own file on uninstall. A
+`LockPermissions` custom table cannot coexist with it (ICE104, error 1941).
+
 **Registry values.**
 
 ```yaml

@@ -143,34 +143,44 @@ type Component struct {
 	Transitive        bool             `yaml:"transitive"`
 	KeyPath           string           `yaml:"keyPath"`
 	Bitness           string           `yaml:"bitness"`
+	FolderPermissions *Permissions     `yaml:"folderPermissions"`
+}
+
+// Permissions secures an installed object with an SDDL string through
+// MsiLockPermissionsEx (specification section 6.2).
+type Permissions struct {
+	SDDL      string `yaml:"sddl"`
+	Condition string `yaml:"condition"`
 }
 
 // File is a payload file.
 type File struct {
-	Source                     string `yaml:"source"`
-	Name                       string `yaml:"name"`
-	ID                         string `yaml:"id"`
-	Version                    string `yaml:"version"`
-	Language                   string `yaml:"language"`
-	AllowUnversionedExecutable bool   `yaml:"allowUnversionedExecutable"`
-	Vital                      *bool  `yaml:"vital"`
-	Checksum                   bool   `yaml:"checksum"`
-	ReadOnly                   bool   `yaml:"readOnly"`
-	Hidden                     bool   `yaml:"hidden"`
-	System                     bool   `yaml:"system"`
+	Source                     string       `yaml:"source"`
+	Name                       string       `yaml:"name"`
+	ID                         string       `yaml:"id"`
+	Version                    string       `yaml:"version"`
+	Language                   string       `yaml:"language"`
+	AllowUnversionedExecutable bool         `yaml:"allowUnversionedExecutable"`
+	Vital                      *bool        `yaml:"vital"`
+	Checksum                   bool         `yaml:"checksum"`
+	ReadOnly                   bool         `yaml:"readOnly"`
+	Hidden                     bool         `yaml:"hidden"`
+	System                     bool         `yaml:"system"`
+	Permissions                *Permissions `yaml:"permissions"`
 }
 
 // RegistryValue is a typed registry value or key.
 type RegistryValue struct {
-	ID                string     `yaml:"id"`
-	Root              string     `yaml:"root"`
-	Key               string     `yaml:"key"`
-	Name              string     `yaml:"name"`
-	Type              string     `yaml:"type"`
-	Value             StringList `yaml:"value"`
-	Append            bool       `yaml:"append"`
-	Prepend           bool       `yaml:"prepend"`
-	RemoveOnUninstall bool       `yaml:"removeOnUninstall"`
+	ID                string       `yaml:"id"`
+	Root              string       `yaml:"root"`
+	Key               string       `yaml:"key"`
+	Name              string       `yaml:"name"`
+	Type              string       `yaml:"type"`
+	Value             StringList   `yaml:"value"`
+	Append            bool         `yaml:"append"`
+	Prepend           bool         `yaml:"prepend"`
+	RemoveOnUninstall bool         `yaml:"removeOnUninstall"`
+	Permissions       *Permissions `yaml:"permissions"`
 }
 
 // Service is a Windows service installed from the component's key file.
@@ -190,6 +200,7 @@ type Service struct {
 	FailureActionsOnNonCrashFailures bool             `yaml:"failureActionsOnNonCrashFailures"`
 	Control                          ServiceControl   `yaml:"control"`
 	Recovery                         *ServiceRecovery `yaml:"recovery"`
+	Permissions                      *Permissions     `yaml:"permissions"`
 }
 
 // ServiceControl selects the ServiceControl events.

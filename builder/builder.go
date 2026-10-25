@@ -170,6 +170,7 @@ func (b *build) run(res *Result) error {
 		b.launchConditions,
 		b.customActions,
 		b.firewall,
+		b.permissions,
 		b.streams,
 		b.customTables,
 		b.ui,

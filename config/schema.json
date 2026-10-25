@@ -386,6 +386,9 @@
                 "system": {
                   "$ref": "#/$defs/bool",
                   "default": false
+                },
+                "permissions": {
+                  "$ref": "#/$defs/permissions"
                 }
               },
               "required": [
@@ -470,6 +473,9 @@
                 },
                 "removeOnUninstall": {
                   "$ref": "#/$defs/bool"
+                },
+                "permissions": {
+                  "$ref": "#/$defs/permissions"
                 }
               },
               "required": [
@@ -610,6 +616,9 @@
                     }
                   },
                   "additionalProperties": false
+                },
+                "permissions": {
+                  "$ref": "#/$defs/permissions"
                 }
               },
               "required": [
@@ -736,6 +745,10 @@
               }
             ],
             "default": "auto"
+          },
+          "folderPermissions": {
+            "$ref": "#/$defs/permissions",
+            "description": "Secures the component's directory; needs a CreateFolder row (createFolder: true or a directory key path)."
           }
         },
         "required": [
@@ -1509,6 +1522,23 @@
           "$ref": "#/$defs/var"
         }
       ]
+    },
+    "permissions": {
+      "type": "object",
+      "description": "An MsiLockPermissionsEx row: the SDDL replaces the inherited ACL of the object (SEC-01).",
+      "properties": {
+        "sddl": {
+          "type": "string",
+          "description": "SDDL text. <DOMAIN\\\\account> forms are resolved at install time; [Property] references are not."
+        },
+        "condition": {
+          "$ref": "#/$defs/condition"
+        }
+      },
+      "required": [
+        "sddl"
+      ],
+      "additionalProperties": false
     }
   }
 }

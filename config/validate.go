@@ -6,6 +6,8 @@ import (
 	"path"
 	"strconv"
 	"strings"
+
+	"github.com/jkroepke/go-msi/condition"
 )
 
 // Limits checked by Validate. Section references are to docs/spec/MSISPEC.md;
@@ -488,6 +490,20 @@ func (v *validator) components(cfg *Config, r *refs) {
 
 		for j, s := range c.Services {
 			v.service(fmt.Sprintf("%s.services[%d]", p, j), s, keyFile, perUser)
+			v.permissions(fmt.Sprintf("%s.services[%d].permissions", p, j), s.Permissions)
+		}
+
+		for j, f := range c.Files {
+			v.permissions(fmt.Sprintf("%s.files[%d].permissions", p, j), f.Permissions)
+		}
+
+		for j, r := range c.Registry {
+			v.permissions(fmt.Sprintf("%s.registry[%d].permissions", p, j), r.Permissions)
+		}
+
+		directoryKey := c.KeyPath == "directory" || c.KeyPath == "" && len(c.Files) == 0 && len(c.Registry) == 0
+		if v.permissions(p+".folderPermissions", c.FolderPermissions) && !c.CreateFolder && !directoryKey {
+			v.errorf(p+".folderPermissions", "the component creates no folder row; set createFolder: true")
 		}
 
 		for j, e := range c.EventLog {
@@ -504,6 +520,30 @@ func (v *validator) components(cfg *Config, r *refs) {
 			v.environment(fmt.Sprintf("%s.environment[%d]", p, j), e, perUser)
 		}
 	}
+}
+
+// permissions validates an SDDL block and reports whether one is set.
+func (v *validator) permissions(field string, perm *Permissions) bool {
+	if perm == nil {
+		return false
+	}
+
+	warnings, err := CheckSDDL(perm.SDDL)
+	if err != nil {
+		v.errorf(field+".sddl", "%v", err)
+	}
+
+	for _, warning := range warnings {
+		v.warnf(field+".sddl", "%s", warning)
+	}
+
+	if perm.Condition != "" {
+		if err := condition.Check(perm.Condition); err != nil {
+			v.errorf(field+".condition", "%v", err)
+		}
+	}
+
+	return true
 }
 
 func keyFileByRef(c *Component, ref string) *File {

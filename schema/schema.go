@@ -219,6 +219,14 @@ var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 		"HashPart3|i4||||||||Size of file in bytes (long integer).",
 		"HashPart4|i4||||||||Size of file in bytes (long integer).",
 	},
+	"MsiLockPermissionsEx": {
+		"MsiLockPermissionsEx|s72|K|Identifier||||||Primary key, non-localized token.",
+		"LockObject|s72||Identifier||||||Foreign key into Registry, File, CreateFolder, or ServiceInstall table.",
+		"Table|s32||Identifier|||||CreateFolder;File;Registry;ServiceInstall|Reference to another table name " +
+			"(only Registry, File, CreateFolder, and ServiceInstall).",
+		"SDDLText|s0||FormattedSDDLText||||||String to indicate permissions to be applied to the LockObject.",
+		"Condition|S255||Condition||||||Expression which must evaluate to TRUE in order for this row to be applied.",
+	},
 	"MsiServiceConfig": {
 		"MsiServiceConfig|s72|K|Identifier||||||Primary key, non-localized token.",
 		"Name|s255||Formatted||||||Name of a service.",
