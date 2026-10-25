@@ -38,8 +38,60 @@ jobs:
       - name: go build
         run: go build ./...
 
+      # The full ICE suite (darice.cub) comes with MsiVal2 in the Windows SDK
+      # and may not be redistributed, so it is installed here. winget checks
+      # the SDK installer against the hash in its manifest; only the MSI
+      # tools feature is installed, and it ships the MsiVal2 package. The
+      # ICE runner needs nothing but darice.cub, so only that file is cached.
+      - name: Cache the ICE suite
+        if: runner.os == 'Windows'
+        id: ice-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: C:\ice
+          key: ice-Microsoft.WindowsSDK.10.0.28000-10.0.28000.2526-v1
+
+      - name: Install the ICE suite
+        if: runner.os == 'Windows' && steps.ice-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Pin the manifest version and keep it in step with the cache key
+          # above. The same manifest has still installed cubs with different
+          # hashes (VAL-01 log).
+          winget install --id Microsoft.WindowsSDK.10.0.28000 --version 10.0.28000.2526 --exact `
+            --silent --disable-interactivity --accept-package-agreements --accept-source-agreements `
+            --override '/features OptionId.MSIInstallTools /quiet /norestart'
+          # 0x8A150061 (-1978335135): the pinned version is already installed.
+          # The MsiVal2 search below still fails loudly if its feature is missing.
+          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne -1978335135) { throw "winget exited with $LASTEXITCODE" }
+          # The runner ends a pwsh step with exit $LASTEXITCODE.
+          $global:LASTEXITCODE = 0
+          $kits = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10'
+          # Prefer the pinned SDK's copy of the MsiVal2 package.
+          $msi = Get-ChildItem -Path $kits -Recurse -Filter 'MsiVal2-x86_en-us.msi' |
+            Sort-Object { $_.FullName -notlike '*28000*' } | Select-Object -First 1
+          if (-not $msi) { throw "no MsiVal2-x86_en-us.msi under $kits" }
+          Get-FileHash $msi.FullName -Algorithm SHA256 | Format-List
+          $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$($msi.FullName)`" /qn /norestart"
+          if ($p.ExitCode -ne 0) { throw "MsiVal2 install exited with $($p.ExitCode)" }
+          New-Item -ItemType Directory -Force C:\ice | Out-Null
+          Copy-Item (Join-Path ${env:ProgramFiles(x86)} 'MsiVal2\darice.cub') C:\ice\darice.cub
+
+      - name: Use the ICE suite
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path C:\ice\darice.cub)) { throw 'C:\ice\darice.cub is missing' }
+          # The same pinned manifest has given cubs with different hashes, so
+          # the hash is logged for the record but not enforced (VAL-01 log).
+          Get-FileHash C:\ice\darice.cub -Algorithm SHA256 | Format-List
+          'GO_MSI_ICE_CUB=C:\ice\darice.cub' >> $env:GITHUB_ENV
+          'GO_MSI_ICE_REQUIRED=1' >> $env:GITHUB_ENV
+
       # Windows runs the native tests too: they open the built packages with
-      # msi.dll and install them with msiexec. They are skipped with -short.
+      # msi.dll, run the ICE suite and install them with msiexec. They are
+      # skipped with -short.
       - name: go test
         shell: bash
         run: go test ./... ${{ runner.os != 'Windows' && '-short' || '' }} -shuffle=on -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./...

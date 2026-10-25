@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // Stream name encoding of section 3: table streams carry a U+4840 prefix,
@@ -40,8 +41,8 @@ func alphaIndex(char rune) int {
 // EncodeStreamName encodes a decoded stream or table name. It fails when the
 // result exceeds 31 UTF-16 units, which is the engine's limit (DB-11).
 func EncodeStreamName(name string, table bool) (string, error) {
-	if name == "" {
-		return "", errors.New("msidb: empty stream name")
+	if err := checkDecodedName(name); err != nil {
+		return "", err
 	}
 
 	var out []uint16
@@ -84,6 +85,18 @@ func EncodeStreamName(name string, table bool) (string, error) {
 	return string(utf16.Decode(out)), nil
 }
 
+func checkDecodedName(name string) error {
+	if name == "" {
+		return errors.New("msidb: empty stream name")
+	}
+
+	if !utf8.ValidString(name) {
+		return fmt.Errorf("msidb: stream name %q is not valid UTF-8", name)
+	}
+
+	return nil
+}
+
 // DecodeStreamName decodes an encoded directory entry name.
 func DecodeStreamName(encoded string) (string, bool) {
 	units := utf16.Encode([]rune(encoded))
@@ -95,22 +108,23 @@ func DecodeStreamName(encoded string) (string, bool) {
 		units = units[1:]
 	}
 
-	var runes []rune
+	// Decode into UTF-16 units first, so that a surrogate pair copied
+	// through unchanged is joined again by utf16.Decode.
+	out := make([]uint16, 0, 2*len(units))
 
 	for _, unit := range units {
 		switch {
 		case unit >= pairBase && unit < singleBase:
 			v := unit - pairBase
-			runes = append(runes, rune(alphabet[v&0x3F]), rune(alphabet[(v>>6)&0x3F]))
+			out = append(out, uint16(alphabet[v&0x3F]), uint16(alphabet[(v>>6)&0x3F]))
 		case unit >= singleBase && unit < tablePrefix:
-			runes = append(runes, rune(alphabet[unit-singleBase]))
+			out = append(out, uint16(alphabet[unit-singleBase]))
 		default:
-			runes = append(runes, rune(unit))
+			out = append(out, unit)
 		}
 	}
 
-	// Surrogate pairs copied through come back as two runes; re-join them.
-	return string(utf16.Decode(utf16.Encode(runes))), table
+	return string(utf16.Decode(out)), table
 }
 
 // BinaryStreamName is the decoded name of the stream holding a binary cell:
