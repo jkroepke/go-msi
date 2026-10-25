@@ -582,17 +582,19 @@ func TestNativeExpandExtracts(t *testing.T) { //nolint:paralleltest // the FDI c
 				t.Fatal(err)
 			}
 
-			longest := 0
-			for _, f := range tc.files {
-				longest = max(longest, len(f.Name))
-			}
-
-			if len(t.TempDir())+len(`\out\`)+longest >= 260 {
-				t.Skip("the extracted path would exceed MAX_PATH; expand.exe needs long paths enabled for it")
-			}
-
 			got, err := expandExtract(t, raw)
 			if err != nil {
+				longest := 0
+				for _, f := range tc.files {
+					longest = max(longest, len(f.Name))
+				}
+
+				// A machine without long paths enabled cannot write a 255-byte name
+				// under the temporary directory; that is not a cabinet defect.
+				if len(t.TempDir())+len(`\out\`)+longest >= 260 {
+					t.Skipf("the extracted path exceeds MAX_PATH and expand.exe failed: %v", err)
+				}
+
 				t.Fatal(err)
 			}
 
