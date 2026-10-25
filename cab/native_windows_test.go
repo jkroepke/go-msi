@@ -5,13 +5,16 @@ package cab_test
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
+	"testing/fstest"
 	"time"
 	"unsafe"
 
@@ -424,6 +427,11 @@ func nativeCases() []nativeCase {
 		{name: "long-name", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
 			{Name: strings.Repeat("n", 255), Data: []byte("x"), Time: when},
 		}},
+		{name: "directories", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
+			{Name: `top.txt`, Data: []byte("top\r\n"), Time: when},
+			{Name: `sub\deep\nested.txt`, Data: text[:5000], Time: when},
+			{Name: `sub\other.txt`, Data: []byte("other\r\n"), Time: when},
+		}},
 	}
 
 	// Checksum tails: compressed sizes of 1, 2 and 3 bytes modulo 4.
@@ -497,8 +505,65 @@ func TestNativeFDIExtracts(t *testing.T) { //nolint:paralleltest // the FDI call
 					t.Errorf("file %d (%s): FDI reports attributes %#x, want %#x", i, want.Name, got.Attribs, wantAttr)
 				}
 			}
+
+			checkFSAgainstFDI(t, raw, got)
 		})
 	}
+}
+
+// checkFSAgainstFDI opens raw through cab.Open and checks that the fs.FS view
+// serves every file FDI extracted, under the slash-separated spelling of the
+// backslash name FDI reported, with the same bytes, size and time.
+func checkFSAgainstFDI(t *testing.T, raw []byte, extractedFiles []extracted) {
+	t.Helper()
+
+	fsys, err := cab.Open(raw)
+	if err != nil {
+		t.Fatalf("cab.Open: %v", err)
+	}
+
+	if err := fstest.TestFS(fsys, slashNames(extractedFiles)...); err != nil {
+		t.Errorf("fstest.TestFS: %v", err)
+	}
+
+	for _, file := range extractedFiles {
+		name := strings.ReplaceAll(file.Name, `\`, "/")
+
+		data, err := fs.ReadFile(fsys, name)
+		if err != nil {
+			t.Errorf("fs.ReadFile(%q): %v", name, err)
+
+			continue
+		}
+
+		if !bytes.Equal(data, file.Data) {
+			t.Errorf("%s: cab.Open serves %d bytes, FDI wrote %d; data differs at %d", name, len(data), len(file.Data), firstDiff(data, file.Data))
+		}
+
+		info, err := fs.Stat(fsys, name)
+		if err != nil {
+			t.Errorf("fs.Stat(%q): %v", name, err)
+
+			continue
+		}
+
+		if info.Size() != int64(len(file.Data)) {
+			t.Errorf("%s: Stat size %d, FDI wrote %d", name, info.Size(), len(file.Data))
+		}
+
+		if date, tm := cab.DOSTime(info.ModTime()); date != file.Date || tm != file.Time {
+			t.Errorf("%s: Stat time %v gives %#x %#x, FDI reported %#x %#x", name, info.ModTime(), date, tm, file.Date, file.Time)
+		}
+	}
+}
+
+func slashNames(files []extracted) []string {
+	names := make([]string, 0, len(files))
+	for _, file := range files {
+		names = append(names, strings.ReplaceAll(file.Name, `\`, "/"))
+	}
+
+	return names
 }
 
 func TestNativeExpandExtracts(t *testing.T) { //nolint:paralleltest // the FDI callbacks share one package state
@@ -523,7 +588,7 @@ func TestNativeExpandExtracts(t *testing.T) { //nolint:paralleltest // the FDI c
 			}
 
 			for _, want := range tc.files {
-				data, ok := got[want.Name]
+				data, ok := got[strings.ReplaceAll(want.Name, `\`, "/")]
 				if !ok && len(tc.files) == 1 && len(got) == 1 {
 					// expand.exe spells a UTF-8 flagged name through the ANSI code
 					// page; only the data is compared for it.
@@ -563,21 +628,30 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 	for _, comp := range []string{"MSZIP", "stored"} { //nolint:paralleltest // shared FDI state
 		t.Run(comp, func(t *testing.T) {
 			dir := t.TempDir()
-			inputs := map[string][]byte{"text.txt": text, "random.bin": random, "small.txt": []byte("small\r\n"), "empty.txt": nil}
+			inputs := map[string][]byte{
+				"text.txt": text, "random.bin": random, "small.txt": []byte("small\r\n"), "empty.txt": nil,
+				`sub\deep\nested.txt`: []byte("nested\r\n"),
+			}
 
 			var ddf strings.Builder
 
 			ddf.WriteString(".OPTION EXPLICIT\r\n.Set CabinetNameTemplate=out.cab\r\n.Set DiskDirectoryTemplate=" + dir + "\r\n")
+
 			if comp == "stored" {
 				// makecab knows no CompressionType "NONE"; Compress=off writes typeCompress 0.
 				ddf.WriteString(".Set Cabinet=on\r\n.Set Compress=off\r\n")
 			} else {
 				ddf.WriteString(".Set Cabinet=on\r\n.Set Compress=on\r\n.Set CompressionType=" + comp + "\r\n")
 			}
+
 			ddf.WriteString(".Set MaxDiskSize=CDROM\r\n.Set RptFileName=nul\r\n.Set InfFileName=nul\r\n.Set UniqueFiles=off\r\n")
 
-			for _, name := range []string{"text.txt", "empty.txt", "random.bin", "small.txt"} {
-				path := filepath.Join(dir, name)
+			for _, name := range []string{"text.txt", "empty.txt", "random.bin", `sub\deep\nested.txt`, "small.txt"} {
+				path := filepath.Join(dir, filepath.FromSlash(strings.ReplaceAll(name, `\`, "/")))
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+
 				if err := os.WriteFile(path, inputs[name], 0o600); err != nil {
 					t.Fatal(err)
 				}
@@ -628,12 +702,73 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 
 				// makecab records the local time and rounds an odd second up where
 				// DOSTime truncates, so allow one 2-second step either way.
-				st, _ := os.Stat(filepath.Join(dir, f.Name))
+				st, _ := os.Stat(filepath.Join(dir, filepath.FromSlash(strings.ReplaceAll(f.Name, `\`, "/"))))
 				local := st.ModTime().Local()
 				stamp := time.Date(local.Year(), local.Month(), local.Day(), local.Hour(), local.Minute(), local.Second(), 0, time.UTC)
 
 				if delta := f.Time.Sub(stamp); delta < -2*time.Second || delta > 2*time.Second {
 					t.Errorf("%s: read time %v, makecab should have written the local time %v", f.Name, f.Time, stamp)
+				}
+			}
+
+			// The fs.FS view of the makecab cabinet must match the source tree.
+			fsys, err := cab.Open(raw)
+			if err != nil {
+				t.Fatalf("cab.Open of a makecab cabinet: %v", err)
+			}
+
+			if err := fstest.TestFS(fsys, "text.txt", "sub/deep/nested.txt"); err != nil {
+				t.Errorf("fstest.TestFS: %v", err)
+			}
+
+			for name, want := range inputs {
+				slash := strings.ReplaceAll(name, `\`, "/")
+
+				data, err := fs.ReadFile(fsys, slash)
+				if err != nil {
+					t.Errorf("fs.ReadFile(%q): %v", slash, err)
+
+					continue
+				}
+
+				if !bytes.Equal(data, want) {
+					t.Errorf("%s: cab.Open serves %d bytes, want %d", slash, len(data), len(want))
+				}
+			}
+
+			// cab.Files of the source tree, written by this package, must extract
+			// through FDI under the same backslash names makecab used.
+			ours, err := cab.Files(os.DirFS(dir))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			ours = slices.DeleteFunc(ours, func(f cab.File) bool { return f.Name == "cab.ddf" || f.Name == "out.cab" })
+
+			raw, err = cab.Write(ours, cab.Options{Compression: cab.MSZIP})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			got, err := fdiExtract(t, raw)
+			if err != nil {
+				t.Fatalf("cabinet.dll on cab.Files output: %v", err)
+			}
+
+			if len(got) != len(inputs) {
+				t.Fatalf("FDI extracted %d files from the cab.Files cabinet, want %d", len(got), len(inputs))
+			}
+
+			for _, file := range got {
+				want, ok := inputs[file.Name]
+				if !ok {
+					t.Errorf("FDI reports %q, not a makecab name", file.Name)
+
+					continue
+				}
+
+				if !bytes.Equal(file.Data, want) {
+					t.Errorf("%s: FDI wrote %d bytes, want %d", file.Name, len(file.Data), len(want))
 				}
 			}
 		})
