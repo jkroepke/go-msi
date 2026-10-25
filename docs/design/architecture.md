@@ -270,15 +270,17 @@ Only the standard library `flag` package is used.
   the built package with `msi.dll` (`MsiOpenDatabaseW`, views over every table,
   `MsiGetSummaryInformationW`, `MsiRecordReadStream` on the cabinet) and
   install and uninstall the minimal example silently (`msiexec /i … /qn`,
-  verify the file, `/x`, verify removal). The install test needs elevation and
-  is skipped with `-short`.
+  verify the file, `/x`, verify removal). They also run the full ICE suite
+  on the examples through `internal/ice`, with the `darice.cub` that CI
+  installs from the Windows SDK (cached and checked by SHA-256). The install
+  test needs elevation; all of them are skipped with `-short`.
 - **Wine runner** (`ubuntu-latest`, `mise` installs Go; `apt` installs
   Wine): `wine msiexec /i minimal.msi /qn` as a black box, then check the file
   in the Wine prefix. `mise.toml` carries the Go version and the tasks
   (`test`, `test:wine`, `lint`) so the same commands run locally and in CI.
 - **Real experiments** on Joe's SERVER2025 dev box through Remote Control for
-  anything a runner cannot answer (services, upgrades, ICE through the
-  Windows SDK if present).
+  anything a runner cannot answer (services, upgrades, comparing the ICE
+  runner with `msival2.exe`).
 
 ## 3. Implementation steps
 

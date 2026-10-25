@@ -165,6 +165,8 @@ func merge(database, cubDB uint32) error {
 	case 0:
 		return nil
 	case errorFunctionFailed:
+		_ = lastError() // read the expected conflict record so a later failure doesn't show it
+
 		return execute(database, "DROP TABLE `_MergeErrors`")
 	default:
 		return fmt.Errorf("ice: MsiDatabaseMergeW: error %d", ret)

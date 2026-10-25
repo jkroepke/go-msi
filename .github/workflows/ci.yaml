@@ -67,6 +67,8 @@ jobs:
           # The runner ends a pwsh step with exit $LASTEXITCODE.
           $global:LASTEXITCODE = 0
           $kits = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10'
+          # Another SDK's MsiVal2 would give a different cub, which the hash
+          # check in the next step rejects.
           $msi = Get-ChildItem -Path $kits -Recurse -Filter 'MsiVal2-x86_en-us.msi' | Select-Object -First 1
           if (-not $msi) { throw "no MsiVal2-x86_en-us.msi under $kits" }
           $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$($msi.FullName)`" /qn /norestart"
