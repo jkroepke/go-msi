@@ -631,4 +631,5 @@ actions, and a top-level file harvester. A future `schema: go-msi/v2` can add
 them without changing the meaning of a v1 file.
 
 Patches, transforms, merge modules and bundles are out of scope for good
-(see the README and [architecture.md](architecture.md)).
+(see [Out of scope](../../README.md#out-of-scope) and
+[architecture.md](architecture.md)).
