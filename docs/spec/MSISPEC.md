@@ -28,6 +28,7 @@ As of 2026-10-25.
 - [16. Independent implementation comparison](#16-independent-implementation-comparison)
 - [17. The engine without custom-action code](#17-the-engine-without-custom-action-code)
 - [18. Reference chapters](#18-reference-chapters)
+- [19. Microsoft documentation audit](#19-microsoft-documentation-audit)
 - [Appendix B. Pitfalls and checks](#appendix-b-pitfalls-and-checks)
 - [Appendix C. Windows validation test matrix](#appendix-c-windows-validation-test-matrix)
 
@@ -44,7 +45,8 @@ This is a language- and tool-independent reference for reading, writing, validat
 
 ### Evidence terminology
 
-- **Normative:** grounded in a named Microsoft specification or documented Windows Installer API contract.
+- **Normative:** grounded in a published Microsoft file-format specification ([MS-CFB], [MS-OLEPS], MS-CAB) or in a documented Windows Installer API contract that an Appendix C case or a section 14 experiment reproduced on Windows. A Windows Installer documentation page alone does not make a statement Normative.
+- **Documented (unverified):** stated by Microsoft's documentation but not reproduced. Microsoft's pages are not assumed correct: several documented statements have already been contradicted on Windows (SUM-02, SUM-03, DB-05, DB-07, RUN-08, RUN-13, RUN-17). A documented statement is a hypothesis for Appendix C, not a fact; an implementation MUST NOT present it as verified behaviour or let a conformance claim depend on it until a case confirms it.
 - **Observed (Windows):** reproduced with the native Windows Installer API, installer runtime or analyzed binary behavior. The Appendix C runs are recorded in [MSISPEC-RESULTS.md](MSISPEC-RESULTS.md).
 - **Observed (WiX / msitools):** reproduced for a named version of that producer or reader; not a universal MSI requirement.
 - **Reported:** described by a third party (an issue, a log, a toolchain's documented behaviour or another project's published conformance results) but not independently reproduced; such facts carry **(reported)**.
@@ -444,7 +446,7 @@ Validators (ICE03, ICE06, ICE32) read `_Validation`, the installer does not, and
 
 - Write one row per column of every table present, including its own ten, and none for absent columns (ICE06). Toolchain packages add two rows for the pseudo-table `_SummaryInformation` (observed).
 - `Nullable` is `Y` or `N`; `KeyTable` may name several tables, separated by `;`. `KeyColumn` is 1-based (1..32). `Category` is null for integers and `Binary` for streams.
-- The Set of `_Validation.Category` MUST be the toolchain's 26 names. They include `DefaultDir`, `FormattedSDDLText`, `Integer`, `DoubleInteger` and `TimeDate`; Microsoft's 23-name list has `KeyFormatted` and `URL` instead.
+- The Set of `_Validation.Category` MUST be the toolchain's 26 names. They include `DefaultDir`, `FormattedSDDLText`, `Integer`, `DoubleInteger` and `TimeDate`; Microsoft's current [Column Data Types](https://learn.microsoft.com/en-us/windows/win32/msi/column-data-types) page also lists 26 categories but a different set: it has neither `KeyFormatted` nor `URL` (section 19.4); where those two names come from is unverified.
 - `schema/tables.json` (`formatVersion` 1) holds the 97 non-UI tables and their 445 columns; `schema/ui-tables.json` holds the 14 UI tables in the same format.
 - Each column lists `name`, `type`, `primaryKey`, `description` and its exact `_Validation` values (`category`, `minValue`, `maxValue`, `keyTable`, `keyColumn`, `set`). `"verified"` and `"unverified"` flags mark confidence.
 - System tables (`_Tables`, `_Columns`, `_Streams`, `_Storages`) are in neither file, and they are synthesized by the database storage layer.
@@ -453,6 +455,7 @@ Validators (ICE03, ICE06, ICE32) read `_Validation`, the installer does not, and
 
 | Category | Rule |
 |---|---|
+| `Identifier` | Documented (unverified): ASCII letters, digits, `_` and `.`, starting with a letter or `_` (section 19.4). Whether the engine rejects other keys is untested. |
 | `Formatted` | Expanded at runtime: `[P]`, `[%ENV]`, `[#file]`, `[!file]`, `[$comp]`, `[\x]`, `[~]`, `{…}` (§8.9). |
 | `Condition` | Boolean expression (§8.8). Null or empty means true. Not formatted: properties are bare names. |
 | `Filename` | `short` or `short\|long`; the 8.3 short name is always required. No `\ / ? \| > < : * "`. Short names also exclude `+ , ; = [ ]` and space. |
@@ -511,7 +514,7 @@ The internal UI is pure data: UI-sequence rows open dialogs, dialogs hold contro
 - A control event that sets a property clears it with the argument `{}` (reported). It is the only way a dialog can unset a property.
 - On a dialog with TrackDiskSpace, a Text control whose text is exactly `[Property]` and not FormatSize needs a trailing space; WiX appends one, calling it a Windows Installer quirk (reported). Emit the space in that case.
 - A package with no components never gets `CostingComplete` set, so a "please wait for costing" page waits forever (reported, WiX issue 1790). Packages without components SHOULD skip that page or get a dummy component.
-- The Restart Manager page (`MsiRMFilesInUse`) is a dialog with a ListBox bound to `FileInUseProcess`, a radio group on a property, and an OK button that publishes `RMShutdownAndRestart` with argument `0` under the condition that the property says so, then `EndDialog Return` (reported). It is shown when the engine finds files in use and `MSIRESTARTMANAGERCONTROL` has not disabled Restart Manager.
+- The Restart Manager page (`MsiRMFilesInUse`) is a dialog with a ListBox bound to `FileInUseProcess`, a radio group on a property, and an OK button that publishes `RmShutdownAndRestart` with argument `0` under the condition that the property says so, then `EndDialog Return` (reported). It is shown when the engine finds files in use and `MSIRESTARTMANAGERCONTROL` has not disabled Restart Manager.
 - A style tag MUST start the text; otherwise `DefaultUIFont` applies. ScrollableText holds raw RTF and is never formatted.
 - Dialog bits: Visible 1, Modal 2, Minimize 4, SysModal 8, KeepModeless 16, TrackDiskSpace 32. Then UseCustomPalette 64, RTLRO 128, RightAligned 256, LeftScroll 512, Error 65536 (mask 0x000103FF). Seen values: 7 and 3 for pages, 5 for progress, 23 for files in use, 39 for feature selection, 65543 for errors (observed).
 - Control bits: Visible 1, Enabled 2, Sunken 4, Indirect 8, Integer 16, RTLRO 32, RightAligned 64, LeftScroll 128. Bits from 0x10000 up differ per type, such as NoPrefix 0x20000 on Text.
@@ -558,9 +561,11 @@ The error dialog needs the Error bit and a Text control `ErrorText` as `Control_
 | ICE34, ICE44 | Radio groups have rows and a valid default; dialog-event arguments name existing dialogs |
 | ICE79, ICE95, ICE103 | Conditions name existing features and components; billboards fit; `MsiPrint` needs a ScrollableText |
 
+The full control and control-event vocabulary is in section 19.3; the rules for icons and shortcuts (ICE36, ICE50, ICE59, ICE67, ICE90, ICE91) are summarised in section 19.5.
+
 ### Unverified (chapter 06)
 
-- The pixel size of installer units and the centering formula.
+- The pixel size of installer units (Microsoft defines the unit only as about 1/12 of the 10-point MS Sans Serif height, section 19.3) and the centering formula.
 - Whether the engine treats a blank `ControlEvent.Condition` as true (toolchains never emit one), and whether transitions wait for later events.
 - `Enable` vs `Enabled` as the attribute name (emit `Enabled`).
 - Case of `ALL` in feature events: toolchain packages use `All` (observed); emit `ALL`.
@@ -643,7 +648,7 @@ Component behaviour (reported):
 - A first install selects a feature when 0 < Level ≤ `INSTALLLEVEL` (default 1); Level 0 disables it, even against `ADDLOCAL=ALL`. The Condition table changes Level, unless `Preselected` is 1.
 - Attributes: FavorLocal 0, FavorSource 1, FollowParent 2, FavorAdvertise 4, DisallowAdvertise 8, UIDisallowAbsent 16, NoUnsupportedAdvertise 32. Reject 4+8, 32+8 and 2+1.
 - Requests apply in the order `ADDLOCAL`, `REMOVE`, `ADDSOURCE`, `ADDDEFAULT`, `REINSTALL`, `ADVERTISE`, `COMPADD*`, `FILEADD*`. Any of them sets `Preselected`; never author them in the Property table.
-- Limits: key ≤ 38 characters, depth ≤ 16, 1600 components per feature on legacy systems. Only warn: real packages exceed it (observed). WiX refuses a package with more than 65536 components or a feature deeper than 16 (reported).
+- Limits: key ≤ 38 characters (ICE101, section 19.1), depth ≤ 16, 1600 components per feature on legacy systems. Only warn: real packages exceed it (observed). WiX refuses a package with more than 65536 components or a feature deeper than 16 (reported).
 
 How CostFinalize turns requests into states (reported):
 
@@ -683,7 +688,7 @@ The per-file decision for the common cases (reported):
 |---|---|
 | Public | No lower-case letter. Settable on the command line; passed from client to server. |
 | Private | Has a lower-case letter. Command-line values are ignored; lost at the UI→execute hand-off. |
-| Secure | Public and in `SecureCustomProperties` or the default 28-name list. Only these pass in managed or elevated non-admin installs. |
+| Secure | Public and in `SecureCustomProperties` or the default 28-name list (section 19.2). Only these pass in managed or elevated non-admin installs. |
 | Hidden | Listed in `MsiHiddenProperties`; values are not logged. |
 
 Precedence, high to low: OS-set values, command line, AdminProperties, transforms, Property table. Values are never empty and never formatted. Required: `ProductCode`, `ProductLanguage` (listed in Template), `Manufacturer`, `ProductName` (≤ 63 characters), `ProductVersion`.
@@ -966,6 +971,7 @@ Reference validation checks (profile-specific; chapter 08 §5.5, §5.10):
 - **Upgrades:** `Upgrade.ActionProperty` is upper case, unique, not in `Property` and listed in `SecureCustomProperties`; a package never removes itself (ICE61). REP windows (ICE63).
 - **Platform:** 64-bit components or script actions need an `x64`, `Arm64` or `Intel64` template. The reference profile uses PID 14 ≥ 200 for x64 and Intel64 and ≥ 500 for Arm64; ICE80 itself accepts 150 for Intel64.
 - **Properties:** `Property` defines none of the 11 command-line properties such as `ADDLOCAL`, `REMOVE`, `REINSTALL` (ICE87).
+- **Remaining rules:** section 19.5 lists the ICEs not cited here or in section 7.5, with their documented verdicts.
 - **SHOULD:** one filename per directory across components (ICE30); HKCU key paths for per-user components and non-advertised shortcuts (ICE38, 43); no `Directory` key equal to a reserved property (ICE99). UI ICEs: chapter 06; full list: chapter 08 §7.
 
 **Unverified (chapter 08):**
@@ -1036,7 +1042,7 @@ Full detail: chapter 09 §9.2–§9.19.
 - Properties: `ErrorDialog`, `DefaultUIFont`, `WixUIRMOption=UseRM` (observed), `ARPNOMODIFY=1` without feature selection (observed). The editable folder property (WiX: `WIXUI_INSTALLDIR`) names a public directory key.
 - No DLLs: path checks use `SetTargetPath` then `CheckTargetPath`; printing uses `MsiPrint`. Dialog layout and text are package-specific; keys reuse WiX names (`WelcomeDlg`, `InstallDirDlg`, `Next`, `Back`).
 - WiX utility features done natively: event-log sources as `Registry` rows, `.url` files as `IniFile` rows, SDDL via `MsiLockPermissionsEx`, service settings via `MsiServiceConfig`. WiX's type-65 environment-broadcast action (observed) is not needed.
-- `MsiServiceConfig` works for delayed auto start (ConfigType 3) and the failure-actions flag (4), with `MsiConfigureServices` at 5850, condition `VersionNT>=600` (reported, Windows Server 2025). `MsiServiceConfigFailureActions` with a restart action failed there with error 1939 (Win32 error 5) and rolled back (reported). WiX's tracker records the same: the restart and reboot actions of that table do not work, Microsoft's own documentation says the feature "is not working as expected", WiX warns about it at build time, and WiX's answer is a custom-action DLL calling `ChangeServiceConfig2` with the shutdown privilege enabled (reported, WiX issue 5964). Failure actions therefore use a deferred, no-impersonate EXE action running `[SystemFolder]sc.exe failure …` (section 17.3). In that table a NULL `RebootMessage` or `Command` is written as `[~]`, which means "leave unchanged" (reported).
+- `MsiServiceConfig` works for delayed auto start (ConfigType 3) and the failure-actions flag (4), with `MsiConfigureServices` at 5850, condition `VersionNT>=600` (observed, RUN-05). `MsiServiceConfigFailureActions` with a restart action failed there with error 1939 (Win32 error 5) and rolled back (reported). WiX's tracker records the same: the restart and reboot actions of that table do not work, Microsoft's own documentation says the feature "is not working as expected", WiX warns about it at build time, and WiX's answer is a custom-action DLL calling `ChangeServiceConfig2` with the shutdown privilege enabled (reported, WiX issue 5964). Failure actions therefore use a deferred, no-impersonate EXE action running `[SystemFolder]sc.exe failure …` (section 17.3). In that table a NULL `RebootMessage` or `Command` is written as `[~]`, which means "leave unchanged" (reported); Microsoft documents the opposite, `""` unchanged and `[~]` delete (section 19.1, RUN-20).
 - Event-log source: under `HKLM\SYSTEM\CurrentControlSet\Services\EventLog\<Log>\<Source>`, write `EventMessageFile`, optional `CategoryMessageFile` with `CategoryCount` and `ParameterMessageFile` (expandable strings, count `#n`), and `TypesSupported` (`#n`). `Security` is not a valid log.
 
 **Unverified (chapter 09):**
@@ -1540,13 +1546,13 @@ Windows Installer does most of what a package needs from its own tables. This se
 | INI files, `.url` files | `IniFile`, `RemoveIniFile` | An internet shortcut is an INI file with `[InternetShortcut]` / `URL=`; WiX creates them through a DLL, `IniFile` rows do the same |
 | Environment | `Environment` | WiX does not rely on the engine's own `WM_SETTINGCHANGE` broadcast and sends another from a custom action "best effort" (reported); experiment W16 |
 | Shortcuts | `Shortcut`, `MsiShortcutProperty`, `Icon` | Advertised shortcuts need a file key path (ICE19) |
-| Services | `ServiceInstall`, `ServiceControl`, `MsiServiceConfig` (delayed start, SID type, pre-shutdown, failure flag) | `MsiServiceConfigFailureActions` restart and reboot actions do not work (10.3): `sc.exe failure` instead (17.3) |
+| Services | `ServiceInstall`, `ServiceControl`, `MsiServiceConfig` (delayed start, failure flag, SID type, required privileges, pre-shutdown: section 19.1) | `MsiServiceConfigFailureActions` restart and reboot actions do not work (10.3): `sc.exe failure` instead (17.3) |
 | Permissions | `LockPermissions`, `MsiLockPermissionsEx` (SDDL, 5.0) | WiX's `SecureObjects` DLL exists for inheritance flags and domain lookups the tables cannot express |
 | COM, file types, MIME, type libraries, fonts, ODBC, GAC | `Class`, `ProgId`, `Extension`, `Verb`, `MIME`, `TypeLib`, `Font`, `ODBC*`, `MsiAssembly*` | All driven by standard actions (9.3) |
 | Searches and conditions | `AppSearch` with the locator tables, `LaunchCondition`, `Condition` (feature levels) | OS-file versions lie on Windows 10+ (8.6) |
 | Upgrades | `Upgrade`, `FindRelatedProducts`, `MigrateFeatureStates`, `RemoveExistingProducts` | REP window rules (9.2); a 259 return ends an install successfully when a newer version exists (8.11) |
 | Scope, folders, UI | `ALLUSERS`, `MSIINSTALLPERUSER`, `Privileged`, type-51 actions, control events, `SetTargetPath`/`CheckTargetPath` | Per-user rollback gap (8.2); costing never completes without components (7.2) |
-| Files in use, reboot | Restart Manager dialog and `RMShutdownAndRestart`; `ScheduleReboot`, `ForceReboot`, `REBOOT` | A custom action asks for a reboot with `MsiSetMode(REBOOTATEND)` (8.11) |
+| Files in use, reboot | Restart Manager dialog and `RmShutdownAndRestart`; `ScheduleReboot`, `ForceReboot`, `REBOOT` | A custom action asks for a reboot with `MsiSetMode(REBOOTATEND)` (8.11) |
 | Running a program | Type 2, 18, 34 and 50 EXE actions | The engine shows the program's console window and keeps none of its output; WiX's `QuietExec` DLL runs it hidden and copies the output into the log (reported). Without a DLL, `cmd.exe /c … >> "[TempFolder]name.log"` keeps the output but not the window |
 | Logging, progress, cancel | `ActionText`, `Error`, progress records from actions, `MsiProcessMessage` return codes | Explicit-progress protocol in 8.11 |
 
@@ -1623,6 +1629,194 @@ The detailed chapters and schema files referred to above are not contained in th
 | 11 | MSI Authenticode signing |
 | 12 | Conformance fixtures and implementation comparison |
 | Appendix A | Reproducible test vectors |
+
+## 19. Microsoft documentation audit
+
+On 2026-10-25 the [Windows Installer portal](https://learn.microsoft.com/en-us/windows/win32/msi/windows-installer-portal) and the [Windows Installer Guide](https://learn.microsoft.com/en-us/windows/win32/msi/windows-installer-guide) on Microsoft Learn were read against sections 4–9 and 17 with a producer in mind: a tool that writes packages and never runs them. This chapter records what the earlier sections leave out or state differently. Every item here is **Documented (unverified)** in the sense of section "Evidence terminology" unless it names an Appendix C case: it restates Microsoft's pages, nothing in it was reproduced on Windows, and Microsoft's pages are not assumed correct (SUM-02 already contradicts the Template rule restated in 19.4). MUST, SHOULD and MAY in this chapter quote the documentation's own force; they bind an implementation only once the matching Appendix C case is **Confirmed**, and until then every statement is a test hypothesis that no conformance claim may depend on. Nothing in it comes from any non-Microsoft implementation or its documentation. Where an item changes an earlier section, that section carries a pointer to it.
+
+### 19.1 Windows Installer 5.0 and 4.5 features (documented, unverified)
+
+The portal's [Not Supported in Windows Installer 4.5](https://learn.microsoft.com/en-us/windows/win32/msi/not-supported-in-windows-installer-4-5) and [Not Supported in Windows Installer 4.0](https://learn.microsoft.com/en-us/windows/win32/msi/not-supported-in-windows-installer-4-0) pages list every 5.0 and 4.5 feature. Sections 8.2, 8.13, 9.3, 10.3 and 17.1 already cover `MSIINSTALLPERUSER`, `MsiServiceConfig`, `MsiServiceConfigFailureActions`, `MsiShortcutProperty`, `MsiLockPermissionsEx`, `MsiPrint`, `FormattedSDDLText`, `MsiConfigureServices` and ICE105. The rest:
+
+| Feature | Since | Rule for a producer |
+|---|---|---|
+| `MSIFASTINSTALL` property | 5.0 | A bit sum in the `Property` table or on the command line: 1 no system restore point, 2 file costing only, 4 fewer progress messages; 0 is the default. Earlier engines ignore it. |
+| `MsiLaunchApp` control event | 5.0 | Published by a control; `Argument` is `[#filekey]` followed by space-separated parameters. A missing file or a failed launch is only logged, never shown. Typical use: an "launch application" CheckBox on the exit dialog whose property conditions the event, hidden during removal. ICE103 names it together with `MsiPrint`. |
+| `Hyperlink` control | 5.0 | `Control.Type` `Hyperlink`; `Text` is `<a href="https://…">label</a>`, opened in the default browser; Microsoft's page allows only web links. Attributes: Visible 1, Enabled 2, Sunken 4, Transparent 0x10000. It binds no property. It is created with `WS_TABSTOP`, so a producer SHOULD put it in the `Control_Next` ring (section 7.2) rather than treat it as static; whether a ring that leaves it out fails with 2834 is untested. On 4.5 and earlier the control type is unknown, so a package that uses it targets 5.0 (Page Count 500 by section 4's rule). |
+| `Bitmap` control with WIC formats | 5.0 | Microsoft documents Windows Imaging Component formats (PNG, TIFF, GIF, …) for `Bitmap` controls on Windows 8 / Server 2012 and later; earlier pages name only BMP and JPEG. A producer targeting earlier Windows SHOULD emit BMP or JPEG (unverified, RUN-22). |
+| ICE101 | 5.0 | Every `Feature.Feature` key is at most 38 characters (the limit section 8.5 states). |
+| ICE102 | 5.0 | Validates both service-configuration tables: `Event` is a sum of 1, 2, 4; `ConfigType` is 3–7; `Argument` fits the type (0/1 for 3 and 4, privilege constants for 6, `SERVICE_SID_TYPE_*` 0/1/3 for 5, positive or empty for 7); `Actions` and `DelayActions` are `[~]`-separated non-negative integers of equal count. Warnings: an empty pre-shutdown `Argument` means 180000 ms; an empty `ResetPeriod` means the failure count is never reset. |
+| ICE104 | 5.0 | `LockPermissions` and `MsiLockPermissionsEx` MUST NOT both exist (the engine fails with 1941, section 6.2); `LockObject` MUST exist in the named `Table`; `SDDLText` MUST look like `FormattedSDDLText`. The SDDL itself is not checked. |
+| `MsiEmbeddedUI` table | 4.5 | An external UI DLL shipped in the package: columns `MsiEmbeddedUI` (Identifier), `FileName` (Text, with extension, short or long, no `\|`), `Attributes` (1 the UI DLL, 2 also used at basic UI; 0 a resource file), `MessageFilter` (DoubleInteger, an `INSTALLLOGMODE_*` sum, required for the UI DLL and null otherwise), `Data` (Binary). Exactly one row carries attribute 1 (ICE100); `FileName` values are unique. `MSIDISABLEEEUI=1` on the command line disables it. |
+| `MsiEmbeddedChainer` table | 4.5 | Runs one EXE that installs further packages in one transaction: columns `MsiEmbeddedChainer` (Identifier), `Condition`, `CommandLine` (Formatted, appended to the transaction handle), `Source` (CustomSource: a `Binary`, `File` or `Property` key), `Type` of exactly 2, 18 or 50. At most one row's condition may be true at a time (ICE100 warns on several rows). Fails on Windows Server 2008 R2 with the Remote Desktop Services role. `MsiPackageCertificate` lists the certificates of the chained packages (ICE81). |
+| Component attributes 1024, 2048 | 4.5 | `UninstallOnSupersedence` (1024) and `Shared` (2048); ICE92 warns when 1024 meets Permanent (16) and errors when a component without `ComponentId` is Permanent. `MSIUNINSTALLSUPERSEDEDCOMPONENTS=1` applies the 1024 behaviour to every component. |
+| `CustomAction.ExtendedType` | 4.5 | The column that holds `PatchUninstall` (0x8000, section 9.4). A package that writes the column needs Page Count ≥ 405; a 4.0 engine refuses the schema. |
+| `MsiPatchCertificate` table | 3.0 | Enables least-privilege (UAC) patching of a per-machine product; a producer that offers it writes the signer certificate into `MsiDigitalCertificate` and references it here. |
+
+Service configuration detail, from the [MsiServiceConfig](https://learn.microsoft.com/en-us/windows/win32/msi/msiserviceconfig-table) and [MsiServiceConfigFailureActions](https://learn.microsoft.com/en-us/windows/win32/msi/msiserviceconfigfailureactions-table) pages, which sections 8.13 and 10.3 only name:
+
+| `ConfigType` | Constant | `Argument` | Note |
+|---|---|---|---|
+| 3 | `SERVICE_CONFIG_DELAYED_AUTO_START` | `1` on, `0` off | Only for services with StartType 2 (auto); observed working, RUN-05 |
+| 4 | `SERVICE_CONFIG_FAILURE_ACTIONS_FLAG` | `0` run actions only on crash, `1` also on `SERVICE_STOPPED` with a non-zero exit code | Observed working, RUN-05 |
+| 5 | `SERVICE_CONFIG_SERVICE_SID_INFO` | `0` none, `1` unrestricted, `3` restricted | Untested |
+| 6 | `SERVICE_CONFIG_REQUIRED_PRIVILEGES_INFO` | privilege constants separated by `[~]` | Untested |
+| 7 | `SERVICE_CONFIG_PRESHUTDOWN_INFO` | milliseconds, or empty for 180000 | Untested |
+
+- `Event` is a sum of 1 (install), 2 (uninstall) and 4 (reinstall) of the component; other bits are ignored. Changes take effect at the next system start.
+- `MsiServiceConfigFailureActions` columns: `Name` (Formatted), `Event`, `ResetPeriod` (Integer, seconds; null = never reset), `RebootMessage` and `Command` (Formatted), `Actions` and `DelayActions` (Text) (`[~]`-separated, equal count; actions 0 none, 1 restart, 2 reboot, 3 run command; delays in ms), `Component_`. Microsoft documents `""` as "leave the current message or command unchanged" and `[~]` as "delete it"; section 10.3 reports `[~]` as "leave unchanged" from the reference toolchain's output. The two readings conflict and neither is tested (RUN-20); the restart and reboot actions of this table failed with 1939 in RUN-05 regardless.
+- `MsiLockPermissionsEx` columns: `MsiLockPermissionsEx` (Text), `LockObject` (Identifier), `Table` (Text, one of `File`, `Registry`, `CreateFolder`, `ServiceInstall`), `SDDLText` (FormattedSDDLText; Microsoft notes that it does not support private or public properties), `Condition`. Two rows with the same object and two true conditions fail with 1942, an unresolvable SDDL with 1943, missing privileges with 1926 (file or folder), 1401 (registry key) or 1944 (service). An account the SDDL names must exist before the object is installed. SEC-01 confirmed 1941, 1942, 1943 and the property rule on Windows (section 6.2); the privilege errors and the account-existence rule are untested.
+- `MsiShortcutProperty` columns: `MsiShortcutProperty s72`, `Shortcut_ s72`, `PropertyKey` (the canonical property-system name) and `PropVariantValue`, both Formatted. A failure to set a property is warning 1946 and the install continues; properties are only applied when the shortcut is installed or reinstalled.
+- Single package authoring (section 8.2): Microsoft's initial values for a dual-purpose package are `ALLUSERS=2` **and** `MSIINSTALLPERUSER=1` in the `Property` table, so per-user is the default and a scope dialog or the command line switches to per-machine by setting `MSIINSTALLPERUSER` to `{}`. `MSIINSTALLPERUSER` is ignored unless `ALLUSERS` is `2`. In a per-user install `Registry.Root` −1 goes to `HKCU` and root 0 to `HKCU\Software\Classes`; per-machine, to `HKLM` and `HKLM\Software\Classes`. The folders that follow the context are `DesktopFolder`, `ProgramMenuFolder`, `StartMenuFolder`, `StartupFolder`, `TemplateFolder`, `AdminToolsFolder`, `ProgramFilesFolder`, `CommonFilesFolder`, `ProgramFiles64Folder` and `CommonFiles64Folder`. ICE105's forbidden `Directory` keys are exactly `AdminToolsFolder`, `CommonAppDataFolder`, `FontsFolder`, `System16Folder`, `System64Folder`, `SystemFolder`, `TempFolder`, `WindowsFolder` and `WindowsVolume`; it also rejects elevated custom actions, GAC assemblies, `ODBCDataSource` rows, `ServiceInstall` rows and `Registry` rows under `HKLM`.
+
+### 19.2 Properties a producer writes or must not write (documented, unverified)
+
+Section 8.7 covers the mechanics. These are the documented properties a package author sets in the `Property` table, with what the engine does with them ([Property Reference](https://learn.microsoft.com/en-us/windows/win32/msi/property-reference)):
+
+| Property | Effect | Note |
+|---|---|---|
+| `ARPCOMMENTS`, `ARPCONTACT`, `ARPHELPLINK`, `ARPHELPTELEPHONE`, `ARPREADME`, `ARPURLINFOABOUT`, `ARPURLUPDATEINFO`, `ARPAUTHORIZEDCDFPREFIX` | Copied by `RegisterProduct` into the Uninstall key as `Comments`, `Contact`, `HelpLink`, `HelpTelephone`, `Readme`, `URLInfoAbout`, `URLUpdateInfo`, `AuthorizedCDFPrefix` | [Uninstall Registry Key](https://learn.microsoft.com/en-us/windows/win32/msi/uninstall-registry-key); section 8.2 lists the values the engine derives itself |
+| `ARPINSTALLLOCATION` | `InstallLocation`; the product's primary folder. It has to be the resolved path, so a producer sets it with a type-51 action after `CostFinalize` (`[INSTALLDIR]`) rather than in the `Property` table | Used by backup and restore to associate Start-menu shortcuts with the product |
+| `ARPSIZE` | Estimated size in KB when the engine's own `EstimatedSize` is not wanted | — |
+| `ARPNOMODIFY`, `ARPNOREMOVE`, `ARPNOREPAIR` | Hide Change, Uninstall and Repair in Apps & features (`NoModify`, `NoRemove`, `NoRepair` = 1) | Section 10.3 sets `ARPNOMODIFY=1` for packages without feature selection |
+| `ARPSYSTEMCOMPONENT` | `1` hides the product from Apps & features; it stays manageable through the API | — |
+| `ARPPRODUCTICON` | An `Icon` key for the Apps & features icon; ICE36 wants every `Icon` row referenced from here or from `Class`, `ProgId` or `Shortcut` | — |
+| `MSIARPSETTINGSIDENTIFIER` | `;`-separated registry locations of the application's settings, written as `SettingsIdentifier`; MUST NOT be null when present | 4.0 |
+| `MsiLogging` | Default logging mode as a string of `iwearucmopvx!` letters; `+` and `*` are not allowed; the engine writes `MSI*.LOG` and sets `MsiLogFileLocation` | 4.0; a transform may change it, a patch may not |
+| `MSIRESTARTMANAGERCONTROL` | `0` (default) use Restart Manager, `Disable` use the FilesInUse dialog, `DisableShutdown` detect with Restart Manager but do not shut applications down | 4.0; only the `Property` table or a transform, never a custom action |
+| `MSIDISABLERMRESTART`, `MSIRMSHUTDOWN` | Restart Manager policy for shutting down and restarting applications holding files | 4.0 |
+| `REBOOT` | `Force`, `Suppress` or `ReallySuppress`; only the first letter is read. `Suppress` keeps `ForceReboot` prompts and drops the end-of-install prompt; `ReallySuppress` drops both. With no UI, `Force` restarts the machine | Section 8.6 uses `ReallySuppress` |
+| `REBOOTPROMPT` | `Suppress` (or `S`): any needed restart happens without asking | — |
+| `DISABLEADVTSHORTCUTS` | Advertised shortcuts (`Shortcut.Target` = Feature key) are written as ordinary shortcuts | Also settable by transform or admin stream |
+| `MSIENFORCEUPGRADECOMPONENTRULES` | `1` makes small updates and minor upgrades fail when a component is removed | 3.0 |
+| `MSIUSEREALADMINDETECTION` | `1` sets `AdminUser` from the real token instead of assuming an administrator under UAC | 4.0; ICE86 prefers `Privileged` in conditions anyway |
+| `MSIFASTINSTALL` | Section 19.1 | 5.0 |
+| `LIMITUI` | Caps the UI level at basic | — |
+| `PRIMARYFOLDER` | A `Directory` key whose volume feeds the four `PrimaryVolume*` properties (section 8.3) | — |
+| `ALLUSERS`, `MSIINSTALLPERUSER` | Section 8.2 and 19.1 | — |
+| `DefaultUIFont`, `ErrorDialog` | Section 7 | — |
+| `SecureCustomProperties`, `AdminProperties`, `MsiHiddenProperties` | Section 8.7 | — |
+
+Properties the `Property` table MUST NOT define:
+
+- The eleven feature-request properties (ICE87, warning): `ADDLOCAL`, `REMOVE`, `ADDSOURCE`, `ADDDEFAULT`, `REINSTALL`, `ADVERTISE`, `COMPADDLOCAL`, `COMPADDSOURCE`, `FILEADDLOCAL`, `FILEADDSOURCE`, `FILEADDDEFAULT`. Section 8.5 says why.
+- `FASTOEM` (ICE74, error). The same ICE warns when `UpgradeCode` is absent and errors when it is the null GUID `{00000000-0000-0000-0000-000000000000}`.
+- `REINSTALLMODE` (ICE40, warning).
+- A `Directory` key set to a hardcoded local path such as `d:\source` (ICE48).
+- Any name that differs from a Windows Installer property only by case, such as `ReinstallMode` (ICE46, informational); also in conditions and formatted text.
+
+The default restricted public properties (section 8.7's "28-name list", [Restricted Public Properties](https://learn.microsoft.com/en-us/windows/win32/msi/restricted-public-properties)): `ACTION`, `AFTERREBOOT`, `ALLUSERS`, `EXECUTEACTION`, `EXECUTEMODE`, `FILEADDDEFAULT`, `FILEADDLOCAL`, `FILEADDSOURCE`, `INSTALLLEVEL`, `LIMITUI`, `LOGACTION`, `NOCOMPANYNAME`, `NOUSERNAME`, `MSIENFORCEUPGRADECOMPONENTRULES`, `MSIINSTANCEGUID`, `MSINEWINSTANCE`, `MSIPATCHREMOVE`, `PATCH`, `PRIMARYFOLDER`, `PROMPTROLLBACKCOST`, `REBOOT`, `REINSTALL`, `REINSTALLMODE`, `RESUME`, `SEQUENCE`, `SHORTFILENAMES`, `TRANSFORMS`, `TRANSFORMSATSOURCE`. `ADDLOCAL`, `REMOVE`, `TARGETDIR` and every author-defined directory or search property are **not** on it: a package whose documented command lines use them in a managed or elevated non-administrator install would, if the page is right, have to list them in `SecureCustomProperties` for such an install to pass them to the server-side (unverified, RUN-09).
+
+Conditions on removal ([Conditioning Actions to Run During Removal](https://learn.microsoft.com/en-us/windows/win32/msi/conditioning-actions-to-run-during-removal)): `REMOVE="ALL"` is reliable only after `InstallValidate` (section 9.1); a feature- or component-state condition is reliable after `CostFinalize` and `MigrateFeatureStates`; `UPGRADINGPRODUCTCODE` is set in the **old** product only while `RemoveExistingProducts` removes it, never in an ordinary uninstall, so `REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE` is the condition for "the user is uninstalling, not upgrading". `Installed` says whether the product is installed for this machine or user; `ProductState` answers for other users.
+
+Operating-system properties ([Operating System Property Values](https://learn.microsoft.com/en-us/windows/win32/msi/operating-system-property-values)): Microsoft's table ends at Windows 8.1 with `VersionNT` 603 and `WindowsBuild` ≥ 9600. Windows 10, 11 and Server 2016 and later also report `VersionNT` 603, because `msiexec` is not manifested for them (the same cause as the file-version shimming in section 8.6; reported, RUN-21). A launch condition therefore cannot separate Windows 8.1 from later Windows through `VersionNT`; use `WindowsBuild` (10240 for Windows 10 and 22000 for Windows 11, reported) or a `VersionNT >= 603` floor only. `VersionNT64` is set only on 64-bit Windows, `Msix64` only on x64 and `Intel64` only on Itanium; `MsiNTProductType` distinguishes workstation, domain controller and server editions.
+
+### 19.3 User interface (documented, unverified unless noted)
+
+The [Controls](https://learn.microsoft.com/en-us/windows/win32/msi/controls) page lists 23 control types. Which ones bind a property decides the error-2819 rule of section 7.2 and which belong in the `Control_Next` ring:
+
+| Bind a property (`Control.Property` required) | Bind none |
+|---|---|
+| CheckBox, ComboBox, DirectoryCombo, DirectoryList, Edit, ListBox, ListView, MaskedEdit, PathEdit, RadioButtonGroup, SelectionTree, VolumeSelectCombo | Billboard, Bitmap, GroupBox, Hyperlink, Icon, Line, ProgressBar, PushButton, ScrollableText, Text, VolumeCostList |
+
+- A property set from the UI MUST be public (upper case); private properties cannot be changed by a control. A control drawn wrongly after a Cancel dialog is fixed by reordering `Control` rows (Microsoft's own advice).
+- The complete [control event](https://learn.microsoft.com/en-us/windows/win32/msi/control-events) vocabulary, which a producer's validator SHOULD check `ControlEvent.Event` and `EventMapping.Event` against:
+
+| Published by | Events |
+|---|---|
+| The engine, to subscribers (`EventMapping`) | `ActionData`, `ActionText`, `SetProgress`, `TimeRemaining`, `ScriptInProgress` |
+| SelectionTree or DirectoryList, to controls on the same dialog | `IgnoreChange`, `SelectionDescription`, `SelectionSize`, `SelectionPath`, `SelectionPathOn`, `SelectionAction`, `SelectionNoItems` |
+| PushButton or CheckBox (`ControlEvent`) | `AddLocal`, `AddSource`, `CheckExistingTargetPath`, `CheckTargetPath`, `DoAction`, `EnableRollback`, `EndDialog`, `MsiLaunchApp`, `MsiPrint`, `NewDialog`, `Reinstall`, `ReinstallMode`, `Remove`, `Reset`, `RmShutdownAndRestart`, `SetInstallLevel`, `SetProperty`, `SetTargetPath`, `SpawnDialog`, `SpawnWaitDialog`, `ValidateProductID` |
+| PushButton, to a SelectionTree or DirectoryList on the same dialog | `SelectionBrowse`, `DirectoryListUp`, `DirectoryListNew`, `DirectoryListOpen` |
+
+- A CheckBox may publish only `AddLocal`, `AddSource`, `Remove`, `DoAction` and `SetProperty`. A SelectionTree may publish `DoAction`, `SetProperty`, `SetInstallLevel` and `SpawnWaitDialog` (Windows Server 2003 and later).
+- Only `ActionText`, `AddSource`, `SetProgress`, `TimeRemaining` and `ScriptInProgress` work at reduced or basic UI (compiled from the individual event pages; the set is unverified and `AddSource` in it is doubtful); every other event needs full UI, which is why section 7.2 says the execute sequence must stand alone.
+- `SpawnWaitDialog` shows its `Argument` dialog while the row's `Condition` is **false** and removes it when the condition becomes true (the "please wait for costing" page of section 7.2 is `NOT CostingComplete`). `SetInstallLevel` takes an integer argument. `SetProperty`'s argument `{}` clears the property (section 7.2). `MsiPrint` MUST sit on a dialog with a ScrollableText (ICE103).
+- An installer unit is about 1/12 of the height of the 10-point MS Sans Serif font ([Installer Units](https://learn.microsoft.com/en-us/windows/win32/msi/installer-units)); Microsoft gives no pixel value; the item in section 7's unverified list stays open and the engine's actual pixel mapping is untested.
+- The `Error` table is optional: without it the engine loads its own localized strings for `ProductLanguage` (ICE40's "Error table is missing" warning is documented as obsolete). Error numbers 0–33 are reserved templates (0 fatal prefix, 1 `Error [1].`, 2 warning, 5 internal error, 9 `[ProductName]`, 32 and 33 the setup completed and failed messages); **25000–30000 is reserved for custom actions**, so a type-19 action whose `Target` is an `Error` number SHOULD use that range. `{{…}}` text goes only to the log.
+- Microsoft's [suggested InstallUISequence](https://learn.microsoft.com/en-us/windows/win32/msi/suggested-installuisequence) places `PrepareDlg` at 140, `WelcomeDlg` at 1230 (`NOT Installed`), `ResumeDlg` at 1240 (`Installed AND (RESUME OR Preselected)`), `MaintenanceWelcomeDlg` at 1250 (`Installed AND NOT RESUME AND NOT Preselected`) and `ProgressDlg` at 1280; section 10.3 lists the reference toolchain's numbers for the same dialogs.
+
+### 19.4 Schema, data types and tables (documented, unverified unless noted)
+
+- **Identifier** ([Identifier](https://learn.microsoft.com/en-us/windows/win32/msi/identifier)): ASCII letters, digits, `_` and `.`, beginning with a letter or `_`. Every primary key of category `Identifier` (`Component`, `Feature`, `File`, `Directory`, `Property`, `CustomAction`, dialog and control names, …) MUST satisfy it; sections 6 and 11.2 assumed the rule without stating it. Generated keys (section 11.2) satisfy it by construction.
+- **Column data types**: the [Column Data Types](https://learn.microsoft.com/en-us/windows/win32/msi/column-data-types) page lists 26 categories: Text, UpperCase, LowerCase, Integer, DoubleInteger, Time/Date, Identifier, Property, Filename, WildCardFilename, Path, Paths, AnyPath, DefaultDir, RegPath, Formatted, FormattedSDDLText, Template, Condition, GUID, Version, Language, Binary, CustomSource, Cabinet, Shortcut. `KeyFormatted` and `URL` are not on the current page (section 6.3; section 6.4 still lists `KeyFormatted` because the toolchain schema carries it); the `_Validation` category strings a validator accepts stay those of section 6.3 (`Guid`, `TimeDate`, no slash).
+- **Large packages** ([Authoring a Large Package](https://learn.microsoft.com/en-us/windows/win32/msi/authoring-a-large-package)): a package with more than 32767 files MUST widen `File.Sequence`, `Media.LastSequence` and `Patch.Sequence` from `i2` to `i4` **and** raise the matching `_Validation.MaxValue` rows; this is Microsoft's sanctioned path, which supports section 6.1's `i4` rule. Transforms and patches cannot be built between packages with different column types, so a producer SHOULD pick one width per product line and keep it.
+- **Media** ([Media Table](https://learn.microsoft.com/en-us/windows/win32/msi/media-table)): `DiskId` ≥ 1; `Source` is for patches only; `VolumeLabel` must equal the physical label of removable media; the `.msi` must be on the first disk. The engine's cached copy of a package cannot serve embedded cabinets for repair, so repair always needs the original source; Microsoft recommends external cabinets to save the duplicate disk space. Word Count bits 1 and 0x4000/0x2000 per file: ICE39 warns when the package is compressed **and** files also carry 16384, so a compressed package SHOULD leave the per-file bit unset (section 5 already forbids setting both compressed and uncompressed).
+- **Summary stream**: ICE39 checks the formats of Word Count, Page Count, Template, Revision Number and the three FILETIME properties, and warns when Word Count bit 8 (no elevation) meets a non-empty `MsiPackageCertificate`. The Template platform list (`Alpha,Intel;1033`) is documented as unsupported and `Intel,x64`, `Intel,Intel64` and `Intel64,x64` as invalid, although SUM-02 observed the engine opening a list with one recognised token (section 4), which shows the page is not exact. Emitting one token satisfies both the observation and the page. A patch's Word Count 1–5 is the minimum engine version (1 MSPATCH, 2 → 1.2, 3 → 2.0, 4 → 3.0, 5 → 3.1); Microsoft lists no higher value, and what the engine does with one is untested (section 4's unverified list).
+- **Tables not described elsewhere**: `AppId` (DCOM server registration, with `Class`), `Verb` (shell verbs for `Extension` rows), `ReserveCost` (disk-cost reservation per component and directory, no action of its own), `MsiDigitalCertificate` and `MsiDigitalSignature` (signatures of external cabinets, checked by ICE81; section 12 covers the package signature streams only), `MsiPatchHeaders`, `MsiPatchSequence`, `MsiPatchMetadata`, `MsiPatchOldAssembly*`, `PatchPackage` (patch packages only), `MsiSFCBypass`, `SFPCatalog`, `FileSFPCatalog` and the `InstallSFPCatalogFile` action (Windows Me only; never emit), `_TransformView` (a read-only view, never stored). Standard actions sections 9.2–9.3 do not list: `DisableRollback` (sets `RollbackDisabled` for the rest of the sequence), `InstallSFPCatalogFile`, and the top-level `INSTALL`, `ADMIN`, `ADVERTISE` and `SEQUENCE` (runs the table named by the `SEQUENCE` property).
+- **ICE66**: a package that uses tables introduced after schema 100 (for example `IsolatedComponent`, `MsiAssembly`, `MsiFileHash`) gets a warning unless Page Count is high enough; the page gives only the `IsolatedComponent`/100 example, and the per-table thresholds (200 for the 2.0 tables, 405 for 4.5, 500 for 5.0) are inferred from each table's "available beginning with" note. Section 4's defaults (200 for x64, 500 for Arm64) already satisfy it for the common tables; a producer that writes a 5.0 table with Page Count 200 SHOULD expect the warning.
+
+### 19.5 Validation rules not detailed in sections 7.5 and 9.5 (documented, unverified)
+
+The [ICE Reference](https://learn.microsoft.com/en-us/windows/win32/msi/ice-reference) lists 103 rules (ICE11 and ICE37 do not exist). Sections 7.5 and 9.5 cite 41 of them. The rules below are the rest, with the documented verdict, which a producer's static checks SHOULD mirror; six rows (ICE36, ICE50, ICE59, ICE67, ICE90, ICE91) restate shortcut and icon rules that section 7.5 only names:
+
+| ICE | Verdict | Rule |
+|---|---|---|
+| ICE01 | info | Sanity test of the ICE infrastructure; always passes |
+| ICE07 | error | A `Font` row's file installs to `FontsFolder`; elsewhere the engine makes a shortcut instead of registering the font |
+| ICE09 | warning | Components under `SystemFolder` carry Permanent (16) |
+| ICE10, ICE14 | error | A child with DisallowAdvertise (8) under a parent with FavorAdvertise (4) is invalid; a root feature (null `Feature_Parent`) MUST NOT carry FollowParent (2); `Feature_Parent` ≠ `Feature` and MUST exist |
+| ICE15, ICE41, ICE42, ICE50, ICE59 | error | Advertising tables: every `MIME` row's extension exists; `Class` and `Extension` rows name components of their `Feature_`; no `.exe` as an InProc class and arguments only for LocalServer; advertised shortcuts have icons and belong to components of the target feature |
+| ICE22 | error | Every `PublishComponent` (`Feature_`, `Component_`) pair exists in `FeatureComponents` |
+| ICE24 | error | `ProductCode` is a GUID, `ProductVersion` a Version, `ProductLanguage` a Language |
+| ICE25 | — | Merge-module dependencies and exclusions (modules only) |
+| ICE29 | error | `Table.Key` stream names stay unique after truncation to 62 characters (section 3, B.1) |
+| ICE33 | — | Obsolete warnings for COM data in the `Registry` table; ignore |
+| ICE35 | warning (schema ≥ 200) | A compressed file in a SourceOnly (1) component |
+| ICE36 | warning | Every `Icon` row is referenced from `ARPPRODUCTICON`, `Class`, `ProgId` or `Shortcut` |
+| ICE39 | error | Summary-stream formats; compressed package with files marked 16384; bit 8 with `MsiPackageCertificate` (19.4) |
+| ICE40 | warning | `REINSTALLMODE` in `Property`; a `RemoveIniFile` "delete tag" (4) row without a `Value`; the missing-`Error`-table warning is obsolete |
+| ICE46 | info | Property names differing from defined ones only by case |
+| ICE47 | warning | More than 1600 components in a feature (section 8.5) |
+| ICE48 | warning | A directory hardcoded to a local path in `Property` |
+| ICE49 | warning | A default value (null `Name`) that is not `REG_SZ` (`#`, `#x`, `#%`); obsolete Windows 95 rule |
+| ICE51 | error / warning | `.ttf`, `.ttc` and `.otf` fonts MUST have a null `FontTitle` (they would register twice); every other font MUST have one |
+| ICE52 | warning | `AppSearch.Property` is public (upper case) |
+| ICE53 | warning | `Registry` rows under `Software\Policies\Microsoft\Windows\Installer` or the engine's own keys |
+| ICE54 | warning | A component whose key path file takes its version from a companion file (B.3) |
+| ICE55 | error | `LockPermissions` objects exist and permissions are valid |
+| ICE57 | error | One component mixes per-user (HKCU rows, profile folders, non-advertised shortcuts) and per-machine data, or a `-1`-root row with a per-machine key path |
+| ICE58 | warning (schema < 150) | More than 80 `Media` rows (section 5 says ≥ 200) |
+| ICE60 | warning / error | A versioned non-font file without `Language`; a versioned file in `MsiFileHash` (B.3) |
+| ICE62 | error | `IsolatedComponent` rows: the application component has a file key path, the shared component has SharedDllRefCount (8), both in one feature line, no condition on the shared component |
+| ICE64 | error | A new directory under a user-profile folder (`AppDataFolder`, …) has a `RemoveFile` row with `InstallMode` 2, else a roaming profile keeps it forever |
+| ICE65 | error / warning | `Environment.Value`: an append (`[~];x`) or prepend (`x;[~]`) MUST NOT also begin or end with the separator; an alphanumeric separator is a warning (section 8.13, 11.9) |
+| ICE66 | warning | Page Count too low for the tables used (19.4) |
+| ICE67 | warning | A non-advertised shortcut whose `[#file]` target lives in another component that is Optional (2): mark that component LocalOnly or SourceOnly, or move the shortcut |
+| ICE70 | error | `Registry.Value` `#…` forms: `#x` hex digits, `#`, `#+`, `#-` decimal digits, `#[prop]` allowed, `##` and `#%` not checked (section 8.13) |
+| ICE73 | warning | `ProductCode`, package code or `UpgradeCode` of a Windows Installer SDK sample reused |
+| ICE74 | error / warning | `FASTOEM` authored; `UpgradeCode` null GUID; `UpgradeCode` absent (19.2) |
+| ICE76 | error | `BindImage` files are not SFP catalog files |
+| ICE81 | error | `MsiDigitalCertificate`, `MsiDigitalSignature`, `MsiPackageCertificate` consistency |
+| ICE85 | error | `MoveFile.SourceName` is a valid long filename, wildcards allowed |
+| ICE86 | warning | `AdminUser` in a condition; use `Privileged` |
+| ICE88 | warning | `IniFile.DirProperty` is a `Directory`, `Property` or `AppSearch` key, a type-51 target, or one of the six Program Files, Common Files and System folder properties |
+| ICE89 | error | `ProgId.ProgId_Parent` exists in `ProgId` |
+| ICE90 | warning | A shortcut's `Directory_` is a public (upper-case) key under a profile folder; `ALLUSERS` changes in the UI then move it |
+| ICE91 | warning | A file, `IniFile` or shortcut under a per-user-only folder (`AppDataFolder`, `FavoritesFolder`, `NetHoodFolder`, `PersonalFolder`, `PrintHoodFolder`, `RecentFolder`, `SendToFolder`, `MyPicturesFolder`, `LocalAppDataFolder`), which `ALLUSERS=1` does not redirect |
+| ICE92 | error / warning | Permanent (16) without `ComponentId`; Permanent with UninstallOnSupersedence (1024) |
+| ICE94 | warning | A non-advertised shortcut to a GAC assembly (`MsiAssembly` row with null `File_Application`) |
+| ICE97 | error | Two applications isolating one shared component into one directory |
+| ICE98 | warning | `ODBCDataSource.Description` passes `SQLValidDSN` (valid characters, ≤ 32 characters) |
+| ICE100–ICE102, ICE104 | error | Section 19.1 |
+
+Two rules already cited in sections 7.5 and 9.2 get more detail here. ICE45's reserved-bit check covers `BBControl`, `Dialog`, `Feature`, `File`, `MoveFile`, `ModuleConfiguration`, `ODBCDataSource`, `Patch`, `RemoveFile`, `ServiceControl`, `ServiceInstall` and `TextStyle` as errors and `Control` as a warning; the masks themselves stay unpublished (section 7's unverified list). ICE26's required and prohibited action lists are likewise unpublished: its page points at `template.msi` and the suggested sequence tables, which section 9.2 reproduces.
+
+### 19.6 Microsoft's best-practice rules that bear on a producer (documented, unverified)
+
+From [Windows Installer Best Practices](https://learn.microsoft.com/en-us/windows/win32/msi/windows-installer-best-practices) and [Using 64-Bit Windows Installer Packages](https://learn.microsoft.com/en-us/windows/win32/msi/using-64-bit-windows-installer-packages), as checks a producer MAY offer:
+
+1. Do not emit `SelfReg` or `TypeLib` rows; register COM servers and type libraries through `Registry` rows (rollback of `TypeLib` is documented as unreliable). Section 17.1 lists both tables as native; this is the policy caveat.
+2. Do not emit nested-install actions (types 7, 23, 39) for a shipping product; chain packages through `MsiEmbeddedChainer` (19.1) or an external bootstrapper.
+3. Every package SHOULD install silently: configuration through public properties, no dialog-only data, no automatic restart at `/qn`.
+4. Changing the `.msi` filename is a comprehensive change that requires a new `ProductCode`; no two different `.msi` files may share a package code (section 8.1).
+5. 32-bit and 64-bit versions of one component MUST have different `ComponentId` values (section 8.4); `DisableRegistryReflection` (512) is ignored on 32-bit Windows; a 64-bit ODBC driver manager component MUST be named `ODBCDriverManager64`.
+6. Rollback: every deferred action that changes the machine SHOULD be preceded by a rollback action (section 8.11); custom actions MUST NOT show dialogs (use `MsiProcessMessage`), set restore points, or depend on components of advertised features or on GAC assemblies before `InstallFinalize`.
+7. Validate with `darice.cub` (which contains `logo.cub`) and fix every error before the first install (section B.6 step 3).
+
+### Unverified (chapter 19)
+
+Everything above is unverified unless it names an Appendix C case, and is to be read as a list of hypotheses, not of facts. The new cases `RUN-19` … `RUN-23` in Appendix C cover the items whose documented behaviour a producer is most likely to depend on: `MSIFASTINSTALL`, the 5.0 UI additions, `MsiServiceConfig` types 5–7 and the failure-action `[~]` semantics, the `VersionNT` value on current Windows, and the one-token Template rule.
 
 ## Appendix B. Pitfalls and checks
 
@@ -1791,6 +1985,11 @@ Every pitfall below has cost someone an install on a customer's machine. Each ro
 | RUN-16 | P2 | I | TrackDiskSpace dialog with a Text control reading `[INSTALLDIR]` with and without a trailing space | Full UI; observe whether the text updates after a folder change (section 7.2, W18). | Not run |
 | RUN-17 | P1 | A/I | `RemoveExistingProducts` at 1401, 1501, 6551, 6601 and at 5802 | Install over an older version; expect error 2613 only for 5802 (section 9.2). | Contradicted ([results](MSISPEC-RESULTS.md)) |
 | RUN-18 | P1 | I | Deferred custom action returning 259, 1602, 1603 and an EXE action exiting 1 with and without Continue | Verbose logs and exit codes; confirm 259 ends the install successfully and skips later actions (section 8.11). | Confirmed ([results](MSISPEC-RESULTS.md)) |
+| RUN-19 | P2 | A/I | `MSIFASTINSTALL` 0, 1, 2, 4 and 7 in the `Property` table and on the command line | Install the minimal package under each value with `/l*vx`; compare timing, the restore-point and costing log lines, and the installed result (section 19.1). | Not run |
+| RUN-20 | P1 | I | `MsiServiceConfig` types 5, 6 and 7 on the RUN-05 test service; `MsiServiceConfigFailureActions` with `RebootMessage`/`Command` set to `""`, `[~]` and null, actions `0` and `3` only | Install, inspect `sc.exe qc`, `qsidtype`, `qprivs`, `qfailure`, repair and uninstall; settle which of `""` and `[~]` leaves the current value and which clears it (sections 10.3, 19.1). | Not run |
+| RUN-21 | P1 | A/I | Package logging `VersionNT`, `VersionNT64`, `WindowsBuild`, `MsiNTProductType` and `Msix64` through type-51 actions on Windows 11 and Server 2025 | Confirm `VersionNT` 603 on current Windows and that `WindowsBuild` distinguishes releases (section 19.2). | Not run |
+| RUN-22 | P2 | I | Full-UI package with a `Hyperlink` control in and out of the `Control_Next` ring, a PNG `Bitmap`, and an exit-dialog CheckBox publishing `MsiLaunchApp [#file] arg` | `/qf` install; expect the link to open, the PNG to render, the launch to happen only when checked, and a 2834 verdict for the ring variant (sections 7.2, 19.1). | Not run |
+| RUN-23 | P1 | S/A/I | Template `Intel,x64;1033`, `x64,Intel;1033` and `Intel64,x64;1033` against the SUM-02 control | Native open and install on x64; Microsoft documents `Intel,x64` and `Intel64,x64` as invalid and the two-platform syntax as unsupported, while SUM-02 opened a list with one recognised token (sections 4, 19.4). | Not run |
 | SEC-01 | P1 | I | `MsiLockPermissionsEx` on a File, CreateFolder, Registry and ServiceInstall row (plus a service baseline without it); owner and group, deny ACE, false condition, `[Property]`, `<domain\user>` and `[%ENV]` in SDDLText, invalid SDDL, two true rows for one object, and a package that also has `LockPermissions` | Install elevated; read the SDDL with `Get-Acl` or `sc sdshow`, repair with `/fa` and `/fvomus` after resetting the ACL each time; expect the SDDL applied as authored and errors 1941, 1942 and 1943 as documented (section 6.2). | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | SIG-01 | P0 | S/A | Unsigned control signed with a disposable RSA test certificate | Sign using `signtool sign /fd SHA256`; decode the PKCS#7, compute the logical MSI digest, verify with signtool and `Get-AuthenticodeSignature`. | Not run |
 | SIG-02 | P1 | S/A | Signed packages with and without MsiDigitalSignatureEx | Capture exact signature streams, compute the pre-hash P and the content digest D; determine whether SignTool emits DSE. | Not run |
@@ -1835,7 +2034,7 @@ Start with `ENV-01`, `ENV-02`, `DB-01`, `CAB-01`, `RUN-01`, `RUST-06`, `RUST-08`
 
 **Mapping to the section 14 experiments:** W1 = `CFB-07`; W2 = `DB-08`/`SUM-03`; W3 = `DB-05`; W4 = `SUM-02`; W5 = `RUN-03`/`RUN-04`; W6 = `SIG-02`/`SIG-04`/`SIG-05`; W7 = `RUN-01`; W8 = `DB-07`; W9 = `CAB-01`/`CAB-03`; W10 = `CFB-03`/`DB-03`; W11 = `SUM-03`/`SUM-04`; W12 = `RUN-02`; W13 = `RUN-07`; W14 = `DB-14`/`SUM-04`; W15 = `CAB-09`/`CAB-10`; W16 = `RUN-08`; W17 = `RUN-13`; W18 = `RUN-16`.
 
-**Mapping to Appendix B:** every row of B.1 is covered by `CFB-*`, `DB-*` and `SUM-*`; B.2 by `CAB-*`; B.3 by `RUN-02`, `RUN-07`, `RUN-08`, `RUN-12`, `RUN-14`, `RUN-15`; B.4 by `RUN-05`, `RUN-09`, `RUN-13`, `RUN-17`, `RUN-18`; B.5 by `RUN-10` and `RUN-16`. A pitfall whose check is only **static** has no case here on purpose: it is caught before Windows runs.
+**Mapping to Appendix B:** every row of B.1 is covered by `CFB-*`, `DB-*` and `SUM-*`; B.2 by `CAB-*`; B.3 by `RUN-02`, `RUN-07`, `RUN-08`, `RUN-12`, `RUN-14`, `RUN-15`; B.4 by `RUN-05`, `RUN-09`, `RUN-13`, `RUN-17`, `RUN-18`; B.5 by `RUN-10` and `RUN-16`; chapter 19 by `RUN-19` … `RUN-23`. A pitfall whose check is only **static** has no case here on purpose: it is caught before Windows runs.
 
 ### Evidence guidelines and references
 
