@@ -3,6 +3,7 @@ package builder_test
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -266,6 +267,49 @@ func TestDeterministic(t *testing.T) {
 
 	if changed.PackageCode == first.PackageCode {
 		t.Error("package code did not change with the input")
+	}
+}
+
+// TestProductCodeFollowsStreams checks that productCode: auto changes with
+// the content of icons, binaries and binary cells of custom tables, not only
+// with the payload files (a changed custom action DLL under the old
+// ProductCode is refused with error 1638).
+func TestProductCodeFollowsStreams(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "0.32.0.5", Languages: []int{1033}})
+
+	icon := append([]byte{0, 0, 1, 0, 1, 0}, bytes.Repeat([]byte{0xAB}, 64)...)
+
+	build := func(inputs map[string][]byte) *builder.Result {
+		files := map[string][]byte{"windows_exporter.exe": exe, "icon.ico": icon, "ca.dll": []byte("dll v1"), "blob.bin": []byte("blob v1")}
+		maps.Copy(files, inputs)
+
+		cfg := example(t, "windows_exporter", map[string]string{"VERSION": "0.32.0.5"}, files)
+		cfg.Binaries = map[string]string{"ca.dll": "ca.dll"}
+		cfg.Tables = append(cfg.Tables, &config.Table{
+			Name:    "Blobs",
+			Columns: []config.Column{{Name: "Name", Type: "s72", Key: true}, {Name: "Data", Type: "V0"}},
+			Rows:    [][]any{{"blob", "blob.bin"}},
+		})
+
+		return mustBuild(t, cfg)
+	}
+
+	base := build(nil)
+
+	if again := build(nil); again.ProductCode != base.ProductCode {
+		t.Error("the product code is not stable")
+	}
+
+	for name, data := range map[string][]byte{
+		"icon.ico": append([]byte{0, 0, 1, 0, 1, 0}, bytes.Repeat([]byte{0xCD}, 64)...),
+		"ca.dll":   []byte("dll v2"),
+		"blob.bin": []byte("blob v2"),
+	} {
+		if changed := build(map[string][]byte{name: data}); changed.ProductCode == base.ProductCode {
+			t.Errorf("the product code did not change with %s", name)
+		}
 	}
 }
 
