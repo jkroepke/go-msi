@@ -18,6 +18,7 @@ import (
 	"slices"
 	"unicode"
 	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // Special sector values.
@@ -72,6 +73,12 @@ type Options struct {
 
 // EncodeName converts a name into UTF-16 units and checks the CFB rules.
 func EncodeName(name string) ([]uint16, error) {
+	if !utf8.ValidString(name) {
+		// []rune would turn each invalid byte into U+FFFD, so the stream
+		// could not be found by the name it was written with.
+		return nil, fmt.Errorf("cfb: name %q is not valid UTF-8", name)
+	}
+
 	units := utf16.Encode([]rune(name))
 	if len(units) == 0 || len(units) > maxNameUnits {
 		return nil, fmt.Errorf("cfb: name %q has %d UTF-16 units, want 1 to %d", name, len(units), maxNameUnits)
