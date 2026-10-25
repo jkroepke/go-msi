@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	cases["RUN-19"] = caseRun19
+	cases["SEC-01"] = caseSec01
 }
 
 const permRegKey = `SOFTWARE\MsiSpecPerm`
@@ -27,7 +27,7 @@ func regSDDL(key string) string {
 	return psOut("(Get-Acl -LiteralPath 'Registry::HKEY_LOCAL_MACHINE\\" + key + "').Sddl")
 }
 
-func caseRun19() {
+func caseSec01() {
 	schema["MsiLockPermissionsEx"] = tbl{Cols: []string{"MsiLockPermissionsEx s72", "LockObject s72", "Table s32", "SDDLText l0", "Condition S255"}, Keys: []string{"MsiLockPermissionsEx"}}
 	schema["LockPermissions"] = tbl{Cols: []string{"LockObject s72", "Table s32", "Domain S255", "User s255", "Permission I4"}, Keys: []string{"LockObject", "Table", "Domain", "User"}}
 
@@ -137,7 +137,7 @@ func caseRun19() {
 		if only != "" && !strings.Contains(v.name, only) {
 			continue
 		}
-		c := newCase("RUN-19", v.name)
+		c := newCase("SEC-01", v.name)
 		c.logf("%s", v.desc)
 		p := &pkg{Name: "run19", Is64: true, InstallDirName: "MsiSpecPerm",
 			Files: []payload{{Key: "f_perm", Name: "perm.txt", Data: []byte("MsiLockPermissionsEx test\r\n")}}}
