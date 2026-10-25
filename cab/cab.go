@@ -62,17 +62,17 @@ type Options struct {
 }
 
 // Checksum computes the CFDATA checksum over b with the given seed.
-func Checksum(b []byte, seed uint32) uint32 {
+func Checksum(data []byte, seed uint32) uint32 {
 	acc := seed
-	n := len(b) / 4
+	words := len(data) / 4
 
-	for i := range n {
-		acc ^= binary.LittleEndian.Uint32(b[4*i:])
+	for i := range words {
+		acc ^= binary.LittleEndian.Uint32(data[4*i:])
 	}
 
 	var tail uint32
 
-	for _, c := range b[4*n:] {
+	for _, c := range data[4*words:] {
 		tail = tail<<8 | uint32(c)
 	}
 
@@ -81,25 +81,27 @@ func Checksum(b []byte, seed uint32) uint32 {
 
 // DOSTime converts t (in UTC) to the cabinet date and time words, clamped to
 // the representable range 1980-01-01 … 2107-12-31.
-func DOSTime(t time.Time) (date, tm uint16) {
-	if t.IsZero() {
+func DOSTime(when time.Time) (uint16, uint16) {
+	var date, timeField uint16
+
+	if when.IsZero() {
 		return 0x0021, 0
 	}
 
-	t = t.UTC()
+	when = when.UTC()
 
-	if t.Year() < 1980 {
+	if when.Year() < 1980 {
 		return 0x0021, 0
 	}
 
-	if t.Year() > 2107 {
+	if when.Year() > 2107 {
 		return 0xFF9F, 0xBF7D
 	}
 
-	date = uint16((t.Year()-1980)<<9 | int(t.Month())<<5 | t.Day()) //nolint:gosec // the year was clamped to 1980…2107
-	tm = uint16(t.Hour()<<11 | t.Minute()<<5 | t.Second()>>1)       //nolint:gosec // fits 16 bits by construction
+	date = uint16((when.Year()-1980)<<9 | int(when.Month())<<5 | when.Day())  //nolint:gosec // the year was clamped to 1980…2107
+	timeField = uint16(when.Hour()<<11 | when.Minute()<<5 | when.Second()>>1) //nolint:gosec // fits 16 bits by construction
 
-	return date, tm
+	return date, timeField
 }
 
 // ParseDOSTime converts cabinet date and time words to a UTC time.
@@ -121,17 +123,17 @@ func compressBlock(chunk, dict []byte, level int) ([]byte, error) {
 
 	buf.WriteString("CK")
 
-	w, err := flate.NewWriterDict(&buf, level, dict)
+	deflater, err := flate.NewWriterDict(&buf, level, dict)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cab: deflate: %w", err)
 	}
 
-	if _, err := w.Write(chunk); err != nil {
-		return nil, err
+	if _, err := deflater.Write(chunk); err != nil {
+		return nil, fmt.Errorf("cab: deflate: %w", err)
 	}
 
-	if err := w.Close(); err != nil {
-		return nil, err
+	if err := deflater.Close(); err != nil {
+		return nil, fmt.Errorf("cab: deflate: %w", err)
 	}
 
 	if buf.Len() > len(chunk)+2+5 {
@@ -147,16 +149,16 @@ func compressBlock(chunk, dict []byte, level int) ([]byte, error) {
 }
 
 // Write builds a single-folder cabinet.
-func Write(files []File, o Options) ([]byte, error) {
+func Write(files []File, opts Options) ([]byte, error) { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
 	if len(files) > maxFiles {
 		return nil, fmt.Errorf("cab: %d files, at most %d fit in one cabinet", len(files), maxFiles)
 	}
 
-	if o.Compression != None && o.Compression != MSZIP {
-		return nil, fmt.Errorf("cab: unsupported compression %d", o.Compression)
+	if opts.Compression != None && opts.Compression != MSZIP {
+		return nil, fmt.Errorf("cab: unsupported compression %d", opts.Compression)
 	}
 
-	level := o.Level
+	level := opts.Level
 	if level == 0 {
 		level = 9
 	}
@@ -167,32 +169,32 @@ func Write(files []File, o Options) ([]byte, error) {
 
 	var folder []byte
 
-	for i, f := range files {
-		if f.Name == "" || len(f.Name) > maxNameLen {
-			return nil, fmt.Errorf("cab: file %d: name %q must be 1 to %d bytes", i, f.Name, maxNameLen)
+	for i, file := range files {
+		if file.Name == "" || len(file.Name) > maxNameLen {
+			return nil, fmt.Errorf("cab: file %d: name %q must be 1 to %d bytes", i, file.Name, maxNameLen)
 		}
 
-		if strings.IndexByte(f.Name, 0) >= 0 {
-			return nil, fmt.Errorf("cab: file %d: name %q contains NUL", i, f.Name)
+		if strings.IndexByte(file.Name, 0) >= 0 {
+			return nil, fmt.Errorf("cab: file %d: name %q contains NUL", i, file.Name)
 		}
 
-		if int64(len(folder))+int64(len(f.Data)) > maxCabinet {
+		if int64(len(folder))+int64(len(file.Data)) > maxCabinet {
 			return nil, errors.New("cab: folder exceeds 2 GiB")
 		}
 
-		folder = append(folder, f.Data...)
+		folder = append(folder, file.Data...)
 	}
 
 	var blocks []block
 
-	for lo := 0; lo < len(folder); lo += blockSize {
-		hi := min(lo+blockSize, len(folder))
-		chunk := folder[lo:hi]
+	for offset := 0; offset < len(folder); offset += blockSize {
+		hi := min(offset+blockSize, len(folder))
+		chunk := folder[offset:hi]
 
 		var data []byte
 
-		if o.Compression == MSZIP {
-			dict := folder[max(0, lo-blockSize):lo]
+		if opts.Compression == MSZIP {
+			dict := folder[max(0, offset-blockSize):offset]
 
 			var err error
 
@@ -228,65 +230,65 @@ func Write(files []File, o Options) ([]byte, error) {
 		return nil, errors.New("cab: cabinet exceeds 2 GiB")
 	}
 
-	le := binary.LittleEndian
+	order := binary.LittleEndian
 	out := make([]byte, 0, total)
 
-	h := make([]byte, headerSize)
-	copy(h, "MSCF")
-	le.PutUint32(h[8:], uint32(total))
-	le.PutUint32(h[16:], uint32(coffFiles))
-	h[0x18], h[0x19] = 3, 1
-	le.PutUint16(h[0x1A:], 1)
-	le.PutUint16(h[0x1C:], uint16(len(files))) //nolint:gosec // the file count was checked against maxFiles
-	le.PutUint16(h[0x20:], o.SetID)
-	out = append(out, h...)
+	hdr := make([]byte, headerSize)
+	copy(hdr, "MSCF")
+	order.PutUint32(hdr[8:], uint32(total))
+	order.PutUint32(hdr[16:], uint32(coffFiles))
+	hdr[0x18], hdr[0x19] = 3, 1
+	order.PutUint16(hdr[0x1A:], 1)
+	order.PutUint16(hdr[0x1C:], uint16(len(files))) //nolint:gosec // the file count was checked against maxFiles
+	order.PutUint16(hdr[0x20:], opts.SetID)
+	out = append(out, hdr...)
 
 	fo := make([]byte, folderSize)
-	le.PutUint32(fo, uint32(dataStart))
-	le.PutUint16(fo[4:], uint16(len(blocks))) //nolint:gosec // bounded by the format limits checked earlier
-	le.PutUint16(fo[6:], uint16(o.Compression))
+	order.PutUint32(fo, uint32(dataStart))
+	order.PutUint16(fo[4:], uint16(len(blocks))) //nolint:gosec // bounded by the format limits checked earlier
+	order.PutUint16(fo[6:], uint16(opts.Compression))
 	out = append(out, fo...)
 
 	offset := 0
 
-	for _, f := range files {
-		e := make([]byte, 16)
-		le.PutUint32(e, uint32(len(f.Data))) //nolint:gosec // bounded by the format limits checked earlier
-		le.PutUint32(e[4:], uint32(offset))
+	for _, file := range files {
+		entry := make([]byte, 16)
+		order.PutUint32(entry, uint32(len(file.Data))) //nolint:gosec // bounded by the format limits checked earlier
+		order.PutUint32(entry[4:], uint32(offset))
 
-		date, tm := DOSTime(f.Time)
-		le.PutUint16(e[10:], date)
-		le.PutUint16(e[12:], tm)
+		date, tm := DOSTime(file.Time)
+		order.PutUint16(entry[10:], date)
+		order.PutUint16(entry[12:], tm)
 
-		attr := f.Attributes
+		attr := file.Attributes
 		if attr == 0 {
 			attr = AttrArchive
 		}
 
 		attr &^= attrUTF8Name
 
-		for i := range len(f.Name) {
-			if f.Name[i] >= 0x80 {
+		for i := range len(file.Name) {
+			if file.Name[i] >= 0x80 {
 				attr |= attrUTF8Name
 
 				break
 			}
 		}
 
-		le.PutUint16(e[14:], attr)
-		out = append(out, e...)
-		out = append(out, f.Name...)
+		order.PutUint16(entry[14:], attr)
+		out = append(out, entry...)
+		out = append(out, file.Name...)
 		out = append(out, 0)
-		offset += len(f.Data)
+		offset += len(file.Data)
 	}
 
-	for _, b := range blocks {
+	for _, blk := range blocks {
 		d := make([]byte, 8)
-		le.PutUint32(d, b.checksum)
-		le.PutUint16(d[4:], uint16(len(b.data))) //nolint:gosec // bounded by the format limits checked earlier
-		le.PutUint16(d[6:], uint16(b.uncomp))    //nolint:gosec // bounded by the format limits checked earlier
+		order.PutUint32(d, blk.checksum)
+		order.PutUint16(d[4:], uint16(len(blk.data))) //nolint:gosec // bounded by the format limits checked earlier
+		order.PutUint16(d[6:], uint16(blk.uncomp))    //nolint:gosec // bounded by the format limits checked earlier
 		out = append(out, d...)
-		out = append(out, b.data...)
+		out = append(out, blk.data...)
 	}
 
 	return out, nil
@@ -295,18 +297,18 @@ func Write(files []File, o Options) ([]byte, error) {
 // Read extracts the files of a cabinet written by this package or any other
 // tool that uses stored or MSZIP folders without spanning. It verifies every
 // non-zero block checksum.
-func Read(c []byte) ([]File, error) {
-	le := binary.LittleEndian
+func Read(raw []byte) ([]File, error) { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
+	order := binary.LittleEndian
 
-	if len(c) < headerSize || string(c[:4]) != "MSCF" {
+	if len(raw) < headerSize || string(raw[:4]) != "MSCF" {
 		return nil, errors.New("cab: not a cabinet")
 	}
 
-	if c[0x18] != 3 || c[0x19] != 1 {
-		return nil, fmt.Errorf("cab: version %d.%d, want 1.3", c[0x19], c[0x18])
+	if raw[0x18] != 3 || raw[0x19] != 1 {
+		return nil, fmt.Errorf("cab: version %d.%d, want 1.3", raw[0x19], raw[0x18])
 	}
 
-	flags := le.Uint16(c[0x1E:])
+	flags := order.Uint16(raw[0x1E:])
 	if flags&0x3 != 0 {
 		return nil, errors.New("cab: cabinet sets (previous/next cabinet) are not supported")
 	}
@@ -315,57 +317,57 @@ func Read(c []byte) ([]File, error) {
 		return nil, errors.New("cab: reserve areas are not supported")
 	}
 
-	numFolders := int(le.Uint16(c[0x1A:]))
-	numFiles := int(le.Uint16(c[0x1C:]))
-	coffFiles := int(le.Uint32(c[0x10:]))
+	numFolders := int(order.Uint16(raw[0x1A:]))
+	numFiles := int(order.Uint16(raw[0x1C:]))
+	coffFiles := int(order.Uint32(raw[0x10:]))
 
-	if headerSize+folderSize*numFolders > len(c) || coffFiles > len(c) {
+	if headerSize+folderSize*numFolders > len(raw) || coffFiles > len(raw) {
 		return nil, errors.New("cab: truncated header")
 	}
 
 	folders := make([][]byte, 0, numFolders)
 
-	for fi := range numFolders {
-		fo := c[headerSize+folderSize*fi:]
-		start := int(le.Uint32(fo))
-		numData := int(le.Uint16(fo[4:]))
-		typ := Compression(le.Uint16(fo[6:]) & 0xF)
+	for folder := range numFolders {
+		fo := raw[headerSize+folderSize*folder:]
+		start := int(order.Uint32(fo))
+		numData := int(order.Uint16(fo[4:]))
+		typ := Compression(order.Uint16(fo[6:]) & 0xF)
 
 		var out []byte
 
-		p := start
+		pos := start
 
-		for k := range numData {
-			if p+8 > len(c) {
-				return nil, fmt.Errorf("cab: folder %d block %d truncated", fi, k)
+		for blockIdx := range numData {
+			if pos+8 > len(raw) {
+				return nil, fmt.Errorf("cab: folder %d block %d truncated", folder, blockIdx)
 			}
 
-			csum := le.Uint32(c[p:])
-			cb := int(le.Uint16(c[p+4:]))
-			un := int(le.Uint16(c[p+6:]))
+			csum := order.Uint32(raw[pos:])
+			compressed := int(order.Uint16(raw[pos+4:]))
+			uncompressed := int(order.Uint16(raw[pos+6:]))
 
-			if p+8+cb > len(c) {
-				return nil, fmt.Errorf("cab: folder %d block %d truncated", fi, k)
+			if pos+8+compressed > len(raw) {
+				return nil, fmt.Errorf("cab: folder %d block %d truncated", folder, blockIdx)
 			}
 
-			ab := c[p+8 : p+8+cb]
+			payload := raw[pos+8 : pos+8+compressed]
 
 			if csum != 0 {
-				if want := Checksum(ab, 0) ^ (uint32(cb) | uint32(un)<<16); want != csum { //nolint:gosec // bounded by the format limits checked earlier
-					return nil, fmt.Errorf("cab: folder %d block %d checksum %#x, want %#x", fi, k, csum, want)
+				if want := Checksum(payload, 0) ^ (uint32(compressed) | uint32(uncompressed)<<16); want != csum { //nolint:gosec // bounded
+					return nil, fmt.Errorf("cab: folder %d block %d checksum %#x, want %#x", folder, blockIdx, csum, want)
 				}
 			}
 
 			switch typ {
 			case None:
-				if cb != un {
-					return nil, fmt.Errorf("cab: folder %d block %d: stored block sizes differ", fi, k)
+				if compressed != uncompressed {
+					return nil, fmt.Errorf("cab: folder %d block %d: stored block sizes differ", folder, blockIdx)
 				}
 
-				out = append(out, ab...)
+				out = append(out, payload...)
 			case MSZIP:
-				if len(ab) < 2 || ab[0] != 'C' || ab[1] != 'K' {
-					return nil, fmt.Errorf("cab: folder %d block %d: missing CK signature", fi, k)
+				if len(payload) < 2 || payload[0] != 'C' || payload[1] != 'K' {
+					return nil, fmt.Errorf("cab: folder %d block %d: missing CK signature", folder, blockIdx)
 				}
 
 				hist := out
@@ -373,11 +375,11 @@ func Read(c []byte) ([]File, error) {
 					hist = hist[len(hist)-blockSize:]
 				}
 
-				r := flate.NewReaderDict(bytes.NewReader(ab[2:]), hist)
-				buf := make([]byte, un)
+				r := flate.NewReaderDict(bytes.NewReader(payload[2:]), hist)
+				buf := make([]byte, uncompressed)
 
 				if _, err := io.ReadFull(r, buf); err != nil {
-					return nil, fmt.Errorf("cab: folder %d block %d: %w", fi, k, err)
+					return nil, fmt.Errorf("cab: folder %d block %d: %w", folder, blockIdx, err)
 				}
 
 				out = append(out, buf...)
@@ -385,46 +387,46 @@ func Read(c []byte) ([]File, error) {
 				return nil, fmt.Errorf("cab: compression type %d is not supported", typ)
 			}
 
-			p += 8 + cb
+			pos += 8 + compressed
 		}
 
 		folders = append(folders, out)
 	}
 
 	files := make([]File, 0, numFiles)
-	p := coffFiles
+	pos := coffFiles
 
 	for range numFiles {
-		if p+16 > len(c) {
+		if pos+16 > len(raw) {
 			return nil, errors.New("cab: truncated file entry")
 		}
 
-		size := int(le.Uint32(c[p:]))
-		off := int(le.Uint32(c[p+4:]))
-		fi := int(le.Uint16(c[p+8:]))
+		size := int(order.Uint32(raw[pos:]))
+		off := int(order.Uint32(raw[pos+4:]))
+		folderIdx := int(order.Uint16(raw[pos+8:]))
 
-		end := bytes.IndexByte(c[p+16:], 0)
+		end := bytes.IndexByte(raw[pos+16:], 0)
 		if end < 0 {
 			return nil, errors.New("cab: unterminated file name")
 		}
 
-		f := File{
-			Name:       string(c[p+16 : p+16+end]),
-			Time:       ParseDOSTime(le.Uint16(c[p+10:]), le.Uint16(c[p+12:])),
-			Attributes: le.Uint16(c[p+14:]) &^ attrUTF8Name,
+		file := File{
+			Name:       string(raw[pos+16 : pos+16+end]),
+			Time:       ParseDOSTime(order.Uint16(raw[pos+10:]), order.Uint16(raw[pos+12:])),
+			Attributes: order.Uint16(raw[pos+14:]) &^ attrUTF8Name,
 		}
 
-		if fi >= len(folders) {
-			return nil, fmt.Errorf("cab: file %q in folder %d (spanning is not supported)", f.Name, fi)
+		if folderIdx >= len(folders) {
+			return nil, fmt.Errorf("cab: file %q in folder %d (spanning is not supported)", file.Name, folderIdx)
 		}
 
-		if off+size > len(folders[fi]) {
-			return nil, fmt.Errorf("cab: file %q extends past its folder", f.Name)
+		if off+size > len(folders[folderIdx]) {
+			return nil, fmt.Errorf("cab: file %q extends past its folder", file.Name)
 		}
 
-		f.Data = append([]byte(nil), folders[fi][off:off+size]...)
-		files = append(files, f)
-		p += 17 + end
+		file.Data = append([]byte(nil), folders[folderIdx][off:off+size]...)
+		files = append(files, file)
+		pos += 17 + end
 	}
 
 	return files, nil

@@ -27,7 +27,7 @@ const (
 	Windows1252 = 1252
 )
 
-var ansi = map[int]encoding.Encoding{
+var ansi = map[int]encoding.Encoding{ //nolint:gochecknoglobals // lookup table
 	874:  charmap.Windows874,
 	932:  japanese.ShiftJIS,
 	936:  simplifiedchinese.GBK,
@@ -58,64 +58,64 @@ func Supported(cp int) bool {
 }
 
 // Encode converts s to the code page.
-func Encode(s string, cp int) ([]byte, error) {
-	if !utf8.ValidString(s) {
+func Encode(text string, codePage int) ([]byte, error) {
+	if !utf8.ValidString(text) {
 		return nil, errors.New("codepage: text is not valid UTF-8")
 	}
 
-	switch cp {
+	switch codePage {
 	case UTF8:
-		return []byte(s), nil
+		return []byte(text), nil
 	case ASCII:
-		for i := range len(s) {
-			if s[i] >= 0x80 {
-				return nil, fmt.Errorf("codepage: %q is not ASCII and the database code page is 0", s)
+		for i := range len(text) {
+			if text[i] >= 0x80 {
+				return nil, fmt.Errorf("codepage: %q is not ASCII and the database code page is 0", text)
 			}
 		}
 
-		return []byte(s), nil
+		return []byte(text), nil
 	}
 
-	enc, ok := ansi[cp]
+	enc, ok := ansi[codePage]
 	if !ok {
-		return nil, fmt.Errorf("codepage: code page %d is not supported", cp)
+		return nil, fmt.Errorf("codepage: code page %d is not supported", codePage)
 	}
 
-	out, err := enc.NewEncoder().Bytes([]byte(s))
+	out, err := enc.NewEncoder().Bytes([]byte(text))
 	if err != nil {
-		return nil, fmt.Errorf("codepage: %q cannot be represented in code page %d", s, cp)
+		return nil, fmt.Errorf("codepage: %q cannot be represented in code page %d", text, codePage)
 	}
 
 	return out, nil
 }
 
 // Decode converts bytes in the code page to a string.
-func Decode(b []byte, cp int) (string, error) {
-	switch cp {
+func Decode(data []byte, codePage int) (string, error) {
+	switch codePage {
 	case UTF8:
-		if !utf8.Valid(b) {
+		if !utf8.Valid(data) {
 			return "", errors.New("codepage: invalid UTF-8")
 		}
 
-		return string(b), nil
+		return string(data), nil
 	case ASCII:
-		for _, c := range b {
+		for _, c := range data {
 			if c >= 0x80 {
 				return "", errors.New("codepage: non-ASCII byte in a code page 0 database")
 			}
 		}
 
-		return string(b), nil
+		return string(data), nil
 	}
 
-	enc, ok := ansi[cp]
+	enc, ok := ansi[codePage]
 	if !ok {
-		return "", fmt.Errorf("codepage: code page %d is not supported", cp)
+		return "", fmt.Errorf("codepage: code page %d is not supported", codePage)
 	}
 
-	out, err := enc.NewDecoder().Bytes(b)
+	out, err := enc.NewDecoder().Bytes(data)
 	if err != nil {
-		return "", fmt.Errorf("codepage: invalid bytes for code page %d", cp)
+		return "", fmt.Errorf("codepage: invalid bytes for code page %d", codePage)
 	}
 
 	return string(out), nil

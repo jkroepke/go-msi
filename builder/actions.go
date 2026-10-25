@@ -45,7 +45,35 @@ const (
 	seqAdvtExecute    = "AdvtExecuteSequence"
 )
 
-var sequenceTables = []string{seqInstallExecute, seqInstallUI, seqAdminExecute, seqAdminUI, seqAdvtExecute}
+// Standard action names the builder refers to more than once.
+const (
+	actValidateProductID    = "ValidateProductID"
+	actCostInitialize       = "CostInitialize"
+	actFileCost             = "FileCost"
+	actCostFinalize         = "CostFinalize"
+	actExecuteAction        = "ExecuteAction"
+	actInstallValidate      = "InstallValidate"
+	actInstallInitialize    = "InstallInitialize"
+	actStopServices         = "StopServices"
+	actDeleteServices       = "DeleteServices"
+	actRemoveRegistryValues = "RemoveRegistryValues"
+	actRemoveFiles          = "RemoveFiles"
+	actRemoveFolders        = "RemoveFolders"
+	actInstallFiles         = "InstallFiles"
+	actWriteRegistryValues  = "WriteRegistryValues"
+	actInstallServices      = "InstallServices"
+	actStartServices        = "StartServices"
+	actPublishFeatures      = "PublishFeatures"
+	actPublishProduct       = "PublishProduct"
+	actInstallFinalize      = "InstallFinalize"
+
+	condNotInstalled = "NOT Installed"
+	condVersionNT    = "VersionNT"
+	fwAny            = "any"
+	targetDir        = "TARGETDIR"
+)
+
+var sequenceTables = []string{seqInstallExecute, seqInstallUI, seqAdminExecute, seqAdminUI, seqAdvtExecute} //nolint:gochecknoglobals // lookup table
 
 // standardAction is a standard action's default number per table (section
 // 9.2) and its condition.
@@ -75,36 +103,36 @@ func (s standardAction) number(table string) int {
 
 // standardActions holds the default numbers of every standard action this
 // builder may schedule.
-var standardActions = map[string]standardAction{
+var standardActions = map[string]standardAction{ //nolint:gochecknoglobals // lookup table
 	"FindRelatedProducts":      {ies: 25, ius: 25},
 	"AppSearch":                {ies: 50, ius: 50},
 	"LaunchConditions":         {ies: 100, ius: 100, aes: 100, aus: 100},
-	"CCPSearch":                {ies: 500, ius: 500, condition: "NOT Installed"},
-	"RMCCPSearch":              {ies: 600, ius: 600, condition: "NOT Installed"},
-	"ValidateProductID":        {ies: 700, ius: 700},
-	"CostInitialize":           {ies: 800, ius: 800, aes: 800, aus: 800, advt: 800},
-	"FileCost":                 {ies: 900, ius: 900, aes: 900, aus: 900},
+	"CCPSearch":                {ies: 500, ius: 500, condition: condNotInstalled},
+	"RMCCPSearch":              {ies: 600, ius: 600, condition: condNotInstalled},
+	actValidateProductID:       {ies: 700, ius: 700},
+	actCostInitialize:          {ies: 800, ius: 800, aes: 800, aus: 800, advt: 800},
+	actFileCost:                {ies: 900, ius: 900, aes: 900, aus: 900},
 	"IsolateComponents":        {ies: 950, ius: 950},
-	"CostFinalize":             {ies: 1000, ius: 1000, aes: 1000, aus: 1000, advt: 1000},
+	actCostFinalize:            {ies: 1000, ius: 1000, aes: 1000, aus: 1000, advt: 1000},
 	"SetODBCFolders":           {ies: 1100},
 	"MigrateFeatureStates":     {ies: 1200, ius: 1200},
-	"ExecuteAction":            {ius: 1300, aus: 1300},
-	"InstallValidate":          {ies: 1400, aes: 1400, advt: 1400},
+	actExecuteAction:           {ius: 1300, aus: 1300},
+	actInstallValidate:         {ies: 1400, aes: 1400, advt: 1400},
 	"RemoveExistingProducts":   {ies: 1401},
-	"InstallInitialize":        {ies: 1500, aes: 1500, advt: 1500},
-	"AllocateRegistrySpace":    {ies: 1550, condition: "NOT Installed"},
+	actInstallInitialize:       {ies: 1500, aes: 1500, advt: 1500},
+	"AllocateRegistrySpace":    {ies: 1550, condition: condNotInstalled},
 	"ProcessComponents":        {ies: 1600},
 	"UnpublishComponents":      {ies: 1700},
 	"MsiUnpublishAssemblies":   {ies: 1750},
 	"UnpublishFeatures":        {ies: 1800},
-	"StopServices":             {ies: 1900, condition: "VersionNT"},
-	"DeleteServices":           {ies: 2000, condition: "VersionNT"},
+	actStopServices:            {ies: 1900, condition: condVersionNT},
+	actDeleteServices:          {ies: 2000, condition: condVersionNT},
 	"UnregisterComPlus":        {ies: 2100},
 	"SelfUnregModules":         {ies: 2200},
 	"UnregisterTypeLibraries":  {ies: 2300},
 	"RemoveODBC":               {ies: 2400},
 	"UnregisterFonts":          {ies: 2500},
-	"RemoveRegistryValues":     {ies: 2600},
+	actRemoveRegistryValues:    {ies: 2600},
 	"UnregisterClassInfo":      {ies: 2700},
 	"UnregisterExtensionInfo":  {ies: 2800},
 	"UnregisterProgIdInfo":     {ies: 2900},
@@ -113,12 +141,12 @@ var standardActions = map[string]standardAction{
 	"RemoveShortcuts":          {ies: 3200},
 	"RemoveEnvironmentStrings": {ies: 3300},
 	"RemoveDuplicateFiles":     {ies: 3400},
-	"RemoveFiles":              {ies: 3500},
-	"RemoveFolders":            {ies: 3600},
+	actRemoveFiles:             {ies: 3500},
+	actRemoveFolders:           {ies: 3600},
 	"CreateFolders":            {ies: 3700},
 	"MoveFiles":                {ies: 3800},
 	"InstallAdminPackage":      {aes: 3900},
-	"InstallFiles":             {ies: 4000, aes: 4000},
+	actInstallFiles:            {ies: 4000, aes: 4000},
 	"PatchFiles":               {ies: 4090, aes: 4090},
 	"DuplicateFiles":           {ies: 4210},
 	"BindImage":                {ies: 4300},
@@ -127,7 +155,7 @@ var standardActions = map[string]standardAction{
 	"RegisterExtensionInfo":    {ies: 4700, advt: 4700},
 	"RegisterProgIdInfo":       {ies: 4800, advt: 4800},
 	"RegisterMIMEInfo":         {ies: 4900, advt: 4900},
-	"WriteRegistryValues":      {ies: 5000},
+	actWriteRegistryValues:     {ies: 5000},
 	"WriteIniValues":           {ies: 5100},
 	"WriteEnvironmentStrings":  {ies: 5200},
 	"RegisterFonts":            {ies: 5300},
@@ -135,67 +163,67 @@ var standardActions = map[string]standardAction{
 	"RegisterTypeLibraries":    {ies: 5500},
 	"SelfRegModules":           {ies: 5600},
 	"RegisterComPlus":          {ies: 5700},
-	"InstallServices":          {ies: 5800, condition: "VersionNT"},
+	actInstallServices:         {ies: 5800, condition: condVersionNT},
 	"MsiConfigureServices":     {ies: 5850, condition: "VersionNT>=600"},
-	"StartServices":            {ies: 5900, condition: "VersionNT"},
+	actStartServices:           {ies: 5900, condition: condVersionNT},
 	"RegisterUser":             {ies: 6000},
 	"RegisterProduct":          {ies: 6100},
 	"PublishComponents":        {ies: 6200, advt: 6200},
 	"MsiPublishAssemblies":     {ies: 6250, advt: 6250},
-	"PublishFeatures":          {ies: 6300, advt: 6300},
-	"PublishProduct":           {ies: 6400, advt: 6400},
-	"InstallExecute":           {ies: 6500, condition: "NOT Installed"},
-	"InstallExecuteAgain":      {ies: 6550, condition: "NOT Installed"},
-	"InstallFinalize":          {ies: 6600, aes: 6600, advt: 6600},
+	actPublishFeatures:         {ies: 6300, advt: 6300},
+	actPublishProduct:          {ies: 6400, advt: 6400},
+	"InstallExecute":           {ies: 6500, condition: condNotInstalled},
+	"InstallExecuteAgain":      {ies: 6550, condition: condNotInstalled},
+	actInstallFinalize:         {ies: 6600, aes: 6600, advt: 6600},
 }
 
 // alwaysActions are the standard actions every product gets, per table
 // (sections 9.2 and 11.7).
-var alwaysActions = map[string][]string{
+var alwaysActions = map[string][]string{ //nolint:gochecknoglobals // lookup table
 	seqInstallExecute: {
-		"ValidateProductID", "CostInitialize", "FileCost", "CostFinalize", "InstallValidate",
-		"InstallInitialize", "ProcessComponents", "UnpublishFeatures", "RegisterUser",
-		"RegisterProduct", "PublishFeatures", "PublishProduct", "InstallFinalize",
+		actValidateProductID, actCostInitialize, actFileCost, actCostFinalize, actInstallValidate,
+		actInstallInitialize, "ProcessComponents", "UnpublishFeatures", "RegisterUser",
+		"RegisterProduct", actPublishFeatures, actPublishProduct, actInstallFinalize,
 	},
-	seqInstallUI: {"ValidateProductID", "CostInitialize", "FileCost", "CostFinalize", "ExecuteAction"},
+	seqInstallUI: {actValidateProductID, actCostInitialize, actFileCost, actCostFinalize, actExecuteAction},
 	seqAdminExecute: {
-		"CostInitialize", "FileCost", "CostFinalize", "InstallValidate", "InstallInitialize", "InstallAdminPackage", "InstallFiles", "InstallFinalize",
+		actCostInitialize, actFileCost, actCostFinalize, actInstallValidate, actInstallInitialize, "InstallAdminPackage", actInstallFiles, actInstallFinalize,
 	},
-	seqAdminUI:     {"CostInitialize", "FileCost", "CostFinalize", "ExecuteAction"},
-	seqAdvtExecute: {"CostInitialize", "CostFinalize", "InstallValidate", "InstallInitialize", "PublishFeatures", "PublishProduct", "InstallFinalize"},
+	seqAdminUI:     {actCostInitialize, actFileCost, actCostFinalize, actExecuteAction},
+	seqAdvtExecute: {actCostInitialize, actCostFinalize, actInstallValidate, actInstallInitialize, actPublishFeatures, actPublishProduct, actInstallFinalize},
 }
 
 // tableActions maps a populated table to the InstallExecuteSequence actions
 // it needs (section 9.3).
-var tableActions = map[string][]string{
-	"Component":        {"CreateFolders", "RemoveFolders"},
-	"File":             {"InstallFiles", "RemoveFiles"},
-	"RemoveFile":       {"RemoveFiles", "RemoveFolders"},
-	"Registry":         {"WriteRegistryValues", "RemoveRegistryValues"},
-	"RemoveRegistry":   {"WriteRegistryValues", "RemoveRegistryValues"},
+var tableActions = map[string][]string{ //nolint:gochecknoglobals // lookup table
+	"Component":        {"CreateFolders", actRemoveFolders},
+	"File":             {actInstallFiles, actRemoveFiles},
+	"RemoveFile":       {actRemoveFiles, actRemoveFolders},
+	"Registry":         {actWriteRegistryValues, actRemoveRegistryValues},
+	"RemoveRegistry":   {actWriteRegistryValues, actRemoveRegistryValues},
 	"Environment":      {"WriteEnvironmentStrings", "RemoveEnvironmentStrings"},
-	"ServiceInstall":   {"InstallServices", "StartServices", "StopServices", "DeleteServices"},
-	"ServiceControl":   {"InstallServices", "StartServices", "StopServices", "DeleteServices"},
+	"ServiceInstall":   {actInstallServices, actStartServices, actStopServices, actDeleteServices},
+	"ServiceControl":   {actInstallServices, actStartServices, actStopServices, actDeleteServices},
 	"MsiServiceConfig": {"MsiConfigureServices"},
 }
 
 // addAction registers a custom action. The CustomAction row is written by
 // sequences, once every contributor has run.
-func (b *build) addAction(a *actionInfo) {
+func (b *build) addAction(action *actionInfo) {
 	for _, old := range b.actions {
-		if old.name == a.name {
-			b.errorf("customActions", "custom action %s is defined twice", a.name)
+		if old.name == action.name {
+			b.errorf("customActions", "custom action %s is defined twice", action.name)
 
 			return
 		}
 	}
 
-	if s, ok := a.target.(string); ok && len(s) > maxTargetLength {
+	if s, ok := action.target.(string); ok && len(s) > maxTargetLength {
 		b.warnf("customActions", "%s: Target is %d characters, CustomAction.Target is declared with %d (ICE03); the engine still runs it",
-			a.name, len(s), maxTargetLength)
+			action.name, len(s), maxTargetLength)
 	}
 
-	b.actions = append(b.actions, a)
+	b.actions = append(b.actions, action)
 }
 
 func (b *build) action(name string) *actionInfo {
@@ -244,84 +272,84 @@ func (b *build) standardAt(table, name string) {
 
 // customActions turns the customActions section into CustomAction rows and
 // placements.
-func (b *build) customActions() error {
-	for i, ca := range b.cfg.CustomActions {
-		p := fmt.Sprintf("customActions[%d]", i)
-		a := &actionInfo{name: ca.ID}
+func (b *build) customActions() error { //nolint:cyclop // one pass over the format; splitting would scatter it
+	for i, custom := range b.cfg.CustomActions {
+		path := fmt.Sprintf("customActions[%d]", i)
+		action := &actionInfo{name: custom.ID}
 
 		switch {
-		case ca.SetProperty != nil:
-			a.typ, a.source, a.target = caSetProperty, ca.SetProperty.Name, ca.SetProperty.Value
-		case ca.SetDirectory != nil:
-			a.typ, a.source, a.target = caSetDirectory, ca.SetDirectory.Directory, ca.SetDirectory.Value
-		case ca.Error != "":
-			a.typ, a.target = caError, ca.Error
-		case ca.Exec != nil:
-			a.typ, a.source, a.target = caExec, ca.Exec.Directory, ca.Exec.Command
+		case custom.SetProperty != nil:
+			action.typ, action.source, action.target = caSetProperty, custom.SetProperty.Name, custom.SetProperty.Value
+		case custom.SetDirectory != nil:
+			action.typ, action.source, action.target = caSetDirectory, custom.SetDirectory.Directory, custom.SetDirectory.Value
+		case custom.Error != "":
+			action.typ, action.target = caError, custom.Error
+		case custom.Exec != nil:
+			action.typ, action.source, action.target = caExec, custom.Exec.Directory, custom.Exec.Command
 
-			if config.IsStandardFolder(ca.Exec.Directory) {
-				b.ensureStandardDir(ca.Exec.Directory)
+			if config.IsStandardFolder(custom.Exec.Directory) {
+				b.ensureStandardDir(custom.Exec.Directory)
 			}
-		case ca.ExecProperty != nil:
-			a.typ, a.source, a.target = caExecProperty, ca.ExecProperty.Property, nullable(ca.ExecProperty.Arguments)
-		case ca.DLL != nil:
-			a.typ, a.source, a.target = caDLL, ca.DLL.Binary, ca.DLL.Entry
+		case custom.ExecProperty != nil:
+			action.typ, action.source, action.target = caExecProperty, custom.ExecProperty.Property, nullable(custom.ExecProperty.Arguments)
+		case custom.DLL != nil:
+			action.typ, action.source, action.target = caDLL, custom.DLL.Binary, custom.DLL.Entry
 		}
 
-		switch ca.Execute {
+		switch custom.Execute {
 		case "deferred":
-			a.typ |= caDeferred
+			action.typ |= caDeferred
 		case "rollback":
-			a.typ |= caRollback
+			action.typ |= caRollback
 		case "commit":
-			a.typ |= caCommit
+			action.typ |= caCommit
 		}
 
-		if ca.Impersonate != nil && !*ca.Impersonate {
-			a.typ |= caNoImpersonate
+		if custom.Impersonate != nil && !*custom.Impersonate {
+			action.typ |= caNoImpersonate
 		}
 
-		switch ca.Return {
+		switch custom.Return {
 		case "ignore":
-			a.typ |= caContinue
+			action.typ |= caContinue
 		case "asyncWait":
-			a.typ |= caAsyncWait
+			action.typ |= caAsyncWait
 		case "asyncNoWait":
-			a.typ |= caAsyncNoWait
+			action.typ |= caAsyncNoWait
 		}
 
-		switch ca.Once {
+		switch custom.Once {
 		case "firstSequence":
-			a.typ |= caFirstSequence
+			action.typ |= caFirstSequence
 		case "oncePerProcess":
-			a.typ |= caOncePerProcess
+			action.typ |= caOncePerProcess
 		case "clientRepeat":
-			a.typ |= caClientRepeat
+			action.typ |= caClientRepeat
 		}
 
-		if ca.HideTarget {
-			a.typ |= caHideTarget
+		if custom.HideTarget {
+			action.typ |= caHideTarget
 		}
 
-		b.addAction(a)
+		b.addAction(action)
 
-		for j, pl := range ca.Schedule {
-			pp := fmt.Sprintf("%s.schedule[%d]", p, j)
+		for j, placement := range custom.Schedule {
+			placementPath := fmt.Sprintf("%s.schedule[%d]", path, j)
 
-			table, ok := config.SequenceTable(pl.Sequence)
+			table, ok := config.SequenceTable(placement.Sequence)
 			if !ok {
-				b.errorf(pp+".sequence", "unknown sequence %q", pl.Sequence)
+				b.errorf(placementPath+".sequence", "unknown sequence %q", placement.Sequence)
 
 				continue
 			}
 
-			if err := condition.Check(pl.Condition); err != nil {
-				b.errorf(pp+".condition", "%v", err)
+			if err := condition.Check(placement.Condition); err != nil {
+				b.errorf(placementPath+".condition", "%v", err)
 
 				continue
 			}
 
-			b.schedule(table, ca.ID, pl.Condition, pl.Before, pl.After, pl.At)
+			b.schedule(table, custom.ID, placement.Condition, placement.Before, placement.After, placement.At)
 		}
 	}
 
@@ -332,7 +360,7 @@ func (b *build) customActions() error {
 // design section 4.11): on install and repair every rule is deleted by name
 // before any is added, with a rollback that deletes again; on removal the
 // rule is deleted, with a rollback that adds it back.
-func (b *build) firewall() error {
+func (b *build) firewall() error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	if len(b.cfg.Firewall) == 0 {
 		return nil
 	}
@@ -346,55 +374,55 @@ func (b *build) firewall() error {
 
 	rules := make([]rule, 0, len(b.cfg.Firewall))
 
-	for _, fw := range b.cfg.Firewall {
-		id := generatedID("", "Firewall", fw.Name, fw.Protocol, fw.Port, fw.Program)[:8]
-		install := "$" + fw.Component + "=3"
-		remove := "$" + fw.Component + "=2"
+	for _, cfgRule := range b.cfg.Firewall {
+		ruleID := generatedID("", "Firewall", cfgRule.Name, cfgRule.Protocol, cfgRule.Port, cfgRule.Program)[:8]
+		install := "$" + cfgRule.Component + "=3"
+		remove := "$" + cfgRule.Component + "=2"
 
-		remoteIP := fw.RemoteAddresses
+		remoteIP := cfgRule.RemoteAddresses
 		if remoteIP == "" {
-			remoteIP = "any"
+			remoteIP = fwAny
 		} else if refs := propertyRefs(remoteIP); len(refs) > 0 {
-			// A property may be empty at run time; fall back to "any" then.
-			prop := "FwIP" + id
-			b.addAction(&actionInfo{name: "SetFwRemoteIPDefault" + id, typ: caSetProperty, source: prop, target: "any"})
-			b.addAction(&actionInfo{name: "SetFwRemoteIP" + id, typ: caSetProperty, source: prop, target: remoteIP})
-			b.schedule(seqInstallExecute, "SetFwRemoteIPDefault"+id, "", "", "CostFinalize", 0)
-			b.schedule(seqInstallExecute, "SetFwRemoteIP"+id, strings.Join(refs, " AND "), "", "SetFwRemoteIPDefault"+id, 0)
+			// A property may be empty at run time; fall back to fwAny then.
+			prop := "FwIP" + ruleID
+			b.addAction(&actionInfo{name: "SetFwRemoteIPDefault" + ruleID, typ: caSetProperty, source: prop, target: fwAny})
+			b.addAction(&actionInfo{name: "SetFwRemoteIP" + ruleID, typ: caSetProperty, source: prop, target: remoteIP})
+			b.schedule(seqInstallExecute, "SetFwRemoteIPDefault"+ruleID, "", "", actCostFinalize, 0)
+			b.schedule(seqInstallExecute, "SetFwRemoteIP"+ruleID, strings.Join(refs, " AND "), "", "SetFwRemoteIPDefault"+ruleID, 0)
 
 			remoteIP = "[" + prop + "]"
 		}
 
 		var parts []string
 
-		parts = append(parts, `name="`+fw.Name+`"`, "dir=in", "action=allow", "protocol="+fw.Protocol)
+		parts = append(parts, `name="`+cfgRule.Name+`"`, "dir=in", "action=allow", "protocol="+cfgRule.Protocol)
 
-		if fw.Port != "" {
-			parts = append(parts, "localport="+fw.Port)
+		if cfgRule.Port != "" {
+			parts = append(parts, "localport="+cfgRule.Port)
 		}
 
-		if fw.Program != "" {
-			parts = append(parts, `program="`+fw.Program+`"`)
+		if cfgRule.Program != "" {
+			parts = append(parts, `program="`+cfgRule.Program+`"`)
 		}
 
 		// Defaults (remoteip=any, profile=any, enable=yes) are left out to
 		// keep the Target within 255 characters.
-		if remoteIP != "any" {
+		if remoteIP != fwAny {
 			parts = append(parts, "remoteip="+remoteIP)
 		}
 
-		if profiles := firewallProfiles(fw.Profiles); profiles != "any" {
+		if profiles := firewallProfiles(cfgRule.Profiles); profiles != fwAny {
 			parts = append(parts, "profile="+profiles)
 		}
 
-		if fw.Description != "" {
-			parts = append(parts, `description="`+fw.Description+`"`)
+		if cfgRule.Description != "" {
+			parts = append(parts, `description="`+cfgRule.Description+`"`)
 		}
 
 		rules = append(rules, rule{
-			id:      id,
+			id:      ruleID,
 			add:     netsh + "add rule " + strings.Join(parts, " "),
-			del:     netsh + `delete rule name="` + fw.Name + `" dir=in`,
+			del:     netsh + `delete rule name="` + cfgRule.Name + `" dir=in`,
 			install: install,
 			remove:  remove,
 		})
@@ -421,7 +449,7 @@ func (b *build) firewall() error {
 
 	// After InstallFiles, so that the program exists; the chain keeps the
 	// definition order.
-	anchor := "InstallFiles"
+	anchor := actInstallFiles
 	b.standardAt(seqInstallExecute, anchor)
 
 	for _, r := range rules {
@@ -443,7 +471,7 @@ func (b *build) firewall() error {
 
 func firewallProfiles(list config.StringList) string {
 	if slices.Contains(list, "all") {
-		return "any"
+		return fwAny
 	}
 
 	return strings.Join(list, ",")
@@ -451,7 +479,7 @@ func firewallProfiles(list config.StringList) string {
 
 // sequences adds the standard actions each table needs, numbers every table
 // and writes the five sequence tables and the CustomAction table.
-func (b *build) sequences() error {
+func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
 	for _, table := range sequenceTables {
 		for _, name := range alwaysActions[table] {
 			b.standardAt(table, name)
@@ -479,23 +507,23 @@ func (b *build) sequences() error {
 
 	// Every scheduled name must be a standard action or a custom action.
 	for _, table := range sequenceTables {
-		for _, a := range b.schedules[table] {
-			if _, std := standardActions[a.Name]; std || b.action(a.Name) != nil {
+		for _, action := range b.schedules[table] {
+			if _, std := standardActions[action.Name]; std || b.action(action.Name) != nil {
 				continue
 			}
 
-			if config.IsStandardAction(a.Name) {
-				b.errorf("customActions", "%s: standard action %s has no default number in go-msi; schedule it with an absolute number", table, a.Name)
+			if config.IsStandardAction(action.Name) {
+				b.errorf("customActions", "%s: standard action %s has no default number in go-msi; schedule it with an absolute number", table, action.Name)
 
 				continue
 			}
 
-			b.errorf("customActions", "%s: action %s is scheduled but not defined", table, a.Name)
+			b.errorf("customActions", "%s: action %s is scheduled but not defined", table, action.Name)
 		}
 	}
 
 	if err := b.diags.Err(); err != nil {
-		return err
+		return err //nolint:wrapcheck // the diagnostics carry their own paths
 	}
 
 	for _, table := range sequenceTables {
@@ -522,7 +550,7 @@ func (b *build) sequences() error {
 		}
 	}
 
-	ca := b.table("CustomAction")
+	caTable := b.table("CustomAction")
 
 	slices.SortStableFunc(b.actions, func(a, b *actionInfo) int { return strings.Compare(a.name, b.name) })
 
@@ -531,7 +559,7 @@ func (b *build) sequences() error {
 			b.warnf("customActions", "custom action %s is not scheduled in any sequence", a.name)
 		}
 
-		ca.Add(a.name, a.typ, a.source, a.target, nil)
+		caTable.Add(a.name, a.typ, a.source, a.target, nil)
 	}
 
 	return nil
@@ -539,26 +567,27 @@ func (b *build) sequences() error {
 
 // checkSequences applies the ordering rules that numbering cannot: ICE77
 // for script actions and the RemoveExistingProducts windows (ICE63).
-func (b *build) checkSequences() {
+func (b *build) checkSequences() { //nolint:cyclop // one pass over the format; splitting would scatter it
 	for _, table := range sequenceTables {
 		seq := b.numbered[table]
-		init := sequence.Find(seq, "InstallInitialize")
-		fin := sequence.Find(seq, "InstallFinalize")
+		init := sequence.Find(seq, actInstallInitialize)
+		fin := sequence.Find(seq, actInstallFinalize)
 
-		for _, n := range seq {
-			a := b.action(n.Name)
+		for _, numbered := range seq {
+			a := b.action(numbered.Name)
 			if a == nil || a.typ&caDeferred == 0 {
 				continue
 			}
 
 			if table != seqInstallExecute && table != seqAdminExecute {
-				b.errorf("customActions", "%s: deferred action %s belongs in an execute sequence (ICE77)", table, n.Name)
+				b.errorf("customActions", "%s: deferred action %s belongs in an execute sequence (ICE77)", table, numbered.Name)
 
 				continue
 			}
 
-			if init < 0 || fin < 0 || n.Sequence <= init || n.Sequence >= fin {
-				b.errorf("customActions", "%s: deferred action %s at %d must run between InstallInitialize and InstallFinalize (ICE77)", table, n.Name, n.Sequence)
+			if init < 0 || fin < 0 || numbered.Sequence <= init || numbered.Sequence >= fin {
+				b.errorf("customActions", "%s: deferred action %s at %d must run between InstallInitialize and InstallFinalize (ICE77)",
+					table, numbered.Name, numbered.Sequence)
 			}
 		}
 	}
@@ -570,16 +599,16 @@ func (b *build) checkSequences() {
 		return
 	}
 
-	validate := sequence.Find(seq, "InstallValidate")
-	init := sequence.Find(seq, "InstallInitialize")
-	fin := sequence.Find(seq, "InstallFinalize")
-	next := func(n int) int {
-		if n < 0 {
+	validate := sequence.Find(seq, actInstallValidate)
+	init := sequence.Find(seq, actInstallInitialize)
+	fin := sequence.Find(seq, actInstallFinalize)
+	next := func(after int) int {
+		if after < 0 {
 			return -2
 		}
 
 		for _, a := range seq {
-			if a.Sequence > n {
+			if a.Sequence > after {
 				return a.Sequence
 			}
 		}

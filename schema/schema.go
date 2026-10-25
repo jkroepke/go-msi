@@ -49,7 +49,7 @@ const Categories = "Text;Formatted;Template;Condition;Guid;Path;Version;Language
 	"Paths;AnyPath;WildCardFilename;RegPath;CustomSource;Property;Cabinet;Shortcut;DefaultDir;FormattedSDDLText;Integer;DoubleInteger;TimeDate"
 
 // Each line: Name|Type|K (key) or empty|Category|KeyTable|KeyColumn|Min|Max|Set|Description.
-var defs = map[string][]string{
+var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 	"_Validation": {
 		"Table|s32|K|Identifier||||||Name of table",
 		"Column|s32|K|Identifier||||||Name of column",
@@ -226,13 +226,13 @@ var defs = map[string][]string{
 	},
 }
 
-var sequenceColumns = []string{
+var sequenceColumns = []string{ //nolint:gochecknoglobals // lookup table
 	"Action|s72|K|Identifier||||||Name of action to invoke, either in the engine or the handler DLL.",
 	"Condition|S255||Condition||||||Optional expression which skips the action if evaluates to expFalse.",
 	"Sequence|I2|||||-4|32767||Number that determines the sort order in which the actions are to be executed.  Leave blank to suppress action.",
 }
 
-var tables = parseTables()
+var tables = parseTables() //nolint:gochecknoglobals // lookup table
 
 // parseTables turns the DSL lines into table definitions.
 func parseTables() map[string]*TableDef {
@@ -242,21 +242,21 @@ func parseTables() map[string]*TableDef {
 		def := &TableDef{Name: name}
 
 		for _, line := range lines {
-			f := strings.Split(line, "|")
-			if len(f) != 10 {
+			fields := strings.Split(line, "|")
+			if len(fields) != 10 {
 				panic(fmt.Sprintf("schema: %s: malformed column %q", name, line))
 			}
 
-			c := ColumnDef{Name: f[0], Type: msidb.MustType(f[1]), Category: f[3], KeyTable: f[4], Set: f[8], Description: f[9]}
-			c.Type.Key = f[2] == "K"
+			col := ColumnDef{Name: fields[0], Type: msidb.MustType(fields[1]), Category: fields[3], KeyTable: fields[4], Set: fields[8], Description: fields[9]}
+			col.Type.Key = fields[2] == "K"
 
-			if f[5] != "" {
-				c.KeyColumn, _ = strconv.Atoi(f[5])
+			if fields[5] != "" {
+				col.KeyColumn, _ = strconv.Atoi(fields[5])
 			}
 
-			c.MinValue = optInt(f[6])
-			c.MaxValue = optInt(f[7])
-			def.Columns = append(def.Columns, c)
+			col.MinValue = optInt(fields[6])
+			col.MaxValue = optInt(fields[7])
+			def.Columns = append(def.Columns, col)
 		}
 
 		out[name] = def
@@ -312,15 +312,15 @@ func Names() []string {
 // column of every table, _Validation itself included, plus the two
 // _SummaryInformation rows the toolchains write. Custom tables (not in this
 // package) get rows derived from their column types.
-func Validation(present []*msidb.Table) *msidb.Table {
-	v := New("_Validation")
+func Validation(present []*msidb.Table) *msidb.Table { //nolint:cyclop // one pass over the format; splitting would scatter it
+	val := New("_Validation")
 
 	names := make(map[string]*msidb.Table)
 	for _, t := range present {
 		names[t.Name] = t
 	}
 
-	names["_Validation"] = v
+	names["_Validation"] = val
 
 	sorted := make([]string, 0, len(names))
 	for n := range names {
@@ -330,23 +330,23 @@ func Validation(present []*msidb.Table) *msidb.Table {
 	slices.Sort(sorted)
 
 	for _, name := range sorted {
-		t := names[name]
+		tbl := names[name]
 
 		if def, ok := tables[name]; ok {
 			for _, c := range def.Columns {
-				v.Add(name, c.Name, nullable(c.Type), optCell(c.MinValue), optCell(c.MaxValue), orNil(c.KeyTable), keyCol(c.KeyColumn),
+				val.Add(name, c.Name, nullable(c.Type), optCell(c.MinValue), optCell(c.MaxValue), orNil(c.KeyTable), keyCol(c.KeyColumn),
 					orNil(c.Category), orNil(c.Set), orNil(c.Description))
 			}
 
 			continue
 		}
 
-		for _, c := range t.Columns {
+		for _, col := range tbl.Columns {
 			var category any
 
 			var minV, maxV any
 
-			switch c.Type.Kind {
+			switch col.Type.Kind {
 			case msidb.KindString:
 				category = "Text"
 			case msidb.KindBinary:
@@ -357,14 +357,14 @@ func Validation(present []*msidb.Table) *msidb.Table {
 				minV, maxV = msidb.MinInt32, msidb.MaxInt32
 			}
 
-			v.Add(name, c.Name, nullable(c.Type), minV, maxV, nil, nil, category, nil, nil)
+			val.Add(name, col.Name, nullable(col.Type), minV, maxV, nil, nil, category, nil, nil)
 		}
 	}
 
-	v.Add("_SummaryInformation", "PropertyId", "N", nil, nil, nil, nil, nil, nil, nil)
-	v.Add("_SummaryInformation", "Value", "N", nil, nil, nil, nil, "Text", nil, nil)
+	val.Add("_SummaryInformation", "PropertyId", "N", nil, nil, nil, nil, nil, nil, nil)
+	val.Add("_SummaryInformation", "Value", "N", nil, nil, nil, nil, "Text", nil, nil)
 
-	return v
+	return val
 }
 
 func nullable(t msidb.Type) string {

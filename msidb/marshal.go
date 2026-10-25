@@ -43,21 +43,21 @@ func newPool(cp int) *pool {
 }
 
 // use records one reference to s.
-func (p *pool) use(s string) error {
-	if _, ok := p.bytes[s]; !ok {
-		b, err := codepage.Encode(s, p.cp)
+func (p *pool) use(str string) error {
+	if _, ok := p.bytes[str]; !ok {
+		encoded, err := codepage.Encode(str, p.cp)
 		if err != nil {
-			return err
+			return fmt.Errorf("msidb: %w", err)
 		}
 
-		if len(b) == 0 {
+		if len(encoded) == 0 {
 			return errors.New("msidb: empty string in the pool")
 		}
 
-		p.bytes[s] = b
+		p.bytes[str] = encoded
 	}
 
-	p.refs[s]++
+	p.refs[str]++
 
 	return nil
 }
@@ -86,55 +86,57 @@ func (p *pool) assign() error {
 
 func (p *pool) id(s string) uint32 { return p.ids[s] }
 
-func (p *pool) marshal() (poolStream, dataStream []byte) {
-	le := binary.LittleEndian
+func (p *pool) marshal() ([]byte, []byte) {
+	var poolStream, dataStream []byte
+
+	order := binary.LittleEndian
 
 	hdr := uint32(p.cp) //nolint:gosec // bounded by the format limits checked earlier
 	if p.longRefs {
 		hdr |= 0x80000000
 	}
 
-	poolStream = le.AppendUint32(poolStream, hdr)
+	poolStream = order.AppendUint32(poolStream, hdr)
 
 	for _, s := range p.ordered {
-		b := p.bytes[s]
+		encoded := p.bytes[s]
 		ref := uint16(p.refs[s]) //nolint:gosec // bounded by the format limits checked earlier
 
-		if len(b) > 0xFFFF {
-			poolStream = le.AppendUint16(poolStream, 0)
-			poolStream = le.AppendUint16(poolStream, ref)
-			poolStream = le.AppendUint32(poolStream, uint32(len(b))) //nolint:gosec // bounded by the format limits checked earlier
+		if len(encoded) > 0xFFFF {
+			poolStream = order.AppendUint16(poolStream, 0)
+			poolStream = order.AppendUint16(poolStream, ref)
+			poolStream = order.AppendUint32(poolStream, uint32(len(encoded))) //nolint:gosec // bounded by the format limits checked earlier
 		} else {
-			poolStream = le.AppendUint16(poolStream, uint16(len(b))) //nolint:gosec // bounded by the format limits checked earlier
-			poolStream = le.AppendUint16(poolStream, ref)
+			poolStream = order.AppendUint16(poolStream, uint16(len(encoded))) //nolint:gosec // bounded by the format limits checked earlier
+			poolStream = order.AppendUint16(poolStream, ref)
 		}
 
-		dataStream = append(dataStream, b...)
+		dataStream = append(dataStream, encoded...)
 	}
 
 	return poolStream, dataStream
 }
 
 // stored returns the raw stored value of a normalized cell.
-func (p *pool) stored(c Column, v any) uint32 {
-	if v == nil {
+func (p *pool) stored(c Column, value any) uint32 {
+	if value == nil {
 		return 0
 	}
 
-	switch c.Type.Kind {
+	switch c.Type.Kind { //nolint:exhaustive // the default covers the remaining kinds
 	case KindString:
-		return p.id(v.(string)) //nolint:forcetypeassert // normalizeCell checked the type
+		return p.id(value.(string)) //nolint:forcetypeassert // normalizeCell checked the type
 	case KindInt16:
-		return uint32(v.(int)+0x8000) & 0xFFFF //nolint:forcetypeassert,gosec // normalizeCell checked the type and range
+		return uint32(value.(int)+0x8000) & 0xFFFF //nolint:forcetypeassert,gosec // normalizeCell checked the type and range
 	case KindInt32:
-		return uint32(int32(v.(int))) ^ 0x80000000 //nolint:forcetypeassert,gosec // normalizeCell checked the type and range
+		return uint32(int32(value.(int))) ^ 0x80000000 //nolint:forcetypeassert,gosec // normalizeCell checked the type and range
 	default:
 		return 1
 	}
 }
 
 // Marshal serializes the database into a compound file.
-func (db *Database) Marshal(o Options) ([]byte, error) {
+func (db *Database) Marshal(opts Options) ([]byte, error) { //nolint:maintidx,cyclop,gocyclo,gocognit // one pass over the format; splitting would scatter it
 	if !codepage.Supported(db.Codepage) {
 		return nil, fmt.Errorf("msidb: database code page %d is not supported", db.Codepage)
 	}
@@ -145,56 +147,56 @@ func (db *Database) Marshal(o Options) ([]byte, error) {
 
 	seen := make(map[string]bool)
 
-	for _, t := range db.Tables {
-		if err := t.Validate(); err != nil {
+	for _, tbl := range db.Tables {
+		if err := tbl.Validate(); err != nil {
 			return nil, err
 		}
 
-		if seen[t.Name] {
-			return nil, fmt.Errorf("msidb: table %s defined twice", t.Name)
+		if seen[tbl.Name] {
+			return nil, fmt.Errorf("msidb: table %s defined twice", tbl.Name)
 		}
 
-		seen[t.Name] = true
+		seen[tbl.Name] = true
 
-		switch t.Name {
+		switch tbl.Name {
 		case TableTables, TableColumns, TableStringPool, TableStringData, "_Streams", "_Storages":
-			return nil, fmt.Errorf("msidb: table %s is a system table and cannot be defined", t.Name)
+			return nil, fmt.Errorf("msidb: table %s is a system table and cannot be defined", tbl.Name)
 		}
 	}
 
 	tables := append([]*Table(nil), db.Tables...)
 	slices.SortFunc(tables, func(a, b *Table) int { return strings.Compare(a.Name, b.Name) })
 
-	p := newPool(db.Codepage)
+	strPool := newPool(db.Codepage)
 
-	for _, t := range tables {
+	for _, tbl := range tables {
 		// _Tables row and the Table column of every _Columns row.
-		if err := p.use(t.Name); err != nil {
-			return nil, fmt.Errorf("msidb: table name %q: %w", t.Name, err)
+		if err := strPool.use(tbl.Name); err != nil {
+			return nil, fmt.Errorf("msidb: table name %q: %w", tbl.Name, err)
 		}
 
-		for _, c := range t.Columns {
-			if err := p.use(t.Name); err != nil {
+		for _, col := range tbl.Columns {
+			if err := strPool.use(tbl.Name); err != nil {
 				return nil, err
 			}
 
-			if err := p.use(c.Name); err != nil {
-				return nil, fmt.Errorf("msidb: column name %q: %w", c.Name, err)
+			if err := strPool.use(col.Name); err != nil {
+				return nil, fmt.Errorf("msidb: column name %q: %w", col.Name, err)
 			}
 		}
 
-		for _, row := range t.Rows {
-			for i, c := range t.Columns {
+		for _, row := range tbl.Rows {
+			for i, c := range tbl.Columns {
 				if s, ok := row[i].(string); ok && c.Type.Kind == KindString {
-					if err := p.use(s); err != nil {
-						return nil, fmt.Errorf("msidb: table %s column %s: %w", t.Name, c.Name, err)
+					if err := strPool.use(s); err != nil {
+						return nil, fmt.Errorf("msidb: table %s column %s: %w", tbl.Name, c.Name, err)
 					}
 				}
 			}
 		}
 	}
 
-	if err := p.assign(); err != nil {
+	if err := strPool.assign(); err != nil {
 		return nil, err
 	}
 
@@ -211,7 +213,7 @@ func (db *Database) Marshal(o Options) ([]byte, error) {
 		return nil
 	}
 
-	poolStream, dataStream := p.marshal()
+	poolStream, dataStream := strPool.marshal()
 
 	if err := addStream(TableStringPool, true, poolStream); err != nil {
 		return nil, err
@@ -238,116 +240,121 @@ func (db *Database) Marshal(o Options) ([]byte, error) {
 		}
 	}
 
-	for _, t := range []*Table{tablesTable, columnsTable} {
-		if err := t.Validate(); err != nil {
+	for _, tbl := range []*Table{tablesTable, columnsTable} {
+		if err := tbl.Validate(); err != nil {
 			return nil, err
 		}
 
-		data, err := p.encodeTable(t)
+		data, err := strPool.encodeTable(tbl)
 		if err != nil {
 			return nil, err
 		}
 
-		if err := addStream(t.Name, true, data); err != nil {
+		if err := addStream(tbl.Name, true, data); err != nil {
 			return nil, err
 		}
 	}
 
 	streamNames := make(map[string]bool)
 
-	for _, t := range tables {
-		if len(t.Rows) == 0 {
+	for _, tbl := range tables {
+		if len(tbl.Rows) == 0 {
 			continue
 		}
 
-		data, err := p.encodeTable(t)
+		data, err := strPool.encodeTable(tbl)
 		if err != nil {
 			return nil, err
 		}
 
-		if err := addStream(t.Name, true, data); err != nil {
+		if err := addStream(tbl.Name, true, data); err != nil {
 			return nil, err
 		}
 
 		// Binary cells.
-		keys := t.Keys()
+		keys := tbl.Keys()
 
-		for bi, c := range t.Columns {
-			if c.Type.Kind != KindBinary {
+		for colIdx, col := range tbl.Columns {
+			if col.Type.Kind != KindBinary {
 				continue
 			}
 
-			for _, row := range t.Rows {
-				if row[bi] == nil {
+			for _, row := range tbl.Rows {
+				if row[colIdx] == nil {
 					continue
 				}
 
-				name := BinaryStreamName(t.Name, row[:keys])
+				name := BinaryStreamName(tbl.Name, row[:keys])
 				if streamNames[name] {
 					return nil, fmt.Errorf("msidb: binary stream %q written twice", name)
 				}
 
 				streamNames[name] = true
 
-				data, ok := row[bi].([]byte)
+				data, ok := row[colIdx].([]byte)
 				if !ok {
-					return nil, fmt.Errorf("msidb: table %s: binary cell holds %T", t.Name, row[bi])
+					return nil, fmt.Errorf("msidb: table %s: binary cell holds %T", tbl.Name, row[colIdx])
 				}
 
 				if err := addStream(name, false, data); err != nil {
-					return nil, fmt.Errorf("msidb: table %s: %w", t.Name, err)
+					return nil, fmt.Errorf("msidb: table %s: %w", tbl.Name, err)
 				}
 			}
 		}
 	}
 
-	for _, s := range db.Streams {
-		if streamNames[s.Name] {
-			return nil, fmt.Errorf("msidb: stream %q written twice", s.Name)
+	for _, stream := range db.Streams {
+		if streamNames[stream.Name] {
+			return nil, fmt.Errorf("msidb: stream %q written twice", stream.Name)
 		}
 
-		streamNames[s.Name] = true
+		streamNames[stream.Name] = true
 
-		if err := addStream(s.Name, false, s.Data); err != nil {
+		if err := addStream(stream.Name, false, stream.Data); err != nil {
 			return nil, err
 		}
 	}
 
 	if db.Summary != nil {
-		cp := db.Codepage
-		if !codepage.IsANSI(cp) {
-			cp = codepage.Windows1252
+		codePage := db.Codepage
+		if !codepage.IsANSI(codePage) {
+			codePage = codepage.Windows1252
 		}
 
 		if v, ok := summary.Get(db.Summary, summary.PIDCodepage).(int); ok {
-			cp = v
+			codePage = v
 		}
 
-		data, err := summary.Marshal(db.Summary, cp)
+		data, err := summary.Marshal(db.Summary, codePage)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("msidb: %w", err)
 		}
 
 		streams = append(streams, cfb.Stream{Name: summary.StreamName, Data: data})
 	}
 
-	return cfb.Write(streams, cfb.Options{Version: o.CFBVersion, CLSID: cfb.CLSIDMSI})
+	out, err := cfb.Write(streams, cfb.Options{Version: opts.CFBVersion, CLSID: cfb.CLSIDMSI})
+	if err != nil {
+		return nil, fmt.Errorf("msidb: %w", err)
+	}
+
+	return out, nil
 }
 
 // encodeTable sorts the rows by their stored keys and writes the column-major
 // stream.
-func (p *pool) encodeTable(t *Table) ([]byte, error) {
-	keys := t.Keys()
+func (p *pool) encodeTable(tbl *Table) ([]byte, error) { //nolint:cyclop // one pass over the format; splitting would scatter it
+	keys := tbl.Keys()
 
 	type sortedRow struct {
 		stored []uint32
 	}
 
-	rows := make([]sortedRow, len(t.Rows))
+	rows := make([]sortedRow, len(tbl.Rows))
 
-	for r, row := range t.Rows {
-		rows[r].stored = make([]uint32, len(t.Columns))
-		for i, c := range t.Columns {
+	for r, row := range tbl.Rows {
+		rows[r].stored = make([]uint32, len(tbl.Columns))
+		for i, c := range tbl.Columns {
 			rows[r].stored[i] = p.stored(c, row[i])
 		}
 	}
@@ -370,25 +377,25 @@ func (p *pool) encodeTable(t *Table) ([]byte, error) {
 
 	for i := 1; i < len(rows); i++ {
 		if less(rows[i-1].stored, rows[i].stored) == 0 {
-			return nil, fmt.Errorf("msidb: table %s has two rows with the same primary key %v", t.Name, describeKeys(t, rows[i].stored[:keys], p))
+			return nil, fmt.Errorf("msidb: table %s has two rows with the same primary key %v", tbl.Name, describeKeys(tbl, rows[i].stored[:keys], p))
 		}
 	}
 
 	var out []byte
 
-	for ci, c := range t.Columns {
+	for ci, c := range tbl.Columns {
 		w := c.Type.storageWidth(p.longRefs)
 
 		for _, r := range rows {
-			v := r.stored[ci]
+			value := r.stored[ci]
 
 			switch w {
 			case 2:
-				out = append(out, byte(v), byte(v>>8)) //nolint:gosec // truncation to the column width is the encoding
+				out = append(out, byte(value), byte(value>>8)) //nolint:gosec // truncation to the column width is the encoding
 			case 3:
-				out = append(out, byte(v), byte(v>>8), byte(v>>16)) //nolint:gosec // truncation to the column width is the encoding
+				out = append(out, byte(value), byte(value>>8), byte(value>>16)) //nolint:gosec // truncation to the column width is the encoding
 			case 4:
-				out = append(out, byte(v), byte(v>>8), byte(v>>16), byte(v>>24)) //nolint:gosec // truncation to the column width is the encoding
+				out = append(out, byte(value), byte(value>>8), byte(value>>16), byte(value>>24)) //nolint:gosec // truncation to the column width is the encoding
 			}
 		}
 	}
@@ -396,21 +403,21 @@ func (p *pool) encodeTable(t *Table) ([]byte, error) {
 	return out, nil
 }
 
-func describeKeys(t *Table, stored []uint32, p *pool) []any {
+func describeKeys(t *Table, stored []uint32, strPool *pool) []any {
 	var out []any
 
-	for i, v := range stored {
-		c := t.Columns[i]
+	for i, value := range stored {
+		col := t.Columns[i]
 
 		switch {
-		case v == 0:
+		case value == 0:
 			out = append(out, nil)
-		case c.Type.Kind == KindString:
-			out = append(out, p.ordered[v-1])
-		case c.Type.Kind == KindInt16:
-			out = append(out, int(v)-0x8000)
+		case col.Type.Kind == KindString:
+			out = append(out, strPool.ordered[value-1])
+		case col.Type.Kind == KindInt16:
+			out = append(out, int(value)-0x8000)
 		default:
-			out = append(out, int(int32(v^0x80000000))) //nolint:gosec // the stored form is the biased two's complement
+			out = append(out, int(int32(value^0x80000000))) //nolint:gosec // the stored form is the biased two's complement
 		}
 	}
 

@@ -112,7 +112,7 @@ type actionInfo struct {
 func Build(cfg *config.Config, opts Options) (*Result, error) {
 	diags := config.Validate(cfg)
 	if err := diags.Err(); err != nil {
-		return &Result{Diagnostics: diags}, err
+		return &Result{Diagnostics: diags}, err //nolint:wrapcheck // the diagnostics carry their own paths
 	}
 
 	if opts.BuildTime.IsZero() {
@@ -125,7 +125,7 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 		opts.ToolName = "go-msi"
 	}
 
-	b := &build{
+	bld := &build{
 		cfg:        cfg,
 		opts:       opts,
 		diags:      diags,
@@ -143,15 +143,15 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 
 	res := &Result{}
 
-	err := b.run(res)
-	res.Diagnostics = b.diags
+	err := bld.run(res)
+	res.Diagnostics = bld.diags
 
 	if err != nil {
 		return res, err
 	}
 
-	if err := b.diags.Err(); err != nil {
-		return res, err
+	if err := bld.diags.Err(); err != nil {
+		return res, err //nolint:wrapcheck // the diagnostics carry their own paths
 	}
 
 	return res, nil
@@ -182,17 +182,17 @@ func (b *build) run(res *Result) error {
 		}
 
 		if err := b.diags.Err(); err != nil {
-			return err
+			return err //nolint:wrapcheck // the diagnostics carry their own paths
 		}
 	}
 
-	pkg, db, err := b.finish()
+	pkg, database, err := b.finish()
 	if err != nil {
 		return err
 	}
 
 	res.Package = pkg
-	res.Database = db
+	res.Database = database
 	res.ProductCode = b.productCode
 	res.PackageCode = b.packageCode
 	res.Files = b.files
@@ -212,13 +212,13 @@ func defaultBuildTime() time.Time {
 
 // table returns the named standard table, creating it empty on first use.
 func (b *build) table(name string) *msidb.Table {
-	t, ok := b.tables[name]
+	tbl, ok := b.tables[name]
 	if !ok {
-		t = schema.New(name)
-		b.tables[name] = t
+		tbl = schema.New(name)
+		b.tables[name] = tbl
 	}
 
-	return t
+	return tbl
 }
 
 func (b *build) hasRows(name string) bool {

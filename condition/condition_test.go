@@ -1,9 +1,11 @@
-package condition
+package condition //nolint:testpackage // the tests reach unexported encoders
 
 import "testing"
 
 func TestValid(t *testing.T) {
-	for _, s := range []string{
+	t.Parallel()
+
+	for _, cond := range []string{
 		"",
 		"  ",
 		"Installed",
@@ -30,14 +32,16 @@ func TestValid(t *testing.T) {
 		"a >> \"x\" AND b << \"y\"",
 		"NOT NOT a",
 	} {
-		if err := Check(s); err != nil {
-			t.Errorf("%q: %v", s, err)
+		if err := Check(cond); err != nil {
+			t.Errorf("%q: %v", cond, err)
 		}
 	}
 }
 
 func TestInvalid(t *testing.T) {
-	for _, s := range []string{
+	t.Parallel()
+
+	for _, cond := range []string{
 		"0 >=",
 		"~not",
 		"0 < > 0",
@@ -56,13 +60,15 @@ func TestInvalid(t *testing.T) {
 		"-",
 		"a ; b",
 	} {
-		if err := Check(s); err == nil {
-			t.Errorf("%q accepted", s)
+		if err := Check(cond); err == nil {
+			t.Errorf("%q accepted", cond)
 		}
 	}
 }
 
 func TestProperties(t *testing.T) {
+	t.Parallel()
+
 	got := Properties(`Installed OR (NOT WIX AND &F=3 AND %ENV="x" AND LISTEN_PORT<>9182)`)
 	want := []string{"Installed", "WIX", "LISTEN_PORT"}
 

@@ -41,7 +41,7 @@ type token struct {
 	pos  int
 }
 
-var keywords = map[string]bool{"AND": true, "OR": true, "NOT": true, "XOR": true, "EQV": true, "IMP": true}
+var keywords = map[string]bool{"AND": true, "OR": true, "NOT": true, "XOR": true, "EQV": true, "IMP": true} //nolint:gochecknoglobals // lookup table
 
 func isIdentStart(r rune) bool { return r == '_' || unicode.IsLetter(r) }
 
@@ -54,7 +54,7 @@ type lexer struct {
 	pos int
 }
 
-func (l *lexer) next() (token, error) {
+func (l *lexer) next() (token, error) { //nolint:cyclop,gocyclo,gocognit // one pass over the format; splitting would scatter it
 	for l.pos < len(l.s) && (l.s[l.pos] == ' ' || l.s[l.pos] == '\t' || l.s[l.pos] == '\r' || l.s[l.pos] == '\n') {
 		l.pos++
 	}
@@ -64,18 +64,18 @@ func (l *lexer) next() (token, error) {
 	}
 
 	start := l.pos
-	c := l.s[l.pos]
+	char := l.s[l.pos]
 
 	switch {
-	case c == '(':
+	case char == '(':
 		l.pos++
 
 		return token{kind: tokLParen, text: "(", pos: start}, nil
-	case c == ')':
+	case char == ')':
 		l.pos++
 
 		return token{kind: tokRParen, text: ")", pos: start}, nil
-	case c == '"':
+	case char == '"':
 		end := strings.IndexByte(l.s[l.pos+1:], '"')
 		if end < 0 {
 			return token{}, &Error{Pos: start, Msg: "unterminated string"}
@@ -84,11 +84,11 @@ func (l *lexer) next() (token, error) {
 		l.pos += end + 2
 
 		return token{kind: tokString, text: l.s[start:l.pos], pos: start}, nil
-	case c == '%' || c == '$' || c == '?' || c == '&' || c == '!':
+	case char == '%' || char == '$' || char == '?' || char == '&' || char == '!':
 		l.pos++
 
 		if l.pos >= len(l.s) || !isIdentStart(rune(l.s[l.pos])) {
-			return token{}, &Error{Pos: start, Msg: fmt.Sprintf("%q must be followed by a name", c)}
+			return token{}, &Error{Pos: start, Msg: fmt.Sprintf("%q must be followed by a name", char)}
 		}
 
 		for l.pos < len(l.s) && isIdentPart(rune(l.s[l.pos])) {
@@ -96,31 +96,31 @@ func (l *lexer) next() (token, error) {
 		}
 
 		return token{kind: tokPrefix, text: l.s[start:l.pos], pos: start}, nil
-	case c == '~' || c == '=' || c == '<' || c == '>':
-		p := l.pos
-		if c == '~' {
-			p++
+	case char == '~' || char == '=' || char == '<' || char == '>':
+		mark := l.pos
+		if char == '~' {
+			mark++
 		}
 
-		if p < len(l.s) {
-			switch l.s[p] {
+		if mark < len(l.s) {
+			switch l.s[mark] {
 			case '=':
-				l.pos = p + 1
+				l.pos = mark + 1
 
 				return token{kind: tokOp, text: l.s[start:l.pos], pos: start}, nil
 			case '<':
-				if p+1 < len(l.s) && (l.s[p+1] == '>' || l.s[p+1] == '=' || l.s[p+1] == '<') {
-					l.pos = p + 2
+				if mark+1 < len(l.s) && (l.s[mark+1] == '>' || l.s[mark+1] == '=' || l.s[mark+1] == '<') {
+					l.pos = mark + 2
 				} else {
-					l.pos = p + 1
+					l.pos = mark + 1
 				}
 
 				return token{kind: tokOp, text: l.s[start:l.pos], pos: start}, nil
 			case '>':
-				if p+1 < len(l.s) && (l.s[p+1] == '=' || l.s[p+1] == '<' || l.s[p+1] == '>') {
-					l.pos = p + 2
+				if mark+1 < len(l.s) && (l.s[mark+1] == '=' || l.s[mark+1] == '<' || l.s[mark+1] == '>') {
+					l.pos = mark + 2
 				} else {
-					l.pos = p + 1
+					l.pos = mark + 1
 				}
 
 				return token{kind: tokOp, text: l.s[start:l.pos], pos: start}, nil
@@ -128,7 +128,7 @@ func (l *lexer) next() (token, error) {
 		}
 
 		return token{}, &Error{Pos: start, Msg: "'~' must be followed by a comparison operator"}
-	case c == '-' || (c >= '0' && c <= '9'):
+	case char == '-' || (char >= '0' && char <= '9'):
 		l.pos++
 		for l.pos < len(l.s) && (l.s[l.pos] >= '0' && l.s[l.pos] <= '9' || l.s[l.pos] == '.') {
 			l.pos++
@@ -141,8 +141,8 @@ func (l *lexer) next() (token, error) {
 		return token{kind: tokNumber, text: l.s[start:l.pos], pos: start}, nil
 	}
 
-	r := []rune(l.s[l.pos:])[0]
-	if isIdentStart(r) {
+	first := []rune(l.s[l.pos:])[0]
+	if isIdentStart(first) {
 		for l.pos < len(l.s) {
 			r := []rune(l.s[l.pos:])[0]
 			if !isIdentPart(r) {
@@ -160,7 +160,7 @@ func (l *lexer) next() (token, error) {
 		return token{kind: tokIdent, text: text, pos: start}, nil
 	}
 
-	return token{}, &Error{Pos: start, Msg: fmt.Sprintf("unexpected character %q", r)}
+	return token{}, &Error{Pos: start, Msg: fmt.Sprintf("unexpected character %q", first)}
 }
 
 type parser struct {
@@ -186,17 +186,17 @@ func Check(s string) error {
 		return nil
 	}
 
-	p := &parser{lex: &lexer{s: s}}
-	if err := p.advance(); err != nil {
+	parse := &parser{lex: &lexer{s: s}}
+	if err := parse.advance(); err != nil {
 		return err
 	}
 
-	if err := p.expr(); err != nil {
+	if err := parse.expr(); err != nil {
 		return err
 	}
 
-	if p.tok.kind != tokEOF {
-		return &Error{Pos: p.tok.pos, Msg: fmt.Sprintf("unexpected %q", p.tok.text)}
+	if parse.tok.kind != tokEOF {
+		return &Error{Pos: parse.tok.pos, Msg: fmt.Sprintf("unexpected %q", parse.tok.text)}
 	}
 
 	return nil
@@ -272,7 +272,7 @@ func (p *parser) term() error {
 }
 
 func (p *parser) value() error {
-	switch p.tok.kind {
+	switch p.tok.kind { //nolint:exhaustive // the default covers the remaining kinds
 	case tokIdent, tokNumber, tokString, tokPrefix:
 		return p.advance()
 	case tokEOF:
@@ -292,13 +292,13 @@ func Properties(s string) []string {
 	var out []string
 
 	for {
-		t, err := l.next()
-		if err != nil || t.kind == tokEOF {
+		tok, err := l.next()
+		if err != nil || tok.kind == tokEOF {
 			return out
 		}
 
-		if t.kind == tokIdent {
-			out = append(out, t.text)
+		if tok.kind == tokIdent {
+			out = append(out, tok.text)
 		}
 	}
 }

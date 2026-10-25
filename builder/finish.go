@@ -29,7 +29,12 @@ func (b *build) readInput(path string) ([]byte, error) {
 		path = filepath.Join(b.cfg.BaseDir, filepath.FromSlash(path))
 	}
 
-	return os.ReadFile(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+
+	return data, nil
 }
 
 // streams fills the Icon and Binary tables from the icons and binaries
@@ -62,60 +67,60 @@ func (b *build) streams() error {
 
 // customTables copies the tables section into the database. A string in a
 // binary column names a file to embed.
-func (b *build) customTables() error {
-	for i, ct := range b.cfg.Tables {
-		p := fmt.Sprintf("tables[%d]", i)
+func (b *build) customTables() error { //nolint:cyclop // one pass over the format; splitting would scatter it
+	for i, custom := range b.cfg.Tables {
+		tablePath := fmt.Sprintf("tables[%d]", i)
 
-		if _, exists := b.tables[ct.Name]; exists {
-			b.errorf(p+".name", "table %s is written by the builder", ct.Name)
+		if _, exists := b.tables[custom.Name]; exists {
+			b.errorf(tablePath+".name", "table %s is written by the builder", custom.Name)
 
 			continue
 		}
 
-		t := &msidb.Table{Name: ct.Name}
+		tbl := &msidb.Table{Name: custom.Name}
 
-		for _, c := range ct.Columns {
-			typ, err := msidb.ParseType(c.Type)
+		for _, col := range custom.Columns {
+			typ, err := msidb.ParseType(col.Type)
 			if err != nil {
-				return fmt.Errorf("%s: %w", p, err)
+				return fmt.Errorf("%s: %w", tablePath, err)
 			}
 
-			typ.Key = c.Key
-			t.Columns = append(t.Columns, msidb.Column{Name: c.Name, Type: typ})
+			typ.Key = col.Key
+			tbl.Columns = append(tbl.Columns, msidb.Column{Name: col.Name, Type: typ})
 		}
 
-		for j, row := range ct.Rows {
+		for rowIndex, row := range custom.Rows {
 			cells := make([]any, len(row))
 
-			for k, v := range row {
-				cells[k] = v
+			for colIndex, value := range row {
+				cells[colIndex] = value
 
-				if t.Columns[k].Type.Kind != msidb.KindBinary {
+				if tbl.Columns[colIndex].Type.Kind != msidb.KindBinary {
 					continue
 				}
 
-				if path, ok := v.(string); ok && path != "" {
+				if path, ok := value.(string); ok && path != "" {
 					data, err := b.readInput(path)
 					if err != nil {
-						b.errorf(fmt.Sprintf("%s.rows[%d][%d]", p, j, k), "%v", err)
+						b.errorf(fmt.Sprintf("%s.rows[%d][%d]", tablePath, rowIndex, colIndex), "%v", err)
 
 						continue
 					}
 
-					cells[k] = data
+					cells[colIndex] = data
 				}
 			}
 
-			t.Rows = append(t.Rows, cells)
+			tbl.Rows = append(tbl.Rows, cells)
 		}
 
-		if err := t.Validate(); err != nil {
-			b.errorf(p, "%v", err)
+		if err := tbl.Validate(); err != nil {
+			b.errorf(tablePath, "%v", err)
 
 			continue
 		}
 
-		b.tables[ct.Name] = t
+		b.tables[custom.Name] = tbl
 	}
 
 	return nil
@@ -123,24 +128,24 @@ func (b *build) customTables() error {
 
 // finish assembles the database, packs the cabinet, derives the package code
 // and verifies the package by reading it back.
-func (b *build) finish() ([]byte, *msidb.Database, error) {
+func (b *build) finish() ([]byte, *msidb.Database, error) { //nolint:cyclop // one pass over the format; splitting would scatter it
 	b.finishProperties()
 
-	db := &msidb.Database{Codepage: b.cfg.Package.Codepage}
+	database := &msidb.Database{Codepage: b.cfg.Package.Codepage}
 
 	for _, name := range sortedTableNames(b.tables) {
-		t := b.tables[name]
+		tbl := b.tables[name]
 
-		if err := t.Validate(); err != nil {
+		if err := tbl.Validate(); err != nil {
 			return nil, nil, fmt.Errorf("table %s: %w", name, err)
 		}
 
-		db.Tables = append(db.Tables, t)
+		database.Tables = append(database.Tables, tbl)
 	}
 
-	db.Tables = append(db.Tables, schema.Validation(db.Tables))
+	database.Tables = append(database.Tables, schema.Validation(database.Tables))
 
-	slices.SortFunc(db.Tables, func(a, b *msidb.Table) int { return strings.Compare(a.Name, b.Name) })
+	slices.SortFunc(database.Tables, func(a, b *msidb.Table) int { return strings.Compare(a.Name, b.Name) })
 
 	if len(b.files) > 0 {
 		data, err := b.cabinet()
@@ -148,7 +153,7 @@ func (b *build) finish() ([]byte, *msidb.Database, error) {
 			return nil, nil, err
 		}
 
-		db.Streams = append(db.Streams, cfb.Stream{Name: b.cfg.Package.Cabinet, Data: data})
+		database.Streams = append(database.Streams, cfb.Stream{Name: b.cfg.Package.Cabinet, Data: data})
 	}
 
 	auto := b.packageCode == ""
@@ -156,31 +161,31 @@ func (b *build) finish() ([]byte, *msidb.Database, error) {
 		b.packageCode = placeholderCode
 	}
 
-	db.Summary = b.summaryProperties()
+	database.Summary = b.summaryProperties()
 
-	pkg, err := db.Marshal(msidb.Options{CFBVersion: b.opts.CFBVersion})
+	pkg, err := database.Marshal(msidb.Options{CFBVersion: b.opts.CFBVersion})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("marshal database: %w", err)
 	}
 
 	if auto {
 		sum := sha256.Sum256(pkg)
 		b.packageCode = uuid5(namespacePackage, hex.EncodeToString(sum[:]))
-		db.Summary = b.summaryProperties()
+		database.Summary = b.summaryProperties()
 
-		pkg, err = db.Marshal(msidb.Options{CFBVersion: b.opts.CFBVersion})
+		pkg, err = database.Marshal(msidb.Options{CFBVersion: b.opts.CFBVersion})
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("marshal database: %w", err)
 		}
 	}
 
 	if !b.opts.SkipVerify {
-		if err := b.verify(pkg, db); err != nil {
+		if err := b.verify(pkg, database); err != nil {
 			return nil, nil, fmt.Errorf("verification of the built package failed: %w", err)
 		}
 	}
 
-	return pkg, db, nil
+	return pkg, database, nil
 }
 
 func sortedTableNames(m map[string]*msidb.Table) []string {
@@ -217,19 +222,19 @@ func (b *build) cabinet() ([]byte, error) {
 
 // summaryProperties builds the summary information (sections 4 and 11.1).
 func (b *build) summaryProperties() []summary.Property {
-	p := b.cfg.Product
+	product := b.cfg.Product
 	pkg := b.cfg.Package
 
 	pageCount, _ := config.PageCount(pkg.InstallerVersion)
 
-	subject := p.Description
+	subject := product.Description
 	if subject == "" {
-		subject = p.Name
+		subject = product.Name
 	}
 
-	comments := p.Comments
+	comments := product.Comments
 	if comments == "" {
-		comments = "This installer database contains the logic and data required to install " + p.Name + "."
+		comments = "This installer database contains the logic and data required to install " + product.Name + "."
 	}
 
 	words := summary.WordCompressed
@@ -244,7 +249,7 @@ func (b *build) summaryProperties() []summary.Property {
 		{ID: summary.PIDAuthor, Value: pkg.Summary.Author},
 		{ID: summary.PIDKeywords, Value: pkg.Summary.Keywords},
 		{ID: summary.PIDComments, Value: comments},
-		{ID: summary.PIDTemplate, Value: fmt.Sprintf("%s;%d", pkg.Platform, *p.Language)},
+		{ID: summary.PIDTemplate, Value: fmt.Sprintf("%s;%d", pkg.Platform, *product.Language)},
 		{ID: summary.PIDRevision, Value: b.packageCode},
 		{ID: summary.PIDCreated, Value: b.opts.BuildTime},
 		{ID: summary.PIDLastSaved, Value: b.opts.BuildTime},
@@ -257,10 +262,10 @@ func (b *build) summaryProperties() []summary.Property {
 
 // verify reads the finished package back and compares it with what was
 // written: tables, strings, summary and cabinet contents.
-func (b *build) verify(pkg []byte, want *msidb.Database) error {
+func (b *build) verify(pkg []byte, want *msidb.Database) error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	got, err := msidb.Unmarshal(pkg)
 	if err != nil {
-		return err
+		return fmt.Errorf("read back: %w", err)
 	}
 
 	if len(got.Problems) > 0 {
@@ -271,18 +276,18 @@ func (b *build) verify(pkg []byte, want *msidb.Database) error {
 		return fmt.Errorf("read back %d tables, wrote %d", len(got.Tables), len(want.Tables))
 	}
 
-	for _, wt := range want.Tables {
-		gt := got.Table(wt.Name)
-		if gt == nil {
-			return fmt.Errorf("table %s is missing", wt.Name)
+	for _, wantTable := range want.Tables {
+		gotTable := got.Table(wantTable.Name)
+		if gotTable == nil {
+			return fmt.Errorf("table %s is missing", wantTable.Name)
 		}
 
-		if len(gt.Rows) != len(wt.Rows) {
-			return fmt.Errorf("table %s: read back %d rows, wrote %d", wt.Name, len(gt.Rows), len(wt.Rows))
+		if len(gotTable.Rows) != len(wantTable.Rows) {
+			return fmt.Errorf("table %s: read back %d rows, wrote %d", wantTable.Name, len(gotTable.Rows), len(wantTable.Rows))
 		}
 
-		if len(gt.Columns) != len(wt.Columns) {
-			return fmt.Errorf("table %s: read back %d columns, wrote %d", wt.Name, len(gt.Columns), len(wt.Columns))
+		if len(gotTable.Columns) != len(wantTable.Columns) {
+			return fmt.Errorf("table %s: read back %d columns, wrote %d", wantTable.Name, len(gotTable.Columns), len(wantTable.Columns))
 		}
 	}
 
@@ -308,13 +313,13 @@ func (b *build) verify(pkg []byte, want *msidb.Database) error {
 		return fmt.Errorf("cabinet holds %d files, want %d", len(entries), len(b.files))
 	}
 
-	for i, fi := range b.files {
-		if entries[i].Name != fi.Key {
-			return fmt.Errorf("cabinet entry %d is %q, want %q", i, entries[i].Name, fi.Key)
+	for i, file := range b.files {
+		if entries[i].Name != file.Key {
+			return fmt.Errorf("cabinet entry %d is %q, want %q", i, entries[i].Name, file.Key)
 		}
 
-		if !bytes.Equal(entries[i].Data, fi.Data) {
-			return fmt.Errorf("cabinet entry %s differs from its source", fi.Key)
+		if !bytes.Equal(entries[i].Data, file.Data) {
+			return fmt.Errorf("cabinet entry %s differs from its source", file.Key)
 		}
 	}
 

@@ -22,14 +22,14 @@ type poolEntry struct {
 // Unmarshal reads a package. It accepts what other writers emit (free pool
 // slots, unsorted pool, empty table streams) and records soft problems such
 // as refcount mismatches and unsorted rows in Database.Problems.
-func Unmarshal(data []byte) (*Database, error) {
-	f, err := cfb.Read(data)
+func Unmarshal(data []byte) (*Database, error) { //nolint:maintidx,cyclop,gocyclo,gocognit // one pass over the format; splitting would scatter it
+	file, err := cfb.Read(data)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("msidb: %w", err)
 	}
 
-	if f.CLSID != cfb.CLSIDMSI {
-		return nil, fmt.Errorf("msidb: root CLSID %x is not the .msi CLSID", f.CLSID)
+	if file.CLSID != cfb.CLSIDMSI {
+		return nil, fmt.Errorf("msidb: root CLSID %x is not the .msi CLSID", file.CLSID)
 	}
 
 	tableStreams := make(map[string][]byte)
@@ -37,7 +37,7 @@ func Unmarshal(data []byte) (*Database, error) {
 
 	var order []string
 
-	for _, s := range f.Streams() {
+	for _, s := range file.Streams() {
 		name, isTable := DecodeStreamName(s.Name)
 		if isTable {
 			tableStreams[name] = s.Data
@@ -58,22 +58,22 @@ func Unmarshal(data []byte) (*Database, error) {
 		return nil, errors.New("msidb: _StringPool is truncated")
 	}
 
-	le := binary.LittleEndian
-	hdr := le.Uint32(poolStream)
-	db := &Database{Codepage: int(hdr & 0x7FFFFFFF)}
+	endian := binary.LittleEndian
+	hdr := endian.Uint32(poolStream)
+	database := &Database{Codepage: int(hdr & 0x7FFFFFFF)}
 	longRefs := hdr&0x80000000 != 0
 
-	if !codepage.Supported(db.Codepage) {
-		return nil, fmt.Errorf("msidb: database code page %d is not supported", db.Codepage)
+	if !codepage.Supported(database.Codepage) {
+		return nil, fmt.Errorf("msidb: database code page %d is not supported", database.Codepage)
 	}
 
 	entries := []poolEntry{{}} // ID 0 is NULL
 	pos := 0
 
 	for i := 4; i+4 <= len(poolStream); {
-		l := int(le.Uint16(poolStream[i:]))
-		r := int(le.Uint16(poolStream[i+2:]))
-		e := poolEntry{length: l, refcount: r}
+		l := int(endian.Uint16(poolStream[i:]))
+		r := int(endian.Uint16(poolStream[i+2:]))
+		ent := poolEntry{length: l, refcount: r}
 		i += 4
 
 		if l == 0 && r != 0 {
@@ -81,26 +81,26 @@ func Unmarshal(data []byte) (*Database, error) {
 				return nil, errors.New("msidb: truncated long string pool entry")
 			}
 
-			e.long = true
-			e.length = int(le.Uint32(poolStream[i:]))
+			ent.long = true
+			ent.length = int(endian.Uint32(poolStream[i:]))
 			i += 4
 		}
 
-		if pos+e.length > len(dataStream) {
+		if pos+ent.length > len(dataStream) {
 			return nil, fmt.Errorf("msidb: string pool entry %d overruns _StringData", len(entries))
 		}
 
-		if e.length > 0 {
-			s, err := codepage.Decode(dataStream[pos:pos+e.length], db.Codepage)
+		if ent.length > 0 {
+			s, err := codepage.Decode(dataStream[pos:pos+ent.length], database.Codepage)
 			if err != nil {
 				return nil, fmt.Errorf("msidb: string %d: %w", len(entries), err)
 			}
 
-			e.text = s
+			ent.text = s
 		}
 
-		pos += e.length
-		entries = append(entries, e)
+		pos += ent.length
+		entries = append(entries, ent)
 	}
 
 	if pos != len(dataStream) {
@@ -108,19 +108,19 @@ func Unmarshal(data []byte) (*Database, error) {
 	}
 
 	if (len(entries)-1 >= longRefThresh) != longRefs {
-		db.Problems = append(db.Problems, fmt.Sprintf("long-reference flag is %v with highest string ID %d", longRefs, len(entries)-1))
+		database.Problems = append(database.Problems, fmt.Sprintf("long-reference flag is %v with highest string ID %d", longRefs, len(entries)-1))
 	}
 
-	str := func(id uint32) (string, error) {
-		if id == 0 {
+	str := func(ref uint32) (string, error) {
+		if ref == 0 {
 			return "", nil
 		}
 
-		if int(id) >= len(entries) || entries[id].length == 0 {
-			return "", fmt.Errorf("msidb: string ID %d is not in the pool", id)
+		if int(ref) >= len(entries) || entries[ref].length == 0 {
+			return "", fmt.Errorf("msidb: string ID %d is not in the pool", ref)
 		}
 
-		return entries[id].text, nil
+		return entries[ref].text, nil
 	}
 
 	refWidth := 2
@@ -129,7 +129,7 @@ func Unmarshal(data []byte) (*Database, error) {
 	}
 
 	readRef := func(b []byte) uint32 {
-		v := uint32(le.Uint16(b))
+		v := uint32(endian.Uint16(b))
 		if refWidth == 3 {
 			v |= uint32(b[2]) << 16
 		}
@@ -174,7 +174,7 @@ func Unmarshal(data []byte) (*Database, error) {
 		return nil, errors.New("msidb: _Columns stream has a bad length")
 	}
 
-	n := len(colsData) / rowSize
+	count := len(colsData) / rowSize
 
 	type colRow struct {
 		table  string
@@ -182,13 +182,13 @@ func Unmarshal(data []byte) (*Database, error) {
 		number int
 	}
 
-	colRows := make([]colRow, n)
+	colRows := make([]colRow, count)
 
-	for r := range n {
-		tid := readRef(colsData[r*refWidth:])
-		num := int(le.Uint16(colsData[n*refWidth+r*2:])) - 0x8000
-		nid := readRef(colsData[n*(refWidth+2)+r*refWidth:])
-		typ := le.Uint16(colsData[n*(2*refWidth+2)+r*2:]) - 0x8000
+	for rowIdx := range count {
+		tid := readRef(colsData[rowIdx*refWidth:])
+		num := int(endian.Uint16(colsData[count*refWidth+rowIdx*2:])) - 0x8000
+		nid := readRef(colsData[count*(refWidth+2)+rowIdx*refWidth:])
+		typ := endian.Uint16(colsData[count*(2*refWidth+2)+rowIdx*2:]) - 0x8000
 		refs[tid]++
 		refs[nid]++
 
@@ -207,7 +207,7 @@ func Unmarshal(data []byte) (*Database, error) {
 			return nil, fmt.Errorf("msidb: _Columns: table %s column %s: %w", tname, cname, err)
 		}
 
-		colRows[r] = colRow{table: tname, column: Column{Name: cname, Type: t}, number: num}
+		colRows[rowIdx] = colRow{table: tname, column: Column{Name: cname, Type: t}, number: num}
 	}
 
 	slices.SortStableFunc(colRows, func(a, b colRow) int {
@@ -218,39 +218,39 @@ func Unmarshal(data []byte) (*Database, error) {
 		return a.number - b.number
 	})
 
-	for _, cr := range colRows {
-		t, ok := tables[cr.table]
+	for _, col := range colRows {
+		tbl, ok := tables[col.table]
 		if !ok {
-			return nil, fmt.Errorf("msidb: _Columns describes %s, which is not in _Tables", cr.table)
+			return nil, fmt.Errorf("msidb: _Columns describes %s, which is not in _Tables", col.table)
 		}
 
-		if cr.number != len(t.Columns)+1 {
-			return nil, fmt.Errorf("msidb: table %s: column numbers are not contiguous at %d", cr.table, cr.number)
+		if col.number != len(tbl.Columns)+1 {
+			return nil, fmt.Errorf("msidb: table %s: column numbers are not contiguous at %d", col.table, col.number)
 		}
 
-		t.Columns = append(t.Columns, cr.column)
+		tbl.Columns = append(tbl.Columns, col.column)
 	}
 
 	for _, name := range tableOrder {
-		t := tables[name]
-		if len(t.Columns) == 0 {
+		tbl := tables[name]
+		if len(tbl.Columns) == 0 {
 			return nil, fmt.Errorf("msidb: table %s has no columns", name)
 		}
 
-		if err := decodeRows(t, tableStreams[name], longRefs, readRef, str, refs, otherStreams, db); err != nil {
+		if err := decodeRows(tbl, tableStreams[name], longRefs, readRef, str, refs, otherStreams, database); err != nil {
 			return nil, err
 		}
 
-		db.Tables = append(db.Tables, t)
+		database.Tables = append(database.Tables, tbl)
 	}
 
-	for id, e := range entries {
-		if id == 0 || e.length == 0 {
+	for strID, ent := range entries {
+		if strID == 0 || ent.length == 0 {
 			continue
 		}
 
-		if refs[uint32(id)] != e.refcount {
-			db.Problems = append(db.Problems, fmt.Sprintf("string %q has refcount %d but %d references", e.text, e.refcount, refs[uint32(id)]))
+		if refs[uint32(strID)] != ent.refcount {
+			database.Problems = append(database.Problems, fmt.Sprintf("string %q has refcount %d but %d references", ent.text, ent.refcount, refs[uint32(strID)]))
 		}
 	}
 
@@ -258,27 +258,28 @@ func Unmarshal(data []byte) (*Database, error) {
 		if name == summary.StreamName {
 			props, err := summary.Unmarshal(otherStreams[name])
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("msidb: %w", err)
 			}
 
-			db.Summary = props
+			database.Summary = props
 
 			continue
 		}
 
 		if _, used := otherStreams[name]; used {
-			db.Streams = append(db.Streams, cfb.Stream{Name: name, Data: otherStreams[name]})
+			database.Streams = append(database.Streams, cfb.Stream{Name: name, Data: otherStreams[name]})
 		}
 	}
 
-	return db, nil
+	return database, nil
 }
 
-func decodeRows(t *Table, data []byte, longRefs bool, readRef func([]byte) uint32, str func(uint32) (string, error),
-	refs map[uint32]int, otherStreams map[string][]byte, db *Database,
+func decodeRows( //nolint:cyclop,revive,gocognit // one pass over the format
+	tbl *Table, data []byte, longRefs bool, readRef func([]byte) uint32, str func(uint32) (string, error),
+	refs map[uint32]int, otherStreams map[string][]byte, database *Database,
 ) error {
 	rowSize := 0
-	for _, c := range t.Columns {
+	for _, c := range tbl.Columns {
 		rowSize += c.Type.storageWidth(longRefs)
 	}
 
@@ -287,115 +288,115 @@ func decodeRows(t *Table, data []byte, longRefs bool, readRef func([]byte) uint3
 	}
 
 	if len(data)%rowSize != 0 {
-		return fmt.Errorf("msidb: table %s: stream of %d bytes is not a multiple of the row size %d", t.Name, len(data), rowSize)
+		return fmt.Errorf("msidb: table %s: stream of %d bytes is not a multiple of the row size %d", tbl.Name, len(data), rowSize)
 	}
 
-	le := binary.LittleEndian
-	n := len(data) / rowSize
-	keys := t.Keys()
-	stored := make([][]uint32, n)
-	rows := make([][]any, n)
+	order := binary.LittleEndian
+	count := len(data) / rowSize
+	keys := tbl.Keys()
+	stored := make([][]uint32, count)
+	rows := make([][]any, count)
 
 	for r := range rows {
-		rows[r] = make([]any, len(t.Columns))
-		stored[r] = make([]uint32, len(t.Columns))
+		rows[r] = make([]any, len(tbl.Columns))
+		stored[r] = make([]uint32, len(tbl.Columns))
 	}
 
 	off := 0
 
-	for ci, c := range t.Columns {
-		w := c.Type.storageWidth(longRefs)
+	for colIdx, col := range tbl.Columns {
+		width := col.Type.storageWidth(longRefs)
 
-		for r := range n {
-			b := data[off+r*w:]
+		for rowIdx := range count {
+			cell := data[off+rowIdx*width:]
 
-			var v uint32
+			var value uint32
 
-			switch w {
+			switch width {
 			case 2:
-				v = uint32(le.Uint16(b))
+				value = uint32(order.Uint16(cell))
 			case 3:
-				v = readRef(b)
+				value = readRef(cell)
 			case 4:
-				v = le.Uint32(b)
+				value = order.Uint32(cell)
 			}
 
-			stored[r][ci] = v
+			stored[rowIdx][colIdx] = value
 
-			if v == 0 {
-				if !c.Type.Nullable {
-					db.Problems = append(db.Problems, fmt.Sprintf("table %s row %d: NULL in non-nullable column %s", t.Name, r, c.Name))
+			if value == 0 {
+				if !col.Type.Nullable {
+					database.Problems = append(database.Problems, fmt.Sprintf("table %s row %d: NULL in non-nullable column %s", tbl.Name, rowIdx, col.Name))
 				}
 
 				continue
 			}
 
-			switch c.Type.Kind {
+			switch col.Type.Kind { //nolint:exhaustive // the default covers the remaining kinds
 			case KindString:
-				refs[v]++
+				refs[value]++
 
-				s, err := str(v)
+				s, err := str(value)
 				if err != nil {
-					return fmt.Errorf("msidb: table %s column %s: %w", t.Name, c.Name, err)
+					return fmt.Errorf("msidb: table %s column %s: %w", tbl.Name, col.Name, err)
 				}
 
-				rows[r][ci] = s
+				rows[rowIdx][colIdx] = s
 			case KindInt16:
-				rows[r][ci] = int(v) - 0x8000
+				rows[rowIdx][colIdx] = int(value) - 0x8000
 			case KindInt32:
-				rows[r][ci] = int(int32(v ^ 0x80000000)) //nolint:gosec // the stored form is the biased two's complement
+				rows[rowIdx][colIdx] = int(int32(value ^ 0x80000000)) //nolint:gosec // the stored form is the biased two's complement
 			}
 		}
 
-		off += n * w
+		off += count * width
 	}
 
 	// Binary cells and the stored-key order.
-	for ci, c := range t.Columns {
-		if c.Type.Kind != KindBinary {
+	for colIdx, col := range tbl.Columns {
+		if col.Type.Kind != KindBinary {
 			continue
 		}
 
-		for r := range rows {
-			if stored[r][ci] == 0 {
+		for rowIdx := range rows {
+			if stored[rowIdx][colIdx] == 0 {
 				continue
 			}
 
-			name := BinaryStreamName(t.Name, rows[r][:keys])
+			name := BinaryStreamName(tbl.Name, rows[rowIdx][:keys])
 
-			b, ok := otherStreams[name]
+			data, ok := otherStreams[name]
 			if !ok {
-				db.Problems = append(db.Problems, fmt.Sprintf("table %s row %d: binary stream %q is missing", t.Name, r, name))
+				database.Problems = append(database.Problems, fmt.Sprintf("table %s row %d: binary stream %q is missing", tbl.Name, rowIdx, name))
 
 				continue
 			}
 
-			rows[r][ci] = append([]byte(nil), b...)
+			rows[rowIdx][colIdx] = append([]byte(nil), data...)
 
 			delete(otherStreams, name)
 		}
 	}
 
-	for r := 1; r < n; r++ {
+	for rowIdx := 1; rowIdx < count; rowIdx++ {
 		cmp := 0
 
 		for k := 0; k < keys && cmp == 0; k++ {
 			switch {
-			case stored[r-1][k] < stored[r][k]:
+			case stored[rowIdx-1][k] < stored[rowIdx][k]:
 				cmp = -1
-			case stored[r-1][k] > stored[r][k]:
+			case stored[rowIdx-1][k] > stored[rowIdx][k]:
 				cmp = 1
 			}
 		}
 
 		if cmp > 0 {
-			db.Problems = append(db.Problems, fmt.Sprintf("table %s: rows %d and %d are not in key order", t.Name, r-1, r))
+			database.Problems = append(database.Problems, fmt.Sprintf("table %s: rows %d and %d are not in key order", tbl.Name, rowIdx-1, rowIdx))
 		} else if cmp == 0 {
-			db.Problems = append(db.Problems, fmt.Sprintf("table %s: rows %d and %d share a primary key", t.Name, r-1, r))
+			database.Problems = append(database.Problems, fmt.Sprintf("table %s: rows %d and %d share a primary key", tbl.Name, rowIdx-1, rowIdx))
 		}
 	}
 
-	t.Rows = rows
+	tbl.Rows = rows
 
 	return nil
 }

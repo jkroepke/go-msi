@@ -7,6 +7,8 @@ import (
 )
 
 func TestRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		cp   int
 		s    string
@@ -18,26 +20,28 @@ func TestRoundTrip(t *testing.T) {
 		{932, "日本", []byte{0x93, 0xFA, 0x96, 0x7B}},
 	}
 
-	for _, c := range cases {
-		got, err := codepage.Encode(c.s, c.cp)
+	for _, tc := range cases {
+		got, err := codepage.Encode(tc.s, tc.cp)
 		if err != nil {
-			t.Errorf("Encode(%q, %d): %v", c.s, c.cp, err)
+			t.Errorf("Encode(%q, %d): %v", tc.s, tc.cp, err)
 
 			continue
 		}
 
-		if string(got) != string(c.want) {
-			t.Errorf("Encode(%q, %d) = % x, want % x", c.s, c.cp, got, c.want)
+		if string(got) != string(tc.want) {
+			t.Errorf("Encode(%q, %d) = % x, want % x", tc.s, tc.cp, got, tc.want)
 		}
 
-		back, err := codepage.Decode(got, c.cp)
-		if err != nil || back != c.s {
-			t.Errorf("Decode(%d) = %q, %v", c.cp, back, err)
+		back, err := codepage.Decode(got, tc.cp)
+		if err != nil || back != tc.s {
+			t.Errorf("Decode(%d) = %q, %v", tc.cp, back, err)
 		}
 	}
 }
 
 func TestErrors(t *testing.T) {
+	t.Parallel()
+
 	if _, err := codepage.Encode("日本", codepage.Windows1252); err == nil {
 		t.Error("expected an error for characters outside the code page")
 	}

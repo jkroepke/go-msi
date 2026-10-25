@@ -13,21 +13,21 @@ import (
 // settings and the properties section. SecureCustomProperties and
 // MsiHiddenProperties are written at the end, once every contributor has
 // run (finishProperties).
-func (b *build) writeProperties() error {
-	p := b.cfg.Product
+func (b *build) writeProperties() error { //nolint:cyclop // one pass over the format; splitting would scatter it
+	product := b.cfg.Product
 
 	b.properties["ProductCode"] = b.productCode
-	b.properties["ProductName"] = p.Name
-	b.properties["ProductVersion"] = p.Version
-	b.properties["ProductLanguage"] = strconv.Itoa(*p.Language)
-	b.properties["Manufacturer"] = p.Manufacturer
+	b.properties["ProductName"] = product.Name
+	b.properties["ProductVersion"] = product.Version
+	b.properties["ProductLanguage"] = strconv.Itoa(*product.Language)
+	b.properties["Manufacturer"] = product.Manufacturer
 	b.properties["UpgradeCode"] = b.upgradeCode
 
 	if b.cfg.Package.Scope == config.ScopePerMachine {
 		b.properties["ALLUSERS"] = "1"
 	}
 
-	arp := p.ARP
+	arp := product.ARP
 	set := func(name, value string) {
 		if value != "" {
 			b.properties[name] = value
@@ -60,8 +60,8 @@ func (b *build) writeProperties() error {
 	if arp.InstallLocation != "" {
 		// ARPINSTALLLOCATION takes the resolved directory after costing.
 		b.addAction(&actionInfo{name: "SetARPINSTALLLOCATION", typ: caSetProperty, source: "ARPINSTALLLOCATION", target: "[" + arp.InstallLocation + "]"})
-		b.schedule("InstallExecuteSequence", "SetARPINSTALLLOCATION", "", "", "CostFinalize", 0)
-		b.schedule("InstallUISequence", "SetARPINSTALLLOCATION", "", "", "CostFinalize", 0)
+		b.schedule("InstallExecuteSequence", "SetARPINSTALLLOCATION", "", "", actCostFinalize, 0)
+		b.schedule("InstallUISequence", "SetARPINSTALLLOCATION", "", "", actCostFinalize, 0)
 	}
 
 	for _, name := range b.cfg.Properties.Names() {
@@ -112,81 +112,81 @@ const (
 )
 
 // upgrade writes the Upgrade rows and schedules the upgrade actions.
-func (b *build) upgrade() error {
-	u := b.cfg.Upgrade
-	if u == nil {
+func (b *build) upgrade() error { //nolint:cyclop // one pass over the format; splitting would scatter it
+	upg := b.cfg.Upgrade
+	if upg == nil {
 		return nil
 	}
 
-	t := b.table("Upgrade")
-	v := b.cfg.Product.Version
+	tbl := b.table("Upgrade")
+	version := b.cfg.Product.Version
 
 	// Older (and, with allowSameVersion, equal) versions are removed.
 	attrs := 0
-	if *u.MigrateFeatures {
+	if *upg.MigrateFeatures {
 		attrs |= upgradeMigrateFeatures
 	}
 
-	if *u.AllowSameVersion {
+	if *upg.AllowSameVersion {
 		attrs |= upgradeVersionMaxInclusive
 	}
 
-	t.Add(b.upgradeCode, nil, v, nil, attrs, nil, u.Property)
-	b.secure[u.Property] = true
+	tbl.Add(b.upgradeCode, nil, version, nil, attrs, nil, upg.Property)
+	b.secure[upg.Property] = true
 
-	if u.Downgrade != "allow" {
-		t.Add(b.upgradeCode, v, nil, nil, upgradeOnlyDetect, nil, u.NewerProperty)
-		b.secure[u.NewerProperty] = true
+	if upg.Downgrade != "allow" {
+		tbl.Add(b.upgradeCode, version, nil, nil, upgradeOnlyDetect, nil, upg.NewerProperty)
+		b.secure[upg.NewerProperty] = true
 
-		if u.Downgrade == "error" {
-			b.table("LaunchCondition").Add("NOT "+u.NewerProperty, u.DowngradeMessage)
+		if upg.Downgrade == "error" {
+			b.table("LaunchCondition").Add("NOT "+upg.NewerProperty, upg.DowngradeMessage)
 		}
 	}
 
-	for i, r := range u.Related {
-		code, err := config.NormalizeGUID(r.UpgradeCode)
+	for i, related := range upg.Related {
+		code, err := config.NormalizeGUID(related.UpgradeCode)
 		if err != nil {
 			return fmt.Errorf("upgrade.related[%d]: %w", i, err)
 		}
 
-		a := 0
+		attrs := 0
 
-		if r.IncludeMin != nil && *r.IncludeMin {
-			a |= upgradeVersionMinInclusive
+		if related.IncludeMin != nil && *related.IncludeMin {
+			attrs |= upgradeVersionMinInclusive
 		}
 
-		if r.IncludeMax {
-			a |= upgradeVersionMaxInclusive
+		if related.IncludeMax {
+			attrs |= upgradeVersionMaxInclusive
 		}
 
-		if r.OnlyDetect {
-			a |= upgradeOnlyDetect
-		} else if *u.MigrateFeatures {
-			a |= upgradeMigrateFeatures
+		if related.OnlyDetect {
+			attrs |= upgradeOnlyDetect
+		} else if *upg.MigrateFeatures {
+			attrs |= upgradeMigrateFeatures
 		}
 
-		t.Add(code, nullable(r.MinVersion), nullable(r.MaxVersion), nil, a, nil, r.Property)
-		b.secure[r.Property] = true
+		tbl.Add(code, nullable(related.MinVersion), nullable(related.MaxVersion), nil, attrs, nil, related.Property)
+		b.secure[related.Property] = true
 	}
 
 	for _, seq := range []string{"InstallExecuteSequence", "InstallUISequence"} {
 		b.standardAt(seq, "FindRelatedProducts")
 
-		if *u.MigrateFeatures {
+		if *upg.MigrateFeatures {
 			b.standardAt(seq, "MigrateFeatureStates")
 		}
 	}
 
-	switch u.RemoveOld {
+	switch upg.RemoveOld {
 	case "afterInstallValidate":
-		b.schedule("InstallExecuteSequence", "RemoveExistingProducts", "", "", "InstallValidate", 0)
+		b.schedule("InstallExecuteSequence", "RemoveExistingProducts", "", "", actInstallValidate, 0)
 	case "afterInstallExecute":
 		b.standardAt("InstallExecuteSequence", "InstallExecute")
 		b.schedule("InstallExecuteSequence", "RemoveExistingProducts", "", "", "InstallExecute", 0)
 	case "afterInstallFinalize":
-		b.schedule("InstallExecuteSequence", "RemoveExistingProducts", "", "", "InstallFinalize", 0)
+		b.schedule("InstallExecuteSequence", "RemoveExistingProducts", "", "", actInstallFinalize, 0)
 	default:
-		b.schedule("InstallExecuteSequence", "RemoveExistingProducts", "", "", "InstallInitialize", 0)
+		b.schedule("InstallExecuteSequence", "RemoveExistingProducts", "", "", actInstallInitialize, 0)
 	}
 
 	return nil
@@ -195,18 +195,18 @@ func (b *build) upgrade() error {
 // launchConditions writes LaunchCondition rows after parsing each condition,
 // because the engine ignores one that does not parse (section 9.1).
 func (b *build) launchConditions() error {
-	t := b.table("LaunchCondition")
+	tbl := b.table("LaunchCondition")
 
-	for i, lc := range b.cfg.LaunchConditions {
+	for i, launch := range b.cfg.LaunchConditions {
 		p := fmt.Sprintf("launchConditions[%d]", i)
 
-		if err := condition.Check(lc.Condition); err != nil {
+		if err := condition.Check(launch.Condition); err != nil {
 			b.errorf(p+".condition", "%v; the engine ignores a launch condition that does not parse", err)
 
 			continue
 		}
 
-		t.Add(lc.Condition, lc.Message)
+		tbl.Add(launch.Condition, launch.Message)
 	}
 
 	return nil

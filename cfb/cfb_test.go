@@ -1,4 +1,4 @@
-package cfb
+package cfb //nolint:testpackage // the tests reach unexported encoders
 
 import (
 	"bytes"
@@ -23,6 +23,8 @@ func vectorStreams() []Stream {
 }
 
 func TestVectorA2(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		sha     string
 		version int
@@ -45,43 +47,47 @@ func TestVectorA2(t *testing.T) {
 			t.Errorf("v%d: SHA-256 %s, want %s", tc.version, got, tc.sha)
 		}
 
-		f, err := Read(out)
+		file, err := Read(out)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		// Small is the black top node, Large its red left child.
-		if f.Entries[0].Child != 2 || f.Entries[2].Name != "Small" || f.Entries[2].Colour != 1 {
+		if file.Entries[0].Child != 2 || file.Entries[2].Name != "Small" || file.Entries[2].Colour != 1 {
 			t.Errorf("v%d: top node is not black Small", tc.version)
 		}
 
-		if f.Entries[2].Left != 1 || f.Entries[1].Name != "Large" || f.Entries[1].Colour != 0 {
+		if file.Entries[2].Left != 1 || file.Entries[1].Name != "Large" || file.Entries[1].Colour != 0 {
 			t.Errorf("v%d: left child is not red Large", tc.version)
 		}
 
-		if f.CLSID != CLSIDMSI {
-			t.Errorf("v%d: root CLSID %x", tc.version, f.CLSID)
+		if file.CLSID != CLSIDMSI {
+			t.Errorf("v%d: root CLSID %x", tc.version, file.CLSID)
 		}
 	}
 }
 
 func TestDefaultVersionIs4(t *testing.T) {
+	t.Parallel()
+
 	out, err := Write(nil, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	f, err := Read(out)
+	file, err := Read(out)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if f.Version != 4 || f.SectorSize != 4096 || len(out) != 3*4096 {
-		t.Errorf("version %d, sector size %d, %d bytes", f.Version, f.SectorSize, len(out))
+	if file.Version != 4 || file.SectorSize != 4096 || len(out) != 3*4096 {
+		t.Errorf("version %d, sector size %d, %d bytes", file.Version, file.SectorSize, len(out))
 	}
 }
 
 func TestRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	rng := rand.New(rand.NewSource(1)) //nolint:gosec // reproducible test data
 
 	for _, version := range []int{3, 4} {
@@ -116,17 +122,17 @@ func TestRoundTrip(t *testing.T) {
 				t.Errorf("v%d/%d: %d bytes is not a whole number of sectors", version, count, len(out))
 			}
 
-			f, err := Read(out)
+			file, err := Read(out)
 			if err != nil {
 				t.Fatalf("v%d/%d: %v", version, count, err)
 			}
 
-			if len(f.Streams()) != count {
-				t.Fatalf("v%d/%d: read %d streams", version, count, len(f.Streams()))
+			if len(file.Streams()) != count {
+				t.Fatalf("v%d/%d: read %d streams", version, count, len(file.Streams()))
 			}
 
 			for _, s := range streams {
-				got, ok := f.Stream(s.Name)
+				got, ok := file.Stream(s.Name)
 				if !ok || !bytes.Equal(got, s.Data) {
 					t.Errorf("v%d/%d: stream %q differs", version, count, s.Name)
 				}
@@ -141,6 +147,8 @@ func TestRoundTrip(t *testing.T) {
 }
 
 func TestManyFATSectors(t *testing.T) {
+	t.Parallel()
+
 	// More than 109 FAT sectors in v3 needs DIFAT sectors: 109 × 128 × 512
 	// bytes is about 7 MB.
 	data := make([]byte, 8<<20)
@@ -153,23 +161,25 @@ func TestManyFATSectors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	f, err := Read(out)
+	file, err := Read(out)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	got, _ := f.Stream("big")
+	got, _ := file.Stream("big")
 	if !bytes.Equal(got, data) {
 		t.Error("big stream differs")
 	}
 
-	got, _ = f.Stream("tiny")
+	got, _ = file.Stream("tiny")
 	if string(got) != "x" {
 		t.Error("tiny stream differs")
 	}
 }
 
 func TestCompare(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		a, b string
 		want int
@@ -189,6 +199,8 @@ func TestCompare(t *testing.T) {
 }
 
 func TestNameErrors(t *testing.T) {
+	t.Parallel()
+
 	for _, name := range []string{"", "a/b", "a\\b", "a:b", "a!b", "a\x00b", "0123456789012345678901234567890x", "ä"} {
 		if _, err := Write([]Stream{{Name: name}}, Options{}); err == nil {
 			t.Errorf("name %q accepted", name)
@@ -209,6 +221,8 @@ func TestNameErrors(t *testing.T) {
 }
 
 func TestReadRejectsGarbage(t *testing.T) {
+	t.Parallel()
+
 	out, _ := Write(vectorStreams(), Options{Version: 3})
 
 	bad := append([]byte(nil), out...)
@@ -241,6 +255,8 @@ func readU32(b []byte, off int) uint32 {
 }
 
 func TestEmptyStreamAnyStartSector(t *testing.T) {
+	t.Parallel()
+
 	out, _ := Write([]Stream{{Name: "empty"}, {Name: "x", Data: []byte("x")}}, Options{Version: 3})
 
 	f, _ := Read(out)
@@ -262,14 +278,14 @@ func TestEmptyStreamAnyStartSector(t *testing.T) {
 		bad := append([]byte(nil), out...)
 		binary.LittleEndian.PutUint32(bad[dirOff+128*sid+0x74:], start)
 
-		g, err := Read(bad)
+		reread, err := Read(bad)
 		if err != nil {
 			t.Errorf("start %#x: %v", start, err)
 
 			continue
 		}
 
-		if d, ok := g.Stream("empty"); !ok || len(d) != 0 {
+		if d, ok := reread.Stream("empty"); !ok || len(d) != 0 {
 			t.Errorf("start %#x: empty stream not empty", start)
 		}
 	}

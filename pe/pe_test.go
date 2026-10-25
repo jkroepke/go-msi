@@ -1,4 +1,4 @@
-package pe
+package pe //nolint:testpackage // the tests reach unexported encoders
 
 import (
 	"bytes"
@@ -9,6 +9,8 @@ import (
 )
 
 func TestSyntheticPE(t *testing.T) {
+	t.Parallel()
+
 	data := testpe.Build(testpe.Options{FileVersion: "1.2.3.4", ProductVersion: "1.2.0.0", Languages: []int{1033, 1031, 1033}, Checksum: 0x1234})
 
 	info, err := Parse(bytes.NewReader(data))
@@ -34,6 +36,8 @@ func TestSyntheticPE(t *testing.T) {
 }
 
 func TestNoVersionResource(t *testing.T) {
+	t.Parallel()
+
 	data := testpe.Build(testpe.Options{Machine: MachineI386})
 
 	info, err := Parse(bytes.NewReader(data))
@@ -47,6 +51,8 @@ func TestNoVersionResource(t *testing.T) {
 }
 
 func TestNoTranslations(t *testing.T) {
+	t.Parallel()
+
 	data := testpe.Build(testpe.Options{FileVersion: "0.32.0.5"})
 
 	info, err := Parse(bytes.NewReader(data))
@@ -60,13 +66,15 @@ func TestNoTranslations(t *testing.T) {
 }
 
 func TestNotPE(t *testing.T) {
-	for _, b := range [][]byte{nil, []byte("hello"), append([]byte("MZ"), make([]byte, 100)...)} {
-		if _, err := Parse(bytes.NewReader(b)); !errors.Is(err, ErrNotPE) {
-			t.Errorf("%q: %v", b, err)
+	t.Parallel()
+
+	for _, data := range [][]byte{nil, []byte("hello"), append([]byte("MZ"), make([]byte, 100)...)} {
+		if _, err := Parse(bytes.NewReader(data)); !errors.Is(err, ErrNotPE) {
+			t.Errorf("%q: %v", data, err)
 		}
 
-		if IsPE(bytes.NewReader(b)) {
-			t.Errorf("%q: IsPE true", b)
+		if IsPE(bytes.NewReader(data)) {
+			t.Errorf("%q: IsPE true", data)
 		}
 	}
 }

@@ -1,4 +1,4 @@
-package sequence
+package sequence //nolint:testpackage // the tests reach unexported encoders
 
 import (
 	"fmt"
@@ -18,6 +18,8 @@ func names(seq []Numbered) string {
 
 // The examples of docs/spec/MSISPEC.md section 11.7.
 func TestWiXExamples(t *testing.T) {
+	t.Parallel()
+
 	seq, err := Number([]Action{
 		{Name: "InstallFinalize", Sequence: 6600},
 		{Name: "InstallValidate", Sequence: 1400},
@@ -69,6 +71,8 @@ func TestWiXExamples(t *testing.T) {
 }
 
 func TestErrors(t *testing.T) {
+	t.Parallel()
+
 	for name, actions := range map[string][]Action{
 		"missing anchor":  {{Name: "A", Before: "Nope"}},
 		"cycle":           {{Name: "A", Before: "B"}, {Name: "B", Before: "A"}},
@@ -92,6 +96,8 @@ func TestErrors(t *testing.T) {
 }
 
 func TestTerminationActionsAreFine(t *testing.T) {
+	t.Parallel()
+
 	seq, err := Number([]Action{{Name: "ExitDialog", Sequence: -1}, {Name: "FatalError", Sequence: -3}, {Name: "A", Sequence: 10}})
 	if err != nil {
 		t.Fatal(err)

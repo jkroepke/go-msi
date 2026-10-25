@@ -68,117 +68,117 @@ func (r *reader) chain(start uint32, limit int) ([]uint32, error) {
 
 	seen := make(map[uint32]bool)
 
-	for s := start; s != endOfChain; {
-		if s >= 0xFFFFFFFA || int(s) >= len(r.fat) || seen[s] {
-			return nil, fmt.Errorf("cfb: bad FAT chain at %#x", s)
+	for sector := start; sector != endOfChain; {
+		if sector >= 0xFFFFFFFA || int(sector) >= len(r.fat) || seen[sector] {
+			return nil, fmt.Errorf("cfb: bad FAT chain at %#x", sector)
 		}
 
-		seen[s] = true
-		out = append(out, s)
+		seen[sector] = true
+		out = append(out, sector)
 
 		if len(out) > limit {
 			return nil, errors.New("cfb: chain too long")
 		}
 
-		s = r.fat[s]
+		sector = r.fat[sector]
 	}
 
 	return out, nil
 }
 
 // Read parses a compound file and loads every root-level stream.
-func Read(raw []byte) (*File, error) {
+func Read(raw []byte) (*File, error) { //nolint:maintidx,cyclop,gocyclo,gocognit // one pass over the format; splitting would scatter it
 	if len(raw) < 512 || !bytes.Equal(raw[:8], signature) {
 		return nil, errors.New("cfb: bad signature")
 	}
 
-	le := binary.LittleEndian
+	order := binary.LittleEndian
 
-	if le.Uint16(raw[0x1C:]) != 0xFFFE {
+	if order.Uint16(raw[0x1C:]) != 0xFFFE {
 		return nil, errors.New("cfb: bad byte order mark")
 	}
 
-	major := int(le.Uint16(raw[0x1A:]))
-	shift := le.Uint16(raw[0x1E:])
+	major := int(order.Uint16(raw[0x1A:]))
+	shift := order.Uint16(raw[0x1E:])
 
 	if (major != 3 || shift != 9) && (major != 4 || shift != 12) {
 		return nil, fmt.Errorf("cfb: unsupported version %d with sector shift %d", major, shift)
 	}
 
-	if le.Uint16(raw[0x20:]) != 6 {
+	if order.Uint16(raw[0x20:]) != 6 {
 		return nil, errors.New("cfb: unsupported mini sector shift")
 	}
 
-	r := &reader{raw: raw, ss: 1 << shift}
-	f := &File{Version: major, SectorSize: r.ss, byName: make(map[string]*Entry)}
+	rdr := &reader{raw: raw, ss: 1 << shift}
+	file := &File{Version: major, SectorSize: rdr.ss, byName: make(map[string]*Entry)}
 
-	numFAT := le.Uint32(raw[0x2C:])
-	firstDir := le.Uint32(raw[0x30:])
-	firstMiniFAT := le.Uint32(raw[0x3C:])
-	firstDIFAT := le.Uint32(raw[0x44:])
+	numFAT := order.Uint32(raw[0x2C:])
+	firstDir := order.Uint32(raw[0x30:])
+	firstMiniFAT := order.Uint32(raw[0x3C:])
+	firstDIFAT := order.Uint32(raw[0x44:])
 
 	var fatSectors []uint32
 
 	for i := 0; i < 109 && uint32(len(fatSectors)) < numFAT; i++ { //nolint:gosec // bounded by the format limits checked earlier
-		fatSectors = append(fatSectors, le.Uint32(raw[0x4C+4*i:]))
+		fatSectors = append(fatSectors, order.Uint32(raw[0x4C+4*i:]))
 	}
 
 	seenDIFAT := make(map[uint32]bool)
 
-	for d := firstDIFAT; d != endOfChain && d != freeSect && uint32(len(fatSectors)) < numFAT; { //nolint:gosec // bounded by the format limits checked earlier
-		if seenDIFAT[d] {
+	for difat := firstDIFAT; difat != endOfChain && difat != freeSect && uint32(len(fatSectors)) < numFAT; { //nolint:gosec // bounded
+		if seenDIFAT[difat] {
 			return nil, errors.New("cfb: DIFAT loop")
 		}
 
-		seenDIFAT[d] = true
+		seenDIFAT[difat] = true
 
-		off, err := r.sectorOffset(d)
+		off, err := rdr.sectorOffset(difat)
 		if err != nil {
 			return nil, fmt.Errorf("cfb: DIFAT: %w", err)
 		}
 
-		for i := 0; i < r.ss/4-1 && uint32(len(fatSectors)) < numFAT; i++ { //nolint:gosec // bounded by the format limits checked earlier
-			fatSectors = append(fatSectors, le.Uint32(raw[off+4*i:]))
+		for i := 0; i < rdr.ss/4-1 && uint32(len(fatSectors)) < numFAT; i++ { //nolint:gosec // bounded by the format limits checked earlier
+			fatSectors = append(fatSectors, order.Uint32(raw[off+4*i:]))
 		}
 
-		d = le.Uint32(raw[off+r.ss-4:])
+		difat = order.Uint32(raw[off+rdr.ss-4:])
 	}
 
 	for _, s := range fatSectors {
-		off, err := r.sectorOffset(s)
+		off, err := rdr.sectorOffset(s)
 		if err != nil {
 			return nil, fmt.Errorf("cfb: FAT: %w", err)
 		}
 
-		for i := range r.ss / 4 {
-			r.fat = append(r.fat, le.Uint32(raw[off+4*i:]))
+		for i := range rdr.ss / 4 {
+			rdr.fat = append(rdr.fat, order.Uint32(raw[off+4*i:]))
 		}
 	}
 
-	dirChain, err := r.chain(firstDir, 1<<20)
+	dirChain, err := rdr.chain(firstDir, 1<<20)
 	if err != nil {
 		return nil, fmt.Errorf("cfb: directory: %w", err)
 	}
 
 	for _, s := range dirChain {
-		off, err := r.sectorOffset(s)
+		off, err := rdr.sectorOffset(s)
 		if err != nil {
 			return nil, fmt.Errorf("cfb: directory: %w", err)
 		}
 
-		for i := range r.ss / entrySize {
-			e := raw[off+entrySize*i : off+entrySize*(i+1)]
-			nameLen := int(le.Uint16(e[0x40:]))
+		for i := range rdr.ss / entrySize {
+			rec := raw[off+entrySize*i : off+entrySize*(i+1)]
+			nameLen := int(order.Uint16(rec[0x40:]))
 
 			ent := &Entry{
-				SID:    len(f.Entries),
-				Type:   e[0x42],
-				Colour: e[0x43],
-				Left:   le.Uint32(e[0x44:]),
-				Right:  le.Uint32(e[0x48:]),
-				Child:  le.Uint32(e[0x4C:]),
-				Start:  le.Uint32(e[0x74:]),
-				Size:   le.Uint64(e[0x78:]),
+				SID:    len(file.Entries),
+				Type:   rec[0x42],
+				Colour: rec[0x43],
+				Left:   order.Uint32(rec[0x44:]),
+				Right:  order.Uint32(rec[0x48:]),
+				Child:  order.Uint32(rec[0x4C:]),
+				Start:  order.Uint32(rec[0x74:]),
+				Size:   order.Uint64(rec[0x78:]),
 				Parent: -1,
 			}
 
@@ -186,42 +186,42 @@ func Read(raw []byte) (*File, error) {
 				ent.Size &= 0xFFFFFFFF
 			}
 
-			copy(ent.CLSID[:], e[0x50:0x60])
+			copy(ent.CLSID[:], rec[0x50:0x60])
 
 			if nameLen >= 2 && nameLen <= 64 {
 				units := make([]uint16, 0, nameLen/2-1)
 				for j := range nameLen/2 - 1 {
-					units = append(units, le.Uint16(e[2*j:]))
+					units = append(units, order.Uint16(rec[2*j:]))
 				}
 
 				ent.Name = string(utf16.Decode(units))
 			}
 
-			f.Entries = append(f.Entries, ent)
+			file.Entries = append(file.Entries, ent)
 		}
 	}
 
-	if len(f.Entries) == 0 || f.Entries[0].Type != 5 {
+	if len(file.Entries) == 0 || file.Entries[0].Type != 5 {
 		return nil, errors.New("cfb: no root entry")
 	}
 
-	root := f.Entries[0]
-	f.CLSID = root.CLSID
+	root := file.Entries[0]
+	file.CLSID = root.CLSID
 
 	if firstMiniFAT != endOfChain && firstMiniFAT != freeSect {
-		mc, err := r.chain(firstMiniFAT, 1<<20)
+		mc, err := rdr.chain(firstMiniFAT, 1<<20)
 		if err != nil {
 			return nil, fmt.Errorf("cfb: MiniFAT: %w", err)
 		}
 
 		for _, s := range mc {
-			off, err := r.sectorOffset(s)
+			off, err := rdr.sectorOffset(s)
 			if err != nil {
 				return nil, fmt.Errorf("cfb: MiniFAT: %w", err)
 			}
 
-			for i := range r.ss / 4 {
-				r.miniFAT = append(r.miniFAT, le.Uint32(raw[off+4*i:]))
+			for i := range rdr.ss / 4 {
+				rdr.miniFAT = append(rdr.miniFAT, order.Uint32(raw[off+4*i:]))
 			}
 		}
 	}
@@ -229,7 +229,7 @@ func Read(raw []byte) (*File, error) {
 	var rootChain []uint32
 
 	if root.Size > 0 {
-		rootChain, err = r.chain(root.Start, 1<<22)
+		rootChain, err = rdr.chain(root.Start, 1<<22)
 		if err != nil {
 			return nil, fmt.Errorf("cfb: mini stream: %w", err)
 		}
@@ -245,24 +245,24 @@ func Read(raw []byte) (*File, error) {
 			return nil
 		}
 
-		if int(sid) >= len(f.Entries) || visited[sid] {
+		if int(sid) >= len(file.Entries) || visited[sid] {
 			return fmt.Errorf("cfb: bad sibling link %d", sid)
 		}
 
 		visited[sid] = true
-		e := f.Entries[sid]
-		e.Parent = parent
+		ent := file.Entries[sid]
+		ent.Parent = parent
 
-		if err := walk(e.Left, parent); err != nil {
+		if err := walk(ent.Left, parent); err != nil {
 			return err
 		}
 
-		if err := walk(e.Right, parent); err != nil {
+		if err := walk(ent.Right, parent); err != nil {
 			return err
 		}
 
-		if e.Type == 1 {
-			return walk(e.Child, int(sid))
+		if ent.Type == 1 {
+			return walk(ent.Child, int(sid))
 		}
 
 		return nil
@@ -272,75 +272,75 @@ func Read(raw []byte) (*File, error) {
 		return nil, err
 	}
 
-	for _, e := range f.Entries {
-		if e.Type != 2 || e.Parent < 0 {
+	for _, ent := range file.Entries {
+		if ent.Type != 2 || ent.Parent < 0 {
 			continue
 		}
 
-		if e.Size > uint64(len(raw)) {
-			return nil, fmt.Errorf("cfb: stream %q larger than the file", e.Name)
+		if ent.Size > uint64(len(raw)) {
+			return nil, fmt.Errorf("cfb: stream %q larger than the file", ent.Name)
 		}
 
 		switch {
-		case e.Size == 0:
+		case ent.Size == 0:
 			// Any start sector is fine for an empty stream.
-		case e.Size < miniCutoff:
-			e.Data = make([]byte, 0, e.Size)
+		case ent.Size < miniCutoff:
+			ent.Data = make([]byte, 0, ent.Size)
 
-			for m, n := e.Start, uint64(0); n*miniSectorSize < e.Size; n++ {
-				if m == endOfChain || int(m) >= len(r.miniFAT) || m >= 0xFFFFFFFA {
-					return nil, fmt.Errorf("cfb: bad MiniFAT chain for %q", e.Name)
+			for mini, n := ent.Start, uint64(0); n*miniSectorSize < ent.Size; n++ {
+				if mini == endOfChain || int(mini) >= len(rdr.miniFAT) || mini >= 0xFFFFFFFA {
+					return nil, fmt.Errorf("cfb: bad MiniFAT chain for %q", ent.Name)
 				}
 
-				pos := int(m) * miniSectorSize
-				if pos/r.ss >= len(rootChain) {
-					return nil, fmt.Errorf("cfb: mini sector %d of %q outside the mini stream", m, e.Name)
+				pos := int(mini) * miniSectorSize
+				if pos/rdr.ss >= len(rootChain) {
+					return nil, fmt.Errorf("cfb: mini sector %d of %q outside the mini stream", mini, ent.Name)
 				}
 
-				off, err := r.sectorOffset(rootChain[pos/r.ss])
+				off, err := rdr.sectorOffset(rootChain[pos/rdr.ss])
 				if err != nil {
 					return nil, err
 				}
 
-				off += pos % r.ss
-				e.Data = append(e.Data, raw[off:off+miniSectorSize]...)
-				m = r.miniFAT[m]
+				off += pos % rdr.ss
+				ent.Data = append(ent.Data, raw[off:off+miniSectorSize]...)
+				mini = rdr.miniFAT[mini]
 			}
 
-			e.Data = e.Data[:e.Size]
+			ent.Data = ent.Data[:ent.Size]
 		default:
-			c, err := r.chain(e.Start, int(e.Size)/r.ss+2) //nolint:gosec // sizes were checked against the file length
+			chain, err := rdr.chain(ent.Start, int(ent.Size)/rdr.ss+2) //nolint:gosec // sizes were checked against the file length
 			if err != nil {
-				return nil, fmt.Errorf("cfb: stream %q: %w", e.Name, err)
+				return nil, fmt.Errorf("cfb: stream %q: %w", ent.Name, err)
 			}
 
-			if uint64(len(c))*uint64(r.ss) < e.Size { //nolint:gosec // both are non-negative
-				return nil, fmt.Errorf("cfb: stream %q is shorter than its size", e.Name)
+			if uint64(len(chain))*uint64(rdr.ss) < ent.Size { //nolint:gosec // both are non-negative
+				return nil, fmt.Errorf("cfb: stream %q is shorter than its size", ent.Name)
 			}
 
-			e.Data = make([]byte, 0, e.Size)
+			ent.Data = make([]byte, 0, ent.Size)
 
-			for _, s := range c {
-				off, err := r.sectorOffset(s)
+			for _, s := range chain {
+				off, err := rdr.sectorOffset(s)
 				if err != nil {
 					return nil, err
 				}
 
-				e.Data = append(e.Data, raw[off:off+r.ss]...)
+				ent.Data = append(ent.Data, raw[off:off+rdr.ss]...)
 			}
 
-			e.Data = e.Data[:e.Size]
+			ent.Data = ent.Data[:ent.Size]
 		}
 
-		if e.Parent == 0 {
-			if _, dup := f.byName[e.Name]; dup {
-				return nil, fmt.Errorf("cfb: duplicate stream name %q", e.Name)
+		if ent.Parent == 0 {
+			if _, dup := file.byName[ent.Name]; dup {
+				return nil, fmt.Errorf("cfb: duplicate stream name %q", ent.Name)
 			}
 
-			f.byName[e.Name] = e
-			f.streams = append(f.streams, Stream{Name: e.Name, Data: e.Data})
+			file.byName[ent.Name] = ent
+			file.streams = append(file.streams, Stream{Name: ent.Name, Data: ent.Data})
 		}
 	}
 
-	return f, nil
+	return file, nil
 }

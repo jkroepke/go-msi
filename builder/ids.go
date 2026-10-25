@@ -54,45 +54,45 @@ const shortAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789_-"
 // shortName derives an 8.3 name for longName in the scope of parentKey,
 // unique among taken (lower-case names), following section 11.3 steps 1–4.
 // Directories get no extension.
-func shortName(parentKey, longName string, directory bool, taken map[string]bool) string {
+func shortName(parentKey, longName string, directory bool, taken map[string]bool) string { //nolint:cyclop // one pass over the format
 	ext := ""
 
-	if !directory {
+	if !directory { //nolint:nestif // reads best as one block
 		if i := strings.LastIndexByte(longName, '.'); i >= 0 && i < len(longName)-1 {
-			var b strings.Builder
+			var extBuilder strings.Builder
 
 			for _, r := range strings.ToLower(longName[i+1:]) {
 				if r > 0x20 && r < 0x7F && !strings.ContainsRune(`\/:*?"<>|+,;=[]. `, r) {
-					b.WriteRune(r)
+					extBuilder.WriteRune(r)
 				}
 
-				if b.Len() == 3 {
+				if extBuilder.Len() == 3 {
 					break
 				}
 			}
 
-			ext = b.String()
+			ext = extBuilder.String()
 		}
 	}
 
 	for n := 0; ; n++ {
 		h := sha256.Sum256([]byte(strings.ToLower(parentKey) + "\x1f" + strings.ToLower(longName) + "\x1f" + strconv.Itoa(n)))
 
-		var b strings.Builder
+		var nameBuilder strings.Builder
 
 		for i := range 8 {
-			b.WriteByte(shortAlphabet[int(h[i])%len(shortAlphabet)])
+			nameBuilder.WriteByte(shortAlphabet[int(h[i])%len(shortAlphabet)])
 		}
 
-		s := b.String()
+		candidate := nameBuilder.String()
 		if ext != "" {
-			s += "." + ext
+			candidate += "." + ext
 		}
 
-		if !taken[strings.ToLower(s)] {
-			taken[strings.ToLower(s)] = true
+		if !taken[strings.ToLower(candidate)] {
+			taken[strings.ToLower(candidate)] = true
 
-			return s
+			return candidate
 		}
 	}
 }

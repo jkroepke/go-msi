@@ -57,33 +57,33 @@ var typePattern = regexp.MustCompile(`^([sSlL])(\d{1,3})$|^([iI])([24])$|^([vV])
 // ParseType parses the .idt notation. A trailing "!" or the Key field marks
 // a primary key column in callers; ParseType itself only reads the type.
 func ParseType(s string) (Type, error) {
-	m := typePattern.FindStringSubmatch(s)
-	if m == nil {
+	match := typePattern.FindStringSubmatch(s)
+	if match == nil {
 		return Type{}, fmt.Errorf("msidb: %q is not a column type (s72, S255, l0, L255, i2, I4, v0, V0)", s)
 	}
 
 	switch {
-	case m[1] != "":
-		w, _ := strconv.Atoi(m[2])
-		if w > 255 {
-			return Type{}, fmt.Errorf("msidb: string width %d exceeds 255", w)
+	case match[1] != "":
+		width, _ := strconv.Atoi(match[2])
+		if width > 255 {
+			return Type{}, fmt.Errorf("msidb: string width %d exceeds 255", width)
 		}
 
 		return Type{
 			Kind:        KindString,
-			Nullable:    m[1] == "S" || m[1] == "L",
-			Localizable: m[1] == "l" || m[1] == "L",
-			Width:       w,
+			Nullable:    match[1] == "S" || match[1] == "L",
+			Localizable: match[1] == "l" || match[1] == "L",
+			Width:       width,
 		}, nil
-	case m[3] != "":
-		t := Type{Kind: KindInt16, Width: 2, Nullable: m[3] == "I"}
-		if m[4] == "4" {
+	case match[3] != "":
+		t := Type{Kind: KindInt16, Width: 2, Nullable: match[3] == "I"}
+		if match[4] == "4" {
 			t.Kind, t.Width = KindInt32, 4
 		}
 
 		return t, nil
 	default:
-		return Type{Kind: KindBinary, Nullable: m[5] == "V"}, nil
+		return Type{Kind: KindBinary, Nullable: match[5] == "V"}, nil
 	}
 }
 
@@ -100,18 +100,18 @@ func MustType(s string) Type {
 
 // String returns the .idt notation.
 func (t Type) String() string {
-	switch t.Kind {
+	switch t.Kind { //nolint:exhaustive // the default covers the remaining kinds
 	case KindString:
-		c := "s"
+		code := "s"
 		if t.Localizable {
-			c = "l"
+			code = "l"
 		}
 
 		if t.Nullable {
-			c = strings.ToUpper(c)
+			code = strings.ToUpper(code)
 		}
 
-		return c + strconv.Itoa(t.Width)
+		return code + strconv.Itoa(t.Width)
 	case KindInt16:
 		if t.Nullable {
 			return "I2"
@@ -135,58 +135,58 @@ func (t Type) String() string {
 
 // Word is the 16-bit type word stored in _Columns.Type (section 3).
 func (t Type) Word() uint16 {
-	var w uint16
+	var word uint16
 
 	switch t.Kind {
 	case KindString:
-		w = 0x0D00 | uint16(t.Width) //nolint:gosec // bounded by the format limits checked earlier
+		word = 0x0D00 | uint16(t.Width) //nolint:gosec // bounded by the format limits checked earlier
 		if t.Localizable {
-			w |= 0x0200
+			word |= 0x0200
 		}
 	case KindInt16:
-		w = 0x0502
+		word = 0x0502
 	case KindInt32:
-		w = 0x0104
+		word = 0x0104
 	case KindBinary:
-		w = 0x0900
+		word = 0x0900
 	}
 
 	if t.Nullable {
-		w |= 0x1000
+		word |= 0x1000
 	}
 
 	if t.Key {
-		w |= 0x2000
+		word |= 0x2000
 	}
 
-	return w
+	return word
 }
 
 // TypeFromWord decodes a _Columns.Type word.
-func TypeFromWord(w uint16) (Type, error) {
-	t := Type{Nullable: w&0x1000 != 0, Key: w&0x2000 != 0}
+func TypeFromWord(word uint16) (Type, error) {
+	typ := Type{Nullable: word&0x1000 != 0, Key: word&0x2000 != 0}
 
 	switch {
-	case w&^0x3000 == 0x0900:
-		t.Kind = KindBinary
-	case w&0x0800 != 0:
-		t.Kind = KindString
-		t.Width = int(w & 0xFF)
-		t.Localizable = w&0x0200 != 0
-	case w&0xFF == 4:
-		t.Kind, t.Width = KindInt32, 4
-	case w&0xFF == 1 || w&0xFF == 2:
-		t.Kind, t.Width = KindInt16, 2
+	case word&^0x3000 == 0x0900:
+		typ.Kind = KindBinary
+	case word&0x0800 != 0:
+		typ.Kind = KindString
+		typ.Width = int(word & 0xFF)
+		typ.Localizable = word&0x0200 != 0
+	case word&0xFF == 4:
+		typ.Kind, typ.Width = KindInt32, 4
+	case word&0xFF == 1 || word&0xFF == 2:
+		typ.Kind, typ.Width = KindInt16, 2
 	default:
-		return Type{}, fmt.Errorf("msidb: unknown column type word %#x", w)
+		return Type{}, fmt.Errorf("msidb: unknown column type word %#x", word)
 	}
 
-	return t, nil
+	return typ, nil
 }
 
 // storageWidth is the number of bytes a cell takes in a table stream.
 func (t Type) storageWidth(longRefs bool) int {
-	switch t.Kind {
+	switch t.Kind { //nolint:exhaustive // the default covers the remaining kinds
 	case KindInt32:
 		return 4
 	case KindString:
@@ -225,15 +225,15 @@ type Table struct {
 
 // Keys returns the number of primary key columns.
 func (t *Table) Keys() int {
-	n := 0
+	count := 0
 
 	for _, c := range t.Columns {
 		if c.Type.Key {
-			n++
+			count++
 		}
 	}
 
-	return n
+	return count
 }
 
 // Column returns the index of the named column, or -1.
@@ -285,64 +285,64 @@ func (db *Database) Stream(name string) ([]byte, bool) {
 
 // normalizeCell converts a cell to its canonical Go value: nil, string,
 // int or []byte, checked against the column type.
-func normalizeCell(c Column, v any) (any, error) {
-	if v == nil {
-		if !c.Type.Nullable {
-			return nil, fmt.Errorf("column %s is not nullable", c.Name)
+func normalizeCell(col Column, value any) (any, error) { //nolint:cyclop // one pass over the format; splitting would scatter it
+	if value == nil {
+		if !col.Type.Nullable {
+			return nil, fmt.Errorf("column %s is not nullable", col.Name)
 		}
 
 		return nil, nil //nolint:nilnil // nil is the NULL cell
 	}
 
-	switch c.Type.Kind {
+	switch col.Type.Kind { //nolint:exhaustive // the default covers the remaining kinds
 	case KindString:
-		s, ok := v.(string)
+		str, ok := value.(string)
 		if !ok {
-			return nil, fmt.Errorf("column %s wants a string, got %T", c.Name, v)
+			return nil, fmt.Errorf("column %s wants a string, got %T", col.Name, value)
 		}
 
-		if s == "" {
-			if !c.Type.Nullable {
-				return nil, fmt.Errorf("column %s is not nullable", c.Name)
+		if str == "" {
+			if !col.Type.Nullable {
+				return nil, fmt.Errorf("column %s is not nullable", col.Name)
 			}
 
 			return nil, nil //nolint:nilnil // an empty string is the NULL cell
 		}
 
-		return s, nil
+		return str, nil
 	case KindInt16, KindInt32:
-		var n int64
+		var num int64
 
-		switch x := v.(type) {
+		switch val := value.(type) {
 		case int:
-			n = int64(x)
+			num = int64(val)
 		case int32:
-			n = int64(x)
+			num = int64(val)
 		case int64:
-			n = x
+			num = val
 		case int16:
-			n = int64(x)
+			num = int64(val)
 		case uint16:
-			n = int64(x)
+			num = int64(val)
 		case uint32:
-			n = int64(x)
+			num = int64(val)
 		default:
-			return nil, fmt.Errorf("column %s wants an integer, got %T", c.Name, v)
+			return nil, fmt.Errorf("column %s wants an integer, got %T", col.Name, value)
 		}
 
-		if c.Type.Kind == KindInt16 && (n < MinInt16 || n > MaxInt16) {
-			return nil, fmt.Errorf("column %s: %d is outside %d…%d", c.Name, n, MinInt16, MaxInt16)
+		if col.Type.Kind == KindInt16 && (num < MinInt16 || num > MaxInt16) {
+			return nil, fmt.Errorf("column %s: %d is outside %d…%d", col.Name, num, MinInt16, MaxInt16)
 		}
 
-		if c.Type.Kind == KindInt32 && (n < MinInt32 || n > MaxInt32) {
-			return nil, fmt.Errorf("column %s: %d is outside %d…%d", c.Name, n, MinInt32, MaxInt32)
+		if col.Type.Kind == KindInt32 && (num < MinInt32 || num > MaxInt32) {
+			return nil, fmt.Errorf("column %s: %d is outside %d…%d", col.Name, num, MinInt32, MaxInt32)
 		}
 
-		return int(n), nil
+		return int(num), nil
 	default:
-		b, ok := v.([]byte)
+		b, ok := value.([]byte)
 		if !ok {
-			return nil, fmt.Errorf("column %s wants []byte, got %T", c.Name, v)
+			return nil, fmt.Errorf("column %s wants []byte, got %T", col.Name, value)
 		}
 
 		return b, nil
@@ -351,7 +351,7 @@ func normalizeCell(c Column, v any) (any, error) {
 
 // Validate checks the table shape: name, column count, key placement and
 // every cell.
-func (t *Table) Validate() error {
+func (t *Table) Validate() error { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
 	if t.Name == "" || len(t.Name) > MaxTableName {
 		return fmt.Errorf("msidb: table name %q must be 1 to %d characters", t.Name, MaxTableName)
 	}
@@ -367,30 +367,30 @@ func (t *Table) Validate() error {
 	keys, binaries := 0, 0
 	seen := make(map[string]bool)
 
-	for i, c := range t.Columns {
-		if c.Name == "" || len(c.Name) > maxColumnName {
-			return fmt.Errorf("msidb: table %s: column %d has an invalid name %q", t.Name, i+1, c.Name)
+	for i, col := range t.Columns {
+		if col.Name == "" || len(col.Name) > maxColumnName {
+			return fmt.Errorf("msidb: table %s: column %d has an invalid name %q", t.Name, i+1, col.Name)
 		}
 
-		if seen[c.Name] {
-			return fmt.Errorf("msidb: table %s: column %s defined twice", t.Name, c.Name)
+		if seen[col.Name] {
+			return fmt.Errorf("msidb: table %s: column %s defined twice", t.Name, col.Name)
 		}
 
-		seen[c.Name] = true
+		seen[col.Name] = true
 
-		if c.Type.Key {
+		if col.Type.Key {
 			if i != keys {
-				return fmt.Errorf("msidb: table %s: key column %s must come before the other columns", t.Name, c.Name)
+				return fmt.Errorf("msidb: table %s: key column %s must come before the other columns", t.Name, col.Name)
 			}
 
-			if c.Type.Kind == KindBinary {
-				return fmt.Errorf("msidb: table %s: binary column %s cannot be a key", t.Name, c.Name)
+			if col.Type.Kind == KindBinary {
+				return fmt.Errorf("msidb: table %s: binary column %s cannot be a key", t.Name, col.Name)
 			}
 
 			keys++
 		}
 
-		if c.Type.Kind == KindBinary {
+		if col.Type.Kind == KindBinary {
 			binaries++
 		}
 	}
@@ -403,15 +403,15 @@ func (t *Table) Validate() error {
 		return fmt.Errorf("msidb: table %s has %d binary columns, at most one is allowed", t.Name, binaries)
 	}
 
-	for r, row := range t.Rows {
+	for rowIdx, row := range t.Rows {
 		if len(row) != len(t.Columns) {
-			return fmt.Errorf("msidb: table %s row %d has %d cells, want %d", t.Name, r, len(row), len(t.Columns))
+			return fmt.Errorf("msidb: table %s row %d has %d cells, want %d", t.Name, rowIdx, len(row), len(t.Columns))
 		}
 
 		for i, c := range t.Columns {
 			v, err := normalizeCell(c, row[i])
 			if err != nil {
-				return fmt.Errorf("msidb: table %s row %d: %w", t.Name, r, err)
+				return fmt.Errorf("msidb: table %s row %d: %w", t.Name, rowIdx, err)
 			}
 
 			row[i] = v

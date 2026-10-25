@@ -41,7 +41,7 @@ const (
 
 // standardFolderNames are the fixed 8.3 names of the standard folders
 // (section 11.3, the reference profile).
-var standardFolderNames = map[string]string{
+var standardFolderNames = map[string]string{ //nolint:gochecknoglobals // lookup table
 	"AdminToolsFolder": "Admin", "AppDataFolder": "AppData", "CommonAppDataFolder": "CommApp",
 	"CommonFilesFolder": "CFiles", "CommonFiles64Folder": "CFiles64", "DesktopFolder": "Desktop",
 	"FavoritesFolder": "Favs", "FontsFolder": "Fonts", "LocalAppDataFolder": "LocalApp",
@@ -58,12 +58,12 @@ func (b *build) identity() error {
 
 	b.upgradeCode, err = config.NormalizeGUID(b.cfg.Product.UpgradeCode)
 	if err != nil {
-		return err
+		return fmt.Errorf("product.upgradeCode: %w", err)
 	}
 
 	b.version, err = config.ParseVersion(b.cfg.Product.Version)
 	if err != nil {
-		return err
+		return fmt.Errorf("product.version: %w", err)
 	}
 
 	switch b.cfg.Product.ProductCode {
@@ -72,14 +72,14 @@ func (b *build) identity() error {
 	default:
 		b.productCode, err = config.NormalizeGUID(b.cfg.Product.ProductCode)
 		if err != nil {
-			return err
+			return fmt.Errorf("product.productCode: %w", err)
 		}
 	}
 
 	if b.cfg.Product.PackageCode != config.Auto {
 		b.packageCode, err = config.NormalizeGUID(b.cfg.Product.PackageCode)
 		if err != nil {
-			return err
+			return fmt.Errorf("product.packageCode: %w", err)
 		}
 	}
 
@@ -98,25 +98,25 @@ func (b *build) deriveProductCode() error {
 	cfgCopy := *b.cfg
 	cfgCopy.BaseDir = ""
 
-	y, err := yaml.Marshal(&cfgCopy)
+	yamlBytes, err := yaml.Marshal(&cfgCopy)
 	if err != nil {
-		return err
+		return fmt.Errorf("digest of the configuration: %w", err)
 	}
 
-	h := sha256.New()
-	h.Write(y)
+	hasher := sha256.New()
+	hasher.Write(yamlBytes)
 
 	for _, f := range b.files {
 		sum := sha256.Sum256(f.Data)
-		h.Write([]byte(f.Key))
-		h.Write(sum[:])
+		hasher.Write([]byte(f.Key))
+		hasher.Write(sum[:])
 	}
 
 	for _, name := range sortedStringKeys(b.cfg.Icons) {
-		h.Write([]byte("icon:" + name))
+		hasher.Write([]byte("icon:" + name))
 	}
 
-	digest := hex.EncodeToString(h.Sum(nil))
+	digest := hex.EncodeToString(hasher.Sum(nil))
 	b.productCode = uuid5(namespaceProduct, "product|"+b.upgradeCode+"|"+b.cfg.Product.Version+"|"+string(b.cfg.Package.Platform)+"|"+digest)
 
 	return nil
@@ -135,39 +135,39 @@ func sortedStringKeys(m map[string]string) []string {
 
 // directories builds the Directory table.
 func (b *build) directories() error {
-	b.addDir(&dirInfo{id: "TARGETDIR", canonical: "TARGETDIR", standard: true})
+	b.addDir(&dirInfo{id: targetDir, canonical: targetDir, standard: true})
 
 	var walk func(ds []*config.Directory, parent *dirInfo)
 
 	walk = func(ds []*config.Directory, parent *dirInfo) {
-		for _, d := range ds {
-			if _, dup := b.dirs[d.ID]; dup {
+		for _, dir := range ds {
+			if _, dup := b.dirs[dir.ID]; dup {
 				continue
 			}
 
-			info := &dirInfo{id: d.ID}
+			info := &dirInfo{id: dir.ID}
 
 			switch {
-			case parent == nil && config.IsStandardFolder(d.ID):
-				info.parent = "TARGETDIR"
+			case parent == nil && config.IsStandardFolder(dir.ID):
+				info.parent = targetDir
 				info.standard = true
-				info.canonical = d.ID
+				info.canonical = dir.ID
 			case parent == nil:
-				info.parent = "TARGETDIR"
-				info.long = d.Name
-				info.canonical = "TARGETDIR\\" + strings.ToLower(longPart(d.Name))
+				info.parent = targetDir
+				info.long = dir.Name
+				info.canonical = "TARGETDIR\\" + strings.ToLower(longPart(dir.Name))
 			default:
 				info.parent = parent.id
-				info.long = d.Name
-				info.canonical = parent.canonical + "\\" + strings.ToLower(longPart(d.Name))
+				info.long = dir.Name
+				info.canonical = parent.canonical + "\\" + strings.ToLower(longPart(dir.Name))
 			}
 
-			if d.Configurable {
-				b.secure[d.ID] = true
+			if dir.Configurable {
+				b.secure[dir.ID] = true
 			}
 
 			b.addDir(info)
-			walk(d.Children, info)
+			walk(dir.Children, info)
 		}
 	}
 
@@ -196,48 +196,48 @@ func (b *build) ensureStandardDir(id string) {
 		return
 	}
 
-	b.addDir(&dirInfo{id: id, parent: "TARGETDIR", standard: true, canonical: id})
+	b.addDir(&dirInfo{id: id, parent: targetDir, standard: true, canonical: id})
 }
 
 // writeDirectoryTable emits the rows with generated short names. Every
 // directory is written: the engine resolves the whole chain.
 func (b *build) writeDirectoryTable() {
-	t := b.table("Directory")
+	tbl := b.table("Directory")
 	taken := make(map[string]map[string]bool)
 
-	for _, d := range b.dirOrder {
+	for _, dir := range b.dirOrder {
 		switch {
-		case d.id == "TARGETDIR":
-			t.Add("TARGETDIR", nil, "SourceDir")
-		case d.standard:
-			name, ok := standardFolderNames[d.id]
+		case dir.id == targetDir:
+			tbl.Add(targetDir, nil, "SourceDir")
+		case dir.standard:
+			name, ok := standardFolderNames[dir.id]
 			if !ok {
 				name = "."
 			}
 
-			t.Add(d.id, d.parent, name)
+			tbl.Add(dir.id, dir.parent, name)
 		default:
-			if taken[d.parent] == nil {
-				taken[d.parent] = make(map[string]bool)
+			if taken[dir.parent] == nil {
+				taken[dir.parent] = make(map[string]bool)
 			}
 
-			t.Add(d.id, d.parent, filename(d.parent, d.long, true, taken[d.parent], config.ValidShortName))
+			tbl.Add(dir.id, dir.parent, filename(dir.parent, dir.long, true, taken[dir.parent], config.ValidShortName))
 		}
 	}
 }
 
 // writeComponents prepares the component records; rows are written after the
 // files are read, because the key path and GUID may depend on them.
-func (b *build) writeComponents() error {
-	for i, c := range b.cfg.Components {
-		info := &componentInfo{cfg: c, index: i, dir: b.dirs[c.Directory]}
+func (b *build) writeComponents() error { //nolint:cyclop // one pass over the format; splitting would scatter it
+	for i, comp := range b.cfg.Components {
+		info := &componentInfo{cfg: comp, index: i, dir: b.dirs[comp.Directory]}
 		if info.dir == nil {
-			return fmt.Errorf("components[%d]: directory %s is not defined", i, c.Directory)
+			return fmt.Errorf("components[%d]: directory %s is not defined", i, comp.Directory)
 		}
 
 		info.dir.used = true
 
-		switch c.Bitness {
+		switch comp.Bitness {
 		case "64":
 			info.is64 = true
 		case "32":
@@ -250,23 +250,23 @@ func (b *build) writeComponents() error {
 			info.attributes |= comp64Bit
 		}
 
-		if c.Permanent {
+		if comp.Permanent {
 			info.attributes |= compPermanent
 		}
 
-		if c.Transitive {
+		if comp.Transitive {
 			info.attributes |= compTransitive
 		}
 
-		if c.NeverOverwrite {
+		if comp.NeverOverwrite {
 			info.attributes |= compNeverOverwrite
 		}
 
-		if c.SharedDLLRefCount {
+		if comp.SharedDLLRefCount {
 			info.attributes |= compSharedDLLRefCount
 		}
 
-		b.components[c.ID] = info
+		b.components[comp.ID] = info
 	}
 
 	return nil
@@ -275,36 +275,32 @@ func (b *build) writeComponents() error {
 // inputs reads every payload file and derives version, language, hash and
 // attributes, then writes the Component, File, MsiFileHash, CreateFolder,
 // Registry, Environment and service tables.
-func (b *build) inputs() error {
+func (b *build) inputs() error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	for _, c := range b.cfg.Components {
 		info := b.components[c.ID]
 		p := fmt.Sprintf("components[%d]", info.index)
 
 		for j, f := range c.Files {
-			fp := fmt.Sprintf("%s.files[%d]", p, j)
+			filePath := fmt.Sprintf("%s.files[%d]", p, j)
 
-			fi, err := b.readFile(fp, f, info)
-			if err != nil {
-				return err
-			}
-
-			if fi == nil {
+			file := b.readFile(filePath, f, info)
+			if file == nil {
 				continue
 			}
 
-			if _, dup := b.fileByKey[fi.Key]; dup {
-				b.errorf(fp+".id", "file key %s is used twice", fi.Key)
+			if _, dup := b.fileByKey[file.Key]; dup {
+				b.errorf(filePath+".id", "file key %s is used twice", file.Key)
 
 				continue
 			}
 
-			b.fileByKey[fi.Key] = fi
-			b.files = append(b.files, fi)
+			b.fileByKey[file.Key] = file
+			b.files = append(b.files, file)
 		}
 	}
 
 	if err := b.diags.Err(); err != nil {
-		return err
+		return err //nolint:wrapcheck // the diagnostics carry their own paths
 	}
 
 	// Companion files: Version names another File key.
@@ -318,100 +314,100 @@ func (b *build) inputs() error {
 		}
 	}
 
-	return b.diags.Err()
+	return b.diags.Err() //nolint:wrapcheck // the diagnostics carry their own paths
 }
 
-func (b *build) readFile(fp string, f *config.File, comp *componentInfo) (*fileInfo, error) {
-	path := f.Source
+func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentInfo) *fileInfo { //nolint:cyclop,gocognit // one pass over the format
+	path := cfgFile.Source
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(b.cfg.BaseDir, filepath.FromSlash(path))
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		b.errorf(fp+".source", "cannot read %s: %v", f.Source, err)
+		b.errorf(diagPath+".source", "cannot read %s: %v", cfgFile.Source, err)
 
-		return nil, nil //nolint:nilnil // reported as a diagnostic
+		return nil
 	}
 
 	if len(data) > 0x7FFFFFFF {
-		b.errorf(fp+".source", "%s is larger than 2 GB", f.Source)
+		b.errorf(diagPath+".source", "%s is larger than 2 GB", cfgFile.Source)
 
-		return nil, nil //nolint:nilnil
+		return nil
 	}
 
-	fi := &fileInfo{
-		Key:       config.FileKey(f),
+	file := &fileInfo{
+		Key:       config.FileKey(cfgFile),
 		Component: comp,
-		cfg:       f,
+		cfg:       cfgFile,
 		path:      path,
 		Data:      data,
-		LongName:  config.FileLongName(f),
+		LongName:  config.FileLongName(cfgFile),
 	}
 
 	info, perr := pe.Parse(bytes.NewReader(data))
-	fi.isPE = perr == nil
+	file.isPE = perr == nil
 
-	switch f.Version {
+	switch cfgFile.Version {
 	case config.Auto:
-		if fi.isPE {
+		if file.isPE { //nolint:nestif // reads best as one block
 			if !info.HasVersion {
-				if !f.AllowUnversionedExecutable {
-					b.errorf(fp+".version", "%s is a PE file without a version resource; an upgrade can delete it (RUN-02). "+
-						"Set allowUnversionedExecutable: true if this is intended", fi.LongName)
+				if !cfgFile.AllowUnversionedExecutable {
+					b.errorf(diagPath+".version", "%s is a PE file without a version resource; an upgrade can delete it (RUN-02). "+
+						"Set allowUnversionedExecutable: true if this is intended", file.LongName)
 				}
 			} else {
-				fi.Version = info.FileVersion
+				file.Version = info.FileVersion
 			}
 
 			if info.Machine == pe.MachineI386 && comp.is64 {
-				b.warnf(fp+".source", "%s is a 32-bit executable in a 64-bit component", fi.LongName)
+				b.warnf(diagPath+".source", "%s is a 32-bit executable in a 64-bit component", file.LongName)
 			}
 		}
 	case config.None:
 	default:
-		fi.Version = f.Version
+		file.Version = cfgFile.Version
 	}
 
-	switch f.Language {
+	switch cfgFile.Language {
 	case config.Auto:
-		if fi.isPE && info.HasVersion && len(info.Languages) > 0 {
-			fi.Language = info.Language()
+		if file.isPE && info.HasVersion && len(info.Languages) > 0 {
+			file.Language = info.Language()
 		}
 	case config.None:
 	default:
-		fi.Language = f.Language
+		file.Language = cfgFile.Language
 	}
 
-	if fi.Version == nil {
-		fi.Hash = fileHash(data)
+	if file.Version == nil {
+		file.Hash = fileHash(data)
 	}
 
-	if *f.Vital {
-		fi.Attrs |= fileVital
+	if *cfgFile.Vital {
+		file.Attrs |= fileVital
 	}
 
-	if f.Checksum {
-		if fi.isPE && info.HasChecksum {
-			fi.Attrs |= fileChecksum
+	if cfgFile.Checksum {
+		if file.isPE && info.HasChecksum {
+			file.Attrs |= fileChecksum
 		} else {
-			b.warnf(fp+".checksum", "%s has no PE checksum to verify; the checksum attribute is not set", fi.LongName)
+			b.warnf(diagPath+".checksum", "%s has no PE checksum to verify; the checksum attribute is not set", file.LongName)
 		}
 	}
 
-	if f.ReadOnly {
-		fi.Attrs |= fileReadOnly
+	if cfgFile.ReadOnly {
+		file.Attrs |= fileReadOnly
 	}
 
-	if f.Hidden {
-		fi.Attrs |= fileHidden
+	if cfgFile.Hidden {
+		file.Attrs |= fileHidden
 	}
 
-	if f.System {
-		fi.Attrs |= fileSystem
+	if cfgFile.System {
+		file.Attrs |= fileSystem
 	}
 
-	return fi, nil
+	return file
 }
 
 // fileHash computes the MsiFileHash words: MD5 as four little-endian int32,
@@ -433,35 +429,35 @@ func fileHash(data []byte) *[4]int32 {
 
 // sequenceFiles orders the files (canonical directory, name, key), numbers
 // them and writes the file-related tables and the Component table.
-func (b *build) sequenceFiles() error {
-	slices.SortStableFunc(b.files, func(a, c *fileInfo) int {
-		if a.Component.dir.canonical != c.Component.dir.canonical {
-			return strings.Compare(a.Component.dir.canonical, c.Component.dir.canonical)
+func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the format; splitting would scatter it
+	slices.SortStableFunc(b.files, func(left, right *fileInfo) int {
+		if left.Component.dir.canonical != right.Component.dir.canonical {
+			return strings.Compare(left.Component.dir.canonical, right.Component.dir.canonical)
 		}
 
-		if a.LongName != c.LongName {
-			return strings.Compare(a.LongName, c.LongName)
+		if left.LongName != right.LongName {
+			return strings.Compare(left.LongName, right.LongName)
 		}
 
-		return strings.Compare(a.Key, c.Key)
+		return strings.Compare(left.Key, right.Key)
 	})
 
 	taken := make(map[string]map[string]bool)
 
-	for i, fi := range b.files {
-		fi.Sequence = i + 1
+	for i, file := range b.files {
+		file.Sequence = i + 1
 
-		dir := fi.Component.dir.id
+		dir := file.Component.dir.id
 		if taken[dir] == nil {
 			taken[dir] = make(map[string]bool)
 		}
 
-		name := fi.cfg.Name
+		name := file.cfg.Name
 		if name == "" {
-			name = fi.LongName
+			name = file.LongName
 		}
 
-		fi.FileName = filename(dir, name, false, taken[dir], config.ValidShortName)
+		file.FileName = filename(dir, name, false, taken[dir], config.ValidShortName)
 	}
 
 	if err := b.deriveProductCode(); err != nil {
@@ -471,22 +467,22 @@ func (b *build) sequenceFiles() error {
 	b.writeDirectoryTable()
 
 	// Components in config order; rows are sorted by msidb anyway.
-	for _, c := range b.cfg.Components {
-		info := b.components[c.ID]
-		p := fmt.Sprintf("components[%d]", info.index)
+	for _, comp := range b.cfg.Components {
+		info := b.components[comp.ID]
+		path := fmt.Sprintf("components[%d]", info.index)
 
-		if err := b.resolveKeyPath(p, info); err != nil {
+		if err := b.resolveKeyPath(path, info); err != nil {
 			return err
 		}
 
-		if err := b.componentGUID(p, info); err != nil {
+		if err := b.componentGUID(path, info); err != nil {
 			return err
 		}
 
-		b.table("Component").Add(c.ID, info.guid, c.Directory, info.attributes, nullable(c.Condition), info.keyPath)
+		b.table("Component").Add(comp.ID, info.guid, comp.Directory, info.attributes, nullable(comp.Condition), info.keyPath)
 
-		if info.keyPath == nil || c.CreateFolder {
-			b.table("CreateFolder").Add(c.Directory, c.ID)
+		if info.keyPath == nil || comp.CreateFolder {
+			b.table("CreateFolder").Add(comp.Directory, comp.ID)
 		}
 
 		b.writeRegistry(info)
@@ -514,8 +510,8 @@ func (b *build) sequenceFiles() error {
 
 // resolveKeyPath picks the component's key path: the explicit one, else the
 // first file, else the first registry value, else the directory.
-func (b *build) resolveKeyPath(p string, info *componentInfo) error {
-	c := info.cfg
+func (b *build) resolveKeyPath(path string, info *componentInfo) error { //nolint:cyclop // one pass over the format; splitting would scatter it
+	comp := info.cfg
 
 	var files []*fileInfo
 
@@ -535,28 +531,28 @@ func (b *build) resolveKeyPath(p string, info *componentInfo) error {
 		return nil
 	}
 
-	switch kp := c.KeyPath; {
-	case kp == "directory":
+	switch keyPath := comp.KeyPath; {
+	case keyPath == "directory":
 		info.keyPath = nil
-	case kp == "":
+	case keyPath == "":
 		if len(files) > 0 {
 			info.keyFile = files[0]
-		} else if len(c.Registry) > 0 {
-			info.keyPath = b.registryID(info, c.Registry[0])
+		} else if len(comp.Registry) > 0 {
+			info.keyPath = b.registryID(info, comp.Registry[0])
 			info.attributes |= compRegistryKeyPath
 		}
-	case byRef(kp) != nil:
-		info.keyFile = byRef(kp)
+	case byRef(keyPath) != nil:
+		info.keyFile = byRef(keyPath)
 	default:
-		for _, r := range c.Registry {
-			if r.ID == kp {
-				info.keyPath = kp
+		for _, r := range comp.Registry {
+			if r.ID == keyPath {
+				info.keyPath = keyPath
 				info.attributes |= compRegistryKeyPath
 			}
 		}
 
 		if info.keyPath == nil {
-			return fmt.Errorf("%s.keyPath: %q is neither a file nor a registry id", p, kp)
+			return fmt.Errorf("%s.keyPath: %q is neither a file nor a registry id", path, keyPath)
 		}
 	}
 
@@ -566,13 +562,13 @@ func (b *build) resolveKeyPath(p string, info *componentInfo) error {
 		// A companion file never is a key path (section 8.6).
 		if v, ok := info.keyFile.Version.(string); ok {
 			if _, err := config.ParseVersion(v); err != nil {
-				b.errorf(p+".keyPath", "the key file %s is a companion file of %s", info.keyFile.Key, v)
+				b.errorf(path+".keyPath", "the key file %s is a companion file of %s", info.keyFile.Key, v)
 			}
 		}
 	}
 
-	if len(c.Services) > 0 && info.keyFile == nil {
-		b.errorf(p+".services", "a component with services needs the service executable as its key file")
+	if len(comp.Services) > 0 && info.keyFile == nil {
+		b.errorf(path+".services", "a component with services needs the service executable as its key file")
 	}
 
 	return nil
@@ -580,19 +576,19 @@ func (b *build) resolveKeyPath(p string, info *componentInfo) error {
 
 // componentGUID derives the component code: pinned, none, or UUIDv5 over the
 // upgrade code, the bitness and the key path's canonical location.
-func (b *build) componentGUID(p string, info *componentInfo) error {
-	c := info.cfg
+func (b *build) componentGUID(path string, info *componentInfo) error { //nolint:cyclop // one pass over the format; splitting would scatter it
+	comp := info.cfg
 
-	switch c.GUID {
+	switch comp.GUID {
 	case config.None:
 		info.guid = nil
 
 		return nil
 	case config.Auto:
 	default:
-		g, err := config.NormalizeGUID(c.GUID)
+		g, err := config.NormalizeGUID(comp.GUID)
 		if err != nil {
-			return fmt.Errorf("%s.guid: %w", p, err)
+			return fmt.Errorf("%s.guid: %w", path, err)
 		}
 
 		info.guid = g
@@ -611,7 +607,7 @@ func (b *build) componentGUID(p string, info *componentInfo) error {
 	case info.keyFile != nil:
 		location = "file|" + info.dir.canonical + "\\" + strings.ToLower(info.keyFile.LongName)
 	case info.keyPath != nil:
-		for _, r := range c.Registry {
+		for _, r := range comp.Registry {
 			if b.registryID(info, r) == info.keyPath {
 				location = "registry|" + strings.ToLower(r.Root+"\\"+r.Key+"\\"+r.Name)
 			}
@@ -627,11 +623,11 @@ func (b *build) componentGUID(p string, info *componentInfo) error {
 
 // features writes Feature and FeatureComponents.
 func (b *build) features() error {
-	t := b.table("Feature")
-	fc := b.table("FeatureComponents")
+	tbl := b.table("Feature")
+	featureComps := b.table("FeatureComponents")
 	display := 0
 
-	config.WalkFeatures(b.cfg.Features, func(f, parent *config.Feature) {
+	config.WalkFeatures(b.cfg.Features, func(feature, parent *config.Feature) {
 		var parentID any
 		if parent != nil {
 			parentID = parent.ID
@@ -641,7 +637,7 @@ func (b *build) features() error {
 
 		var disp any
 
-		switch f.Display {
+		switch feature.Display {
 		case "hidden":
 			disp = 0
 		case "expanded":
@@ -654,18 +650,18 @@ func (b *build) features() error {
 
 		attrs := 0
 
-		if !*f.AllowAbsent {
+		if !*feature.AllowAbsent {
 			attrs |= 16 // UIDisallowAbsent
 		}
 
-		if !f.AllowAdvertise {
+		if !feature.AllowAdvertise {
 			attrs |= 8 // DisallowAdvertise
 		}
 
-		t.Add(f.ID, parentID, nullable(f.Title), nullable(f.Description), disp, *f.Level, nullable(f.Directory), attrs)
+		tbl.Add(feature.ID, parentID, nullable(feature.Title), nullable(feature.Description), disp, *feature.Level, nullable(feature.Directory), attrs)
 
-		for _, c := range f.Components {
-			fc.Add(f.ID, c)
+		for _, c := range feature.Components {
+			featureComps.Add(feature.ID, c)
 		}
 	})
 

@@ -46,75 +46,75 @@ type node struct {
 }
 
 // Number assigns sequence numbers. The result is sorted by number.
-func Number(actions []Action) ([]Numbered, error) {
+func Number(actions []Action) ([]Numbered, error) { //nolint:cyclop,gocyclo,gocognit // one pass over the format; splitting would scatter it
 	nodes := make(map[string]*node)
 	ordered := make([]*node, 0, len(actions))
 
-	for _, a := range actions {
-		if a.Name == "" {
+	for _, action := range actions {
+		if action.Name == "" {
 			return nil, errors.New("sequence: action without a name")
 		}
 
-		if _, dup := nodes[a.Name]; dup {
-			return nil, fmt.Errorf("sequence: action %s scheduled twice", a.Name)
+		if _, dup := nodes[action.Name]; dup {
+			return nil, fmt.Errorf("sequence: action %s scheduled twice", action.Name)
 		}
 
 		set := 0
-		if a.Sequence != 0 {
+		if action.Sequence != 0 {
 			set++
 		}
 
-		if a.Before != "" {
+		if action.Before != "" {
 			set++
 		}
 
-		if a.After != "" {
+		if action.After != "" {
 			set++
 		}
 
 		if set != 1 {
-			return nil, fmt.Errorf("sequence: action %s needs exactly one of a number, before or after", a.Name)
+			return nil, fmt.Errorf("sequence: action %s needs exactly one of a number, before or after", action.Name)
 		}
 
-		if a.Sequence != 0 && (a.Sequence < MinTermination || a.Sequence > MaxSequence) {
-			return nil, fmt.Errorf("sequence: action %s: number %d is outside -4…-1 and 1…%d", a.Name, a.Sequence, MaxSequence)
+		if action.Sequence != 0 && (action.Sequence < MinTermination || action.Sequence > MaxSequence) {
+			return nil, fmt.Errorf("sequence: action %s: number %d is outside -4…-1 and 1…%d", action.Name, action.Sequence, MaxSequence)
 		}
 
-		n := &node{action: a, fixed: a.Sequence != 0}
-		nodes[a.Name] = n
+		n := &node{action: action, fixed: action.Sequence != 0}
+		nodes[action.Name] = n
 		ordered = append(ordered, n)
 	}
 
-	for _, n := range ordered {
-		anchorName := n.action.Before + n.action.After
+	for _, item := range ordered {
+		anchorName := item.action.Before + item.action.After
 		if anchorName == "" {
 			continue
 		}
 
 		anchor, ok := nodes[anchorName]
 		if !ok {
-			return nil, fmt.Errorf("sequence: action %s is scheduled relative to %s, which is not in the table", n.action.Name, anchorName)
+			return nil, fmt.Errorf("sequence: action %s is scheduled relative to %s, which is not in the table", item.action.Name, anchorName)
 		}
 
 		if anchor.fixed && anchor.action.Sequence < 0 {
-			return nil, fmt.Errorf("sequence: action %s cannot be scheduled relative to the termination action %s", n.action.Name, anchorName)
+			return nil, fmt.Errorf("sequence: action %s cannot be scheduled relative to the termination action %s", item.action.Name, anchorName)
 		}
 
-		if n.action.Before != "" {
-			anchor.before = append(anchor.before, n)
+		if item.action.Before != "" {
+			anchor.before = append(anchor.before, item)
 		} else {
-			anchor.after = append(anchor.after, n)
+			anchor.after = append(anchor.after, item)
 		}
 	}
 
 	// Every relative node must reach a fixed node through its anchors.
-	for _, n := range ordered {
+	for _, item := range ordered {
 		seen := make(map[*node]bool)
-		cur := n
+		cur := item
 
 		for !cur.fixed {
 			if seen[cur] {
-				return nil, fmt.Errorf("sequence: action %s is part of a scheduling cycle", n.action.Name)
+				return nil, fmt.Errorf("sequence: action %s is part of a scheduling cycle", item.action.Name)
 			}
 
 			seen[cur] = true
@@ -124,20 +124,20 @@ func Number(actions []Action) ([]Numbered, error) {
 
 	var expand func(n *node) ([]*node, error)
 
-	expand = func(n *node) ([]*node, error) {
-		if n.visiting {
-			return nil, fmt.Errorf("sequence: action %s is part of a scheduling cycle", n.action.Name)
+	expand = func(item *node) ([]*node, error) {
+		if item.visiting {
+			return nil, fmt.Errorf("sequence: action %s is part of a scheduling cycle", item.action.Name)
 		}
 
-		if n.expanded != nil {
-			return n.expanded, nil
+		if item.expanded != nil {
+			return item.expanded, nil
 		}
 
-		n.visiting = true
+		item.visiting = true
 
 		var out []*node
 
-		for _, b := range n.before {
+		for _, b := range item.before {
 			e, err := expand(b)
 			if err != nil {
 				return nil, err
@@ -146,9 +146,9 @@ func Number(actions []Action) ([]Numbered, error) {
 			out = append(out, e...)
 		}
 
-		out = append(out, n)
+		out = append(out, item)
 
-		for _, a := range n.after {
+		for _, a := range item.after {
 			e, err := expand(a)
 			if err != nil {
 				return nil, err
@@ -157,8 +157,8 @@ func Number(actions []Action) ([]Numbered, error) {
 			out = append(out, e...)
 		}
 
-		n.visiting = false
-		n.expanded = out
+		item.visiting = false
+		item.expanded = out
 
 		return out, nil
 	}
@@ -173,42 +173,42 @@ func Number(actions []Action) ([]Numbered, error) {
 
 	var result []Numbered
 
-	for _, n := range ordered {
-		if !n.fixed {
+	for _, item := range ordered {
+		if !item.fixed {
 			continue
 		}
 
-		chain, err := expand(n)
+		chain, err := expand(item)
 		if err != nil {
 			return nil, err
 		}
 
 		pos := 0
-		for chain[pos] != n {
+		for chain[pos] != item {
 			pos++
 		}
 
-		s := n.action.Sequence
+		start := item.action.Sequence
 
-		if s < 0 && len(chain) > 1 {
-			return nil, fmt.Errorf("sequence: termination action %s cannot anchor other actions", n.action.Name)
+		if start < 0 && len(chain) > 1 {
+			return nil, fmt.Errorf("sequence: termination action %s cannot anchor other actions", item.action.Name)
 		}
 
-		lo := s - pos
-		hi := s + len(chain) - 1 - pos
+		low := start - pos
+		high := start + len(chain) - 1 - pos
 
-		if lo < 1 && s > 0 {
-			return nil, fmt.Errorf("sequence: the actions before %s would need numbers below 1", n.action.Name)
+		if low < 1 && start > 0 {
+			return nil, fmt.Errorf("sequence: the actions before %s would need numbers below 1", item.action.Name)
 		}
 
-		if hi > MaxSequence {
-			return nil, fmt.Errorf("sequence: the actions after %s would need numbers above %d", n.action.Name, MaxSequence)
+		if high > MaxSequence {
+			return nil, fmt.Errorf("sequence: the actions after %s would need numbers above %d", item.action.Name, MaxSequence)
 		}
 
-		blocks = append(blocks, block{name: n.action.Name, lo: lo, hi: hi})
+		blocks = append(blocks, block{name: item.action.Name, lo: low, hi: high})
 
 		for i, c := range chain {
-			result = append(result, Numbered{Name: c.action.Name, Condition: c.action.Condition, Sequence: lo + i})
+			result = append(result, Numbered{Name: c.action.Name, Condition: c.action.Condition, Sequence: low + i})
 		}
 	}
 

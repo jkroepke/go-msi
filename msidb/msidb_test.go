@@ -1,4 +1,4 @@
-package msidb
+package msidb //nolint:testpackage // the tests reach unexported encoders
 
 import (
 	"bytes"
@@ -13,6 +13,8 @@ import (
 
 // Test vector A.1 of docs/spec/MSISPEC.md section 3.
 func TestStreamNames(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name  string
 		want  []rune
@@ -49,6 +51,8 @@ func TestStreamNames(t *testing.T) {
 }
 
 func TestTypes(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		idt  string
 		word uint16
@@ -114,9 +118,11 @@ func sampleDB() *Database {
 }
 
 func TestRoundTrip(t *testing.T) {
-	db := sampleDB()
+	t.Parallel()
 
-	out, err := db.Marshal(Options{})
+	database := sampleDB()
+
+	out, err := database.Marshal(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,9 +192,9 @@ func TestRoundTrip(t *testing.T) {
 	}
 
 	// The raw _StringPool: code page header, no long-ref flag.
-	f, _ := cfb.Read(out)
+	file, _ := cfb.Read(out)
 	poolName, _ := EncodeStreamName(TableStringPool, true)
-	pool, _ := f.Stream(poolName)
+	pool, _ := file.Stream(poolName)
 
 	if pool[0] != 0xE4 || pool[1] != 0x04 || pool[3]&0x80 != 0 {
 		t.Errorf("pool header %x", pool[:4])
@@ -196,27 +202,29 @@ func TestRoundTrip(t *testing.T) {
 
 	// Media stream: DiskId 1 is 01 80, LastSequence 3 is 03 00 00 80.
 	mediaName, _ := EncodeStreamName("Media", true)
-	ms, _ := f.Stream(mediaName)
+	ms, _ := file.Stream(mediaName)
 
 	if !bytes.Equal(ms[:4], []byte{1, 0x80, 2, 0x80}) || !bytes.Equal(ms[4:8], []byte{3, 0, 0, 0x80}) {
 		t.Errorf("Media stream %x", ms)
 	}
 
-	again, _ := db.Marshal(Options{})
+	again, _ := database.Marshal(Options{})
 	if !bytes.Equal(again, out) {
 		t.Error("not deterministic")
 	}
 }
 
 func TestLongString(t *testing.T) {
-	db := &Database{Codepage: 65001}
+	t.Parallel()
+
+	database := &Database{Codepage: 65001}
 	tb := &Table{Name: "T", Columns: []Column{Col("K", "s72", true), Col("V", "L0", false)}}
 	long := strings.Repeat("ü", 40000) // 80000 bytes in UTF-8
 	tb.Add("k", long)
 	tb.Add("short", "x")
-	db.Tables = []*Table{tb}
+	database.Tables = []*Table{tb}
 
-	out, err := db.Marshal(Options{})
+	out, err := database.Marshal(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,24 +252,26 @@ func TestLongString(t *testing.T) {
 }
 
 func TestLongReferences(t *testing.T) {
-	db := &Database{Codepage: 1252}
-	tb := &Table{Name: "T", Columns: []Column{Col("K", "s72", true), Col("V", "S72", false)}}
+	t.Parallel()
+
+	database := &Database{Codepage: 1252}
+	tbl := &Table{Name: "T", Columns: []Column{Col("K", "s72", true), Col("V", "S72", false)}}
 
 	for i := range 65540 {
-		tb.Add(fmt.Sprintf("k%06d", i), "same")
+		tbl.Add(fmt.Sprintf("k%06d", i), "same")
 	}
 
-	db.Tables = []*Table{tb}
+	database.Tables = []*Table{tbl}
 
-	if _, err := db.Marshal(Options{}); err == nil {
+	if _, err := database.Marshal(Options{}); err == nil {
 		t.Fatal("refcount above 32767 accepted")
 	}
 
-	for i := range tb.Rows {
-		tb.Rows[i][1] = fmt.Sprintf("v%d", i%30000)
+	for i := range tbl.Rows {
+		tbl.Rows[i][1] = fmt.Sprintf("v%d", i%30000)
 	}
 
-	out, err := db.Marshal(Options{})
+	out, err := database.Marshal(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,6 +287,8 @@ func TestLongReferences(t *testing.T) {
 }
 
 func TestValidation(t *testing.T) {
+	t.Parallel()
+
 	cols := func(n int) []Column {
 		out := []Column{Col("K", "s72", true)}
 		for i := 1; i < n; i++ {
@@ -296,7 +308,7 @@ func TestValidation(t *testing.T) {
 		t.Error("32 columns accepted")
 	}
 
-	for _, tb := range []*Table{
+	for _, tbl := range []*Table{
 		{Name: "T", Columns: []Column{Col("A", "S72", false), Col("K", "s72", true)}},
 		{Name: "T", Columns: []Column{Col("K", "v0", true)}},
 		{Name: "T", Columns: []Column{Col("K", "s72", true), Col("A", "v0", false), Col("B", "V0", false)}},
@@ -308,8 +320,8 @@ func TestValidation(t *testing.T) {
 		{Name: "T", Columns: []Column{Col("K", "i4", true)}, Rows: [][]any{{int64(2147483648)}}},
 		{Name: "T", Columns: []Column{Col("K", "i4", true)}, Rows: [][]any{{"1"}}},
 	} {
-		if err := tb.Validate(); err == nil {
-			t.Errorf("table %+v accepted", tb)
+		if err := tbl.Validate(); err == nil {
+			t.Errorf("table %+v accepted", tbl)
 		}
 	}
 
@@ -330,27 +342,29 @@ func TestValidation(t *testing.T) {
 }
 
 func TestUnmarshalDetectsUnsortedRows(t *testing.T) {
+	t.Parallel()
+
 	db := sampleDB()
 
 	out, _ := db.Marshal(Options{})
-	f, _ := cfb.Read(out)
+	file, _ := cfb.Read(out)
 
 	// Swap the two Media rows' DiskId cells (bytes 0-1 and 2-3 of the stream).
 	mediaName, _ := EncodeStreamName("Media", true)
 
-	streams := make([]cfb.Stream, 0, len(f.Streams()))
+	streams := make([]cfb.Stream, 0, len(file.Streams()))
 
-	for _, s := range f.Streams() {
-		if s.Name == mediaName {
-			d := append([]byte(nil), s.Data...)
+	for _, stream := range file.Streams() {
+		if stream.Name == mediaName {
+			d := append([]byte(nil), stream.Data...)
 			d[0], d[1], d[2], d[3] = d[2], d[3], d[0], d[1]
-			s.Data = d
+			stream.Data = d
 		}
 
-		streams = append(streams, s)
+		streams = append(streams, stream)
 	}
 
-	bad, _ := cfb.Write(streams, cfb.Options{Version: f.Version})
+	bad, _ := cfb.Write(streams, cfb.Options{Version: file.Version})
 
 	back, err := Unmarshal(bad)
 	if err != nil {

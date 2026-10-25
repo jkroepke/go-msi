@@ -9,7 +9,10 @@ import (
 	"github.com/jkroepke/go-msi/config"
 )
 
-var registryRoots = map[string]int{"HKMU": -1, "HKCR": 0, "HKCU": 1, "HKLM": 2, "HKU": 3}
+// regTypeKey marks a registry row that creates a key without a value.
+const regTypeKey = "key"
+
+var registryRoots = map[string]int{"HKMU": -1, "HKCR": 0, "HKCU": 1, "HKLM": 2, "HKU": 3} //nolint:gochecknoglobals // lookup table
 
 // registryID returns the Registry key of a value: the explicit id, else one
 // generated from the value's identity.
@@ -24,12 +27,12 @@ func (b *build) registryID(info *componentInfo, r *config.RegistryValue) string 
 // registryValue encodes a typed value the way the Registry table expects
 // (section 8.13): #n for REG_DWORD, #x for REG_BINARY, #% for
 // REG_EXPAND_SZ, [~]-joined strings for REG_MULTI_SZ, ## for a literal #.
-func registryValue(r *config.RegistryValue) any {
-	switch r.Type {
-	case "key":
+func registryValue(reg *config.RegistryValue) any { //nolint:cyclop // one pass over the format; splitting would scatter it
+	switch reg.Type {
+	case regTypeKey:
 		return nil
 	case "dword":
-		v := r.Value[0]
+		v := reg.Value[0]
 		if strings.Contains(v, "[") {
 			return "#" + v
 		}
@@ -38,24 +41,24 @@ func registryValue(r *config.RegistryValue) any {
 
 		return "#" + strconv.FormatInt(n, 10)
 	case "binary":
-		h := strings.TrimPrefix(strings.ToLower(r.Value[0]), "0x")
+		h := strings.TrimPrefix(strings.ToLower(reg.Value[0]), "0x")
 
 		return "#x" + h
 	case "expandString":
-		return "#%" + r.Value[0]
+		return "#%" + reg.Value[0]
 	case "multiString":
-		joined := strings.Join(r.Value, "[~]")
+		joined := strings.Join(reg.Value, "[~]")
 
 		switch {
-		case r.Append:
+		case reg.Append:
 			return "[~]" + joined
-		case r.Prepend:
+		case reg.Prepend:
 			return joined + "[~]"
 		default:
 			return "[~]" + joined + "[~]"
 		}
 	default:
-		v := r.Value[0]
+		v := reg.Value[0]
 		if strings.HasPrefix(v, "#") {
 			return "#" + v
 		}
@@ -65,29 +68,30 @@ func registryValue(r *config.RegistryValue) any {
 }
 
 func (b *build) writeRegistry(info *componentInfo) {
-	t := b.table("Registry")
-	c := info.cfg
+	tbl := b.table("Registry")
+	comp := info.cfg
 
-	for _, r := range c.Registry {
+	for _, reg := range comp.Registry {
 		var name any
 
 		switch {
-		case r.Type == "key" && r.RemoveOnUninstall:
+		case reg.Type == "key" && reg.RemoveOnUninstall:
 			name = "*"
-		case r.Type == "key":
+		case reg.Type == "key":
 			name = "+"
 		default:
-			name = nullable(r.Name)
+			name = nullable(reg.Name)
 		}
 
-		t.Add(b.registryID(info, r), registryRoots[r.Root], r.Key, name, registryValue(r), c.ID)
+		tbl.Add(b.registryID(info, reg), registryRoots[reg.Root], reg.Key, name, registryValue(reg), comp.ID)
 	}
 
-	for _, e := range c.EventLog {
+	for _, e := range comp.EventLog {
 		key := `SYSTEM\CurrentControlSet\Services\EventLog\` + e.Log + `\` + e.Source
-		t.Add(generatedID("reg", "EventLog", c.ID, e.Log, e.Source, "EventMessageFile"), registryRoots["HKLM"], key, "EventMessageFile", "#%"+e.MessageFile, c.ID)
-		t.Add(generatedID("reg", "EventLog", c.ID, e.Log, e.Source, "TypesSupported"), registryRoots["HKLM"], key, "TypesSupported",
-			"#"+strconv.Itoa(*e.TypesSupported), c.ID)
+		tbl.Add(generatedID("reg", "EventLog", comp.ID, e.Log, e.Source, "EventMessageFile"), registryRoots["HKLM"], key, "EventMessageFile",
+			"#%"+e.MessageFile, comp.ID)
+		tbl.Add(generatedID("reg", "EventLog", comp.ID, e.Log, e.Source, "TypesSupported"), registryRoots["HKLM"], key, "TypesSupported",
+			"#"+strconv.Itoa(*e.TypesSupported), comp.ID)
 	}
 }
 
@@ -95,13 +99,13 @@ func (b *build) writeRegistry(info *componentInfo) {
 // written explicitly, because the machine-scope flag does not imply it
 // (MSISPEC-RESULTS RUN-08).
 func (b *build) writeEnvironment(info *componentInfo) {
-	t := b.table("Environment")
-	c := info.cfg
+	tbl := b.table("Environment")
+	comp := info.cfg
 
-	for _, e := range c.Environment {
+	for _, env := range comp.Environment {
 		var prefix string
 
-		switch e.Action {
+		switch env.Action {
 		case "setIfAbsent":
 			prefix = "+"
 		case "remove":
@@ -110,26 +114,26 @@ func (b *build) writeEnvironment(info *componentInfo) {
 			prefix = "="
 		}
 
-		if *e.RemoveOnUninstall {
+		if *env.RemoveOnUninstall {
 			prefix += "-"
 		}
 
-		if e.Scope == "machine" {
+		if env.Scope == "machine" {
 			prefix += "*"
 		}
 
 		var value any
 
-		switch e.Action {
+		switch env.Action {
 		case "append":
-			value = "[~];" + e.Value
+			value = "[~];" + env.Value
 		case "prepend":
-			value = e.Value + ";[~]"
+			value = env.Value + ";[~]"
 		default:
-			value = nullable(e.Value)
+			value = nullable(env.Value)
 		}
 
-		t.Add(generatedID("env", "Environment", c.ID, e.Name, e.Action, e.Scope), prefix+e.Name, value, c.ID)
+		tbl.Add(generatedID("env", "Environment", comp.ID, env.Name, env.Action, env.Scope), prefix+env.Name, value, comp.ID)
 	}
 }
 
@@ -158,20 +162,20 @@ const (
 	configFailureNonCrash = 4
 )
 
-func (b *build) writeServices(info *componentInfo) {
-	c := info.cfg
+func (b *build) writeServices(info *componentInfo) { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
+	comp := info.cfg
 
-	for _, s := range c.Services {
-		id := serviceID("svi", s.Name)
+	for _, svc := range comp.Services {
+		installID := serviceID("svi", svc.Name)
 
 		typ := serviceOwnProcess
-		if s.Type == "shareProcess" {
+		if svc.Type == "shareProcess" {
 			typ = serviceShareProcess
 		}
 
 		start := startAuto
 
-		switch s.Start {
+		switch svc.Start {
 		case "demand":
 			start = startDemand
 		case "disabled":
@@ -180,68 +184,68 @@ func (b *build) writeServices(info *componentInfo) {
 
 		errCtl := errorNormal
 
-		switch s.ErrorControl {
+		switch svc.ErrorControl {
 		case "ignore":
 			errCtl = errorIgnore
 		case "critical":
 			errCtl = errorCritical
 		}
 
-		if s.Vital {
+		if svc.Vital {
 			errCtl |= errorVital
 		}
 
 		var deps any
-		if len(s.Dependencies) > 0 {
-			deps = strings.Join(s.Dependencies, "[~]") + "[~][~]"
+		if len(svc.Dependencies) > 0 {
+			deps = strings.Join(svc.Dependencies, "[~]") + "[~][~]"
 		}
 
-		b.table("ServiceInstall").Add(id, s.Name, nullable(s.DisplayName), typ, start, errCtl, nil, deps,
-			nullable(s.Account), nullable(s.Password), nullable(s.Arguments), c.ID, nullable(s.Description))
+		b.table("ServiceInstall").Add(installID, svc.Name, nullable(svc.DisplayName), typ, start, errCtl, nil, deps,
+			nullable(svc.Account), nullable(svc.Password), nullable(svc.Arguments), comp.ID, nullable(svc.Description))
 
-		if s.Password != "" {
-			for _, prop := range propertyRefs(s.Password) {
+		if svc.Password != "" {
+			for _, prop := range propertyRefs(svc.Password) {
 				b.hidden[prop] = true
 			}
 		}
 
 		event := 0
 
-		if *s.Control.StartOnInstall {
+		if *svc.Control.StartOnInstall {
 			event |= eventStartInstall
 		}
 
-		if *s.Control.StopOnInstall {
+		if *svc.Control.StopOnInstall {
 			event |= eventStopInstall
 		}
 
-		if *s.Control.StopOnUninstall {
+		if *svc.Control.StopOnUninstall {
 			event |= eventStopUninstall
 		}
 
-		if *s.Control.DeleteOnUninstall {
+		if *svc.Control.DeleteOnUninstall {
 			event |= eventDeleteUninstall
 		}
 
 		if event != 0 {
 			wait := 0
-			if *s.Control.Wait {
+			if *svc.Control.Wait {
 				wait = 1
 			}
 
-			b.table("ServiceControl").Add(serviceID("sc", s.Name), s.Name, event, nil, wait, c.ID)
+			b.table("ServiceControl").Add(serviceID("sc", svc.Name), svc.Name, event, nil, wait, comp.ID)
 		}
 
-		if s.DelayedAutoStart {
-			b.table("MsiServiceConfig").Add(serviceID("scd", s.Name), s.Name, configEventInstall|configEventReinstall, configDelayedStart, "1", c.ID)
+		if svc.DelayedAutoStart {
+			b.table("MsiServiceConfig").Add(serviceID("scd", svc.Name), svc.Name, configEventInstall|configEventReinstall, configDelayedStart, "1", comp.ID)
 		}
 
-		if s.FailureActionsOnNonCrashFailures {
-			b.table("MsiServiceConfig").Add(serviceID("scf", s.Name), s.Name, configEventInstall|configEventReinstall, configFailureNonCrash, "1", c.ID)
+		if svc.FailureActionsOnNonCrashFailures {
+			b.table("MsiServiceConfig").Add(serviceID("scf", svc.Name), svc.Name, configEventInstall|configEventReinstall, configFailureNonCrash, "1", comp.ID)
 		}
 
-		if s.Recovery != nil {
-			b.recoveryAction(info, s)
+		if svc.Recovery != nil {
+			b.recoveryAction(info, svc)
 		}
 	}
 }
@@ -258,8 +262,8 @@ func serviceID(prefix, name string) string {
 // recoveryAction schedules the sc.exe failure command that replaces the
 // MsiServiceConfigFailureActions table, which fails with 1939 for restart
 // actions (MSISPEC-RESULTS RUN-05).
-func (b *build) recoveryAction(info *componentInfo, s *config.Service) {
-	rec := s.Recovery
+func (b *build) recoveryAction(info *componentInfo, svc *config.Service) {
+	rec := svc.Recovery
 	delay := strconv.FormatInt(int64(time.Duration(rec.RestartDelay)/time.Millisecond), 10)
 
 	var actions []string
@@ -278,46 +282,46 @@ func (b *build) recoveryAction(info *componentInfo, s *config.Service) {
 	}
 
 	sysDir := b.systemDir()
-	cmd := fmt.Sprintf(`"[%s]sc.exe" failure "%s" reset= %d actions= %s`, sysDir, s.Name, rec.ResetAfterDays*86400, strings.Join(actions, "/"))
-	name := serviceID("ServiceRecovery", s.Name)
+	cmd := fmt.Sprintf(`"[%s]sc.exe" failure "%s" reset= %d actions= %s`, sysDir, svc.Name, rec.ResetAfterDays*86400, strings.Join(actions, "/"))
+	name := serviceID("ServiceRecovery", svc.Name)
 
 	b.addAction(&actionInfo{name: name, typ: caExec | caDeferred | caNoImpersonate | caContinue, source: sysDir, target: cmd})
-	b.schedule("InstallExecuteSequence", name, "$"+info.cfg.ID+"=3", "", "InstallServices", 0)
+	b.schedule("InstallExecuteSequence", name, "$"+info.cfg.ID+"=3", "", actInstallServices, 0)
 }
 
 // systemDir returns the Directory key of the system folder that holds the
 // native command-line tools for this package's bitness.
 func (b *build) systemDir() string {
-	id := "SystemFolder"
+	dirID := "SystemFolder"
 	if b.is64 {
-		id = "System64Folder"
+		dirID = "System64Folder"
 	}
 
-	b.ensureStandardDir(id)
+	b.ensureStandardDir(dirID)
 
-	return id
+	return dirID
 }
 
 // propertyRefs lists the [PROPERTY] references in a formatted string.
-func propertyRefs(s string) []string {
+func propertyRefs(text string) []string {
 	var out []string
 
 	for {
-		i := strings.IndexByte(s, '[')
+		i := strings.IndexByte(text, '[')
 		if i < 0 {
 			return out
 		}
 
-		j := strings.IndexByte(s[i:], ']')
-		if j < 0 {
+		end := strings.IndexByte(text[i:], ']')
+		if end < 0 {
 			return out
 		}
 
-		name := s[i+1 : i+j]
+		name := text[i+1 : i+end]
 		if config.IsIdentifier(name) {
 			out = append(out, name)
 		}
 
-		s = s[i+j+1:]
+		text = text[i+end+1:]
 	}
 }

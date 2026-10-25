@@ -20,17 +20,17 @@ const (
 	maxEncoded  = 31
 )
 
-func alphaIndex(r rune) int {
+func alphaIndex(char rune) int {
 	switch {
-	case r >= '0' && r <= '9':
-		return int(r - '0')
-	case r >= 'A' && r <= 'Z':
-		return int(r-'A') + 10
-	case r >= 'a' && r <= 'z':
-		return int(r-'a') + 36
-	case r == '.':
+	case char >= '0' && char <= '9':
+		return int(char - '0')
+	case char >= 'A' && char <= 'Z':
+		return int(char-'A') + 10
+	case char >= 'a' && char <= 'z':
+		return int(char-'a') + 36
+	case char == '.':
 		return 62
-	case r == '_':
+	case char == '_':
 		return 63
 	}
 
@@ -50,31 +50,31 @@ func EncodeStreamName(name string, table bool) (string, error) {
 		out = append(out, tablePrefix)
 	}
 
-	rs := []rune(name)
+	runes := []rune(name)
 
-	for i := 0; i < len(rs); i++ {
-		r := rs[i]
-		if r >= pairBase && r <= tablePrefix {
-			return "", fmt.Errorf("msidb: stream name %q contains the reserved character %U", name, r)
+	for i := 0; i < len(runes); i++ {
+		char := runes[i]
+		if char >= pairBase && char <= tablePrefix {
+			return "", fmt.Errorf("msidb: stream name %q contains the reserved character %U", name, char)
 		}
 
-		a := alphaIndex(r)
-		if a < 0 {
-			out = append(out, utf16.Encode([]rune{r})...)
+		idx := alphaIndex(char)
+		if idx < 0 {
+			out = append(out, utf16.Encode([]rune{char})...)
 
 			continue
 		}
 
-		if i+1 < len(rs) {
-			if b := alphaIndex(rs[i+1]); b >= 0 {
-				out = append(out, uint16(pairBase+a+(b<<6))) //nolint:gosec // bounded by the format limits checked earlier
+		if i+1 < len(runes) {
+			if b := alphaIndex(runes[i+1]); b >= 0 {
+				out = append(out, uint16(pairBase+idx+(b<<6))) //nolint:gosec // bounded by the format limits checked earlier
 				i++
 
 				continue
 			}
 		}
 
-		out = append(out, uint16(singleBase+a)) //nolint:gosec // bounded by the format limits checked earlier
+		out = append(out, uint16(singleBase+idx)) //nolint:gosec // bounded by the format limits checked earlier
 	}
 
 	if len(out) > maxEncoded {
@@ -85,29 +85,32 @@ func EncodeStreamName(name string, table bool) (string, error) {
 }
 
 // DecodeStreamName decodes an encoded directory entry name.
-func DecodeStreamName(encoded string) (name string, table bool) {
-	u := utf16.Encode([]rune(encoded))
-	if len(u) > 0 && u[0] == tablePrefix {
+func DecodeStreamName(encoded string) (string, bool) {
+	units := utf16.Encode([]rune(encoded))
+
+	var table bool
+
+	if len(units) > 0 && units[0] == tablePrefix {
 		table = true
-		u = u[1:]
+		units = units[1:]
 	}
 
-	var rs []rune
+	var runes []rune
 
-	for _, c := range u {
+	for _, unit := range units {
 		switch {
-		case c >= pairBase && c < singleBase:
-			v := c - pairBase
-			rs = append(rs, rune(alphabet[v&0x3F]), rune(alphabet[(v>>6)&0x3F]))
-		case c >= singleBase && c < tablePrefix:
-			rs = append(rs, rune(alphabet[c-singleBase]))
+		case unit >= pairBase && unit < singleBase:
+			v := unit - pairBase
+			runes = append(runes, rune(alphabet[v&0x3F]), rune(alphabet[(v>>6)&0x3F]))
+		case unit >= singleBase && unit < tablePrefix:
+			runes = append(runes, rune(alphabet[unit-singleBase]))
 		default:
-			rs = append(rs, rune(c))
+			runes = append(runes, rune(unit))
 		}
 	}
 
 	// Surrogate pairs copied through come back as two runes; re-join them.
-	return string(utf16.Decode(utf16.Encode(rs))), table
+	return string(utf16.Decode(utf16.Encode(runes))), table
 }
 
 // BinaryStreamName is the decoded name of the stream holding a binary cell:
@@ -117,13 +120,13 @@ func BinaryStreamName(table string, keys []any) string {
 	parts := []string{table}
 
 	for _, k := range keys {
-		switch v := k.(type) {
+		switch key := k.(type) {
 		case string:
-			parts = append(parts, v)
+			parts = append(parts, key)
 		case int:
-			parts = append(parts, strconv.Itoa(v))
+			parts = append(parts, strconv.Itoa(key))
 		default:
-			parts = append(parts, fmt.Sprint(v))
+			parts = append(parts, fmt.Sprint(key))
 		}
 	}
 

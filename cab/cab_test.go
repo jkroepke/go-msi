@@ -1,4 +1,4 @@
-package cab
+package cab //nolint:testpackage // the tests reach unexported encoders
 
 import (
 	"bytes"
@@ -10,6 +10,8 @@ import (
 )
 
 func TestChecksumVector(t *testing.T) {
+	t.Parallel()
+
 	// The vector is the CFDATA checksum of a stored 22-byte block.
 	b := []byte("Hello, cabinet!\r\nMSI\r\n")
 	if got := Checksum(b, 0) ^ (uint32(len(b)) | uint32(len(b))<<16); got != 0x25411F35 { //nolint:gosec // bounded by the format limits checked earlier
@@ -19,6 +21,8 @@ func TestChecksumVector(t *testing.T) {
 
 // Test vector A.4 (stored cabinet) of docs/spec/MSISPEC.md section 5.
 func TestStoredVector(t *testing.T) {
+	t.Parallel()
+
 	when := time.Date(2024, 6, 15, 13, 45, 30, 0, time.UTC)
 	files := []File{
 		{Name: "fil_a", Data: []byte("Hello, cabinet!\r\n"), Time: when, Attributes: 0x20},
@@ -50,6 +54,8 @@ func TestStoredVector(t *testing.T) {
 }
 
 func TestMSZIPCrossBlockHistory(t *testing.T) {
+	t.Parallel()
+
 	// Three blocks with matches that reach back across block boundaries.
 	rng := rand.New(rand.NewSource(7)) //nolint:gosec // reproducible test data
 	pattern := make([]byte, 5000)
@@ -88,6 +94,8 @@ func TestMSZIPCrossBlockHistory(t *testing.T) {
 }
 
 func TestStoredFallbackOnRandomData(t *testing.T) {
+	t.Parallel()
+
 	rng := rand.New(rand.NewSource(3)) //nolint:gosec // reproducible test data
 	data := make([]byte, 40000)
 	rng.Read(data)
@@ -112,6 +120,8 @@ func TestStoredFallbackOnRandomData(t *testing.T) {
 }
 
 func TestEmptyFileAndEmptyFolder(t *testing.T) {
+	t.Parallel()
+
 	out, err := Write([]File{{Name: "empty"}}, Options{Compression: MSZIP})
 	if err != nil {
 		t.Fatal(err)
@@ -129,6 +139,8 @@ func TestEmptyFileAndEmptyFolder(t *testing.T) {
 }
 
 func TestChecksumDetectsBitFlip(t *testing.T) {
+	t.Parallel()
+
 	out, _ := Write([]File{{Name: "a", Data: bytes.Repeat([]byte("abc"), 1000)}}, Options{Compression: MSZIP})
 	out[len(out)-1] ^= 0x40
 
@@ -138,26 +150,30 @@ func TestChecksumDetectsBitFlip(t *testing.T) {
 }
 
 func TestDOSTime(t *testing.T) {
-	d, tm := DOSTime(time.Time{})
-	if d != 0x0021 || tm != 0 {
-		t.Errorf("zero time: %#x %#x", d, tm)
+	t.Parallel()
+
+	date, timeField := DOSTime(time.Time{})
+	if date != 0x0021 || timeField != 0 {
+		t.Errorf("zero time: %#x %#x", date, timeField)
 	}
 
 	when := time.Date(2026, 10, 25, 18, 33, 39, 0, time.UTC)
-	d, tm = DOSTime(when)
+	date, timeField = DOSTime(when)
 
-	if got := ParseDOSTime(d, tm); !got.Equal(when.Truncate(2 * time.Second)) {
+	if got := ParseDOSTime(date, timeField); !got.Equal(when.Truncate(2 * time.Second)) {
 		t.Errorf("round trip %v", got)
 	}
 
 	// Local time must not leak in.
 	d2, tm2 := DOSTime(when.In(time.FixedZone("x", 3600)))
-	if d2 != d || tm2 != tm {
+	if d2 != date || tm2 != timeField {
 		t.Error("time zone changed the DOS time")
 	}
 }
 
 func TestErrors(t *testing.T) {
+	t.Parallel()
+
 	if _, err := Write([]File{{Name: ""}}, Options{}); err == nil {
 		t.Error("empty name accepted")
 	}

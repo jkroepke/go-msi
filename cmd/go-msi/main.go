@@ -26,8 +26,8 @@ import (
 // Set by the linker at release time.
 var (
 	version = "dev"
-	commit  = "none"
-	date    = "unknown"
+	commit  = "none"    //nolint:gochecknoglobals // set by the linker
+	date    = "unknown" //nolint:gochecknoglobals // set by the linker
 )
 
 const usage = `usage: go-msi <command> [options]
@@ -117,7 +117,12 @@ func (l *loadFlags) load(path string) (*config.Config, error) {
 		opts.LookupEnv = os.LookupEnv
 	}
 
-	return config.Load(path, opts)
+	cfg, err := config.Load(path, opts)
+	if err != nil {
+		return nil, fmt.Errorf("load: %w", err)
+	}
+
+	return cfg, nil
 }
 
 func printDiagnostics(w io.Writer, ds config.Diagnostics) {
@@ -127,22 +132,22 @@ func printDiagnostics(w io.Writer, ds config.Diagnostics) {
 }
 
 func cmdValidate(args []string, stderr io.Writer) error {
-	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	flags := flag.NewFlagSet("validate", flag.ContinueOnError)
+	flags.SetOutput(stderr)
 
-	var lf loadFlags
+	var load loadFlags
 
-	lf.register(fs)
+	load.register(flags)
 
-	if err := fs.Parse(args); err != nil {
-		return err
+	if err := flags.Parse(args); err != nil {
+		return fmt.Errorf("flags: %w", err)
 	}
 
-	if fs.NArg() != 1 {
+	if flags.NArg() != 1 {
 		return errors.New("validate wants exactly one msi.yaml")
 	}
 
-	cfg, err := lf.load(fs.Arg(0))
+	cfg, err := load.load(flags.Arg(0))
 	if err != nil {
 		return err
 	}
@@ -158,32 +163,32 @@ func cmdValidate(args []string, stderr io.Writer) error {
 }
 
 func cmdBuild(args []string, stdout, stderr io.Writer) error {
-	fs := flag.NewFlagSet("build", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	flags := flag.NewFlagSet("build", flag.ContinueOnError)
+	flags.SetOutput(stderr)
 
 	var (
-		lf         loadFlags
+		load       loadFlags
 		out        string
 		cfbVersion int
 		skipVerify bool
 		quiet      bool
 	)
 
-	lf.register(fs)
-	fs.StringVar(&out, "o", "", "output file (default: <product name>-<version>.msi next to the YAML file)")
-	fs.IntVar(&cfbVersion, "cfb", 4, "compound file version, 3 (512-byte sectors) or 4 (4096-byte sectors)")
-	fs.BoolVar(&skipVerify, "skip-verify", false, "do not read the finished package back")
-	fs.BoolVar(&quiet, "q", false, "print nothing on success")
+	load.register(flags)
+	flags.StringVar(&out, "o", "", "output file (default: <product name>-<version>.msi next to the YAML file)")
+	flags.IntVar(&cfbVersion, "cfb", 4, "compound file version, 3 (512-byte sectors) or 4 (4096-byte sectors)")
+	flags.BoolVar(&skipVerify, "skip-verify", false, "do not read the finished package back")
+	flags.BoolVar(&quiet, "q", false, "print nothing on success")
 
-	if err := fs.Parse(args); err != nil {
-		return err
+	if err := flags.Parse(args); err != nil {
+		return fmt.Errorf("flags: %w", err)
 	}
 
-	if fs.NArg() != 1 {
+	if flags.NArg() != 1 {
 		return errors.New("build wants exactly one msi.yaml")
 	}
 
-	cfg, err := lf.load(fs.Arg(0))
+	cfg, err := load.load(flags.Arg(0))
 	if err != nil {
 		return err
 	}
@@ -205,7 +210,7 @@ func cmdBuild(args []string, stdout, stderr io.Writer) error {
 	}
 
 	if err := os.WriteFile(out, res.Package, 0o644); err != nil { //nolint:gosec // a package is world-readable
-		return err
+		return fmt.Errorf("write %s: %w", out, err)
 	}
 
 	if !quiet {
@@ -216,34 +221,34 @@ func cmdBuild(args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
-func cmdInspect(args []string, stdout io.Writer) error {
-	fs := flag.NewFlagSet("inspect", flag.ContinueOnError)
-	fs.SetOutput(stdout)
+func cmdInspect(args []string, stdout io.Writer) error { //nolint:cyclop // one pass over the format; splitting would scatter it
+	flags := flag.NewFlagSet("inspect", flag.ContinueOnError)
+	flags.SetOutput(stdout)
 
 	var table string
 
-	fs.StringVar(&table, "table", "", "print only this table")
+	flags.StringVar(&table, "table", "", "print only this table")
 
-	if err := fs.Parse(args); err != nil {
-		return err
+	if err := flags.Parse(args); err != nil {
+		return fmt.Errorf("flags: %w", err)
 	}
 
-	if fs.NArg() != 1 {
+	if flags.NArg() != 1 {
 		return errors.New("inspect wants exactly one package")
 	}
 
-	data, err := os.ReadFile(fs.Arg(0))
+	data, err := os.ReadFile(flags.Arg(0))
 	if err != nil {
-		return err
+		return fmt.Errorf("read: %w", err)
 	}
 
-	db, err := msidb.Unmarshal(data)
+	database, err := msidb.Unmarshal(data)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", flags.Arg(0), err)
 	}
 
 	if table != "" {
-		t := db.Table(table)
+		t := database.Table(table)
 		if t == nil {
 			return fmt.Errorf("no table %s", table)
 		}
@@ -253,14 +258,14 @@ func cmdInspect(args []string, stdout io.Writer) error {
 		return nil
 	}
 
-	_, _ = fmt.Fprintf(stdout, "codepage: %d\n", db.Codepage)
+	_, _ = fmt.Fprintf(stdout, "codepage: %d\n", database.Codepage)
 
-	for _, p := range db.Summary {
+	for _, p := range database.Summary {
 		_, _ = fmt.Fprintf(stdout, "summary %2d: %s\n", p.ID, formatValue(p.Value))
 	}
 
-	names := make([]string, 0, len(db.Streams))
-	for _, s := range db.Streams {
+	names := make([]string, 0, len(database.Streams))
+	for _, s := range database.Streams {
 		names = append(names, fmt.Sprintf("%s (%d bytes)", s.Name, len(s.Data)))
 	}
 
@@ -270,11 +275,11 @@ func cmdInspect(args []string, stdout io.Writer) error {
 		_, _ = fmt.Fprintf(stdout, "streams: %s\n", strings.Join(names, ", "))
 	}
 
-	for _, p := range db.Problems {
+	for _, p := range database.Problems {
 		_, _ = fmt.Fprintf(stdout, "problem: %s\n", p)
 	}
 
-	for _, t := range db.Tables {
+	for _, t := range database.Tables {
 		_, _ = fmt.Fprintln(stdout)
 		printTable(stdout, t)
 	}
@@ -282,11 +287,11 @@ func cmdInspect(args []string, stdout io.Writer) error {
 	return nil
 }
 
-func printTable(w io.Writer, t *msidb.Table) {
-	cols := make([]string, len(t.Columns))
-	types := make([]string, len(t.Columns))
+func printTable(out io.Writer, tbl *msidb.Table) {
+	cols := make([]string, len(tbl.Columns))
+	types := make([]string, len(tbl.Columns))
 
-	for i, c := range t.Columns {
+	for i, c := range tbl.Columns {
 		cols[i] = c.Name
 		types[i] = c.Type.String()
 
@@ -295,31 +300,31 @@ func printTable(w io.Writer, t *msidb.Table) {
 		}
 	}
 
-	_, _ = fmt.Fprintf(w, "== %s (%d rows)\n%s\n%s\n", t.Name, len(t.Rows), strings.Join(cols, "\t"), strings.Join(types, "\t"))
+	_, _ = fmt.Fprintf(out, "== %s (%d rows)\n%s\n%s\n", tbl.Name, len(tbl.Rows), strings.Join(cols, "\t"), strings.Join(types, "\t"))
 
-	for _, r := range t.Rows {
+	for _, r := range tbl.Rows {
 		cells := make([]string, len(r))
 		for i, v := range r {
 			cells[i] = formatValue(v)
 		}
 
-		_, _ = fmt.Fprintln(w, strings.Join(cells, "\t"))
+		_, _ = fmt.Fprintln(out, strings.Join(cells, "\t"))
 	}
 }
 
 func formatValue(v any) string {
-	switch x := v.(type) {
+	switch val := v.(type) {
 	case nil:
 		return ""
 	case string:
-		return x
+		return val
 	case int:
-		return strconv.Itoa(x)
+		return strconv.Itoa(val)
 	case []byte:
-		return fmt.Sprintf("[binary %d bytes]", len(x))
+		return fmt.Sprintf("[binary %d bytes]", len(val))
 	case time.Time:
-		return x.UTC().Format(time.RFC3339)
+		return val.UTC().Format(time.RFC3339)
 	default:
-		return fmt.Sprint(x)
+		return fmt.Sprint(val)
 	}
 }

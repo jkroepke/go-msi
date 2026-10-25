@@ -1,4 +1,4 @@
-package summary
+package summary //nolint:testpackage // the tests reach unexported encoders
 
 import (
 	"bytes"
@@ -29,19 +29,21 @@ func sample() []Property {
 }
 
 func TestRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	out, err := Marshal(sample(), 1252)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	le := binary.LittleEndian
+	order := binary.LittleEndian
 
-	if le.Uint16(out) != 0xFFFE || le.Uint32(out[4:]) != 0x0002000A || le.Uint32(out[0x2C:]) != 0x30 {
+	if order.Uint16(out) != 0xFFFE || order.Uint32(out[4:]) != 0x0002000A || order.Uint32(out[0x2C:]) != 0x30 {
 		t.Errorf("bad header %x", out[:0x30])
 	}
 
-	if int(le.Uint32(out[0x30:])) != len(out)-0x30 {
-		t.Errorf("section size %d, stream %d", le.Uint32(out[0x30:]), len(out))
+	if int(order.Uint32(out[0x30:])) != len(out)-0x30 {
+		t.Errorf("section size %d, stream %d", order.Uint32(out[0x30:]), len(out))
 	}
 
 	// FILETIME of 2026-01-01T00:00:00Z.
@@ -80,6 +82,8 @@ func TestRoundTrip(t *testing.T) {
 }
 
 func TestErrors(t *testing.T) {
+	t.Parallel()
+
 	if _, err := Marshal([]Property{{ID: PIDTitle, Value: "x"}}, 1252); err == nil {
 		t.Error("missing code page accepted")
 	}

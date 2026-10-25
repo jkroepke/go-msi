@@ -18,7 +18,7 @@ import (
 	"github.com/jkroepke/go-msi/summary"
 )
 
-var buildTime = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+var buildTime = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC) //nolint:gochecknoglobals // lookup table
 
 // example copies examples/<name>/msi.yaml into a temporary directory next to
 // the given input files and loads it.
@@ -79,17 +79,17 @@ func rows(t *testing.T, db *msidb.Database, table string) [][]any {
 func cell(t *testing.T, db *msidb.Database, table, column string, match func([]any) bool) any {
 	t.Helper()
 
-	tb := db.Table(table)
-	if tb == nil {
+	tbl := db.Table(table)
+	if tbl == nil {
 		t.Fatalf("table %s is missing", table)
 	}
 
-	col := tb.Column(column)
+	col := tbl.Column(column)
 	if col < 0 {
 		t.Fatalf("%s has no column %s", table, column)
 	}
 
-	for _, r := range tb.Rows {
+	for _, r := range tbl.Rows {
 		if match(r) {
 			return r[col]
 		}
@@ -101,6 +101,8 @@ func cell(t *testing.T, db *msidb.Database, table, column string, match func([]a
 }
 
 func TestMinimal(t *testing.T) {
+	t.Parallel()
+
 	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
 	cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
 	res := mustBuild(t, cfg)
@@ -109,48 +111,48 @@ func TestMinimal(t *testing.T) {
 		t.Fatal("no package written")
 	}
 
-	f, err := cfb.Read(res.Package)
+	file, err := cfb.Read(res.Package)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if f.CLSID != cfb.CLSIDMSI {
-		t.Errorf("CLSID %x", f.CLSID)
+	if file.CLSID != cfb.CLSIDMSI {
+		t.Errorf("CLSID %x", file.CLSID)
 	}
 
-	db, err := msidb.Unmarshal(res.Package)
+	database, err := msidb.Unmarshal(res.Package)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(db.Problems) > 0 {
-		t.Errorf("problems: %v", db.Problems)
+	if len(database.Problems) > 0 {
+		t.Errorf("problems: %v", database.Problems)
 	}
 
 	// File row: versioned x64 executable, short|long name, sequence 1.
-	fr := rows(t, db, "File")
-	if len(fr) != 1 {
-		t.Fatalf("File rows: %d", len(fr))
+	fileRows := rows(t, database, "File")
+	if len(fileRows) != 1 {
+		t.Fatalf("File rows: %d", len(fileRows))
 	}
 
-	if fr[0][0] != "hello.exe" || fr[0][4] != "1.0.0.0" || fr[0][5] != "1033" || fr[0][7] != 1 {
-		t.Errorf("File row %v", fr[0])
+	if fileRows[0][0] != "hello.exe" || fileRows[0][4] != "1.0.0.0" || fileRows[0][5] != "1033" || fileRows[0][7] != 1 {
+		t.Errorf("File row %v", fileRows[0])
 	}
 
-	if _, ok := fr[0][2].(string); !ok || fr[0][2] != "hello.exe" {
-		t.Errorf("FileName %v, want the valid short name as is", fr[0][2])
+	if _, ok := fileRows[0][2].(string); !ok || fileRows[0][2] != "hello.exe" {
+		t.Errorf("FileName %v, want the valid short name as is", fileRows[0][2])
 	}
 
-	if cell(t, db, "Media", "LastSequence", func([]any) bool { return true }) != 1 {
+	if cell(t, database, "Media", "LastSequence", func([]any) bool { return true }) != 1 {
 		t.Error("Media.LastSequence")
 	}
 
-	cabName := cell(t, db, "Media", "Cabinet", func([]any) bool { return true })
+	cabName := cell(t, database, "Media", "Cabinet", func([]any) bool { return true })
 	if cabName != "#Hello.cab" {
 		t.Errorf("Media.Cabinet %v", cabName)
 	}
 
-	data, ok := db.Stream("Hello.cab")
+	data, ok := database.Stream("Hello.cab")
 	if !ok {
 		t.Fatal("cabinet stream missing")
 	}
@@ -161,49 +163,49 @@ func TestMinimal(t *testing.T) {
 	}
 
 	// Component: 64-bit attribute, key path is the file.
-	attrs := cell(t, db, "Component", "Attributes", func(r []any) bool { return r[0] == "Hello" })
+	attrs := cell(t, database, "Component", "Attributes", func(r []any) bool { return r[0] == "Hello" })
 	if attrs != 256 {
 		t.Errorf("Component.Attributes %v", attrs)
 	}
 
 	// Directory tree: TARGETDIR/SourceDir, ProgramFiles64Folder, INSTALLDIR.
-	if cell(t, db, "Directory", "DefaultDir", func(r []any) bool { return r[0] == "TARGETDIR" }) != "SourceDir" {
+	if cell(t, database, "Directory", "DefaultDir", func(r []any) bool { return r[0] == "TARGETDIR" }) != "SourceDir" {
 		t.Error("TARGETDIR")
 	}
 
-	if cell(t, db, "Directory", "DefaultDir", func(r []any) bool { return r[0] == "ProgramFiles64Folder" }) != "PFiles64" {
+	if cell(t, database, "Directory", "DefaultDir", func(r []any) bool { return r[0] == "ProgramFiles64Folder" }) != "PFiles64" {
 		t.Error("ProgramFiles64Folder")
 	}
 
 	// Configurable directory → secure property.
-	secure := cell(t, db, "Property", "Value", func(r []any) bool { return r[0] == "SecureCustomProperties" })
+	secure := cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "SecureCustomProperties" })
 	if s := fmt.Sprint(secure); !strings.Contains(s, "INSTALLDIR") || !strings.Contains(s, "UPGRADE") {
 		t.Errorf("SecureCustomProperties %v", secure)
 	}
 
-	if cell(t, db, "Property", "Value", func(r []any) bool { return r[0] == "ALLUSERS" }) != "1" {
+	if cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "ALLUSERS" }) != "1" {
 		t.Error("ALLUSERS")
 	}
 
-	if cell(t, db, "Property", "Value", func(r []any) bool { return r[0] == "ProductCode" }) != res.ProductCode {
+	if cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "ProductCode" }) != res.ProductCode {
 		t.Error("ProductCode")
 	}
 
 	// Sequences: the always set plus the file actions and the upgrade.
-	ies := rows(t, db, "InstallExecuteSequence")
+	ies := rows(t, database, "InstallExecuteSequence")
 	want := map[string]int{
 		"CostInitialize": 800, "InstallFiles": 4000, "RemoveFiles": 3500, "CreateFolders": 3700, "RemoveFolders": 3600,
 		"InstallFinalize": 6600, "FindRelatedProducts": 25, "RemoveExistingProducts": 1501, "MigrateFeatureStates": 1200,
 		"LaunchConditions": 100, "PublishProduct": 6400,
 	}
 
-	for _, r := range ies {
-		if n, ok := want[fmt.Sprint(r[0])]; ok {
-			if r[2] != n {
-				t.Errorf("%s at %v, want %d", r[0], r[2], n)
+	for _, row := range ies {
+		if n, ok := want[fmt.Sprint(row[0])]; ok {
+			if row[2] != n {
+				t.Errorf("%s at %v, want %d", row[0], row[2], n)
 			}
 
-			delete(want, fmt.Sprint(r[0]))
+			delete(want, fmt.Sprint(row[0]))
 		}
 	}
 
@@ -211,58 +213,65 @@ func TestMinimal(t *testing.T) {
 		t.Errorf("%s is not scheduled", name)
 	}
 
-	for _, tbl := range []string{"InstallUISequence", "AdminExecuteSequence", "AdminUISequence", "AdvtExecuteSequence", "_Validation", "Upgrade", "LaunchCondition", "Feature", "FeatureComponents"} {
-		if len(rows(t, db, tbl)) == 0 {
+	for _, tbl := range []string{
+		"InstallUISequence", "AdminExecuteSequence", "AdminUISequence", "AdvtExecuteSequence",
+		"_Validation", "Upgrade", "LaunchCondition", "Feature", "FeatureComponents",
+	} {
+		if len(rows(t, database, tbl)) == 0 {
 			t.Errorf("%s is empty", tbl)
 		}
 	}
 
 	// Summary information.
-	if summary.Get(db.Summary, summary.PIDTemplate) != "x64;1033" {
-		t.Errorf("template %v", summary.Get(db.Summary, summary.PIDTemplate))
+	if summary.Get(database.Summary, summary.PIDTemplate) != "x64;1033" {
+		t.Errorf("template %v", summary.Get(database.Summary, summary.PIDTemplate))
 	}
 
-	if summary.Get(db.Summary, summary.PIDPageCount) != 500 {
-		t.Errorf("page count %v", summary.Get(db.Summary, summary.PIDPageCount))
+	if summary.Get(database.Summary, summary.PIDPageCount) != 500 {
+		t.Errorf("page count %v", summary.Get(database.Summary, summary.PIDPageCount))
 	}
 
-	if summary.Get(db.Summary, summary.PIDCodepage) != 1252 {
-		t.Errorf("summary codepage %v", summary.Get(db.Summary, summary.PIDCodepage))
+	if summary.Get(database.Summary, summary.PIDCodepage) != 1252 {
+		t.Errorf("summary codepage %v", summary.Get(database.Summary, summary.PIDCodepage))
 	}
 
-	if summary.Get(db.Summary, summary.PIDRevision) != res.PackageCode || res.PackageCode == "" || res.PackageCode[0] != '{' {
-		t.Errorf("package code %q / %v", res.PackageCode, summary.Get(db.Summary, summary.PIDRevision))
+	if summary.Get(database.Summary, summary.PIDRevision) != res.PackageCode || res.PackageCode == "" || res.PackageCode[0] != '{' {
+		t.Errorf("package code %q / %v", res.PackageCode, summary.Get(database.Summary, summary.PIDRevision))
 	}
 
-	if ts, ok := summary.Get(db.Summary, summary.PIDCreated).(time.Time); !ok || !ts.Equal(buildTime) {
+	if ts, ok := summary.Get(database.Summary, summary.PIDCreated).(time.Time); !ok || !ts.Equal(buildTime) {
 		t.Errorf("created %v", ts)
 	}
 }
 
 func TestDeterministic(t *testing.T) {
+	t.Parallel()
+
 	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
 
-	a := mustBuild(t, example(t, "minimal", nil, map[string][]byte{"hello.exe": exe}))
+	first := mustBuild(t, example(t, "minimal", nil, map[string][]byte{"hello.exe": exe}))
 	b := mustBuild(t, example(t, "minimal", nil, map[string][]byte{"hello.exe": exe}))
 
-	if !bytes.Equal(a.Package, b.Package) {
+	if !bytes.Equal(first.Package, b.Package) {
 		t.Error("two builds of the same inputs differ")
 	}
 
 	// Changed content gives a new product code and package code.
 	exe2 := testpe.Build(testpe.Options{FileVersion: "1.0.0.1", Languages: []int{1033}})
-	c := mustBuild(t, example(t, "minimal", nil, map[string][]byte{"hello.exe": exe2}))
+	changed := mustBuild(t, example(t, "minimal", nil, map[string][]byte{"hello.exe": exe2}))
 
-	if c.ProductCode == a.ProductCode {
+	if changed.ProductCode == first.ProductCode {
 		t.Error("product code did not change with the input")
 	}
 
-	if c.PackageCode == a.PackageCode {
+	if changed.PackageCode == first.PackageCode {
 		t.Error("package code did not change with the input")
 	}
 }
 
 func TestCFBVersion3(t *testing.T) {
+	t.Parallel()
+
 	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
 	cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
 
@@ -277,6 +286,8 @@ func TestCFBVersion3(t *testing.T) {
 }
 
 func TestMissingInput(t *testing.T) {
+	t.Parallel()
+
 	cfg := example(t, "minimal", nil, nil)
 
 	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
@@ -290,6 +301,8 @@ func TestMissingInput(t *testing.T) {
 }
 
 func TestWindowsExporter(t *testing.T) {
+	t.Parallel()
+
 	exe := testpe.Build(testpe.Options{FileVersion: "0.32.0.5", Languages: []int{1033}})
 
 	icon := append([]byte{0, 0, 1, 0, 1, 0}, bytes.Repeat([]byte{0xAB}, 64)...)
@@ -301,66 +314,66 @@ func TestWindowsExporter(t *testing.T) {
 
 	res := mustBuild(t, cfg)
 
-	db, err := msidb.Unmarshal(res.Package)
+	database, err := msidb.Unmarshal(res.Package)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(db.Problems) > 0 {
-		t.Errorf("problems: %v", db.Problems)
+	if len(database.Problems) > 0 {
+		t.Errorf("problems: %v", database.Problems)
 	}
 
 	// Services.
-	if len(rows(t, db, "ServiceInstall")) != 1 || len(rows(t, db, "ServiceControl")) != 1 {
+	if len(rows(t, database, "ServiceInstall")) != 1 || len(rows(t, database, "ServiceControl")) != 1 {
 		t.Error("service rows")
 	}
 
-	if len(rows(t, db, "MsiServiceConfig")) != 2 {
-		t.Errorf("MsiServiceConfig rows: %d", len(rows(t, db, "MsiServiceConfig")))
+	if len(rows(t, database, "MsiServiceConfig")) != 2 {
+		t.Errorf("MsiServiceConfig rows: %d", len(rows(t, database, "MsiServiceConfig")))
 	}
 
-	hidden := cell(t, db, "Property", "Value", func(r []any) bool { return r[0] == "MsiHiddenProperties" })
+	hidden := cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "MsiHiddenProperties" })
 	if !strings.Contains(fmt.Sprint(hidden), "SERVICE_PASSWORD") {
 		t.Errorf("MsiHiddenProperties %v", hidden)
 	}
 
 	// Event log registry rows.
-	v := cell(t, db, "Registry", "Value", func(r []any) bool { return r[3] == "TypesSupported" })
+	v := cell(t, database, "Registry", "Value", func(r []any) bool { return r[3] == "TypesSupported" })
 	if v != "#7" {
 		t.Errorf("TypesSupported %v", v)
 	}
 
 	// Icon table and ARP icon.
-	if len(rows(t, db, "Icon")) != 1 {
+	if len(rows(t, database, "Icon")) != 1 {
 		t.Error("Icon rows")
 	}
 
 	// Firewall and recovery actions exist, are deferred and sit inside the
 	// InstallInitialize … InstallFinalize window.
-	ies := rows(t, db, "InstallExecuteSequence")
+	ies := rows(t, database, "InstallExecuteSequence")
 	seqOf := map[string]int{}
 
-	for _, r := range ies {
-		n, ok := r[2].(int)
+	for _, row := range ies {
+		n, ok := row[2].(int)
 		if !ok {
-			t.Fatalf("sequence %v is not an int", r[2])
+			t.Fatalf("sequence %v is not an int", row[2])
 		}
 
-		seqOf[fmt.Sprint(r[0])] = n
+		seqOf[fmt.Sprint(row[0])] = n
 	}
 
-	fw := 0
+	deferredActions := 0
 
-	for _, r := range rows(t, db, "CustomAction") {
-		name := fmt.Sprint(r[0])
+	for _, row := range rows(t, database, "CustomAction") {
+		name := fmt.Sprint(row[0])
 		if !strings.HasPrefix(name, "Fw") && !strings.HasPrefix(name, "ServiceRecovery") {
 			continue
 		}
 
-		fw++
+		deferredActions++
 
-		if typ, ok := r[1].(int); !ok || typ&1024 == 0 {
-			t.Errorf("%s is not deferred: type %v", name, r[1])
+		if typ, ok := row[1].(int); !ok || typ&1024 == 0 {
+			t.Errorf("%s is not deferred: type %v", name, row[1])
 		}
 
 		n, ok := seqOf[name]
@@ -369,8 +382,8 @@ func TestWindowsExporter(t *testing.T) {
 		}
 	}
 
-	if fw != 6 {
-		t.Errorf("%d firewall/recovery actions, want 6", fw)
+	if deferredActions != 6 {
+		t.Errorf("%d firewall/recovery actions, want 6", deferredActions)
 	}
 
 	// REP after InstallInitialize (window 2) unless the example says otherwise.
@@ -385,8 +398,8 @@ func TestWindowsExporter(t *testing.T) {
 		}
 	}
 
-	if summary.Get(db.Summary, summary.PIDTemplate) != "x64;1033" {
-		t.Errorf("template %v", summary.Get(db.Summary, summary.PIDTemplate))
+	if summary.Get(database.Summary, summary.PIDTemplate) != "x64;1033" {
+		t.Errorf("template %v", summary.Get(database.Summary, summary.PIDTemplate))
 	}
 
 	// The example asks for a wizard the builder does not have yet.

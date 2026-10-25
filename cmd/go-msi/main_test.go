@@ -11,6 +11,8 @@ import (
 )
 
 func TestBuildValidateInspect(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	src, err := os.ReadFile(filepath.Join("..", "..", "examples", "minimal", "msi.yaml"))
