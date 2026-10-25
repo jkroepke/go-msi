@@ -103,9 +103,50 @@ func Parse(data []byte, opts Options) (*Config, error) {
 		return nil, fmt.Errorf("schema: got %q, want %q", cfg.Schema, SchemaV1)
 	}
 
+	if err := emptyComponents(cfg); err != nil {
+		return nil, err
+	}
+
 	ApplyDefaults(cfg)
 
 	return cfg, nil
+}
+
+// emptyComponents rejects null entries in components lists, which decode to
+// nil pointers.
+func emptyComponents(cfg *Config) error {
+	var errs []error
+
+	for i, comp := range cfg.Components {
+		if comp == nil {
+			errs = append(errs, fmt.Errorf("components[%d]: empty entry", i))
+		}
+	}
+
+	var walk func([]*Feature, string)
+
+	walk = func(features []*Feature, prefix string) {
+		for i, feature := range features {
+			featurePath := fmt.Sprintf("%s[%d]", prefix, i)
+			if feature == nil {
+				errs = append(errs, fmt.Errorf("%s: empty entry", featurePath))
+
+				continue
+			}
+
+			for j, comp := range feature.Components {
+				if comp == nil {
+					errs = append(errs, fmt.Errorf("%s.components[%d]: empty entry", featurePath, j))
+				}
+			}
+
+			walk(feature.Features, featurePath+".features")
+		}
+	}
+
+	walk(cfg.Features, "features")
+
+	return errors.Join(errs...)
 }
 
 func fileVars(root *yaml.Node) (map[string]string, error) {

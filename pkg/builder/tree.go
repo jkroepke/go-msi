@@ -111,6 +111,11 @@ func (b *build) deriveProductCode() error {
 	hasher := sha256.New()
 	hasher.Write(yamlBytes)
 
+	// Disabled has no YAML key, so the marshaled config does not show it.
+	if b.cfg.Upgrade != nil && b.cfg.Upgrade.Disabled {
+		hasher.Write([]byte("upgrade:disabled"))
+	}
+
 	for _, f := range b.files {
 		hasher.Write([]byte(f.Key))
 		hasher.Write(f.digest[:])
@@ -190,7 +195,13 @@ func (b *build) directories() error {
 
 	walk = func(ds []*config.Directory, parent *dirInfo) {
 		for _, dir := range ds {
-			if _, dup := b.dirs[dir.ID]; dup {
+			if existing, dup := b.dirs[dir.ID]; dup {
+				// A top-level TARGETDIR node only carries children for the
+				// root the builder already added.
+				if parent == nil && dir.ID == targetDir {
+					walk(dir.Children, existing)
+				}
+
 				continue
 			}
 
@@ -281,7 +292,7 @@ func (b *build) writeComponents() error { //nolint:cyclop // one pass over the f
 	for i, comp := range b.cfg.Components {
 		info := &componentInfo{cfg: comp, index: i, dir: b.dirs[comp.Directory]}
 		if info.dir == nil {
-			return fmt.Errorf("components[%d]: directory %s is not defined", i, comp.Directory)
+			return fmt.Errorf("%s: directory %s is not defined", comp.Path(i), comp.Directory)
 		}
 
 		info.dir.used = true
@@ -327,7 +338,7 @@ func (b *build) writeComponents() error { //nolint:cyclop // one pass over the f
 func (b *build) inputs() error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	for _, c := range b.cfg.Components {
 		info := b.components[c.ID]
-		p := fmt.Sprintf("components[%d]", info.index)
+		p := info.cfg.Path(info.index)
 
 		for j, f := range c.Files {
 			filePath := fmt.Sprintf("%s.files[%d]", p, j)
@@ -357,7 +368,7 @@ func (b *build) inputs() error { //nolint:cyclop // one pass over the format; sp
 		if v, ok := fi.Version.(string); ok && fi.cfg.Version != config.Auto && fi.cfg.Version != config.None {
 			if _, err := config.ParseVersion(v); err != nil {
 				if _, exists := b.fileByKey[v]; !exists {
-					b.errorf(fmt.Sprintf("components[%d].files", fi.Component.index), "companion file %s is not defined", v)
+					b.errorf(fi.Component.cfg.Path(fi.Component.index)+".files", "companion file %s is not defined", v)
 				}
 			}
 		}
@@ -549,7 +560,7 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 	// Components in config order; rows are sorted by msidb anyway.
 	for _, comp := range b.cfg.Components {
 		info := b.components[comp.ID]
-		path := fmt.Sprintf("components[%d]", info.index)
+		path := info.cfg.Path(info.index)
 
 		if err := b.resolveKeyPath(path, info); err != nil {
 			return err
@@ -743,7 +754,7 @@ func (b *build) features() error {
 		tbl.Add(feature.ID, parentID, nullable(feature.Title), nullable(feature.Description), disp, *feature.Level, nullable(feature.Directory), attrs)
 
 		for _, c := range feature.Components {
-			featureComps.Add(feature.ID, c)
+			featureComps.Add(feature.ID, c.ID)
 		}
 	})
 

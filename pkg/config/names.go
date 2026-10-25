@@ -21,6 +21,15 @@ var standardFolders = set(
 	"TempFolder", "TemplateFolder", "WindowsFolder", "WindowsVolume",
 )
 
+// profileFolders are below the user profile; components there need an HKCU
+// key path (ICE38) and RemoveFolder rows (ICE64).
+var profileFolders = set( //nolint:gochecknoglobals // lookup table
+	"AppDataFolder", "DesktopFolder", "FavoritesFolder", "LocalAppDataFolder",
+	"MyPicturesFolder", "NetHoodFolder", "PersonalFolder", "PrintHoodFolder",
+	"ProgramMenuFolder", "RecentFolder", "SendToFolder", "StartMenuFolder",
+	"StartupFolder", "TemplateFolder",
+)
+
 // folders32 are the 32-bit locations on 64-bit Windows (ICE80).
 var folders32 = set("ProgramFilesFolder", "CommonFilesFolder", "SystemFolder")
 
