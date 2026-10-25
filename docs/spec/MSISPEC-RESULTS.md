@@ -194,7 +194,12 @@ Silent-failure cases a producer has to guard against itself:
 | RUN-17 | Contradicted | 1401, 1501, 6551, 6601 and [1399](msitest/results/RUN-17/rep-1399/log.md) work; [5802](msitest/results/RUN-17/rep-5802/log.md) gives 2613 |
 | RUN-18 | Confirmed | EXE exit 1 fails unless Continue; [type-6 return 5](msitest/results/RUN-18/vbs-binary-return-5-immediate/log.md) ends with 0 and skips the rest; [deferred](msitest/results/RUN-18/vbs-binary-return-5-deferred/log.md) leaves files unregistered |
 | SEC-01 | Confirmed | File, [CreateFolder](msitest/results/SEC-01/createfolder/log.md), [Registry](msitest/results/SEC-01/registry/log.md) and [ServiceInstall](msitest/results/SEC-01/service/log.md) rows get the authored DACL; [`/fa` and `/fvomus` restore it](msitest/results/SEC-01/file/log.md); [owner and group](msitest/results/SEC-01/file-owner-group/log.md) are set; `[Property]` stays literal (1943) but [`<[%USERDOMAIN]\[%USERNAME]>`](msitest/results/SEC-01/account-angle-env/log.md) and [`<BUILTIN\Users>`](msitest/results/SEC-01/account-angle-builtin/log.md) resolve; invalid SDDL 1943, two true rows 1942, both tables 1941; [deny ACE for `BU`](msitest/results/SEC-01/file-deny-ace/log.md) leaves the file on uninstall |
-| SIG-01…06 | Not run | No `signtool` on the machine; signing is outside go-msi's scope |
+| SIG-01 | Confirmed | Windows Server 2025 CI runner, `pkg/builder/nativetest/sign_windows_test.go`: go-msi recomputes the digest of a `signtool sign /fd SHA256` package; a go-msi signature passes WinVerifyTrust and `Get-AuthenticodeSignature` |
+| SIG-02 | Confirmed | `signtool` writes `MsiDigitalSignatureEx` by default, for `/fd SHA1` (20 bytes) and `/fd SHA256` (32 bytes); go-msi verifies P and D of both |
+| SIG-03 | Confirmed | A basic-mode go-msi signature stays valid after a v3 re-layout and a reversed stream order; signtool's extended signature stays valid after a v4 to v3 re-layout that keeps the directory times |
+| SIG-04 | Confirmed | Names `A`, `AB`, `ABC` and `\u3801X` (sorts before `\u0005`): go-msi's shorter-prefix-first order passes WinVerifyTrust, and go-msi verifies signtool's extended signature of the same package, so DSE is hashed at its sorted position |
+| SIG-05 | Partly confirmed | A changed root CLSID gives `0x800B0003` (TRUST_E_SUBJECT_FORM_UNKNOWN): the MSI SIP no longer claims the file. Nested storages not covered (go-msi writes none) |
+| SIG-06 | Confirmed | RSA with SHA-1/256/384/512, ECDSA P-256/SHA-256 and P-384/SHA-384, and an RFC 3161 timestamp all pass WinVerifyTrust on Server 2025. Not run on Server 2016 |
 | INT-01…03 | Blocked | No WiX or msitools |
 | RUST-01 | Confirmed | Same as DB-04 |
 | RUST-02 | Contradicted | Same as DB-05 |

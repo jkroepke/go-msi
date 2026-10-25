@@ -1,0 +1,1544 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/jkroepke/go-msi/main/pkg/config/schema.json",
+  "title": "go-msi configuration, schema go-msi/v1",
+  "description": "Editor support for go-msi YAML files. docs/design/yaml-schema.md is the reference, and go-msi validate checks every rule, including the ones a JSON Schema cannot express.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "go-msi/v1"
+    },
+    "vars": {
+      "type": "object",
+      "description": "Defaults for ${NAME} substitution.",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean"
+        ]
+      }
+    },
+    "product": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "ProductName, at most 63 characters.",
+          "maxLength": 63
+        },
+        "manufacturer": {
+          "type": "string"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "language": {
+          "$ref": "#/$defs/int",
+          "description": "One LCID; 0 is neutral.",
+          "default": 1033
+        },
+        "upgradeCode": {
+          "$ref": "#/$defs/upgradeCode"
+        },
+        "productCode": {
+          "$ref": "#/$defs/guidOrAuto",
+          "default": "auto"
+        },
+        "packageCode": {
+          "$ref": "#/$defs/guidOrAuto",
+          "default": "auto"
+        },
+        "description": {
+          "type": "string"
+        },
+        "comments": {
+          "type": "string"
+        },
+        "arp": {
+          "type": "object",
+          "properties": {
+            "comments": {
+              "type": "string"
+            },
+            "contact": {
+              "type": "string"
+            },
+            "helpLink": {
+              "type": "string"
+            },
+            "aboutLink": {
+              "type": "string"
+            },
+            "updateLink": {
+              "type": "string"
+            },
+            "icon": {
+              "type": "string",
+              "description": "An icons key."
+            },
+            "noRepair": {
+              "$ref": "#/$defs/bool"
+            },
+            "noModify": {
+              "$ref": "#/$defs/bool"
+            },
+            "noRemove": {
+              "$ref": "#/$defs/bool"
+            },
+            "size": {
+              "$ref": "#/$defs/int",
+              "description": "Estimated size in KB."
+            },
+            "installLocation": {
+              "$ref": "#/$defs/directoryRef"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "name",
+        "manufacturer",
+        "version",
+        "upgradeCode"
+      ],
+      "additionalProperties": false
+    },
+    "package": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "x86, x64 or arm64 (aliases intel, amd64, aarch64), any case.",
+              "pattern": "^([Xx]86|[Ii][Nn][Tt][Ee][Ll]|[Xx]64|[Aa][Mm][Dd]64|[Aa][Rr][Mm]64|[Aa][Aa][Rr][Cc][Hh]64)$"
+            },
+            {
+              "$ref": "#/$defs/var"
+            }
+          ]
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^([Pp][Ee][Rr][Mm][Aa][Cc][Hh][Ii][Nn][Ee]|[Pp][Ee][Rr][Uu][Ss][Ee][Rr])$"
+            },
+            {
+              "$ref": "#/$defs/var"
+            }
+          ],
+          "default": "perMachine"
+        },
+        "installerVersion": {
+          "type": [
+            "string",
+            "number"
+          ],
+          "description": "major.minor; Page Count is major × 100 + minor.",
+          "default": "5.0"
+        },
+        "codepage": {
+          "$ref": "#/$defs/int",
+          "default": 1252
+        },
+        "compression": {
+          "anyOf": [
+            {
+              "enum": [
+                "mszip",
+                "none"
+              ]
+            },
+            {
+              "$ref": "#/$defs/var"
+            }
+          ],
+          "default": "mszip"
+        },
+        "cabinet": {
+          "type": "string",
+          "maxLength": 62
+        },
+        "longFileNames": {
+          "$ref": "#/$defs/bool",
+          "default": true
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "keywords": {
+              "type": "string"
+            },
+            "author": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "platform"
+      ],
+      "additionalProperties": false
+    },
+    "upgrade": {
+      "type": "object",
+      "description": "Major upgrade policy. Absent means no Upgrade rows.",
+      "properties": {
+        "allowSameVersion": {
+          "$ref": "#/$defs/bool",
+          "default": true
+        },
+        "downgrade": {
+          "anyOf": [
+            {
+              "enum": [
+                "error",
+                "allow",
+                "ignore"
+              ]
+            },
+            {
+              "$ref": "#/$defs/var"
+            }
+          ],
+          "default": "error"
+        },
+        "downgradeMessage": {
+          "type": "string"
+        },
+        "removeOld": {
+          "anyOf": [
+            {
+              "enum": [
+                "afterInstallValidate",
+                "afterInstallInitialize",
+                "afterInstallExecute",
+                "afterInstallFinalize"
+              ]
+            },
+            {
+              "$ref": "#/$defs/var"
+            }
+          ],
+          "default": "afterInstallInitialize"
+        },
+        "migrateFeatures": {
+          "$ref": "#/$defs/bool",
+          "default": true
+        },
+        "property": {
+          "type": "string",
+          "default": "OLDERVERSIONBEINGUPGRADED"
+        },
+        "newerProperty": {
+          "type": "string",
+          "default": "NEWERVERSIONDETECTED"
+        },
+        "related": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "upgradeCode": {
+                "$ref": "#/$defs/upgradeCode"
+              },
+              "minVersion": {
+                "$ref": "#/$defs/version"
+              },
+              "maxVersion": {
+                "$ref": "#/$defs/version"
+              },
+              "includeMin": {
+                "$ref": "#/$defs/bool",
+                "default": true
+              },
+              "includeMax": {
+                "$ref": "#/$defs/bool",
+                "default": false
+              },
+              "onlyDetect": {
+                "$ref": "#/$defs/bool",
+                "default": false
+              },
+              "property": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "upgradeCode"
+            ],
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "minVersion"
+                ]
+              },
+              {
+                "required": [
+                  "maxVersion"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "directories": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/directory"
+      }
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/feature"
+      }
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "directory": {
+            "$ref": "#/$defs/directoryRef"
+          },
+          "guid": {
+            "anyOf": [
+              {
+                "enum": [
+                  "auto",
+                  "none"
+                ]
+              },
+              {
+                "$ref": "#/$defs/guid"
+              }
+            ],
+            "default": "auto"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "description": "Path relative to the YAML file."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Defaults to the base name of source; `short|long` allowed."
+                },
+                "id": {
+                  "$ref": "#/$defs/identifier",
+                  "description": "File key."
+                },
+                "version": {
+                  "type": [
+                    "string",
+                    "number"
+                  ],
+                  "description": "auto, a four-field version, the id of another file (companion), or none. Never empty.",
+                  "minLength": 1,
+                  "default": "auto"
+                },
+                "language": {
+                  "type": [
+                    "string",
+                    "number"
+                  ],
+                  "description": "auto, none or a language list.",
+                  "default": "auto"
+                },
+                "allowUnversionedExecutable": {
+                  "$ref": "#/$defs/bool",
+                  "default": false
+                },
+                "vital": {
+                  "$ref": "#/$defs/bool",
+                  "default": true
+                },
+                "checksum": {
+                  "$ref": "#/$defs/bool",
+                  "default": false
+                },
+                "readOnly": {
+                  "$ref": "#/$defs/bool",
+                  "default": false
+                },
+                "hidden": {
+                  "$ref": "#/$defs/bool",
+                  "default": false
+                },
+                "system": {
+                  "$ref": "#/$defs/bool",
+                  "default": false
+                },
+                "permissions": {
+                  "$ref": "#/$defs/permissions"
+                }
+              },
+              "required": [
+                "source"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "registry": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "root": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "HKLM",
+                        "HKCU",
+                        "HKCR",
+                        "HKU",
+                        "HKMU"
+                      ]
+                    },
+                    {
+                      "$ref": "#/$defs/var"
+                    }
+                  ]
+                },
+                "key": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Empty means the default value."
+                },
+                "type": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "string",
+                        "expandString",
+                        "multiString",
+                        "dword",
+                        "binary",
+                        "key"
+                      ]
+                    },
+                    {
+                      "$ref": "#/$defs/var"
+                    }
+                  ]
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": [
+                        "string",
+                        "number"
+                      ]
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": [
+                          "string",
+                          "number"
+                        ]
+                      }
+                    }
+                  ],
+                  "description": "A list for multiString."
+                },
+                "append": {
+                  "$ref": "#/$defs/bool"
+                },
+                "prepend": {
+                  "$ref": "#/$defs/bool"
+                },
+                "removeOnUninstall": {
+                  "$ref": "#/$defs/bool"
+                },
+                "permissions": {
+                  "$ref": "#/$defs/permissions"
+                }
+              },
+              "required": [
+                "root",
+                "key"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "type": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "ownProcess",
+                        "shareProcess"
+                      ]
+                    },
+                    {
+                      "$ref": "#/$defs/var"
+                    }
+                  ]
+                },
+                "start": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "auto",
+                        "demand",
+                        "disabled"
+                      ]
+                    },
+                    {
+                      "$ref": "#/$defs/var"
+                    }
+                  ]
+                },
+                "delayedAutoStart": {
+                  "$ref": "#/$defs/bool"
+                },
+                "errorControl": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "ignore",
+                        "normal",
+                        "critical"
+                      ]
+                    },
+                    {
+                      "$ref": "#/$defs/var"
+                    }
+                  ]
+                },
+                "vital": {
+                  "$ref": "#/$defs/bool"
+                },
+                "account": {
+                  "type": "string"
+                },
+                "password": {
+                  "type": "string",
+                  "description": "Should name a property, such as [SERVICE_PASSWORD]."
+                },
+                "arguments": {
+                  "type": "string"
+                },
+                "dependencies": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "failureActionsOnNonCrashFailures": {
+                  "$ref": "#/$defs/bool"
+                },
+                "control": {
+                  "type": "object",
+                  "properties": {
+                    "startOnInstall": {
+                      "$ref": "#/$defs/bool"
+                    },
+                    "stopOnInstall": {
+                      "$ref": "#/$defs/bool"
+                    },
+                    "stopOnUninstall": {
+                      "$ref": "#/$defs/bool"
+                    },
+                    "deleteOnUninstall": {
+                      "$ref": "#/$defs/bool",
+                      "default": true
+                    },
+                    "wait": {
+                      "$ref": "#/$defs/bool"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "recovery": {
+                  "type": "object",
+                  "properties": {
+                    "resetAfterDays": {
+                      "$ref": "#/$defs/int"
+                    },
+                    "actions": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "restart",
+                              "none"
+                            ]
+                          },
+                          {
+                            "$ref": "#/$defs/var"
+                          }
+                        ]
+                      }
+                    },
+                    "restartDelay": {
+                      "type": "string",
+                      "description": "A Go duration such as 60s or 1m.",
+                      "default": "1m"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "permissions": {
+                  "$ref": "#/$defs/permissions"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "eventLog": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "log": {
+                  "type": "string"
+                },
+                "messageFile": {
+                  "type": "string"
+                },
+                "typesSupported": {
+                  "$ref": "#/$defs/int"
+                }
+              },
+              "required": [
+                "source",
+                "messageFile"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "environment": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[^=+\\-!*]"
+                },
+                "value": {
+                  "type": [
+                    "string",
+                    "number"
+                  ]
+                },
+                "action": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "set",
+                        "setIfAbsent",
+                        "append",
+                        "prepend",
+                        "remove"
+                      ]
+                    },
+                    {
+                      "$ref": "#/$defs/var"
+                    }
+                  ]
+                },
+                "scope": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "machine",
+                        "user"
+                      ]
+                    },
+                    {
+                      "$ref": "#/$defs/var"
+                    }
+                  ]
+                },
+                "removeOnUninstall": {
+                  "$ref": "#/$defs/bool",
+                  "description": "Defaults to true, false for remove."
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "createFolder": {
+            "$ref": "#/$defs/bool"
+          },
+          "condition": {
+            "$ref": "#/$defs/condition"
+          },
+          "permanent": {
+            "$ref": "#/$defs/bool"
+          },
+          "neverOverwrite": {
+            "$ref": "#/$defs/bool"
+          },
+          "sharedDllRefCount": {
+            "$ref": "#/$defs/bool"
+          },
+          "transitive": {
+            "$ref": "#/$defs/bool"
+          },
+          "keyPath": {
+            "type": "string",
+            "description": "A file name, a registry id or \"directory\"."
+          },
+          "bitness": {
+            "anyOf": [
+              {
+                "enum": [
+                  "auto",
+                  "32",
+                  "64",
+                  32,
+                  64
+                ]
+              },
+              {
+                "$ref": "#/$defs/var"
+              }
+            ],
+            "default": "auto"
+          },
+          "folderPermissions": {
+            "$ref": "#/$defs/permissions",
+            "description": "Secures the component's directory; needs a CreateFolder row (createFolder: true or a directory key path)."
+          }
+        },
+        "required": [
+          "id",
+          "directory"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "properties": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ],
+            "description": "Short form: the value only."
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "secure": {
+                "$ref": "#/$defs/bool"
+              },
+              "hidden": {
+                "$ref": "#/$defs/bool"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "launchConditions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "condition": {
+            "$ref": "#/$defs/condition"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "condition",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "customActions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "setProperty": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "setDirectory": {
+            "type": "object",
+            "properties": {
+              "directory": {
+                "$ref": "#/$defs/directoryRef"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "directory",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          "error": {
+            "type": [
+              "string",
+              "number"
+            ],
+            "description": "Text or an Error table number."
+          },
+          "exec": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "type": "string"
+              },
+              "directory": {
+                "$ref": "#/$defs/directoryRef",
+                "default": "TARGETDIR"
+              }
+            },
+            "required": [
+              "command"
+            ],
+            "additionalProperties": false
+          },
+          "execProperty": {
+            "type": "object",
+            "properties": {
+              "property": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "property"
+            ],
+            "additionalProperties": false
+          },
+          "dll": {
+            "type": "object",
+            "properties": {
+              "binary": {
+                "type": "string",
+                "description": "A binaries key."
+              },
+              "entry": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "binary",
+              "entry"
+            ],
+            "additionalProperties": false
+          },
+          "execute": {
+            "anyOf": [
+              {
+                "enum": [
+                  "immediate",
+                  "deferred",
+                  "rollback",
+                  "commit"
+                ]
+              },
+              {
+                "$ref": "#/$defs/var"
+              }
+            ],
+            "default": "immediate"
+          },
+          "impersonate": {
+            "$ref": "#/$defs/bool",
+            "default": true
+          },
+          "return": {
+            "anyOf": [
+              {
+                "enum": [
+                  "check",
+                  "ignore",
+                  "asyncWait",
+                  "asyncNoWait"
+                ]
+              },
+              {
+                "$ref": "#/$defs/var"
+              }
+            ],
+            "description": "Required for exec and execProperty."
+          },
+          "hideTarget": {
+            "$ref": "#/$defs/bool"
+          },
+          "once": {
+            "anyOf": [
+              {
+                "enum": [
+                  "firstSequence",
+                  "oncePerProcess",
+                  "clientRepeat"
+                ]
+              },
+              {
+                "$ref": "#/$defs/var"
+              }
+            ]
+          },
+          "schedule": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sequence": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "execute",
+                        "ui",
+                        "adminExecute",
+                        "adminUI"
+                      ]
+                    },
+                    {
+                      "$ref": "#/$defs/var"
+                    }
+                  ]
+                },
+                "before": {
+                  "type": "string"
+                },
+                "after": {
+                  "type": "string"
+                },
+                "at": {
+                  "$ref": "#/$defs/int",
+                  "description": "An absolute sequence number, or -1 to -4 in UI sequences."
+                },
+                "condition": {
+                  "$ref": "#/$defs/condition"
+                }
+              },
+              "required": [
+                "sequence"
+              ],
+              "additionalProperties": false,
+              "oneOf": [
+                {
+                  "required": [
+                    "before"
+                  ]
+                },
+                {
+                  "required": [
+                    "after"
+                  ]
+                },
+                {
+                  "required": [
+                    "at"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "required": [
+              "setProperty"
+            ]
+          },
+          {
+            "required": [
+              "setDirectory"
+            ]
+          },
+          {
+            "required": [
+              "error"
+            ]
+          },
+          {
+            "required": [
+              "exec"
+            ]
+          },
+          {
+            "required": [
+              "execProperty"
+            ]
+          },
+          {
+            "required": [
+              "dll"
+            ]
+          }
+        ],
+        "allOf": [
+          {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "exec"
+                  ]
+                },
+                {
+                  "required": [
+                    "execProperty"
+                  ]
+                }
+              ]
+            },
+            "then": {
+              "required": [
+                "return"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "icons": {
+      "type": "object",
+      "propertyNames": {
+        "maxLength": 57
+      },
+      "additionalProperties": {
+        "type": "string",
+        "description": "Source path."
+      }
+    },
+    "binaries": {
+      "type": "object",
+      "propertyNames": {
+        "maxLength": 55
+      },
+      "additionalProperties": {
+        "type": "string",
+        "description": "Source path."
+      }
+    },
+    "firewall": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "component": {
+            "type": "string",
+            "description": "The rule follows this component's state."
+          },
+          "program": {
+            "type": "string"
+          },
+          "protocol": {
+            "anyOf": [
+              {
+                "enum": [
+                  "tcp",
+                  "udp",
+                  "any"
+                ]
+              },
+              {
+                "$ref": "#/$defs/var"
+              }
+            ]
+          },
+          "port": {
+            "type": [
+              "string",
+              "number"
+            ]
+          },
+          "remoteAddresses": {
+            "type": "string",
+            "description": "Empty means any."
+          },
+          "profiles": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "all",
+                      "domain",
+                      "private",
+                      "public"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/var"
+                  }
+                ]
+              },
+              {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "all",
+                        "domain",
+                        "private",
+                        "public"
+                      ]
+                    },
+                    {
+                      "$ref": "#/$defs/var"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "component",
+          "program"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "wizard": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "minimal",
+                "featureTree"
+              ]
+            },
+            {
+              "$ref": "#/$defs/var"
+            }
+          ]
+        },
+        "dialogs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/identifier"
+              },
+              "title": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "after": {
+                "type": "string",
+                "description": "The wizard dialog this one follows."
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "property": {
+                      "type": "string",
+                      "description": "A public property."
+                    },
+                    "label": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "property"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "after"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$",
+            "maxLength": 31
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Column type in .idt notation: s72, I2, L0, V0, ...",
+                  "pattern": "^([sSlL]\\d+|[iI][24]|[vV]0)$"
+                },
+                "key": {
+                  "$ref": "#/$defs/bool"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 31
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": [
+                  "string",
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "required": [
+          "name",
+          "columns"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "product",
+    "package"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "bool": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/$defs/var"
+        }
+      ]
+    },
+    "condition": {
+      "type": "string",
+      "description": "A Windows Installer condition."
+    },
+    "directory": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Directory key and the property that holds its path."
+        },
+        "name": {
+          "type": "string",
+          "description": "Directory name, `short|long` allowed. Required below the top level."
+        },
+        "configurable": {
+          "$ref": "#/$defs/bool",
+          "description": "Public and Secure, so it can be set on the command line and in the UI.",
+          "default": false
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/directory"
+          }
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "directoryRef": {
+      "type": "string",
+      "description": "A directory id."
+    },
+    "feature": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Feature id, at most 38 characters.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$",
+          "maxLength": 38
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "level": {
+          "$ref": "#/$defs/int",
+          "description": "0 disables the feature.",
+          "default": 1
+        },
+        "display": {
+          "anyOf": [
+            {
+              "enum": [
+                "expanded",
+                "collapsed",
+                "hidden"
+              ]
+            },
+            {
+              "$ref": "#/$defs/var"
+            }
+          ],
+          "default": "collapsed"
+        },
+        "directory": {
+          "$ref": "#/$defs/directoryRef"
+        },
+        "allowAbsent": {
+          "$ref": "#/$defs/bool",
+          "default": true
+        },
+        "allowAdvertise": {
+          "$ref": "#/$defs/bool",
+          "default": false
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "A component id."
+          }
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/feature"
+          }
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "guid": {
+      "anyOf": [
+        {
+          "type": "string",
+          "description": "A GUID, with or without braces, in any case.",
+          "pattern": "^\\{?[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\\}?$"
+        },
+        {
+          "$ref": "#/$defs/var"
+        }
+      ]
+    },
+    "guidOrAuto": {
+      "anyOf": [
+        {
+          "const": "auto"
+        },
+        {
+          "$ref": "#/$defs/guid"
+        }
+      ]
+    },
+    "identifier": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$",
+          "maxLength": 72
+        },
+        {
+          "$ref": "#/$defs/var"
+        }
+      ]
+    },
+    "int": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "$ref": "#/$defs/var"
+        }
+      ]
+    },
+    "stringList": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "upgradeCode": {
+      "description": "A GUID that never changes for a product. The nil GUID is rejected.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/guid"
+        },
+        {
+          "not": {
+            "enum": [
+              "00000000-0000-0000-0000-000000000000",
+              "{00000000-0000-0000-0000-000000000000}"
+            ]
+          }
+        }
+      ]
+    },
+    "var": {
+      "type": "string",
+      "description": "A value with a ${NAME} variable. It is checked after substitution, by go-msi validate.",
+      "pattern": "\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}"
+    },
+    "version": {
+      "anyOf": [
+        {
+          "type": [
+            "string",
+            "number"
+          ],
+          "description": "major.minor.build[.revision]",
+          "pattern": "^\\d+(\\.\\d+){1,3}$"
+        },
+        {
+          "$ref": "#/$defs/var"
+        }
+      ]
+    },
+    "permissions": {
+      "type": "object",
+      "description": "An MsiLockPermissionsEx row: the SDDL replaces the inherited ACL of the object (SEC-01).",
+      "properties": {
+        "sddl": {
+          "type": "string",
+          "description": "SDDL text. <DOMAIN\\\\account> forms are resolved at install time; [Property] references are not."
+        },
+        "condition": {
+          "$ref": "#/$defs/condition"
+        }
+      },
+      "required": [
+        "sddl"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
