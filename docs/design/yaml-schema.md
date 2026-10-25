@@ -133,12 +133,12 @@ package:
 
 ### 3.2 Editor support
 
-[`config/schema.json`](../../config/schema.json) is a JSON Schema of this
+[`pkg/config/schema.json`](../../pkg/config/schema.json) is a JSON Schema of this
 format. Editors that use the YAML language server pick it up from a comment
 in the first line:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/config/schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/pkg/config/schema.json
 schema: go-msi/v1
 ```
 

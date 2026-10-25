@@ -40,19 +40,24 @@ flowchart LR
 
 | Package | Responsibility | Spec | Depends on |
 |---|---|---|---|
-| `cfb` | Compound File Binary v3/v4 writer and reader: sectors, FAT, DIFAT, mini stream, red-black directory tree, name comparison | §2 | stdlib |
-| `cab` | Cabinet writer and reader: one folder per cabinet, stored or MSZIP blocks with carried DEFLATE history, checksums on every block | §5 | stdlib (`compress/flate`) |
-| `summary` | `\u0005SummaryInformation` property-set writer and reader (PIDs 1–19, VT_I2/I4/LPSTR/FILETIME) | §4 | stdlib |
-| `msidb` | The database: column types, typed rows, stream-name encoding, string pool with code pages, catalog, column-major table streams, binary streams, embedded streams; plus a reader that decodes a package back into tables | §3 | `cfb`, `summary`, `golang.org/x/text` for code pages |
-| `schema` | Column definitions and `_Validation` metadata of every standard table the builder can write | §6 | stdlib |
-| `pe` | PE version resource reader: file version, translations, "is this a PE file", PE checksum presence | §11.5 | stdlib |
-| `condition` | Parser for the condition grammar, used to reject conditions the engine would ignore | §8.8 | stdlib |
-| `sequence` | Numbering of sequence tables: fixed standard actions plus before/after chains, overlap and window checks | §9.2, §11.7 | stdlib |
-| `builder` | The config-to-tables layer: identities, directories and short names, components and GUIDs, files, media and cabinets, registry, services, environment, upgrades, custom actions, helpers, `_Validation`, summary; then the package bytes and a verification pass | §6–§11 | everything above |
+| `pkg/cfb` | Compound File Binary v3/v4 writer and reader: sectors, FAT, DIFAT, mini stream, red-black directory tree, name comparison | §2 | stdlib |
+| `pkg/cab` | Cabinet writer and reader: one folder per cabinet, stored or MSZIP blocks with carried DEFLATE history, checksums on every block | §5 | stdlib (`compress/flate`) |
+| `pkg/summary` | `\u0005SummaryInformation` property-set writer and reader (PIDs 1–19, VT_I2/I4/LPSTR/FILETIME) | §4 | stdlib |
+| `pkg/msidb` | The database: column types, typed rows, stream-name encoding, string pool with code pages, catalog, column-major table streams, binary streams, embedded streams; plus a reader that decodes a package back into tables | §3 | `cfb`, `summary`, `golang.org/x/text` for code pages |
+| `internal/schema` | Column definitions and `_Validation` metadata of every standard table the builder can write | §6 | stdlib |
+| `internal/pe` | PE version resource reader: file version, translations, "is this a PE file", PE checksum presence | §11.5 | stdlib |
+| `internal/condition` | Parser for the condition grammar, used to reject conditions the engine would ignore | §8.8 | stdlib |
+| `internal/sequence` | Numbering of sequence tables: fixed standard actions plus before/after chains, overlap and window checks | §9.2, §11.7 | stdlib |
+| `pkg/builder` | The config-to-tables layer: identities, directories and short names, components and GUIDs, files, media and cabinets, registry, services, environment, upgrades, custom actions, helpers, `_Validation`, summary; then the package bytes and a verification pass | §6–§11 | everything above |
 | `cmd/go-msi` | CLI: `build`, `validate`, `inspect` | | `builder`, `msidb` |
 
-`config` (PR #2) stays as it is: the builder consumes a validated `*config.Config`
+`pkg/config` (PR #2) stays as it is: the builder consumes a validated `*config.Config`
 and never reads YAML.
+
+Packages under `pkg/` are the importable API (config, builder and the format
+packages its results expose). Packages under `internal/` (`schema`, `pe`,
+`condition`, `sequence`, `codepage`, `artwork`, `testpe`) are implementation
+details and may change without notice.
 
 ### 1.1 `cfb`
 
@@ -202,7 +207,7 @@ Pipeline, each step a file of its own:
    typed kinds, firewall `netsh` actions with rollback, `ARPINSTALLLOCATION`.
 8. **Sequences**: the standard actions each used table needs (§9.3), the
    chains, `sequence.Number`, the window checks.
-9. **UI**: the wizard pages as table data (`builder/ui*.go`): the flow of
+9. **UI**: the wizard pages as table data (`pkg/builder/ui*.go`): the flow of
    pages, `ui.dialogs` inserted after their anchor, the maintenance menu, the
    end, cancel, error, files-in-use and Restart Manager dialogs, the bitmaps
    drawn by `artwork` from a palette, and the ICE-style self-checks.
@@ -236,7 +241,7 @@ Only the standard library `flag` package is used.
   Golden hashes guard determinism: two builds with the same
   `SOURCE_DATE_EPOCH` are byte-identical.
 - **Windows runner** (`.github/workflows/ci.yml`, `windows-latest`): the
-  same tests, plus `//go:build windows` tests in `builder/nativetest` that open
+  same tests, plus `//go:build windows` tests in `pkg/builder/nativetest` that open
   the built package with `msi.dll` (`MsiOpenDatabaseW`, views over every table,
   `MsiGetSummaryInformationW`, `MsiRecordReadStream` on the cabinet) and
   install and uninstall the minimal example silently (`msiexec /i … /qn`,
@@ -283,4 +288,4 @@ transforms, merge modules, bundles.
   independent readers in `msidb` and `cab`. This catches the two silent
   failures of CAB-02 and CAB-04 without any Windows machine.
 - **Windows-only code is test-only** (`//go:build windows` under
-  `builder/nativetest`), so the product stays cross-OS.
+  `pkg/builder/nativetest`), so the product stays cross-OS.
