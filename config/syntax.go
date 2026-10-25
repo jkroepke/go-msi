@@ -130,18 +130,18 @@ func validLongName(s string) bool {
 		strings.TrimRight(s, ". ") == s
 }
 
-// validShortName checks an 8.3 name (specification section 11.3).
-func validShortName(s string) bool {
-	if strings.ContainsAny(s, `\/:*?"<>|+,;=[] `) {
+// isShortName checks an 8.3 name (specification section 11.3).
+func isShortName(name string) bool {
+	if strings.ContainsAny(name, `\/:*?"<>|+,;=[] `) {
 		return false
 	}
 
-	base, ext, hasExt := strings.Cut(s, ".")
+	base, ext, hasExt := strings.Cut(name, ".")
 	if hasExt && (ext == "" || len(ext) > 3 || strings.Contains(ext, ".")) {
 		return false
 	}
 
-	for _, r := range s {
+	for _, r := range name {
 		if r < 0x21 || r > 0x7E {
 			return false
 		}
@@ -157,5 +157,5 @@ func validName(s string) bool {
 		return validLongName(s)
 	}
 
-	return validShortName(short) && validLongName(long)
+	return isShortName(short) && validLongName(long)
 }

@@ -91,7 +91,7 @@ func newRefs(cfg *Config) *refs {
 		}
 	}
 
-	walkFeatures(cfg.Features, func(f *Feature, _ int) {
+	eachFeature(cfg.Features, func(f *Feature, _ int) {
 		for _, c := range f.Components {
 			r.inFeature[c] = true
 		}
@@ -544,7 +544,7 @@ func (v *validator) componentFiles(cfg *Config, p string, c *Component, ids, tar
 			v.errorf(fp+".name", "%q is not a valid file name or short|long pair", name)
 		}
 
-		if !*cfg.Package.LongFileNames && !strings.Contains(name, "|") && !validShortName(name) {
+		if !*cfg.Package.LongFileNames && !strings.Contains(name, "|") && !isShortName(name) {
 			v.errorf(fp+".name", "longFileNames is false, so %q needs a short name", name)
 		}
 

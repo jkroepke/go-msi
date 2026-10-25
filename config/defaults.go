@@ -120,17 +120,17 @@ func ApplyDefaults(cfg *Config) {
 		}
 	}
 
-	walkFeatures(cfg.Features, func(f *Feature, _ int) {
-		if f.Level == nil {
-			f.Level = ptr(1)
+	eachFeature(cfg.Features, func(feature *Feature, _ int) {
+		if feature.Level == nil {
+			feature.Level = new(1)
 		}
 
-		if f.Display == "" {
-			f.Display = "collapsed"
+		if feature.Display == "" {
+			feature.Display = "collapsed"
 		}
 
-		if f.AllowAbsent == nil {
-			f.AllowAbsent = ptr(true)
+		if feature.AllowAbsent == nil {
+			feature.AllowAbsent = new(true)
 		}
 	})
 
@@ -257,9 +257,9 @@ func defaultComponent(c *Component) {
 	}
 }
 
-// walkFeatures calls fn for every feature, depth first, with its depth
+// eachFeature calls fn for every feature, depth first, with its depth
 // starting at 1.
-func walkFeatures(features []*Feature, fn func(*Feature, int)) {
+func eachFeature(features []*Feature, fn func(*Feature, int)) {
 	var walk func([]*Feature, int)
 
 	walk = func(fs []*Feature, depth int) {
