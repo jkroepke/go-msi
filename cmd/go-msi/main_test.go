@@ -204,3 +204,20 @@ func TestSignVerify(t *testing.T) {
 		}
 	}
 }
+
+func TestFlagErrorsGoToStderr(t *testing.T) {
+	t.Parallel()
+
+	for _, cmd := range []string{"build", "validate", "inspect", "sign", "verify"} {
+		var stdout, stderr bytes.Buffer
+
+		if code := run([]string{cmd, "--no-such-flag"}, &stdout, &stderr); code == 0 {
+			t.Errorf("%s: exit 0 for an unknown flag", cmd)
+		}
+
+		// "Usage of" is the FlagSet's own output; run adds the error line.
+		if stdout.Len() != 0 || !strings.Contains(stderr.String(), "Usage of "+cmd) {
+			t.Errorf("%s: stdout %q, stderr %q", cmd, stdout.String(), stderr.String())
+		}
+	}
+}

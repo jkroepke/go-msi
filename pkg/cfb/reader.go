@@ -119,6 +119,7 @@ func Read(raw []byte) (*File, error) { //nolint:maintidx,cyclop,gocyclo,gocognit
 
 	rdr := &reader{raw: raw, ss: 1 << shift}
 	file := &File{Version: major, SectorSize: rdr.ss, byName: make(map[string]*Entry)}
+	folded := make(map[string]bool)
 
 	numFAT := order.Uint32(raw[0x2C:])
 	firstDir := order.Uint32(raw[0x30:])
@@ -346,9 +347,13 @@ func Read(raw []byte) (*File, error) { //nolint:maintidx,cyclop,gocyclo,gocognit
 		}
 
 		if ent.Parent == 0 {
-			if _, dup := file.byName[ent.Name]; dup {
+			// Siblings are compared ignoring ASCII case, like Write does.
+			key := foldName(ent.Name)
+			if folded[key] {
 				return nil, fmt.Errorf("cfb: duplicate stream name %q", ent.Name)
 			}
+
+			folded[key] = true
 
 			file.byName[ent.Name] = ent
 			file.streams = append(file.streams, Stream{Name: ent.Name, Data: ent.Data})
@@ -356,4 +361,15 @@ func Read(raw []byte) (*File, error) { //nolint:maintidx,cyclop,gocyclo,gocognit
 	}
 
 	return file, nil
+}
+
+// foldName is name with ASCII letters in upper case, the key under which
+// Compare treats two names as equal.
+func foldName(name string) string {
+	units := utf16.Encode([]rune(name))
+	for i, unit := range units {
+		units[i] = upper(unit)
+	}
+
+	return string(utf16.Decode(units))
 }
