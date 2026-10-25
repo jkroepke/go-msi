@@ -446,7 +446,7 @@ Other groups (COM, ODBC, security, signatures, patching, merge modules) are in c
 - Invalid SDDL gives 1943, two true rows for one object 1942, and both permission tables in one package 1941; each fails in `InstallFiles` with 1603 (observed, SEC-01).
 - A deny ACE for `BU` on a file makes uninstall log `Info 1321 … insufficient privileges … System Error 5`, exit 0 and leave the file behind (observed, SEC-01). Writers SHOULD warn on deny ACEs for broad groups (recommended; only `BU` was tested).
 
-### 6.3 `_Validation` and the schema files
+### 6.3 `_Validation` and the table definitions
 
 Validators (ICE03, ICE06, ICE32) read `_Validation`, the installer does not, and a complete database SHOULD include it. Its key is `Table s32` + `Column s32`. The other columns are `Nullable s4`, `MinValue I4`, `MaxValue I4`, `KeyTable S255`, `KeyColumn I2`, `Category S32`, `Set S255` and `Description S255`.
 
@@ -1624,7 +1624,7 @@ A policy block gives a different message ("The system administrator has set poli
 
 ## 18. Reference chapters
 
-The detailed chapters and schema files referred to above are not contained in this repository. Their contents and hash vectors are therefore reference claims until the complete source inputs and validation artifacts are published.
+The detailed chapters referred to above are not contained in this repository. Their contents and hash vectors are therefore reference claims until the complete source inputs and validation artifacts are published.
 
 | Chapter | Subject |
 | --- | --- |
