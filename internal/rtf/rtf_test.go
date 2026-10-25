@@ -58,12 +58,12 @@ func TestCheck(t *testing.T) {
 	for _, tc := range []struct {
 		name, doc, want string
 	}{
-		{"valid", `{\rtf1\ansi{\fonttbl{\f0 Arial;}}\f0 te\'e9 \{x\} \\}` + "\r\n", ""},
+		{"valid", `{\rtf1\ansi{\fonttbl{\f0 Arial;}}\f0 abc\'e9 \{x\} \\}` + "\r\n", ""},
 		{"bom", "\xEF\xBB\xBF{\\rtf1 x}", ""},
 		{"trailing NUL", "{\\rtf1 x}\r\n\x00", ""},
 		{"not rtf", `hello`, `does not start`},
-		{"non-ASCII", "{\\rtf1 te\xE9}", "byte 0xE9 on line 1"},
-		{"control byte", "{\\rtf1\n te\x01}", "byte 0x01 on line 2"},
+		{"non-ASCII", "{\\rtf1 abc\xE9}", "byte 0xE9 on line 1"},
+		{"control byte", "{\\rtf1\n abc\x01}", "byte 0x01 on line 2"},
 		{"unclosed", `{\rtf1 {x}`, "1 unclosed"},
 		{"extra close", `{\rtf1 x}}`, "text after"},
 		{"trailing text", `{\rtf1 x} more`, "text after"},

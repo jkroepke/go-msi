@@ -258,7 +258,7 @@ func TestThemeAndLicenseErrors(t *testing.T) {
 		{"banner ratio", map[string][]byte{"banner.bmp": picturePNG(t, 493, 312, color.NRGBA{A: 0xFF})}, "stretched to 370×44 dialog units, so use 493×58", false},
 		{"dialog not a picture", map[string][]byte{"dialog.bmp": []byte("GIF89a")}, "not a BMP, PNG or JPEG", false},
 		{"small banner", map[string][]byte{"banner.bmp": picturePNG(t, 370, 44, color.NRGBA{A: 0xFF})}, "enlarged on screen", true},
-		{"license not ASCII", map[string][]byte{"LICENSE.rtf": []byte("{\\rtf1 te\xE9}")}, "byte 0xE9", false},
+		{"license not ASCII", map[string][]byte{"LICENSE.rtf": []byte("{\\rtf1 abc\xE9}")}, "byte 0xE9", false},
 		{"license braces", map[string][]byte{"LICENSE.rtf": []byte(`{\rtf1 {x}`)}, "unclosed", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
