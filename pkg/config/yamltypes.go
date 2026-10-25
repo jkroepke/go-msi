@@ -151,6 +151,16 @@ func (a *RecoveryAction) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+// MarshalYAML writes the form UnmarshalYAML reads, so that the product code
+// derived from the marshalled config sees every action.
+func (a RecoveryAction) MarshalYAML() (any, error) {
+	if a.Restart == nil {
+		return a.Action, nil
+	}
+
+	return map[string]string{"restart": time.Duration(*a.Restart).String()}, nil
+}
+
 // Property is one Property table entry and its flags.
 type Property struct {
 	Value  string `yaml:"value"`

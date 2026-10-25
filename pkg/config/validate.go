@@ -820,6 +820,10 @@ func (v *validator) service(p string, s *Service, keyFile *File, perUser bool) {
 			v.errorf(p+".recovery.resetAfterDays", "must not be negative")
 		}
 
+		if rec.ResetAfterDays > math.MaxInt32/secondsPerDay {
+			v.errorf(p+".recovery.resetAfterDays", "is too long for sc.exe")
+		}
+
 		if rec.ResetAfter != nil {
 			if rec.ResetAfterDays != 0 {
 				v.errorf(p+".recovery.resetAfter", "set resetAfter or resetAfterDays, not both")
@@ -829,6 +833,9 @@ func (v *validator) service(p string, s *Service, keyFile *File, perUser bool) {
 		}
 	}
 }
+
+// secondsPerDay converts resetAfterDays to the seconds sc.exe takes.
+const secondsPerDay = 86400
 
 // recoveryDuration checks a delay or reset period that sc.exe takes as a
 // whole number of units (milliseconds or seconds) in a 32-bit value.

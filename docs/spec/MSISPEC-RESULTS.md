@@ -196,7 +196,8 @@ Silent-failure cases a producer has to guard against itself:
 | RUN-24 | Confirmed | Only `NeverOverwrite` + `Permanent` keeps an edit with early removal; `NeverOverwrite` alone loses the resource; [details](#use-case-gap-cases-run-24-to-run-27) |
 | RUN-25 | Confirmed | `AppSearch` into `INSTALLDIR` overrides the command line; the guarded type-51 form does not; no `Signature` table gives 2228/1603; [details](#use-case-gap-cases-run-24-to-run-27) |
 | RUN-26 | Confirmed | `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-run-24-to-run-27) |
-| RUN-27 | Confirmed | Per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-run-24-to-run-27) || SEC-01 | Confirmed | File, [CreateFolder](msitest/results/SEC-01/createfolder/log.md), [Registry](msitest/results/SEC-01/registry/log.md) and [ServiceInstall](msitest/results/SEC-01/service/log.md) rows get the authored DACL; [`/fa` and `/fvomus` restore it](msitest/results/SEC-01/file/log.md); [owner and group](msitest/results/SEC-01/file-owner-group/log.md) are set; `[Property]` stays literal (1943) but [`<[%USERDOMAIN]\[%USERNAME]>`](msitest/results/SEC-01/account-angle-env/log.md) and [`<BUILTIN\Users>`](msitest/results/SEC-01/account-angle-builtin/log.md) resolve; invalid SDDL 1943, two true rows 1942, both tables 1941; [deny ACE for `BU`](msitest/results/SEC-01/file-deny-ace/log.md) leaves the file on uninstall |
+| RUN-27 | Confirmed | Per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-run-24-to-run-27) |
+| SEC-01 | Confirmed | File, [CreateFolder](msitest/results/SEC-01/createfolder/log.md), [Registry](msitest/results/SEC-01/registry/log.md) and [ServiceInstall](msitest/results/SEC-01/service/log.md) rows get the authored DACL; [`/fa` and `/fvomus` restore it](msitest/results/SEC-01/file/log.md); [owner and group](msitest/results/SEC-01/file-owner-group/log.md) are set; `[Property]` stays literal (1943) but [`<[%USERDOMAIN]\[%USERNAME]>`](msitest/results/SEC-01/account-angle-env/log.md) and [`<BUILTIN\Users>`](msitest/results/SEC-01/account-angle-builtin/log.md) resolve; invalid SDDL 1943, two true rows 1942, both tables 1941; [deny ACE for `BU`](msitest/results/SEC-01/file-deny-ace/log.md) leaves the file on uninstall |
 | SIG-01 | Confirmed | Windows Server 2025 CI runner, `pkg/builder/nativetest/sign_windows_test.go`: go-msi recomputes the digest of a `signtool sign /fd SHA256` package; a go-msi signature passes WinVerifyTrust and `Get-AuthenticodeSignature` |
 | SIG-02 | Confirmed | `signtool` writes `MsiDigitalSignatureEx` by default, for `/fd SHA1` (20 bytes) and `/fd SHA256` (32 bytes); go-msi verifies P and D of both |
 | SIG-03 | Confirmed | A basic-mode go-msi signature stays valid after a v3 re-layout and a reversed stream order; signtool's extended signature stays valid after a v4 to v3 re-layout that keeps the directory times |
@@ -219,7 +220,8 @@ Silent-failure cases a producer has to guard against itself:
 Run on 2026-10-25 on Windows Server 2025 Standard Evaluation 10.0.26100 by
 [`msitest`](msitest/cases_gaps.go). They check the behaviour the YAML options
 `preserve`, `installDir.remember`, `purge` and per-step `recovery` rely on.
-Each line is the case's own `RESULT` line.
+The tables summarise the cases' `RESULT` lines; the
+per-variant `log.md` files also hold the `msiexec` log lines quoted below.
 
 **RUN-24, user edits across a major upgrade.** v1 installs `config.txt` and an
 HKLM value `Arguments` (each the key path of its own component, `MsiFileHash`

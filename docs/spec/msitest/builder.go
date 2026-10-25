@@ -72,6 +72,7 @@ type pkg struct {
 	CabOverride    []byte
 	SkipCab        bool
 	CompAttr       map[string]int // extra Component attribute bits per file key
+	NoSignature    bool           // leave out the empty Signature table AppSearch needs
 }
 
 func newGUID() string {
@@ -314,7 +315,7 @@ func (p *pkg) build(out string) error {
 	for k, v := range p.Extra {
 		tables[k] = append(tables[k], v...)
 	}
-	if _, ok := tables["AppSearch"]; ok {
+	if _, ok := tables["AppSearch"]; ok && !p.NoSignature {
 		// AppSearch queries Signature even for registry searches (RUN-25):
 		// without the table it fails with 2228 and 1603.
 		if _, ok := tables["Signature"]; !ok {

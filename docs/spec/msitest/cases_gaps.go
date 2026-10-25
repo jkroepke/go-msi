@@ -110,7 +110,8 @@ func caseRun24() {
 		r2 := runMsiexec(c, "install-v2.log", "/i", m2)
 		c.logf("RESULT %s upgrade: v2 exit %d, v1 registered=%v, config=%q, registry=%q", v.name, r2.Exit, registered(p1.ProductCode), fileState(cfg), regValue(preserveKey, "Arguments"))
 		r3 := runMsiexec(c, "uninstall-v2.log", "/x", p2.ProductCode)
-		c.logf("RESULT %s uninstall: exit %d, config=%q, registry=%q", v.name, r3.Exit, fileState(cfg), regValue(preserveKey, "Arguments"))
+		c.logf("RESULT %s uninstall: exit %d, v2 registered=%v, readme present=%v, config=%q, registry=%q", v.name, r3.Exit,
+			registered(p2.ProductCode), exists(filepath.Join(dir, "readme.txt")), fileState(cfg), regValue(preserveKey, "Arguments"))
 		removeProduct(c, p2.ProductCode)
 		removeProduct(c, p1.ProductCode)
 		os.Remove(cfg)
@@ -135,6 +136,7 @@ func caseRun25() {
 	}{
 		{"none", "none", ""},
 		{"direct", "direct", ""},
+		{"direct-nosignature", "direct-nosignature", ""},
 		{"direct-cmdline", "direct", other},
 		{"guarded", "guarded", ""},
 		{"guarded-cmdline", "guarded", other},
@@ -152,7 +154,10 @@ func caseRun25() {
 				// 2 = raw value, 16 = 64-bit view.
 				p.Extra["RegLocator"] = [][]string{{"S_rem", "2", rememberKey, "InstallDir", "18"}}
 				p.ExtraSequence = append(p.ExtraSequence, []string{"AppSearch", "", "50"})
-				if v.mode == "direct" {
+				if v.mode == "direct-nosignature" {
+					p.NoSignature = true
+				}
+				if v.mode == "direct" || v.mode == "direct-nosignature" {
 					p.Extra["AppSearch"] = [][]string{{"INSTALLDIR", "S_rem"}}
 					return
 				}
@@ -280,6 +285,8 @@ func caseRun27() {
 		{"per-step", "reset= 3600 actions= restart/60000/restart/300000/restart/300000"},
 		{"two-steps", "reset= 86400 actions= restart/1000/none/0"},
 		{"infinite-reset", "reset= INFINITE actions= restart/5000"},
+		{"zero-reset", "reset= 0 actions= restart/1000/restart/2000"},
+		{"max-reset", "reset= 2147483647 actions= restart/2147483647"},
 	} {
 		c := newCase("RUN-27", v.name)
 		p := &pkg{Name: "run27", Is64: true, Files: svcPayload()}
@@ -294,7 +301,7 @@ func caseRun27() {
 		r := runMsiexec(c, "install.log", "/i", m)
 		c.logf("RESULT %s: install %d; sc qfailure: %s", v.name, r.Exit, oneLine(scq("qfailure", svcName)))
 		u := runMsiexec(c, "uninstall.log", "/x", m)
-		c.logf("uninstall %d; service: %s", u.Exit, svcState())
+		c.logf("RESULT %s: uninstall %d; service: %s", v.name, u.Exit, svcState())
 		if svcState() != "not installed" {
 			exec.Command("sc.exe", "stop", svcName).Run()
 			scq("delete", svcName)

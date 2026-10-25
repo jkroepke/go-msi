@@ -236,6 +236,10 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [{restart: 600h}]}}]\n    files:", 1),
 			e, "components[0].services[0].recovery.actions[0].restart", "too long",
 		},
+		"recovery reset days too long": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {resetAfterDays: 30000, actions: [restart]}}]\n    files:", 1),
+			e, "components[0].services[0].recovery.resetAfterDays", "too long",
+		},
 		"recovery four steps": {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [restart, restart, restart, restart]}}]\n    files:", 1),
 			e, "components[0].services[0].recovery.actions", "one to three",

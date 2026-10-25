@@ -404,7 +404,7 @@ services:
       deleteOnUninstall: true
       wait: true
     recovery:
-      resetAfter: 24h            # or resetAfterDays: 1; 0 never resets
+      resetAfter: 24h            # or resetAfterDays: 1
       actions:                   # one to three steps
         - restart                # waits restartDelay
         - { restart: 5m }        # a delay for this step only
