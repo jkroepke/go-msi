@@ -725,7 +725,7 @@ ui:
 
 | Picture | Control | Pixels at 96 dpi | Default |
 |---|---|---|---|
-| `banner` | `BannerBmp`, 370×44 dialog units at the top of every inner page; the title and description are drawn over its left part | 493×58 | paper with an accent line and a mark at the right |
+| `banner` | `BannerBmp`, 370×44 dialog units at the top of every inner page; the title and the two-line description are drawn over x 15 to 325, so a logo belongs in the right 45 units (60 pixels) or behind light text | 493×58 | paper with an accent line and a mark at the right |
 | `dialog` | `DialogBmp`, 370×234 dialog units, the whole welcome, resume and finish pages above the buttons; the title and text are drawn over it from 135 units on, so the picture's own art stays in the left 130 units | 493×312 | the side panel gradient in the left 123 units, paper to the right |
 
 These are the sizes that other installer toolkits use for the same two
