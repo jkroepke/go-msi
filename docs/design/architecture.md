@@ -1,8 +1,10 @@
 # go-msi writer architecture and implementation plan
 
 go-msi turns one YAML file ([`yaml-schema.md`](yaml-schema.md)) into an
-`.msi` package. It only builds packages: it never opens, installs or executes
-one, except in tests that run on a disposable Windows machine. Everything is
+`.msi` package. It only builds packages and reads them back (`inspect`, the
+self-check): it never installs or executes one. Only its tests do: the
+Windows tests without `-short` (elevated) and the Wine test
+`hack/test-wine.sh`. Everything is
 pure Go with no cgo and builds and runs on Linux, macOS and Windows.
 
 The rules come from [`docs/spec/MSISPEC.md`](../spec/MSISPEC.md) and the
@@ -12,47 +14,69 @@ never consulted (both are LGPL); Wine may run as a black-box test runtime.
 
 ## 1. Package map
 
-Each package is independently usable, has no cgo and no platform-specific
-code, and is tested on its own. Arrows point from a package to what it imports.
+Each package under `pkg/` is independently usable. Every package has no cgo,
+no package the product uses has platform-specific code, and every package
+except the test helpers is tested on its own. Arrows point from a package to what it imports. The
+diagram leaves out the test helpers: `internal/testpe` (and its
+`internal/testpe/cmd` generator) builds PE files for tests, `internal/ice`
+runs the ICE suite through msi.dll (Windows only, used by tests only), and
+`pkg/builder/nativetest` holds only the Windows msi.dll, msiexec install and
+ICE tests.
 
 ```mermaid
 flowchart LR
     cmd["cmd/go-msi<br/>CLI"] --> builder
+    cmd --> config
+    cmd --> msidb
     builder["builder<br/>config → tables → package"] --> config
     builder --> msidb
     builder --> cab
+    builder --> cfb
     builder --> schema
     builder --> pe
     builder --> condition
     builder --> sequence
     builder --> summary
+    builder --> artwork
     msidb["msidb<br/>string pool, tables, streams"] --> cfb
     msidb --> summary
-    summary["summary<br/>OLE property set"]
+    msidb --> codepage
+    summary["summary<br/>OLE property set"] --> codepage
+    codepage["codepage<br/>ANSI code pages"]
+    artwork["artwork<br/>wizard bitmaps"]
     cfb["cfb<br/>compound file"]
     cab["cab<br/>MSCAB, MSZIP"]
-    schema["schema<br/>standard tables, _Validation"]
+    schema["schema<br/>standard tables, _Validation"] --> msidb
     pe["pe<br/>version resource"]
     condition["condition<br/>grammar check"]
     sequence["sequence<br/>before/after numbering"]
-    config["config<br/>YAML (PR #2)"]
+    config["config<br/>YAML (PR #2)"] --> condition
 ```
 
 | Package | Responsibility | Spec | Depends on |
 |---|---|---|---|
-| `cfb` | Compound File Binary v3/v4 writer and reader: sectors, FAT, DIFAT, mini stream, red-black directory tree, name comparison | §2 | stdlib |
-| `cab` | Cabinet writer and reader: one folder per cabinet, stored or MSZIP blocks with carried DEFLATE history, checksums on every block | §5 | stdlib (`compress/flate`) |
-| `summary` | `\u0005SummaryInformation` property-set writer and reader (PIDs 1–19, VT_I2/I4/LPSTR/FILETIME) | §4 | stdlib |
-| `msidb` | The database: column types, typed rows, stream-name encoding, string pool with code pages, catalog, column-major table streams, binary streams, embedded streams; plus a reader that decodes a package back into tables | §3 | `cfb`, `summary`, `golang.org/x/text` for code pages |
-| `schema` | Column definitions and `_Validation` metadata of every standard table the builder can write | §6 | stdlib |
-| `pe` | PE version resource reader: file version, translations, "is this a PE file", PE checksum presence | §11.5 | stdlib |
-| `condition` | Parser for the condition grammar, used to reject conditions the engine would ignore | §8.8 | stdlib |
-| `sequence` | Numbering of sequence tables: fixed standard actions plus before/after chains, overlap and window checks | §9.2, §11.7 | stdlib |
-| `builder` | The config-to-tables layer: identities, directories and short names, components and GUIDs, files, media and cabinets, registry, services, environment, upgrades, custom actions, helpers, `_Validation`, summary; then the package bytes and a verification pass | §6–§11 | everything above |
-| `cmd/go-msi` | CLI: `build`, `validate`, `inspect` | | `builder`, `msidb` |
+| `pkg/cfb` | Compound File Binary v3/v4 writer and reader: sectors, FAT, DIFAT, mini stream, red-black directory tree, name comparison | §2 | stdlib |
+| `pkg/cab` | Cabinet writer and reader: one folder per cabinet, stored or MSZIP blocks with carried DEFLATE history, checksums on every block | §5 | stdlib (`compress/flate`) |
+| `pkg/summary` | `\u0005SummaryInformation` property-set writer and reader (PIDs 1–19, VT_I2/I4/LPSTR/FILETIME) | §4 | `internal/codepage` |
+| `pkg/msidb` | The database: column types, typed rows, stream-name encoding, string pool with code pages, catalog, column-major table streams, binary streams, embedded streams; plus a reader that decodes a package back into tables | §3 | `cfb`, `summary`, `internal/codepage` (`golang.org/x/text`) |
+| `internal/schema` | Column definitions and `_Validation` metadata of every standard table the builder can write | §6 | `msidb` |
+| `internal/pe` | PE version resource reader: file version, translations, "is this a PE file", PE checksum presence | §11.5 | stdlib |
+| `internal/condition` | Parser for the condition grammar, used to reject conditions the engine would ignore | §8.8 | stdlib |
+| `internal/sequence` | Numbering of sequence tables: fixed standard actions plus before/after chains, overlap and window checks | §9.2, §11.7 | stdlib |
+| `pkg/builder` | The config-to-tables layer: identities, directories and short names, components and GUIDs, files, media and cabinets, registry, services, environment, upgrades, custom actions, helpers, `_Validation`, summary; then the package bytes and a verification pass | §6–§11 | everything above, plus `config`, `internal/artwork` and `go.yaml.in/yaml/v3` |
+| `pkg/config` | YAML decoding, defaults and validation into a `*config.Config` | | `internal/condition`, `go.yaml.in/yaml/v3` |
+| `internal/codepage` | ANSI code page encoders for the string pool and summary | §3, §4 | `golang.org/x/text` |
+| `internal/artwork` | Draws the wizard bitmaps (our own artwork, generated in code) | | stdlib |
+| `cmd/go-msi` | CLI: `build`, `validate`, `inspect` | | `builder`, `config`, `msidb` |
 
-`config` (PR #2) stays as it is: the builder consumes a validated `*config.Config`
+`pkg/config` (PR #2) stays as it is: the builder consumes a validated `*config.Config`
 and never reads YAML.
+
+Packages under `pkg/` are the importable API: `config`, `builder` and the
+format packages `msidb`, `cfb`, `summary` and `cab`. Packages under `internal/` (`schema`, `pe`,
+`condition`, `sequence`, `codepage`, `artwork`, `testpe`, `ice`) are implementation
+details and may change without notice. `pkg/builder/nativetest` sits under
+`pkg/` only because it tests `pkg/builder`; it has no exported API.
 
 ### 1.1 `cfb`
 
@@ -170,8 +194,14 @@ after InstallFinalize, RUN-17), and ICE27 ordering.
 ### 1.9 `builder`
 
 ```go
-type Options struct { Vars map[string]string; SourceDateEpoch time.Time; Output string }
-type Result struct { Package []byte; Diagnostics config.Diagnostics; Tables []*msidb.Table }
+type Options struct { BuildTime time.Time; ToolName string; CFBVersion int; SkipVerify bool }
+type Result struct {
+    Package     []byte
+    Database    *msidb.Database
+    Diagnostics config.Diagnostics
+    ProductCode, PackageCode string
+    Files       []*fileInfo // payload files in File.Sequence order
+}
 func Build(cfg *config.Config, o Options) (*Result, error)
 ```
 
@@ -202,7 +232,7 @@ Pipeline, each step a file of its own:
    typed kinds, firewall `netsh` actions with rollback, `ARPINSTALLLOCATION`.
 8. **Sequences**: the standard actions each used table needs (§9.3), the
    chains, `sequence.Number`, the window checks.
-9. **UI**: the wizard pages as table data (`builder/ui*.go`): the flow of
+9. **UI**: the wizard pages as table data (`pkg/builder/ui*.go`): the flow of
    pages, `ui.dialogs` inserted after their anchor, the maintenance menu, the
    end, cancel, error, files-in-use and Restart Manager dialogs, the bitmaps
    drawn by `artwork` from a palette, and the ICE-style self-checks.
@@ -235,20 +265,22 @@ Only the standard library `flag` package is used.
   numbers, attribute bits, `_Validation` coverage, file-to-cabinet order.
   Golden hashes guard determinism: two builds with the same
   `SOURCE_DATE_EPOCH` are byte-identical.
-- **Windows runner** (`.github/workflows/ci.yml`, `windows-latest`): the
-  same tests, plus `//go:build windows` tests in `builder/nativetest` that open
+- **Windows runner** (`.github/workflows/ci.yaml`, `windows-latest`): the
+  same tests, plus `//go:build windows` tests in `pkg/builder/nativetest` that open
   the built package with `msi.dll` (`MsiOpenDatabaseW`, views over every table,
   `MsiGetSummaryInformationW`, `MsiRecordReadStream` on the cabinet) and
   install and uninstall the minimal example silently (`msiexec /i … /qn`,
-  verify the file, `/x`, verify removal). The runner is disposable, so
-  installing there is allowed.
+  verify the file, `/x`, verify removal). They also run the full ICE suite
+  on the examples through `internal/ice`, with the `darice.cub` that CI
+  installs from the Windows SDK (cached and checked by SHA-256). The install
+  test needs elevation; all of them are skipped with `-short`.
 - **Wine runner** (`ubuntu-latest`, `mise` installs Go; `apt` installs
   Wine): `wine msiexec /i minimal.msi /qn` as a black box, then check the file
   in the Wine prefix. `mise.toml` carries the Go version and the tasks
   (`test`, `test:wine`, `lint`) so the same commands run locally and in CI.
 - **Real experiments** on Joe's SERVER2025 dev box through Remote Control for
-  anything a runner cannot answer (services, upgrades, ICE through the
-  Windows SDK if present).
+  anything a runner cannot answer (services, upgrades, comparing the ICE
+  runner with `msival2.exe`).
 
 ## 3. Implementation steps
 
@@ -264,9 +296,10 @@ Only the standard library `flag` package is used.
 | 8 | `ui`: built-in wizards (`minimal`, `featureTree`), generated dialogs, `artwork` bitmaps | PR 2 |
 | 9 | ICE-style checks that still need the UI tables; `_Validation` for UI | PR 2 |
 | 10 | External cabinets, several media, uncompressed files | later |
+| 11 | `sign`: Authenticode signing, verification and RFC 3161 timestamps (MSISPEC §12) | done |
 
-Out of scope for good: MSIX (nfpm), signing (relic, osslsigncode), patches,
-transforms, merge modules, bundles.
+Out of scope for good: MSIX (nfpm), patches, transforms, merge modules,
+bundles.
 
 ## 4. Decisions worth recording
 
@@ -282,5 +315,6 @@ transforms, merge modules, bundles.
 - **The builder verifies its own output** by re-reading it with the
   independent readers in `msidb` and `cab`. This catches the two silent
   failures of CAB-02 and CAB-04 without any Windows machine.
-- **Windows-only code is test-only** (`//go:build windows` under
-  `builder/nativetest`), so the product stays cross-OS.
+- **Windows-only code is test-only** (`//go:build windows` in
+  `pkg/builder/nativetest`, `pkg/cab/native_windows_test.go` and the ICE
+  runner `internal/ice`, which only tests import), so the product stays cross-OS.

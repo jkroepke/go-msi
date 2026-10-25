@@ -1,0 +1,886 @@
+//go:build windows && (amd64 || arm64)
+
+package cab_test
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"io/fs"
+	"math/rand"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"testing"
+	"testing/fstest"
+	"time"
+	"unsafe"
+
+	"github.com/jkroepke/go-msi/pkg/cab"
+)
+
+// These tests check the cabinets this package writes against Windows itself:
+// cabinet.dll's FDI (the extractor Windows Installer uses, loaded through
+// syscall without cgo) and expand.exe extract them, and makecab.exe builds a
+// cabinet that this package reads. They run only without -short.
+
+var (
+	cabinetDLL  = syscall.NewLazyDLL("cabinet.dll")  //nolint:gochecknoglobals // one DLL table for the file
+	pFDICreate  = cabinetDLL.NewProc("FDICreate")    //nolint:gochecknoglobals // one DLL table for the file
+	pFDICopy    = cabinetDLL.NewProc("FDICopy")      //nolint:gochecknoglobals // one DLL table for the file
+	pFDIDestroy = cabinetDLL.NewProc("FDIDestroy")   //nolint:gochecknoglobals // one DLL table for the file
+	pFDIIsCab   = cabinetDLL.NewProc("FDIIsCabinet") //nolint:gochecknoglobals // one DLL table for the file
+	kernel32    = syscall.NewLazyDLL("kernel32.dll") //nolint:gochecknoglobals // one DLL table for the file
+	pLocalAlloc = kernel32.NewProc("LocalAlloc")     //nolint:gochecknoglobals // one DLL table for the file
+	pLocalFree  = kernel32.NewProc("LocalFree")      //nolint:gochecknoglobals // one DLL table for the file
+)
+
+// FDI notification types.
+const (
+	fdintCabinetInfo   = 0
+	fdintPartialFile   = 1
+	fdintCopyFile      = 2
+	fdintCloseFileInfo = 3
+	fdintNextCabinet   = 4
+)
+
+// fdiErrors names the FDIERROR codes.
+var fdiErrors = []string{ //nolint:gochecknoglobals // a constant table
+	"FDIERROR_NONE", "FDIERROR_CABINET_NOT_FOUND", "FDIERROR_NOT_A_CABINET", "FDIERROR_UNKNOWN_CABINET_VERSION",
+	"FDIERROR_CORRUPT_CABINET", "FDIERROR_ALLOC_FAIL", "FDIERROR_BAD_COMPR_TYPE", "FDIERROR_MDI_FAIL",
+	"FDIERROR_TARGET_FILE", "FDIERROR_RESERVE_MISMATCH", "FDIERROR_WRONG_CABINET", "FDIERROR_USER_ABORT",
+}
+
+// extracted is one file as FDI reported and wrote it.
+type extracted struct {
+	Name    string
+	Data    []byte
+	Date    uint16
+	Time    uint16
+	Attribs uint16
+	Size    int32
+}
+
+// memFile is an in-memory file behind an FDI handle.
+type memFile struct {
+	data []byte
+	pos  int
+	out  *extracted
+}
+
+// fdiState is the single in-flight extraction. FDI calls back on the calling
+// thread, so one package-level state is enough for sequential tests.
+type fdiState struct {
+	cabinet []byte
+	handles map[uintptr]*memFile
+	next    uintptr
+	files   []extracted
+	erf     *[3]int32 // erfOper, erfType, fError
+}
+
+var state *fdiState //nolint:gochecknoglobals // FDI callbacks have no user pointer
+
+// fdiNotification mirrors FDINOTIFICATION on 64-bit Windows.
+type fdiNotification struct {
+	Cb       int32
+	_        int32
+	Psz1     *byte
+	Psz2     *byte
+	Psz3     *byte
+	Pv       uintptr
+	Hf       uintptr
+	Date     uint16
+	Time     uint16
+	Attribs  uint16
+	SetID    uint16
+	ICabinet uint16
+	IFolder  uint16
+	Fdie     int32
+}
+
+// fdiCabinetInfo mirrors FDICABINETINFO.
+type fdiCabinetInfo struct {
+	Size     int32
+	Folders  uint16
+	Files    uint16
+	SetID    uint16
+	ICabinet uint16
+	Reserve  int32
+	Prev     int32
+	Next     int32
+}
+
+func cstring(ptr *byte) string {
+	if ptr == nil {
+		return ""
+	}
+
+	var n int
+	for *(*byte)(unsafe.Add(unsafe.Pointer(ptr), n)) != 0 {
+		n++
+	}
+
+	return string(unsafe.Slice(ptr, n))
+}
+
+// The callbacks. Win64 has one calling convention, so cdecl FDI callbacks are
+// plain syscall.NewCallback functions.
+// syscall.NewCallback must run once per function, so the callbacks are globals.
+var (
+	cbAlloc = syscall.NewCallback( //nolint:gochecknoglobals // see above
+		func(n uintptr) uintptr {
+			// ULONG: the upper half of the register is unspecified.
+			p, _, _ := pLocalAlloc.Call(0x40 /* LMEM_ZEROINIT */, uintptr(uint32(n)))
+
+			return p
+		})
+	cbFree = syscall.NewCallback( //nolint:gochecknoglobals // see above
+		func(p uintptr) uintptr {
+			_, _, _ = pLocalFree.Call(p)
+
+			return 0
+		})
+	cbOpen = syscall.NewCallback( //nolint:gochecknoglobals // see above
+		func(_, _, _ uintptr) uintptr {
+			// Only the cabinet is ever opened by name; extracted files are created
+			// in the COPY_FILE notification.
+			return state.open(&memFile{data: state.cabinet})
+		})
+	cbRead = syscall.NewCallback( //nolint:gochecknoglobals // see above
+		func(handle uintptr, buf *byte, n uintptr) uintptr {
+			n = uintptr(uint32(n)) // UINT: the upper half of the register is unspecified
+
+			file := state.handles[handle]
+			if file == nil {
+				return ^uintptr(0)
+			}
+
+			got := copy(unsafe.Slice(buf, n), file.data[file.pos:])
+			file.pos += got
+
+			return uintptr(got)
+		})
+	cbWrite = syscall.NewCallback( //nolint:gochecknoglobals // see above
+		func(handle uintptr, buf *byte, n uintptr) uintptr {
+			n = uintptr(uint32(n)) // UINT: the upper half of the register is unspecified
+
+			file := state.handles[handle]
+			if file == nil {
+				return ^uintptr(0)
+			}
+
+			file.data = append(file.data, unsafe.Slice(buf, n)...)
+
+			return n
+		})
+	cbClose = syscall.NewCallback( //nolint:gochecknoglobals // see above
+		func(handle uintptr) uintptr {
+			file := state.handles[handle]
+			if file == nil {
+				return ^uintptr(0)
+			}
+
+			if file.out != nil {
+				file.out.Data = file.data
+				state.files = append(state.files, *file.out)
+			}
+
+			delete(state.handles, handle)
+
+			return 0
+		})
+	cbSeek = syscall.NewCallback( //nolint:gochecknoglobals // see above
+		func(handle, dist, whence uintptr) uintptr {
+			file := state.handles[handle]
+			if file == nil {
+				return ^uintptr(0)
+			}
+
+			delta := int(int32(uint32(dist))) // long is 32 bits on Windows
+			pos := file.pos
+
+			switch int32(uint32(whence)) { // int: the upper half of the register is unspecified
+			case 0:
+				pos = delta
+			case 1:
+				pos += delta
+			case 2:
+				pos = len(file.data) + delta
+			default:
+				return ^uintptr(0)
+			}
+
+			if pos < 0 || pos > len(file.data) {
+				return ^uintptr(0)
+			}
+
+			file.pos = pos
+
+			return uintptr(pos)
+		})
+	cbNotify = syscall.NewCallback( //nolint:gochecknoglobals // see above
+		func(typ uintptr, note *fdiNotification) uintptr {
+			switch uint32(typ) { // a 32-bit enum: the upper half of the register is unspecified
+			case fdintCabinetInfo, fdintPartialFile:
+				return 0
+			case fdintCopyFile:
+				out := &extracted{Name: cstring(note.Psz1), Size: note.Cb, Date: note.Date, Time: note.Time, Attribs: note.Attribs}
+
+				return state.open(&memFile{out: out})
+			case fdintCloseFileInfo:
+				if file := state.handles[note.Hf]; file != nil && file.out != nil {
+					file.out.Data = file.data
+					state.files = append(state.files, *file.out)
+					file.out = nil
+				}
+
+				delete(state.handles, note.Hf)
+
+				return 1
+			case fdintNextCabinet:
+				return ^uintptr(0)
+			default:
+				return 0
+			}
+		})
+)
+
+func (s *fdiState) open(f *memFile) uintptr {
+	h := s.next
+	s.next++
+	s.handles[h] = f
+
+	return h
+}
+
+func (s *fdiState) errorText() string {
+	oper := int(s.erf[0])
+	name := fmt.Sprintf("FDIERROR %d", oper)
+
+	if oper >= 0 && oper < len(fdiErrors) {
+		name = fdiErrors[oper]
+	}
+
+	return fmt.Sprintf("%s (erfType %d)", name, s.erf[1])
+}
+
+// fdiExtract extracts every file of raw with cabinet.dll and returns them in
+// cabinet order.
+func fdiExtract(t *testing.T, raw []byte) ([]extracted, error) {
+	t.Helper()
+
+	state = &fdiState{cabinet: raw, handles: make(map[uintptr]*memFile), next: 1, erf: new([3]int32)}
+	defer func() { state = nil }()
+
+	hfdi, _, _ := pFDICreate.Call(cbAlloc, cbFree, cbOpen, cbRead, cbWrite, cbClose, cbSeek,
+		^uintptr(0) /* cpuUNKNOWN */, uintptr(unsafe.Pointer(state.erf)))
+	if hfdi == 0 {
+		return nil, fmt.Errorf("fdi: FDICreate failed: %s", state.errorText())
+	}
+
+	defer func() { _, _, _ = pFDIDestroy.Call(hfdi) }()
+
+	// FDIIsCabinet checks the header the way FDICopy will.
+	var info fdiCabinetInfo
+
+	hf := state.open(&memFile{data: raw})
+
+	isCab, _, _ := pFDIIsCab.Call(hfdi, hf, uintptr(unsafe.Pointer(&info)))
+	delete(state.handles, hf)
+
+	if uint32(isCab) == 0 { // BOOL
+		return nil, fmt.Errorf("fdi: FDIIsCabinet rejected the cabinet: %s", state.errorText())
+	}
+
+	if int(info.Size) != len(raw) {
+		return nil, fmt.Errorf("fdi: FDIIsCabinet reports cbCabinet %d, the cabinet has %d bytes", info.Size, len(raw))
+	}
+
+	name, _ := syscall.BytePtrFromString("test.cab")
+	path, _ := syscall.BytePtrFromString("")
+
+	copied, _, _ := pFDICopy.Call(hfdi, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(path)), 0, cbNotify, 0, 0)
+	if uint32(copied) == 0 { // BOOL
+		return nil, fmt.Errorf("fdi: FDICopy failed: %s", state.errorText())
+	}
+
+	if len(state.handles) != 0 {
+		return nil, fmt.Errorf("%d handles left open", len(state.handles))
+	}
+
+	return state.files, nil
+}
+
+// errLongPath marks an expand.exe failure on a machine without long paths
+// enabled, where the output path exceeds MAX_PATH.
+var errLongPath = errors.New("output path exceeds MAX_PATH")
+
+// expandExtract extracts raw with expand.exe into a temporary directory.
+// longestName is the longest cabinet name, used to tell a MAX_PATH failure
+// from a cabinet defect.
+func expandExtract(t *testing.T, raw []byte, longestName int) (map[string][]byte, error) {
+	t.Helper()
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "in.cab")
+	out := filepath.Join(dir, "out")
+
+	if err := os.WriteFile(src, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Mkdir(out, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.CommandContext(t.Context(), filepath.Join(os.Getenv("SystemRoot"), "System32", "expand.exe"), "-F:*", src, out) //nolint:gosec // fixed Windows tool
+	if output, err := cmd.CombinedOutput(); err != nil {
+		if entries, _ := os.ReadDir(out); len(entries) == 0 && len(out)+1+longestName >= 260 {
+			return nil, fmt.Errorf("%w: expand.exe wrote nothing under the %d-byte path %s: %w\n%s", errLongPath, len(out), out, err, output)
+		}
+
+		return nil, fmt.Errorf("expand.exe: %w\n%s", err, output)
+	}
+
+	files := make(map[string][]byte)
+
+	err := filepath.WalkDir(out, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+
+		rel, _ := filepath.Rel(out, path)
+
+		data, err := os.ReadFile(path) //nolint:gosec // a file expand.exe just wrote
+		files[filepath.ToSlash(rel)] = data
+
+		return err
+	})
+
+	if err == nil && len(files) == 0 && len(out)+1+longestName >= 260 {
+		return nil, fmt.Errorf("%w: expand.exe exited 0 but wrote nothing under the %d-byte path %s", errLongPath, len(out), out)
+	}
+
+	return files, err
+}
+
+type nativeCase struct {
+	name  string
+	files []cab.File
+	opts  cab.Options
+}
+
+func nativeCases() []nativeCase {
+	when := time.Date(2024, 6, 15, 13, 45, 30, 0, time.UTC)
+	rng := rand.New(rand.NewSource(11)) //nolint:gosec // reproducible test data
+	random := make([]byte, 100000)
+	rng.Read(random)
+
+	// Compressible data with matches that reach back across block boundaries.
+	text := bytes.Repeat([]byte("The quick brown fox jumps over the lazy dog. 0123456789\r\n"), 2000)
+
+	many := make([]cab.File, 0, 2000)
+	for i := range 2000 {
+		many = append(many, cab.File{Name: fmt.Sprintf("fil_%04d", i), Data: fmt.Appendf(nil, "file %d\r\n", i), Time: when})
+	}
+
+	cases := []nativeCase{
+		{name: "stored-vector", opts: cab.Options{Compression: cab.None, SetID: 0x1234}, files: []cab.File{
+			{Name: "fil_a", Data: []byte("Hello, cabinet!\r\n"), Time: when, Attributes: 0x20},
+			{Name: "fil_b", Data: []byte("MSI\r\n"), Time: when, Attributes: 0x21},
+		}},
+		{name: "mszip-small", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
+			{Name: "fil_a", Data: []byte("Hello, cabinet!\r\n"), Time: when},
+			{Name: "fil_b", Data: []byte("MSI\r\n"), Time: when, Attributes: cab.AttrReadOnly | cab.AttrHidden | cab.AttrSystem},
+		}},
+		{name: "empty-file-only", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
+			{Name: "empty", Time: when},
+		}},
+		{name: "empty-files-stored", opts: cab.Options{Compression: cab.None}, files: []cab.File{
+			{Name: "empty1", Time: when}, {Name: "empty2", Time: when},
+		}},
+		{name: "empty-between-files", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
+			{Name: "first", Data: text[:1000], Time: when},
+			{Name: "empty", Time: when},
+			{Name: "last", Data: text[1000:3000], Time: when},
+		}},
+		{name: "empty-at-end", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
+			{Name: "first", Data: text[:40000], Time: when},
+			{Name: "empty", Time: when},
+		}},
+		{name: "exactly-one-block", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
+			{Name: "block", Data: text[:32768], Time: when},
+		}},
+		{name: "one-block-plus-one", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
+			{Name: "block", Data: text[:32769], Time: when},
+		}},
+		{name: "file-starts-at-block-boundary", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
+			{Name: "fil_a", Data: text[:32768], Time: when},
+			{Name: "fil_b", Data: text[32768:65536], Time: when},
+			{Name: "fil_c", Data: text[65536:65537], Time: when},
+		}},
+		{name: "file-crosses-blocks", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
+			{Name: "fil_a", Data: text[:20000], Time: when},
+			{Name: "fil_b", Data: text[20000:70000], Time: when},
+			{Name: "fil_c", Data: text[70000:], Time: when},
+		}},
+		{name: "stored-multi-block", opts: cab.Options{Compression: cab.None}, files: []cab.File{
+			{Name: "fil_a", Data: text[:70000], Time: when},
+			{Name: "fil_b", Data: random[:3], Time: when},
+		}},
+		{name: "random-stored-fallback", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
+			{Name: "random", Data: random, Time: when},
+		}},
+		{name: "mixed-random-and-text", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
+			{Name: "r1", Data: random[:33000], Time: when},
+			{Name: "t1", Data: text[:50000], Time: when},
+			{Name: "r2", Data: random[33000:], Time: when},
+		}},
+		{name: "many-files", opts: cab.Options{Compression: cab.MSZIP}, files: many},
+		{name: "dates", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
+			{Name: "zero", Data: []byte("x")},
+			{Name: "early", Data: []byte("x"), Time: time.Date(1979, 1, 1, 0, 0, 0, 0, time.UTC)},
+			{Name: "late", Data: []byte("x"), Time: time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)},
+			{Name: "odd", Data: []byte("x"), Time: time.Date(2026, 10, 25, 23, 59, 59, 0, time.UTC)},
+		}},
+		{name: "utf8-name", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
+			{Name: "grüße.txt", Data: []byte("x"), Time: when},
+		}},
+		{name: "long-name", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
+			{Name: strings.Repeat("n", 255), Data: []byte("x"), Time: when},
+		}},
+		{name: "directories", opts: cab.Options{Compression: cab.MSZIP}, files: []cab.File{
+			{Name: `top.txt`, Data: []byte("top\r\n"), Time: when},
+			{Name: `sub\deep\nested.txt`, Data: text[:5000], Time: when},
+			{Name: `sub\other.txt`, Data: []byte("other\r\n"), Time: when},
+		}},
+	}
+
+	// Checksum tails: compressed sizes of 1, 2 and 3 bytes modulo 4.
+	for tail := range 4 {
+		cases = append(cases, nativeCase{
+			name: fmt.Sprintf("checksum-tail-%d", tail),
+			opts: cab.Options{Compression: cab.None},
+			files: []cab.File{
+				{Name: "fil_a", Data: random[:32768], Time: when},
+				{Name: "fil_b", Data: random[32768 : 32768+100+tail], Time: when},
+			},
+		})
+	}
+
+	return cases
+}
+
+func TestNativeFDIExtracts(t *testing.T) { //nolint:paralleltest // the FDI callbacks share one package state
+	if testing.Short() {
+		t.Skip("native tests run without -short")
+	}
+
+	for _, tc := range nativeCases() { //nolint:paralleltest // shared FDI state
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := cab.Write(tc.files, tc.opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			got, err := fdiExtract(t, raw)
+			if err != nil {
+				t.Fatalf("cabinet.dll: %v", err)
+			}
+
+			if len(got) != len(tc.files) {
+				t.Fatalf("FDI extracted %d files, want %d", len(got), len(tc.files))
+			}
+
+			for i, want := range tc.files {
+				got := got[i]
+
+				if got.Name != want.Name {
+					t.Errorf("file %d: FDI reports name %q, want %q", i, got.Name, want.Name)
+				}
+
+				if !bytes.Equal(got.Data, want.Data) {
+					t.Errorf("file %d (%s): FDI wrote %d bytes, want %d; data differs at %d", i, want.Name, len(got.Data), len(want.Data), firstDiff(got.Data, want.Data))
+				}
+
+				if int(got.Size) != len(want.Data) {
+					t.Errorf("file %d (%s): FDI reports size %d, want %d", i, want.Name, got.Size, len(want.Data))
+				}
+
+				date, tm := cab.DOSTime(want.Time)
+				if got.Date != date || got.Time != tm {
+					t.Errorf("file %d (%s): FDI reports date %#x time %#x, want %#x %#x", i, want.Name, got.Date, got.Time, date, tm)
+				}
+
+				wantAttr := want.Attributes
+				if wantAttr == 0 {
+					wantAttr = cab.AttrArchive
+				}
+
+				for _, c := range []byte(want.Name) {
+					if c >= 0x80 {
+						wantAttr |= 0x80
+					}
+				}
+
+				if got.Attribs != wantAttr {
+					t.Errorf("file %d (%s): FDI reports attributes %#x, want %#x", i, want.Name, got.Attribs, wantAttr)
+				}
+			}
+
+			checkFSAgainstFDI(t, raw, got)
+		})
+	}
+}
+
+// checkFSAgainstFDI opens raw through cab.Open and checks that the fs.FS view
+// serves every file FDI extracted, under the slash-separated spelling of the
+// backslash name FDI reported, with the same bytes, size and time.
+func checkFSAgainstFDI(t *testing.T, raw []byte, extractedFiles []extracted) {
+	t.Helper()
+
+	fsys, err := cab.Open(raw)
+	if err != nil {
+		t.Fatalf("cab.Open: %v", err)
+	}
+
+	if err := fstest.TestFS(fsys, slashNames(extractedFiles)...); err != nil {
+		t.Errorf("fstest.TestFS: %v", err)
+	}
+
+	for _, file := range extractedFiles {
+		name := strings.ReplaceAll(file.Name, `\`, "/")
+
+		data, err := fs.ReadFile(fsys, name)
+		if err != nil {
+			t.Errorf("fs.ReadFile(%q): %v", name, err)
+
+			continue
+		}
+
+		if !bytes.Equal(data, file.Data) {
+			t.Errorf("%s: cab.Open serves %d bytes, FDI wrote %d; data differs at %d", name, len(data), len(file.Data), firstDiff(data, file.Data))
+		}
+
+		info, err := fs.Stat(fsys, name)
+		if err != nil {
+			t.Errorf("fs.Stat(%q): %v", name, err)
+
+			continue
+		}
+
+		if info.Size() != int64(len(file.Data)) {
+			t.Errorf("%s: Stat size %d, FDI wrote %d", name, info.Size(), len(file.Data))
+		}
+
+		if date, tm := cab.DOSTime(info.ModTime()); date != file.Date || tm != file.Time {
+			t.Errorf("%s: Stat time %v gives %#x %#x, FDI reported %#x %#x", name, info.ModTime(), date, tm, file.Date, file.Time)
+		}
+	}
+}
+
+func slashNames(files []extracted) []string {
+	names := make([]string, 0, len(files))
+	for _, file := range files {
+		names = append(names, strings.ReplaceAll(file.Name, `\`, "/"))
+	}
+
+	return names
+}
+
+func TestNativeExpandExtracts(t *testing.T) { //nolint:paralleltest // the FDI callbacks share one package state
+	if testing.Short() {
+		t.Skip("native tests run without -short")
+	}
+
+	for _, tc := range nativeCases() { //nolint:paralleltest // shared FDI state
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := cab.Write(tc.files, tc.opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			longest := 0
+			for _, f := range tc.files {
+				longest = max(longest, len(f.Name))
+			}
+
+			got, err := expandExtract(t, raw, longest)
+			if errors.Is(err, errLongPath) {
+				// A machine without long paths enabled cannot write a 255-byte name
+				// under the temporary directory; the FDI test covers the same bytes.
+				t.Skip(err)
+			}
+
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(got) != len(tc.files) {
+				t.Errorf("expand.exe extracted %d files, want %d", len(got), len(tc.files))
+			}
+
+			for _, want := range tc.files {
+				data, ok := got[strings.ReplaceAll(want.Name, `\`, "/")]
+				if !ok && len(tc.files) == 1 {
+					// Observed on Windows Server 2025: expand.exe -F:* writes the only
+					// file of a single-file cabinet under the cabinet's own name
+					// ("in.cab"), not the entry's. Only the data is compared then;
+					// the FDI test checks the name.
+					data, ok = got["in.cab"]
+				}
+
+				if !ok {
+					t.Errorf("expand.exe did not extract %q (got %v)", want.Name, keys(got))
+
+					continue
+				}
+
+				if !bytes.Equal(data, want.Data) {
+					t.Errorf("%s: expand.exe wrote %d bytes, want %d; data differs at %d", want.Name, len(data), len(want.Data), firstDiff(data, want.Data))
+				}
+			}
+		})
+	}
+}
+
+// TestNativeReadMakecab reads a cabinet built by makecab.exe, Microsoft's own
+// compressor, through cab.Read: cross-block MSZIP history, checksums and the
+// DOS times are then checked against a native writer.
+func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI callbacks share one package state
+	if testing.Short() {
+		t.Skip("native tests run without -short")
+	}
+
+	rng := rand.New(rand.NewSource(5)) //nolint:gosec // reproducible test data
+	random := make([]byte, 40000)
+	rng.Read(random)
+
+	text := bytes.Repeat([]byte("MSZIP history crosses CFDATA blocks when makecab compresses it.\r\n"), 1500)
+
+	for _, comp := range []string{"MSZIP", "stored"} { //nolint:paralleltest // shared FDI state
+		t.Run(comp, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "src") // only the inputs, so cab.Files sees nothing else
+			inputs := map[string][]byte{
+				"text.txt": text, "random.bin": random, "small.txt": []byte("small\r\n"), "empty.txt": nil,
+				`sub\deep\nested.txt`: []byte("nested\r\n"),
+			}
+
+			var ddf strings.Builder
+
+			// makecab reads the directive file as ANSI, so it holds only relative
+			// paths; cmd.Dir makes them resolve under the (possibly non-ASCII) dir.
+			ddf.WriteString(".OPTION EXPLICIT\r\n.Set CabinetNameTemplate=out.cab\r\n.Set DiskDirectoryTemplate=.\r\n")
+
+			if comp == "stored" {
+				// makecab knows no CompressionType "NONE"; Compress=off writes typeCompress 0.
+				ddf.WriteString(".Set Cabinet=on\r\n.Set Compress=off\r\n")
+			} else {
+				ddf.WriteString(".Set Cabinet=on\r\n.Set Compress=on\r\n.Set CompressionType=" + comp + "\r\n")
+			}
+
+			ddf.WriteString(".Set MaxDiskSize=CDROM\r\n.Set RptFileName=nul\r\n.Set InfFileName=nul\r\n.Set UniqueFiles=off\r\n")
+
+			for _, name := range []string{"text.txt", "empty.txt", "random.bin", `sub\deep\nested.txt`, "small.txt"} {
+				path := filepath.Join(src, filepath.FromSlash(strings.ReplaceAll(name, `\`, "/")))
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+
+				if err := os.WriteFile(path, inputs[name], 0o600); err != nil {
+					t.Fatal(err)
+				}
+
+				ddf.WriteString(`"src\` + name + `" ` + name + "\r\n")
+			}
+
+			ddfPath := filepath.Join(dir, "cab.ddf")
+			if err := os.WriteFile(ddfPath, []byte(ddf.String()), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			cmd := exec.CommandContext(t.Context(), filepath.Join(os.Getenv("SystemRoot"), "System32", "makecab.exe"), "/F", "cab.ddf") //nolint:gosec // fixed Windows tool
+			cmd.Dir = dir
+
+			if output, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("makecab.exe: %v\n%s", err, output)
+			}
+
+			raw, err := os.ReadFile(filepath.Join(dir, "out.cab"))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			t.Logf("makecab %s: %d bytes, folders %d, files %d, blocks %d, typeCompress %#x", comp, len(raw),
+				int(raw[0x1A])|int(raw[0x1B])<<8, int(raw[0x1C])|int(raw[0x1D])<<8, int(raw[36+4])|int(raw[36+5])<<8, int(raw[36+6])|int(raw[36+7])<<8)
+
+			wantType := uint16(cab.MSZIP)
+			if comp == "stored" {
+				wantType = uint16(cab.None)
+			}
+
+			if typ := uint16(raw[36+6]) | uint16(raw[36+7])<<8; typ != wantType {
+				t.Fatalf("makecab wrote typeCompress %#x, want %#x", typ, wantType)
+			}
+
+			files, err := cab.Read(raw)
+			if err != nil {
+				t.Fatalf("cab.Read of a makecab cabinet: %v", err)
+			}
+
+			if len(files) != len(inputs) {
+				t.Fatalf("read %d files, want %d", len(files), len(inputs))
+			}
+
+			seen := make(map[string]bool, len(inputs))
+
+			for _, f := range files {
+				want, ok := inputs[f.Name]
+				if !ok || seen[f.Name] {
+					t.Errorf("unexpected or repeated file %q", f.Name)
+
+					continue
+				}
+
+				seen[f.Name] = true
+
+				if !bytes.Equal(f.Data, want) {
+					t.Errorf("%s: read %d bytes, want %d; data differs at %d", f.Name, len(f.Data), len(want), firstDiff(f.Data, want))
+				}
+
+				// makecab records the local time and rounds an odd second up where
+				// DOSTime truncates, so allow one 2-second step either way.
+				st, _ := os.Stat(filepath.Join(src, filepath.FromSlash(strings.ReplaceAll(f.Name, `\`, "/"))))
+				local := st.ModTime().Local()
+				stamp := time.Date(local.Year(), local.Month(), local.Day(), local.Hour(), local.Minute(), local.Second(), 0, time.UTC)
+
+				if delta := f.Time.Sub(stamp); delta < -2*time.Second || delta > 2*time.Second {
+					t.Errorf("%s: read time %v, makecab should have written the local time %v", f.Name, f.Time, stamp)
+				}
+			}
+
+			// The fs.FS view of the makecab cabinet must match the source tree.
+			fsys, err := cab.Open(raw)
+			if err != nil {
+				t.Fatalf("cab.Open of a makecab cabinet: %v", err)
+			}
+
+			if err := fstest.TestFS(fsys, "text.txt", "sub/deep/nested.txt"); err != nil {
+				t.Errorf("fstest.TestFS: %v", err)
+			}
+
+			for name, want := range inputs {
+				slash := strings.ReplaceAll(name, `\`, "/")
+
+				data, err := fs.ReadFile(fsys, slash)
+				if err != nil {
+					t.Errorf("fs.ReadFile(%q): %v", slash, err)
+
+					continue
+				}
+
+				if !bytes.Equal(data, want) {
+					t.Errorf("%s: cab.Open serves %d bytes, want %d", slash, len(data), len(want))
+				}
+			}
+
+			// cab.Files of the source tree, written by this package, must extract
+			// through FDI under the same backslash names makecab used.
+			ours, err := cab.Files(os.DirFS(src))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			raw, err = cab.Write(ours, cab.Options{Compression: cab.MSZIP})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			got, err := fdiExtract(t, raw)
+			if err != nil {
+				t.Fatalf("cabinet.dll on cab.Files output: %v", err)
+			}
+
+			if len(got) != len(inputs) {
+				t.Fatalf("FDI extracted %d files from the cab.Files cabinet, want %d", len(got), len(inputs))
+			}
+
+			clear(seen)
+
+			for _, file := range got {
+				want, ok := inputs[file.Name]
+				if !ok || seen[file.Name] {
+					t.Errorf("FDI reports %q, not a makecab name or a repeat", file.Name)
+
+					continue
+				}
+
+				seen[file.Name] = true
+
+				if !bytes.Equal(file.Data, want) {
+					t.Errorf("%s: FDI wrote %d bytes, want %d", file.Name, len(file.Data), len(want))
+				}
+			}
+		})
+	}
+}
+
+// TestNativeFDIRejectsCorruption checks that the checksum we write is the one
+// cabinet.dll verifies: a flipped payload byte must be refused.
+func TestNativeFDIRejectsCorruption(t *testing.T) { //nolint:paralleltest // the FDI callbacks share one package state
+	if testing.Short() {
+		t.Skip("native tests run without -short")
+	}
+
+	text := bytes.Repeat([]byte("checksums are verified by FDI\r\n"), 3000)
+
+	// A stored folder has no decoder that could fail first, so only the
+	// checksum can make FDI refuse the flipped byte.
+	for _, comp := range []cab.Compression{cab.None, cab.MSZIP} {
+		raw, err := cab.Write([]cab.File{{Name: "fil_a", Data: text}}, cab.Options{Compression: comp})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := fdiExtract(t, raw); err != nil {
+			t.Fatalf("intact cabinet (compression %d): %v", comp, err)
+		}
+
+		bad := bytes.Clone(raw)
+		bad[len(bad)-1] ^= 0x40
+
+		_, err = fdiExtract(t, bad)
+		if err == nil {
+			t.Fatalf("FDI extracted a cabinet (compression %d) with a flipped payload byte", comp)
+		}
+
+		t.Logf("compression %d, corrupt last block: %v", comp, err)
+
+		if comp == cab.None && !strings.Contains(err.Error(), "FDIERROR_CORRUPT_CABINET") {
+			t.Errorf("stored cabinet with a flipped byte: want FDIERROR_CORRUPT_CABINET from the checksum, got %v", err)
+		}
+	}
+}
+
+func firstDiff(a, b []byte) int {
+	limit := min(len(a), len(b))
+	for i := range limit {
+		if a[i] != b[i] {
+			return i
+		}
+	}
+
+	return limit
+}
+
+func keys(m map[string][]byte) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+
+	return out
+}

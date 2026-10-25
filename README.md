@@ -20,10 +20,10 @@ macOS and Windows, for example in a CI job next to the rest of your release.
   install in a broken state are rejected at build time.
 - **Reproducible.** The same configuration, inputs and `SOURCE_DATE_EPOCH`
   produce a byte-identical MSI.
-- **Focused.** go-msi only builds MSI packages. Sign them with a tool such as
-  [relic](https://github.com/sassoftware/relic) or
-  [osslsigncode](https://github.com/mtrojnar/osslsigncode). For MSIX packages,
-  use [nFPM](https://github.com/goreleaser/nfpm).
+- **Signed.** go-msi adds an Authenticode signature itself, with an RFC 3161
+  timestamp, so no Windows SDK or `signtool` is needed.
+- **Focused.** go-msi only builds and signs MSI packages. For MSIX packages, use
+  [nFPM](https://github.com/goreleaser/nfpm).
 
 > [!NOTE]
 > go-msi is under active development. The YAML schema is defined, the MSI
@@ -32,7 +32,7 @@ macOS and Windows, for example in a CI job next to the rest of your release.
 ## Example
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/config/schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/pkg/config/schema.json
 # The smallest useful package: one executable, silent install only.
 schema: go-msi/v1
 
@@ -71,9 +71,43 @@ go-msi validate msi.yaml
 go-msi build -o hello.msi msi.yaml
 ```
 
+To sign the package, pass a key and its certificate chain:
+
+```shell
+go-msi build --pfx codesign.pfx --password-env PFX_PASSWORD \
+  --timestamp-url http://timestamp.digicert.com -o hello.msi msi.yaml
+go-msi verify hello.msi
+```
+
+See [Signing](docs/signing.md) for PEM keys, `go-msi sign` and the Go API.
+
 A complete package with a Windows service, a firewall rule, an event log source
 and custom actions is in
 [`examples/windows_exporter`](examples/windows_exporter/msi.yaml).
+
+## Out of scope
+
+go-msi aims at simple, single-product installers such as an exporter or an
+agent with a service. These are not supported:
+
+- **MSIX.** Use [nFPM](https://github.com/goreleaser/nfpm).
+- **Running packages.** go-msi never installs or executes an MSI. Only its
+  tests do: on Windows without `-short` (elevated), and under Wine with
+  `hack/test-wine.sh`.
+- **Transforms (`.mst`), patches (`.msp`), merge modules (`.msm`) and
+  bundles or bootstrappers.** Ship a new major-upgrade MSI instead of a patch.
+- **Multi-language packages.** A package has one language; there are no
+  embedded language transforms. Not in schema v1.
+- **Spanned cabinets and LZX compression.** Cabinets are MSZIP or stored.
+- **Script custom actions** (VBScript, JScript). Use an executable or DLL
+  action instead. Not in schema v1.
+- **Editing existing packages and WiX XML input.** `go-msi inspect` only
+  reads packages to help debugging.
+- **Advertised installs.** Not in schema v1.
+- **File harvesting.** List each file of a component; a whole directory is
+  not added automatically. Not in schema v1.
+- **Hand-built dialogs.** The UI is a built-in wizard plus optional form
+  pages that ask for properties; there is no free control layout.
 
 ## Installation
 
@@ -94,6 +128,7 @@ docker run --rm -v "$PWD:/work" ghcr.io/jkroepke/go-msi build -o hello.msi msi.y
 ## Documentation
 
 - [YAML schema](docs/design/yaml-schema.md)
+- [Signing](docs/signing.md)
 - [MSI specification](docs/spec/MSISPEC.md) and its
   [Windows test results](docs/spec/MSISPEC-RESULTS.md)
 
