@@ -1,16 +1,16 @@
-//go:build windows
+//go:build windows && (amd64 || arm64)
 
 package cab_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
 	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -131,7 +131,8 @@ func cstring(ptr *byte) string {
 var (
 	cbAlloc = syscall.NewCallback( //nolint:gochecknoglobals // see above
 		func(n uintptr) uintptr {
-			p, _, _ := pLocalAlloc.Call(0x40 /* LMEM_ZEROINIT */, n)
+			// ULONG: the upper half of the register is unspecified.
+			p, _, _ := pLocalAlloc.Call(0x40 /* LMEM_ZEROINIT */, uintptr(uint32(n)))
 
 			return p
 		})
@@ -149,6 +150,8 @@ var (
 		})
 	cbRead = syscall.NewCallback( //nolint:gochecknoglobals // see above
 		func(handle uintptr, buf *byte, n uintptr) uintptr {
+			n = uintptr(uint32(n)) // UINT: the upper half of the register is unspecified
+
 			file := state.handles[handle]
 			if file == nil {
 				return ^uintptr(0)
@@ -161,6 +164,8 @@ var (
 		})
 	cbWrite = syscall.NewCallback( //nolint:gochecknoglobals // see above
 		func(handle uintptr, buf *byte, n uintptr) uintptr {
+			n = uintptr(uint32(n)) // UINT: the upper half of the register is unspecified
+
 			file := state.handles[handle]
 			if file == nil {
 				return ^uintptr(0)
@@ -194,25 +199,30 @@ var (
 			}
 
 			delta := int(int32(uint32(dist))) // long is 32 bits on Windows
+			pos := file.pos
 
-			switch whence {
+			switch int32(uint32(whence)) { // int: the upper half of the register is unspecified
 			case 0:
-				file.pos = delta
+				pos = delta
 			case 1:
-				file.pos += delta
+				pos += delta
 			case 2:
-				file.pos = len(file.data) + delta
-			}
-
-			if file.pos < 0 || file.pos > len(file.data) {
+				pos = len(file.data) + delta
+			default:
 				return ^uintptr(0)
 			}
 
-			return uintptr(file.pos)
+			if pos < 0 || pos > len(file.data) {
+				return ^uintptr(0)
+			}
+
+			file.pos = pos
+
+			return uintptr(pos)
 		})
 	cbNotify = syscall.NewCallback( //nolint:gochecknoglobals // see above
 		func(typ uintptr, note *fdiNotification) uintptr {
-			switch typ {
+			switch uint32(typ) { // a 32-bit enum: the upper half of the register is unspecified
 			case fdintCabinetInfo, fdintPartialFile:
 				return 0
 			case fdintCopyFile:
@@ -280,7 +290,7 @@ func fdiExtract(t *testing.T, raw []byte) ([]extracted, error) {
 	isCab, _, _ := pFDIIsCab.Call(hfdi, hf, uintptr(unsafe.Pointer(&info)))
 	delete(state.handles, hf)
 
-	if isCab == 0 {
+	if uint32(isCab) == 0 { // BOOL
 		return nil, fmt.Errorf("fdi: FDIIsCabinet rejected the cabinet: %s", state.errorText())
 	}
 
@@ -292,7 +302,7 @@ func fdiExtract(t *testing.T, raw []byte) ([]extracted, error) {
 	path, _ := syscall.BytePtrFromString("")
 
 	copied, _, _ := pFDICopy.Call(hfdi, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(path)), 0, cbNotify, 0, 0)
-	if copied == 0 {
+	if uint32(copied) == 0 { // BOOL
 		return nil, fmt.Errorf("fdi: FDICopy failed: %s", state.errorText())
 	}
 
@@ -303,8 +313,14 @@ func fdiExtract(t *testing.T, raw []byte) ([]extracted, error) {
 	return state.files, nil
 }
 
+// errLongPath marks an expand.exe failure on a machine without long paths
+// enabled, where the output path exceeds MAX_PATH.
+var errLongPath = errors.New("output path exceeds MAX_PATH")
+
 // expandExtract extracts raw with expand.exe into a temporary directory.
-func expandExtract(t *testing.T, raw []byte) (map[string][]byte, error) {
+// longestName is the longest cabinet name, used to tell a MAX_PATH failure
+// from a cabinet defect.
+func expandExtract(t *testing.T, raw []byte, longestName int) (map[string][]byte, error) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -321,6 +337,10 @@ func expandExtract(t *testing.T, raw []byte) (map[string][]byte, error) {
 
 	cmd := exec.CommandContext(t.Context(), filepath.Join(os.Getenv("SystemRoot"), "System32", "expand.exe"), "-F:*", src, out) //nolint:gosec // fixed Windows tool
 	if output, err := cmd.CombinedOutput(); err != nil {
+		if entries, _ := os.ReadDir(out); len(entries) == 0 && len(out)+1+longestName >= 260 {
+			return nil, fmt.Errorf("%w: expand.exe wrote nothing under the %d-byte path %s: %w\n%s", errLongPath, len(out), out, err, output)
+		}
+
 		return nil, fmt.Errorf("expand.exe: %w\n%s", err, output)
 	}
 
@@ -338,6 +358,10 @@ func expandExtract(t *testing.T, raw []byte) (map[string][]byte, error) {
 
 		return err
 	})
+
+	if err == nil && len(files) == 0 && len(out)+1+longestName >= 260 {
+		return nil, fmt.Errorf("%w: expand.exe exited 0 but wrote nothing under the %d-byte path %s", errLongPath, len(out), out)
+	}
 
 	return files, err
 }
@@ -578,7 +602,18 @@ func TestNativeExpandExtracts(t *testing.T) { //nolint:paralleltest // the FDI c
 				t.Fatal(err)
 			}
 
-			got, err := expandExtract(t, raw)
+			longest := 0
+			for _, f := range tc.files {
+				longest = max(longest, len(f.Name))
+			}
+
+			got, err := expandExtract(t, raw, longest)
+			if errors.Is(err, errLongPath) {
+				// A machine without long paths enabled cannot write a 255-byte name
+				// under the temporary directory; the FDI test covers the same bytes.
+				t.Skip(err)
+			}
+
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -589,12 +624,12 @@ func TestNativeExpandExtracts(t *testing.T) { //nolint:paralleltest // the FDI c
 
 			for _, want := range tc.files {
 				data, ok := got[strings.ReplaceAll(want.Name, `\`, "/")]
-				if !ok && len(tc.files) == 1 && len(got) == 1 {
-					// expand.exe spells a UTF-8 flagged name through the ANSI code
-					// page; only the data is compared for it.
-					for _, data = range got {
-						ok = true
-					}
+				if !ok && len(tc.files) == 1 {
+					// Observed on Windows Server 2025: expand.exe -F:* writes the only
+					// file of a single-file cabinet under the cabinet's own name
+					// ("in.cab"), not the entry's. Only the data is compared then;
+					// the FDI test checks the name.
+					data, ok = got["in.cab"]
 				}
 
 				if !ok {
@@ -628,6 +663,7 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 	for _, comp := range []string{"MSZIP", "stored"} { //nolint:paralleltest // shared FDI state
 		t.Run(comp, func(t *testing.T) {
 			dir := t.TempDir()
+			src := filepath.Join(dir, "src") // only the inputs, so cab.Files sees nothing else
 			inputs := map[string][]byte{
 				"text.txt": text, "random.bin": random, "small.txt": []byte("small\r\n"), "empty.txt": nil,
 				`sub\deep\nested.txt`: []byte("nested\r\n"),
@@ -635,7 +671,9 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 
 			var ddf strings.Builder
 
-			ddf.WriteString(".OPTION EXPLICIT\r\n.Set CabinetNameTemplate=out.cab\r\n.Set DiskDirectoryTemplate=" + dir + "\r\n")
+			// makecab reads the directive file as ANSI, so it holds only relative
+			// paths; cmd.Dir makes them resolve under the (possibly non-ASCII) dir.
+			ddf.WriteString(".OPTION EXPLICIT\r\n.Set CabinetNameTemplate=out.cab\r\n.Set DiskDirectoryTemplate=.\r\n")
 
 			if comp == "stored" {
 				// makecab knows no CompressionType "NONE"; Compress=off writes typeCompress 0.
@@ -647,7 +685,7 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 			ddf.WriteString(".Set MaxDiskSize=CDROM\r\n.Set RptFileName=nul\r\n.Set InfFileName=nul\r\n.Set UniqueFiles=off\r\n")
 
 			for _, name := range []string{"text.txt", "empty.txt", "random.bin", `sub\deep\nested.txt`, "small.txt"} {
-				path := filepath.Join(dir, filepath.FromSlash(strings.ReplaceAll(name, `\`, "/")))
+				path := filepath.Join(src, filepath.FromSlash(strings.ReplaceAll(name, `\`, "/")))
 				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 					t.Fatal(err)
 				}
@@ -656,7 +694,7 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 					t.Fatal(err)
 				}
 
-				ddf.WriteString(`"` + path + `" ` + name + "\r\n")
+				ddf.WriteString(`"src\` + name + `" ` + name + "\r\n")
 			}
 
 			ddfPath := filepath.Join(dir, "cab.ddf")
@@ -664,7 +702,7 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 				t.Fatal(err)
 			}
 
-			cmd := exec.CommandContext(t.Context(), filepath.Join(os.Getenv("SystemRoot"), "System32", "makecab.exe"), "/F", ddfPath) //nolint:gosec // fixed Windows tool
+			cmd := exec.CommandContext(t.Context(), filepath.Join(os.Getenv("SystemRoot"), "System32", "makecab.exe"), "/F", "cab.ddf") //nolint:gosec // fixed Windows tool
 			cmd.Dir = dir
 
 			if output, err := cmd.CombinedOutput(); err != nil {
@@ -679,6 +717,15 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 			t.Logf("makecab %s: %d bytes, folders %d, files %d, blocks %d, typeCompress %#x", comp, len(raw),
 				int(raw[0x1A])|int(raw[0x1B])<<8, int(raw[0x1C])|int(raw[0x1D])<<8, int(raw[36+4])|int(raw[36+5])<<8, int(raw[36+6])|int(raw[36+7])<<8)
 
+			wantType := uint16(cab.MSZIP)
+			if comp == "stored" {
+				wantType = uint16(cab.None)
+			}
+
+			if typ := uint16(raw[36+6]) | uint16(raw[36+7])<<8; typ != wantType {
+				t.Fatalf("makecab wrote typeCompress %#x, want %#x", typ, wantType)
+			}
+
 			files, err := cab.Read(raw)
 			if err != nil {
 				t.Fatalf("cab.Read of a makecab cabinet: %v", err)
@@ -688,13 +735,17 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 				t.Fatalf("read %d files, want %d", len(files), len(inputs))
 			}
 
+			seen := make(map[string]bool, len(inputs))
+
 			for _, f := range files {
 				want, ok := inputs[f.Name]
-				if !ok {
-					t.Errorf("unexpected file %q", f.Name)
+				if !ok || seen[f.Name] {
+					t.Errorf("unexpected or repeated file %q", f.Name)
 
 					continue
 				}
+
+				seen[f.Name] = true
 
 				if !bytes.Equal(f.Data, want) {
 					t.Errorf("%s: read %d bytes, want %d; data differs at %d", f.Name, len(f.Data), len(want), firstDiff(f.Data, want))
@@ -702,7 +753,7 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 
 				// makecab records the local time and rounds an odd second up where
 				// DOSTime truncates, so allow one 2-second step either way.
-				st, _ := os.Stat(filepath.Join(dir, filepath.FromSlash(strings.ReplaceAll(f.Name, `\`, "/"))))
+				st, _ := os.Stat(filepath.Join(src, filepath.FromSlash(strings.ReplaceAll(f.Name, `\`, "/"))))
 				local := st.ModTime().Local()
 				stamp := time.Date(local.Year(), local.Month(), local.Day(), local.Hour(), local.Minute(), local.Second(), 0, time.UTC)
 
@@ -738,12 +789,10 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 
 			// cab.Files of the source tree, written by this package, must extract
 			// through FDI under the same backslash names makecab used.
-			ours, err := cab.Files(os.DirFS(dir))
+			ours, err := cab.Files(os.DirFS(src))
 			if err != nil {
 				t.Fatal(err)
 			}
-
-			ours = slices.DeleteFunc(ours, func(f cab.File) bool { return f.Name == "cab.ddf" || f.Name == "out.cab" })
 
 			raw, err = cab.Write(ours, cab.Options{Compression: cab.MSZIP})
 			if err != nil {
@@ -759,13 +808,17 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 				t.Fatalf("FDI extracted %d files from the cab.Files cabinet, want %d", len(got), len(inputs))
 			}
 
+			clear(seen)
+
 			for _, file := range got {
 				want, ok := inputs[file.Name]
-				if !ok {
-					t.Errorf("FDI reports %q, not a makecab name", file.Name)
+				if !ok || seen[file.Name] {
+					t.Errorf("FDI reports %q, not a makecab name or a repeat", file.Name)
 
 					continue
 				}
+
+				seen[file.Name] = true
 
 				if !bytes.Equal(file.Data, want) {
 					t.Errorf("%s: FDI wrote %d bytes, want %d", file.Name, len(file.Data), len(want))
@@ -784,24 +837,32 @@ func TestNativeFDIRejectsCorruption(t *testing.T) { //nolint:paralleltest // the
 
 	text := bytes.Repeat([]byte("checksums are verified by FDI\r\n"), 3000)
 
-	raw, err := cab.Write([]cab.File{{Name: "fil_a", Data: text}}, cab.Options{Compression: cab.MSZIP})
-	if err != nil {
-		t.Fatal(err)
+	// A stored folder has no decoder that could fail first, so only the
+	// checksum can make FDI refuse the flipped byte.
+	for _, comp := range []cab.Compression{cab.None, cab.MSZIP} {
+		raw, err := cab.Write([]cab.File{{Name: "fil_a", Data: text}}, cab.Options{Compression: comp})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := fdiExtract(t, raw); err != nil {
+			t.Fatalf("intact cabinet (compression %d): %v", comp, err)
+		}
+
+		bad := bytes.Clone(raw)
+		bad[len(bad)-1] ^= 0x40
+
+		_, err = fdiExtract(t, bad)
+		if err == nil {
+			t.Fatalf("FDI extracted a cabinet (compression %d) with a flipped payload byte", comp)
+		}
+
+		t.Logf("compression %d, corrupt last block: %v", comp, err)
+
+		if comp == cab.None && !strings.Contains(err.Error(), "FDIERROR_CORRUPT_CABINET") {
+			t.Errorf("stored cabinet with a flipped byte: want FDIERROR_CORRUPT_CABINET from the checksum, got %v", err)
+		}
 	}
-
-	if _, err := fdiExtract(t, raw); err != nil {
-		t.Fatalf("intact cabinet: %v", err)
-	}
-
-	bad := bytes.Clone(raw)
-	bad[len(bad)-1] ^= 0x40
-
-	_, err = fdiExtract(t, bad)
-	if err == nil {
-		t.Fatal("FDI extracted a cabinet with a flipped payload byte")
-	}
-
-	t.Logf("corrupt last block: %v", err)
 }
 
 func firstDiff(a, b []byte) int {
