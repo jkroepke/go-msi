@@ -624,12 +624,12 @@ func TestNativeExpandExtracts(t *testing.T) { //nolint:paralleltest // the FDI c
 
 			for _, want := range tc.files {
 				data, ok := got[strings.ReplaceAll(want.Name, `\`, "/")]
-				if !ok && len(tc.files) == 1 && len(got) == 1 && strings.ContainsFunc(want.Name, func(r rune) bool { return r >= 0x80 }) {
-					// expand.exe spells a UTF-8 flagged name through the ANSI code
-					// page; only the data is compared for it.
-					for _, data = range got {
-						ok = true
-					}
+				if !ok && len(tc.files) == 1 {
+					// Observed on Windows Server 2025: expand.exe -F:* writes the only
+					// file of a single-file cabinet under the cabinet's own name
+					// ("in.cab"), not the entry's. Only the data is compared then;
+					// the FDI test checks the name.
+					data, ok = got["in.cab"]
 				}
 
 				if !ok {
