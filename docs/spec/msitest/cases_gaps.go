@@ -80,7 +80,7 @@ func squashGUID(guid string) string {
 
 // forgetComponents deletes the machine registration of components a
 // permanent variant left behind. Without it the next variant that reuses
-// the GUID finds the component still installed (its SYSTEM client is never
+// the GUID finds the component still installed (its registration is never
 // removed) and behaves differently.
 func forgetComponents(c *caseLog, guids ...string) {
 	for _, g := range guids {

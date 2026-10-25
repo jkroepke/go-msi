@@ -143,6 +143,11 @@ func (a *RecoveryAction) UnmarshalYAML(node *yaml.Node) error {
 		return fmt.Errorf("line %d: a recovery action is restart, none or {restart: <delay>}", node.Line)
 	}
 
+	// yaml.v3 skips UnmarshalYAML for a null value, which would leave a 0 delay.
+	if node.Content[1].Tag == "!!null" {
+		return fmt.Errorf("line %d: a restart step needs a delay", node.Line)
+	}
+
 	var delay Duration
 	if err := node.Content[1].Decode(&delay); err != nil {
 		return fmt.Errorf("line %d: %w", node.Line, err)
