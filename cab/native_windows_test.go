@@ -560,7 +560,7 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 
 	text := bytes.Repeat([]byte("MSZIP history crosses CFDATA blocks when makecab compresses it.\r\n"), 1500)
 
-	for _, comp := range []string{"MSZIP", "NONE"} { //nolint:paralleltest // shared FDI state
+	for _, comp := range []string{"MSZIP", "stored"} { //nolint:paralleltest // shared FDI state
 		t.Run(comp, func(t *testing.T) {
 			dir := t.TempDir()
 			inputs := map[string][]byte{"text.txt": text, "random.bin": random, "small.txt": []byte("small\r\n"), "empty.txt": nil}
@@ -568,7 +568,12 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 			var ddf strings.Builder
 
 			ddf.WriteString(".OPTION EXPLICIT\r\n.Set CabinetNameTemplate=out.cab\r\n.Set DiskDirectoryTemplate=" + dir + "\r\n")
-			ddf.WriteString(".Set Cabinet=on\r\n.Set Compress=on\r\n.Set CompressionType=" + comp + "\r\n")
+			if comp == "stored" {
+				// makecab knows no CompressionType "NONE"; Compress=off writes typeCompress 0.
+				ddf.WriteString(".Set Cabinet=on\r\n.Set Compress=off\r\n")
+			} else {
+				ddf.WriteString(".Set Cabinet=on\r\n.Set Compress=on\r\n.Set CompressionType=" + comp + "\r\n")
+			}
 			ddf.WriteString(".Set MaxDiskSize=CDROM\r\n.Set RptFileName=nul\r\n.Set InfFileName=nul\r\n.Set UniqueFiles=off\r\n")
 
 			for _, name := range []string{"text.txt", "empty.txt", "random.bin", "small.txt"} {
@@ -621,12 +626,14 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 					t.Errorf("%s: read %d bytes, want %d; data differs at %d", f.Name, len(f.Data), len(want), firstDiff(f.Data, want))
 				}
 
+				// makecab records the local time and rounds an odd second up where
+				// DOSTime truncates, so allow one 2-second step either way.
 				st, _ := os.Stat(filepath.Join(dir, f.Name))
 				local := st.ModTime().Local()
-				date, tm := cab.DOSTime(time.Date(local.Year(), local.Month(), local.Day(), local.Hour(), local.Minute(), local.Second(), 0, time.UTC))
+				stamp := time.Date(local.Year(), local.Month(), local.Day(), local.Hour(), local.Minute(), local.Second(), 0, time.UTC)
 
-				if gotDate, gotTime := cab.DOSTime(f.Time); gotDate != date || gotTime != tm {
-					t.Errorf("%s: read date %#x time %#x, makecab should have written the local time %#x %#x", f.Name, gotDate, gotTime, date, tm)
+				if delta := f.Time.Sub(stamp); delta < -2*time.Second || delta > 2*time.Second {
+					t.Errorf("%s: read time %v, makecab should have written the local time %v", f.Name, f.Time, stamp)
 				}
 			}
 		})
