@@ -21,9 +21,12 @@ package to what it imports.
 ```mermaid
 flowchart LR
     cmd["cmd/go-msi<br/>CLI"] --> builder
+    cmd --> config
+    cmd --> msidb
     builder["builder<br/>config → tables → package"] --> config
     builder --> msidb
     builder --> cab
+    builder --> cfb
     builder --> schema
     builder --> pe
     builder --> condition
@@ -38,11 +41,11 @@ flowchart LR
     artwork["artwork<br/>wizard bitmaps"]
     cfb["cfb<br/>compound file"]
     cab["cab<br/>MSCAB, MSZIP"]
-    schema["schema<br/>standard tables, _Validation"]
+    schema["schema<br/>standard tables, _Validation"] --> msidb
     pe["pe<br/>version resource"]
     condition["condition<br/>grammar check"]
     sequence["sequence<br/>before/after numbering"]
-    config["config<br/>YAML (PR #2)"]
+    config["config<br/>YAML (PR #2)"] --> condition
 ```
 
 | Package | Responsibility | Spec | Depends on |
@@ -50,12 +53,12 @@ flowchart LR
 | `pkg/cfb` | Compound File Binary v3/v4 writer and reader: sectors, FAT, DIFAT, mini stream, red-black directory tree, name comparison | §2 | stdlib |
 | `pkg/cab` | Cabinet writer and reader: one folder per cabinet, stored or MSZIP blocks with carried DEFLATE history, checksums on every block | §5 | stdlib (`compress/flate`) |
 | `pkg/summary` | `\u0005SummaryInformation` property-set writer and reader (PIDs 1–19, VT_I2/I4/LPSTR/FILETIME) | §4 | `internal/codepage` |
-| `pkg/msidb` | The database: column types, typed rows, stream-name encoding, string pool with code pages, catalog, column-major table streams, binary streams, embedded streams; plus a reader that decodes a package back into tables | §3 | `cfb`, `summary`, `internal/codepage`, `golang.org/x/text` for code pages |
-| `internal/schema` | Column definitions and `_Validation` metadata of every standard table the builder can write | §6 | stdlib |
+| `pkg/msidb` | The database: column types, typed rows, stream-name encoding, string pool with code pages, catalog, column-major table streams, binary streams, embedded streams; plus a reader that decodes a package back into tables | §3 | `cfb`, `summary`, `internal/codepage` (`golang.org/x/text`) |
+| `internal/schema` | Column definitions and `_Validation` metadata of every standard table the builder can write | §6 | `msidb` |
 | `internal/pe` | PE version resource reader: file version, translations, "is this a PE file", PE checksum presence | §11.5 | stdlib |
 | `internal/condition` | Parser for the condition grammar, used to reject conditions the engine would ignore | §8.8 | stdlib |
 | `internal/sequence` | Numbering of sequence tables: fixed standard actions plus before/after chains, overlap and window checks | §9.2, §11.7 | stdlib |
-| `pkg/builder` | The config-to-tables layer: identities, directories and short names, components and GUIDs, files, media and cabinets, registry, services, environment, upgrades, custom actions, helpers, `_Validation`, summary; then the package bytes and a verification pass | §6–§11 | everything above |
+| `pkg/builder` | The config-to-tables layer: identities, directories and short names, components and GUIDs, files, media and cabinets, registry, services, environment, upgrades, custom actions, helpers, `_Validation`, summary; then the package bytes and a verification pass | §6–§11 | everything above, plus `config` and `internal/artwork` |
 | `cmd/go-msi` | CLI: `build`, `validate`, `inspect` | | `builder`, `msidb` |
 
 `pkg/config` (PR #2) stays as it is: the builder consumes a validated `*config.Config`
