@@ -243,7 +243,8 @@ Pipeline, each step a file of its own:
    `Language`, `MsiFileHash` (zeros for an empty file, RUN-12), size and
    attributes. Missing files and unversioned PE files are errors.
 2. **Identities**: GUIDs normalized; `productCode: auto` from UUIDv5 over the
-   upgrade code, platform, version and a digest of every input;
+   upgrade code, platform, version and a digest of every input (payload
+   files, icons, binaries and binary cells of custom tables);
    `packageCode: auto` from the finished database bytes; component GUIDs
    from UUIDv5 over the key path's canonical location.
 3. **Directories**: `TARGETDIR`/`SourceDir`, the standard folders, the tree,

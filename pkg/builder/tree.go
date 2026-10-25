@@ -16,6 +16,7 @@ import (
 
 	"github.com/jkroepke/go-msi/internal/pe"
 	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/go-msi/pkg/msidb"
 )
 
 // maxFileSize is the largest payload file: the cabinet stores sizes in 32
@@ -115,14 +116,58 @@ func (b *build) deriveProductCode() error {
 		hasher.Write(f.digest[:])
 	}
 
+	// Icons, binaries (custom action DLLs) and binary cells of custom
+	// tables are installed content too: a changed DLL with the same
+	// ProductCode would be refused as "already installed" (error 1638).
 	for _, name := range sortedStringKeys(b.cfg.Icons) {
-		hasher.Write([]byte("icon:" + name))
+		b.hashInput(hasher, "icon:"+name, b.cfg.Icons[name])
+	}
+
+	for _, name := range sortedStringKeys(b.cfg.Binaries) {
+		b.hashInput(hasher, "binary:"+name, b.cfg.Binaries[name])
+	}
+
+	for _, custom := range b.cfg.Tables {
+		for colIndex, col := range custom.Columns {
+			if typ, err := msidb.ParseType(col.Type); err != nil || typ.Kind != msidb.KindBinary {
+				continue
+			}
+
+			for rowIndex, row := range custom.Rows {
+				if colIndex >= len(row) {
+					continue
+				}
+
+				if path, ok := row[colIndex].(string); ok && path != "" {
+					b.hashInput(hasher, fmt.Sprintf("table:%s[%d][%d]", custom.Name, rowIndex, colIndex), path)
+				}
+			}
+		}
 	}
 
 	digest := hex.EncodeToString(hasher.Sum(nil))
 	b.productCode = uuid5(namespaceProduct, "product|"+b.upgradeCode+"|"+b.cfg.Product.Version+"|"+string(b.cfg.Package.Platform)+"|"+digest)
 
 	return nil
+}
+
+// hashInput writes label and the content of the input file at path (relative
+// to the YAML file) to hasher. An unreadable file contributes only its label;
+// the table loaders report the error with its YAML path later.
+func (b *build) hashInput(hasher io.Writer, label, path string) {
+	_, _ = io.WriteString(hasher, label)
+
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(b.cfg.BaseDir, filepath.FromSlash(path))
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	_, _ = io.Copy(hasher, file)
 }
 
 func sortedStringKeys(m map[string]string) []string {
