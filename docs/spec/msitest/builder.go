@@ -39,6 +39,7 @@ var schema = map[string]tbl{
 	"MsiFileHash":            {Cols: []string{"File_ s72", "Options i2", "HashPart1 i4", "HashPart2 i4", "HashPart3 i4", "HashPart4 i4"}, Keys: []string{"File_"}},
 	"AppSearch":              {Cols: []string{"Property s72", "Signature_ s72"}, Keys: []string{"Property", "Signature_"}},
 	"RegLocator":             {Cols: []string{"Signature_ s72", "Root i2", "Key s255", "Name S255", "Type I2"}, Keys: []string{"Signature_"}},
+	"Signature":              {Cols: []string{"Signature s72", "FileName s255", "MinVersion S20", "MaxVersion S20", "MinSize I4", "MaxSize I4", "MinDate I4", "MaxDate I4", "Languages S255"}, Keys: []string{"Signature"}},
 	"RemoveFile":             {Cols: []string{"FileKey s72", "Component_ s72", "FileName L255", "DirProperty s72", "InstallMode i2"}, Keys: []string{"FileKey"}},
 	"CreateFolder":           {Cols: []string{"Directory_ s72", "Component_ s72"}, Keys: []string{"Directory_", "Component_"}},
 }
@@ -312,6 +313,13 @@ func (p *pkg) build(out string) error {
 	}
 	for k, v := range p.Extra {
 		tables[k] = append(tables[k], v...)
+	}
+	if _, ok := tables["AppSearch"]; ok {
+		// AppSearch queries Signature even for registry searches (RUN-25):
+		// without the table it fails with 2228 and 1603.
+		if _, ok := tables["Signature"]; !ok {
+			tables["Signature"] = [][]string{}
+		}
 	}
 	if forcedCodepage >= 0 {
 		fc := filepath.Join(dir, "_ForceCodepage.idt")
