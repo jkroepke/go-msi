@@ -29,7 +29,7 @@ func regSDDL(key string) string {
 }
 
 func caseSec01() {
-	schema["MsiLockPermissionsEx"] = tbl{Cols: []string{"MsiLockPermissionsEx s72", "LockObject s72", "Table s32", "SDDLText l0", "Condition S255"}, Keys: []string{"MsiLockPermissionsEx"}}
+	schema["MsiLockPermissionsEx"] = tbl{Cols: []string{"MsiLockPermissionsEx s72", "LockObject s72", "Table s32", "SDDLText s0", "Condition S255"}, Keys: []string{"MsiLockPermissionsEx"}}
 	schema["LockPermissions"] = tbl{Cols: []string{"LockObject s72", "Table s32", "Domain S255", "User s255", "Permission I4"}, Keys: []string{"LockObject", "Table", "Domain", "User"}}
 
 	const (
@@ -38,7 +38,7 @@ func caseSec01() {
 		regSD   = "D:PAI(A;CI;KA;;;SY)(A;CI;KA;;;BA)(A;CI;KR;;;BU)"
 		svcSD   = "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLORPWPRC;;;BU)"
 		denySD  = "D:PAI(D;;FA;;;BU)(A;;FA;;;SY)(A;;FA;;;BA)"
-		ownerSD = "O:SYG:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)"
+		ownerSD = "O:BAG:BAD:PAI(A;;FA;;;SY)(A;;FA;;;BA)"
 	)
 
 	type variant struct {
@@ -66,7 +66,7 @@ func caseSec01() {
 		{name: "createfolder", desc: "CreateFolder row with inheritable ACEs; a file created inside afterwards",
 			extra: func(p *pkg) {
 				p.Extra["Directory"] = [][]string{{"DATADIR", "INSTALLDIR", "data"}}
-				p.Extra["Component"] = [][]string{{"C_data", guidFor("run19-data"), "DATADIR", "256", "", ""}}
+				p.Extra["Component"] = [][]string{{"C_data", guidFor("sec01-data"), "DATADIR", "256", "", ""}}
 				p.Extra["CreateFolder"] = [][]string{{"DATADIR", "C_data"}}
 				p.Extra["FeatureComponents"] = [][]string{{"Main", "C_data"}}
 				p.Extra["MsiLockPermissionsEx"] = [][]string{{"LP1", "DATADIR", "CreateFolder", dirSD, ""}}
@@ -76,13 +76,15 @@ func caseSec01() {
 				c.logf("authored SDDL: %s", dirSD)
 				c.logf("observed folder SDDL: %s", fileSDDL(d))
 				child := filepath.Join(d, "child.txt")
-				os.WriteFile(child, []byte("x"), 0o644)
+				if err := os.WriteFile(child, []byte("x"), 0o644); err != nil {
+					c.logf("writing %s: %v", child, err)
+				}
 				c.logf("file created afterwards inherits: %s", fileSDDL(child))
 				os.Remove(child)
 			}},
 		{name: "registry", desc: "Registry row secured; key permissions",
 			extra: func(p *pkg) {
-				p.Extra["Component"] = [][]string{{"C_reg", guidFor("run19-reg"), "INSTALLDIR", "260", "", "R1"}}
+				p.Extra["Component"] = [][]string{{"C_reg", guidFor("sec01-reg"), "INSTALLDIR", "260", "", "R1"}}
 				p.Extra["Registry"] = [][]string{{"R1", "2", permRegKey, "Value", "#1", "C_reg"}}
 				p.Extra["FeatureComponents"] = [][]string{{"Main", "C_reg"}}
 				p.Extra["MsiLockPermissionsEx"] = [][]string{{"LP1", "R1", "Registry", regSD, ""}}
@@ -91,7 +93,12 @@ func caseSec01() {
 				c.logf("authored SDDL: %s", regSD)
 				c.logf("observed key SDDL: %s", regSDDL(permRegKey))
 			}},
-		{name: "service", desc: "ServiceInstall row secured; BU may start and stop the service", svc: true,
+		{name: "service-baseline", desc: "ServiceInstall row without MsiLockPermissionsEx: the default service SDDL", svc: true,
+			extra: func(p *pkg) {},
+			check: func(c *caseLog, p *pkg) {
+				c.logf("observed service SDDL: %s", oneLine(scq("sdshow", svcName)))
+			}},
+		{name: "service", desc: "ServiceInstall row secured with an extra BU ACE", svc: true,
 			extra: func(p *pkg) {
 				p.Extra["MsiLockPermissionsEx"] = [][]string{{"LP1", "SI", "ServiceInstall", svcSD, ""}}
 			},
@@ -110,6 +117,20 @@ func caseSec01() {
 		{name: "formatted-sid-lookup", desc: "SDDLText with [LogonUser], an account name rather than a SID string or alias",
 			extra: func(p *pkg) {
 				p.Extra["MsiLockPermissionsEx"] = [][]string{{"LP1", "f_perm", "File", "D:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFX;;;[LogonUser])", ""}}
+			},
+			check: func(c *caseLog, p *pkg) {
+				c.logf("observed SDDL: %s", fileSDDL(filepath.Join(instDir(p), "perm.txt")))
+			}},
+		{name: "account-angle-builtin", desc: "SDDLText naming an account in angle brackets, <BUILTIN\\Users> (docs: account lookup)",
+			extra: func(p *pkg) {
+				p.Extra["MsiLockPermissionsEx"] = [][]string{{"LP1", "f_perm", "File", `D:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFX;;;<BUILTIN\Users>)`, ""}}
+			},
+			check: func(c *caseLog, p *pkg) {
+				c.logf("observed SDDL: %s", fileSDDL(filepath.Join(instDir(p), "perm.txt")))
+			}},
+		{name: "account-angle-env", desc: "SDDLText with <[%USERDOMAIN]\\[%USERNAME]> as owner and ACE trustee (docs example)",
+			extra: func(p *pkg) {
+				p.Extra["MsiLockPermissionsEx"] = [][]string{{"LP1", "f_perm", "File", `O:<[%USERDOMAIN]\[%USERNAME]>G:BAD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFX;;;<[%USERDOMAIN]\[%USERNAME]>)`, ""}}
 			},
 			check: func(c *caseLog, p *pkg) {
 				c.logf("observed SDDL: %s", fileSDDL(filepath.Join(instDir(p), "perm.txt")))
@@ -141,7 +162,7 @@ func caseSec01() {
 		}
 		c := newCase("SEC-01", v.name)
 		c.logf("%s", v.desc)
-		p := &pkg{Name: "run19", Is64: true, InstallDirName: "MsiSpecPerm",
+		p := &pkg{Name: "sec01", Is64: true, InstallDirName: "MsiSpecPerm",
 			Files: []payload{{Key: "f_perm", Name: "perm.txt", Data: []byte("MsiLockPermissionsEx test\r\n")}}}
 		if v.svc {
 			p.Files = append(p.Files, svcPayload()...)
@@ -160,6 +181,9 @@ func caseSec01() {
 		}
 		r := runMsiexec(c, "install.log", "/i", m)
 		c.logf("install %d", r.Exit)
+		if r.Exit != 0 {
+			c.logf("action before the first error: %s", actionBefore(r.Log, "Error 19"))
+		}
 		if r.Exit == 0 && v.check != nil {
 			v.check(c, p)
 			if v.name == "file" {
@@ -169,11 +193,16 @@ func caseSec01() {
 				c.logf("after icacls /reset: %s", fileSDDL(f))
 				rr := runMsiexec(c, "repair.log", "/fa", m)
 				c.logf("repair /fa %d: %s", rr.Exit, fileSDDL(f))
+				exec.Command("icacls.exe", f, "/reset").Run()
+				c.logf("after second icacls /reset: %s", fileSDDL(f))
 				rr = runMsiexec(c, "repair-vomus.log", "/fvomus", m)
 				c.logf("repair /fvomus %d: %s", rr.Exit, fileSDDL(f))
 			}
 		}
 		u := runMsiexec(c, "uninstall.log", "/x", m)
+		for _, l := range matchLines(u.Log, "Info 1321") {
+			c.logf("  uninstall log: %s", l)
+		}
 		left := filepath.Join(instDir(p), "perm.txt")
 		c.logf("RESULT %s: install %d, uninstall %d, perm.txt left: %v", v.name, r.Exit, u.Exit, exists(left))
 		if exists(left) {
@@ -184,6 +213,9 @@ func caseSec01() {
 			exec.Command("icacls.exe", instDir(p), "/reset", "/t", "/c").Run()
 			c.logf("  cleanup: remove install dir -> %v", os.RemoveAll(instDir(p)))
 		}
+		if strings.Contains(cmdOut("reg.exe", "query", `HKLM\`+permRegKey, "/reg:64"), "Value") {
+			c.logf("  cleanup: reg delete -> %s", oneLine(cmdOut("reg.exe", "delete", `HKLM\`+permRegKey, "/f", "/reg:64")))
+		}
 		if v.svc && svcState() != "not installed" {
 			exec.Command("sc.exe", "stop", svcName).Run()
 			c.logf("  cleanup: sc delete -> %s", oneLine(scq("delete", svcName)))
@@ -191,4 +223,29 @@ func caseSec01() {
 		removeProduct(c, p.ProductCode)
 		c.close()
 	}
+}
+
+// matchLines returns the msiexec log lines that contain sub.
+func matchLines(log, sub string) []string {
+	var out []string
+	for _, l := range strings.Split(log, "\n") {
+		if strings.Contains(l, sub) {
+			out = append(out, strings.TrimSpace(l))
+		}
+	}
+	return out
+}
+
+// actionBefore returns the last "Action start" line before the first line containing sub.
+func actionBefore(log, sub string) string {
+	last := ""
+	for _, l := range strings.Split(log, "\n") {
+		if strings.Contains(l, "Action start") {
+			last = strings.TrimSpace(l)
+		}
+		if strings.Contains(l, sub) {
+			return last
+		}
+	}
+	return "(no match)"
 }
