@@ -58,8 +58,8 @@ flowchart LR
 | `internal/pe` | PE version resource reader: file version, translations, "is this a PE file", PE checksum presence | §11.5 | stdlib |
 | `internal/condition` | Parser for the condition grammar, used to reject conditions the engine would ignore | §8.8 | stdlib |
 | `internal/sequence` | Numbering of sequence tables: fixed standard actions plus before/after chains, overlap and window checks | §9.2, §11.7 | stdlib |
-| `pkg/builder` | The config-to-tables layer: identities, directories and short names, components and GUIDs, files, media and cabinets, registry, services, environment, upgrades, custom actions, helpers, `_Validation`, summary; then the package bytes and a verification pass | §6–§11 | everything above, plus `config` and `internal/artwork` |
-| `cmd/go-msi` | CLI: `build`, `validate`, `inspect` | | `builder`, `msidb` |
+| `pkg/builder` | The config-to-tables layer: identities, directories and short names, components and GUIDs, files, media and cabinets, registry, services, environment, upgrades, custom actions, helpers, `_Validation`, summary; then the package bytes and a verification pass | §6–§11 | everything above, plus `config`, `internal/artwork` and `go.yaml.in/yaml/v3` |
+| `cmd/go-msi` | CLI: `build`, `validate`, `inspect` | | `builder`, `config`, `msidb` |
 
 `pkg/config` (PR #2) stays as it is: the builder consumes a validated `*config.Config`
 and never reads YAML.
