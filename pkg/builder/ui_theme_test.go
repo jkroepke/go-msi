@@ -16,7 +16,7 @@ import (
 	"github.com/jkroepke/go-msi/pkg/config"
 )
 
-const licenseRTF = `{\rtf1\ansi\deff0{\fonttbl{\f0\fnil Courier New;}}\f0\fs16 Apache License\par Version 2.0\par}`
+const licenseRTF = `{\rtf1\ansi\deff0{\fonttbl{\f0\fnil Courier New;}}\f0\fs16 Example License\par Version 1.0\par}`
 
 // picturePNG is a width×height PNG in one colour.
 func picturePNG(t *testing.T, width, height int, c color.NRGBA) []byte {
@@ -35,15 +35,15 @@ func picturePNG(t *testing.T, width, height int, c color.NRGBA) []byte {
 	return buf.Bytes()
 }
 
-// alloyInputs are the input files of examples/alloy, with the given
+// brandedInputs are the input files of examples/branded, with the given
 // overrides.
-func alloyInputs(t *testing.T, overrides map[string][]byte) map[string][]byte {
+func brandedInputs(t *testing.T, overrides map[string][]byte) map[string][]byte {
 	t.Helper()
 
 	inputs := map[string][]byte{
-		"alloy.exe":         testpe.Build(testpe.Options{FileVersion: "1.5.0.0", Languages: []int{1033}}),
-		"alloy-service.exe": testpe.Build(testpe.Options{FileVersion: "1.5.0.0", Languages: []int{1033}}),
-		"config.alloy":      []byte("logging {}\n"),
+		"agent.exe":         testpe.Build(testpe.Options{FileVersion: "1.5.0.0", Languages: []int{1033}}),
+		"agent-service.exe": testpe.Build(testpe.Options{FileVersion: "1.5.0.0", Languages: []int{1033}}),
+		"agent.conf":        []byte("logging {}\n"),
 		"icon.ico":          append([]byte{0, 0, 1, 0, 1, 0}, make([]byte, 64)...),
 		"LICENSE.rtf":       []byte(licenseRTF),
 		"banner.bmp":        picturePNG(t, 493, 58, color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}),
@@ -72,7 +72,7 @@ func controlRow(t *testing.T, res *builder.Result, dialog, control string) []any
 func TestLicensePage(t *testing.T) {
 	t.Parallel()
 
-	res := mustBuild(t, example(t, "alloy", map[string]string{"VERSION": "1.5.0"}, alloyInputs(t, nil)))
+	res := mustBuild(t, example(t, "branded", map[string]string{"VERSION": "1.5.0"}, brandedInputs(t, nil)))
 
 	// Welcome → license → feature tree; an installed product's Change skips the license.
 	for _, want := range []struct {
@@ -152,7 +152,7 @@ func TestLicenseWithDialogs(t *testing.T) {
 			{"MaintenanceTypeDlg", "Change"}: {"1": "ExtraDlg"},
 		}},
 	} {
-		cfg := example(t, "alloy", map[string]string{"VERSION": "1.5.0"}, alloyInputs(t, nil))
+		cfg := example(t, "branded", map[string]string{"VERSION": "1.5.0"}, brandedInputs(t, nil))
 		cfg.UI.Dialogs = []*config.Dialog{{ID: "ExtraDlg", Title: "Extra", After: tc.after, Fields: field}}
 		res := mustBuild(t, cfg)
 
@@ -169,12 +169,12 @@ func TestLicenseWithDialogs(t *testing.T) {
 func TestLicenseFromText(t *testing.T) {
 	t.Parallel()
 
-	cfg := example(t, "alloy", map[string]string{"VERSION": "1.5.0"}, alloyInputs(t, map[string][]byte{"LICENSE": []byte("Copyright © Grafana\n{x}\n")}))
+	cfg := example(t, "branded", map[string]string{"VERSION": "1.5.0"}, brandedInputs(t, map[string][]byte{"LICENSE": []byte("Copyright © Example\n{x}\n")}))
 	cfg.UI.License = "LICENSE"
 	res := mustBuild(t, cfg)
 
 	got, ok := controlRow(t, res, "LicenseAgreementDlg", "LicenseText")[9].(string)
-	if !ok || !strings.HasPrefix(got, `{\rtf1`) || !strings.Contains(got, `Copyright \u169? Grafana\par`) || !strings.Contains(got, `\{x\}`) {
+	if !ok || !strings.HasPrefix(got, `{\rtf1`) || !strings.Contains(got, `Copyright \u169? Example\par`) || !strings.Contains(got, `\{x\}`) {
 		t.Errorf("converted license %q", got)
 	}
 }
@@ -182,7 +182,7 @@ func TestLicenseFromText(t *testing.T) {
 func TestThemePictures(t *testing.T) {
 	t.Parallel()
 
-	res := mustBuild(t, example(t, "alloy", map[string]string{"VERSION": "1.5.0"}, alloyInputs(t, nil)))
+	res := mustBuild(t, example(t, "branded", map[string]string{"VERSION": "1.5.0"}, brandedInputs(t, nil)))
 
 	for name, want := range map[string]struct {
 		width, height int
@@ -264,7 +264,7 @@ func TestThemeAndLicenseErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := example(t, "alloy", map[string]string{"VERSION": "1.5.0"}, alloyInputs(t, tc.overrides))
+			cfg := example(t, "branded", map[string]string{"VERSION": "1.5.0"}, brandedInputs(t, tc.overrides))
 			res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
 
 			if tc.warning != (err == nil) || !strings.Contains(fmt.Sprint(res.Diagnostics), tc.want) {
