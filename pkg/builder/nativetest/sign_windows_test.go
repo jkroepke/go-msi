@@ -525,7 +525,7 @@ func TestSignatureSIG04(t *testing.T) {
 			cfb.Stream{Name: "A", Data: []byte("short")},
 			cfb.Stream{Name: "AB", Data: []byte("longer")},
 			cfb.Stream{Name: "ABC", Data: []byte("longest")},
-			cfb.Stream{Name: "āearly", Data: []byte("sorts before U+0005")},
+			cfb.Stream{Name: "\u3801X", Data: []byte("sorts before U+0005")},
 		)
 	})
 
