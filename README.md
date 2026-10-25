@@ -1,4 +1,5 @@
 [![Lint](https://github.com/jkroepke/go-msi/actions/workflows/lint.yaml/badge.svg?branch=main)](https://github.com/jkroepke/go-msi/actions/workflows/lint.yaml)
+[![codecov](https://codecov.io/gh/jkroepke/go-msi/graph/badge.svg)](https://codecov.io/gh/jkroepke/go-msi)
 [![Release](https://github.com/jkroepke/go-msi/actions/workflows/release.yaml/badge.svg?branch=main)](https://github.com/jkroepke/go-msi/actions/workflows/release.yaml)
 [![GitHub license](https://img.shields.io/github/license/jkroepke/go-msi)](https://github.com/jkroepke/go-msi/blob/main/LICENSE)
 [![Current Release](https://img.shields.io/github/release/jkroepke/go-msi.svg?logo=github)](https://github.com/jkroepke/go-msi/releases/latest)

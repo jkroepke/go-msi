@@ -1,0 +1,9 @@
+---
+coverage:
+  status:
+    project: false
+    patch: off
+
+ignore:
+  - "docs/**/*"
+  - "examples/**/*"
