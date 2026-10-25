@@ -85,15 +85,27 @@ type image struct {
 	sections []section
 }
 
+// read returns size bytes at rva from the section that holds them.
 func (im *image) read(rva, size uint32) ([]byte, error) {
+	// 64-bit arithmetic: the 32-bit fields of a corrupt header can wrap
+	// rva+size or the section end around and pass a 32-bit range check.
 	for _, s := range im.sections {
-		end := s.virtualAddress + max(s.virtualSize, s.rawSize)
-		if rva >= s.virtualAddress && rva+size <= end {
-			off := int64(s.rawPointer) + int64(rva-s.virtualAddress)
-			buf := make([]byte, size)
+		start := uint64(s.virtualAddress)
+		end := start + uint64(max(s.virtualSize, s.rawSize))
 
-			if _, err := im.r.ReadAt(buf, off); err != nil {
+		if uint64(rva) >= start && uint64(rva)+uint64(size) <= end {
+			off := int64(s.rawPointer) + int64(rva-s.virtualAddress)
+
+			// Grow the buffer while reading instead of allocating size up
+			// front: a corrupt header can claim gigabytes that the file
+			// does not hold, and the read then fails at the real end.
+			buf, err := io.ReadAll(io.NewSectionReader(im.r, off, int64(size)))
+			if err != nil {
 				return nil, fmt.Errorf("pe: reading RVA %#x: %w", rva, err)
+			}
+
+			if uint64(len(buf)) != uint64(size) {
+				return nil, fmt.Errorf("pe: reading RVA %#x: %w", rva, io.ErrUnexpectedEOF)
 			}
 
 			return buf, nil
@@ -188,7 +200,9 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 // findEntry returns the offset of a resource directory entry's target. With
 // id < 0 the first entry is taken.
 func findEntry(res []byte, dir uint32, wantID int) (uint32, bool, error) {
-	if int(dir)+16 > len(res) {
+	// Compare in 64 bits: int is 32 bits wide on some platforms and a
+	// directory offset near 2 GiB would wrap the sum negative.
+	if uint64(dir)+16 > uint64(len(res)) {
 		return 0, false, errors.New("pe: resource directory out of range")
 	}
 
@@ -231,7 +245,7 @@ func parseVersion(img *image, res []byte, resRVA uint32, info *Info) error { //n
 		return err
 	}
 
-	if int(dataEntry)+16 > len(res) {
+	if uint64(dataEntry)+16 > uint64(len(res)) {
 		return errors.New("pe: resource data entry out of range")
 	}
 
@@ -241,7 +255,9 @@ func parseVersion(img *image, res []byte, resRVA uint32, info *Info) error { //n
 
 	var data []byte
 
-	if dataRVA >= resRVA && dataRVA+dataSize <= resRVA+uint32(len(res)) { //nolint:gosec // bounded by the format limits checked earlier
+	// Compare in 64 bits: a corrupt size can wrap dataRVA+dataSize and
+	// otherwise pass the check with an end before the start.
+	if dataRVA >= resRVA && uint64(dataRVA)+uint64(dataSize) <= uint64(resRVA)+uint64(len(res)) {
 		data = res[dataRVA-resRVA : dataRVA-resRVA+dataSize]
 	} else {
 		data, err = img.read(dataRVA, dataSize)
