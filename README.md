@@ -32,6 +32,7 @@ macOS and Windows, for example in a CI job next to the rest of your release.
 ## Example
 
 ```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/config/schema.json
 # The smallest useful package: one executable, silent install only.
 schema: go-msi/v1
 
