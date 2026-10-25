@@ -88,20 +88,24 @@ and custom actions is in
 ## Out of scope
 
 go-msi aims at simple, single-product installers such as an exporter or an
-agent with a service. These are not planned:
+agent with a service. These are not supported:
 
-- **MSIX and APPX.** Use [nFPM](https://github.com/goreleaser/nfpm).
-- **Running packages.** go-msi never installs or executes an MSI. Its
-  Windows tests do, on CI runners only.
+- **MSIX.** Use [nFPM](https://github.com/goreleaser/nfpm).
+- **Running packages.** go-msi never installs or executes an MSI. Only its
+  tests do: on Windows without `-short` (elevated), and under Wine with
+  `hack/test-wine.sh`.
 - **Transforms (`.mst`), patches (`.msp`), merge modules (`.msm`) and
   bundles or bootstrappers.** Ship a new major-upgrade MSI instead of a patch.
 - **Multi-language packages.** A package has one language; there are no
-  embedded language transforms.
+  embedded language transforms. Not in schema v1.
 - **Spanned cabinets and LZX compression.** Cabinets are MSZIP or stored.
 - **Script custom actions** (VBScript, JScript). Use an executable or DLL
-  action instead.
+  action instead. Not in schema v1.
 - **Editing existing packages and WiX XML input.** `go-msi inspect` only
   reads packages to help debugging.
+- **Advertised installs.** Not in schema v1.
+- **File harvesting.** List each file of a component; a whole directory is
+  not added automatically. Not in schema v1.
 - **Hand-built dialogs.** The UI is a built-in wizard plus optional form
   pages that ask for properties; there is no free control layout.
 
