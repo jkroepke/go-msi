@@ -42,7 +42,8 @@ type accuracy struct {
 }
 
 // ErrTimestampUnavailable wraps failures to reach the time-stamping
-// authority or a non-200 answer, as opposed to a bad reply.
+// authority, timeouts and 429 or 5xx answers, as opposed to a refused
+// request or a bad reply.
 var ErrTimestampUnavailable = errors.New("sign: timestamp authority unavailable")
 
 // defaultClient is used without Options.HTTPClient; a stalled authority
@@ -124,8 +125,13 @@ func postTimestampRequest(ctx context.Context, opts *Options, req []byte) ([]byt
 
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
+	switch {
+	case resp.StatusCode == http.StatusOK:
+	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= http.StatusInternalServerError:
 		return nil, fmt.Errorf("%w: %s answered %s", ErrTimestampUnavailable, opts.TimestampURL, resp.Status)
+	default:
+		// A 4xx answer means the request itself was refused.
+		return nil, fmt.Errorf("sign: timestamp: %s answered %s", opts.TimestampURL, resp.Status)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))

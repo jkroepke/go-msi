@@ -292,14 +292,14 @@ func parseIndirectData(sdata *parsedSignedData) (crypto.Hash, []byte, error) {
 // checkContent recomputes the pre-hash, when the package has one, and the
 // content digest. It reports whether the signature is extended.
 func checkContent(file *cfb.File, algo crypto.Hash, signed []byte) (bool, error) {
-	exStream, extended := file.Stream(StreamSignatureEx)
+	extStream, extended := file.Stream(StreamSignatureEx)
 	if extended {
 		pre, err := preHash(file, algo)
 		if err != nil {
 			return false, err
 		}
 
-		if !bytes.Equal(pre, exStream) {
+		if !bytes.Equal(pre, extStream) {
 			return false, errors.New("sign: MsiDigitalSignatureEx does not match the package metadata")
 		}
 	}

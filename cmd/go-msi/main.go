@@ -538,8 +538,19 @@ func cmdSign(args []string, stdout, stderr io.Writer) error {
 }
 
 // writeAtomic replaces path through a temporary file in the same
-// directory, so a failed write keeps the original package.
+// directory, so a failed write keeps the original package. An existing
+// file keeps its mode, and a symlink keeps pointing at the replaced file.
 func writeAtomic(path string, data []byte) error {
+	mode := os.FileMode(0o644)
+
+	if target, err := filepath.EvalSymlinks(path); err == nil {
+		path = target
+
+		if info, err := os.Stat(path); err == nil {
+			mode = info.Mode().Perm()
+		}
+	}
+
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".go-msi-*.msi")
 	if err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
@@ -547,16 +558,20 @@ func writeAtomic(path string, data []byte) error {
 
 	defer func() { _ = os.Remove(tmp.Name()) }()
 
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
+	for _, step := range []func() error{
+		func() error {
+			_, err := tmp.Write(data)
 
-		return fmt.Errorf("write %s: %w", path, err)
-	}
+			return err //nolint:wrapcheck // wrapped below
+		},
+		func() error { return tmp.Chmod(mode) },
+		tmp.Sync,
+	} {
+		if err := step(); err != nil {
+			_ = tmp.Close()
 
-	if err := tmp.Chmod(0o644); err != nil {
-		_ = tmp.Close()
-
-		return fmt.Errorf("write %s: %w", path, err)
+			return fmt.Errorf("write %s: %w", path, err)
+		}
 	}
 
 	if err := tmp.Close(); err != nil {
