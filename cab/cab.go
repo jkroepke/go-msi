@@ -34,7 +34,10 @@ const (
 	maxBlockData = 32780
 	maxFiles     = 65535
 	maxCabinet   = 0x7FFFFFFF
-	maxNameLen   = 255
+	// maxFolder is the largest folder whose block count fits cCFData (u16):
+	// 65535 blocks of 32768 bytes, the split threshold of section 5.
+	maxFolder  = maxFiles * blockSize
+	maxNameLen = 255
 )
 
 // File attributes.
@@ -178,8 +181,8 @@ func Write(files []File, opts Options) ([]byte, error) { //nolint:cyclop,gocogni
 			return nil, fmt.Errorf("cab: file %d: name %q contains NUL", i, file.Name)
 		}
 
-		if int64(len(folder))+int64(len(file.Data)) > maxCabinet {
-			return nil, errors.New("cab: folder exceeds 2 GiB")
+		if int64(len(folder))+int64(len(file.Data)) > maxFolder {
+			return nil, fmt.Errorf("cab: folder exceeds %d bytes (65535 blocks); split the files across cabinets", maxFolder)
 		}
 
 		folder = append(folder, file.Data...)
