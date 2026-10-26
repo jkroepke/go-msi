@@ -329,6 +329,11 @@
             "parent": {
               "type": "string",
               "description": "Standard folder. Default: ProgramFiles64Folder, ProgramFilesFolder on x86, LocalAppDataFolder for perUser."
+            },
+            "remember": {
+              "$ref": "#/$defs/bool",
+              "description": "Store the chosen folder in the registry and use it again on the next install, so that a major upgrade keeps a custom folder. A folder given on the command line still wins.",
+              "default": false
             }
           },
           "additionalProperties": false

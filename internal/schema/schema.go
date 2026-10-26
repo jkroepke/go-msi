@@ -250,6 +250,28 @@ var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 		"Text|L64||Text||||||The visible title to be assigned to the radio button.",
 		"Help|L50||Text||||||The help strings used with the button. The text is optional.",
 	},
+	"AppSearch": {
+		"Property|s72|K|Identifier||||||The property set to the path a search finds.",
+		"Signature_|s72|K|Identifier||||||The search: a key into Signature and the locator tables.",
+	},
+	"RegLocator": {
+		"Signature_|s72|K|Identifier||||||The search this registry location belongs to.",
+		"Root|i2|||||0|3||The predefined registry root.",
+		"Key|s255||RegPath||||||The registry key.",
+		"Name|S255||Formatted||||||The registry value name; empty for the default value.",
+		"Type|I2|||||0|18||What the value names (file, directory or raw), plus 16 for the 64-bit view.",
+	},
+	"Signature": {
+		"Signature|s72|K|Identifier||||||The file signature a search compares.",
+		"FileName|s255||Filename||||||The file name.",
+		"MinVersion|S20||Text||||||The lowest version.",
+		"MaxVersion|S20||Text||||||The highest version.",
+		"MinSize|I4|||||0|2147483647||The smallest size.",
+		"MaxSize|I4|||||0|2147483647||The largest size.",
+		"MinDate|I4|||||0|2147483647||The earliest modification time.",
+		"MaxDate|I4|||||0|2147483647||The latest modification time.",
+		"Languages|S255||Language||||||The languages.",
+	},
 	"Registry": {
 		"Registry|s72|K|Identifier||||||Primary key, non-localized token.",
 		"Root|i2|||||-1|3||The predefined root key for the registry value, one of rrkEnum.",
