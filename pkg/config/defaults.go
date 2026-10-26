@@ -137,12 +137,14 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 		}
 	})
 
-	for _, c := range cfg.Components {
-		defaultComponent(c)
+	for _, comp := range cfg.Components {
+		defaultComponent(comp)
 
-		for _, file := range c.Files {
+		for _, file := range comp.Files {
 			for _, shortcut := range file.Shortcuts {
-				defaultShortcut(shortcut, product, c)
+				if shortcut != nil {
+					defaultShortcut(shortcut, product, comp)
+				}
 			}
 		}
 	}

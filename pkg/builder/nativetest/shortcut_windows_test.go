@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/jkroepke/go-msi/internal/testpe"
+	"github.com/jkroepke/go-msi/pkg/builder"
+	"github.com/jkroepke/go-msi/pkg/config"
 )
 
 func desktopInputs() map[string][]byte {
@@ -89,5 +91,62 @@ func TestMsiexecInstallsShortcuts(t *testing.T) {
 		if _, err := os.Stat(link); err == nil {
 			t.Errorf("%s is still there after the uninstall", link)
 		}
+	}
+}
+
+// TestICEShortcuts runs the full ICE suite against shortcuts in a Start menu
+// subfolder, which need RemoveFile rows (ICE64), and on the desktop, with an
+// icon. A per-user package is left out: its install dir lies in the user
+// profile, and the file components there still fail ICE38 (see the
+// validator's warning), whatever the shortcuts do.
+//
+//nolint:paralleltest // msi.dll's external UI handler is process-wide
+func TestICEShortcuts(t *testing.T) {
+	cub := iceCube(t)
+
+	for _, scope := range []string{"perMachine"} {
+		t.Run(scope, func(t *testing.T) {
+			dir := t.TempDir()
+			inputs := map[string][]byte{
+				"app.exe": testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}}),
+				"app.ico": append([]byte{0, 0, 1, 0, 1, 0}, make([]byte, 64)...),
+			}
+
+			for name, data := range inputs {
+				if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			cfg, err := config.Parse([]byte(`schema: go-msi/v1
+product: { name: Acme App, manufacturer: Acme, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3303 }
+package: { platform: x64, scope: `+scope+` }
+icons: { app.ico: app.ico }
+components:
+  - files:
+      - source: app.exe
+        shortcuts:
+          - { directory: ProgramMenuFolder/Acme/Tools, icon: app.ico, arguments: --tools }
+          - { directory: ProgramMenuFolder/Acme }
+          - { directory: DesktopFolder }
+`), config.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			cfg.BaseDir = dir
+
+			res, err := builder.Build(cfg, builder.Options{})
+			if err != nil {
+				t.Fatalf("build: %v\n%s", err, res.Diagnostics)
+			}
+
+			path := filepath.Join(dir, "shortcuts.msi")
+			if err := os.WriteFile(path, res.Package, 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			requireCleanICE(t, path, cub)
+		})
 	}
 }

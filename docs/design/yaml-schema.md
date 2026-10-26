@@ -553,7 +553,7 @@ files:
         arguments: --safe-mode                   # formatted text
         workingDirectory: INSTALLDIR             # default: the file's directory
         icon: viewer.ico                         # a key of icons; default: the file's own icon
-        iconIndex: 0
+        iconIndex: 0                             # needs icon
         show: minimized                          # normal (default), maximized or minimized
 ```
 
@@ -566,16 +566,20 @@ shortcuts with one name in one folder are an error, and a name ending in
 
 The builder puts the shortcuts of one component's files into a generated
 component of their own: in the folder of the first shortcut, with the
-component's condition and bitness, an HKCU value under
-`Software\[Manufacturer]\[ProductName]` as its key path (ICE38, ICE43),
-`RemoveFile` rows for the folders it creates below a profile folder (ICE64),
-and in every feature of the file's component. RUN-28 installed and removed
-shortcuts in this layout and in the file's own component alike, and removed
-an empty Start menu folder without a `RemoveFile` row; the generated
-component is what also passes the ICE suite. An `icon` is stored in the
-`Icon` table and written to the product's installer folder; without one the
-shell shows the target's icon. Advertised shortcuts are not supported
-(section 6).
+component's condition, 64-bit unless that folder is a 32-bit one (ICE80),
+an HKCU value under `Software\[Manufacturer]\[ProductName]` as its key path
+(ICE38, ICE43), `RemoveFile` rows for the folders it creates below a
+profile folder (ICE64), and in every feature of the file's component. In a
+per-user package that folder must not be a per-machine one (ICE105).
+RUN-28 installed and removed shortcuts from an own HKCU-keyed component and
+from the file's own component alike, and removed an empty Start menu folder
+without a `RemoveFile` row; the Windows tests run the ICE suite on the
+generated layout of a per-machine package (desktop, Start menu, a Start
+menu subfolder and an icon). A per-user package still gets the ICE38
+warning of section 4.4 for its files. An `icon` is stored in the `Icon` table and
+written to the product's installer folder; without one the shell shows the
+target's icon, and `iconIndex` without `icon` is an error. Advertised
+shortcuts are not supported (section 6).
 
 **Permissions.** A file, registry value, service or the component's folder
 can carry a `permissions` block (`folderPermissions` on the component, which

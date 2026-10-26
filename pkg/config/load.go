@@ -113,15 +113,19 @@ func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one 
 	return cfg, nil
 }
 
-// emptyComponents rejects null entries in the components, features and
-// firewall lists, which decode to nil pointers.
+// emptyComponents rejects null entries in the components, features, files,
+// shortcuts and firewall lists, which decode to nil pointers.
 func emptyComponents(cfg *Config) error { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
 	var errs []error
 
 	for i, comp := range cfg.Components {
 		if comp == nil {
 			errs = append(errs, fmt.Errorf("components[%d]: empty entry", i))
+
+			continue
 		}
+
+		errs = append(errs, emptyFiles(fmt.Sprintf("components[%d]", i), comp)...)
 	}
 
 	for i, rule := range cfg.Firewall {
@@ -142,9 +146,14 @@ func emptyComponents(cfg *Config) error { //nolint:cyclop // one pass in a fixed
 			}
 
 			for j, comp := range feature.Components {
+				compPath := fmt.Sprintf("%s.components[%d]", featurePath, j)
 				if comp == nil {
-					errs = append(errs, fmt.Errorf("%s.components[%d]: empty entry", featurePath, j))
+					errs = append(errs, fmt.Errorf("%s: empty entry", compPath))
+
+					continue
 				}
+
+				errs = append(errs, emptyFiles(compPath, comp)...)
 			}
 
 			for j, rule := range feature.Firewall {
@@ -160,6 +169,29 @@ func emptyComponents(cfg *Config) error { //nolint:cyclop // one pass in a fixed
 	walk(cfg.Features, "features")
 
 	return errors.Join(errs...)
+}
+
+// emptyFiles rejects null entries in a component's files and their
+// shortcuts.
+func emptyFiles(compPath string, comp *Component) []error {
+	var errs []error
+
+	for j, file := range comp.Files {
+		filePath := fmt.Sprintf("%s.files[%d]", compPath, j)
+		if file == nil {
+			errs = append(errs, fmt.Errorf("%s: empty entry", filePath))
+
+			continue
+		}
+
+		for k, shortcut := range file.Shortcuts {
+			if shortcut == nil {
+				errs = append(errs, fmt.Errorf("%s.shortcuts[%d]: empty entry", filePath, k))
+			}
+		}
+	}
+
+	return errs
 }
 
 func fileVars(root *yaml.Node) (map[string]string, error) {

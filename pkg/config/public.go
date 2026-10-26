@@ -15,6 +15,10 @@ func IsStandardFolder(id string) bool { return standardFolders[id] }
 // profile, such as ProgramMenuFolder or DesktopFolder.
 func IsProfileFolder(id string) bool { return profileFolders[id] }
 
+// Is32BitFolder reports whether id is a standard folder that is the 32-bit
+// location on 64-bit Windows, such as ProgramFilesFolder (ICE80).
+func Is32BitFolder(id string) bool { return folders32[id] }
+
 // IsStandardAction reports whether name is a standard action.
 func IsStandardAction(name string) bool { return standardActions[name] }
 

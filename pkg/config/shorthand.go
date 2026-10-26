@@ -105,6 +105,10 @@ func shortcutDirectories(cfg *Config, tree *dirTree) {
 	for i, comp := range cfg.Components {
 		for fileIndex, file := range comp.Files {
 			for index, shortcut := range file.Shortcuts {
+				if shortcut == nil {
+					continue // reported by the validator
+				}
+
 				if shortcut.Directory == "" {
 					shortcut.Directory = DefaultShortcutDirectory
 				}

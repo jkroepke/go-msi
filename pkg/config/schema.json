@@ -1329,6 +1329,7 @@
                     },
                     "iconIndex": {
                       "$ref": "#/$defs/int",
+                      "description": "Index of the icon in icon; needs icon.",
                       "default": 0
                     },
                     "show": {

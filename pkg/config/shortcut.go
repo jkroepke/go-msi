@@ -22,6 +22,11 @@ func (v *validator) shortcuts(cfg *Config, known *refs) {
 		for j, file := range comp.Files {
 			for k, shortcut := range file.Shortcuts {
 				scPath := fmt.Sprintf("%s.files[%d].shortcuts[%d]", comp.Path(i), j, k)
+				if shortcut == nil {
+					v.errorf(scPath, "empty entry")
+
+					continue
+				}
 
 				v.shortcutID(scPath, shortcut, ids)
 				v.shortcut(cfg, scPath, shortcut, known)
@@ -69,6 +74,9 @@ func (v *validator) shortcut(cfg *Config, scPath string, shortcut *Shortcut, kno
 
 	if known.dirs[shortcut.Directory] == nil {
 		v.errorf(scPath+".directory", "directory %q is not defined", shortcut.Directory)
+	} else if top := known.topFolder(shortcut.Directory); cfg.Package.Scope == ScopePerUser && perMachineFolders[top] {
+		// The shortcuts' component lives in this folder.
+		v.errorf(scPath+".directory", "a per-user package cannot install under %s (ICE105)", top)
 	}
 
 	if known.dirs[shortcut.WorkingDirectory] == nil {
@@ -79,6 +87,10 @@ func (v *validator) shortcut(cfg *Config, scPath string, shortcut *Shortcut, kno
 		if _, ok := cfg.Icons[shortcut.Icon]; !ok {
 			v.errorf(scPath+".icon", "icon %q is not defined in icons", shortcut.Icon)
 		}
+	}
+
+	if shortcut.Icon == "" && shortcut.IconIndex != 0 {
+		v.errorf(scPath+".iconIndex", "an icon index needs icon; without one the shell shows the target's first icon")
 	}
 
 	if shortcut.IconIndex < -maxShortcutIconIndex || shortcut.IconIndex > maxShortcutIconIndex {
