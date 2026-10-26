@@ -26,16 +26,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'pull_request'
         with:
-          fetch-depth: 0
+          # The merge commit and its first parent, the base it was built on.
+          fetch-depth: 2
           persist-credentials: 'false'
 
       - id: set-output
         name: Detect changes
         if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
         run: |
-          git diff --name-only "origin/${BASE_REF}" HEAD > "${RUNNER_TEMP}/files"
+          git diff --name-only HEAD^1 HEAD > "${RUNNER_TEMP}/files"
           code=$(grep -cEv '^docs/|\.md$' "${RUNNER_TEMP}/files" || true)
           generated=$(grep -cE '^docs/(cli|spec/msitest)/' "${RUNNER_TEMP}/files" || true)
           echo "changed=$((code + generated))" >> "$GITHUB_OUTPUT"
