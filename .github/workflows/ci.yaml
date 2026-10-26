@@ -272,8 +272,9 @@ jobs:
 
   # The one job to mark as required in branch protection. It only runs, and
   # fails, when a needed job failed or was cancelled; GitHub counts the
-  # skipped job as passed.
+  # skipped job as passed. Add every new check job to needs.
   fail:
+    name: fail
     if: "${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}"
     needs:
       - build
