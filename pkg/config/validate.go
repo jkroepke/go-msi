@@ -4,10 +4,15 @@ import (
 	"fmt"
 	"math"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
+
+	"unicode"
 
 	"github.com/jkroepke/go-msi/internal/condition"
+	"github.com/jkroepke/go-msi/pkg/msidb"
 )
 
 // Limits checked by Validate. Section references are to docs/spec/MSISPEC.md;
@@ -25,6 +30,16 @@ const (
 	minSequenceNumber    = -4
 	maxSequenceNumber    = 32767
 )
+
+// cabinetForbidden are the characters a cabinet file name cannot hold.
+const cabinetForbidden = `\/:*?"<>|#`
+
+// plainFileName reports whether name holds none of cabinetForbidden and no
+// control characters, which also keeps the cabinet off the streams that
+// start with U+0005, such as \x05SummaryInformation.
+func plainFileName(name string) bool {
+	return !strings.ContainsAny(name, cabinetForbidden) && !strings.ContainsFunc(name, unicode.IsControl)
+}
 
 // Validate fills in defaults, checks cfg and returns every finding. It reads
 // no input files; checks that need them (PE versions, sequence numbering,
@@ -235,12 +250,10 @@ func (v *validator) pkg(cfg *Config) {
 
 	v.oneOf("package.compression", pkg.Compression, "mszip", "none")
 
-	if len(pkg.Cabinet) > MaxStreamNameLength {
-		v.errorf("package.cabinet", "at most %d characters (DB-11)", MaxStreamNameLength)
-	}
-
-	if strings.ContainsAny(pkg.Cabinet, `\/:*?"<>|#`) {
+	if !plainFileName(pkg.Cabinet) {
 		v.errorf("package.cabinet", "%q is not a plain file name", pkg.Cabinet)
+	} else if err := msidb.CheckStreamName(pkg.Cabinet); err != nil {
+		v.errorf("package.cabinet", "not a valid stream name (DB-11): %v", err)
 	}
 }
 
@@ -923,12 +936,51 @@ func (v *validator) service(p string, s *Service, keyFile *File, perUser bool) {
 		}
 
 		for j, a := range rec.Actions {
-			v.oneOf(fmt.Sprintf("%s.recovery.actions[%d]", p, j), a, "restart", "none")
+			step := fmt.Sprintf("%s.recovery.actions[%d]", p, j)
+			v.oneOf(step, a.Action, "restart", "none")
+
+			if a.Restart != nil {
+				if a.Action != recoveryRestart {
+					v.errorf(step+".restart", "a delay is only allowed on a restart action")
+				}
+
+				v.recoveryDuration(step+".restart", *a.Restart, time.Millisecond)
+			}
 		}
+
+		v.recoveryDuration(p+".recovery.restartDelay", rec.RestartDelay, time.Millisecond)
 
 		if rec.ResetAfterDays < 0 {
 			v.errorf(p+".recovery.resetAfterDays", "must not be negative")
 		}
+
+		if rec.ResetAfterDays > math.MaxInt32/secondsPerDay {
+			v.errorf(p+".recovery.resetAfterDays", "is too long for sc.exe")
+		}
+
+		if rec.ResetAfter != nil {
+			if rec.ResetAfterDays != 0 {
+				v.errorf(p+".recovery.resetAfter", "set resetAfter or resetAfterDays, not both")
+			}
+
+			v.recoveryDuration(p+".recovery.resetAfter", *rec.ResetAfter, time.Second)
+		}
+	}
+}
+
+// secondsPerDay converts resetAfterDays to the seconds sc.exe takes.
+const secondsPerDay = 86400
+
+// recoveryDuration checks a delay or reset period that sc.exe takes as a
+// whole number of units (milliseconds or seconds) in a 32-bit value.
+func (v *validator) recoveryDuration(field string, value Duration, unit time.Duration) {
+	switch {
+	case value < 0:
+		v.errorf(field, "must not be negative")
+	case time.Duration(value)%unit != 0:
+		v.errorf(field, "must be a whole number of %s", map[time.Duration]string{time.Millisecond: "milliseconds", time.Second: "seconds"}[unit])
+	case int64(time.Duration(value)/unit) > math.MaxInt32:
+		v.errorf(field, "is too long for sc.exe")
 	}
 }
 
@@ -1249,6 +1301,8 @@ func (v *validator) ui(cfg *Config) {
 		v.errorf("ui.dialogs", "dialogs need a wizard")
 	}
 
+	v.theme(cfg)
+
 	seen := map[string]bool{}
 
 	for i, d := range cfg.UI.Dialogs {
@@ -1282,6 +1336,30 @@ func (v *validator) ui(cfg *Config) {
 			if _, ok := cfg.Properties[f.Property]; f.Property != "" && !ok {
 				v.warnf(fp+".property", "%s is not declared in properties, so it is not secure", f.Property)
 			}
+		}
+	}
+}
+
+// colorPattern is the #RRGGBB form of the theme colours.
+var colorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+func (v *validator) theme(cfg *Config) {
+	none := cfg.UI.Wizard == "none"
+
+	if none && cfg.UI.License != "" {
+		v.errorf("ui.license", "a license page needs a wizard")
+	}
+
+	theme := &cfg.UI.Theme
+	if none && *theme != (Theme{}) {
+		v.errorf("ui.theme", "a theme needs a wizard")
+	}
+
+	for _, c := range []struct{ name, value string }{
+		{"dark", theme.Colors.Dark}, {"light", theme.Colors.Light}, {"accent", theme.Colors.Accent}, {"paper", theme.Colors.Paper},
+	} {
+		if c.value != "" && !colorPattern.MatchString(c.value) {
+			v.errorf("ui.theme.colors."+c.name, "%q is not a colour in the form #RRGGBB", c.value)
 		}
 	}
 }

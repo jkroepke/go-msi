@@ -129,6 +129,7 @@ func (b *build) customTables() error { //nolint:cyclop // one pass over the form
 			continue
 		}
 
+		b.checkBinaryStreams(tablePath, tbl)
 		b.tables[custom.Name] = tbl
 	}
 
@@ -153,6 +154,13 @@ func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop /
 		}
 
 		database.Tables = append(database.Tables, tbl)
+	}
+
+	b.checkText(database.Tables)
+	b.checkStreams(database.Tables)
+
+	if err := b.diags.Err(); err != nil {
+		return nil, err //nolint:wrapcheck // the diagnostics carry their own paths
 	}
 
 	database.Tables = append(database.Tables, schema.Validation(database.Tables))
@@ -389,7 +397,7 @@ func (b *build) summaryProperties() []summary.Property {
 		words |= summary.WordShortNames
 	}
 
-	return []summary.Property{
+	props := []summary.Property{
 		{ID: summary.PIDCodepage, Value: config.SummaryCodepage(pkg.Codepage)},
 		{ID: summary.PIDTitle, Value: pkg.Summary.Title},
 		{ID: summary.PIDSubject, Value: subject},
@@ -405,10 +413,14 @@ func (b *build) summaryProperties() []summary.Property {
 		{ID: summary.PIDAppName, Value: b.opts.ToolName},
 		{ID: summary.PIDSecurity, Value: 2},
 	}
+
+	b.summaryText(props)
+
+	return props
 }
 
 // verify reads the finished package back and compares it with what was
-// written: tables, strings, summary and cabinet contents. It reads through
+// written: every table cell, the summary and the cabinet contents. It reads through
 // the file, so a large cabinet is never in memory.
 func (b *build) verify(target spool.Target, size int64, want *msidb.Database) error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	file, err := cfb.Open(target, size)
@@ -435,12 +447,8 @@ func (b *build) verify(target spool.Target, size int64, want *msidb.Database) er
 			return fmt.Errorf("table %s is missing", wantTable.Name)
 		}
 
-		if len(gotTable.Rows) != len(wantTable.Rows) {
-			return fmt.Errorf("table %s: read back %d rows, wrote %d", wantTable.Name, len(gotTable.Rows), len(wantTable.Rows))
-		}
-
-		if len(gotTable.Columns) != len(wantTable.Columns) {
-			return fmt.Errorf("table %s: read back %d columns, wrote %d", wantTable.Name, len(gotTable.Columns), len(wantTable.Columns))
+		if err := compareTable(wantTable, gotTable); err != nil {
+			return fmt.Errorf("read back: %w", err)
 		}
 	}
 

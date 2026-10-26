@@ -769,3 +769,292 @@ features:
 		}
 	}
 }
+
+func TestServiceRecoverySteps(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "0.32.0.5", Languages: []int{1033}})
+	cfg := example(t, "windows_exporter", map[string]string{"VERSION": "0.32.0.5"}, map[string][]byte{
+		"windows_exporter.exe": exe,
+		"icon.ico":             append([]byte{0, 0, 1, 0, 1, 0}, bytes.Repeat([]byte{0xAB}, 64)...),
+	})
+
+	minute := config.Duration(time.Minute)
+	reset := config.Duration(24 * time.Hour)
+
+	var svc *config.Service
+
+	for _, comp := range cfg.Components {
+		for _, s := range comp.Services {
+			svc = s
+		}
+	}
+
+	svc.Recovery = &config.ServiceRecovery{
+		ResetAfter:   &reset,
+		RestartDelay: config.Duration(5 * time.Minute),
+		Actions:      []config.RecoveryAction{{Action: "restart", Restart: &minute}, {Action: "restart"}},
+	}
+
+	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	target := cell(t, database, "CustomAction", "Target", func(r []any) bool { return strings.HasPrefix(fmt.Sprint(r[0]), "ServiceRecovery") })
+
+	want := `failure "windows_exporter" reset= 86400 actions= restart/60000/restart/300000/none/0`
+	if !strings.HasSuffix(fmt.Sprint(target), want) {
+		t.Errorf("recovery command %q, want suffix %q", target, want)
+	}
+}
+
+// Text the database code page cannot hold must fail with a diagnostic, not
+// with a marshal error (FuzzBuild finding).
+func TestCodepageDiagnostic(t *testing.T) {
+	t.Parallel()
+
+	input := fuzzInput{vars: defaultVars(), data: []byte("x")}
+	input.vars["DIRNAME"] = "Папка"
+
+	res, err := buildFuzzInput(t, input)
+	if err == nil {
+		t.Fatal("expected an error for Cyrillic text in code page 1252")
+	}
+
+	if res == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "Directory.DefaultDir") {
+		t.Fatalf("no diagnostic names the column: %v", err)
+	}
+}
+
+// The summary information is ANSI even for a UTF-8 database (SUM-04), so
+// text it cannot hold is replaced and reported as a warning.
+func TestSummaryCodepage(t *testing.T) {
+	t.Parallel()
+
+	input := fuzzInput{
+		vars: map[string]string{
+			"NAME": "Привет", "MANUFACTURER": "Пример", "VERSION": "1.0.0", "DIRNAME": "Папка",
+			"FILENAME": "файл.txt", "PROPNAME": "P", "REGKEY": "K", "TEXT": "Ж",
+			"CONDITION": "1", "CODEPAGE": "65001",
+		},
+		data: []byte("x"),
+	}
+
+	res, err := buildFuzzInput(t, input)
+	if err != nil {
+		t.Fatalf("build: %v\n%s", err, res.Diagnostics)
+	}
+
+	checkBuilt(t, res, input)
+
+	if got := summary.Get(res.Database.Summary, summary.PIDSubject); got != "?" {
+		t.Errorf("summary subject %q, want %q", got, "?")
+	}
+
+	// One warning per replaced property, at the field the text comes from.
+	// The author defaults to the manufacturer.
+	for _, path := range []string{"product.description", "package.summary.title", "product.manufacturer"} {
+		found := false
+
+		for _, d := range res.Diagnostics {
+			if d.Path == path && strings.Contains(d.Message, "summary information") {
+				found = true
+			}
+		}
+
+		if !found {
+			t.Errorf("no summary warning at %s: %v", path, res.Diagnostics)
+		}
+	}
+}
+
+// A custom binary cell is stored in the stream Table.Key, which must be a
+// valid stream name (review finding on the FuzzBuild fixes).
+func TestCustomBinaryStreamName(t *testing.T) {
+	t.Parallel()
+
+	for key, valid := range map[string]bool{
+		"Ok":                    true,
+		"Grüße":                 false,
+		strings.Repeat("a", 60): false,
+	} {
+		inputs := map[string][]byte{"hello.exe": testpe.Build(testpe.Options{FileVersion: "1.0.0.0"}), "blob.bin": []byte("blob")}
+		cfg := example(t, "minimal", nil, inputs)
+		cfg.Tables = append(cfg.Tables, &config.Table{
+			Name:    "MyTbl",
+			Columns: []config.Column{{Name: "Key", Type: "s72", Key: true}, {Name: "Data", Type: "V0"}},
+			Rows:    [][]any{{key, "blob.bin"}},
+		})
+
+		res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+		if valid {
+			if err != nil {
+				t.Errorf("key %q: %v", key, err)
+			}
+
+			continue
+		}
+
+		if err == nil || res.Diagnostics.Err() == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "tables[0].rows[0]") {
+			t.Errorf("key %q: want a tables[0].rows[0] diagnostic, got %v (%v)", key, err, res.Diagnostics)
+		}
+	}
+}
+
+// Two streams with one name fail the build with a config path instead of a
+// marshal error (review finding on the FuzzBuild fixes).
+func TestStreamCollision(t *testing.T) {
+	t.Parallel()
+
+	oneKey := []config.Column{{Name: "Key", Type: "s72", Key: true}, {Name: "Data", Type: "V0"}}
+	twoKeys := []config.Column{{Name: "A", Type: "s72", Key: true}, {Name: "B", Type: "s72", Key: true}, {Name: "Data", Type: "V0"}}
+	table := func(name string, columns []config.Column, rows ...[]any) *config.Table {
+		return &config.Table{Name: name, Columns: columns, Rows: rows}
+	}
+
+	for name, tc := range map[string]struct {
+		tables   []*config.Table
+		cabinet  string
+		binaries map[string]string
+		icons    map[string]string
+		wizard   bool
+		path     string
+		other    string
+	}{
+		"cabinet product.cab": {
+			tables: []*config.Table{table("product", oneKey, []any{"cab", "blob.bin"})},
+			path:   "package.cabinet", other: "tables[0].rows[0]",
+		},
+		"explicit cabinet": {
+			tables: []*config.Table{table("Foo", oneKey, []any{"Bar", "blob.bin"})}, cabinet: "Foo.Bar",
+			path: "package.cabinet", other: "tables[0].rows[0]",
+		},
+		"keys that join to one name": {
+			tables: []*config.Table{table("T", twoKeys, []any{"x.y", "z", "blob.bin"}, []any{"x", "y.z", "blob.bin"})},
+			path:   "tables[0].rows[1]", other: "tables[0].rows[0]",
+		},
+		"tables in config order": {
+			tables: []*config.Table{table("A.B", oneKey, []any{"c", "blob.bin"}), table("A", twoKeys, []any{"B", "c", "blob.bin"})},
+			path:   "tables[1].rows[0]", other: "tables[0].rows[0]",
+		},
+		"binaries entry": {
+			tables:   []*config.Table{table("Binary.x", oneKey, []any{"y", "blob.bin"})},
+			binaries: map[string]string{"x.y": "blob.bin"},
+			path:     "tables[0].rows[0]", other: "binaries.x.y",
+		},
+		"icons entry": {
+			tables: []*config.Table{table("Icon.x", oneKey, []any{"y", "blob.bin"})},
+			icons:  map[string]string{"x.y": "blob.bin"},
+			path:   "tables[0].rows[0]", other: "icons.x.y",
+		},
+		"cabinet and binaries entry": {
+			binaries: map[string]string{"x": "blob.bin"}, cabinet: "Binary.x",
+			path: "package.cabinet", other: "binaries.x",
+		},
+		"wizard bitmap": {
+			binaries: map[string]string{"BannerBmp": "blob.bin"}, wizard: true,
+			path: "ui", other: "binaries.BannerBmp",
+		},
+	} {
+		inputs := map[string][]byte{"hello.exe": testpe.Build(testpe.Options{FileVersion: "1.0.0.0"}), "blob.bin": []byte("blob")}
+		cfg := example(t, "minimal", nil, inputs)
+		cfg.Package.Cabinet = "product.cab"
+		cfg.Binaries = tc.binaries
+		cfg.Icons = tc.icons
+		cfg.Tables = append(cfg.Tables, tc.tables...)
+
+		if tc.cabinet != "" {
+			cfg.Package.Cabinet = tc.cabinet
+		}
+
+		if tc.wizard {
+			cfg.UI.Wizard = "minimal"
+		}
+
+		res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+		if err == nil || res.Diagnostics.Err() == nil {
+			t.Errorf("%s: want a diagnostic, got %v (%v)", name, err, res.Diagnostics)
+
+			continue
+		}
+
+		found := false
+
+		for _, d := range res.Diagnostics {
+			if d.Path == tc.path && strings.Contains(d.Message, "also used by "+tc.other) {
+				found = true
+			}
+		}
+
+		if !found {
+			t.Errorf("%s: no collision diagnostic at %s naming %s: %v", name, tc.path, tc.other, res.Diagnostics)
+		}
+	}
+}
+
+// The subject and comments both default to the product name; a name the
+// summary code page cannot hold is reported once at product.name, also
+// with an automatic package code, which builds the summary twice.
+func TestSummaryWarningOnce(t *testing.T) {
+	t.Parallel()
+
+	inputs := map[string][]byte{"hello.exe": testpe.Build(testpe.Options{FileVersion: "1.0.0.0"})}
+	cfg := example(t, "minimal", nil, inputs)
+	cfg.Product.Name = "Привет"
+	cfg.Product.Description = ""
+	cfg.Product.Comments = ""
+	cfg.Package.Codepage = 65001
+	cfg.Product.PackageCode = config.Auto
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err != nil {
+		t.Fatalf("build: %v\n%s", err, res.Diagnostics)
+	}
+
+	count := 0
+
+	for _, d := range res.Diagnostics {
+		if strings.Contains(d.Message, "summary information") {
+			if d.Path != "product.name" {
+				t.Errorf("summary warning at %s, want product.name: %s", d.Path, d.Message)
+			}
+
+			count++
+		}
+	}
+
+	if count != 1 {
+		t.Errorf("%d summary warnings, want 1: %v", count, res.Diagnostics)
+	}
+}
+
+// Text the user wrote is reported at its own field.
+func TestSummaryExplicitFields(t *testing.T) {
+	t.Parallel()
+
+	inputs := map[string][]byte{"hello.exe": testpe.Build(testpe.Options{FileVersion: "1.0.0.0"})}
+	cfg := example(t, "minimal", nil, inputs)
+	cfg.Product.Comments = "Ж comments"
+	cfg.Package.Summary.Author = "Ж author"
+	cfg.Package.Summary.Keywords = "Ж keywords"
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err != nil {
+		t.Fatalf("build: %v\n%s", err, res.Diagnostics)
+	}
+
+	for _, path := range []string{"product.comments", "package.summary.author", "package.summary.keywords"} {
+		found := false
+
+		for _, d := range res.Diagnostics {
+			if d.Path == path && strings.Contains(d.Message, "summary information") {
+				found = true
+			}
+		}
+
+		if !found {
+			t.Errorf("no summary warning at %s: %v", path, res.Diagnostics)
+		}
+	}
+}

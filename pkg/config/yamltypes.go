@@ -128,6 +128,49 @@ func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+// recoveryRestart is the recovery action that restarts the service.
+const recoveryRestart = "restart"
+
+// UnmarshalYAML accepts a scalar action name or a one-key {restart: delay} map.
+func (a *RecoveryAction) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		if err := node.Decode(&a.Action); err != nil {
+			return fmt.Errorf("line %d: %w", node.Line, err)
+		}
+
+		return nil
+	}
+
+	if node.Kind != yaml.MappingNode || len(node.Content) != 2 || node.Content[0].Value != recoveryRestart {
+		return fmt.Errorf("line %d: a recovery action is restart, none or {restart: <delay>}", node.Line)
+	}
+
+	// yaml.v3 skips UnmarshalYAML for a null value, which would leave a 0 delay.
+	if node.Content[1].Tag == "!!null" {
+		return fmt.Errorf("line %d: a restart step needs a delay", node.Line)
+	}
+
+	var delay Duration
+	if err := node.Content[1].Decode(&delay); err != nil {
+		return fmt.Errorf("line %d: %w", node.Line, err)
+	}
+
+	a.Action = recoveryRestart
+	a.Restart = &delay
+
+	return nil
+}
+
+// MarshalYAML writes the form UnmarshalYAML reads, so that the product code
+// derived from the marshalled config sees every action.
+func (a RecoveryAction) MarshalYAML() (any, error) {
+	if a.Restart == nil {
+		return a.Action, nil
+	}
+
+	return map[string]string{recoveryRestart: time.Duration(*a.Restart).String()}, nil
+}
+
 // Property is one Property table entry and its flags.
 type Property struct {
 	Value  string `yaml:"value"`

@@ -1,7 +1,8 @@
 // Package artwork draws the bitmaps of the go-msi setup wizard and encodes
-// them as Windows bitmaps for the Binary table. Everything is generated from
-// a Palette, so a package never ships third-party pictures and a theme is a
-// different palette.
+// them as Windows bitmaps for the Binary table. The built-in pictures are
+// generated from a Palette, so a package never ships third-party pictures
+// and a theme is a different palette. Decode reads the pictures a package
+// brings itself.
 package artwork
 
 import (
@@ -34,13 +35,17 @@ func Default() Palette {
 }
 
 // Pixel sizes. The Bitmap control stretches the picture to its rectangle,
-// so the sizes only set the resolution: both are twice the installer units
-// of the controls that show them (370×44 and 164×234).
+// so the sizes only set the resolution: both fill the controls that show
+// them (370×44 dialog units for the banner, 370×234 for the dialog
+// background) at 96 dpi, the sizes other installer toolkits use too. The
+// side panel is the left 123 units of the dialog background; the page text
+// starts at 135 units.
 const (
-	BannerWidth  = 740
-	BannerHeight = 88
-	SideWidth    = 328
-	SideHeight   = 468
+	BannerWidth  = 493
+	BannerHeight = 58
+	DialogWidth  = 493
+	DialogHeight = 312
+	SideWidth    = 164
 )
 
 // Banner draws the strip shown at the top of the inner wizard pages: paper
@@ -55,33 +60,45 @@ func Banner(palette Palette) *image.RGBA {
 	}
 
 	// Accent line along the bottom edge.
-	for y := BannerHeight - 4; y < BannerHeight; y++ {
+	for y := BannerHeight - 3; y < BannerHeight; y++ {
 		for x := range BannerWidth {
 			img.SetRGBA(x, y, palette.Accent)
 		}
 	}
 
 	// Three circles of the gradient colours as the mark, right aligned.
-	mark(img, palette, BannerWidth-60, BannerHeight/2-8, 26)
+	mark(img, palette, BannerWidth-40, BannerHeight/2-5, 17)
 
 	return img
 }
 
-// Side draws the panel on the left of the welcome and finish pages: a
-// diagonal gradient from Dark to Light with translucent circles.
-func Side(palette Palette) *image.RGBA {
-	img := image.NewRGBA(image.Rect(0, 0, SideWidth, SideHeight))
+// Dialog draws the background of the welcome and finish pages: on the
+// left a panel with a diagonal gradient from Dark to Light and translucent
+// circles, on the right paper behind the page text.
+func Dialog(palette Palette) *image.RGBA {
+	img := image.NewRGBA(image.Rect(0, 0, DialogWidth, DialogHeight))
 
-	for y := range SideHeight {
-		for x := range SideWidth {
-			t := (float64(x)/SideWidth + float64(y)/SideHeight) / 2
-			img.SetRGBA(x, y, mix(palette.Dark, palette.Light, t))
+	for y := range DialogHeight {
+		for x := range DialogWidth {
+			img.SetRGBA(x, y, palette.Paper)
 		}
 	}
 
-	circle(img, 250, 390, 150, palette.Light, 0.35)
-	circle(img, 60, 120, 110, palette.Dark, 0.35)
-	circle(img, 290, 70, 70, palette.Accent, 0.9)
+	panel, ok := img.SubImage(image.Rect(0, 0, SideWidth, DialogHeight)).(*image.RGBA)
+	if !ok {
+		panic("artwork: SubImage of an RGBA is an RGBA")
+	}
+
+	for y := range DialogHeight {
+		for x := range SideWidth {
+			t := (float64(x)/SideWidth + float64(y)/DialogHeight) / 2
+			panel.SetRGBA(x, y, mix(palette.Dark, palette.Light, t))
+		}
+	}
+
+	circle(panel, 127, 260, 87, palette.Light, 0.35)
+	circle(panel, 30, 80, 60, palette.Dark, 0.35)
+	circle(panel, 143, 47, 37, palette.Accent, 0.9)
 
 	return img
 }

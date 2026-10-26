@@ -1,8 +1,10 @@
 package config_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jkroepke/go-msi/pkg/config"
 )
@@ -220,6 +222,30 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, password: hunter2}]\n    files:", 1),
 			e, "components[0].services[0].password", "hidden property",
 		},
+		"recovery reset twice": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {resetAfterDays: 1, resetAfter: 24h, actions: [restart]}}]\n    files:", 1),
+			e, "components[0].services[0].recovery.resetAfter", "not both",
+		},
+		"recovery reset fraction": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {resetAfter: 1500ms, actions: [restart]}}]\n    files:", 1),
+			e, "components[0].services[0].recovery.resetAfter", "whole number of seconds",
+		},
+		"recovery step delay negative": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [{restart: -1s}]}}]\n    files:", 1),
+			e, "components[0].services[0].recovery.actions[0].restart", "negative",
+		},
+		"recovery step delay too long": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [{restart: 600h}]}}]\n    files:", 1),
+			e, "components[0].services[0].recovery.actions[0].restart", "too long",
+		},
+		"recovery reset days too long": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {resetAfterDays: 30000, actions: [restart]}}]\n    files:", 1),
+			e, "components[0].services[0].recovery.resetAfterDays", "too long",
+		},
+		"recovery four steps": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [restart, restart, restart, restart]}}]\n    files:", 1),
+			e, "components[0].services[0].recovery.actions", "one to three",
+		},
 		// Upgrade action properties (ICE61, section 8.10).
 		"private upgrade property": {
 			strings.Replace(base, "upgrade: {}", "upgrade: {property: oldFound}", 1) + appComponent,
@@ -275,6 +301,18 @@ func TestValidate(t *testing.T) {
 		"dialog without wizard": {
 			base + appComponent + "ui: {dialogs: [{id: D, title: T, after: X, fields: [{property: P}]}]}\n",
 			e, "ui.dialogs", "need a wizard",
+		},
+		"license without wizard": {
+			base + appComponent + "ui: {license: LICENSE.rtf}\n",
+			e, "ui.license", "needs a wizard",
+		},
+		"theme without wizard": {
+			base + appComponent + "ui: {theme: {banner: banner.bmp}}\n",
+			e, "ui.theme", "needs a wizard",
+		},
+		"bad theme colour": {
+			base + appComponent + "ui: {wizard: minimal, theme: {colors: {accent: \"#12345\"}}}\n",
+			e, "ui.theme.colors.accent", "#RRGGBB",
 		},
 	} {
 		ds := validate(t, tc.doc)
@@ -336,6 +374,86 @@ func TestHelpers(t *testing.T) {
 	for db, want := range map[int]int{1252: 1252, 932: 932, 65001: 1252, 0: 1252} {
 		if got := config.SummaryCodepage(db); got != want {
 			t.Errorf("SummaryCodepage(%d) = %d, want %d", db, got, want)
+		}
+	}
+}
+
+// TestRecoveryDelayOnNone covers a config built in Go, where a delay can be
+// set on a step that is not a restart.
+func TestRecoveryDelayOnNone(t *testing.T) {
+	t.Parallel()
+
+	doc := base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [none]}}]\n    files:", 1)
+
+	cfg, err := config.Parse([]byte(doc), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	delay := config.Duration(time.Minute)
+	cfg.Components[0].Services[0].Recovery.Actions[0].Restart = &delay
+
+	field := "components[0].services[0].recovery.actions[0].restart"
+	if ds := config.Validate(cfg); !find(ds, config.SeverityError, field, "only allowed on a restart") {
+		t.Errorf("diagnostics %v, want an error at %s", ds, field)
+	}
+}
+
+// The default cabinet name comes from the product name, which may not fit a
+// stream name (FuzzBuild finding).
+func TestDefaultCabinet(t *testing.T) {
+	t.Parallel()
+
+	for name, want := range map[string]string{
+		"App":    "App.cab",
+		"My App": "My App.cab",
+		"Grüße":  config.DefaultCabinet,
+		"Привет": config.DefaultCabinet,
+		"A#B":    config.DefaultCabinet,
+		// 27 spaces take one stream name unit each.
+		strings.Repeat("A ", 27): config.DefaultCabinet,
+	} {
+		doc := strings.Replace(base, "name: App\n  manufacturer", "name: '"+name+"'\n  manufacturer", 1)
+
+		cfg, err := config.Parse([]byte(doc+appComponent), config.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if cfg.Package.Cabinet != want {
+			t.Errorf("product %q: cabinet %q, want %q", name, cfg.Package.Cabinet, want)
+		}
+
+		if ds := config.Validate(cfg); find(ds, config.SeverityError, "package.cabinet", "") {
+			t.Errorf("product %q: the default cabinet is invalid: %v", name, ds)
+		}
+	}
+}
+
+func TestCabinetName(t *testing.T) {
+	t.Parallel()
+
+	for cabinet, valid := range map[string]bool{
+		"product.cab":                    true,
+		strings.Repeat("a", 58) + ".cab": true,
+		strings.Repeat("a", 59) + ".cab": false,
+		// Every character outside 0-9A-Za-z._ takes a unit of its own.
+		strings.Repeat("-", 31): true,
+		strings.Repeat("-", 32): false,
+		"daten-ü.cab":           false,
+		"a/b.cab":               false,
+		// Not a forbidden file-name character, but CFB rejects it.
+		"a!b.cab": false,
+		// A control character could name a stream go-msi writes itself.
+		"\x05SummaryInformation": false,
+		"a\tb.cab":               false,
+		// Outside the BMP: two units each.
+		strings.Repeat("\U0001F600", 15): true,
+		strings.Repeat("\U0001F600", 16): false,
+	} {
+		ds := validate(t, pkg(`{platform: x64, cabinet: `+strconv.Quote(cabinet)+`}`)+appComponent)
+		if got := !find(ds, config.SeverityError, "package.cabinet", ""); got != valid {
+			t.Errorf("cabinet %q: valid = %v, want %v (%v)", cabinet, got, valid, ds)
 		}
 	}
 }

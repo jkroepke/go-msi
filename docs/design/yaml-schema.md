@@ -85,8 +85,8 @@ closes each one.
 |---|---|---|
 | Template platform tokens are exact and case-sensitive; `X64` and `arm64` give 1633 | SUM-02 | `package.platform` takes `x86`, `x64` or `arm64` in any case, plus the aliases `intel`, `amd64` and `aarch64`, and the builder writes the exact token. |
 | Two languages in the Template give 1624 | SUM-02 | `product.language` is one integer LCID, not a list. |
-| Summary code page 65001 or 1200 gives 1620; a 65001 database works | SUM-04, DB-08 | `package.codepage` sets the database code page (1252 by default, 65001 allowed). The summary code page is the database code page when that is an ANSI page, else 1252. |
-| Stream names are limited to 62 characters | DB-11 | `icons` keys are at most 57 characters and `binaries` keys at most 55 (`Icon.` and `Binary.` count). The embedded cabinet name is at most 62 characters. |
+| Summary code page 65001 or 1200 gives 1620; a 65001 database works | SUM-04, DB-08 | `package.codepage` sets the database code page (1252 by default, 65001 allowed). The summary code page is the database code page when that is an ANSI page, else 1252. Every table string must fit the database code page, or the build fails with a `package.codepage` error. Summary text that the summary code page cannot hold is stored with `?` in place of those characters, with a warning. |
+| Stream names are limited to 62 characters | DB-11 | `icons` keys are at most 57 characters and `binaries` keys at most 55 (`Icon.` and `Binary.` count). The 62-character limit holds only for names made of `0`–`9`, `A`–`Z`, `a`–`z`, `.` and `_`: every other BMP character takes a stream-name unit of its own and a character outside the BMP two (31 in all), and `!`, `/`, `\`, `:`, NUL, U+3800–U+4840 and letters with case from U+0080 to U+D7FF are rejected. `package.cabinet` is checked with the stream-name encoder. |
 | The minimum integer of a column type is stored as NULL | DB-02 | `tables[].rows` reject −32768 in `i2` columns and −2147483648 in `i4` columns. |
 | `MsiGetFileHash` returns zeros for an empty file | RUN-12 | Writer: an empty unversioned file gets a hash row of four zeros. |
 | A service is deleted at uninstall only with `ServiceControl` event 128 | RUN-05 | `services[].control.deleteOnUninstall` defaults to `true`. |
@@ -224,7 +224,7 @@ them braced and upper case.
 | `installerVersion` | string | `"5.0"` | Page Count = major × 100 + minor. x86: 1.0 to 5.0, x64: 2.0 to 5.0, arm64: 5.0 |
 | `codepage` | int | `1252` | Database code page, section 2.3 |
 | `compression` | enum | `mszip` | `mszip` or `none` (stored blocks) |
-| `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters |
+| `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters (fewer outside `0-9A-Za-z._`). The default is `product.cab` when `<name>.cab` cannot be a stream name or a plain filename |
 | `longFileNames` | bool | `true` | `false` sets Word Count bit 1 and requires 8.3 names |
 | `summary` | map | | `title` (`Installation Database`), `keywords` (`Installer`), `author` (manufacturer) |
 
@@ -504,8 +504,11 @@ services:
       deleteOnUninstall: true
       wait: true
     recovery:
-      resetAfterDays: 0
-      actions: [restart, restart, restart]
+      resetAfter: 24h            # or resetAfterDays: 1
+      actions:                   # one to three steps
+        - restart                # waits restartDelay
+        - { restart: 5m }        # a delay for this step only
+        - none
       restartDelay: 60s
 ```
 
@@ -519,7 +522,11 @@ command line has no placeholder left over. Conditions are checked like
 those of section 4.9.
 
 `recovery` becomes a deferred, no-impersonate `sc.exe failure` action after
-InstallServices, with its exit code ignored (RUN-05). A `password` is added
+InstallServices, with its exit code ignored (RUN-05). Each step is `restart`,
+`none` or `{restart: <delay>}`; a plain `restart` waits `restartDelay`
+(default 60s). Delays are whole milliseconds and `resetAfter` is whole
+seconds, as `sc.exe` takes them (RUN-27); `resetAfter` and `resetAfterDays`
+exclude each other. A `password` is added
 to `MsiHiddenProperties` when it names a property.
 
 **Event log sources** become Registry rows of the component:
@@ -723,6 +730,61 @@ page the dialog follows: `WelcomeDlg`, `CustomizeDlg` or an added dialog.
 `none` writes no UI tables; silent installs never depend on the UI in any
 mode. Without feature selection (`none`, `minimal`) `ARPNOMODIFY` is set.
 
+#### License page
+
+```yaml
+ui:
+  wizard: featureTree
+  license: LICENSE.rtf     # RTF as is, any other file is text converted to RTF
+```
+
+`license` adds `LicenseAgreementDlg` after the welcome page: the license in a
+ScrollableText control, an "I accept" checkbox bound to `LicenseAccepted`,
+Print (`MsiPrint`) and Back, Next and Cancel. Next is disabled until the box
+is checked. A file that starts with `{\rtf` is embedded as it is, after two
+checks: it must be 7-bit ASCII, because the Control table stores text in the
+package code page and RTF writes other characters as `\'xx` or `\u`
+escapes, and its braces must balance. Any other file is UTF-8 text (or
+UTF-16 with a byte order mark) and is converted to RTF in Courier New 8 pt,
+which keeps the layout of hand-wrapped license files; every non-ASCII
+character becomes a `\u` escape. Change in the maintenance menu skips the
+license page. `ui.dialogs` can follow it with `after: LicenseAgreementDlg`;
+`after: WelcomeDlg` puts a dialog before it.
+
+#### Theme
+
+```yaml
+ui:
+  theme:
+    banner: banner.bmp     # top of the inner pages, 493×58 pixels
+    dialog: dialog.bmp     # background of the welcome and finish pages, 493×312 pixels
+    colors:                # the built-in pictures, #RRGGBB
+      dark: "#122B4A"
+      light: "#1E8C9E"
+      accent: "#F2A93B"
+      paper: "#F4F6F8"
+```
+
+| Picture | Control | Pixels at 96 dpi | Default |
+|---|---|---|---|
+| `banner` | `BannerBmp`, 370×44 dialog units at the top of every inner page; the title and the two-line description are drawn over x 15 to 325, so a logo belongs in the right 45 units (60 pixels) | 493×58 | paper with an accent line and a mark at the right |
+| `dialog` | `DialogBmp`, 370×234 dialog units, the whole welcome, resume and finish pages above the buttons; the title and text are drawn over it from 135 units on, so the picture's own art stays in the left 130 units | 493×312 | the side panel gradient in the left 123 units, paper to the right |
+
+These are the sizes that other installer toolkits use for the same two
+pictures, so existing artwork fits unchanged. A picture is BMP (any header
+version, 1 to 32 bits, uncompressed or bit fields), PNG or JPEG, chosen by
+its content rather than its filename. The builder decodes it, blends
+transparent pixels onto `paper`, and always writes an uncompressed 24-bit
+bitmap with a BITMAPINFOHEADER, the form every Windows Installer version
+shows (newer engines also read PNG, older ones only BMP and JPEG, section
+19.1 of the specification, RUN-22). The Bitmap control stretches a picture
+to its rectangle, so other sizes work as long as the ratio is kept: a ratio
+more than 5 % away from the control's is an error, a picture smaller than
+the size above is a warning, and a side above 8192 pixels or more than
+4096×4096 pixels in all is an error.
+`colors` recolours the built-in pictures; a colour that is not given keeps
+its default. A license or theme without a wizard is an error.
+
 ### 4.13 `tables`
 
 An escape hatch for tables the schema does not model.
@@ -740,6 +802,14 @@ tables:
 At most 31 columns (DB-07), a name of at most 31 characters, integers inside
 the column type's range without its minimum (DB-02). Standard tables that the
 builder writes cannot be redefined here.
+
+A binary cell (a `v0` or `V0` column, at most one per table) names a file to embed. It
+is stored in the stream `<table>.<key1>.<key2>…`, which must be a valid stream
+name (DB-11) and must not match the name of the cabinet, an `icons` or
+`binaries` entry, a wizard bitmap, or another row. A bad name is reported at
+`tables[i].rows[j]`. A clash names both owners and is reported at the later
+one: `binaries`, `ui` and `icons` come first, then `tables` in file order,
+then `package.cabinet`.
 
 ## 5. Validation
 

@@ -271,6 +271,9 @@ func (w *wizard) featureDialogs() {
 // uiTexts are the UIText rows the selection tree, the volume list and the
 // progress page read (spec section 7.2).
 var uiTexts = [][2]string{ //nolint:gochecknoglobals // lookup table
+	// SelectionPath shows AbsentPath for a feature that will not be
+	// installed; without the row the control shows an error text.
+	{"AbsentPath", ""},
 	{unitBytes, unitBytes},
 	{"Bytes", unitBytes},
 	{"GB", "GB"},

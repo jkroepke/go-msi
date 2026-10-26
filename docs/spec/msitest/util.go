@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
+	"time"
 	"unicode/utf16"
 )
 
@@ -69,15 +70,26 @@ var benignNote = regexp.MustCompile(`^Note: 1: (2205|2228|2262|2898|2203 2: [^ ]
 func runMsiexec(c *caseLog, logName string, args ...string) msiexecResult {
 	lp := c.path(logName)
 	full := append(args, "/qn", "/norestart", "/L*V", lp)
-	cmd := exec.Command("msiexec.exe", full...)
-	err := cmd.Run()
 	exit := 0
-	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			exit = ee.ExitCode()
-		} else {
-			exit = -1
+	// 1618: another installation holds the execution lock. Wait for it
+	// instead of recording a result that says nothing about the case.
+	for try := 0; ; try++ {
+		err := exec.Command("msiexec.exe", full...).Run()
+		exit = 0
+		if err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				exit = ee.ExitCode()
+			} else {
+				exit = -1
+			}
 		}
+		if exit != 1618 || try == 120 {
+			break
+		}
+		if try == 0 {
+			fmt.Println("  another installation is running (1618); waiting up to 30 minutes")
+		}
+		time.Sleep(15 * time.Second)
 	}
 	r := msiexecResult{Exit: exit}
 	if b, err := os.ReadFile(lp); err == nil {

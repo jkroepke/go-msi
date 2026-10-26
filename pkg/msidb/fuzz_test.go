@@ -1,6 +1,7 @@
 package msidb_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/jkroepke/go-msi/pkg/msidb"
@@ -99,6 +100,23 @@ func TestStreamNameEdgeCases(t *testing.T) {
 
 		if dec, table := msidb.DecodeStreamName(enc); dec != name || !table {
 			t.Errorf("%q decodes to (%q, %v)", name, dec, table)
+		}
+	}
+}
+
+// A refused name is reported as written, not in its encoded form (review
+// finding on the FuzzBuild fixes).
+func TestCheckStreamNameMessage(t *testing.T) {
+	t.Parallel()
+
+	for name, want := range map[string]string{
+		"a!b.cab": `msidb: stream name "a!b.cab" contains '!'`,
+		"T.Grüße": `msidb: stream name "T.Grüße" contains the cased character 'ü'`,
+		"T.ok":    "",
+	} {
+		err := msidb.CheckStreamName(name)
+		if got := fmt.Sprint(err); (want == "" && err != nil) || (want != "" && got != want) {
+			t.Errorf("CheckStreamName(%q) = %v, want %q", name, err, want)
 		}
 	}
 }

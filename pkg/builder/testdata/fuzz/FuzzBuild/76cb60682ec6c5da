@@ -1,0 +1,12 @@
+go test fuzz v1
+string("本")
+string("䮋")
+string("0.0")
+string("ダ")
+string("")
+string("0")
+string("0")
+string("語")
+string("0")
+string("")
+[]byte("0")

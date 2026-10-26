@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
+
+	"github.com/jkroepke/go-msi/pkg/cfb"
 )
 
 // Stream name encoding of section 3: table streams carry a U+4840 prefix,
@@ -125,6 +128,44 @@ func DecodeStreamName(encoded string) (string, bool) {
 	}
 
 	return string(utf16.Decode(out)), table
+}
+
+// CheckStreamName reports whether name can be stored as a root stream that
+// is not a table: it must encode (section 3) to at most 31 UTF-16 units that
+// the compound file accepts. The 62-character limit of DB-11 holds only for
+// names made of the 64 alphabet characters; every other character takes a
+// unit of its own.
+func CheckStreamName(name string) error {
+	encoded, err := EncodeStreamName(name, false)
+	if err != nil {
+		return err
+	}
+
+	if err := checkStoredRunes(name); err != nil {
+		return err
+	}
+
+	if _, err := cfb.EncodeName(encoded); err != nil {
+		return fmt.Errorf("msidb: stream name %q cannot be stored: %w", name, err)
+	}
+
+	return nil
+}
+
+// checkStoredRunes names a character the compound file refuses as the user
+// wrote it; the encoded name is unreadable. Alphabet characters encode to
+// uncased units, so only the others can be refused.
+func checkStoredRunes(name string) error {
+	for _, r := range name {
+		switch {
+		case strings.ContainsRune("\x00/\\:!", r):
+			return fmt.Errorf("msidb: stream name %q contains %q", name, r)
+		case r > 0x7F && r < 0xD800 && (unicode.ToUpper(r) != r || unicode.ToLower(r) != r):
+			return fmt.Errorf("msidb: stream name %q contains the cased character %q", name, r)
+		}
+	}
+
+	return nil
 }
 
 // BinaryStreamName is the decoded name of the stream holding a binary cell:
