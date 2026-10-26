@@ -37,6 +37,9 @@ var aceTypes = map[string]bool{ //nolint:gochecknoglobals // lookup table
 	"XA": true, "XD": true, "RA": true, "SP": true, "XU": true, "ZA": true, "TL": true, "FL": true,
 }
 
+// callbackTypes are the ACE types that carry a condition.
+var callbackTypes = map[string]bool{"XA": true, "XD": true, "XU": true, "ZA": true} //nolint:gochecknoglobals // lookup table
+
 var aceFlags = map[string]bool{ //nolint:gochecknoglobals // lookup table
 	"CI": true, "OI": true, "NP": true, "IO": true, "ID": true, "SA": true, "FA": true, "TP": true, "CR": true,
 }
@@ -311,6 +314,12 @@ func checkACETail(fields []string) error {
 
 	if !validSID(fields[5]) {
 		return fmt.Errorf("%q is not a SID", fields[5])
+	}
+
+	if callbackTypes[fields[0]] {
+		// Windows refuses a callback ACE without its condition (seen
+		// with ConvertStringSecurityDescriptorToSecurityDescriptorW).
+		return fmt.Errorf("callback ACE type %s needs a condition, which is not supported", fields[0])
 	}
 
 	if len(fields) == maxACEFields {
