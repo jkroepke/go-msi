@@ -95,6 +95,13 @@ go test ./... -shuffle=on -race
 - Changes that affect the generated packages need a Windows run. Use the
   `msitest` harness or the native tests on a Windows machine; state in the
   pull request which checks ran and which could not.
+- Wizard changes need a full-UI run: `/qn` never shows a dialog, so dialog
+  bugs (wrong event names, missing ErrorIcon) only appear with the full UI.
+  `pkg/builder/nativetest/fullui_windows_test.go` drives msiexec through
+  UIAutomation (BM_CLICK on the msiexec PID's own windows only, because other
+  installs may share the desktop). It needs an elevated process in an
+  interactive session: in session 0 msiexec silently drops to no UI. Control
+  event names are case-sensitive (`RMShutdownAndRestart`).
 
 ## Implementation rules
 

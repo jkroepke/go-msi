@@ -1,0 +1,487 @@
+//go:build windows
+
+package nativetest_test
+
+import (
+	"context"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+	"unsafe"
+
+	"github.com/jkroepke/go-msi/pkg/builder"
+	"github.com/jkroepke/go-msi/pkg/config"
+)
+
+var (
+	kernel32                   = syscall.NewLazyDLL("kernel32.dll")
+	pProcessIDToSessionID      = kernel32.NewProc("ProcessIdToSessionId")
+	user32                     = syscall.NewLazyDLL("user32.dll")
+	pGetProcessWindowStation   = user32.NewProc("GetProcessWindowStation")
+	pGetUserObjectInformationW = user32.NewProc("GetUserObjectInformationW")
+	pMsiQueryProductStateW     = msiDLL.NewProc("MsiQueryProductStateW")
+	errFullUITimeout           = errors.New("msiexec did not finish in time")
+)
+
+const (
+	fullUITimeout       = 300 * time.Second
+	fullUIName          = "GoMsiFullUI"
+	fullUIErrorText     = "Forced error for the full UI test."
+	installStateDefault = 5
+)
+
+const fullUIConfig = `schema: go-msi/v1
+
+vars:
+  FILEVERSION: auto
+
+product:
+  name: GoMsiFullUI
+  manufacturer: go-msi tests
+  version: ${VERSION}
+  language: 1033
+  upgradeCode: 8f3c2a61-4b7e-4d2a-9c15-6e0b7a9d3f21
+
+package:
+  platform: x64
+  scope: perMachine
+  installerVersion: "5.0"
+
+upgrade:
+  allowSameVersion: true
+  downgrade: error
+  removeOld: afterInstallInitialize
+
+directories:
+  - id: ProgramFiles64Folder
+    children:
+      - id: APPLICATIONFOLDER
+        name: GoMsiFullUI
+        configurable: true
+
+features:
+  - id: DefaultFeature
+    title: GoMsiFullUI
+    level: 1
+    directory: APPLICATIONFOLDER
+    components: [Tool]
+
+components:
+  - id: Tool
+    directory: APPLICATIONFOLDER
+    guid: 5B1E0C7A-3D2F-4A6E-9B8C-1D0E2F3A4B5C
+    files:
+      - source: ${SOURCE}
+        name: tool.exe
+        version: ${FILEVERSION}
+
+customActions:
+  - id: ForcedError
+    error: Forced error for the full UI test.
+    schedule:
+      - { sequence: execute, before: InstallInitialize, condition: FORCEERR }
+
+ui:
+  wizard: featureTree
+`
+
+// fullUIDriver answers the wizard through UIAutomation: Next, Install and
+// Finish, "Close the applications" and OK on MsiRMFilesInUse, OK on ErrorDlg
+// and on any unexpected error box. It writes every window it sees to -Out.
+const fullUIDriver = `param([int]$MsiPid, [string]$Out, [string]$ErrorText, [int]$Seconds = 290)
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+Add-Type -Namespace GoMsi -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);'
+$AE = [System.Windows.Automation.AutomationElement]
+$TS = [System.Windows.Automation.TreeScope]
+$All = [System.Windows.Automation.Condition]::TrueCondition
+function Note($m) { Add-Content -Path $Out -Value $m -Encoding UTF8 }
+# MSI dialogs expose their controls as panes, so match names and send BM_CLICK.
+# The name is read first: a button that closes its dialog is gone afterwards.
+function Press($els, [string]$pattern) {
+  $b = $els | Where-Object { ($_.Current.Name -replace '[&<>]', '').Trim() -match $pattern -and $_.Current.IsEnabled -and $_.Current.NativeWindowHandle } | Select-Object -First 1
+  if (-not $b) { return $null }
+  $name = $b.Current.Name
+  [GoMsi.U]::SendMessage([IntPtr]$b.Current.NativeWindowHandle, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+  return $name
+}
+$seen = @{}
+$deadline = (Get-Date).AddSeconds($Seconds)
+while ((Get-Date) -lt $deadline -and (Get-Process -Id $MsiPid -ErrorAction SilentlyContinue)) {
+  Start-Sleep -Milliseconds 500
+  # Only the windows of the msiexec this test started: other installs may
+  # be running on the same desktop.
+  foreach ($w in ($AE::RootElement.FindAll($TS::Children, $All) | Where-Object { $_.Current.ProcessId -eq $MsiPid })) {
+    try { $els = @($w.FindAll($TS::Descendants, $All)) } catch { continue }
+    $names = @($els | ForEach-Object { $_.Current.Name } | Where-Object { $_ })
+    $text = $names -join ' | '
+    if (-not $seen.ContainsKey($text)) { $seen[$text] = 1; Note "WINDOW: $text" }
+    if ($text -match 'need to be updated by this setup') {
+      Note ('RMDIALOG: radio ' + (Press $els '^Close the applications'))
+      Start-Sleep -Milliseconds 300
+      Note ('RMDIALOG: button ' + (Press $els '^OK$'))
+      Start-Sleep 2
+    } elseif ($ErrorText -and $names -contains $ErrorText) {
+      Note "ERRORDLG: $text"
+      Note ('ERRORDLG: button ' + (Press $els '^OK$'))
+      Start-Sleep 1
+    } elseif ($text -match 'unexpected error|error code is') {
+      Note "UNEXPECTED: $text"
+      Press $els '^OK$' | Out-Null
+      Start-Sleep 1
+    } else {
+      $n = Press $els '^(Next|Install|Finish)$'
+      if ($n) { Note "PRESSED: $n"; Start-Sleep 1 }
+    }
+  }
+}
+Note 'DRIVER: done'
+`
+
+// requireFullUI skips unless msiexec can show and drive a full UI here: an
+// elevated process in an interactive desktop session, without -short.
+func requireFullUI(t *testing.T) {
+	t.Helper()
+
+	if testing.Short() {
+		t.Skip("full UI tests need msiexec time, elevation and a desktop")
+	}
+
+	if !elevated() {
+		t.Skip("full UI tests need an elevated process")
+	}
+
+	var session uint32
+
+	r, _, _ := pProcessIDToSessionID.Call(uintptr(os.Getpid()), uintptr(unsafe.Pointer(&session)))
+	if r == 0 || session == 0 || !interactive() {
+		t.Skip("full UI tests need an interactive desktop session; session 0 drops msiexec to no UI")
+	}
+}
+
+func elevated() bool {
+	proc, err := syscall.GetCurrentProcess()
+	if err != nil {
+		return false
+	}
+
+	var token syscall.Token
+	if err := syscall.OpenProcessToken(proc, syscall.TOKEN_QUERY, &token); err != nil {
+		return false
+	}
+
+	defer token.Close()
+
+	var elevation, n uint32
+
+	const tokenElevation = 20
+	if err := syscall.GetTokenInformation(token, tokenElevation, (*byte)(unsafe.Pointer(&elevation)), 4, &n); err != nil {
+		return false
+	}
+
+	return elevation != 0
+}
+
+// interactive reports whether the window station is visible, as
+// Environment.UserInteractive does.
+func interactive() bool {
+	station, _, _ := pGetProcessWindowStation.Call()
+	if station == 0 {
+		return false
+	}
+
+	var flags struct {
+		inherit, reserved int32
+		flags             uint32
+	}
+
+	var n uint32
+
+	const uoiFlags, wsfVisible = 1, 1
+
+	r, _, _ := pGetUserObjectInformationW.Call(station, uoiFlags, uintptr(unsafe.Pointer(&flags)), unsafe.Sizeof(flags), uintptr(unsafe.Pointer(&n)))
+
+	return r != 0 && flags.flags&wsfVisible != 0
+}
+
+// waitForMsiexec waits until no other msiexec client runs, so the tests
+// never queue behind another installation.
+func waitForMsiexec(t *testing.T) {
+	t.Helper()
+
+	const ps = `@(Get-CimInstance Win32_Process -Filter "Name='msiexec.exe'" | Where-Object { $_.CommandLine -notmatch 'msiexec\.exe"?\s+/V\s*$' }).Count`
+
+	deadline := time.Now().Add(10 * time.Minute)
+	for time.Now().Before(deadline) {
+		out, err := exec.CommandContext(t.Context(), "powershell", "-NoProfile", "-NonInteractive", "-Command", ps).Output()
+		if err == nil && strings.TrimSpace(string(out)) == "0" {
+			return
+		}
+
+		time.Sleep(5 * time.Second)
+	}
+
+	t.Fatal("another msiexec is still running after 10 minutes")
+}
+
+// buildFullUI builds the full UI test package with tool.exe copied from
+// PING.EXE, a runnable versioned console program.
+func buildFullUI(t *testing.T, dir, version, fileVersion string) (string, *builder.Result) {
+	t.Helper()
+
+	if err := os.WriteFile(filepath.Join(dir, "msi.yaml"), []byte(fullUIConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	vars := map[string]string{
+		"VERSION":     version,
+		"FILEVERSION": fileVersion,
+		"SOURCE":      filepath.Join(os.Getenv("SystemRoot"), "System32", "PING.EXE"),
+	}
+
+	cfg, err := config.Load(filepath.Join(dir, "msi.yaml"), config.Options{Vars: vars})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)})
+	if err != nil {
+		t.Fatalf("%v\n%v", err, res.Diagnostics)
+	}
+
+	path := filepath.Join(dir, "fullui-"+version+".msi")
+	if err := os.WriteFile(path, res.Package, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	return path, res
+}
+
+// msiexec runs msiexec and returns its exit code; a run that outlives
+// fullUITimeout is killed with its process tree.
+func msiexec(t *testing.T, args ...string) int {
+	t.Helper()
+
+	code, err := runMsiexec(args, nil)
+	if err != nil {
+		t.Fatalf("msiexec %v: %v", args, err)
+	}
+
+	return code
+}
+
+// runMsiexec starts msiexec, calls started with its PID and waits for it.
+// Killing only the client would leave its dialogs behind, so a timeout
+// kills the whole process tree.
+func runMsiexec(args []string, started func(pid int)) (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), fullUITimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "msiexec", args...)
+	cmd.Cancel = func() error {
+		return exec.CommandContext(context.Background(), "taskkill", "/PID", strconv.Itoa(cmd.Process.Pid), "/T", "/F").Run()
+	}
+
+	if err := cmd.Start(); err != nil {
+		return 0, err
+	}
+
+	if started != nil {
+		started(cmd.Process.Pid)
+	}
+
+	err := cmd.Wait()
+
+	if ctx.Err() != nil {
+		return 0, errFullUITimeout
+	}
+
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
+		return exit.ExitCode(), nil
+	}
+
+	return 0, err
+}
+
+// fullUI runs msiexec with the full UI while the driver answers it, and
+// returns the exit code and what the driver saw.
+func fullUI(t *testing.T, dir string, args ...string) (int, string) {
+	t.Helper()
+
+	driver := filepath.Join(dir, "driver.ps1")
+	if err := os.WriteFile(driver, []byte(fullUIDriver), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	seen := filepath.Join(dir, "driver.txt")
+
+	var drv *exec.Cmd
+
+	code, err := runMsiexec(args, func(pid int) {
+		drv = exec.CommandContext(context.Background(), "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+			"-File", driver, "-MsiPid", strconv.Itoa(pid), "-Out", seen, "-ErrorText", fullUIErrorText)
+		if err := drv.Start(); err != nil {
+			t.Errorf("driver: %v", err)
+
+			drv = nil
+		}
+	})
+
+	if drv != nil {
+		_ = drv.Wait()
+	}
+
+	data, _ := os.ReadFile(seen)
+	if err != nil {
+		t.Fatalf("msiexec %v: %v\nUI:\n%s", args, err, data)
+	}
+
+	return code, string(data)
+}
+
+func productInstalled(t *testing.T, code string) bool {
+	t.Helper()
+
+	r, _, _ := pMsiQueryProductStateW.Call(wstr(t, code))
+
+	return r == installStateDefault
+}
+
+// cleanupFullUI removes whatever version of the test product is installed.
+func cleanupFullUI(t *testing.T, packages ...string) {
+	t.Helper()
+
+	t.Cleanup(func() {
+		for _, pkg := range packages {
+			_, _ = runMsiexec([]string{"/x", pkg, "/qn"}, nil)
+		}
+
+		_ = os.RemoveAll(filepath.Join(os.Getenv("ProgramFiles"), fullUIName))
+	})
+}
+
+// TestFullUIRestartManager upgrades while the old tool.exe runs from the
+// install folder and chooses "Close the applications" on MsiRMFilesInUse:
+// the Restart Manager stops the process and the upgrade succeeds.
+func TestFullUIRestartManager(t *testing.T) {
+	requireFullUI(t)
+	waitForMsiexec(t)
+
+	dir := t.TempDir()
+	oldPkg, _ := buildFullUI(t, dir, "1.0.0", "auto")
+	// A higher file version than PING.EXE makes the engine replace the file
+	// that the running process holds.
+	newPkg, newRes := buildFullUI(t, dir, "1.0.1", "99.0.0.0")
+
+	cleanupFullUI(t, newPkg, oldPkg)
+
+	if code := msiexec(t, "/i", oldPkg, "/qn", "/l*v", filepath.Join(dir, "old.log")); code != 0 {
+		t.Fatalf("installing the old package: exit %d\n%s", code, readLog(filepath.Join(dir, "old.log")))
+	}
+
+	tool := exec.CommandContext(context.Background(), filepath.Join(os.Getenv("ProgramFiles"), fullUIName, "tool.exe"), "-n", "3000", "127.0.0.1")
+	// Its own hidden console: the Restart Manager stops console programs with
+	// Ctrl+C, which must not reach this test.
+	tool.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x10 /* CREATE_NEW_CONSOLE */, HideWindow: true}
+	if err := tool.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	stopped := make(chan struct{})
+
+	go func() { _ = tool.Wait(); close(stopped) }()
+
+	t.Cleanup(func() { _ = tool.Process.Kill() })
+
+	time.Sleep(2 * time.Second)
+
+	log := filepath.Join(dir, "upgrade.log")
+	code, seen := fullUI(t, dir, "/i", newPkg, "/l*v", log)
+	text := readLog(log)
+
+	if code != 0 {
+		t.Errorf("full UI upgrade: exit %d, want 0", code)
+	}
+
+	if !strings.Contains(seen, "RMDIALOG: button OK") {
+		t.Error("MsiRMFilesInUse was not shown or not answered")
+	}
+
+	if strings.Contains(text, "2866") {
+		t.Error("the log reports error 2866")
+	}
+
+	if !strings.Contains(text, "RESTART MANAGER: Successfully shut down all applications") {
+		t.Error("the Restart Manager did not shut down the process")
+	}
+
+	select {
+	case <-stopped:
+	case <-time.After(10 * time.Second):
+		t.Error("tool.exe is still running after the upgrade")
+	}
+
+	if !productInstalled(t, newRes.ProductCode) {
+		t.Error("the new version is not installed")
+	}
+
+	if t.Failed() {
+		t.Logf("UI:\n%s\nlog excerpt:\n%s", seen, excerpt(text, "RESTART MANAGER", "Error 28", "error code is"))
+	}
+}
+
+// TestFullUIErrorDialog shows ErrorDlg through a type-19 action and checks
+// that the engine draws it without errors 2835 (no ErrorIcon) or 2888.
+func TestFullUIErrorDialog(t *testing.T) {
+	requireFullUI(t)
+	waitForMsiexec(t)
+
+	dir := t.TempDir()
+	pkg, _ := buildFullUI(t, dir, "1.0.0", "auto")
+
+	cleanupFullUI(t, pkg)
+
+	log := filepath.Join(dir, "error.log")
+	code, seen := fullUI(t, dir, "/i", pkg, "FORCEERR=1", "/l*v", log)
+	text := readLog(log)
+
+	if code != 1603 {
+		t.Errorf("full UI install: exit %d, want 1603", code)
+	}
+
+	if !strings.Contains(seen, "ERRORDLG: ") || !strings.Contains(seen, "ERRORDLG: button OK") {
+		t.Error("ErrorDlg did not show the error text or was not answered")
+	}
+
+	for _, code := range []string{"2835", "2888"} {
+		if strings.Contains(text, "Error "+code) || strings.Contains(text, "error code is "+code) {
+			t.Errorf("the log reports error %s", code)
+		}
+	}
+
+	if t.Failed() {
+		t.Logf("UI:\n%s\nlog excerpt:\n%s", seen, excerpt(text, "Error 28", "error code is", fullUIErrorText))
+	}
+}
+
+// excerpt returns the log lines that contain any of the markers.
+func excerpt(log string, markers ...string) string {
+	var lines strings.Builder
+
+	for line := range strings.Lines(log) {
+		for _, m := range markers {
+			if strings.Contains(line, m) {
+				lines.WriteString(line)
+
+				break
+			}
+		}
+	}
+
+	return lines.String()
+}
