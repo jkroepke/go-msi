@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Error is a syntax error with its position.
@@ -141,15 +142,15 @@ func (l *lexer) next() (token, error) { //nolint:cyclop,gocyclo,gocognit // one 
 		return token{kind: tokNumber, text: l.s[start:l.pos], pos: start}, nil
 	}
 
-	first := []rune(l.s[l.pos:])[0]
+	first, _ := utf8.DecodeRuneInString(l.s[l.pos:])
 	if isIdentStart(first) {
 		for l.pos < len(l.s) {
-			r := []rune(l.s[l.pos:])[0]
+			r, size := utf8.DecodeRuneInString(l.s[l.pos:])
 			if !isIdentPart(r) {
 				break
 			}
 
-			l.pos += len(string(r))
+			l.pos += size
 		}
 
 		text := l.s[start:l.pos]
