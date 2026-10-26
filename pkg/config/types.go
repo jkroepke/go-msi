@@ -557,10 +557,31 @@ type Dialog struct {
 	Fields      []DialogField `yaml:"fields"`
 }
 
-// DialogField is one label and edit field bound to a property.
+// DialogField is one field bound to a property: a label and an edit field,
+// or a check box.
 type DialogField struct {
 	Property string `yaml:"property"`
 	Label    string `yaml:"label"`
+	// Type is text (default), password or checkbox.
+	Type string `yaml:"type"`
+	// Value is what a checked checkbox sets the property to, default 1.
+	Value string `yaml:"value"`
+}
+
+// Dialog field types.
+const (
+	FieldText     = "text"
+	FieldPassword = "password"
+	FieldCheckBox = "checkbox"
+)
+
+// CheckBoxValue returns the value a checked checkbox field sets.
+func (f *DialogField) CheckBoxValue() string {
+	if f.Value == "" {
+		return "1"
+	}
+
+	return f.Value
 }
 
 // Table is a custom table written as given.

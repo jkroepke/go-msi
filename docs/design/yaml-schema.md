@@ -894,6 +894,13 @@ ui:
           label: Comma-separated list of collectors to use. Use '[\[]defaults[\]]' for the defaults.
         - property: LISTEN_PORT
           label: Port to listen on
+        - property: API_TOKEN
+          label: API token
+          type: password              # text (default) | password | checkbox
+        - property: DELETE_DATA
+          label: '&Delete the data folder on uninstall'
+          type: checkbox
+          value: "1"                  # what a checked box sets, default 1
 ```
 
 The wizards are written from scratch for go-msi, including the bitmaps,
@@ -903,7 +910,19 @@ feature tree (`CustomizeDlg`) with Browse and disk usage. Both include
 maintenance (Repair and Remove; Change with the feature tree), cancel, user
 exit, fatal error, files in use, Restart Manager and the error dialog. Added
 dialogs are laid out automatically: one label and one edit field per
-property (at most four per dialog), Back, Next and Cancel. `after` names the
+property (at most four per dialog), Back, Next and Cancel. A `password`
+field is an edit field with the Password attribute (0x200000), and its
+property is added to `MsiHiddenProperties`. A `checkbox` field is a
+checkbox with the label as its text, in the space of a label and an edit
+field; its `CheckBox` row holds `value`. Two checkboxes on one property must
+set the same value. Microsoft's documentation reports that a checked box
+sets the property to `value`, that a box starts checked when its property has any
+value, and that the password characters are masked; none of this, what an
+unchecked box leaves in the property, or whether the password stays out of
+the log was tested on Windows. The validator warns when a checkbox
+property has a default in `properties`, since the box would start checked.
+An `&` in a checkbox label marks the access key, as in `&Delete`; write
+`&&` for a literal `&`. Text and password labels show `&` as it is. `after` names the
 page the dialog follows: `WelcomeDlg`, `CustomizeDlg` or an added dialog.
 `none` writes no UI tables; silent installs never depend on the UI in any
 mode. Without feature selection (`none`, `minimal`) `ARPNOMODIFY` is set.
