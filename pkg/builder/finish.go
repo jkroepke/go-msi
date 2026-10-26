@@ -408,7 +408,7 @@ func (b *build) summaryProperties() []summary.Property {
 }
 
 // verify reads the finished package back and compares it with what was
-// written: tables, strings, summary and cabinet contents. It reads through
+// written: every table cell, the summary and the cabinet contents. It reads through
 // the file, so a large cabinet is never in memory.
 func (b *build) verify(target spool.Target, size int64, want *msidb.Database) error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	file, err := cfb.Open(target, size)
@@ -435,12 +435,8 @@ func (b *build) verify(target spool.Target, size int64, want *msidb.Database) er
 			return fmt.Errorf("table %s is missing", wantTable.Name)
 		}
 
-		if len(gotTable.Rows) != len(wantTable.Rows) {
-			return fmt.Errorf("table %s: read back %d rows, wrote %d", wantTable.Name, len(gotTable.Rows), len(wantTable.Rows))
-		}
-
-		if len(gotTable.Columns) != len(wantTable.Columns) {
-			return fmt.Errorf("table %s: read back %d columns, wrote %d", wantTable.Name, len(gotTable.Columns), len(wantTable.Columns))
+		if err := compareTable(wantTable, gotTable); err != nil {
+			return fmt.Errorf("read back: %w", err)
 		}
 	}
 
