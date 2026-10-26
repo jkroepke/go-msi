@@ -134,13 +134,17 @@ func (c *Config) treeTarget(fsys fs.FS, root, dirID string, opts TreeOptions) (*
 // the default feature. With one feature, an empty name means it.
 func (c *Config) treeFeature(name string) (*Feature, error) {
 	if name == "" {
-		switch len(c.Features) {
+		var all []*Feature
+
+		WalkFeatures(c.Features, func(f, _ *Feature) { all = append(all, f) })
+
+		switch len(all) {
 		case 0:
 			return nil, nil //nolint:nilnil // no feature yet is not an error
 		case 1:
-			name = c.Features[0].ID
+			name = all[0].ID
 		default:
-			return nil, fmt.Errorf("add tree: the config has %d features; set TreeOptions.Feature", len(c.Features))
+			return nil, fmt.Errorf("add tree: the config has %d features; set TreeOptions.Feature", len(all))
 		}
 	}
 

@@ -464,7 +464,7 @@ func TestAddTreeEmptyFeature(t *testing.T) {
 
 	// Two features: the caller has to choose.
 	two := treeConfig()
-	two.Features = append(two.Features, &config.Feature{ID: "Extra", Title: "Extra"})
+	two.Features[0].Features = []*config.Feature{{ID: "Sub", Title: "Sub"}}
 
 	if _, err := two.AddTree(treeFS(), "dist", "INSTALLDIR", config.TreeOptions{}); err == nil || !strings.Contains(err.Error(), "2 features") {
 		t.Errorf("err = %v, want a hint to set Feature", err)
