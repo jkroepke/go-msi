@@ -140,57 +140,6 @@ func fileID(f *File) string {
 	return fileName(f)
 }
 
-// setProperties lists the properties that a properties entry, a
-// setDirectory or setProperty action or a dialog field sets.
-func setProperties(cfg *Config) map[string]bool {
-	set := make(map[string]bool, len(cfg.Properties))
-
-	for name := range cfg.Properties {
-		set[name] = true
-	}
-
-	for _, ca := range cfg.CustomActions {
-		switch {
-		case ca.SetDirectory != nil:
-			set[ca.SetDirectory.Directory] = true
-		case ca.SetProperty != nil:
-			set[ca.SetProperty.Name] = true
-		}
-	}
-
-	for _, dialog := range cfg.UI.Dialogs {
-		for _, field := range dialog.Fields {
-			set[field.Property] = true
-		}
-	}
-
-	return set
-}
-
-// movableAncestor returns the first directory from dirID up to (not
-// including) its root folder whose path something besides the Directory
-// table can set (specification section 8.3): a public id, which the command
-// line can set; a configurable one; or one named by a setDirectory or
-// setProperty action, a properties entry or a dialog field.
-func movableAncestor(cfg *Config, known *refs, dirID string) string {
-	set := setProperties(cfg)
-
-	for range 64 {
-		parent, ok := known.dirParent[dirID]
-		if !ok || parent == "" {
-			return ""
-		}
-
-		if dir := known.dirs[dirID]; dir != nil && dir.Configurable || set[dirID] || IsPublicProperty(dirID) {
-			return dirID
-		}
-
-		dirID = parent
-	}
-
-	return ""
-}
-
 // topFolder returns the standard folder at the root of a directory's chain.
 func (r *refs) topFolder(id string) string {
 	for i := 0; i < 64; i++ {
@@ -1591,4 +1540,55 @@ func (v *validator) tableRow(p string, cols []Column, row []any) {
 			}
 		}
 	}
+}
+
+// setProperties lists the properties that a properties entry, a
+// setDirectory or setProperty action or a dialog field sets.
+func setProperties(cfg *Config) map[string]bool {
+	set := make(map[string]bool, len(cfg.Properties))
+
+	for name := range cfg.Properties {
+		set[name] = true
+	}
+
+	for _, ca := range cfg.CustomActions {
+		switch {
+		case ca.SetDirectory != nil:
+			set[ca.SetDirectory.Directory] = true
+		case ca.SetProperty != nil:
+			set[ca.SetProperty.Name] = true
+		}
+	}
+
+	for _, dialog := range cfg.UI.Dialogs {
+		for _, field := range dialog.Fields {
+			set[field.Property] = true
+		}
+	}
+
+	return set
+}
+
+// movableAncestor returns the first directory from dirID up to (not
+// including) its root folder whose path something besides the Directory
+// table can set (specification section 8.3): a public id, which the command
+// line can set; a configurable one; or one named by a setDirectory or
+// setProperty action, a properties entry or a dialog field.
+func movableAncestor(cfg *Config, known *refs, dirID string) string {
+	set := setProperties(cfg)
+
+	for range 64 {
+		parent, ok := known.dirParent[dirID]
+		if !ok || parent == "" {
+			return ""
+		}
+
+		if dir := known.dirs[dirID]; dir != nil && dir.Configurable || set[dirID] || IsPublicProperty(dirID) {
+			return dirID
+		}
+
+		dirID = parent
+	}
+
+	return ""
 }
