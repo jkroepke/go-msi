@@ -52,8 +52,8 @@ memory, so the files of an `fs.FS` must implement `io.ReaderAt`, as those of
 `Config.AddTree(fsys, root, dirID, opts)` adds every file under the folder
 `root` below the existing directory `dirID`. A config that relies on the
 `installDir` shorthand gets that directory from `config.ApplyDefaults`; call
-it before `AddTree`. A config without features can leave `opts.Feature`
-empty, and the default feature takes the components. Use `"."` as `root` for the
+it before `AddTree`. An empty `opts.Feature` means the only feature of
+the config, or the default feature when it has none yet. Use `"."` as `root` for the
 whole file system; an empty `root` is an error.
 
 - Each subdirectory that holds a file, directly or further down, becomes a
@@ -62,8 +62,8 @@ whole file system; an empty `root` is an error.
   defined, is reused. Folders without any file are skipped.
 - Each file becomes its own `Component` with that one file, so it has its
   own key path and an automatic GUID.
-- The components join the feature `opts.Feature`, or the default feature
-  when the config has none and `opts.Feature` is empty.
+- The components join the feature `opts.Feature`; see above for an empty
+  one.
 - IDs are derived from `opts.Prefix` (default `tree`), `dirID`, `root` and
   the path below `root`. The same calls in the same order therefore give the
   same IDs, GUIDs and ProductCode on every build; with a fixed

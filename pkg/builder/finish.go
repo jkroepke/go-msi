@@ -32,7 +32,7 @@ const placeholderCode = "{00000000-0000-0000-0000-000000000000}"
 func (b *build) readInput(src string) ([]byte, error) {
 	file, err := openSource(b.cfg, nil, src)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", src, err)
+		return nil, err
 	}
 
 	defer file.Close()

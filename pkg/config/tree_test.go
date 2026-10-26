@@ -383,7 +383,6 @@ func TestAddTreeErrors(t *testing.T) {
 	}{
 		{"unknown directory", "dist", "NOPE", config.TreeOptions{Feature: "Main"}, "directory NOPE"},
 		{"unknown feature", "dist", "INSTALLDIR", config.TreeOptions{Feature: "Nope"}, `feature "Nope"`},
-		{"no feature with features", "dist", "INSTALLDIR", config.TreeOptions{}, `feature ""`},
 		{"bad prefix", "dist", "INSTALLDIR", config.TreeOptions{Feature: "Main", Prefix: "1x"}, "prefix"},
 		{"bad root", "../dist", "INSTALLDIR", config.TreeOptions{Feature: "Main"}, "not a valid fs path"},
 		{"missing root", "nope", "INSTALLDIR", config.TreeOptions{Feature: "Main"}, "nope"},
@@ -439,5 +438,35 @@ func TestAddTreeIntoDefaultFeature(t *testing.T) {
 
 	if len(cfg.Features) != 1 || cfg.Features[0].ID != config.DefaultFeatureID || len(cfg.Features[0].Components) != 4 {
 		t.Errorf("features %+v, want the default feature with 4 components", cfg.Features)
+	}
+}
+
+func TestAddTreeEmptyFeature(t *testing.T) {
+	t.Parallel()
+
+	// One feature, here the default one after ApplyDefaults: an empty
+	// Feature means it.
+	cfg := &config.Config{
+		Schema:     config.SchemaV1,
+		Product:    config.Product{Name: "Hello", Manufacturer: "Example", Version: "1.0.0", UpgradeCode: "3f2504e0-4f89-41d3-9a0c-0305e82c3301"},
+		Package:    config.Package{Platform: "x64"},
+		Components: []*config.Component{{Files: []*config.File{{Source: "own.txt"}}}},
+	}
+	config.ApplyDefaults(cfg)
+
+	if _, err := cfg.AddTree(treeFS(), "dist", cfg.InstallDir.ID, config.TreeOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(cfg.Features) != 1 || len(cfg.Features[0].Components) != 5 {
+		t.Errorf("features %+v, want one feature with 5 components", cfg.Features)
+	}
+
+	// Two features: the caller has to choose.
+	two := treeConfig()
+	two.Features = append(two.Features, &config.Feature{ID: "Extra", Title: "Extra"})
+
+	if _, err := two.AddTree(treeFS(), "dist", "INSTALLDIR", config.TreeOptions{}); err == nil || !strings.Contains(err.Error(), "2 features") {
+		t.Errorf("err = %v, want a hint to set Feature", err)
 	}
 }

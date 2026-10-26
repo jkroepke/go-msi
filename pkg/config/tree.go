@@ -13,8 +13,8 @@ import (
 // TreeOptions controls AddTree.
 type TreeOptions struct {
 	// Feature is the id of an existing feature that the generated components
-	// join. It may only be empty while the config has no features, so that
-	// the default feature takes them.
+	// join. Empty means the only feature of the config, or, while it has
+	// none, the default feature that ApplyDefaults adds later.
 	Feature string
 
 	// Prefix starts every generated id. The ids also cover the target
@@ -31,9 +31,9 @@ const MaxTreePrefixLength = MaxIdentifierLength - 22
 
 // AddTree adds every regular file under the folder root in fsys below the
 // existing directory dirID. The directory of the installDir shorthand exists
-// after ApplyDefaults, so call it first for such a config. A config without
-// features may leave TreeOptions.Feature empty: the components then join
-// the default feature like every other component. Each subdirectory that holds a file, directly or
+// after ApplyDefaults, so call it first for such a config. With an empty
+// TreeOptions.Feature the components join the only feature, or the default
+// feature like every other component when there is none yet. Each subdirectory that holds a file, directly or
 // further down, becomes a child Directory, and each file becomes its own
 // Component with that one file, so every file has its own key path and GUID.
 // A subfolder that already exists below dirID under the same long name, for
@@ -121,18 +121,35 @@ func (c *Config) treeTarget(fsys fs.FS, root, dirID string, opts TreeOptions) (*
 		return nil, nil, fmt.Errorf("add tree: directory %s is not defined; with installDir, call ApplyDefaults first", dirID)
 	}
 
-	// Without any feature, ApplyDefaults later puts every component into
-	// the default feature.
-	if opts.Feature == "" && len(c.Features) == 0 {
-		return parent, nil, nil
-	}
-
-	feature := findFeature(c.Features, opts.Feature)
-	if feature == nil {
-		return nil, nil, fmt.Errorf("add tree: feature %q is not defined", opts.Feature)
+	feature, err := c.treeFeature(opts.Feature)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	return parent, feature, nil
+}
+
+// treeFeature returns the feature that AddTree's components join, or nil
+// while the config has none: ApplyDefaults later puts every component into
+// the default feature. With one feature, an empty name means it.
+func (c *Config) treeFeature(name string) (*Feature, error) {
+	if name == "" {
+		switch len(c.Features) {
+		case 0:
+			return nil, nil //nolint:nilnil // no feature yet is not an error
+		case 1:
+			name = c.Features[0].ID
+		default:
+			return nil, fmt.Errorf("add tree: the config has %d features; set TreeOptions.Feature", len(c.Features))
+		}
+	}
+
+	feature := findFeature(c.Features, name)
+	if feature == nil {
+		return nil, fmt.Errorf("add tree: feature %q is not defined", name)
+	}
+
+	return feature, nil
 }
 
 // checkTreeRoot checks that root names a directory in fsys that the build

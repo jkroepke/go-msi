@@ -374,7 +374,8 @@ func (b *build) inputs() error { //nolint:cyclop // one pass over the format; sp
 func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentInfo) *fileInfo { //nolint:cyclop,gocognit // one pass over the format
 	src, err := openSource(b.cfg, cfgFile.FS, cfgFile.Source)
 	if err != nil {
-		b.errorf(diagPath+".source", "cannot read %s: %v", cfgFile.Source, err)
+		// The path error names the file.
+		b.errorf(diagPath+".source", "%v", err)
 
 		return nil
 	}
