@@ -1,6 +1,6 @@
 module github.com/jkroepke/go-msi
 
-go 1.27
+go 1.27.3
 
 require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
@@ -12,6 +12,6 @@ require (
 
 require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 )
