@@ -51,7 +51,8 @@ func FuzzCheckSDDLNative(f *testing.F) {
 		"D:(A;;FA;;;S-1-5-21-1-2-3-500)", "D:(A;;KA;;;BA)S:(AU;SAFA;FA;;;WD)", "D:(A;;FA;;;BA)(D;;FW;;;BU)",
 		"D:(A;;FA;;;S-1-5)", "D:(A;;0xFFFFFFFFF;;;BA)", "D:(A;;FA;;;S-1-99999999999-1)", "D:(A;;FA;;;ba)",
 		"D:(A;;FA;;;BA)D:(A;;FA;;;BA)", "D:", "S:", "O:BA", "D:(OA;;FA;;;BA)", "D:(A;;FA;x;;BA)",
-		"D:(A;;FA;;;BA;x)", "S:(RA;;FA;;;BA;x)", "D:(A;CI CI;FA;;;BA)", "D:P(A;;FA;;;BA)", "D:NO_ACCESS_CONTROL", "D:(A;;FAFA;;;BA)",
+		"D:(A;;FA;;;BA;x)", "S:(RA;;FA;;;BA;x)", "D:(A;;FA;;;S-1-5-21-1-2-3-4-5-6-7-8-9-10-11-12-13-14)",
+		"D:(A;;FA;;;S-1-5-4294967295)", "D:(A;;FA;;;S-1-281474976710655-1)", "D:(XA;;FX;;;WD)", "D:(A;CI CI;FA;;;BA)", "D:P(A;;FA;;;BA)", "D:NO_ACCESS_CONTROL", "D:(A;;FAFA;;;BA)",
 	} {
 		f.Add(seed)
 	}

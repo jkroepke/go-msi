@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -52,7 +53,9 @@ const (
 	placeholderSID = "BA"
 	minACEFields   = 6
 	maxACEFields   = 7
-	denyTypes      = "D OD XD"
+	// maxSubAuthorities is SID_MAX_SUB_AUTHORITIES.
+	maxSubAuthorities = 15
+	denyTypes         = "D OD XD"
 )
 
 // CheckSDDL validates an SDDL string the way the engine will see it. It
@@ -177,8 +180,33 @@ func nextMarker(sddl string, kind byte) int {
 	return len(sddl)
 }
 
-func validSID(s string) bool {
-	return sidAliases[s] || numericSID.MatchString(s)
+// validSID accepts an alias or S-1-authority-sub..., with a 48-bit
+// authority and 1 to 15 32-bit sub-authorities (SID_MAX_SUB_AUTHORITIES).
+func validSID(sid string) bool {
+	if sidAliases[sid] {
+		return true
+	}
+
+	if !numericSID.MatchString(sid) {
+		return false
+	}
+
+	parts := strings.Split(sid, "-")[2:]
+	if len(parts)-1 > maxSubAuthorities {
+		return false
+	}
+
+	if _, err := strconv.ParseUint(parts[0], 10, 48); err != nil {
+		return false
+	}
+
+	for _, sub := range parts[1:] {
+		if _, err := strconv.ParseUint(sub, 10, 32); err != nil {
+			return false
+		}
+	}
+
+	return true
 }
 
 // checkACL validates the flags and ACEs of a DACL or SACL.
@@ -272,8 +300,8 @@ func checkACE(ace string) (string, error) {
 	return "", nil
 }
 
-// checkACETail checks the object GUIDs and the account SID, and refuses the
-// resource attribute field: Windows refuses it on access ACEs (A, D, ...).
+// checkACETail checks the object GUIDs and the account SID, and refuses a
+// seventh field: Windows refuses it on access ACEs (A, D, ...).
 func checkACETail(fields []string) error {
 	for _, field := range fields[3:5] {
 		if field != "" && !guid.MatchString(field) {
@@ -286,9 +314,9 @@ func checkACETail(fields []string) error {
 	}
 
 	if len(fields) == maxACEFields {
-		// Only a resource attribute ACE has one, and its value is a
-		// parenthesised attribute this parser does not read.
-		return fmt.Errorf("resource attribute field %q is not supported", fields[6])
+		// A resource attribute or a callback condition: both are
+		// parenthesised values this parser does not read.
+		return fmt.Errorf("the field %q after the SID (a resource attribute or condition) is not supported", fields[6])
 	}
 
 	return nil
