@@ -1973,7 +1973,7 @@ Every pitfall below has cost someone an install on a customer's machine. Each ro
 
 ### Case IDs
 
-A case ID is `<PREFIX>-<NN>`: the prefix names the go-msi package or installer area the case tests, and `NN` counts up within that prefix. A retired ID is never reused, so a number may be missing from a prefix: `MSIDB-14` was skipped so that it is not confused with the old `DB-14` (now `SUM-07`), and `UI-01` is the wizard rendering check recorded only in [MSISPEC-RESULTS.md](MSISPEC-RESULTS.md). The msitest harness may add a letter for an extra run of a case (`MSIDB-05B` writes into `results/MSIDB-05/`). Fixture package names inside the harness (`run07x64`, `rust11`, …) keep their old spelling, because they seed GUIDs and filenames in the recorded logs.
+A case ID is `<PREFIX>-<NN>`: the prefix names the go-msi package or installer area the case tests, and `NN` counts up within that prefix. A retired ID is never reused, so a number may be missing from a prefix: `MSIDB-14` was skipped so that it is not confused with the old `DB-14` (now `SUM-07`). `UI-01` exists but is not listed here: it is the wizard rendering check recorded in [MSISPEC-RESULTS.md](MSISPEC-RESULTS.md). The msitest harness may add a letter for an extra run of a case (`MSIDB-05B` writes into `results/MSIDB-05/`). Fixture package names inside the harness (`run07x64`, `rust11`, …) keep their old spelling, because they seed GUIDs and filenames in the recorded logs.
 
 | Prefix | Area | go-msi code |
 | --- | --- | --- |
@@ -2001,7 +2001,7 @@ A case ID is `<PREFIX>-<NN>`: the prefix names the go-msi package or installer a
 | `SIG` | Authenticode signatures | `pkg/sign` |
 | `INT` | Other MSI toolchains | — |
 
-Until 2026-10-26 the cases used other IDs: `RUN-` for every installation case, `RUST-` for the msi-rs regression cases, `DB-` for the database, and `CAB-` also for the MSZIP and LZX cases (`CAB-02`, `CAB-03`, `CAB-08`). When the cases were renamed, the case header and the `results\<ID>\` paths in the recorded `log.md` files were renamed with them. The old IDs still appear in older pull requests, commits and notes; this table maps them to the current ones. IDs not listed kept their name. Harness variants follow their case: `DB-05B` is `MSIDB-05B`, `DB-11B` is `MSIDB-11B`.
+Until 2026-10-26 the cases used other IDs: `RUN-` for most installation and runtime cases, `RUST-` for the msi-rs regression cases, `DB-` for the database, and `CAB-` also for the MSZIP and LZX cases (`CAB-02`, `CAB-03`, `CAB-08`). When the cases were renamed, the case header and the `results\<ID>\` paths in the recorded `log.md` files were renamed with them. The old IDs still appear in older pull requests, commits and notes; this table maps them to the current ones. IDs not listed kept their name. Harness variants follow their case: `DB-05B` is `MSIDB-05B`, `DB-11B` is `MSIDB-11B`.
 
 | Old ID | New ID |
 | --- | --- |
