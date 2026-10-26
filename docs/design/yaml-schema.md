@@ -486,8 +486,9 @@ another folder is rejected too, because the installer resolves its path
 itself, and so is a `%` in any folder name, because `cmd.exe` expands
 `%NAME%` as an environment variable, and a hand-written short name
 (`SHORT~1|Long`), because with `SHORTFILENAMES=1` it can resolve to another
-folder's 8.3 alias. `purge` and `permanent` on the same component are an
-error: the component would outlive the product, but its folder would not. Data below the install dir therefore cannot be purged;
+folder's 8.3 alias. A permanent component in the purged folder or below it
+is an error: the component would outlive the product, but its folder would
+not. Data below the install dir therefore cannot be purged;
 use a path below a fixed standard folder other than TARGETDIR (public, and
 its drive can change), whose generated IDs are private, such as
 `CommonAppDataFolder/Vendor/Product`.

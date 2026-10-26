@@ -286,6 +286,11 @@ func TestValidate(t *testing.T) {
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1),
 			sevError, "components[0].purge", "short name",
 		},
+		"purge above a permanent component": {
+			base + appComponent + "  - id: Data\n    directory: CommonAppDataFolder/Example/Hello\n    createFolder: true\n    purge: true\n" +
+				"  - id: Keep\n    directory: CommonAppDataFolder/Example/Hello/keep\n    createFolder: true\n    permanent: true\n",
+			sevError, "components[1].purge", "permanent component Keep",
+		},
 		"purge permanent": {
 			base + strings.Replace(appComponent, "    files:", "    permanent: true\n    purge: true\n    files:", 1),
 			sevError, "components[0].purge", "permanent",

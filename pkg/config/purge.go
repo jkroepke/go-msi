@@ -16,9 +16,9 @@ func (v *validator) purge(cfg *Config, known *refs, field string, comp *Componen
 		return
 	}
 
-	if comp.Permanent {
-		v.errorf(field+".purge", "a permanent component outlives the product, but purge deletes its folder at "+
-			"uninstall; use one or the other")
+	if keep := permanentBelow(cfg, known, comp.Directory); keep != "" {
+		v.errorf(field+".purge", "permanent component %s outlives the product, but purge deletes its folder at "+
+			"uninstall; keep permanent components out of the purged folder", keep)
 	}
 
 	v.purgeFolder(cfg, known, field, comp)
@@ -88,12 +88,13 @@ func setProperties(cfg *Config) map[string]bool {
 	return set
 }
 
-// movableAncestor returns the first directory from dirID up to (not
-// including) its root folder whose path something besides the Directory
+// movableAncestor returns the first directory from dirID up to its root
+// folder whose path something besides the Directory
 // table can set (specification section 8.3): a public id, which the command
 // line can set; a configurable one; a standard folder nested below another
 // one, which the installer resolves itself; or one named by a setDirectory or
-// setProperty action, a properties entry or a dialog field.
+// setProperty action, a properties entry or a dialog field. Only the last
+// group applies to the root folder.
 func movableAncestor(cfg *Config, known *refs, dirID string) string {
 	set := setProperties(cfg)
 
@@ -139,6 +140,24 @@ func unsafeNameInPath(known *refs, dirID string) string {
 		}
 
 		dirID = parent
+	}
+
+	return ""
+}
+
+// permanentBelow returns the first permanent component whose directory is
+// dirID or a folder below it.
+func permanentBelow(cfg *Config, known *refs, dirID string) string {
+	for _, other := range cfg.Components {
+		if other == nil || !other.Permanent {
+			continue
+		}
+
+		for id, depth := other.Directory, 0; id != "" && depth < 64; id, depth = known.dirParent[id], depth+1 {
+			if id == dirID {
+				return other.ID
+			}
+		}
 	}
 
 	return ""
