@@ -3,14 +3,13 @@
 go-msi turns one YAML file ([`yaml-schema.md`](yaml-schema.md)) into an
 `.msi` package. It only builds packages and reads them back (`inspect`, the
 self-check): it never installs or executes one. Only its tests do: the
-Windows tests without `-short` (elevated) and the Wine test
-`hack/test-wine.sh`. Everything is
-pure Go with no cgo and builds and runs on Linux, macOS and Windows.
+Windows tests without `-short` (elevated). Everything is pure Go with no cgo
+and builds and runs on Linux, macOS and Windows.
 
 The rules come from [`docs/spec/MSISPEC.md`](../spec/MSISPEC.md) and the
 Windows results in [`docs/spec/MSISPEC-RESULTS.md`](../spec/MSISPEC-RESULTS.md).
 Section numbers below refer to the specification. WiX and Wine source code is
-never consulted (both are LGPL); Wine may run as a black-box test runtime.
+never consulted (both are LGPL).
 
 ## 1. Package map
 
@@ -349,18 +348,19 @@ generated from the command tree.
   same tests, plus `//go:build windows` tests in `pkg/builder/nativetest` that open
   the built package with `msi.dll` (`MsiOpenDatabaseW`, views over every table,
   `MsiGetSummaryInformationW`, `MsiRecordReadStream` on the cabinet) and
-  install and uninstall the minimal example silently (`msiexec /i … /qn`,
-  verify the file, `/x`, verify removal). They also run the full ICE suite
-  on the examples through `internal/ice`, with the `darice.cub` that CI
-  installs from the Windows SDK (cached; its SHA-256 is logged). The install
-  test needs elevation; all of them are skipped with `-short`.
-- **Wine runner** (`ubuntu-latest`, `mise` installs Go; `apt` installs
-  Wine): `wine msiexec /i minimal.msi /qn` as a black box, then check the file
-  in the Wine prefix. `mise.toml` carries the Go version and the tasks
-  (`test`, `test:wine`, `lint`) so the same commands run locally and in CI.
+  install and uninstall every example silently (`msiexec /i … /qn`, verify
+  the payload and the service, `/x`, verify removal; the examples with a
+  service install the test service from `docs/spec/msitest/testsvc`). They
+  also run the full ICE suite on the examples through `internal/ice`, with
+  the `darice.cub` that CI installs from the Windows SDK (cached; its SHA-256
+  is logged). The install test needs elevation; all of them are skipped with
+  `-short`.
 - **Real experiments** on Joe's SERVER2025 dev box through Remote Control for
   anything a runner cannot answer (services, upgrades, comparing the ICE
   runner with `msival2.exe`).
+
+`mise.toml` pins the Go version and names local tasks (`test`, `lint`,
+`build`) that mirror the commands CI runs.
 
 ## 3. Implementation steps
 
@@ -372,7 +372,7 @@ generated from the command tree.
 | 4 | `schema` for the tables of §6.2 that the schema can produce | this PR |
 | 5 | `pe`, `condition`, `sequence` | this PR |
 | 6 | `builder` steps 1–8 and 10, `cmd/go-msi`, example builds | this PR |
-| 7 | CI: Linux, macOS and Windows runners, native tests, Wine job, mise | this PR |
+| 7 | CI: Linux, macOS and Windows runners, native tests, mise | this PR |
 | 8 | `ui`: built-in wizards (`minimal`, `featureTree`), generated dialogs, `artwork` bitmaps | PR 2 |
 | 9 | ICE-style checks that still need the UI tables; `_Validation` for UI | PR 2 |
 | 10 | External cabinets, several media, uncompressed files | later |

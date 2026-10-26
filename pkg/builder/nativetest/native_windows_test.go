@@ -4,11 +4,18 @@ package nativetest_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/png"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -259,44 +266,260 @@ func TestMsiDLLOpensPackages(t *testing.T) {
 	}
 }
 
-// TestMsiexecInstallsMinimal installs and removes examples/minimal silently.
-// It needs an elevated process; without one it is skipped.
-func TestMsiexecInstallsMinimal(t *testing.T) {
+// installExample says how an example is built and checked once installed.
+type installExample struct {
+	vars map[string]string
+	// inputs builds the input files; it runs inside the subtest so an
+	// example that needs a compiled binary pays for it only when it runs.
+	inputs func(t *testing.T) map[string][]byte
+	// installed is the path of the main payload after the installation; its
+	// base name is the input it is compared with.
+	installed string
+	// service is the name of a service the package installs and starts.
+	service string
+}
+
+// installExamples lists every example with its inputs and checks. A new
+// example directory needs an entry here or TestMsiexecInstallsExamples fails.
+func installExamples(t *testing.T) map[string]installExample {
+	t.Helper()
+
+	exporterVars, _ := windowsExporterInputs()
+
+	return map[string]installExample{
+		"minimal": {
+			inputs:    func(*testing.T) map[string][]byte { return minimalInputs() },
+			installed: filepath.Join(os.Getenv("ProgramFiles"), "Hello", "hello.exe"),
+		},
+		"windows_exporter": {
+			vars: exporterVars,
+			inputs: func(t *testing.T) map[string][]byte {
+				t.Helper()
+
+				// StartServices runs the installed binary as a service, so
+				// the synthetic PE is replaced by a real one.
+				_, inputs := windowsExporterInputs()
+				inputs["windows_exporter.exe"] = testService(t)
+
+				return inputs
+			},
+			installed: filepath.Join(os.Getenv("ProgramFiles"), "windows_exporter", "windows_exporter.exe"),
+			service:   "windows_exporter",
+		},
+		"branded": {
+			vars:      map[string]string{"VERSION": "1.5.0"},
+			inputs:    brandedInputs,
+			installed: filepath.Join(os.Getenv("ProgramFiles"), "Example", "Agent", "agent.exe"),
+			service:   "ExampleAgent",
+		},
+		"desktop": {
+			vars:      map[string]string{"VERSION": "2.0.0"},
+			inputs:    func(*testing.T) map[string][]byte { return desktopInputs() },
+			installed: filepath.Join(os.Getenv("ProgramFiles"), "Example Viewer", "viewer.exe"),
+		},
+	}
+}
+
+// brandedInputs are the input files of examples/branded: a service binary
+// that really runs, a license and the two theme pictures.
+func brandedInputs(t *testing.T) map[string][]byte {
+	t.Helper()
+
+	return map[string][]byte{
+		"agent.exe":         testpe.Build(testpe.Options{FileVersion: "1.5.0.0", Languages: []int{1033}}),
+		"agent-service.exe": testService(t),
+		"agent.conf":        []byte("logging {}\n"),
+		"icon.ico":          append([]byte{0, 0, 1, 0, 1, 0}, make([]byte, 64)...),
+		"LICENSE.rtf":       []byte(`{\rtf1\ansi\deff0{\fonttbl{\f0\fnil Courier New;}}\f0\fs16 Example License\par}`),
+		"banner.bmp":        picture(t, 493, 58),
+		"dialog.bmp":        picture(t, 493, 312),
+	}
+}
+
+// picture is a width×height PNG in one colour; the builder re-encodes it as
+// BMP.
+func picture(t *testing.T, width, height int) []byte {
+	t.Helper()
+
+	img := image.NewNRGBA(image.Rect(0, 0, width, height))
+	draw.Draw(img, img.Bounds(), image.NewUniform(color.NRGBA{R: 0x14, G: 0x14, B: 0x14, A: 0xFF}), image.Point{}, draw.Src)
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+
+	return buf.Bytes()
+}
+
+// testService builds docs/spec/msitest/testsvc, a minimal Windows service
+// that starts and stops on request. The source is copied into a temporary
+// module next to a resource object from testpe, so the executable carries a
+// version resource and passes the config validation (RUN-02) like a real
+// service binary; the checked-in source stays unversioned for the spec
+// tests.
+func testService(t *testing.T) []byte {
+	t.Helper()
+
+	src := filepath.Join("..", "..", "..", "docs", "spec", "msitest")
+	dir := t.TempDir()
+
+	for _, name := range []string{filepath.Join("testsvc", "main.go"), "go.mod", "go.sum"} {
+		data, err := os.ReadFile(filepath.Join(src, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(filepath.Join(dir, filepath.Base(name)), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	syso := testpe.Syso(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(dir, "rsrc_windows_amd64.syso"), syso, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	exe := filepath.Join(dir, "testsvc.exe")
+
+	cmd := exec.CommandContext(t.Context(), "go", "build", "-o", exe, ".")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOWORK=off", "GOARCH=amd64") //nolint:wsl_v5 // configures cmd
+
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("building the test service: %v\n%s", err, out)
+	}
+
+	data, err := os.ReadFile(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return data
+}
+
+// msiexecQuiet runs msiexec silently with a verbose log and prints the log on
+// failure. It skips the test when the process is not elevated. A reboot
+// request (3010) fails the test: the examples stop their own services, so
+// a file that is still in use when RemoveFiles runs is a packaging bug.
+func msiexecQuiet(t *testing.T, log string, args ...string) {
+	t.Helper()
+
+	//nolint:gosec // the arguments are test-controlled paths
+	out, err := exec.CommandContext(t.Context(), "msiexec", append(args, "/qn", "/l*v", log)...).CombinedOutput()
+	if err == nil {
+		return
+	}
+
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
+		switch exit.ExitCode() {
+		case 1925:
+			t.Skip("not elevated: msiexec returned 1925")
+		case 3010:
+			t.Fatalf("msiexec %s asked for a reboot (3010): a file was still in use\n%s", strings.Join(args, " "), readLog(log))
+		}
+	}
+
+	t.Fatalf("msiexec %s: %v\n%s\n%s", strings.Join(args, " "), err, out, readLog(log))
+}
+
+// serviceState returns the STATE line of sc query, or "" when the service
+// does not exist.
+func serviceState(t *testing.T, name string) string {
+	t.Helper()
+
+	out, err := exec.CommandContext(t.Context(), "sc", "query", name).CombinedOutput()
+	if err != nil {
+		if exit, ok := errors.AsType[*exec.ExitError](err); ok && exit.ExitCode() == 1060 {
+			return ""
+		}
+
+		t.Fatalf("sc query %s: %v\n%s", name, err, out)
+	}
+
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if strings.Contains(line, "STATE") {
+			return strings.TrimSpace(line)
+		}
+	}
+
+	t.Fatalf("sc query %s has no STATE line:\n%s", name, out)
+
+	return ""
+}
+
+// TestMsiexecInstallsExamples installs and removes every example silently
+// and checks the payload and services in between. It needs an elevated
+// process; without one it is skipped.
+//
+//nolint:paralleltest // msiexec runs one installation at a time
+func TestMsiexecInstallsExamples(t *testing.T) {
 	if testing.Short() {
 		t.Skip("installing needs msiexec time and elevation")
 	}
 
-	path, _ := buildExample(t, "minimal", nil, minimalInputs())
-	log := filepath.Join(filepath.Dir(path), "install.log")
+	examples := installExamples(t)
 
-	out, err := exec.Command("msiexec", "/i", path, "/qn", "/l*v", log).CombinedOutput()
+	entries, err := os.ReadDir(filepath.Join("..", "..", "..", "examples"))
 	if err != nil {
-		var exit *exec.ExitError
-		if errors.As(err, &exit) && exit.ExitCode() == 1925 {
-			t.Skip("not elevated: msiexec returned 1925")
+		t.Fatal(err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			if _, ok := examples[entry.Name()]; !ok {
+				t.Errorf("examples/%s has no entry in installExamples", entry.Name())
+			}
 		}
-
-		t.Fatalf("msiexec /i: %v\n%s\n%s", err, out, readLog(log))
 	}
 
-	installed := filepath.Join(os.Getenv("ProgramFiles"), "Hello", "hello.exe")
+	for _, name := range slices.Sorted(maps.Keys(examples)) {
+		example := examples[name]
 
-	data, err := os.ReadFile(installed)
-	if err != nil {
-		t.Fatalf("after install: %v\n%s", err, readLog(log))
-	}
+		t.Run(name, func(t *testing.T) {
+			inputs := example.inputs(t)
+			path, _ := buildExample(t, name, example.vars, inputs)
+			log := filepath.Join(filepath.Dir(path), "install.log")
+			installed := true
 
-	if !bytes.Equal(data, minimalInputs()["hello.exe"]) {
-		t.Error("installed hello.exe differs from the source")
-	}
+			// Leave the machine clean when a check fails after installing.
+			t.Cleanup(func() {
+				if installed {
+					_, _ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn").CombinedOutput()
+				}
+			})
 
-	out, err = exec.Command("msiexec", "/x", path, "/qn", "/l*v", log).CombinedOutput()
-	if err != nil {
-		t.Fatalf("msiexec /x: %v\n%s\n%s", err, out, readLog(log))
-	}
+			msiexecQuiet(t, log, "/i", path)
 
-	if _, err := os.Stat(installed); err == nil {
-		t.Error("hello.exe is still installed after the uninstall")
+			data, err := os.ReadFile(example.installed)
+			if err != nil {
+				t.Fatalf("after install: %v\n%s", err, readLog(log))
+			}
+
+			if !bytes.Equal(data, inputs[filepath.Base(example.installed)]) {
+				t.Errorf("installed %s differs from the source", filepath.Base(example.installed))
+			}
+
+			if example.service != "" {
+				if state := serviceState(t, example.service); !strings.Contains(state, "RUNNING") {
+					t.Errorf("service %s after install: %q\n%s", example.service, state, readLog(log))
+				}
+			}
+
+			msiexecQuiet(t, log, "/x", path)
+
+			installed = false
+
+			if _, err := os.Stat(example.installed); err == nil {
+				t.Errorf("%s is still installed after the uninstall", example.installed)
+			}
+
+			if example.service != "" {
+				if state := serviceState(t, example.service); state != "" {
+					t.Errorf("service %s after uninstall: %q", example.service, state)
+				}
+			}
+		})
 	}
 }
 

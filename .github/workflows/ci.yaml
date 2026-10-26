@@ -117,41 +117,6 @@ jobs:
           use_oidc: true
           files: coverage.out
 
-  install-test:
-    name: Install test (Wine)
-    runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: 'false'
-
-      - name: Check for the install test
-        id: script
-        run: |
-          if [ -f hack/test-wine.sh ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::hack/test-wine.sh does not exist yet, skipping the install test."
-          fi
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: steps.script.outputs.present == 'true'
-        with:
-          go-version-file: 'go.mod'
-          cache: "${{ github.actor != 'renovate[bot]' }}"
-
-      - name: Install Wine
-        if: steps.script.outputs.present == 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends wine64 xvfb
-
-      - name: Install examples/minimal
-        if: steps.script.outputs.present == 'true'
-        run: hack/test-wine.sh
-
   goreleaser:
     runs-on: ubuntu-26.04
     name: Test goreleaser
@@ -269,6 +234,24 @@ jobs:
           VALIDATE_SPELL_CODESPELL: true
           VALIDATE_XML: true
           VALIDATE_YAML: true
+
+  # The one job to mark as required in branch protection. It only runs, and
+  # fails, when a needed job failed or was cancelled; GitHub counts the
+  # skipped job as passed. Add every new check job to needs.
+  fail:
+    name: fail
+    if: "${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}"
+    needs:
+      - build
+      - goreleaser
+      - lint
+      - super-lint
+    runs-on: ubuntu-26.04
+    steps:
+      - name: verify checks passed
+        run: |
+          echo "Some checks have failed!"
+          exit 1
 
   # Tags a new version from the conventional commit titles on main. A tag
   # created with GITHUB_TOKEN does not trigger the tag push run of CI, but a

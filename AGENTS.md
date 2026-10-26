@@ -56,8 +56,7 @@ implementation details that may change without notice.
 - Write code from [`docs/spec`](docs/spec) and from Microsoft's documentation.
   Never read, copy or port code from other MSI tools or installer engines, in
   particular projects under the LGPL (this includes the WiX toolset, Wine and
-  msitools). Do not cite or link their sources in code or documentation. Wine is
-  used only as a black-box installer engine in `hack/test-wine.sh`.
+  msitools). Do not cite or link their sources in code or documentation.
 - Microsoft's documentation is not assumed correct. A statement that
   `MSISPEC-RESULTS.md` has not verified on Windows is a hypothesis: mark it as
   unverified in the spec, or verify it with the `msitest` harness, before the
