@@ -300,3 +300,22 @@ func TestScheduleWhen(t *testing.T) {
 		t.Errorf("condition %q, want %q", got, want)
 	}
 }
+
+// TestScheduleWhenTooEarly checks the warning for an uninstall placement
+// before InstallValidate, where REMOVE is not reliable yet.
+func TestScheduleWhenTooEarly(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
+	cfg.CustomActions = append(cfg.CustomActions, &config.CustomAction{
+		ID:          "Early",
+		SetProperty: &config.SetProperty{Name: "EARLY", Value: "1"},
+		Schedule:    []config.Placement{{Sequence: "execute", After: "CostFinalize", When: config.WhenUninstall}},
+	})
+	res := mustBuild(t, cfg)
+
+	if !strings.Contains(fmt.Sprint(res.Diagnostics), "before InstallValidate") {
+		t.Errorf("diagnostics %s", res.Diagnostics)
+	}
+}

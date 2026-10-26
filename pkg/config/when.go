@@ -1,6 +1,10 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+	"strings"
+)
 
 // Placement.When values.
 const (
@@ -17,12 +21,9 @@ const whenUninstall = `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE`
 
 // WhenCondition returns the condition a schedule's when names, or "" for
 // none. upgrade and install tell a major upgrade from a first install by the
-// upgrade property that FindRelatedProducts sets.
+// upgrade properties that FindRelatedProducts sets.
 func WhenCondition(cfg *Config, when string) string {
-	upgradeProperty := DefaultUpgradeProperty
-	if cfg.Upgrade != nil && cfg.Upgrade.Property != "" {
-		upgradeProperty = cfg.Upgrade.Property
-	}
+	upgradeProperty := upgradeProperties(cfg)
 
 	switch when {
 	case WhenInstall:
@@ -56,6 +57,33 @@ func (p *Placement) FullCondition(cfg *Config) string {
 	}
 }
 
+// upgradeProperties returns the properties FindRelatedProducts sets for a
+// product that RemoveExistingProducts removes: upgrade.property and those of
+// the related rows that are not onlyDetect, ORed in brackets when there are
+// several.
+func upgradeProperties(cfg *Config) string {
+	props := []string{DefaultUpgradeProperty}
+	if cfg.Upgrade == nil {
+		return props[0]
+	}
+
+	if cfg.Upgrade.Property != "" {
+		props[0] = cfg.Upgrade.Property
+	}
+
+	for _, related := range cfg.Upgrade.Related {
+		if !related.OnlyDetect && related.Property != "" && !slices.Contains(props, related.Property) {
+			props = append(props, related.Property)
+		}
+	}
+
+	if len(props) == 1 {
+		return props[0]
+	}
+
+	return "(" + strings.Join(props, " OR ") + ")"
+}
+
 // upgrades reports whether the package finds and removes older versions.
 func upgrades(cfg *Config) bool {
 	return cfg.Upgrade != nil && !cfg.Upgrade.Disabled
@@ -67,5 +95,15 @@ func (v *validator) placementWhen(placementPath string, place Placement, cfg *Co
 
 	if place.When == WhenUpgrade && !upgrades(cfg) {
 		v.errorf(placementPath+".when", "upgrade needs the upgrade section, which finds older versions")
+	}
+
+	switch {
+	case place.When == "" || place.Sequence == sequenceExecute:
+	case place.Sequence == "ui" && (place.When == WhenInstall || place.When == WhenUpgrade):
+	case place.Sequence == "ui":
+		v.errorf(placementPath+".when", "%s tests REMOVE, which is reliable only after InstallValidate, and the ui "+
+			"sequence has no InstallValidate", place.When)
+	default:
+		v.errorf(placementPath+".when", "an administrative install has no Installed, REMOVE or upgrade properties")
 	}
 }

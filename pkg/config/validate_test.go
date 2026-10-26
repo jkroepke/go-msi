@@ -271,6 +271,14 @@ func TestValidate(t *testing.T) {
 				"customActions:\n  - id: Set\n    setProperty: {name: A, value: b}\n    schedule: [{sequence: execute, after: CostFinalize, when: upgrade}]\n",
 			sevError, "customActions[0].schedule[0].when", "upgrade section",
 		},
+		"schedule when uninstall in ui": {
+			base + appComponent + "customActions:\n  - id: Set\n    setProperty: {name: A, value: b}\n    schedule: [{sequence: ui, after: CostFinalize, when: uninstall}]\n",
+			sevError, "customActions[0].schedule[0].when", "InstallValidate",
+		},
+		"schedule when in admin": {
+			base + appComponent + "customActions:\n  - id: Set\n    setProperty: {name: A, value: b}\n    schedule: [{sequence: adminExecute, after: CostFinalize, when: install}]\n",
+			sevError, "customActions[0].schedule[0].when", "administrative",
+		},
 		// RUN-25.
 		"remember with a component of the same id": {
 			strings.Replace(base, "        configurable: true\n", "        configurable: true\ninstallDir: {id: INSTALLDIR, remember: true}\n", 1) +

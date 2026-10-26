@@ -543,6 +543,7 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 	}
 
 	b.checkSequences()
+	b.checkWhen()
 
 	scheduled := make(map[string]bool)
 

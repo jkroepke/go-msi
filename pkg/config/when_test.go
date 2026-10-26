@@ -25,6 +25,9 @@ func TestPlacementFullCondition(t *testing.T) {
 		{"install", withUpgrade, config.Placement{When: config.WhenInstall}, "NOT Installed AND NOT OLDFOUND"},
 		{"install without upgrade", noUpgrade, config.Placement{When: config.WhenInstall}, "NOT Installed"},
 		{"upgrade", withUpgrade, config.Placement{When: config.WhenUpgrade}, "NOT Installed AND OLDFOUND"},
+		{"upgrade with related", &config.Config{Upgrade: &config.Upgrade{Property: "OLDFOUND", Related: []config.RelatedProduct{
+			{Property: "RENAMEDFOUND"}, {Property: "DETECTED", OnlyDetect: true},
+		}}}, config.Placement{When: config.WhenUpgrade}, "NOT Installed AND (OLDFOUND OR RENAMEDFOUND)"},
 		{"maintenance", withUpgrade, config.Placement{When: config.WhenMaintenance}, `Installed AND NOT REMOVE~="ALL"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

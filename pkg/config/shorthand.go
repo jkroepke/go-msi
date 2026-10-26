@@ -502,7 +502,7 @@ func serviceArguments(cfg *Config) {
 					ID:          action,
 					SetProperty: &SetProperty{Name: property, Value: arg.Value},
 					Schedule: []Placement{{
-						Sequence:  "execute",
+						Sequence:  sequenceExecute,
 						Before:    "InstallServices",
 						Condition: arg.Condition,
 					}},
