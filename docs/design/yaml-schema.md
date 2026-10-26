@@ -287,10 +287,27 @@ installDir:
   id: APPLICATIONFOLDER               # Directory key and property, default INSTALLDIR
   name: Example/windows_exporter      # "/" nests folders, default product.name
   parent: ProgramFiles64Folder        # a standard folder, default by platform and scope
+  remember: true                      # reuse the folder of the last install, default false
 ```
 
 The generated install dir is configurable, so `msiexec /i … INSTALLDIR=D:\App`
 and the wizard's Browse button can move it, and its ID must be upper case.
+
+`remember: true` keeps a custom install dir across major upgrades. The
+package writes the folder to the registry value `InstallDir` below
+`HKLM\Software\<manufacturer>\<name>` (`HKCU` for `perUser`), in a component
+`RememberInstallDir` that joins every top-level feature. The next install
+searches that value with `AppSearch` into `<ID>_REMEMBERED` (a raw
+`RegLocator` search, in the 64-bit view on x64 and arm64, plus the empty
+`Signature` table that `AppSearch` needs) and a type-51 action
+`RestoreInstallDir` copies it into the install dir only when
+`<ID>_REMEMBERED AND NOT <ID>`. RUN-25 tested this form on x64 per machine,
+in the execute sequence of a quiet install: the upgrade went back to the
+remembered folder, and `INSTALLDIR=` on the command line still won, while a
+search straight into `INSTALLDIR` overrode the command line, and a search
+without a `Signature` table failed with 2228 and 1603. The builder also
+schedules both actions in the UI sequence so that the wizard shows the
+remembered folder; that, `perUser`, x86 and arm64 were not tested.
 When `directories` defines the install dir's ID, that node is used as
 written, including its `configurable` setting. A package with a directory
 tree and no `installDir` key gets the install dir only when a component

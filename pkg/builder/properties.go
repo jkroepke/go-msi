@@ -211,3 +211,51 @@ func (b *build) launchConditions() error {
 
 	return nil
 }
+
+// Registry locator types (RegLocator.Type).
+const (
+	regLocatorRaw   = 2
+	regLocator64Bit = 16
+)
+
+// rememberInstallDir reads back the folder installDir.remember stored. The
+// search fills a separate public property, and a type-51 action copies it
+// into the install dir only when the command line did not set one: RUN-25
+// showed that searching straight into the install dir overrides a command
+// line value, and that AppSearch fails with 2228 without a Signature table,
+// even for a registry search. Both run in the UI and the execute sequence,
+// so that a full-UI install shows the remembered folder (not tested).
+func (b *build) rememberInstallDir() error {
+	install := b.cfg.InstallDir
+	if !install.Remember {
+		return nil
+	}
+
+	property := install.ID + "_REMEMBERED"
+
+	root := 2
+	if config.RememberRoot(b.cfg) == "HKCU" {
+		root = 1
+	}
+
+	typ := regLocatorRaw
+	if b.is64 {
+		typ |= regLocator64Bit
+	}
+
+	b.table("Signature")
+	b.table("AppSearch").Add(property, config.RememberComponentID)
+	b.table("RegLocator").Add(config.RememberComponentID, root, config.RememberKey(b.cfg), config.RememberValueName, typ)
+	b.secure[property] = true
+
+	const action = "RestoreInstallDir"
+
+	b.addAction(&actionInfo{name: action, typ: caSetProperty, source: install.ID, target: "[" + property + "]"})
+
+	for _, seq := range []string{seqInstallExecute, seqInstallUI} {
+		b.standardAt(seq, "AppSearch")
+		b.schedule(seq, action, property+" AND NOT "+install.ID, "", "AppSearch", 0)
+	}
+
+	return nil
+}

@@ -94,6 +94,7 @@ func expandShorthands(cfg *Config) { //nolint:cyclop // one pass in a fixed orde
 		}
 	}
 
+	rememberInstallDir(cfg, tree)
 	referenceFeatureComponents(cfg)
 	defaultFeature(cfg)
 	serviceArguments(cfg)
@@ -383,6 +384,61 @@ func componentIDs(cfg *Config) {
 		}
 
 		comp.ID = uniqueID(identifier(base), used)
+	}
+}
+
+// RememberComponentID is the component that installDir.remember adds.
+const RememberComponentID = "RememberInstallDir"
+
+// rememberOrigin marks the component installDir.remember adds.
+const rememberOrigin = "installDir.remember"
+
+// RememberValueName is the registry value that holds the remembered folder.
+const RememberValueName = "InstallDir"
+
+// RememberKey returns the registry key below the root (HKLM per machine,
+// HKCU per user) that installDir.remember writes and searches.
+func RememberKey(cfg *Config) string {
+	return `Software\` + cfg.Product.Manufacturer + `\` + cfg.Product.Name
+}
+
+// RememberRoot returns the registry root of installDir.remember.
+func RememberRoot(cfg *Config) string {
+	if cfg.Package.Scope == ScopePerUser {
+		return "HKCU"
+	}
+
+	return "HKLM"
+}
+
+// rememberInstallDir adds the component that writes the install dir to the
+// registry for installDir.remember, and puts it into every top-level
+// feature. The builder adds the search that reads it back.
+func rememberInstallDir(cfg *Config, tree *dirTree) {
+	if !cfg.InstallDir.Remember || tree.ensureInstallDir() == nil {
+		return
+	}
+
+	for _, comp := range cfg.Components {
+		if comp.ID == RememberComponentID {
+			return
+		}
+	}
+
+	cfg.Components = append(cfg.Components, &Component{
+		ID:        RememberComponentID,
+		Directory: cfg.InstallDir.ID,
+		Registry: []*RegistryValue{{
+			Root:  RememberRoot(cfg),
+			Key:   RememberKey(cfg),
+			Name:  RememberValueName,
+			Value: StringList{"[" + cfg.InstallDir.ID + "]"},
+		}},
+		origin: rememberOrigin,
+	})
+
+	for _, feature := range cfg.Features {
+		feature.Components = append(feature.Components, ComponentRef(RememberComponentID))
 	}
 }
 

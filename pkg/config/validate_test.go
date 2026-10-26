@@ -250,6 +250,12 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [restart, restart, restart, restart]}}]\n    files:", 1),
 			sevError, "components[0].services[0].recovery.actions", "one to three",
 		},
+		// RUN-25.
+		"remember with a component of the same id": {
+			strings.Replace(base, "        configurable: true\n", "        configurable: true\ninstallDir: {id: INSTALLDIR, remember: true}\n", 1) +
+				strings.Replace(appComponent, "id: App", "id: RememberInstallDir", 1),
+			sevError, "components[0].id", "installDir.remember adds",
+		},
 		// RUN-26.
 		"purge configurable folder": {
 			base + strings.Replace(appComponent, "    files:", "    purge: true\n    files:", 1),

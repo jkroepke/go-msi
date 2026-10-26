@@ -130,6 +130,10 @@ type InstallDir struct {
 	Name string `yaml:"name"`
 	// Parent is the standard folder the install dir is created in.
 	Parent string `yaml:"parent"`
+	// Remember stores the chosen folder in the registry and reads it back
+	// on the next install, so that a major upgrade keeps a custom folder
+	// (RUN-25).
+	Remember bool `yaml:"remember"`
 
 	// expanded is set by the first expandShorthands.
 	expanded bool

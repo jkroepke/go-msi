@@ -198,6 +198,7 @@ func (b *build) run(res *Result) error {
 		b.writeProperties,
 		b.upgrade,
 		b.launchConditions,
+		b.rememberInstallDir,
 		b.customActions,
 		b.firewall,
 		b.permissions,
