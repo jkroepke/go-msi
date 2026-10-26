@@ -549,7 +549,7 @@ func (b *build) writeWizard(wiz *wizard) {
 		uiText.Add(kv[0], kv[1])
 	}
 
-	b.table("ListBox") // required with a Dialog table (ICE20), stays empty
+	b.ensure("ListBox") // required with a Dialog table (ICE20), stays empty
 
 	if len(wiz.checkBoxes) > 0 {
 		boxes := b.table("CheckBox")

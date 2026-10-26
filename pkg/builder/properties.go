@@ -243,7 +243,7 @@ func (b *build) rememberInstallDir() error {
 		typ |= regLocator64Bit
 	}
 
-	b.table("Signature")
+	b.ensure("Signature") // AppSearch fails with 2228 without it (RUN-25)
 	b.table("AppSearch").Add(property, config.RememberComponentID)
 	b.table("RegLocator").Add(config.RememberComponentID, root, config.RememberKey(b.cfg), config.RememberValueName, typ)
 	b.secure[property] = true

@@ -1303,3 +1303,41 @@ components:
 		t.Errorf("Component attributes %v, want a 32-bit component", got)
 	}
 }
+
+// Tables without rows are left out, except those that must exist: ListBox
+// with a Dialog table (ICE20), Signature with AppSearch (RUN-25) and tables
+// declared in the config.
+func TestEmptyTablesOmitted(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0"})
+	cfg := example(t, "desktop", map[string]string{"VERSION": "1.0.0"}, map[string][]byte{"viewer.exe": exe, "LICENSE.txt": []byte("License")})
+	cfg.Tables = append(cfg.Tables, &config.Table{
+		Name:    "MyTbl",
+		Columns: []config.Column{{Name: "Key", Type: "s72", Key: true}},
+	})
+
+	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	keep := map[string]bool{"ListBox": true, "MyTbl": true}
+	for _, tbl := range database.Tables {
+		if len(tbl.Rows) == 0 && !keep[tbl.Name] {
+			t.Errorf("empty table %s written", tbl.Name)
+		}
+	}
+
+	for name := range keep {
+		if database.Table(name) == nil {
+			t.Errorf("table %s missing", name)
+		}
+	}
+
+	for _, row := range rows(t, database, "_Validation") {
+		if name := fmt.Sprint(row[0]); name != "_SummaryInformation" && database.Table(name) == nil {
+			t.Errorf("_Validation row for omitted table %s", name)
+		}
+	}
+}

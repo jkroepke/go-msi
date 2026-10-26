@@ -171,6 +171,7 @@ func (b *build) customTables() error { //nolint:cyclop,gocognit // one pass over
 
 		b.checkBinaryStreams(tablePath, tbl)
 		b.tables[custom.Name] = tbl
+		b.ensured[custom.Name] = true
 	}
 
 	return nil
@@ -188,6 +189,12 @@ func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop /
 
 	for _, name := range sortedTableNames(b.tables) {
 		tbl := b.tables[name]
+
+		// A table without rows is left out, unless an action or a dialog
+		// needs it to exist.
+		if len(tbl.Rows) == 0 && !b.ensured[name] {
+			continue
+		}
 
 		if err := tbl.Validate(); err != nil {
 			return nil, fmt.Errorf("table %s: %w", name, err)

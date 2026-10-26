@@ -80,6 +80,7 @@ type build struct { //nolint:govet // grouped by build step
 	cfg        *config.Config
 	numbered   map[string][]sequence.Numbered
 	tables     map[string]*msidb.Table
+	ensured    map[string]bool // tables written even without rows (spec 11.10)
 	dirs       map[string]*dirInfo
 	schedules  map[string][]sequence.Action
 	components map[string]*componentInfo
@@ -178,6 +179,7 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 		opts:            opts,
 		diags:           diags,
 		tables:          make(map[string]*msidb.Table),
+		ensured:         make(map[string]bool),
 		dirs:            make(map[string]*dirInfo),
 		components:      make(map[string]*componentInfo),
 		fileByKey:       make(map[string]*fileInfo),
@@ -284,6 +286,13 @@ func (b *build) table(name string) *msidb.Table {
 	}
 
 	return tbl
+}
+
+// ensure creates the named standard table and keeps it in the package even
+// when it gets no rows; other empty tables are left out.
+func (b *build) ensure(name string) {
+	b.ensured[name] = true
+	b.table(name)
 }
 
 func (b *build) hasRows(name string) bool {
