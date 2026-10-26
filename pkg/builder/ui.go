@@ -381,7 +381,7 @@ func (b *build) formDialog(cfg *config.Dialog) *uiDialog {
 			name = fmt.Sprintf("CheckBox%d", i+1)
 			dialog.control(&uiControl{
 				name: name, typ: typCheckBox, property: field.Property, text: label, ring: true,
-				x: margin + 5, y: top + fieldLabelH, w: width, h: fieldEditH, attrs: ctlActive,
+				x: margin + 5, y: top, w: width, h: fieldLabelH + fieldEditH, attrs: ctlActive,
 			})
 		default:
 			attrs := ctlActive

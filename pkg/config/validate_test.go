@@ -258,6 +258,10 @@ func TestValidate(t *testing.T) {
 			base + appComponent + "ui:\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, value: x}]}\n",
 			sevError, "ui.dialogs[0].fields[0].value", "only a checkbox",
 		},
+		"checkbox with a default": {
+			base + appComponent + "properties: {OPT: '0'}\nui:\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: checkbox}]}\n",
+			sevWarning, "ui.dialogs[0].fields[0].property", "starts checked",
+		},
 		// RUN-25.
 		"remember with a component of the same id": {
 			strings.Replace(base, "        configurable: true\n", "        configurable: true\ninstallDir: {id: INSTALLDIR, remember: true}\n", 1) +

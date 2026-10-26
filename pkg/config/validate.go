@@ -1586,7 +1586,7 @@ func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independ
 				v.warnf(fieldPath+".property", "%s is not declared in properties, so it is not secure", field.Property)
 			}
 
-			v.dialogField(fieldPath, &dialog.Fields[index])
+			v.dialogField(cfg, fieldPath, &dialog.Fields[index])
 		}
 	}
 }
