@@ -175,7 +175,6 @@ Silent-failure cases a producer has to guard against itself:
 | SUM-05 | Partial | [log](msitest/results/SUM-05/word-count/log.md); 0, 1, 2, 3, 4, 8, 10 install elevated; no standard-user session |
 | SUM-06 | Confirmed | [log](msitest/results/SUM-06/revision-and-times/log.md) |
 | SUM-07 | Confirmed | [log](msitest/results/SUM-07/summary-system-identifier/log.md); field ignored |
-| SUM-09 | Confirmed | [probe](msitest/results/SUM-09/probe/log.md); in a Word Count 3 package the target folder and an administrative image kept the long part of the `short\|long` directory, and `SHORTFILENAMES=1` installed to the short one; [details](#short-name-packages-run-29) |
 | CAB-01 | Confirmed | Uncompressed, makecab stored/MSZIP and spec-writer stored/MSZIP install byte-identical ([go-mszip](msitest/results/CAB-01/go-mszip/log.md)) |
 | CAB-04 | Confirmed | [log](msitest/results/CAB-04/header-mutations/log.md); version ≠ 1.3 and bad checksum 1603, `cbCabinet` ignored |
 | CAB-05 | Confirmed | [log](msitest/results/CAB-05/zero-byte-file/log.md); missing external cabinet 1603 |
@@ -195,26 +194,27 @@ Silent-failure cases a producer has to guard against itself:
 | INST-02 | Blocked | Needs a standard-user session (a new local account) |
 | FILE-01 | Confirmed | [empty version, REP 1401](msitest/results/FILE-01/empty-version-rep1401/log.md) deletes the file |
 | FILE-02 | Confirmed | [log](msitest/results/FILE-02/file-hash/log.md) |
-| FILE-03 | Confirmed | [removefile-upgrade](msitest/results/FILE-03/removefile-upgrade/log.md), [purge-upgrade](msitest/results/FILE-03/purge-upgrade/log.md); `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-run-24-to-run-27) |
+| FILE-03 | Confirmed | [removefile-upgrade](msitest/results/FILE-03/removefile-upgrade/log.md), [purge-upgrade](msitest/results/FILE-03/purge-upgrade/log.md); `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
 | FILE-04 | Inconclusive | [log](msitest/results/FILE-04/msifilehash/log.md): a correct, a wrong and a misnamed hash table repair the same way (`/fo` and `/fe` restore, `/fc` does not) |
 | FILE-05 | Confirmed | Same as FILE-02 |
+| FILE-06 | Confirmed | [probe](msitest/results/FILE-06/probe/log.md); in a Word Count 3 package the target folder and an administrative image kept the long part of the `short\|long` directory, and `SHORTFILENAMES=1` installed to the short one; [details](#short-name-packages-file-06) |
 | REG-01 | Confirmed | [x64](msitest/results/REG-01/x64/log.md) and [Intel](msitest/results/REG-01/Intel/log.md) templates: bit 256 picks the view |
 | ENVVAR-01 | Contradicted | [log](msitest/results/ENVVAR-01/environment/log.md); finding 4; segment removal on uninstall confirmed |
 | PROP-01 | Not run | Needs a non-administrator elevated install |
 | SEARCH-01 | Not run | Interactive full UI |
 | SEARCH-02 | Not run | |
-| SEARCH-03 | Confirmed | [direct-cmdline](msitest/results/SEARCH-03/direct-cmdline/log.md), [guarded-cmdline](msitest/results/SEARCH-03/guarded-cmdline/log.md), [direct-nosignature](msitest/results/SEARCH-03/direct-nosignature/log.md); `AppSearch` into `INSTALLDIR` overrides the command line; the guarded type-51 form does not; no `Signature` table gives 2228/1603; [details](#use-case-gap-cases-run-24-to-run-27) |
+| SEARCH-03 | Confirmed | [direct-cmdline](msitest/results/SEARCH-03/direct-cmdline/log.md), [guarded-cmdline](msitest/results/SEARCH-03/guarded-cmdline/log.md), [direct-nosignature](msitest/results/SEARCH-03/direct-nosignature/log.md); `AppSearch` into `INSTALLDIR` overrides the command line; the guarded type-51 form does not; no `Signature` table gives 2228/1603; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
 | UPG-01 | Confirmed | [higher](msitest/results/UPG-01/higher/log.md) removes; equal, lower and fourth-field-only stay side by side |
 | UPG-02 | Confirmed | [LaunchCondition](msitest/results/UPG-02/launchcondition/log.md) and [type 19](msitest/results/UPG-02/type19/log.md): 1603, newer stays |
 | UPG-03 | Confirmed | [log](msitest/results/UPG-03/same-productcode/log.md); 1638 |
 | UPG-04 | Contradicted | 1401, 1501, 6551, 6601 and [1399](msitest/results/UPG-04/rep-1399/log.md) work; [5802](msitest/results/UPG-04/rep-5802/log.md) gives 2613 |
-| UPG-05 | Confirmed | [never-early](msitest/results/UPG-05/never-early/log.md), [never-late](msitest/results/UPG-05/never-late/log.md), [neverperm-early](msitest/results/UPG-05/neverperm-early/log.md); early removal: only `NeverOverwrite` + `Permanent` in both versions keeps an edit; `NeverOverwrite` alone loses the resource. Late removal: `NeverOverwrite` alone keeps it, also when added later; [details](#use-case-gap-cases-run-24-to-run-27) |
+| UPG-05 | Confirmed | [never-early](msitest/results/UPG-05/never-early/log.md), [never-late](msitest/results/UPG-05/never-late/log.md), [neverperm-early](msitest/results/UPG-05/neverperm-early/log.md); early removal: only `NeverOverwrite` + `Permanent` in both versions keeps an edit; `NeverOverwrite` alone loses the resource. Late removal: `NeverOverwrite` alone keeps it, also when added later; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
 | UPG-06 | Confirmed | Same as UPG-03 |
 | SVC-01 | Confirmed | [failure-actions table](msitest/results/SVC-01/failureactions-table-restart/log.md) 1939; [sc.exe recipe](msitest/results/SVC-01/sc-failure-recipe/log.md) works; without event 128 the service stays |
-| SVC-03 | Confirmed | [per-step](msitest/results/SVC-03/per-step/log.md); per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-run-24-to-run-27) |
+| SVC-03 | Confirmed | [per-step](msitest/results/SVC-03/per-step/log.md); per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
 | CA-01 | Contradicted | Per-user (`Assignment=0`), elevated administrator: a deferred EXE action failing [after PublishProduct](msitest/results/CA-01/fail-after-publishproduct/log.md) or [after InstallFiles](msitest/results/CA-01/fail-after-installfiles/log.md) rolls back completely (1603, no `Products` or `UserData` key left, state unknown); finding 7 |
 | CA-02 | Confirmed | EXE exit 1 fails unless Continue; [type-6 return 5](msitest/results/CA-02/vbs-binary-return-5-immediate/log.md) ends with 0 and skips the rest; [deferred](msitest/results/CA-02/vbs-binary-return-5-deferred/log.md) leaves files unregistered |
-| SHORTCUT-01 | Confirmed | [hkcu-folder](msitest/results/SHORTCUT-01/hkcu-folder/log.md), [file-component](msitest/results/SHORTCUT-01/file-component/log.md), [file-component-folder](msitest/results/SHORTCUT-01/file-component-folder/log.md), [advertised](msitest/results/SHORTCUT-01/advertised/log.md), [per-user](msitest/results/SHORTCUT-01/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-run-28) |
+| SHORTCUT-01 | Confirmed | [hkcu-folder](msitest/results/SHORTCUT-01/hkcu-folder/log.md), [file-component](msitest/results/SHORTCUT-01/file-component/log.md), [file-component-folder](msitest/results/SHORTCUT-01/file-component-folder/log.md), [advertised](msitest/results/SHORTCUT-01/advertised/log.md), [per-user](msitest/results/SHORTCUT-01/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-shortcut-01) |
 | UI-01 | Confirmed | Wizard rendering on Windows Server 2025, go-msi packages driven by hand and by window messages, with PrintWindow and screen captures (2026-10-26); [details](#wizard-rendering-ui-01) |
 | UI-02 | Not run | Interactive full UI |
 | UI-03 | Not run | Interactive full UI |
@@ -256,14 +256,14 @@ screen capture, with the mouse parked away from the dialog.
   finish page runs in the client process ("MSI (c)") as the interactive
   user, and `[#file]` resolves to the installed file.
 
-## Use-case gap cases (UPG-05 to SVC-03)
+## Use-case gap cases (UPG-05, SEARCH-03, FILE-03, SVC-03)
 
 Run on 2026-10-25 on Windows Server 2025 Standard Evaluation 10.0.26100 by
 [`msitest`](msitest/cases_gaps.go). They check the engine behaviour that per-step
 `recovery` relies on, and that the planned options for preserved
 configuration, a remembered install folder and data removal will rely on.
 The tables summarise the cases' `RESULT` lines; the per-variant
-[`log.md`](msitest/results) files under `UPG-05` to `SVC-03` hold them and the
+[`log.md`](msitest/results) files under `UPG-05`, `SEARCH-03`, `FILE-03` and `SVC-03` hold them and the
 `msiexec` log lines quoted below.
 
 **UPG-05, user edits across a major upgrade.** v1 installs `config.txt` and an
@@ -362,10 +362,10 @@ parser (`WScript.Shell.CreateShortcut`) reads the `.lnk` files back.
   repair of a deleted shortcut, a second user's profile after a per-machine
   install, and `MsiShortcutProperty`.
 
-## Short-name packages (SUM-09)
+## Short-name packages (FILE-06)
 
 Run on 2026-10-26 on Windows Server 2025, elevated, with `msiexec /qn` and
-verbose logs. The [package](msitest/results/SUM-09/probe/log.md) has Word
+verbose logs. The [package](msitest/results/FILE-06/probe/log.md) has Word
 Count 3 (0x1 short names, 0x2 compressed), one file in an embedded
 cabinet and `INSTALLDIR` as `owyyokav|Short Name Probe` under
 `ProgramFiles64Folder`.

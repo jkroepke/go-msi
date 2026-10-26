@@ -11,10 +11,10 @@ import (
 )
 
 func init() {
-	cases["SUM-07"] = caseSum07
-	cases["SUM-02"] = caseSum02
-	cases["SUM-03"] = caseSum03
-	cases["SUM-04"] = caseSum04
+	cases["SUM-07"] = caseSUM07
+	cases["SUM-02"] = caseSUM02
+	cases["SUM-03"] = caseSUM03
+	cases["SUM-04"] = caseSUM04
 	cases["MSIDB-07"] = caseMSIDB07
 	cases["MSIDB-04"] = caseMSIDB04
 	cases["CFB-01"] = caseCFB01
@@ -86,7 +86,7 @@ func tryInstall(c *caseLog, label, path string) int {
 	return r.Exit
 }
 
-func caseSum07() {
+func caseSUM07() {
 	c := newCase("SUM-07", "summary-system-identifier")
 	defer c.close()
 	p := &pkg{Name: "db14", Is64: true}
@@ -106,7 +106,7 @@ func caseSum07() {
 	}
 }
 
-func caseSum02() {
+func caseSUM02() {
 	c := newCase("SUM-02", "template-platform-language")
 	defer c.close()
 	for _, t := range []string{"x64;1033", "x64;1033,1031", "x64;1031", "Intel;0", "x64;0", "X64;1033", "x64 ;1033", "intel;1033", "Intel64;1033", "AMD64;1033", "Arm64;1033", "arm64;1033", "Alpha,x64;1033", "x64,Intel;1033", ";1033", "x64"} {
@@ -122,7 +122,7 @@ func caseSum02() {
 	}
 }
 
-func caseSum03() {
+func caseSUM03() {
 	c := newCase("SUM-03", "page-count")
 	defer c.close()
 	for _, plat := range []string{"x64", "Intel"} {
@@ -148,7 +148,7 @@ func caseSum03() {
 	}
 }
 
-func caseSum04() {
+func caseSUM04() {
 	c := newCase("SUM-04", "summary-codepage")
 	defer c.close()
 	p := &pkg{Name: "sum04", Is64: true}

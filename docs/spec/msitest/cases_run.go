@@ -13,13 +13,13 @@ import (
 )
 
 func init() {
-	cases["UPG-01"] = caseUpg01
-	cases["UPG-02"] = caseUpg02
-	cases["UPG-04"] = caseUpg04
-	cases["UPG-03"] = caseUpg03
-	cases["REG-01"] = caseReg01
-	cases["ENVVAR-01"] = caseEnvVar01
-	cases["FILE-01"] = caseFile01
+	cases["UPG-01"] = caseUPG01
+	cases["UPG-02"] = caseUPG02
+	cases["UPG-04"] = caseUPG04
+	cases["UPG-03"] = caseUPG03
+	cases["REG-01"] = caseREG01
+	cases["ENVVAR-01"] = caseENVVAR01
+	cases["FILE-01"] = caseFILE01
 }
 
 func registered(code string) bool {
@@ -60,7 +60,7 @@ func upgradePkg(c *caseLog, file, version string, rep string, extra func(p *pkg)
 	return p, control(c, p, file)
 }
 
-func caseUpg01() {
+func caseUPG01() {
 	for _, v := range []struct{ name, first, second string }{
 		{"higher", "1.0.0", "2.0.0"},
 		{"equal", "1.0.0", "1.0.0"},
@@ -92,7 +92,7 @@ func logProperty(log, name string) string {
 	return ""
 }
 
-func caseUpg02() {
+func caseUPG02() {
 	for _, v := range []string{"launchcondition", "type19"} {
 		c := newCase("UPG-02", v)
 		p2, m2 := upgradePkg(c, "newer.msi", "2.0.0", "1401", nil)
@@ -114,7 +114,7 @@ func caseUpg02() {
 	}
 }
 
-func caseUpg04() {
+func caseUPG04() {
 	for _, pos := range []string{"1401", "1501", "6551", "6601", "5802", "1399"} {
 		c := newCase("UPG-04", "rep-"+pos)
 		p1, m1 := upgradePkg(c, "v1.msi", "1.0.0", "1401", nil)
@@ -129,7 +129,7 @@ func caseUpg04() {
 	}
 }
 
-func caseUpg03() {
+func caseUPG03() {
 	c := newCase("UPG-03", "same-productcode")
 	defer c.close()
 	code := newGUID()
@@ -146,7 +146,7 @@ func caseUpg03() {
 	removeProduct(c, code)
 }
 
-func caseReg01() {
+func caseREG01() {
 	for _, plat := range []string{"x64", "Intel"} {
 		c := newCase("REG-01", plat)
 		p := &pkg{Name: "run07" + plat, Is64: plat == "x64", Template: plat + ";1033"}
@@ -202,7 +202,7 @@ func envSet(name, val string) {
 
 func envDel(name string) { exec.Command("reg.exe", "delete", envKey, "/v", name, "/f").Run() }
 
-func caseEnvVar01() {
+func caseENVVAR01() {
 	c := newCase("ENVVAR-01", "environment")
 	defer c.close()
 	type row struct{ key, name, value, pre string }
@@ -266,7 +266,7 @@ func versionedCopy(dst string, ms, ls uint32) error {
 	return os.WriteFile(dst, b, 0o644)
 }
 
-func caseFile01() {
+func caseFILE01() {
 	for _, v := range []struct {
 		name     string
 		authored bool

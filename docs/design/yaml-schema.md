@@ -225,7 +225,7 @@ them braced and upper case.
 | `codepage` | int | `1252` | Database code page, section 2.3 |
 | `compression` | enum | `lzx` | `lzx` (LZX with a 2 MB window), `lzx:15` … `lzx:21` (a window of 2^N bytes), `mszip` or `none` (stored blocks) |
 | `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters (fewer outside `0-9A-Za-z._`). ICE03 wants an identifier (letters, digits, `_` and `.`, not starting with a digit), so the default keeps only those characters of `<name>`, and an explicit name that is no identifier warns. The default is `product.cab` when that is no identifier, cannot be a stream name or `<name>` has non-ASCII characters |
-| `longFileNames` | bool | `true` | `false` sets Word Count bit 1 (short source paths). Each listed file needs a valid 8.3 name or an explicit `short\|long` name, and a harvested tree is refused; directories and shortcuts get a generated `short\|long` when their name is not a valid 8.3 name. Installed folders still get the long names unless `SHORTFILENAMES=1` is set (SUM-09) |
+| `longFileNames` | bool | `true` | `false` sets Word Count bit 1 (short source paths). Each listed file needs a valid 8.3 name or an explicit `short\|long` name, and a harvested tree is refused; directories and shortcuts get a generated `short\|long` when their name is not a valid 8.3 name. Installed folders still get the long names unless `SHORTFILENAMES=1` is set (FILE-06) |
 | `summary` | map | | `title` (`Installation Database`), `keywords` (`Installer`), `author` (manufacturer) |
 
 The x64 floor stays at 2.0 although the engine accepted 1.5 (SUM-03): ICE80

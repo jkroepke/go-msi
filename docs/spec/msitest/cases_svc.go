@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	cases["SVC-01"] = caseSvc01
+	cases["SVC-01"] = caseSVC01
 	cases["CA-02"] = caseCA02
 }
 
@@ -38,7 +38,7 @@ func svcState() string {
 	return out
 }
 
-func caseSvc01() {
+func caseSVC01() {
 	type variant struct {
 		name  string
 		event string

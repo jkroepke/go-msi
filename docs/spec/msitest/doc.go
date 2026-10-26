@@ -13,8 +13,8 @@
 //
 //	go build -o msitest.exe .
 //	go build -o testsvc/testsvc.exe ./testsvc
-//	.\msitest.exe              # lists the cases
-//	.\msitest.exe VEC MSIDB-01    # runs cases; output goes to results/<case>/<variant>/
+//	.\msitest.exe                # lists the cases
+//	.\msitest.exe VEC MSIDB-01   # runs cases; output goes to results/<case>/<variant>/
 //
 // Each variant directory receives log.md (committed) plus the fixtures,
 // msiexec verbose logs and extracted files (ignored by git).

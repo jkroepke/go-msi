@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-func init() { cases["SHORTCUT-01"] = caseShortcut01 }
+func init() { cases["SHORTCUT-01"] = caseSHORTCUT01 }
 
 const shortcutRegKey = `Software\MsiSpecTest\shortcut`
 
@@ -61,7 +61,7 @@ func hkcuValue(key, name string) string {
 	return "<absent>"
 }
 
-// caseShortcut01 installs and removes shortcuts in four layouts:
+// caseSHORTCUT01 installs and removes shortcuts in four layouts:
 //
 //   - hkcu-folder: per-machine; a shortcut component of its own with an HKCU
 //     registry key path (ICE38, ICE43), a Start menu subfolder removed by a
@@ -74,7 +74,7 @@ func hkcuValue(key, name string) string {
 //     with no RemoveFile row: is the folder removed at uninstall?
 //   - advertised: Target is the feature, with an icon, in the file's component.
 //   - per-user: ALLUSERS absent, the hkcu-folder layout; where does it land?
-func caseShortcut01() {
+func caseSHORTCUT01() {
 	appData, err := os.ReadFile(filepath.Join(os.Getenv("SystemRoot"), "System32", "whoami.exe"))
 	if err != nil {
 		fmt.Println("SHORTCUT-01: cannot read whoami.exe:", err)

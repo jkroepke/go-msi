@@ -1,4 +1,4 @@
-# SUM-09 / probe
+# FILE-06 / probe
 
 Package built by go-msi from this `msi.yaml` (`package.longFileNames: false`):
 

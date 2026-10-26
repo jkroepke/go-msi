@@ -13,14 +13,14 @@ import (
 
 func init() {
 	cases["VEC"] = caseVectors
-	cases["ENV-01"] = caseEnv01
-	cases["INST-01"] = caseInst01
+	cases["ENV-01"] = caseENV01
+	cases["INST-01"] = caseINST01
 	cases["MSIDB-01"] = caseMSIDB01
-	cases["SUM-01"] = caseSum01
-	cases["CAB-01"] = caseCab01
-	cases["MSZIP-01"] = caseMszip01
+	cases["SUM-01"] = caseSUM01
+	cases["CAB-01"] = caseCAB01
+	cases["MSZIP-01"] = caseMSZIP01
 	cases["MSIDB-03"] = caseMSIDB03
-	cases["FILE-02"] = caseFile02
+	cases["FILE-02"] = caseFILE02
 }
 
 func u16(s string) []uint16 { return utf16.Encode([]rune(s)) }
@@ -95,7 +95,7 @@ func caseVectors() {
 	// A.9-ish reproducible product code not needed natively.
 }
 
-func caseEnv01() {
+func caseENV01() {
 	c := newCase("ENV-01", "inventory")
 	defer c.close()
 	c.logf("OS: %s", strings.TrimSpace(cmdOut("powershell", "-NoProfile", "-Command", "$o=Get-CimInstance Win32_OperatingSystem; \"$($o.Caption) $($o.Version) build $($o.BuildNumber) $($o.OSArchitecture)\"")))
@@ -128,7 +128,7 @@ func caseEnv01() {
 	}
 }
 
-func caseInst01() {
+func caseINST01() {
 	for _, v := range []struct {
 		name string
 		is64 bool
@@ -280,7 +280,7 @@ func firstStrings(db *msiDB, n int) []string {
 	return out
 }
 
-func caseSum01() {
+func caseSUM01() {
 	c := newCase("SUM-01", "native-summary")
 	defer c.close()
 	p := &pkg{Name: "sum01", Is64: true}
@@ -335,7 +335,7 @@ func caseSum01() {
 	c.logf("PIDs in stored order: %v", pids)
 }
 
-func caseCab01() {
+func caseCAB01() {
 	data := []byte(strings.Repeat("CAB-01 payload line with some repetition 0123456789\r\n", 400))
 	for _, mode := range []string{"uncompressed", "uncompressed-resolvesource", "uncompressed-longonly-dir", "makecab-none", "makecab-mszip", "go-stored", "go-mszip"} {
 		c := newCase("CAB-01", mode)
@@ -404,7 +404,7 @@ func crossBlockData() []byte {
 	return b[:100*1024]
 }
 
-func caseMszip01() {
+func caseMSZIP01() {
 	data := crossBlockData()
 	for _, mode := range []string{"makecab-mszip", "go-mszip", "go-nodict", "go-wrongdict"} {
 		c := newCase("MSZIP-01", mode)
@@ -502,7 +502,7 @@ func caseMSIDB03() {
 	}
 }
 
-func caseFile02() {
+func caseFILE02() {
 	c := newCase("FILE-02", "file-hash")
 	defer c.close()
 	inputs := map[string][]byte{

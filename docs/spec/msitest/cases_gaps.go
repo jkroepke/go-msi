@@ -14,10 +14,10 @@ import (
 )
 
 func init() {
-	cases["UPG-05"] = caseUpg05
-	cases["SEARCH-03"] = caseSearch03
-	cases["FILE-03"] = caseFile03
-	cases["SVC-03"] = caseSvc03
+	cases["UPG-05"] = caseUPG05
+	cases["SEARCH-03"] = caseSEARCH03
+	cases["FILE-03"] = caseFILE03
+	cases["SVC-03"] = caseSVC03
 }
 
 const (
@@ -92,10 +92,10 @@ func forgetComponents(c *caseLog, guids ...string) {
 	}
 }
 
-// caseUpg05: does a component with neverOverwrite and/or permanent keep a
+// caseUPG05: does a component with neverOverwrite and/or permanent keep a
 // file and a registry value the user edited across a major upgrade, for an
 // early (1401) and a late (6551) RemoveExistingProducts?
-func caseUpg05() {
+func caseUPG05() {
 	for _, v := range []struct {
 		name         string
 		bits1, bits2 int
@@ -167,12 +167,12 @@ func caseUpg05() {
 
 const rememberKey = `SOFTWARE\MsiSpecTest\remember`
 
-// caseSearch03: a registry value written at install and read back by AppSearch
+// caseSEARCH03: a registry value written at install and read back by AppSearch
 // keeps a custom install folder across a major upgrade. Checks whether
 // AppSearch overwrites INSTALLDIR given on the command line, and a guarded
 // type-51 action that only applies the remembered value when INSTALLDIR is
 // empty before CostFinalize.
-func caseSearch03() {
+func caseSEARCH03() {
 	custom := `C:\MsiSpecCustom\`
 	other := `C:\MsiSpecOther\`
 	for _, v := range []struct {
@@ -233,10 +233,10 @@ func caseSearch03() {
 	}
 }
 
-// caseFile03: RemoveFile rows and a deferred rmdir action on a data folder the
+// caseFILE03: RemoveFile rows and a deferred rmdir action on a data folder the
 // application filled at run time, on a real uninstall and on the uninstall
 // half of a major upgrade with an early RemoveExistingProducts.
-func caseFile03() {
+func caseFILE03() {
 	data := filepath.Join(os.Getenv("ProgramData"), "MsiSpecData")
 	fill := func() {
 		os.MkdirAll(filepath.Join(data, "sub"), 0o755)
@@ -322,9 +322,9 @@ func caseFile03() {
 	}
 }
 
-// caseSvc03: sc.exe failure with a different delay per step and a reset
+// caseSVC03: sc.exe failure with a different delay per step and a reset
 // period that is not a whole number of days.
-func caseSvc03() {
+func caseSVC03() {
 	for _, v := range []struct{ name, args string }{
 		{"per-step", "reset= 3600 actions= restart/60000/restart/300000/restart/300000"},
 		{"two-steps", "reset= 86400 actions= restart/1000/none/0"},
