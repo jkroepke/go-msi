@@ -11,15 +11,9 @@ const (
 	dlgInstallDir = "InstallDirDlg"
 	ctlFolder     = "Folder"
 
-	propLaunch    = "LaunchOnFinish"
-	ctlLaunch     = "LaunchCheckBox"
-	ctlLaunchText = "LaunchText"
-	actLaunch     = "LaunchOnFinish"
-
-	// launchY places the launch check box below the finish page's text.
-	launchY   = 190
-	launchH   = 18
-	launchBox = 12
+	propLaunch = "LaunchOnFinish"
+	ctlLaunch  = "LaunchCheckBox"
+	actLaunch  = "LaunchOnFinish"
 )
 
 // installOnly are the pages that only a new installation shows: Change in
@@ -79,21 +73,18 @@ func (b *build) launch(wiz *wizard) {
 
 	caption := cfg.Text
 	if caption == "" {
-		caption = "Launch [ProductName]"
+		caption = "&Launch [ProductName]"
 	}
 
-	// The box is drawn without text and the label is a transparent text
-	// next to it: a CheckBox paints its text on the button face colour,
-	// which shows as a grey box on the background picture. Both are
-	// visible from the start and hidden by condition, since a control the
-	// engine shows later is painted under the background bitmap.
+	// The box sits on the bottom strip, left of the buttons: Windows paints
+	// the page's background bitmap over an opaque control placed on it
+	// until the mouse hovers over the control, and a CheckBox fills its
+	// rectangle with the button face colour, which the strip has too.
 	exit := wiz.byName[dlgExit]
 	exit.control(&uiControl{
-		name: ctlLaunch, typ: typCheckBox, property: propLaunch, ring: true,
-		x: sideTextX, y: launchY, w: launchBox, h: launchH, attrs: ctlActive,
+		name: ctlLaunch, typ: typCheckBox, property: propLaunch, text: caption, ring: true,
+		x: margin, y: buttonY, w: backX - margin - 5, h: buttonH, attrs: ctlActive,
 	}).when("Hide", "NOT ("+shown+")")
-	exit.control(overlay(ctlLaunchText, sideTextX+launchBox+3, launchY+4, sideTextW-launchBox-3, 10, caption)).
-		when("Hide", "NOT ("+shown+")")
 
 	finish := exit.find(ctlFinish)
 	finish.events = slices.Insert(finish.events, 0, uiEvent{event: "DoAction", arg: actLaunch, cond: propLaunch + ` = "1" AND ` + shown})

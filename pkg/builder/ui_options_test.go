@@ -127,23 +127,17 @@ func TestLaunchCheckBox(t *testing.T) {
 
 	shown := `NOT Installed AND NOT ACTION = "ADMIN" AND $viewer.exe = 3`
 
-	// The box has no text of its own; a transparent text is its label.
-	// Both start visible (a control shown later is painted under the
-	// background picture) and are hidden by condition.
-	if got := controlRow(t, res, "ExitDlg", "LaunchCheckBox"); got[2] != "CheckBox" || got[7] != 3 || got[8] != "LaunchOnFinish" || got[9] != nil {
+	// The box sits on the bottom strip, off the background picture; it
+	// starts visible and is hidden by condition.
+	if got := controlRow(t, res, "ExitDlg", "LaunchCheckBox"); got[2] != "CheckBox" || got[4] != 243 || got[7] != 3 || got[8] != "LaunchOnFinish" ||
+		got[9] != "&Launch [ProductName]" {
 		t.Errorf("check box %v", got)
 	}
 
-	if got := controlRow(t, res, "ExitDlg", "LaunchText"); got[2] != "Text" || got[7] != 0x10000|0x20000|3 || got[9] != "Launch [ProductName]" {
-		t.Errorf("label %v", got)
-	}
-
-	for _, control := range []string{"LaunchCheckBox", "LaunchText"} {
-		if got := cell(t, res.Database, "ControlCondition", "Condition", func(r []any) bool {
-			return r[0] == "ExitDlg" && r[1] == control && r[2] == "Hide"
-		}); got != "NOT ("+shown+")" {
-			t.Errorf("%s Hide condition %v", control, got)
-		}
+	if got := cell(t, res.Database, "ControlCondition", "Condition", func(r []any) bool {
+		return r[0] == "ExitDlg" && r[1] == "LaunchCheckBox" && r[2] == "Hide"
+	}); got != "NOT ("+shown+")" {
+		t.Errorf("Hide condition %v", got)
 	}
 
 	want := fmt.Sprintf(`[DoAction LaunchOnFinish [LaunchOnFinish = "1" AND %s] EndDialog Return [1]]`, shown)
