@@ -232,6 +232,13 @@ func text(name string, x, y, w, h int, s string) *uiControl {
 	return &uiControl{name: name, typ: "Text", x: x, y: y, w: w, h: h, attrs: ctlText, text: s}
 }
 
+// label is a text with a mnemonic: without NoPrefix the engine underlines
+// the letter after "&". Only for fixed texts, since an "&" from a property
+// would be eaten.
+func label(name string, x, y, w, h int, s string) *uiControl {
+	return &uiControl{name: name, typ: "Text", x: x, y: y, w: w, h: h, attrs: ctlActive, text: s}
+}
+
 func overlay(name string, x, y, w, h int, s string) *uiControl {
 	return &uiControl{name: name, typ: "Text", x: x, y: y, w: w, h: h, attrs: ctlOverlay, text: s}
 }

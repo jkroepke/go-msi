@@ -808,11 +808,13 @@ ui:
   launch:
     file: viewer.exe       # files[].id, or the file name when it has no id
     arguments: --welcome   # formatted, optional
-    text: "&Start Example Viewer now"   # default "&Launch [ProductName]"
+    text: "Start Example Viewer now"   # default "Launch [ProductName]"
     checked: false         # default true
 ```
 
-`launch` adds a checkbox (`LaunchOnFinish`) to the finish page. When it is
+`launch` adds a checkbox (`LaunchOnFinish`) to the finish page, drawn as
+a box with a transparent label next to it so that it sits cleanly on the
+background picture; `text` is shown as is, without a mnemonic. When it is
 checked, Finish runs the custom action `LaunchOnFinish`, a type 34 action
 that starts `"[#file]" arguments` in the file's folder and does not wait
 for it (226). It runs in the setup's own process, so the program runs as

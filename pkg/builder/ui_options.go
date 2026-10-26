@@ -11,13 +11,15 @@ const (
 	dlgInstallDir = "InstallDirDlg"
 	ctlFolder     = "Folder"
 
-	propLaunch = "LaunchOnFinish"
-	ctlLaunch  = "LaunchCheckBox"
-	actLaunch  = "LaunchOnFinish"
+	propLaunch    = "LaunchOnFinish"
+	ctlLaunch     = "LaunchCheckBox"
+	ctlLaunchText = "LaunchText"
+	actLaunch     = "LaunchOnFinish"
 
 	// launchY places the launch check box below the finish page's text.
-	launchY = 190
-	launchH = 18
+	launchY   = 190
+	launchH   = 18
+	launchBox = 12
 )
 
 // installOnly are the pages that only a new installation shows: Change in
@@ -75,17 +77,23 @@ func (b *build) launch(wiz *wizard) {
 
 	shown := fmt.Sprintf(`NOT Installed AND NOT ACTION = "ADMIN" AND $%s = 3`, file.Component.cfg.ID)
 
-	label := cfg.Text
-	if label == "" {
-		label = "&Launch [ProductName]"
+	caption := cfg.Text
+	if caption == "" {
+		caption = "Launch [ProductName]"
 	}
 
+	// The box is drawn without text and the label is a transparent text
+	// next to it: a CheckBox paints its text on the button face colour,
+	// which shows as a grey box on the background picture. Both are
+	// visible from the start and hidden by condition, since a control the
+	// engine shows later is painted under the background bitmap.
 	exit := wiz.byName[dlgExit]
-	box := exit.control(&uiControl{
-		name: ctlLaunch, typ: typCheckBox, property: propLaunch, text: label, ring: true,
-		x: sideTextX, y: launchY, w: sideTextW, h: launchH, attrs: ctlEnabled, // shown by its condition
-	})
-	box.when("Show", shown)
+	exit.control(&uiControl{
+		name: ctlLaunch, typ: typCheckBox, property: propLaunch, ring: true,
+		x: sideTextX, y: launchY, w: launchBox, h: launchH, attrs: ctlActive,
+	}).when("Hide", "NOT ("+shown+")")
+	exit.control(overlay(ctlLaunchText, sideTextX+launchBox+3, launchY+4, sideTextW-launchBox-3, 10, caption)).
+		when("Hide", "NOT ("+shown+")")
 
 	finish := exit.find(ctlFinish)
 	finish.events = slices.Insert(finish.events, 0, uiEvent{event: "DoAction", arg: actLaunch, cond: propLaunch + ` = "1" AND ` + shown})

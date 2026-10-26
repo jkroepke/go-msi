@@ -261,14 +261,14 @@ func (w *wizard) browseDialog() {
 
 	browse := w.add(&uiDialog{name: dlgBrowse, attrs: dlgPage, first: typDirList, def: "OK", cancel: ctlCancel})
 	browse.innerHeader("Change destination folder", "Browse to the destination folder.")
-	browse.control(text("LookInLabel", margin+5, 58, 44, 10, "&Look in:"))
+	browse.control(label("LookInLabel", margin+5, 58, 44, 10, "&Look in:"))
 	browse.control(&uiControl{name: typDirCombo, typ: typDirCombo, property: propBrowse, x: 70, y: 55, w: 215, h: 80, attrs: ctlDirCombo, ring: true})
 	browse.control(&uiControl{name: "Up", typ: typPushButton, x: 292, y: 55, w: 26, h: 19, attrs: ctlActive, text: "&Up", ring: true}).
 		on("DirectoryListUp", "0", condAlways)
 	browse.control(&uiControl{name: "NewFolder", typ: typPushButton, x: 322, y: 55, w: 26, h: 19, attrs: ctlActive, text: "Ne&w", ring: true}).
 		on("DirectoryListNew", "0", condAlways)
 	browse.control(&uiControl{name: typDirList, typ: typDirList, property: propBrowse, x: margin + 5, y: 83, w: 323, h: 98, attrs: ctlDirList, ring: true})
-	browse.control(text("FolderLabel", margin+5, 190, 100, 10, "&Folder name:"))
+	browse.control(label("FolderLabel", margin+5, 190, 100, 10, "&Folder name:"))
 	browse.control(&uiControl{name: typPathEdit, typ: typPathEdit, property: propBrowse, x: margin + 5, y: 202, w: 323, h: 18, attrs: ctlPathEdit, ring: true})
 	browse.control(strip())
 	browse.control(button("OK", nextX, buttonY, "&OK")).
