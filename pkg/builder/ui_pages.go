@@ -166,7 +166,11 @@ func (w *wizard) modalBoxes() {
 	wait.control(button("Return", 102, 57, "&Return")).on(evEndDialog, endExit, condAlways)
 
 	errBox := w.add(&uiDialog{name: dlgErrorName, attrs: dlgErrorBox, width: 270, height: 105, first: "ErrorText", def: "O"})
-	errBox.control(text("ErrorText", 20, 15, 230, 45, ""))
+	// Without an ErrorIcon control the engine logs error 2835 whenever it
+	// shows this dialog; the icon must name a real icon in the Binary table
+	// (an empty or dangling Text fails with 2888).
+	errBox.control(&uiControl{name: "ErrorIcon", typ: "Icon", x: 15, y: 15, w: 24, h: 24, attrs: ctlVisible | ctlFixed | ctlIcon32, text: binError})
+	errBox.control(text("ErrorText", 50, 15, 200, 45, ""))
 
 	for _, btn := range []struct {
 		name, label, result string
@@ -203,7 +207,9 @@ func (w *wizard) modalBoxes() {
 	})
 	restart.control(strip())
 	restart.control(button("OK", nextX, buttonY, "&OK")).
-		on("RmShutdownAndRestart", "0", propRMOption+`="UseRM"`).
+		// The engine matches the event name case-sensitively: the
+		// misspelt RmShutdownAndRestart ends the dialog with error 2866.
+		on("RMShutdownAndRestart", "0", propRMOption+`="UseRM"`).
 		on(evEndDialog, endReturn, condAlways)
 	restart.control(button(ctlCancel, cancelX, buttonY, "Cancel")).on(evEndDialog, endExit, condAlways)
 

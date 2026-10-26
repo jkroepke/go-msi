@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/jkroepke/go-msi/internal/artwork"
 	"github.com/jkroepke/go-msi/pkg/config"
 )
 
@@ -44,6 +45,8 @@ const (
 	ctlProg95   = 0x10000
 	ctlFixedVol = 0x20000
 	ctlRemoteV  = 0x40000
+	ctlFixed    = 0x100000 // Icon and Bitmap: do not stretch the picture
+	ctlIcon32   = 0x80000  // Icon: use the 32×32 image of the icon file
 
 	ctlActive   = ctlVisible | ctlEnabled
 	ctlText     = ctlActive | ctlNoPrefix
@@ -101,6 +104,7 @@ const (
 
 	binBanner = "BannerBmp"
 	binDialog = "DialogBmp"
+	binError  = "ErrorIco"
 
 	styleDefault = "DefaultFont"
 	styleTitle   = "TitleFont"
@@ -300,6 +304,7 @@ func (b *build) ui() error {
 
 	b.table("Binary").Add(binBanner, banner)
 	b.table("Binary").Add(binDialog, background)
+	b.table("Binary").Add(binError, artwork.EncodeICO(artwork.ErrorIcon(themePalette(b.cfg.UI.Theme.Colors))))
 	b.writeWizard(wiz)
 	b.checkUI(wiz)
 

@@ -520,7 +520,7 @@ The internal UI is pure data: UI-sequence rows open dialogs, dialogs hold contro
 - A control event that sets a property clears it with the argument `{}` (reported). It is the only way a dialog can unset a property.
 - On a dialog with TrackDiskSpace, a Text control whose text is exactly `[Property]` and not FormatSize needs a trailing space; WiX appends one, calling it a Windows Installer quirk (reported). Emit the space in that case.
 - A package with no components never gets `CostingComplete` set, so a "please wait for costing" page waits forever (reported, WiX issue 1790). Packages without components SHOULD skip that page or get a dummy component.
-- The Restart Manager page (`MsiRMFilesInUse`) is a dialog with a ListBox bound to `FileInUseProcess`, a radio group on a property, and an OK button that publishes `RmShutdownAndRestart` with argument `0` under the condition that the property says so, then `EndDialog Return` (reported). It is shown when the engine finds files in use and `MSIRESTARTMANAGERCONTROL` has not disabled Restart Manager.
+- The Restart Manager page (`MsiRMFilesInUse`) is a dialog with a ListBox bound to `FileInUseProcess`, a radio group on a property, and an OK button that publishes `RMShutdownAndRestart` (case-sensitive: `RmShutdownAndRestart` fails with error 2866, observed) with argument `0` under the condition that the property says so, then `EndDialog Return` (reported). It is shown when the engine finds files in use and `MSIRESTARTMANAGERCONTROL` has not disabled Restart Manager.
 - A style tag MUST start the text; otherwise `DefaultUIFont` applies. ScrollableText holds raw RTF and is never formatted.
 - Dialog bits: Visible 1, Modal 2, Minimize 4, SysModal 8, KeepModeless 16, TrackDiskSpace 32. Then UseCustomPalette 64, RTLRO 128, RightAligned 256, LeftScroll 512, Error 65536 (mask 0x000103FF). Seen values: 7 and 3 for pages, 5 for progress, 23 for files in use, 39 for feature selection, 65543 for errors (observed).
 - Control bits: Visible 1, Enabled 2, Sunken 4, Indirect 8, Integer 16, RTLRO 32, RightAligned 64, LeftScroll 128. Bits from 0x10000 up differ per type, such as NoPrefix 0x20000 on Text.
@@ -553,7 +553,7 @@ The client shows the matching one when the installation ends; each value may app
 | `SetupError` | error dialog | `ErrorDialog` property | 65539 |
 | `FilesInUse` | ListBox on `FileInUseProcess`; `EndDialog` `Retry`, `Ignore`, `Exit` | `InstallValidate` | 19 |
 
-The error dialog needs the Error bit and a Text control `ErrorText` as `Control_First`. Seven unlinked PushButtons `A C I N O R Y` share Y, width and height. They publish `EndDialog` `ErrorAbort`, `ErrorCancel`, `ErrorIgnore`, `ErrorNo`, `ErrorOk`, `ErrorRetry`, `ErrorYes`.
+The error dialog needs the Error bit and a Text control `ErrorText` as `Control_First`. Seven unlinked PushButtons `A C I N O R Y` share Y, width and height. They publish `EndDialog` `ErrorAbort`, `ErrorCancel`, `ErrorIgnore`, `ErrorNo`, `ErrorOk`, `ErrorRetry`, `ErrorYes`. Without an Icon control named `ErrorIcon` the engine logs error 2835 each time it shows the dialog; the control's `Text` must name a real icon in the `Binary` table, because an empty or dangling `Text` fails with error 2888 (observed on Server 2025, 2026-10-26).
 
 ### 7.5 ICE checks for UI
 
@@ -1561,7 +1561,7 @@ Windows Installer does most of what a package needs from its own tables. This se
 | Searches and conditions | `AppSearch` with the locator tables, `LaunchCondition`, `Condition` (feature levels) | OS-file versions lie on Windows 10+ (8.6) |
 | Upgrades | `Upgrade`, `FindRelatedProducts`, `MigrateFeatureStates`, `RemoveExistingProducts` | REP window rules (9.2); a 259 return ends an install successfully when a newer version exists (8.11) |
 | Scope, folders, UI | `ALLUSERS`, `MSIINSTALLPERUSER`, `Privileged`, type-51 actions, control events, `SetTargetPath`/`CheckTargetPath` | Per-user rollback gap (8.2); costing never completes without components (7.2) |
-| Files in use, reboot | Restart Manager dialog and `RmShutdownAndRestart`; `ScheduleReboot`, `ForceReboot`, `REBOOT` | A custom action asks for a reboot with `MsiSetMode(REBOOTATEND)` (8.11) |
+| Files in use, reboot | Restart Manager dialog and `RMShutdownAndRestart`; `ScheduleReboot`, `ForceReboot`, `REBOOT` | A custom action asks for a reboot with `MsiSetMode(REBOOTATEND)` (8.11) |
 | Running a program | Type 2, 18, 34 and 50 EXE actions | The engine shows the program's console window and keeps none of its output; WiX's `QuietExec` DLL runs it hidden and copies the output into the log (reported). Without a DLL, `cmd.exe /c … >> "[TempFolder]name.log"` keeps the output but not the window |
 | Logging, progress, cancel | `ActionText`, `Error`, progress records from actions, `MsiProcessMessage` return codes | Explicit-progress protocol in 8.11 |
 
@@ -1738,7 +1738,7 @@ The [Controls](https://learn.microsoft.com/en-us/windows/win32/msi/controls) pag
 |---|---|
 | The engine, to subscribers (`EventMapping`) | `ActionData`, `ActionText`, `SetProgress`, `TimeRemaining`, `ScriptInProgress` |
 | SelectionTree or DirectoryList, to controls on the same dialog | `IgnoreChange`, `SelectionDescription`, `SelectionSize`, `SelectionPath`, `SelectionPathOn`, `SelectionAction`, `SelectionNoItems` |
-| PushButton or CheckBox (`ControlEvent`) | `AddLocal`, `AddSource`, `CheckExistingTargetPath`, `CheckTargetPath`, `DoAction`, `EnableRollback`, `EndDialog`, `MsiLaunchApp`, `MsiPrint`, `NewDialog`, `Reinstall`, `ReinstallMode`, `Remove`, `Reset`, `RmShutdownAndRestart`, `SetInstallLevel`, `SetProperty`, `SetTargetPath`, `SpawnDialog`, `SpawnWaitDialog`, `ValidateProductID` |
+| PushButton or CheckBox (`ControlEvent`) | `AddLocal`, `AddSource`, `CheckExistingTargetPath`, `CheckTargetPath`, `DoAction`, `EnableRollback`, `EndDialog`, `MsiLaunchApp`, `MsiPrint`, `NewDialog`, `Reinstall`, `ReinstallMode`, `Remove`, `Reset`, `RMShutdownAndRestart`, `SetInstallLevel`, `SetProperty`, `SetTargetPath`, `SpawnDialog`, `SpawnWaitDialog`, `ValidateProductID` |
 | PushButton, to a SelectionTree or DirectoryList on the same dialog | `SelectionBrowse`, `DirectoryListUp`, `DirectoryListNew`, `DirectoryListOpen` |
 
 - A CheckBox may publish only `AddLocal`, `AddSource`, `Remove`, `DoAction` and `SetProperty`. A SelectionTree may publish `DoAction`, `SetProperty`, `SetInstallLevel` and `SpawnWaitDialog` (Windows Server 2003 and later).
