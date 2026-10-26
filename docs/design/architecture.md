@@ -204,8 +204,14 @@ produces the `_Validation` rows for every table present, including
 ### 1.6 `pe`
 
 ```go
-type Info struct { IsPE bool; Version string /* "1.2.3.4" or "" */; Languages []int; HasChecksum bool }
+type Info struct {
+    FileVersion, ProductVersion string // "1.2.3.4" or ""
+    Languages                   []int
+    Machine                     uint16
+    Is64Bit, HasChecksum, HasVersion bool
+}
 func Parse(r io.ReaderAt) (*Info, error)
+func IsPE(r io.ReaderAt) bool
 ```
 
 Walks RT_VERSION → first name → first language, parses `VS_FIXEDFILEINFO`
@@ -220,11 +226,11 @@ reports syntax errors with positions. No evaluation.
 ### 1.8 `sequence`
 
 ```go
-type Action struct { Name string; Condition string; Fixed int; Before, After string }
+type Action struct { Name string; Condition string; Sequence int; Before, After string }
 func Number(actions []Action) ([]Numbered, error)
 ```
 
-Standard actions are fixed nodes at the WiX-compatible defaults of §9.2;
+Standard actions are fixed nodes at the default sequence numbers of §9.2;
 custom actions chain before or after an anchor and are expanded next to it
 (§11.7). A chain that reaches another fixed number, a cycle, a missing anchor
 and a number outside 1…32767 are errors. The builder then checks ICE77
