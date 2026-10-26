@@ -69,6 +69,9 @@ go-msi verify hello.msi
 
 See [Signing](docs/signing.md) for PEM keys, `go-msi sign` and the Go API.
 
+Packages can also be built from Go without a YAML file, including a whole
+folder tree; see the [Go API](docs/go-api.md).
+
 A complete package with a Windows service, a firewall rule, an event log source
 and custom actions is in
 [`examples/windows_exporter`](examples/windows_exporter/msi.yaml).
@@ -93,8 +96,9 @@ agent with a service. These are not supported:
 - **Editing existing packages and WiX XML input.** `go-msi inspect` only
   reads packages to help debugging.
 - **Advertised installs.** Not in schema v1.
-- **File harvesting.** List each file of a component; a whole directory is
-  not added automatically. Not in schema v1.
+- **File harvesting in YAML.** List each file of a component; a YAML file
+  cannot add a whole directory. Not in schema v1. Go callers can use
+  `Config.AddTree` ([Go API](docs/go-api.md)).
 - **Hand-built dialogs.** The UI is a built-in wizard plus optional form
   pages that ask for properties; there is no free control layout.
 
@@ -122,6 +126,7 @@ PowerShell; `go-msi completion <shell> --help` shows how to load it.
 - [Command-line reference](docs/cli/go-msi.md)
 - [YAML schema](docs/design/yaml-schema.md)
 - [Signing](docs/signing.md)
+- [Go API](docs/go-api.md)
 - [MSI specification](docs/spec/MSISPEC.md) and its
   [Windows test results](docs/spec/MSISPEC-RESULTS.md)
 

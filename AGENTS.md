@@ -110,7 +110,9 @@ go test ./... -shuffle=on -race
   byte slice. Verification reads the package back lazily (`cfb.Open`,
   `msidb.Decode`, `cab.Walk`) and compares the SHA-256 digests computed while
   hashing the sources. A new feature that needs file contents gets them from a
-  reader in the same pass as `MsiFileHash`.
+  reader in the same pass as `MsiFileHash`. Every input goes through
+  `openSource` (`pkg/builder/finish.go`), which picks `File.FS`, `Config.FS`
+  or `BaseDir`; never call `os.Open` on a source path directly.
 - Byte-slice entry points (`cab.Write`, `cfb.Write`, `msidb.Marshal`) are thin
   wrappers over the streaming functions and must stay byte-identical to them.
 - The builder removes a partial output when a build fails; every spool or
