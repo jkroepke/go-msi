@@ -398,11 +398,11 @@ func testService(t *testing.T) []byte {
 	return data
 }
 
-// msiexec runs msiexec silently with a verbose log and prints the log on
+// msiexecQuiet runs msiexec silently with a verbose log and prints the log on
 // failure. It skips the test when the process is not elevated. A reboot
 // request (3010) fails the test: the examples stop their own services, so
 // a file that is still in use when RemoveFiles runs is a packaging bug.
-func msiexec(t *testing.T, log string, args ...string) {
+func msiexecQuiet(t *testing.T, log string, args ...string) {
 	t.Helper()
 
 	//nolint:gosec // the arguments are test-controlled paths
@@ -489,7 +489,7 @@ func TestMsiexecInstallsExamples(t *testing.T) {
 				}
 			})
 
-			msiexec(t, log, "/i", path)
+			msiexecQuiet(t, log, "/i", path)
 
 			data, err := os.ReadFile(example.installed)
 			if err != nil {
@@ -506,7 +506,7 @@ func TestMsiexecInstallsExamples(t *testing.T) {
 				}
 			}
 
-			msiexec(t, log, "/x", path)
+			msiexecQuiet(t, log, "/x", path)
 
 			installed = false
 
