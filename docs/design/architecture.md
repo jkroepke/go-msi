@@ -344,13 +344,21 @@ generated from the command tree.
   numbers, attribute bits, `_Validation` coverage, file-to-cabinet order.
   Golden hashes guard determinism: two builds with the same
   `SOURCE_DATE_EPOCH` are byte-identical.
+- **Table snapshots** (`cmd/go-msi`, every OS): `TestExampleTables` builds
+  every example with the inputs from `internal/exampletest` and compares the
+  `inspect` output with `cmd/go-msi/testdata/tables/<name>.txt`, so a change
+  to the generated tables shows up as a diff in the pull request.
 - **Windows runner** (`.github/workflows/ci.yaml`, `windows-latest`): the
   same tests, plus `//go:build windows` tests in `pkg/builder/nativetest` that open
   the built package with `msi.dll` (`MsiOpenDatabaseW`, views over every table,
   `MsiGetSummaryInformationW`, `MsiRecordReadStream` on the cabinet) and
   install and uninstall every example silently (`msiexec /i … /qn`, verify
   the payload and the service, `/x`, verify removal; the examples with a
-  service install the test service from `docs/spec/msitest/testsvc`). They
+  service install the test service from `docs/spec/msitest/testsvc`). The
+  install test also records the machine state before, after `/i` and after
+  `/x` and compares the entries added under the watched places (files under
+  the known folders, registry keys, services, event log sources, the ARP
+  entry, shortcut targets) and the firewall rules with `pkg/builder/nativetest/testdata/install/<name>.txt`. They
   also run the full ICE suite on the examples through `internal/ice`, with
   the `darice.cub` that CI installs from the Windows SDK (cached; its SHA-256
   is logged). The install test needs elevation; all of them are skipped with

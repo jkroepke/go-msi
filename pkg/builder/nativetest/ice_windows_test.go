@@ -8,6 +8,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/jkroepke/go-msi/internal/exampletest"
 	"github.com/jkroepke/go-msi/internal/ice"
 	"github.com/jkroepke/go-msi/internal/testpe"
 	"github.com/jkroepke/go-msi/pkg/builder"
@@ -51,12 +52,9 @@ func iceCube(t *testing.T) string {
 }
 
 func windowsExporterInputs() (map[string]string, map[string][]byte) {
-	icon := append([]byte{0, 0, 1, 0, 1, 0}, make([]byte, 64)...)
+	example := exampletest.Examples()["windows_exporter"]
 
-	return map[string]string{"VERSION": "0.32.0.5"}, map[string][]byte{
-		"windows_exporter.exe": testpe.Build(testpe.Options{FileVersion: "0.32.0.5", Languages: []int{1033}}),
-		"icon.ico":             icon,
-	}
+	return example.Vars, example.Inputs
 }
 
 // TestICEExamples runs the full ICE suite against three examples and fails on

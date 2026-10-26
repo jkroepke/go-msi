@@ -10,17 +10,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jkroepke/go-msi/internal/exampletest"
 	"github.com/jkroepke/go-msi/internal/testpe"
 	"github.com/jkroepke/go-msi/pkg/builder"
 	"github.com/jkroepke/go-msi/pkg/config"
 )
 
-func desktopInputs() map[string][]byte {
-	return map[string][]byte{
-		"viewer.exe":  testpe.Build(testpe.Options{FileVersion: "2.0.0.0", Languages: []int{1033}}),
-		"LICENSE.txt": []byte("Example license\n"),
-	}
-}
+func desktopInputs() map[string][]byte { return exampletest.Examples()["desktop"].Inputs }
 
 // lnkTarget reads a shortcut through the shell's own parser.
 func lnkTarget(t *testing.T, path string) string {
