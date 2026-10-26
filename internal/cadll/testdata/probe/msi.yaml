@@ -32,8 +32,10 @@ customActions:
     execute: deferred
     impersonate: false
     return: check
+    # Not on removal: RemoveFiles has deleted the working directory by then
+    # and CreateProcess fails with 267 (seen on the first CI run).
     schedule:
-      - { sequence: execute, after: InstallFiles }
+      - { sequence: execute, after: InstallFiles, condition: NOT REMOVE~="ALL" }
 
   - id: ProbeDeferredUser
     run:
