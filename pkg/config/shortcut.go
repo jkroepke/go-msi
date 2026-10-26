@@ -21,11 +21,7 @@ func (v *validator) shortcuts(cfg *Config, known *refs) {
 
 	for i, comp := range cfg.Components {
 		for j, file := range comp.Files {
-			// The builder writes the target as [#key] into an s72 column.
-			if key := fileID(file); len(file.Shortcuts) > 0 && len(key)+3 > maxShortcutTarget {
-				v.errorf(fmt.Sprintf("%s.files[%d].shortcuts", comp.Path(i), j),
-					"the shortcut target [#%s] is %d characters, at most %d fit; use a shorter file id", key, len(key)+3, maxShortcutTarget)
-			}
+			v.shortcutTarget(fmt.Sprintf("%s.files[%d].shortcuts", comp.Path(i), j), file)
 
 			for k, shortcut := range file.Shortcuts {
 				scPath := fmt.Sprintf("%s.files[%d].shortcuts[%d]", comp.Path(i), j, k)
@@ -48,6 +44,14 @@ func (v *validator) shortcuts(cfg *Config, known *refs) {
 				targets[target] = scPath
 			}
 		}
+	}
+}
+
+// shortcutTarget checks that [#key], the target the builder writes, fits
+// the s72 Target column.
+func (v *validator) shortcutTarget(scPath string, file *File) {
+	if key := fileID(file); len(file.Shortcuts) > 0 && len(key)+3 > maxShortcutTarget {
+		v.errorf(scPath, "the shortcut target [#%s] is %d characters, at most %d fit; use a shorter file id", key, len(key)+3, maxShortcutTarget)
 	}
 }
 
