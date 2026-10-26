@@ -1,7 +1,7 @@
 # Documentation of go-msi
 
-With the exception of this `README.md` and the Windows test harness in
-`spec/msitest`, Markdown files in this directory are published to the
+With the exception of `README.md` files and the Windows test harness in
+`spec/msitest`, the files in this directory are published to the
 [go-msi GitHub Wiki](https://github.com/jkroepke/go-msi/wiki) by
 `.github/workflows/wiki.yaml`.
 
@@ -27,9 +27,11 @@ else in the repository, with `%20` for spaces:
 [YAML Schema](design/yaml-schema.md#41-product)
 ```
 
-The publishing script turns these into wiki page links, and links to other
-repository files into links to the file on GitHub. It fails on a link to a
-missing file and on two files with the same page name.
+The publishing script turns these into wiki page links. Images and other
+files under `docs` are copied next to the pages, and links to other
+repository files become links to the file on GitHub. Code blocks and inline
+code are left alone. The script fails on a link to a missing file and on two
+files with the same page name.
 
 When adding or renaming a page, update `Home.md`, `_Sidebar.md` and, for a
 page in a subdirectory, the `PAGES` map.
