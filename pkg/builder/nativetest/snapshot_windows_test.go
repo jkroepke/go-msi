@@ -47,7 +47,7 @@ type watch struct {
 	// hashes records the size and SHA-256 of a file that is not one of the
 	// inputs; otherwise only its presence is recorded.
 	hashes bool
-	// skip leaves out children whose names Windows Installer picks at random.
+	// skip leaves out children whose names Windows picks at random.
 	skip *regexp.Regexp
 }
 
@@ -65,6 +65,7 @@ var firewallVersion = regexp.MustCompile(`^v\d+\.\d+\|`)
 
 func watches() []watch {
 	programData := os.Getenv("ProgramData")
+	defenderService := regexp.MustCompile(`(?i)^MpKsl[0-9a-f]+$`)
 	cachedPackage := regexp.MustCompile(`(?i)^[0-9a-f]+\.(msi|msp|mst)$`)
 
 	return []watch{
@@ -81,7 +82,8 @@ func watches() []watch {
 		{label: `HKLM\SOFTWARE\WOW6432Node`, root: syscall.HKEY_LOCAL_MACHINE, key: `SOFTWARE\WOW6432Node`},
 		{label: `HKLM\...\Uninstall`, root: syscall.HKEY_LOCAL_MACHINE, key: `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`},
 		{label: `HKLM\...\WOW6432Node\...\Uninstall`, root: syscall.HKEY_LOCAL_MACHINE, key: `SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`},
-		{label: `HKLM\...\Services`, root: syscall.HKEY_LOCAL_MACHINE, key: `SYSTEM\CurrentControlSet\Services`},
+		// Defender adds kernel services with random names while it updates.
+		{label: `HKLM\...\Services`, root: syscall.HKEY_LOCAL_MACHINE, key: `SYSTEM\CurrentControlSet\Services`, skip: defenderService},
 		{label: `HKLM\...\EventLog\Application`, root: syscall.HKEY_LOCAL_MACHINE, key: `SYSTEM\CurrentControlSet\Services\EventLog\Application`},
 		{label: `HKCU\Software`, root: syscall.HKEY_CURRENT_USER, key: `Software`},
 	}
@@ -199,12 +201,16 @@ func snapDir(t *testing.T, snap, base snapshot, place watch, label func(string) 
 
 		root := filepath.Join(place.dir, entry.Name())
 
-		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		// A folder that another process changes while it is read shows up
+		// as an error entry in the diff rather than aborting the test.
+		_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+			rel, _ := filepath.Rel(place.dir, path)
 			if err != nil {
-				return err
+				snap["error "+place.label+`\`+rel] = errorText(err)
+
+				return nil
 			}
 
-			rel, _ := filepath.Rel(place.dir, path)
 			if entry.IsDir() {
 				snap["dir "+place.label+`\`+rel] = ""
 
@@ -215,10 +221,17 @@ func snapDir(t *testing.T, snap, base snapshot, place watch, label func(string) 
 
 			return nil
 		})
-		if err != nil {
-			t.Fatalf("walking %s: %v", root, err)
-		}
 	}
+}
+
+// errorText names an error by its number, which, unlike its message, does
+// not depend on the language of the system.
+func errorText(err error) string {
+	if errno, ok := errors.AsType[syscall.Errno](err); ok {
+		return fmt.Sprintf("<error %d>", uintptr(errno))
+	}
+
+	return "<error>"
 }
 
 func hasEntry(snap snapshot, name string) bool {
@@ -240,7 +253,7 @@ func fileContent(t *testing.T, path string, hashes bool, label func(string) stri
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("reading %s: %v", path, err)
+		return errorText(err)
 	}
 
 	for _, name := range slices.Sorted(maps.Keys(inputs)) {
@@ -268,6 +281,10 @@ func snapKey(t *testing.T, snap, base snapshot, place watch, label func(string) 
 	defer syscall.RegCloseKey(key) //nolint:errcheck // read-only handle
 
 	for _, child := range subkeys(t, key) {
+		if place.skip != nil && place.skip.MatchString(child) {
+			continue
+		}
+
 		name := "key " + place.label + `\` + child
 		if base == nil || hasEntry(base, name) {
 			snap[name] = ""
@@ -285,7 +302,7 @@ func snapTree(t *testing.T, snap snapshot, root syscall.Handle, path, name strin
 
 	key, err := openKey(root, path)
 	if err != nil {
-		snap["key "+name] = "<" + err.Error() + ">"
+		snap["key "+name] = errorText(err)
 
 		return
 	}

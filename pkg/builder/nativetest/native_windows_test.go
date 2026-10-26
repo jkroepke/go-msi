@@ -426,10 +426,12 @@ func TestMsiexecInstallsExamples(t *testing.T) {
 			log := filepath.Join(filepath.Dir(path), "install.log")
 			installed := true
 
-			installDir := filepath.Dir(example.installed)
+			// The top folder of the installation under Program Files, such
+			// as Example for Example\Agent. The snapshot only sees what is
+			// new, so a folder left by an earlier run would hide the files.
+			rel, _ := filepath.Rel(os.Getenv("ProgramFiles"), example.installed)
+			installDir := filepath.Join(os.Getenv("ProgramFiles"), strings.SplitN(rel, string(filepath.Separator), 2)[0])
 
-			// The snapshot only sees what is new, so a folder left by an
-			// earlier run would hide the installed files.
 			if _, err := os.Stat(installDir); err == nil {
 				t.Fatalf("%s exists before the installation; remove what an earlier run left", installDir)
 			}
