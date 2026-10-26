@@ -129,6 +129,7 @@ func (b *build) customTables() error { //nolint:cyclop // one pass over the form
 			continue
 		}
 
+		b.checkBinaryStreams(tablePath, tbl)
 		b.tables[custom.Name] = tbl
 	}
 
@@ -153,6 +154,13 @@ func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop /
 		}
 
 		database.Tables = append(database.Tables, tbl)
+	}
+
+	b.checkText(database.Tables)
+	b.checkStreams(database.Tables)
+
+	if err := b.diags.Err(); err != nil {
+		return nil, err //nolint:wrapcheck // the diagnostics carry their own paths
 	}
 
 	database.Tables = append(database.Tables, schema.Validation(database.Tables))
@@ -389,7 +397,7 @@ func (b *build) summaryProperties() []summary.Property {
 		words |= summary.WordShortNames
 	}
 
-	return []summary.Property{
+	props := []summary.Property{
 		{ID: summary.PIDCodepage, Value: config.SummaryCodepage(pkg.Codepage)},
 		{ID: summary.PIDTitle, Value: pkg.Summary.Title},
 		{ID: summary.PIDSubject, Value: subject},
@@ -405,6 +413,10 @@ func (b *build) summaryProperties() []summary.Property {
 		{ID: summary.PIDAppName, Value: b.opts.ToolName},
 		{ID: summary.PIDSecurity, Value: 2},
 	}
+
+	b.summaryText(props)
+
+	return props
 }
 
 // verify reads the finished package back and compares it with what was

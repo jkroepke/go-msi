@@ -74,6 +74,9 @@ type build struct {
 	opts        Options
 	version     config.Version
 	is64        bool
+	// summaryWarned holds the config paths already reported as made to fit
+	// the summary code page.
+	summaryWarned map[string]bool
 }
 
 type dirInfo struct {

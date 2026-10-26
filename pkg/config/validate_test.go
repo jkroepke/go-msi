@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -395,5 +396,64 @@ func TestRecoveryDelayOnNone(t *testing.T) {
 	field := "components[0].services[0].recovery.actions[0].restart"
 	if ds := config.Validate(cfg); !find(ds, config.SeverityError, field, "only allowed on a restart") {
 		t.Errorf("diagnostics %v, want an error at %s", ds, field)
+	}
+}
+
+// The default cabinet name comes from the product name, which may not fit a
+// stream name (FuzzBuild finding).
+func TestDefaultCabinet(t *testing.T) {
+	t.Parallel()
+
+	for name, want := range map[string]string{
+		"App":    "App.cab",
+		"My App": "My App.cab",
+		"Grüße":  config.DefaultCabinet,
+		"Привет": config.DefaultCabinet,
+		"A#B":    config.DefaultCabinet,
+		// 27 spaces take one stream name unit each.
+		strings.Repeat("A ", 27): config.DefaultCabinet,
+	} {
+		doc := strings.Replace(base, "name: App\n  manufacturer", "name: '"+name+"'\n  manufacturer", 1)
+
+		cfg, err := config.Parse([]byte(doc+appComponent), config.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if cfg.Package.Cabinet != want {
+			t.Errorf("product %q: cabinet %q, want %q", name, cfg.Package.Cabinet, want)
+		}
+
+		if ds := config.Validate(cfg); find(ds, config.SeverityError, "package.cabinet", "") {
+			t.Errorf("product %q: the default cabinet is invalid: %v", name, ds)
+		}
+	}
+}
+
+func TestCabinetName(t *testing.T) {
+	t.Parallel()
+
+	for cabinet, valid := range map[string]bool{
+		"product.cab":                    true,
+		strings.Repeat("a", 58) + ".cab": true,
+		strings.Repeat("a", 59) + ".cab": false,
+		// Every character outside 0-9A-Za-z._ takes a unit of its own.
+		strings.Repeat("-", 31): true,
+		strings.Repeat("-", 32): false,
+		"daten-ü.cab":           false,
+		"a/b.cab":               false,
+		// Not a forbidden file-name character, but CFB rejects it.
+		"a!b.cab": false,
+		// A control character could name a stream go-msi writes itself.
+		"\x05SummaryInformation": false,
+		"a\tb.cab":               false,
+		// Outside the BMP: two units each.
+		strings.Repeat("\U0001F600", 15): true,
+		strings.Repeat("\U0001F600", 16): false,
+	} {
+		ds := validate(t, pkg(`{platform: x64, cabinet: `+strconv.Quote(cabinet)+`}`)+appComponent)
+		if got := !find(ds, config.SeverityError, "package.cabinet", ""); got != valid {
+			t.Errorf("cabinet %q: valid = %v, want %v (%v)", cabinet, got, valid, ds)
+		}
 	}
 }
