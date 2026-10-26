@@ -36,6 +36,8 @@ func TestCheckSDDL(t *testing.T) {
 		// (FuzzCheckSDDLNative on windows-latest).
 		{sddl: "D:(A;;FA;;;BA)D:(A;;FA;;;BA)", wantErr: "twice"},
 		{sddl: "D:(A;;FA;x;;BA)", wantErr: "GUID"},
+		{sddl: "D:(OA;;CR;x;;BA)", wantErr: "not a GUID"},
+		{sddl: "D:(A;;FA;ab721a53-1e2f-11d0-9819-00aa0040529b;;BA)", wantErr: "no object GUID"},
 		{sddl: "D:(A;;FA;;;BA;x)", wantErr: "resource attribute"},
 		{sddl: "S:(RA;;FA;;;BA;x)", wantErr: "resource attribute"},
 		{sddl: "D:(XA;;FX;;;WD)", wantErr: "condition"},

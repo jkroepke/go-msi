@@ -39,6 +39,9 @@ var aceTypes = map[string]bool{ //nolint:gochecknoglobals // lookup table
 
 const aceCondition = "condition"
 
+// objectTypes are the ACE types that may carry object GUIDs.
+var objectTypes = map[string]bool{"OA": true, "OD": true, "OU": true, "OL": true} //nolint:gochecknoglobals // lookup table
+
 // trailingFieldTypes are the ACE types that need a field after the SID.
 var trailingFieldTypes = map[string]string{ //nolint:gochecknoglobals // lookup table
 	"XA": aceCondition, "XD": aceCondition, "XU": aceCondition, "ZA": aceCondition, "RA": "resource attribute",
@@ -311,7 +314,12 @@ func checkACE(ace string) (string, error) {
 // seventh field: Windows refuses it on access ACEs (A, D, ...).
 func checkACETail(fields []string) error {
 	for _, field := range fields[3:5] {
-		if field != "" && !guid.MatchString(field) {
+		switch {
+		case field == "":
+		case !objectTypes[fields[0]]:
+			// Windows refuses a GUID on an ACE that is not an object ACE.
+			return fmt.Errorf("a %s ACE has no object GUID, got %q", fields[0], field)
+		case !guid.MatchString(field):
 			return fmt.Errorf("%q is not a GUID", field)
 		}
 	}
