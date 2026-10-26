@@ -6,6 +6,7 @@ package testpe
 
 import (
 	"encoding/binary"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -116,6 +117,106 @@ func versionInfo(opts Options) []byte {
 	return out
 }
 
+// resourceSection returns the .rsrc section bytes holding the version
+// resource, or nil when opts has no version. The data entry points at
+// dataRVA plus the offset of the data within the section; relocOff is the
+// offset of that field, for an object file that relocates it.
+func resourceSection(opts Options, dataRVA uint32) ([]byte, int) {
+	if opts.FileVersion == "" {
+		return nil, 0
+	}
+
+	var rsrc []byte
+
+	order := binary.LittleEndian
+
+	// Directory (type 16) -> directory (name 1) -> directory (lang) ->
+	// data entry -> data.
+	verInfo := versionInfo(opts)
+	dir := func(entryName, entryOff uint32) []byte {
+		d := make([]byte, 16)
+		order.PutUint16(d[14:], 1)
+		d = order.AppendUint32(d, entryName)
+		d = order.AppendUint32(d, entryOff)
+
+		return d
+	}
+
+	lang := uint32(1033)
+	if len(opts.Languages) > 0 {
+		lang = uint32(opts.Languages[0]) //nolint:gosec // a language ID is 16 bits
+	}
+
+	// Offsets: root 0 (24 bytes), type dir 24, name dir 48, data entry 72, data 88.
+	rsrc = append(rsrc, dir(16, 0x80000000|24)...)
+	rsrc = append(rsrc, dir(1, 0x80000000|48)...)
+	rsrc = append(rsrc, dir(lang, 72)...)
+	rsrc = order.AppendUint32(rsrc, dataRVA+88)
+	rsrc = order.AppendUint32(rsrc, uint32(len(verInfo))) //nolint:gosec // a resource is small
+	rsrc = order.AppendUint32(rsrc, 0)
+	rsrc = order.AppendUint32(rsrc, 0)
+	rsrc = append(rsrc, verInfo...)
+
+	return rsrc, 72
+}
+
+// Syso returns a COFF object file holding the version resource, for the Go
+// linker: dropped into a package directory as *_windows_amd64.syso (or
+// through a build overlay), it gives a Go executable a version resource.
+// The data entry carries an IMAGE_REL_AMD64_ADDR32NB relocation against
+// the section, which the linker resolves to the final RVA.
+func Syso(opts Options) []byte {
+	order := binary.LittleEndian
+
+	if opts.Machine == 0 {
+		opts.Machine = 0x8664
+	}
+
+	rsrc, relocOff := resourceSection(opts, 0)
+
+	const (
+		coffHeader    = 20
+		sectionHeader = 40
+		relocSize     = 10
+		symbolSize    = 18
+	)
+
+	const rawOff = coffHeader + sectionHeader
+
+	relocPtr := rawOff + len(rsrc)
+	symPtr := relocPtr + relocSize
+
+	header := make([]byte, coffHeader+sectionHeader)
+	order.PutUint16(header, opts.Machine)
+	order.PutUint16(header[2:], 1)
+	order.PutUint32(header[8:], uint32(symPtr)) //nolint:gosec // an object file is small
+	order.PutUint32(header[12:], 1)
+
+	sec := header[coffHeader:]
+	copy(sec, ".rsrc")
+	order.PutUint32(sec[16:], uint32(len(rsrc))) //nolint:gosec // small
+	order.PutUint32(sec[20:], rawOff)
+	order.PutUint32(sec[24:], uint32(relocPtr)) //nolint:gosec // small
+	order.PutUint16(sec[32:], 1)
+	order.PutUint32(sec[36:], 0x40000040) // initialized data, readable
+
+	// One relocation: the data entry's OffsetToData against symbol 0.
+	reloc := order.AppendUint32(nil, uint32(relocOff)) //nolint:gosec // small
+	reloc = order.AppendUint32(reloc, 0)
+	reloc = order.AppendUint16(reloc, 3) // IMAGE_REL_AMD64_ADDR32NB
+
+	// Symbol 0: the section itself, static.
+	sym := make([]byte, symbolSize)
+	copy(sym, ".rsrc")
+	order.PutUint16(sym[12:], 1) // section number
+	sym[16] = 3                  // IMAGE_SYM_CLASS_STATIC
+
+	// The string table holds its length field only.
+	strTable := order.AppendUint32(nil, 4)
+
+	return slices.Concat(header, rsrc, reloc, sym, strTable)
+}
+
 // Build returns the bytes of a synthetic PE file.
 func Build(opts Options) []byte {
 	order := binary.LittleEndian
@@ -132,36 +233,7 @@ func Build(opts Options) []byte {
 		rsrcRVA      = 0x2000
 	)
 
-	// Resource section: directory (type 16) -> directory (name 1) ->
-	// directory (lang) -> data entry -> data.
-	var rsrc []byte
-
-	if opts.FileVersion != "" {
-		verInfo := versionInfo(opts)
-		dir := func(entryName, entryOff uint32) []byte {
-			d := make([]byte, 16)
-			order.PutUint16(d[14:], 1)
-			d = order.AppendUint32(d, entryName)
-			d = order.AppendUint32(d, entryOff)
-
-			return d
-		}
-
-		lang := uint32(1033)
-		if len(opts.Languages) > 0 {
-			lang = uint32(opts.Languages[0]) //nolint:gosec // a language ID is 16 bits
-		}
-
-		// Offsets: root 0 (24 bytes), type dir 24, name dir 48, data entry 72, data 88.
-		rsrc = append(rsrc, dir(16, 0x80000000|24)...)
-		rsrc = append(rsrc, dir(1, 0x80000000|48)...)
-		rsrc = append(rsrc, dir(lang, 72)...)
-		rsrc = order.AppendUint32(rsrc, rsrcRVA+88)
-		rsrc = order.AppendUint32(rsrc, uint32(len(verInfo))) //nolint:gosec // a resource is small
-		rsrc = order.AppendUint32(rsrc, 0)
-		rsrc = order.AppendUint32(rsrc, 0)
-		rsrc = append(rsrc, verInfo...)
-	}
+	rsrc, _ := resourceSection(opts, rsrcRVA)
 
 	text := []byte{0xC3} // ret
 	textRaw := roundUp(len(text), fileAlign)

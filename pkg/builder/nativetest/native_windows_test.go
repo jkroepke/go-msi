@@ -353,16 +353,38 @@ func picture(t *testing.T, width, height int) []byte {
 }
 
 // testService builds docs/spec/msitest/testsvc, a minimal Windows service
-// that starts and stops on request.
+// that starts and stops on request. The source is copied into a temporary
+// module next to a resource object from testpe, so the executable carries a
+// version resource and passes the config validation (RUN-02) like a real
+// service binary; the checked-in source stays unversioned for the spec
+// tests.
 func testService(t *testing.T) []byte {
 	t.Helper()
 
-	src := filepath.Join("..", "..", "..", "docs", "spec", "msitest", "testsvc")
-	exe := filepath.Join(t.TempDir(), "testsvc.exe")
+	src := filepath.Join("..", "..", "..", "docs", "spec", "msitest")
+	dir := t.TempDir()
+
+	for _, name := range []string{filepath.Join("testsvc", "main.go"), "go.mod", "go.sum"} {
+		data, err := os.ReadFile(filepath.Join(src, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(filepath.Join(dir, filepath.Base(name)), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	syso := testpe.Syso(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(dir, "rsrc_windows_amd64.syso"), syso, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	exe := filepath.Join(dir, "testsvc.exe")
 
 	cmd := exec.CommandContext(t.Context(), "go", "build", "-o", exe, ".")
-	cmd.Dir = src
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOWORK=off") //nolint:wsl_v5 // configures cmd
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOWORK=off", "GOARCH=amd64") //nolint:wsl_v5 // configures cmd
 
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("building the test service: %v\n%s", err, out)
