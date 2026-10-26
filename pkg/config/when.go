@@ -97,13 +97,21 @@ func (v *validator) placementWhen(placementPath string, place Placement, cfg *Co
 		v.errorf(placementPath+".when", "upgrade needs the upgrade section, which finds older versions")
 	}
 
-	switch {
-	case place.When == "" || place.Sequence == sequenceExecute:
-	case place.Sequence == "ui" && (place.When == WhenInstall || place.When == WhenUpgrade):
-	case place.Sequence == "ui":
-		v.errorf(placementPath+".when", "%s tests REMOVE, which is reliable only after InstallValidate, and the ui "+
-			"sequence has no InstallValidate", place.When)
-	default:
+	if place.When != "" {
+		v.whenSequence(placementPath, place)
+	}
+}
+
+// whenSequence checks that a when sits in a sequence that sets the
+// properties it tests.
+func (v *validator) whenSequence(placementPath string, place Placement) {
+	switch place.Sequence {
+	case "ui":
+		if place.When == WhenUninstall || place.When == WhenMaintenance {
+			v.errorf(placementPath+".when", "%s tests REMOVE, which is reliable only after InstallValidate, and the ui "+
+				"sequence has no InstallValidate", place.When)
+		}
+	case "adminExecute", sequenceAdminUI:
 		v.errorf(placementPath+".when", "an administrative install has no Installed, REMOVE or upgrade properties")
 	}
 }
