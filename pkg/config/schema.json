@@ -1668,6 +1668,10 @@
         "neverOverwrite": {
           "$ref": "#/$defs/bool"
         },
+        "preserve": {
+          "$ref": "#/$defs/bool",
+          "description": "Keep the key file or registry value as the user left it across major upgrades: sets neverOverwrite; removeOld defaults to afterInstallExecute."
+        },
         "sharedDllRefCount": {
           "$ref": "#/$defs/bool"
         },
