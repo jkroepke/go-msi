@@ -142,7 +142,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          go test -count=1 -run 'TestNative(FDI|Expand)Extracts/lzx|TestNativeLZXSystemBinaries' ./pkg/cab/
+          go test -count=1 ./internal/lzx/
+          go test -count=1 -run 'TestNative(FDI|Expand)Extracts/lzx|TestNativeLZXSystemBinaries|TestLZX' ./pkg/cab/
           go test -count=1 -run 'BoundedMemory' ./pkg/cab/ ./pkg/builder/
 
       # Print the Windows signature experiments (MSISPEC-RESULTS SIG-01…06).

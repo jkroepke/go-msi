@@ -8,10 +8,10 @@ import (
 	"testing"
 )
 
-// scaled returns n, or a fifth of it under -short: CI runs the short tests
-// with the race detector, which slows the encoder down about fifty times.
+// scaled returns n, or a fifth of it under -short or -race: with the race
+// detector and atomic coverage the encoder runs fifteen to fifty times slower.
 func scaled(n int) int {
-	if testing.Short() {
+	if testing.Short() || raceEnabled {
 		return n / 5
 	}
 
@@ -82,6 +82,13 @@ func TestRoundTrip(t *testing.T) {
 	random := make([]byte, scaled(200000))
 	rand.New(rand.NewSource(1)).Read(random) //nolint:gosec // reproducible test data
 
+	// Long zero runs make the most match candidates per byte, so under -race
+	// two frames of them stand in for five.
+	zeros := 5*FrameSize + 17
+	if raceEnabled {
+		zeros = 2*FrameSize + 17
+	}
+
 	inputs := map[string][]byte{
 		"one":         {42},
 		"short":       []byte("abc"),
@@ -89,7 +96,7 @@ func TestRoundTrip(t *testing.T) {
 		"eleven-e8":   {0xE8, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
 		"frame":       bytes.Repeat([]byte("ab"), FrameSize/2),
 		"frame+1":     bytes.Repeat([]byte("x"), FrameSize+1),
-		"zeros":       make([]byte, 5*FrameSize+17),
+		"zeros":       make([]byte, zeros),
 		"random":      random,
 		"x86":         x86ish(scaled(700000), 2),
 		"text":        bytes.Repeat([]byte("The quick brown fox jumps over the lazy dog. 0123456789\r\n"), scaled(9000)),
@@ -102,6 +109,18 @@ func TestRoundTrip(t *testing.T) {
 		for _, opts := range []Options{{}, {Window: 15, Level: 1}, {Window: 16, Block: blockVerb}, {Window: 18, Block: blockAligned}, {Window: 21, Level: 4, Block: blockAligned}, {Window: 17, Block: blockStored}} {
 			t.Run(fmt.Sprintf("%s/w%d-l%d-b%d", name, opts.Window, opts.Level, opts.Block), func(t *testing.T) {
 				t.Parallel()
+
+				// The two-pass parse of levels 7 to 9 is the slowest part under
+				// -race; CI runs the default level without -race.
+				if raceEnabled && opts.Level == 0 {
+					opts.Level = 4
+				}
+
+				// Under -race the inputs of more than two frames keep the
+				// smallest and the largest window only.
+				if raceEnabled && len(data) > 2*FrameSize && opts.Window != 15 && opts.Window != 21 {
+					t.Skip("CI runs every combination without -race")
+				}
 
 				frames, err := Compress(data, opts)
 				if err != nil {
@@ -322,14 +341,26 @@ func TestSlotTables(t *testing.T) {
 func TestEncoderSlides(t *testing.T) {
 	t.Parallel()
 
-	// Under -short a 128 KB window keeps the history small.
+	// Under -short a 128 KB window keeps the history small, and under -race
+	// a 32 KB one.
 	window := MaxWindow
-	if testing.Short() {
+
+	switch {
+	case raceEnabled:
+		window = 15
+	case testing.Short():
 		window = 17
 	}
 
+	// The history holds 2<<window+blockSpan bytes; under -race one frame
+	// between the repeats still makes it slide.
+	middle := 2 * blockSpan
+	if raceEnabled {
+		middle = FrameSize
+	}
+
 	chunk := x86ish(1<<min(window, searchBits)+3*FrameSize+11, 13)
-	data := append(append(bytes.Clone(chunk), x86ish(2*blockSpan, 14)...), chunk...)
+	data := append(append(bytes.Clone(chunk), x86ish(middle, 14)...), chunk...)
 
 	frames, err := Compress(data, Options{Window: window, Level: 4})
 	if err != nil {
