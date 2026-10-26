@@ -247,7 +247,10 @@ Pipeline, each step a file of its own:
 
 1. **Inputs**: read every source file, `pe.Parse` it, derive `File.Version`,
    `Language`, `MsiFileHash` (zeros for an empty file, RUN-12), size and
-   attributes. Missing files and unversioned PE files are errors.
+   attributes. Missing files and unversioned PE files are errors. A relative
+   source is opened from `File.FS`, else `Config.FS`, else `Config.BaseDir`
+   ([Go API](../go-api.md)); `Config.AddTree` fills in a folder tree before
+   the build.
 2. **Identities**: GUIDs normalized; `productCode: auto` from UUIDv5 over the
    upgrade code, platform, version and a digest of every input (payload
    files, icons, binaries and binary cells of custom tables);

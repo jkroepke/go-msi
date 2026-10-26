@@ -10,6 +10,7 @@ package builder
 import (
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"slices"
 	"strconv"
@@ -106,12 +107,13 @@ type fileInfo struct {
 	Component *componentInfo
 	cfg       *config.File
 	Hash      *[4]int32
-	path      string
-	FileName  string
-	LongName  string
-	Key       string
-	Attrs     int
-	Sequence  int
+	// open reads the payload again, for the cabinet.
+	open     func() (io.ReadCloser, error)
+	FileName string
+	LongName string
+	Key      string
+	Attrs    int
+	Sequence int
 	// Size is the file length; digest its SHA-256.
 	Size   int64
 	digest [sha256.Size]byte

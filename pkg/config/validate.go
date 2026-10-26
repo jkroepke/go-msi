@@ -536,10 +536,34 @@ func (v *validator) removeOld(removeOld, field string, comp *Component) {
 	}
 }
 
+// directoryPaths maps each directory id to its default target path: the
+// root id and the lower-case long names below it. This is the path that
+// automatic component GUIDs are derived from, so two ids with the same path
+// install to the same folder.
+func directoryPaths(dirs []*Directory, parent string, out map[string]string) map[string]string {
+	for _, dir := range dirs {
+		dirPath := dir.ID
+
+		if parent != "" {
+			name := dir.Name
+			if _, long, ok := strings.Cut(name, "|"); ok {
+				name = long
+			}
+
+			dirPath = parent + `\` + strings.ToLower(name)
+		}
+
+		out[dir.ID] = dirPath
+		directoryPaths(dir.Children, dirPath, out)
+	}
+
+	return out
+}
+
 func (v *validator) components(cfg *Config, known *refs) {
 	seen := make(map[string]bool)
 	fileIDs := make(map[string]string)
-	targets := make(map[string]string)
+	paths := newFolderPaths(cfg.Directories)
 	regIDs := make(map[string]bool)
 	perUser := cfg.Package.Scope == ScopePerUser
 
@@ -564,7 +588,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 			v.errorf(p+".bitness", "64-bit components need an x64 or arm64 package")
 		}
 
-		files := v.componentFiles(cfg, p, comp, fileIDs, targets)
+		files := v.componentFiles(cfg, p, comp, fileIDs, paths)
 		v.componentRegistry(p, comp, regIDs, perUser)
 		keyFile := v.componentKeyFile(p, comp, files)
 
@@ -786,7 +810,74 @@ func hasRegistryID(c *Component, id string) bool {
 }
 
 // componentFiles validates the files of c and returns its default key file.
-func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component, ids, targets map[string]string) *File { //nolint:cyclop // flat checks
+// folderPaths holds the default target paths of the directories and the
+// files installed to them so far.
+type folderPaths struct {
+	byID   map[string]string          // directory id to path
+	byPath map[string]string          // path to the smallest directory id with it
+	files  map[string][]installedFile // file path to the files installed there
+}
+
+// installedFile is a file of a component, by its config path.
+type installedFile struct {
+	comp *Component
+	path string
+}
+
+func newFolderPaths(dirs []*Directory) *folderPaths {
+	byID := directoryPaths(dirs, "", make(map[string]string))
+	byPath := make(map[string]string, len(byID))
+
+	for id, dirPath := range byID {
+		if other, ok := byPath[dirPath]; !ok || id < other {
+			byPath[dirPath] = id
+		}
+	}
+
+	return &folderPaths{byID: byID, byPath: byPath, files: make(map[string][]installedFile)}
+}
+
+// uniqueTarget reports a file whose target path, resolved through the
+// directory tree, another file already installs to or a folder already has.
+// Two conditional components in different directory ids only get a warning,
+// as in ICE30, which also warns for one directory id: their conditions may
+// never both be true. The builder rejects them if they end up with one
+// ComponentId.
+func (v *validator) uniqueTarget(filePath string, comp *Component, name string, paths *folderPaths) {
+	dirPath, ok := paths.byID[comp.Directory]
+	if !ok {
+		dirPath = comp.Directory
+	}
+
+	target := dirPath + `\` + strings.ToLower(name)
+	if folder, ok := paths.byPath[target]; ok {
+		v.errorf(filePath, "%s has the same path as directory %s", name, folder)
+	}
+
+	earlier := paths.files[target]
+	paths.files[target] = append(earlier, installedFile{comp: comp, path: filePath})
+
+	for _, other := range earlier {
+		if !exclusiveComponents(comp, other.comp) {
+			v.errorf(filePath, "%s installs the same file as %s", name, other.path)
+
+			return
+		}
+	}
+
+	if len(earlier) > 0 {
+		v.warnf(filePath, "%s installs the same file as %s; their conditions must never both be true (ICE30)", name, earlier[0].path)
+	}
+}
+
+// exclusiveComponents reports two components that may install one file
+// path: both are conditional and use different directory ids.
+func exclusiveComponents(a, b *Component) bool {
+	return a.Directory != b.Directory && a.Condition != "" && b.Condition != ""
+}
+
+//nolint:cyclop // flat checks
+func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component, ids map[string]string, paths *folderPaths) *File {
 	versioned := 0
 
 	for j, file := range comp.Files {
@@ -818,12 +909,7 @@ func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component
 
 		ids[fileKey] = filePath
 
-		target := comp.Directory + `\` + strings.ToLower(fileName(file))
-		if other, dup := targets[target]; dup {
-			v.errorf(filePath, "%s installs the same file as %s", fileName(file), other)
-		}
-
-		targets[target] = filePath
+		v.uniqueTarget(filePath, comp, fileName(file), paths)
 
 		v.fileVersion(filePath, file, comp)
 

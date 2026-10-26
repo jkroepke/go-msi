@@ -333,6 +333,9 @@ directories:
   `TARGETDIR`. The builder adds `TARGETDIR` with `SourceDir` itself.
 - `name` may be `short|long`. Without a short part the builder generates one
   from a hash of the parent key and the long name (specification section 11.3).
+- File and directory names must be valid on Windows: no `\/:*?"<>|` or
+  control characters, no trailing dot or space, and no device name such as
+  `CON`, `CONIN$`, `nul.txt` or `COM1`, in either half of `short|long`.
 - A 64-bit package that installs a component under `ProgramFilesFolder`,
   `CommonFilesFolder` or `SystemFolder` gets a warning (ICE80): those are the
   32-bit folders on 64-bit Windows.
@@ -417,7 +420,11 @@ GUID, as the component rules require. A pinned GUID is kept as it is (the
 windows_exporter executable component keeps the GUID of its released
 packages). `none` writes a NULL ComponentId and is only accepted with
 `permanent: true`, because such a component is never removed (specification
-section 8.4).
+section 8.4). Two components must not end up with one ComponentId (ICE08):
+two `auto` components with the same bitness and key path, for example two
+components in one directory with only environment variables and so the
+directory as key path, need a pinned `guid` on one of them. The builder
+reports this, because it resolves the key paths; `go-msi validate` does not.
 
 **Preserved configuration.** `preserve: true` keeps a configuration file
 or registry value as the user left it across major upgrades. It sets
@@ -510,7 +517,7 @@ service must have the service executable as key file.
 
 | Key | Default | Notes |
 |---|---|---|
-| `source` | required | Path relative to the YAML file |
+| `source` | required | Path relative to the YAML file; `\` counts as `/` on every OS |
 | `name` | base name of `source` | `short|long` allowed |
 | `id` | the name, if it is a legal identifier and unique, else generated | File key |
 | `version` | `auto` | `auto`, a four-field version, the ID of another file (companion), or `none`; never empty (section 2.2) |
@@ -521,6 +528,16 @@ service must have the service executable as key file.
 | `readOnly`, `hidden`, `system` | `false` | |
 
 Unversioned files get an `MsiFileHash` row automatically.
+
+Two files must not resolve to the same target path, even through two
+directory IDs for one folder, and a file must not have the path of a
+directory. The one exception is two conditional components in different
+directory IDs, for example an x64 and an x86 variant of one file: that is a
+warning (ICE30), and the conditions must never both be true. ICE30 also
+only warns for two conditional components in one directory ID; go-msi keeps
+that an error. The
+components still need different ComponentIds; an automatic GUID differs by
+bitness and key file, otherwise set `guid` on one of them.
 
 **Permissions.** A file, registry value, service or the component's folder
 can carry a `permissions` block (`folderPermissions` on the component, which
@@ -960,7 +977,8 @@ the generated tables, and the cabinet round trip.
 ## 6. Not in version 1
 
 Multiple languages in one package, advertised installs, script custom
-actions, and a top-level file harvester. A future `schema: go-msi/v2` can add
+actions, and a top-level file harvester (Go callers have
+`config.Config.AddTree`, see [Go API](../go-api.md)). A future `schema: go-msi/v2` can add
 them without changing the meaning of a v1 file.
 
 Patches, transforms, merge modules and bundles are out of scope for good

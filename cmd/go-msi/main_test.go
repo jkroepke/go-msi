@@ -72,6 +72,13 @@ func TestBuildValidateInspect(t *testing.T) {
 		t.Errorf("inspect: exit %d, output %q", code, stdout.String())
 	}
 
+	stderr.Reset()
+
+	// An error without a diagnostic is printed with its cause.
+	if code := run([]string{"build", "--cfb", "5", "-o", out, yaml}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "build failed: ") || !strings.Contains(stderr.String(), "version 5") {
+		t.Errorf("cfb 5: exit %d, stderr %q", code, stderr.String())
+	}
+
 	if code := run([]string{"build", filepath.Join(dir, "missing.yaml")}, &stdout, &stderr); code != 1 {
 		t.Errorf("missing file: exit %d", code)
 	}

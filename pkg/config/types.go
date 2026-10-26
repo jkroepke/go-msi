@@ -6,6 +6,7 @@
 package config
 
 import (
+	"io/fs"
 	"strconv"
 	"strings"
 )
@@ -36,6 +37,12 @@ type Config struct { //nolint:govet // field order is the YAML key order
 	// BaseDir is the directory of the YAML file. Relative source paths
 	// resolve against it. It is set by Load, not read from YAML.
 	BaseDir string `yaml:"-"`
+
+	// FS, when set, is where relative source paths (files, icons, binaries
+	// and binary cells of custom tables) are read from instead of BaseDir.
+	// Paths in it use forward slashes. It is for Go callers and is never
+	// read from YAML.
+	FS fs.FS `yaml:"-"`
 }
 
 // Product holds the product's identity.
@@ -265,6 +272,10 @@ type File struct { //nolint:govet // field order is the YAML key order
 	Hidden                     bool         `yaml:"hidden"`
 	System                     bool         `yaml:"system"`
 	Permissions                *Permissions `yaml:"permissions"`
+
+	// FS, when set, is where Source is read from, overriding Config.FS for
+	// this file. AddTree sets it. It is never read from YAML.
+	FS fs.FS `yaml:"-"`
 }
 
 // RegistryValue is a typed registry value or key.

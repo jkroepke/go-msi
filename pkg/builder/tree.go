@@ -378,12 +378,7 @@ func (b *build) inputs() error { //nolint:cyclop // one pass over the format; sp
 }
 
 func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentInfo) *fileInfo { //nolint:cyclop,gocognit // one pass over the format
-	path := cfgFile.Source
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(b.cfg.BaseDir, filepath.FromSlash(path))
-	}
-
-	src, err := os.Open(path)
+	src, err := openSource(b.cfg, cfgFile.FS, cfgFile.Source)
 	if err != nil {
 		b.errorf(diagPath+".source", "cannot read %s: %v", cfgFile.Source, err)
 
@@ -411,13 +406,23 @@ func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentI
 		return nil
 	}
 
+	// pe.Parse needs random access, and a payload is never held in memory.
+	peSource, ok := src.(io.ReaderAt)
+	if !ok {
+		b.errorf(diagPath+".source", "%s: files of the fs.FS must implement io.ReaderAt, as those of os.DirFS, embed.FS and fstest.MapFS do", cfgFile.Source)
+
+		return nil
+	}
+
 	file := &fileInfo{
 		Key:       config.FileKey(cfgFile),
 		Component: comp,
 		cfg:       cfgFile,
-		path:      path,
-		Size:      stat.Size(),
-		LongName:  config.FileLongName(cfgFile),
+		open: func() (io.ReadCloser, error) {
+			return openSource(b.cfg, cfgFile.FS, cfgFile.Source)
+		},
+		Size:     stat.Size(),
+		LongName: config.FileLongName(cfgFile),
 	}
 
 	// One pass over the file gives the MsiFileHash MD5 and the SHA-256 that
@@ -439,7 +444,7 @@ func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentI
 
 	copy(file.digest[:], sha.Sum(nil))
 
-	info, perr := pe.Parse(src)
+	info, perr := pe.Parse(peSource)
 	file.isPE = perr == nil
 
 	switch cfgFile.Version {
@@ -558,6 +563,8 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 	}
 
 	// Components in config order; rows are sorted by msidb anyway.
+	guids := make(map[any]string, len(b.cfg.Components))
+
 	for _, comp := range b.cfg.Components {
 		info := b.components[comp.ID]
 		path := info.cfg.Path(info.index)
@@ -568,6 +575,17 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 
 		if err := b.componentGUID(path, info); err != nil {
 			return err
+		}
+
+		// Two components with one ComponentId break the component rules
+		// (ICE08), for example two conditional variants of one file with the
+		// same automatic GUID.
+		if info.guid != nil {
+			if other, dup := guids[info.guid]; dup {
+				b.errorf(path+".guid", "component %s has the same ComponentId %v as %s; set guid on one of them", comp.ID, info.guid, other)
+			} else {
+				guids[info.guid] = comp.ID
+			}
 		}
 
 		b.table("Component").Add(comp.ID, info.guid, comp.Directory, info.attributes, nullable(comp.Condition), info.keyPath)

@@ -128,7 +128,27 @@ const invalidLongNameChars = `\/:*?"<>|`
 // validLongName checks a long file or directory name.
 func validLongName(s string) bool {
 	return s != "" && s != "." && s != ".." && !strings.ContainsAny(s, invalidLongNameChars) &&
-		strings.TrimRight(s, ". ") == s
+		!strings.ContainsFunc(s, func(r rune) bool { return r < ' ' }) &&
+		strings.TrimRight(s, ". ") == s && !reservedDeviceName(s)
+}
+
+// reservedDeviceName reports names that Windows maps to a device, such as
+// CON, nul.txt or COM¹, which cannot be created as files or folders.
+func reservedDeviceName(s string) bool {
+	base, _, _ := strings.Cut(s, ".")
+	base = strings.ToUpper(strings.TrimRight(base, " "))
+
+	switch base {
+	case "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$":
+		return true
+	}
+
+	prefix, digit := base[:min(3, len(base))], []rune(base[min(3, len(base)):])
+	if (prefix != "COM" && prefix != "LPT") || len(digit) != 1 {
+		return false
+	}
+
+	return digit[0] >= '1' && digit[0] <= '9' || digit[0] == '¹' || digit[0] == '²' || digit[0] == '³'
 }
 
 // isShortName checks an 8.3 name (specification section 11.3).
@@ -158,5 +178,5 @@ func validName(s string) bool {
 		return validLongName(s)
 	}
 
-	return isShortName(short) && validLongName(long)
+	return isShortName(short) && !reservedDeviceName(short) && validLongName(long)
 }
