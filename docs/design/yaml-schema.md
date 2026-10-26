@@ -823,12 +823,12 @@ command in both places. `return` is required (`check` or `ignore`;
 `impersonate`: the DLL starts the process with the impersonated user's
 token when there is one. The key `GoMsiRun` is reserved in `binaries`.
 Output is decoded as UTF-8 when it is valid UTF-8 and in the OEM code page
-otherwise, which covers Go programs, cmd.exe and PowerShell. Verified by
-CA-03 (specification Appendix C).
+otherwise, which covers Go programs, cmd.exe and PowerShell. Specification
+section 17.6 and case CA-03 (Appendix C) hold the Windows evidence.
 
 Options: `execute` (default `immediate`), `impersonate` (default `true`;
-`false` needs a deferred action), `return` (required for `exec` and
-`execProperty`, default `check` otherwise), `hideTarget`, `once`
+`false` needs a deferred action), `return` (required for `exec`,
+`execProperty` and `run`, default `check` otherwise), `hideTarget`, `once`
 (`firstSequence`, `oncePerProcess`, `clientRepeat`).
 
 **Schedule.** A list of placements, one per sequence table: `execute`, `ui`,

@@ -100,7 +100,6 @@ enum {
     INFINITE = 0xFFFFFFFF,
     WAIT_OBJECT_0 = 0,
 
-    TOKEN_ASSIGN_PRIMARY = 1,
     TOKEN_DUPLICATE = 2,
     TOKEN_QUERY = 8,
     MAXIMUM_ALLOWED = 0x02000000,
@@ -266,9 +265,11 @@ static int emitLine(MSIHANDLE install, const char *line, int len)
     return ret;
 }
 
-// pump reads the pipe until the child closes it and logs every line. It
-// returns IDCANCEL when the installer asked to cancel.
-static int pump(MSIHANDLE install, HANDLE pipe)
+// pump reads the pipe until the child closes it and logs every line. When
+// the installer asks to cancel, the child is terminated and the pipe is
+// drained until it closes (a grandchild may still hold the write end); the
+// result is then IDCANCEL.
+static int pump(MSIHANDLE install, HANDLE pipe, HANDLE process)
 {
     HANDLE heap = GetProcessHeap();
     SIZE_T cap = 4096, len = 0;
@@ -290,16 +291,18 @@ static int pump(MSIHANDLE install, HANDLE pipe)
         if (!ReadFile(pipe, buf + len, (DWORD)(cap - len), &got, 0) || got == 0) {
             break;
         }
+        SIZE_T scanFrom = len;
         len += got;
         SIZE_T start = 0;
-        for (SIZE_T i = 0; i < len; i++) {
+        for (SIZE_T i = scanFrom; i < len; i++) {
             if (buf[i] == '\n') {
                 SIZE_T end = i;
                 if (end > start && buf[end - 1] == '\r') {
                     end--;
                 }
-                if (emitLine(install, buf + start, (int)(end - start)) == IDCANCEL) {
+                if (emitLine(install, buf + start, (int)(end - start)) == IDCANCEL && !cancelled) {
                     cancelled = 1;
+                    TerminateProcess(process, 1);
                 }
                 start = i + 1;
             }
@@ -309,10 +312,9 @@ static int pump(MSIHANDLE install, HANDLE pipe)
             len -= start;
         }
     }
-    if (len) {
-        if (emitLine(install, buf, (int)len) == IDCANCEL) {
-            cancelled = 1;
-        }
+    if (len && emitLine(install, buf, (int)len) == IDCANCEL && !cancelled) {
+        cancelled = 1;
+        TerminateProcess(process, 1);
     }
     HeapFree(heap, 0, buf);
     return cancelled ? IDCANCEL : 0;
@@ -323,10 +325,11 @@ static const WCHAR msgBadData[] = {'m', 'a', 'l', 'f', 'o', 'r', 'm', 'e', 'd', 
 static const WCHAR msgPipe[] = {'C', 'r', 'e', 'a', 't', 'e', 'P', 'i', 'p', 'e', ' ', 'f', 'a', 'i', 'l', 'e', 'd', 0};
 static const WCHAR msgStart[] = {'s', 't', 'a', 'r', 't', 'i', 'n', 'g', ' ', 'i', 'n', 0};
 static const WCHAR msgDefaultDir[] = {'(', 'c', 'u', 'r', 'r', 'e', 'n', 't', ' ', 'd', 'i', 'r', 'e', 'c', 't', 'o', 'r', 'y', ')', 0};
-static const WCHAR msgAsUser[] = {'a', 's', ' ', 't', 'h', 'e', ' ', 'i', 'm', 'p', 'e', 'r', 's', 'o', 'n', 'a', 't', 'e', 'd', ' ', 'u', 's', 'e', 'r', 0};
-static const WCHAR msgAsProcess[] = {'w', 'i', 't', 'h', ' ', 't', 'h', 'e', ' ', 'p', 'r', 'o', 'c', 'e', 's', 's', ' ', 't', 'o', 'k', 'e', 'n', 0};
+static const WCHAR msgToken[] = {'t', 'o', 'k', 'e', 'n', 0};
+static const WCHAR msgAsUser[] = {'t', 'h', 'e', ' ', 'i', 'm', 'p', 'e', 'r', 's', 'o', 'n', 'a', 't', 'e', 'd', ' ', 'u', 's', 'e', 'r', 0};
+static const WCHAR msgAsProcess[] = {'t', 'h', 'e', ' ', 'p', 'r', 'o', 'c', 'e', 's', 's', 0};
 static const WCHAR msgCreate[] = {'C', 'r', 'e', 'a', 't', 'e', 'P', 'r', 'o', 'c', 'e', 's', 's', ' ', 'f', 'a', 'i', 'l', 'e', 'd', 0};
-static const WCHAR msgToken[] = {'D', 'u', 'p', 'l', 'i', 'c', 'a', 't', 'e', 'T', 'o', 'k', 'e', 'n', 'E', 'x', ' ', 'f', 'a', 'i', 'l', 'e', 'd', 0};
+static const WCHAR msgDupToken[] = {'D', 'u', 'p', 'l', 'i', 'c', 'a', 't', 'e', 'T', 'o', 'k', 'e', 'n', 'E', 'x', ' ', 'f', 'a', 'i', 'l', 'e', 'd', 0};
 static const WCHAR msgExit[] = {'e', 'x', 'i', 't', ' ', 'c', 'o', 'd', 'e', 0};
 static const WCHAR msgCancel[] = {'c', 'a', 'n', 'c', 'e', 'l', 'l', 'e', 'd', ' ', 'b', 'y', ' ', 't', 'h', 'e', ' ', 'u', 's', 'e', 'r', 0};
 static const WCHAR propData[] = {'C', 'u', 's', 't', 'o', 'm', 'A', 'c', 't', 'i', 'o', 'n', 'D', 'a', 't', 'a', 0};
@@ -364,13 +367,13 @@ static BOOL start(MSIHANDLE install, WCHAR *cmd, const WCHAR *dir, STARTUPINFOW 
 {
     HANDLE thread = 0, primary = 0;
     BOOL ok;
-    if (OpenThreadToken(GetCurrentThread(), TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY, 1, &thread)) {
+    if (OpenThreadToken(GetCurrentThread(), TOKEN_QUERY | TOKEN_DUPLICATE, 1, &thread)) {
         if (!DuplicateTokenEx(thread, MAXIMUM_ALLOWED, 0, SecurityImpersonation, TokenPrimary, &primary)) {
-            logf(install, msgToken, 0, GetLastError());
+            logf(install, msgDupToken, 0, GetLastError());
             CloseHandle(thread);
             return 0;
         }
-        logf(install, msgStart, msgAsUser, 0);
+        logf(install, msgToken, msgAsUser, 0);
         ok = CreateProcessAsUserW(primary, 0, cmd, 0, 0, 1, CREATE_NO_WINDOW, 0, dir, si, pi);
         DWORD err = GetLastError();
         CloseHandle(primary);
@@ -380,7 +383,7 @@ static BOOL start(MSIHANDLE install, WCHAR *cmd, const WCHAR *dir, STARTUPINFOW 
         }
         return ok;
     }
-    logf(install, msgStart, msgAsProcess, GetLastError() == ERROR_NO_TOKEN ? 0 : GetLastError());
+    logf(install, msgToken, msgAsProcess, GetLastError() == ERROR_NO_TOKEN ? 0 : GetLastError());
     ok = CreateProcessW(0, cmd, 0, 0, 1, CREATE_NO_WINDOW, 0, dir, si, pi);
     if (!ok) {
         logf(install, msgCreate, 0, GetLastError());
@@ -431,11 +434,8 @@ __declspec(dllexport) UINT WINAPI GoMsiRun(MSIHANDLE install)
     }
     CloseHandle(writeEnd);
     CloseHandle(pi.hThread);
-    int cancelled = pump(install, readEnd);
+    int cancelled = pump(install, readEnd, pi.hProcess);
     CloseHandle(readEnd);
-    if (cancelled == IDCANCEL) {
-        TerminateProcess(pi.hProcess, 1);
-    }
     WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD exitCode = 1;
     GetExitCodeProcess(pi.hProcess, &exitCode);

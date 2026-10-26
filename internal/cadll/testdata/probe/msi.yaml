@@ -27,7 +27,7 @@ properties:
 customActions:
   - id: ProbeDeferredSystem
     run:
-      command: '"[System64Folder]cmd.exe" /c echo deferred-system [ProductName] & whoami & echo brackets [\[]ProductName] stay literal & echo umlaut-äöü-euro-€ & dir /b & echo stderr-line 1>&2'
+      command: '"[System64Folder]cmd.exe" /c echo deferred-system [ProductName] & whoami & echo brackets [\[]ProductName] stay literal & echo oem-umlaut-äöü & dir /b & echo stderr-line 1>&2'
       directory: INSTALLDIR
     execute: deferred
     impersonate: false
@@ -37,7 +37,7 @@ customActions:
 
   - id: ProbeDeferredUser
     run:
-      command: '"[System64Folder]cmd.exe" /c echo deferred-user & whoami & cd'
+      command: '"[System64Folder]cmd.exe" /c echo deferred-user & whoami & cd & chcp 65001 >nul & echo utf8-umlaut-äöü-euro-€'
     execute: deferred
     impersonate: true
     return: check

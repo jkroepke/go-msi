@@ -1373,6 +1373,10 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 		if action.Return == "asyncNoWait" {
 			v.errorf(actionPath+".return", "run actions cannot use asyncNoWait; the DLL waits for the command")
 		}
+
+		if len(action.ID)+len(".Data") > MaxIdentifierLength {
+			v.errorf(actionPath+".id", "%q is too long: the builder adds a %s.Data action and identifiers hold %d characters", action.ID, action.ID, MaxIdentifierLength)
+		}
 	}
 }
 
