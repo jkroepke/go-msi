@@ -124,6 +124,7 @@ const (
 	condAlways    = "1"
 
 	typPushButton = "PushButton"
+	typIcon       = "Icon"
 	typListBox    = "ListBox"
 	typDirCombo   = "DirectoryCombo"
 	typDirList    = "DirectoryList"

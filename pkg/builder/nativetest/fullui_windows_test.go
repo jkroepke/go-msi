@@ -20,17 +20,23 @@ import (
 )
 
 var (
-	kernel32                   = syscall.NewLazyDLL("kernel32.dll")
-	pProcessIDToSessionID      = kernel32.NewProc("ProcessIdToSessionId")
-	user32                     = syscall.NewLazyDLL("user32.dll")
-	pGetProcessWindowStation   = user32.NewProc("GetProcessWindowStation")
-	pGetUserObjectInformationW = user32.NewProc("GetUserObjectInformationW")
-	pMsiQueryProductStateW     = msiDLL.NewProc("MsiQueryProductStateW")
-	errFullUITimeout           = errors.New("msiexec did not finish in time")
+	kernel32                   = syscall.NewLazyDLL("kernel32.dll")           //nolint:gochecknoglobals // lazy DLL handle
+	pProcessIDToSessionID      = kernel32.NewProc("ProcessIdToSessionId")     //nolint:gochecknoglobals // lazy procedure
+	user32                     = syscall.NewLazyDLL("user32.dll")             //nolint:gochecknoglobals // lazy DLL handle
+	pGetProcessWindowStation   = user32.NewProc("GetProcessWindowStation")    //nolint:gochecknoglobals // lazy procedure
+	pGetUserObjectInformationW = user32.NewProc("GetUserObjectInformationW")  //nolint:gochecknoglobals // lazy procedure
+	pMsiQueryProductStateW     = msiDLL.NewProc("MsiQueryProductStateW")      //nolint:gochecknoglobals // lazy procedure
+	errFullUITimeout           = errors.New("msiexec did not finish in time") //nolint:gochecknoglobals // sentinel error
 )
 
 const (
-	fullUITimeout       = 300 * time.Second
+	// The runs take 13 s and 36 s on an idle machine. Every wait stays short,
+	// so one test fits go test's default 10-minute budget even when another
+	// installation holds the machine at first.
+	fullUITimeout       = 120 * time.Second
+	driverTimeout       = fullUITimeout + 30*time.Second
+	foreignMsiexecWait  = 2 * time.Minute
+	fullUIBudget        = 8 * time.Minute
 	fullUIName          = "GoMsiFullUI"
 	fullUIErrorText     = "Forced error for the full UI test."
 	installStateDefault = 5
@@ -94,7 +100,7 @@ ui:
 // fullUIDriver answers the wizard through UIAutomation: Next, Install and
 // Finish, "Close the applications" and OK on MsiRMFilesInUse, OK on ErrorDlg
 // and on any unexpected error box. It writes every window it sees to -Out.
-const fullUIDriver = `param([int]$MsiPid, [string]$Out, [string]$ErrorText, [int]$Seconds = 290)
+const fullUIDriver = `param([int]$MsiPid, [string]$Out, [string]$ErrorText, [int]$Seconds = 110)
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type -Namespace GoMsi -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);'
 $AE = [System.Windows.Automation.AutomationElement]
@@ -162,6 +168,10 @@ func requireFullUI(t *testing.T) {
 	if r == 0 || session == 0 || !interactive() {
 		t.Skip("full UI tests need an interactive desktop session; session 0 drops msiexec to no UI")
 	}
+
+	if deadline, ok := t.Deadline(); ok && time.Until(deadline) < fullUIBudget {
+		t.Skipf("full UI tests need %s of the test timeout", fullUIBudget)
+	}
 }
 
 func elevated() bool {
@@ -216,7 +226,7 @@ func waitForMsiexec(t *testing.T) {
 
 	const ps = `@(Get-CimInstance Win32_Process -Filter "Name='msiexec.exe'" | Where-Object { $_.CommandLine -notmatch 'msiexec\.exe"?\s+/V\s*$' }).Count`
 
-	deadline := time.Now().Add(10 * time.Minute)
+	deadline := time.Now().Add(foreignMsiexecWait)
 	for time.Now().Before(deadline) {
 		out, err := exec.CommandContext(t.Context(), "powershell", "-NoProfile", "-NonInteractive", "-Command", ps).Output()
 		if err == nil && strings.TrimSpace(string(out)) == "0" {
@@ -226,7 +236,7 @@ func waitForMsiexec(t *testing.T) {
 		time.Sleep(5 * time.Second)
 	}
 
-	t.Fatal("another msiexec is still running after 10 minutes")
+	t.Fatalf("another msiexec is still running after %s", foreignMsiexecWait)
 }
 
 // buildFullUI builds the full UI test package with tool.exe copied from
@@ -284,8 +294,10 @@ func runMsiexec(args []string, started func(pid int)) (int, error) {
 
 	cmd := exec.CommandContext(ctx, "msiexec", args...)
 	cmd.Cancel = func() error {
-		return exec.CommandContext(context.Background(), "taskkill", "/PID", strconv.Itoa(cmd.Process.Pid), "/T", "/F").Run()
+		return exec.CommandContext(context.Background(), "taskkill", "/PID", strconv.Itoa(cmd.Process.Pid), "/T", "/F").Run() //nolint:gosec // a PID
 	}
+	// If taskkill fails, Wait falls back to killing the client itself.
+	cmd.WaitDelay = 10 * time.Second
 
 	if err := cmd.Start(); err != nil {
 		return 0, err
@@ -322,9 +334,13 @@ func fullUI(t *testing.T, dir string, args ...string) (int, string) {
 
 	var drv *exec.Cmd
 
+	ctx, cancel := context.WithTimeout(context.Background(), driverTimeout)
+	defer cancel()
+
 	code, err := runMsiexec(args, func(pid int) {
-		drv = exec.CommandContext(context.Background(), "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-			"-File", driver, "-MsiPid", strconv.Itoa(pid), "-Out", seen, "-ErrorText", fullUIErrorText)
+		drv = exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+			"-File", driver, "-MsiPid", strconv.Itoa(pid), "-Out", seen, "-ErrorText", fullUIErrorText,
+			"-Seconds", strconv.Itoa(int((fullUITimeout - 10*time.Second).Seconds())))
 		if err := drv.Start(); err != nil {
 			t.Errorf("driver: %v", err)
 
@@ -368,7 +384,7 @@ func cleanupFullUI(t *testing.T, packages ...string) {
 // TestFullUIRestartManager upgrades while the old tool.exe runs from the
 // install folder and chooses "Close the applications" on MsiRMFilesInUse:
 // the Restart Manager stops the process and the upgrade succeeds.
-func TestFullUIRestartManager(t *testing.T) {
+func TestFullUIRestartManager(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
 	requireFullUI(t)
 	waitForMsiexec(t)
 
@@ -384,7 +400,7 @@ func TestFullUIRestartManager(t *testing.T) {
 		t.Fatalf("installing the old package: exit %d\n%s", code, readLog(filepath.Join(dir, "old.log")))
 	}
 
-	tool := exec.CommandContext(context.Background(), filepath.Join(os.Getenv("ProgramFiles"), fullUIName, "tool.exe"), "-n", "3000", "127.0.0.1")
+	tool := exec.CommandContext(context.Background(), filepath.Join(os.Getenv("ProgramFiles"), fullUIName, "tool.exe"), "-n", "3000", "127.0.0.1") //nolint:gosec // the installed test program
 	// Its own hidden console: the Restart Manager stops console programs with
 	// Ctrl+C, which must not reach this test.
 	tool.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x10 /* CREATE_NEW_CONSOLE */, HideWindow: true}
@@ -412,8 +428,12 @@ func TestFullUIRestartManager(t *testing.T) {
 		t.Error("MsiRMFilesInUse was not shown or not answered")
 	}
 
-	if strings.Contains(text, "2866") {
+	if strings.Contains(text, "Error 2866") || strings.Contains(text, "error code is 2866") {
 		t.Error("the log reports error 2866")
+	}
+
+	if strings.Contains(seen, "UNEXPECTED:") {
+		t.Error("the engine showed an unexpected error box")
 	}
 
 	if !strings.Contains(text, "RESTART MANAGER: Successfully shut down all applications") {
@@ -437,7 +457,7 @@ func TestFullUIRestartManager(t *testing.T) {
 
 // TestFullUIErrorDialog shows ErrorDlg through a type-19 action and checks
 // that the engine draws it without errors 2835 (no ErrorIcon) or 2888.
-func TestFullUIErrorDialog(t *testing.T) {
+func TestFullUIErrorDialog(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
 	requireFullUI(t)
 	waitForMsiexec(t)
 
@@ -456,6 +476,10 @@ func TestFullUIErrorDialog(t *testing.T) {
 
 	if !strings.Contains(seen, "ERRORDLG: ") || !strings.Contains(seen, "ERRORDLG: button OK") {
 		t.Error("ErrorDlg did not show the error text or was not answered")
+	}
+
+	if strings.Contains(seen, "UNEXPECTED:") {
+		t.Error("the engine showed an unexpected error box")
 	}
 
 	for _, code := range []string{"2835", "2888"} {

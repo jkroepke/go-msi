@@ -71,7 +71,7 @@ func (b *build) checkControl(wiz *wizard, path string, ctl *uiControl, styles, p
 		b.errorf(path, "push button %s publishes no event (ICE17)", ctl.name)
 	}
 
-	if (ctl.typ == "Bitmap" || ctl.typ == "Icon") && !pictures[ctl.text] {
+	if (ctl.typ == "Bitmap" || ctl.typ == typIcon) && !pictures[ctl.text] {
 		b.errorf(path, "control %s shows %q, which is not in the Binary table (ICE17)", ctl.name, ctl.text)
 	}
 

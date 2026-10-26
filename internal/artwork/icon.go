@@ -17,9 +17,9 @@ func ErrorIcon(palette Palette) *image.NRGBA {
 	white := color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
 	centre := float64(IconSize) / 2
 
-	for y := range IconSize {
-		for x := range IconSize {
-			midX, midY := float64(x)+0.5, float64(y)+0.5
+	for row := range IconSize {
+		for col := range IconSize {
+			midX, midY := float64(col)+0.5, float64(row)+0.5
 
 			disc := min(max(centre-0.5-math.Hypot(midX-centre, midY-centre), 0), 1)
 			if disc == 0 {
@@ -36,7 +36,7 @@ func ErrorIcon(palette Palette) *image.NRGBA {
 				colour = white
 			}
 
-			img.SetNRGBA(x, y, color.NRGBA{R: colour.R, G: colour.G, B: colour.B, A: uint8(math.Round(disc * 0xFF))})
+			img.SetNRGBA(col, row, color.NRGBA{R: colour.R, G: colour.G, B: colour.B, A: uint8(math.Round(disc * 0xFF))})
 		}
 	}
 
@@ -65,8 +65,8 @@ func EncodeICO(img image.Image) []byte {
 	endian.PutUint16(out[4:], 1) // one image
 
 	entry := out[iconDirSize:]
-	entry[0] = byte(width)         // 0 means 256
-	entry[1] = byte(height)        // 0 means 256
+	entry[0] = byte(width)         //nolint:gosec // 256 wraps to 0, which means 256
+	entry[1] = byte(height)        //nolint:gosec // 256 wraps to 0, which means 256
 	endian.PutUint16(entry[4:], 1) // planes
 	endian.PutUint16(entry[6:], iconBits)
 	endian.PutUint32(entry[8:], uint32(dibSize))            //nolint:gosec // icon sizes are tiny
@@ -87,7 +87,7 @@ func EncodeICO(img image.Image) []byte {
 		maskRow := mask[(height-1-y)*maskStride:]
 
 		for x := range width {
-			c := color.NRGBAModel.Convert(img.At(bounds.Min.X+x, bounds.Min.Y+y)).(color.NRGBA) //nolint:forcetypeassert // the model returns NRGBA
+			c := color.NRGBAModel.Convert(img.At(bounds.Min.X+x, bounds.Min.Y+y)).(color.NRGBA) //nolint:forcetypeassert,revive // the model returns NRGBA
 			row[x*4], row[x*4+1], row[x*4+2], row[x*4+3] = c.B, c.G, c.R, c.A
 
 			if c.A == 0 {
