@@ -256,8 +256,8 @@ func TestValidate(t *testing.T) {
 			e, "components[0].purge", "standard folder",
 		},
 		"purge below configurable folder": {
-			strings.Replace(base, "        configurable: true\n", "        configurable: true\n        children: [{id: DATADIR, name: data}]\n", 1) +
-				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DATADIR\n    purge: true", 1),
+			strings.Replace(base, "        configurable: true\n", "        configurable: true\n        children: [{id: DataDir, name: data}]\n", 1) +
+				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1),
 			e, "components[0].purge", "INSTALLDIR can be pointed",
 		},
 		"purge nested standard folder": {
@@ -266,10 +266,27 @@ func TestValidate(t *testing.T) {
 			e, "components[0].purge", "standard folder",
 		},
 		"purge below setDirectory": {
-			strings.Replace(base, "        configurable: true\n", "        children: [{id: DATADIR, name: data}]\n", 1) +
-				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DATADIR\n    purge: true", 1) +
+			strings.Replace(base, "        configurable: true\n", "        children: [{id: DataDir, name: data}]\n", 1) +
+				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1) +
 				"customActions:\n  - id: MoveIt\n    setDirectory: {directory: INSTALLDIR, value: '[WindowsFolder]'}\n",
 			e, "components[0].purge", "INSTALLDIR can be pointed",
+		},
+		"purge public folder id": {
+			strings.Replace(base, "        configurable: true\n", "        children: [{id: DATADIR, name: data}]\n", 1) +
+				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DATADIR\n    purge: true", 1),
+			e, "components[0].purge", "DATADIR can be pointed",
+		},
+		"purge folder set by a property": {
+			strings.Replace(base, "        configurable: true\n", "        children: [{id: DataDir, name: data}]\n", 1) +
+				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1) +
+				"properties:\n  DataDir: 'C:\\'\n",
+			e, "components[0].purge", "DataDir can be pointed",
+		},
+		"purge folder set by setProperty": {
+			strings.Replace(base, "        configurable: true\n", "        children: [{id: DataDir, name: data}]\n", 1) +
+				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1) +
+				"customActions:\n  - id: SetIt\n    setProperty: {name: DataDir, value: '[WindowsFolder]'}\n",
+			e, "components[0].purge", "DataDir can be pointed",
 		},
 		"purge condition": {
 			strings.Replace(base, "        configurable: true\n", "        children: [{id: DATADIR, name: data}]\n", 1) + strings.Replace(appComponent, "    files:", "    purge: {condition: 'DELETE_DATA='}\n    files:", 1),

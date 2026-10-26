@@ -140,26 +140,49 @@ func fileID(f *File) string {
 	return fileName(f)
 }
 
-// movableAncestor returns the first directory from dirID up to its standard
-// folder whose path a property can change: a configurable one, or one a
-// setDirectory action sets.
-func movableAncestor(cfg *Config, known *refs, dirID string) string {
-	set := make(map[string]bool)
+// setProperties lists the properties that a properties entry, a
+// setDirectory or setProperty action or a dialog field sets.
+func setProperties(cfg *Config) map[string]bool {
+	set := make(map[string]bool, len(cfg.Properties))
+
+	for name := range cfg.Properties {
+		set[name] = true
+	}
 
 	for _, ca := range cfg.CustomActions {
-		if ca.SetDirectory != nil {
+		switch {
+		case ca.SetDirectory != nil:
 			set[ca.SetDirectory.Directory] = true
+		case ca.SetProperty != nil:
+			set[ca.SetProperty.Name] = true
 		}
 	}
 
-	for range 64 {
-		if dir := known.dirs[dirID]; dir != nil && dir.Configurable || set[dirID] {
-			return dirID
+	for _, dialog := range cfg.UI.Dialogs {
+		for _, field := range dialog.Fields {
+			set[field.Property] = true
 		}
+	}
 
+	return set
+}
+
+// movableAncestor returns the first directory from dirID up to (not
+// including) its root folder whose path something besides the Directory
+// table can set (specification section 8.3): a public id, which the command
+// line can set; a configurable one; or one named by a setDirectory or
+// setProperty action, a properties entry or a dialog field.
+func movableAncestor(cfg *Config, known *refs, dirID string) string {
+	set := setProperties(cfg)
+
+	for range 64 {
 		parent, ok := known.dirParent[dirID]
 		if !ok || parent == "" {
 			return ""
+		}
+
+		if dir := known.dirs[dirID]; dir != nil && dir.Configurable || set[dirID] || IsPublicProperty(dirID) {
+			return dirID
 		}
 
 		dirID = parent
@@ -580,9 +603,9 @@ func (v *validator) purgeFolder(cfg *Config, known *refs, field string, comp *Co
 		v.errorf(field+".purge", "%s is its parent folder; purge a folder with its own name", comp.Directory)
 	default:
 		if movable := movableAncestor(cfg, known, comp.Directory); movable != "" {
-			v.errorf(field+".purge", "%s can be pointed at any folder (configurable or set by setDirectory), so the purge "+
-				"could delete a folder the product does not own; purge a folder below a fixed standard folder, "+
-				"such as CommonAppDataFolder", movable)
+			v.errorf(field+".purge", "%s can be pointed at any folder (a public id, configurable, or set by an action, "+
+				"a property or a dialog field), so the purge could delete a folder the product does not own; purge a "+
+				"folder with private ids below a fixed standard folder, such as CommonAppDataFolder/Vendor/Product", movable)
 		}
 	}
 }

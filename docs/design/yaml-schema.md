@@ -459,12 +459,16 @@ The action ignores failures; what stays when a file is in use, and whether a
 rollback after the action restores anything, were not tested. The condition does not look at the component's state, so the
 folder is deleted even when the component was never installed.
 
-The directory must be a named folder below a standard folder, and neither it
-nor any folder above it may be `configurable` or set by a `setDirectory`
-action, because the action deletes whatever the property points to: a
-command line such as `INSTALLDIR=C:\` at uninstall would otherwise move the
-purge out of the product's folders. Data below the install dir therefore
-cannot be purged; keep it below `CommonAppDataFolder`, for example.
+The directory must be a named folder below a standard folder, and no folder
+from it up to that standard folder may have a path that something besides
+the Directory table can set (section 8.3 of the specification): a public
+(upper-case) id, which a command line such as `DATADIR=C:\` at uninstall
+sets, `configurable`, a `setDirectory` or `setProperty` action, a
+`properties` entry or a dialog field. The action deletes whatever the
+property points to, so any of these could move the purge out of the
+product's folders. Data below the install dir therefore cannot be purged;
+use a path below a fixed standard folder, whose generated ids are private,
+such as `CommonAppDataFolder/Vendor/Product`.
 
 ```yaml
 components:
