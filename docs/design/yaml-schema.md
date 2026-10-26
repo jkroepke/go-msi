@@ -224,7 +224,7 @@ them braced and upper case.
 | `installerVersion` | string | `"5.0"` | Page Count = major × 100 + minor. x86: 1.0 to 5.0, x64: 2.0 to 5.0, arm64: 5.0 |
 | `codepage` | int | `1252` | Database code page, section 2.3 |
 | `compression` | enum | `lzx` | `lzx` (LZX with a 2 MB window), `lzx:15` … `lzx:21` (a window of 2^N bytes), `mszip` or `none` (stored blocks) |
-| `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters (fewer outside `0-9A-Za-z._`). The default is `product.cab` when `<name>.cab` cannot be a stream name or a plain filename |
+| `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters (fewer outside `0-9A-Za-z._`). ICE03 wants an identifier (letters, digits, `_` and `.`, not starting with a digit), so the default keeps only those characters of `<name>`, and an explicit name that is no identifier warns. The default is `product.cab` when that is no identifier, cannot be a stream name or `<name>` has non-ASCII characters |
 | `longFileNames` | bool | `true` | `false` sets Word Count bit 1 and requires 8.3 names |
 | `summary` | map | | `title` (`Installation Database`), `keywords` (`Installer`), `author` (manufacturer) |
 
@@ -539,6 +539,50 @@ that an error. The
 components still need different ComponentIds; an automatic GUID differs by
 bitness and key file, otherwise set `guid` on one of them.
 
+**Shortcuts.** A file can list `shortcuts`, each a non-advertised `.lnk`
+to that file:
+
+```yaml
+files:
+  - source: viewer.exe
+    shortcuts:
+      - description: View example files         # Start menu > Programs > product.name
+      - directory: DesktopFolder                 # the desktop
+      - name: Viewer (safe mode)                 # default: product.name, no .lnk
+        directory: ProgramMenuFolder/Example     # an id, a standard folder or a folder path
+        arguments: --safe-mode                   # formatted text
+        workingDirectory: INSTALLDIR             # default: the file's directory
+        icon: viewer.ico                         # a key of icons; default: the file's own icon
+        iconIndex: 0                             # needs icon
+        show: minimized                          # normal (default), maximized or minimized
+```
+
+`directory` defaults to `ProgramMenuFolder` and is resolved like a
+component's directory, so `ProgramMenuFolder/Example` creates the Start menu
+folder. In a per-machine package the Start menu and desktop are the common
+ones for all users, in a per-user package the user's own (RUN-28). Two
+shortcuts with one name in one folder are an error, and a name ending in
+`.lnk` gets a warning, because Windows adds the extension. The target
+`[#id]` must fit the 72 characters of `Shortcut.Target`, so a file with
+shortcuts has an ID of at most 69 characters.
+
+The builder puts the shortcuts of one component's files into a generated
+component of their own: in the folder of the first shortcut, with the
+component's condition, 64-bit unless that folder is a 32-bit one (ICE80),
+an HKCU value under `Software\[Manufacturer]\[ProductName]` as its key path
+(ICE38, ICE43), `RemoveFile` rows for the folders it creates below a
+profile folder (ICE64), and in every feature of the file's component. In a
+per-user package that folder must not be a per-machine one (ICE105).
+RUN-28 installed and removed shortcuts from an own HKCU-keyed component and
+from the file's own component alike, and removed an empty Start menu folder
+without a `RemoveFile` row; the Windows tests run the ICE suite on the
+generated layout of a per-machine package (desktop, Start menu, a Start
+menu subfolder and an icon). A per-user package still gets the ICE38
+warning of section 4.4 for its files. An `icon` is stored in the `Icon` table and
+written to the product's installer folder; without one the shell shows the
+target's icon, and `iconIndex` without `icon` is an error. Advertised
+shortcuts are not supported (section 6).
+
 **Permissions.** A file, registry value, service or the component's folder
 can carry a `permissions` block (`folderPermissions` on the component, which
 then needs a `CreateFolder` row: `createFolder: true` or a directory key
@@ -757,7 +801,8 @@ binaries:
 ```
 
 Keys are stream names, limited by the 62-character stream limit (section
-2.3). Binaries are for `dll` custom actions and for the UI's bitmaps.
+2.3). Icons are for `product.arp.icon` and shortcut `icon`s; binaries are
+for `dll` custom actions and for the UI's bitmaps.
 
 ### 4.11 `firewall` helper
 
@@ -976,7 +1021,8 @@ the generated tables, and the cabinet round trip.
 
 ## 6. Not in version 1
 
-Multiple languages in one package, advertised installs, script custom
+Multiple languages in one package, advertised installs and advertised
+shortcuts, script custom
 actions, and a top-level file harvester (Go callers have
 `config.Config.AddTree`, see [Go API](../go-api.md)). A future `schema: go-msi/v2` can add
 them without changing the meaning of a v1 file.

@@ -14,8 +14,8 @@ go-msi builds Windows Installer (MSI) packages from a single YAML file. It is
 written in pure Go without cgo, so the same binary builds packages on Linux,
 macOS and Windows, for example in a CI job next to the rest of your release.
 
-- **Declarative.** Describe directories, files, services, registry values and
-  actions. go-msi writes the tables, attribute bits and sequence numbers.
+- **Declarative.** Describe directories, files, shortcuts, services, registry
+  values and actions. go-msi writes the tables, attribute bits and sequence numbers.
 - **Safe by default.** Configurations that Windows would accept and then
   install in a broken state are rejected at build time.
 - **Reproducible.** The same configuration, inputs and `SOURCE_DATE_EPOCH`
@@ -95,7 +95,8 @@ agent with a service. These are not supported:
   action instead. Not in schema v1.
 - **Editing existing packages and WiX XML input.** `go-msi inspect` only
   reads packages to help debugging.
-- **Advertised installs.** Not in schema v1.
+- **Advertised installs and advertised shortcuts.** Not in schema v1;
+  shortcuts are ordinary `.lnk` files.
 - **File harvesting in YAML.** List each file of a component; a YAML file
   cannot add a whole directory. Not in schema v1. Go callers can use
   `Config.AddTree` ([Go API](docs/go-api.md)).

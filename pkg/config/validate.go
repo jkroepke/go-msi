@@ -57,6 +57,7 @@ func Validate(cfg *Config) Diagnostics {
 	checker.directories(cfg, known)
 	checker.features(cfg, known)
 	checker.components(cfg, known)
+	checker.shortcuts(cfg, known)
 	checker.properties(cfg)
 	checker.launchConditions(cfg)
 	checker.customActions(cfg, known)
@@ -255,6 +256,8 @@ func (v *validator) pkg(cfg *Config) { //nolint:cyclop // a flat list of indepen
 		v.errorf("package.cabinet", "%q is not a plain file name", pkg.Cabinet)
 	} else if err := msidb.CheckStreamName(pkg.Cabinet); err != nil {
 		v.errorf("package.cabinet", "not a valid stream name (DB-11): %v", err)
+	} else if !IsIdentifier(pkg.Cabinet) {
+		v.warnf("package.cabinet", "ICE03 reports bad cabinet syntax: an embedded cabinet name must be an identifier")
 	}
 }
 

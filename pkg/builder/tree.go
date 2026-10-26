@@ -773,6 +773,10 @@ func (b *build) features() error {
 
 		for _, c := range feature.Components {
 			featureComps.Add(feature.ID, c.ID)
+
+			if carrier, ok := b.shortcutCarrier[c.ID]; ok {
+				featureComps.Add(feature.ID, carrier)
+			}
 		}
 	})
 

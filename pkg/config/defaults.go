@@ -1,7 +1,9 @@
 package config
 
 import (
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/jkroepke/go-msi/pkg/msidb"
 )
@@ -19,6 +21,12 @@ const (
 	DefaultNewerProperty    = "NEWERVERSIONDETECTED"
 	DefaultDowngradeMessage = "A later version of [ProductName] is already installed. Setup will now exit."
 	DefaultRestartDelay     = time.Minute
+
+	// ShowNormal, ShowMaximized and ShowMinimized are the window states of a
+	// shortcut's show setting.
+	ShowNormal    = "normal"
+	ShowMaximized = "maximized"
+	ShowMinimized = "minimized"
 
 	// Auto marks a value that the builder derives (GUIDs, file versions).
 	Auto = "auto"
@@ -73,11 +81,14 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 	}
 
 	if pkg.Cabinet == "" {
-		pkg.Cabinet = product.Name + ".cab"
-		if msidb.CheckStreamName(pkg.Cabinet) != nil || !plainFileName(pkg.Cabinet) {
-			// The product name may be longer than a stream name or use
-			// characters a stream name cannot hold, such as non-ASCII
-			// letters with case.
+		// After its # the Cabinet value is an identifier (ICE03), so keep
+		// only the product name's identifier characters.
+		pkg.Cabinet = strings.Map(identifierRune, product.Name) + ".cab"
+		if !IsIdentifier(pkg.Cabinet) || msidb.CheckStreamName(pkg.Cabinet) != nil ||
+			strings.ContainsFunc(product.Name, func(r rune) bool { return r > unicode.MaxASCII }) {
+			// The product name may be longer than a stream name, start
+			// with a digit, hold no identifier characters at all or
+			// letters that dropping would garble.
 			pkg.Cabinet = DefaultCabinet
 		}
 	}
@@ -131,8 +142,16 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 		}
 	})
 
-	for _, c := range cfg.Components {
-		defaultComponent(c)
+	for _, comp := range cfg.Components {
+		defaultComponent(comp)
+
+		for _, file := range comp.Files {
+			for _, shortcut := range file.Shortcuts {
+				if shortcut != nil {
+					defaultShortcut(shortcut, product, comp)
+				}
+			}
+		}
 	}
 
 	for _, action := range cfg.CustomActions {
@@ -167,6 +186,22 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 
 	if cfg.UI.Wizard == "" {
 		cfg.UI.Wizard = None
+	}
+}
+
+// defaultShortcut names a shortcut after the product and starts it in its
+// file's folder.
+func defaultShortcut(shortcut *Shortcut, product *Product, comp *Component) {
+	if shortcut.Name == "" {
+		shortcut.Name = product.Name
+	}
+
+	if shortcut.WorkingDirectory == "" {
+		shortcut.WorkingDirectory = comp.Directory
+	}
+
+	if shortcut.Show == "" {
+		shortcut.Show = ShowNormal
 	}
 }
 
@@ -344,4 +379,14 @@ func DefaultDescription(p *Product) string {
 // DefaultComments are the summary comments of a product that sets none.
 func DefaultComments(p *Product) string {
 	return "This installer database contains the logic and data required to install " + p.Name + "."
+}
+
+// identifierRune keeps the ASCII letters, digits, underscores and periods
+// of an identifier and drops every other rune.
+func identifierRune(r rune) rune {
+	if r == '_' || r == '.' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' {
+		return r
+	}
+
+	return -1
 }
