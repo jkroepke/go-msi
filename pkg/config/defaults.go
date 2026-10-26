@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/jkroepke/go-msi/pkg/msidb"
 )
@@ -80,12 +81,14 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 	}
 
 	if pkg.Cabinet == "" {
-		// ICE03 rejects a space in a Cabinet value.
-		pkg.Cabinet = strings.ReplaceAll(product.Name, " ", "") + ".cab"
-		if pkg.Cabinet == ".cab" || msidb.CheckStreamName(pkg.Cabinet) != nil || !plainFileName(pkg.Cabinet) {
-			// The product name may be longer than a stream name or use
-			// characters a stream name cannot hold, such as non-ASCII
-			// letters with case.
+		// After its # the Cabinet value is an identifier (ICE03), so keep
+		// only the product name's identifier characters.
+		pkg.Cabinet = strings.Map(identifierRune, product.Name) + ".cab"
+		if !IsIdentifier(pkg.Cabinet) || msidb.CheckStreamName(pkg.Cabinet) != nil ||
+			strings.ContainsFunc(product.Name, func(r rune) bool { return r > unicode.MaxASCII }) {
+			// The product name may be longer than a stream name, start
+			// with a digit, hold no identifier characters at all or
+			// letters that dropping would garble.
 			pkg.Cabinet = DefaultCabinet
 		}
 	}
@@ -376,4 +379,14 @@ func DefaultDescription(p *Product) string {
 // DefaultComments are the summary comments of a product that sets none.
 func DefaultComments(p *Product) string {
 	return "This installer database contains the logic and data required to install " + p.Name + "."
+}
+
+// identifierRune keeps the ASCII letters, digits, underscores and periods
+// of an identifier and drops every other rune.
+func identifierRune(r rune) rune {
+	if r == '_' || r == '.' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' {
+		return r
+	}
+
+	return -1
 }

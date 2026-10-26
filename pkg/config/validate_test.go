@@ -504,12 +504,15 @@ func TestDefaultCabinet(t *testing.T) {
 
 	for name, want := range map[string]string{
 		"App": "App.cab",
-		// ICE03 rejects a space in the cabinet name.
+		// ICE03 wants an identifier.
 		"My App":                "MyApp.cab",
+		"Acme-Tool":             "AcmeTool.cab",
+		"Notepad++":             "Notepad.cab",
+		"7Zip":                  config.DefaultCabinet,
 		"   ":                   config.DefaultCabinet,
 		"Grüße":                 config.DefaultCabinet,
 		"Привет":                config.DefaultCabinet,
-		"A#B":                   config.DefaultCabinet,
+		"A#B":                   "AB.cab",
 		strings.Repeat("A", 59): config.DefaultCabinet,
 	} {
 		doc := strings.Replace(base, "name: App\n  manufacturer", "name: '"+name+"'\n  manufacturer", 1)
@@ -557,12 +560,14 @@ func TestCabinetName(t *testing.T) {
 	}
 }
 
-func TestCabinetSpaceWarns(t *testing.T) {
+func TestCabinetIdentifierWarns(t *testing.T) {
 	t.Parallel()
 
-	ds := validate(t, pkg(`{platform: x64, cabinet: "my app.cab"}`)+appComponent)
-	if !find(ds, config.SeverityWarning, "package.cabinet", "ICE03") {
-		t.Errorf("no ICE03 warning for a space in the cabinet name: %v", ds)
+	for cabinet, warns := range map[string]bool{"my app.cab": true, "my-app.cab": true, "my_app.cab": false} {
+		ds := validate(t, pkg(`{platform: x64, cabinet: "`+cabinet+`"}`)+appComponent)
+		if got := find(ds, config.SeverityWarning, "package.cabinet", "ICE03"); got != warns {
+			t.Errorf("cabinet %q: ICE03 warning = %v, want %v (%v)", cabinet, got, warns, ds)
+		}
 	}
 }
 

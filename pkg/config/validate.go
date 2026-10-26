@@ -256,8 +256,8 @@ func (v *validator) pkg(cfg *Config) { //nolint:cyclop // a flat list of indepen
 		v.errorf("package.cabinet", "%q is not a plain file name", pkg.Cabinet)
 	} else if err := msidb.CheckStreamName(pkg.Cabinet); err != nil {
 		v.errorf("package.cabinet", "not a valid stream name (DB-11): %v", err)
-	} else if strings.Contains(pkg.Cabinet, " ") {
-		v.warnf("package.cabinet", "ICE03 reports a space in a cabinet name as bad cabinet syntax")
+	} else if !IsIdentifier(pkg.Cabinet) {
+		v.warnf("package.cabinet", "ICE03 reports bad cabinet syntax: an embedded cabinet name must be an identifier")
 	}
 }
 
