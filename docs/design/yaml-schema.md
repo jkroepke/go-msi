@@ -269,7 +269,7 @@ detection row.
 |---|---|---|
 | `afterInstallValidate` | right after InstallValidate | old product removed first, outside the transaction |
 | `afterInstallInitialize` (default) | right after InstallInitialize | removed first, inside the transaction, so it rolls back |
-| `afterInstallExecute` | right after InstallExecute | new first, then old, one transaction; strict component rules |
+| `afterInstallExecute` (default when a component has `preserve: true`) | right after InstallExecute | new first, then old, one transaction; strict component rules |
 | `afterInstallFinalize` | after InstallFinalize | separate transaction; a failed removal leaves both |
 
 Every property named here must be public, is added to
@@ -392,6 +392,7 @@ components:
     condition: ""
     permanent: false
     neverOverwrite: false
+    preserve: false                  # neverOverwrite + a late removeOld, see below
     sharedDllRefCount: false
     keyPath: windows_exporter.exe   # file name, registry id or "directory"
     bitness: auto                    # auto (from platform) | 32 | 64
@@ -405,6 +406,29 @@ windows_exporter executable component keeps the GUID of its released
 packages). `none` writes a NULL ComponentId and is only accepted with
 `permanent: true`, because such a component is never removed (specification
 section 8.4).
+
+**Preserved configuration.** `preserve: true` keeps the component's files
+and registry values as the user left them across major upgrades. It sets
+`neverOverwrite`, and `upgrade.removeOld` then defaults to
+`afterInstallExecute`; an explicit early `removeOld` is an error. RUN-24
+showed why: with the old product removed first, the new product skips a
+`neverOverwrite` component because its files exist, and the removal of the
+old product then deletes them, so the edits are gone. With the late removal
+the edits survive, also when upgrading from a version built without
+`preserve`, and uninstall still removes the files. `neverOverwrite` +
+`permanent` with an early removal keeps edits too, but only when the old
+version already had both flags, and the files then stay after uninstall.
+A preserved component is never updated, so put only the configuration in
+it; a service is rejected. `neverOverwrite` without `permanent` and an
+early `removeOld` gets a warning.
+
+```yaml
+components:
+  - id: Config
+    preserve: true
+    files:
+      - source: config.alloy
+```
 
 **Key path.** Default: the first file, else the first registry value, else
 the directory, which gets a `CreateFolder` row (ICE18). A component with a

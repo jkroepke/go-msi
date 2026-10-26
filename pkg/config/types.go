@@ -158,23 +158,27 @@ type Feature struct {
 
 // Component is a unit that is installed, repaired and removed together.
 type Component struct {
-	ID                string           `yaml:"id"`
-	Directory         string           `yaml:"directory"`
-	GUID              string           `yaml:"guid"`
-	Files             []*File          `yaml:"files"`
-	Registry          []*RegistryValue `yaml:"registry"`
-	Services          []*Service       `yaml:"services"`
-	EventLog          []*EventSource   `yaml:"eventLog"`
-	Environment       []*Environment   `yaml:"environment"`
-	CreateFolder      bool             `yaml:"createFolder"`
-	Condition         string           `yaml:"condition"`
-	Permanent         bool             `yaml:"permanent"`
-	NeverOverwrite    bool             `yaml:"neverOverwrite"`
-	SharedDLLRefCount bool             `yaml:"sharedDllRefCount"`
-	Transitive        bool             `yaml:"transitive"`
-	KeyPath           string           `yaml:"keyPath"`
-	Bitness           string           `yaml:"bitness"`
-	FolderPermissions *Permissions     `yaml:"folderPermissions"`
+	ID             string           `yaml:"id"`
+	Directory      string           `yaml:"directory"`
+	GUID           string           `yaml:"guid"`
+	Files          []*File          `yaml:"files"`
+	Registry       []*RegistryValue `yaml:"registry"`
+	Services       []*Service       `yaml:"services"`
+	EventLog       []*EventSource   `yaml:"eventLog"`
+	Environment    []*Environment   `yaml:"environment"`
+	CreateFolder   bool             `yaml:"createFolder"`
+	Condition      string           `yaml:"condition"`
+	Permanent      bool             `yaml:"permanent"`
+	NeverOverwrite bool             `yaml:"neverOverwrite"`
+	// Preserve keeps the component's files and registry values as the user
+	// left them across major upgrades: it sets NeverOverwrite, and removeOld
+	// defaults to afterInstallExecute (RUN-24).
+	Preserve          bool         `yaml:"preserve"`
+	SharedDLLRefCount bool         `yaml:"sharedDllRefCount"`
+	Transitive        bool         `yaml:"transitive"`
+	KeyPath           string       `yaml:"keyPath"`
+	Bitness           string       `yaml:"bitness"`
+	FolderPermissions *Permissions `yaml:"folderPermissions"`
 
 	// ref marks a features[].components entry written as an id.
 	ref bool

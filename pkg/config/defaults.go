@@ -9,6 +9,7 @@ const (
 	DefaultCodepage         = 1252
 	DefaultCompression      = "mszip"
 	DefaultRemoveOld        = "afterInstallInitialize"
+	PreserveRemoveOld       = "afterInstallExecute"
 	DefaultUpgradeProperty  = "OLDERVERSIONBEINGUPGRADED"
 	DefaultNewerProperty    = "NEWERVERSIONDETECTED"
 	DefaultDowngradeMessage = "A later version of [ProductName] is already installed. Setup will now exit."
@@ -88,6 +89,12 @@ func ApplyDefaults(cfg *Config) {
 
 	if cfg.Upgrade == nil {
 		cfg.Upgrade = &Upgrade{}
+	}
+
+	// RUN-24: only a late removal keeps a NeverOverwrite resource, also
+	// when upgrading from a version without it.
+	if cfg.Upgrade.RemoveOld == "" && preserves(cfg) {
+		cfg.Upgrade.RemoveOld = PreserveRemoveOld
 	}
 
 	defaultUpgrade(cfg.Upgrade)
@@ -181,7 +188,22 @@ func defaultUpgrade(upg *Upgrade) {
 	}
 }
 
+// preserves reports whether any component keeps user-edited resources.
+func preserves(cfg *Config) bool {
+	for _, c := range cfg.Components {
+		if c.Preserve {
+			return true
+		}
+	}
+
+	return false
+}
+
 func defaultComponent(c *Component) {
+	if c.Preserve {
+		c.NeverOverwrite = true
+	}
+
 	if c.GUID == "" {
 		c.GUID = Auto
 	}

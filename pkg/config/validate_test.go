@@ -245,6 +245,15 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [restart, restart, restart, restart]}}]\n    files:", 1),
 			e, "components[0].services[0].recovery.actions", "one to three",
 		},
+		// RUN-24.
+		"neverOverwrite with early removal": {
+			base + strings.Replace(appComponent, "    files:", "    neverOverwrite: true\n    files:", 1),
+			w, "components[0].neverOverwrite", "RUN-24",
+		},
+		"preserved service": {
+			base + strings.Replace(appComponent, "    files:", "    preserve: true\n    services: [{name: svc}]\n    files:", 1),
+			e, "components[0].preserve", "own component",
+		},
 		// Upgrade action properties (ICE61, section 8.10).
 		"private upgrade property": {
 			strings.Replace(base, "upgrade: {}", "upgrade: {property: oldFound}", 1) + appComponent,
@@ -383,5 +392,39 @@ func TestRecoveryDelayOnNone(t *testing.T) {
 	field := "components[0].services[0].recovery.actions[0].restart"
 	if ds := config.Validate(cfg); !find(ds, config.SeverityError, field, "only allowed on a restart") {
 		t.Errorf("diagnostics %v, want an error at %s", ds, field)
+	}
+}
+
+func TestPreserve(t *testing.T) {
+	t.Parallel()
+
+	doc := base + strings.Replace(appComponent, "    files:", "    preserve: true\n    files:", 1)
+
+	cfg, err := config.Parse([]byte(doc), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ds := config.Validate(cfg); len(ds) != 0 {
+		t.Errorf("unexpected diagnostics: %v", ds)
+	}
+
+	if c := cfg.Components[0]; c.Permanent || !c.NeverOverwrite {
+		t.Errorf("preserve: permanent %v, neverOverwrite %v, want only neverOverwrite", c.Permanent, c.NeverOverwrite)
+	}
+
+	if got := cfg.Upgrade.RemoveOld; got != config.PreserveRemoveOld {
+		t.Errorf("preserve: removeOld %q, want %q", got, config.PreserveRemoveOld)
+	}
+
+	early := strings.Replace(doc, "upgrade: {}", "upgrade: {removeOld: afterInstallInitialize}", 1)
+	if ds := validate(t, early); !find(ds, config.SeverityError, "components[0].preserve", "RUN-24") {
+		t.Errorf("preserve with an early removeOld: diagnostics %v, want an error", ds)
+	}
+
+	late := strings.Replace(base, "upgrade: {}", "upgrade: {removeOld: afterInstallExecute}", 1) +
+		strings.Replace(appComponent, "    files:", "    neverOverwrite: true\n    files:", 1)
+	if ds := validate(t, late); len(ds) != 0 {
+		t.Errorf("neverOverwrite with a late removal: unexpected diagnostics: %v", ds)
 	}
 }

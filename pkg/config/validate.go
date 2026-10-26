@@ -464,6 +464,32 @@ func (v *validator) featureRefs(featurePath string, feature *Feature, known *ref
 	}
 }
 
+// preserve checks components that keep what the user changed. RUN-24: with
+// the old product removed first, a NeverOverwrite component loses its files
+// and registry values, because the new product skips it and the removal of
+// the old one deletes it. Only a late removal keeps them, also when the old
+// version did not have the flag.
+func (v *validator) preserve(cfg *Config, field string, comp *Component) {
+	if comp.Preserve && len(comp.Services) > 0 {
+		v.errorf(field+".preserve", "a preserved component is never updated; keep the service in its own component")
+	}
+
+	if !comp.NeverOverwrite || comp.Permanent || cfg.Upgrade == nil || cfg.Upgrade.Disabled {
+		return
+	}
+
+	switch cfg.Upgrade.RemoveOld {
+	case "afterInstallValidate", "afterInstallInitialize":
+		if comp.Preserve {
+			v.errorf(field+".preserve", "needs removeOld afterInstallExecute or afterInstallFinalize: with %s a major upgrade "+
+				"deletes the preserved files and registry values (RUN-24)", cfg.Upgrade.RemoveOld)
+		} else {
+			v.warnf(field+".neverOverwrite", "with removeOld %s a major upgrade deletes this component's files and registry values "+
+				"instead of keeping them (RUN-24); use preserve: true", cfg.Upgrade.RemoveOld)
+		}
+	}
+}
+
 func (v *validator) components(cfg *Config, r *refs) {
 	seen := map[string]bool{}
 	fileIDs := map[string]string{}
@@ -538,6 +564,7 @@ func (v *validator) components(cfg *Config, r *refs) {
 		}
 
 		v.oneOf(p+".bitness", c.Bitness, Auto, "32", "64")
+		v.preserve(cfg, p, c)
 
 		if c.Bitness == "64" && !cfg.Package.Platform.Is64Bit() {
 			v.errorf(p+".bitness", "64-bit components need an x64 or arm64 package")
