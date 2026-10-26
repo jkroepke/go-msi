@@ -410,7 +410,9 @@ section 8.4).
 **Preserved configuration.** `preserve: true` keeps the component's files
 and registry values as the user left them across major upgrades. It sets
 `neverOverwrite`, and `upgrade.removeOld` then defaults to
-`afterInstallExecute`; an explicit early `removeOld` is an error. RUN-24
+`afterInstallExecute`; an explicit early `removeOld` is an error, also
+with `permanent`, and `afterInstallFinalize` gets a warning because RUN-24
+did not test it. RUN-24
 showed why: with the old product removed first, the new product skips a
 `neverOverwrite` component because its files exist, and the removal of the
 old product then deletes them, so the edits are gone. With the late removal

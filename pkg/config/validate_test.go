@@ -422,9 +422,51 @@ func TestPreserve(t *testing.T) {
 		t.Errorf("preserve with an early removeOld: diagnostics %v, want an error", ds)
 	}
 
+	// RUN-24 neverperm-retrofit-early: permanent does not save an edit made
+	// in a version without the flags.
+	perm := strings.Replace(early, "    preserve: true\n", "    preserve: true\n    permanent: true\n", 1)
+	if ds := validate(t, perm); !find(ds, config.SeverityError, "components[0].preserve", "RUN-24") {
+		t.Errorf("preserve and permanent with an early removeOld: diagnostics %v, want an error", ds)
+	}
+
+	finalize := strings.Replace(doc, "upgrade: {}", "upgrade: {removeOld: afterInstallFinalize}", 1)
+	if ds := validate(t, finalize); !find(ds, config.SeverityWarning, "components[0].preserve", "not") {
+		t.Errorf("preserve with removeOld afterInstallFinalize: diagnostics %v, want a warning", ds)
+	}
+
+	off := strings.Replace(early, "upgrade: {removeOld: afterInstallInitialize}", "upgrade: false", 1)
+	if ds := validate(t, off); len(ds) != 0 {
+		t.Errorf("preserve without upgrades: unexpected diagnostics: %v", ds)
+	}
+
 	late := strings.Replace(base, "upgrade: {}", "upgrade: {removeOld: afterInstallExecute}", 1) +
 		strings.Replace(appComponent, "    files:", "    neverOverwrite: true\n    files:", 1)
 	if ds := validate(t, late); len(ds) != 0 {
 		t.Errorf("neverOverwrite with a late removal: unexpected diagnostics: %v", ds)
+	}
+}
+
+// TestPreserveInFeature checks that a preserved component defined inside a
+// feature also moves the removal of the old product late.
+func TestPreserveInFeature(t *testing.T) {
+	t.Parallel()
+
+	cfg := parseValid(t, short+`features:
+  - id: Main
+    components:
+      - files: [{ source: app.exe }]
+      - id: Config
+        preserve: true
+        files: [{ source: config.yaml }]
+`)
+
+	if got := cfg.Upgrade.RemoveOld; got != config.PreserveRemoveOld {
+		t.Errorf("removeOld %q, want %q", got, config.PreserveRemoveOld)
+	}
+
+	for _, c := range cfg.Components {
+		if c.ID == "Config" && !c.NeverOverwrite {
+			t.Error("preserved component without neverOverwrite")
+		}
 	}
 }
