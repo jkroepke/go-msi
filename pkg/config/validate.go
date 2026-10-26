@@ -382,16 +382,24 @@ func (v *validator) directories(cfg *Config, known *refs) { //nolint:cyclop,goco
 		}
 	}
 
-	if cfg.InstallDir.Remember {
-		for i, comp := range cfg.Components {
-			if comp != nil && comp.ID == RememberComponentID && comp.origin != rememberOrigin {
-				v.errorf(comp.Path(i)+".id", "%s is the component installDir.remember adds; rename this one", comp.ID)
-			}
-		}
-	}
+	v.rememberComponent(cfg)
 
 	if cfg.Product.ARP.InstallLocation != "" && known.dirs[cfg.Product.ARP.InstallLocation] == nil {
 		v.errorf("product.arp.installLocation", "directory %q is not defined", cfg.Product.ARP.InstallLocation)
+	}
+}
+
+// rememberComponent rejects a component that takes the ID of the one
+// installDir.remember adds.
+func (v *validator) rememberComponent(cfg *Config) {
+	if !cfg.InstallDir.Remember {
+		return
+	}
+
+	for i, comp := range cfg.Components {
+		if comp != nil && comp.ID == RememberComponentID && comp.origin != rememberOrigin {
+			v.errorf(comp.Path(i)+".id", "%s is the component installDir.remember adds; rename this one", comp.ID)
+		}
 	}
 }
 
