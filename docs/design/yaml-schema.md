@@ -442,23 +442,34 @@ components:
 
 **Data removal.** `purge` deletes the component's directory with every
 file and subfolder in it when the product is uninstalled, including what the
-application created there at runtime, but never on the uninstall half of a
+application created there at runtime, but not on the uninstall half of a
 major upgrade. `RemoveFile` rows cannot do this: RUN-26 showed that they never
 recurse and that they also delete files during a major upgrade. The builder
-writes a deferred action running `cmd.exe /c rmdir /s /q "[DIR]."` before
-InstallFinalize, with the condition
-`REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE AND DIR`, as tested in RUN-26.
+writes a deferred action (type 3170) running
+`cmd.exe /c rmdir /s /q "[DIR]."` right before InstallFinalize, with the
+condition `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE AND DIR`. RUN-26 tested
+this command at 6590 without `AND DIR`; the builder adds it so that an empty
+property never runs `rmdir` on the working folder. RUN-26 removed the old
+product at 1401 only, so "not on upgrade" is untested with a late
+`removeOld` (for example with `preserve`).
 `purge: {condition: DELETE_DATA="1"}` adds a condition, for example an
-opt-in property set on the command line or by a checkbox. The deletion is not
-undone if the uninstall rolls back afterwards, and the action ignores
-failures (a file in use stays). The directory must be a named folder below a
-standard folder and must not be `configurable`, because the action deletes
-whatever the property points to.
+opt-in property set on the command line or by a checkbox; the public
+properties it names are added to `SecureCustomProperties`, as in RUN-26.
+The action ignores failures; what stays when a file is in use, and whether a
+rollback after the action restores anything, were not tested. The condition does not look at the component's state, so the
+folder is deleted even when the component was never installed.
+
+The directory must be a named folder below a standard folder, and neither it
+nor any folder above it may be `configurable` or set by a `setDirectory`
+action, because the action deletes whatever the property points to: a
+command line such as `INSTALLDIR=C:\` at uninstall would otherwise move the
+purge out of the product's folders. Data below the install dir therefore
+cannot be purged; keep it below `CommonAppDataFolder`, for example.
 
 ```yaml
 components:
   - id: Data
-    directory: DATADIR          # e.g. CommonAppDataFolder/GrafanaLabs/Alloy/data
+    directory: CommonAppDataFolder/GrafanaLabs/Alloy/data
     createFolder: true
     purge:
       condition: DELETE_DATA="1"

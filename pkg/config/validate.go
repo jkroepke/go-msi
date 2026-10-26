@@ -140,6 +140,34 @@ func fileID(f *File) string {
 	return fileName(f)
 }
 
+// movableAncestor returns the first directory from dirID up to its standard
+// folder whose path a property can change: a configurable one, or one a
+// setDirectory action sets.
+func movableAncestor(cfg *Config, known *refs, dirID string) string {
+	set := make(map[string]bool)
+
+	for _, ca := range cfg.CustomActions {
+		if ca.SetDirectory != nil {
+			set[ca.SetDirectory.Directory] = true
+		}
+	}
+
+	for range 64 {
+		if dir := known.dirs[dirID]; dir != nil && dir.Configurable || set[dirID] {
+			return dirID
+		}
+
+		parent, ok := known.dirParent[dirID]
+		if !ok || parent == "" {
+			return ""
+		}
+
+		dirID = parent
+	}
+
+	return ""
+}
+
 // topFolder returns the standard folder at the root of a directory's chain.
 func (r *refs) topFolder(id string) string {
 	for i := 0; i < 64; i++ {
@@ -523,27 +551,38 @@ func (v *validator) removeOld(removeOld, field string, comp *Component) {
 
 // purge checks that a purged directory is a folder of the product: the
 // action deletes whatever the directory property points to at uninstall.
-func (v *validator) purge(known *refs, field string, comp *Component) {
+func (v *validator) purge(cfg *Config, known *refs, field string, comp *Component) {
 	if !comp.Purge.Enabled() {
 		return
 	}
 
+	v.purgeFolder(cfg, known, field, comp)
+
+	if comp.Purge.Condition != "" {
+		if err := condition.Check(comp.Purge.Condition); err != nil {
+			v.errorf(field+".purge.condition", "%v", err)
+		}
+	}
+}
+
+// purgeFolder rejects a purge of a folder that may not belong to the
+// product: a standard folder, a folder that is its parent, or one below a
+// folder a property can move.
+func (v *validator) purgeFolder(cfg *Config, known *refs, field string, comp *Component) {
 	dir := known.dirs[comp.Directory]
 
 	switch {
 	case dir == nil:
 		// Reported for the directory already.
-	case known.dirParent[comp.Directory] == "":
+	case IsStandardFolder(comp.Directory) || known.dirParent[comp.Directory] == "":
 		v.errorf(field+".purge", "%s is a standard folder; purge a folder below it", comp.Directory)
 	case dir.Name == "" || dir.Name == ".":
 		v.errorf(field+".purge", "%s is its parent folder; purge a folder with its own name", comp.Directory)
-	case dir.Configurable:
-		v.errorf(field+".purge", "%s is configurable and may point at any folder; purge a folder below it", comp.Directory)
-	}
-
-	if comp.Purge.Condition != "" {
-		if err := condition.Check(comp.Purge.Condition); err != nil {
-			v.errorf(field+".purge.condition", "%v", err)
+	default:
+		if movable := movableAncestor(cfg, known, comp.Directory); movable != "" {
+			v.errorf(field+".purge", "%s can be pointed at any folder (configurable or set by setDirectory), so the purge "+
+				"could delete a folder the product does not own; purge a folder below a fixed standard folder, "+
+				"such as CommonAppDataFolder", movable)
 		}
 	}
 }
@@ -623,7 +662,7 @@ func (v *validator) components(cfg *Config, r *refs) {
 
 		v.oneOf(p+".bitness", c.Bitness, Auto, "32", "64")
 		v.preserve(cfg, p, c)
-		v.purge(r, p, c)
+		v.purge(cfg, r, p, c)
 
 		if c.Bitness == "64" && !cfg.Package.Platform.Is64Bit() {
 			v.errorf(p+".bitness", "64-bit components need an x64 or arm64 package")

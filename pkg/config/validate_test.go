@@ -255,6 +255,22 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "directory: INSTALLDIR", "directory: ProgramFiles64Folder\n    purge: true", 1),
 			e, "components[0].purge", "standard folder",
 		},
+		"purge below configurable folder": {
+			strings.Replace(base, "        configurable: true\n", "        configurable: true\n        children: [{id: DATADIR, name: data}]\n", 1) +
+				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DATADIR\n    purge: true", 1),
+			e, "components[0].purge", "INSTALLDIR can be pointed",
+		},
+		"purge nested standard folder": {
+			strings.Replace(base, "directories:\n", "directories:\n  - id: TARGETDIR\n    children: [{id: CommonAppDataFolder, name: ProgramData}]\n", 1) +
+				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: CommonAppDataFolder\n    createFolder: true\n    purge: true", 1),
+			e, "components[0].purge", "standard folder",
+		},
+		"purge below setDirectory": {
+			strings.Replace(base, "        configurable: true\n", "        children: [{id: DATADIR, name: data}]\n", 1) +
+				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DATADIR\n    purge: true", 1) +
+				"customActions:\n  - id: MoveIt\n    setDirectory: {directory: INSTALLDIR, value: '[WindowsFolder]'}\n",
+			e, "components[0].purge", "INSTALLDIR can be pointed",
+		},
 		"purge condition": {
 			strings.Replace(base, "        configurable: true\n", "        children: [{id: DATADIR, name: data}]\n", 1) + strings.Replace(appComponent, "    files:", "    purge: {condition: 'DELETE_DATA='}\n    files:", 1),
 			e, "components[0].purge.condition", "",

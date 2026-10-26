@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jkroepke/go-msi/internal/condition"
 	"github.com/jkroepke/go-msi/pkg/config"
 )
 
@@ -321,6 +322,14 @@ func (b *build) purgeAction(info *componentInfo) {
 	cond := `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE AND ` + comp.Directory
 	if comp.Purge.Condition != "" {
 		cond += " AND (" + comp.Purge.Condition + ")"
+
+		// RUN-26 tested the opt-in with a secure property; a public one
+		// set on the client must reach the server.
+		for _, prop := range condition.Properties(comp.Purge.Condition) {
+			if config.IsPublicProperty(prop) {
+				b.secure[prop] = true
+			}
+		}
 	}
 
 	name := generatedID("Purge", "Purge", comp.ID)

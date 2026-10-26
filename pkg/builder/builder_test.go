@@ -991,25 +991,46 @@ func TestSummaryExplicitFields(t *testing.T) {
 func TestPurge(t *testing.T) {
 	t.Parallel()
 
-	exe := testpe.Build(testpe.Options{FileVersion: "0.32.0.5", Languages: []int{1033}})
-	cfg := example(t, "windows_exporter", map[string]string{"VERSION": "0.32.0.5"}, map[string][]byte{
-		"windows_exporter.exe": exe,
-		"icon.ico":             append([]byte{0, 0, 1, 0, 1, 0}, bytes.Repeat([]byte{0xAB}, 64)...),
-	})
+	dir := t.TempDir()
+
+	src := `schema: go-msi/v1
+product:
+  name: Hello
+  manufacturer: Example
+  version: 1.0.0
+  upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301
+package:
+  platform: x64
+components:
+  - files: [{ source: hello.exe }]
+  - id: Data
+    directory: CommonAppDataFolder/Example/Hello
+    createFolder: true
+    purge:
+      condition: DELETE_DATA="1"
+`
+
+	if err := os.WriteFile(filepath.Join(dir, "msi.yaml"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(filepath.Join(dir, "msi.yaml"), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var comp *config.Component
 
 	for _, c := range cfg.Components {
-		if strings.HasSuffix(c.Directory, "_textfile_inputs") {
+		if c.ID == "Data" {
 			comp = c
 		}
 	}
-
-	if comp == nil {
-		t.Fatal("no component in textfile_inputs")
-	}
-
-	comp.Purge = &config.Purge{Condition: `DELETE_DATA="1"`}
 
 	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
 	if err != nil {
@@ -1031,5 +1052,10 @@ func TestPurge(t *testing.T) {
 	cond := cell(t, database, "InstallExecuteSequence", "Condition", func(r []any) bool { return r[0] == name })
 	if want := `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE AND ` + comp.Directory + ` AND (DELETE_DATA="1")`; cond != want {
 		t.Errorf("purge condition %q, want %q", cond, want)
+	}
+
+	secure := fmt.Sprint(cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "SecureCustomProperties" }))
+	if !strings.Contains(";"+secure+";", ";DELETE_DATA;") {
+		t.Errorf("SecureCustomProperties %q lacks DELETE_DATA (RUN-26 opt-in)", secure)
 	}
 }
