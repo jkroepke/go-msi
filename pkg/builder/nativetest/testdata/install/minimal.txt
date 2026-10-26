@@ -1,0 +1,34 @@
+# What msiexec /i and then /x of examples/minimal change on the machine.
+# Written by TestMsiexecInstallsExamples with GO_MSI_UPDATE_SNAPSHOTS=1.
+
+[install]
++ dir {ProgramFiles}\Hello
++ file {Installer}\SourceHash{0277F3F1-EF91-5AE8-830A-54F062A7AEEC}
++ file {ProgramFiles}\Hello\hello.exe = input hello.exe
++ key HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC}
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [AuthorizedCDFPrefix] = ""
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [Comments] = ""
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [Contact] = ""
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [DisplayName] = "Hello"
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [DisplayVersion] = "1.0.0"
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [EstimatedSize] = <size>
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [HelpLink] = ""
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [HelpTelephone] = ""
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [InstallDate] = <date>
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [InstallLocation] = ""
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [InstallSource] = "{PackageDir}\"
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [Language] = dword 1033
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [ModifyPath] = expand "MsiExec.exe /X{0277F3F1-EF91-5AE8-830A-54F062A7AEEC}"
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [NoModify] = dword 1
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [Publisher] = "Example"
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [Readme] = ""
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [Size] = ""
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [URLInfoAbout] = ""
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [URLUpdateInfo] = ""
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [UninstallString] = expand "MsiExec.exe /X{0277F3F1-EF91-5AE8-830A-54F062A7AEEC}"
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [VersionMajor] = dword 1
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [VersionMinor] = dword 0
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [Version] = dword 16777216
++ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [WindowsInstaller] = dword 1
+
+[uninstall]

@@ -1,0 +1,56 @@
+# What msiexec /i and then /x of examples/windows_exporter change on the machine.
+# Written by TestMsiexecInstallsExamples with GO_MSI_UPDATE_SNAPSHOTS=1.
+
+[install]
++ dir {Installer}\{0D76D917-5083-57F4-A641-3EAF572433B8}
++ dir {ProgramFiles}\windows_exporter
++ dir {ProgramFiles}\windows_exporter\textfile_inputs
++ file {Installer}\SourceHash{0D76D917-5083-57F4-A641-3EAF572433B8}
++ file {Installer}\{0D76D917-5083-57F4-A641-3EAF572433B8}\icon.ico = input icon.ico
++ file {ProgramFiles}\windows_exporter\config.yaml = 0 bytes sha256:e3b0c44298fc1c14
++ file {ProgramFiles}\windows_exporter\windows_exporter.exe = input windows_exporter.exe
++ firewall windows_exporter = Action=Allow|Active=TRUE|Dir=In|Protocol=6|LPort=9182|App={ProgramFiles}\windows_exporter\windows_exporter.exe|Name=windows_exporter|Desc=windows_exporter HTTP endpoint|
++ key HKLM\...\EventLog\Application\windows_exporter
++ key HKLM\...\Services\windows_exporter
++ key HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8}
++ value HKLM\...\EventLog\Application\windows_exporter [EventMessageFile] = expand "%SystemRoot%\System32\EventCreate.exe"
++ value HKLM\...\EventLog\Application\windows_exporter [TypesSupported] = dword 7
++ value HKLM\...\Services\windows_exporter [DelayedAutostart] = dword 1
++ value HKLM\...\Services\windows_exporter [DependOnService] = multi ["wmiApSrv"]
++ value HKLM\...\Services\windows_exporter [Description] = "Exports Prometheus metrics about the system"
++ value HKLM\...\Services\windows_exporter [DisplayName] = "windows_exporter"
++ value HKLM\...\Services\windows_exporter [ErrorControl] = dword 1
++ value HKLM\...\Services\windows_exporter [FailureActionsOnNonCrashFailures] = dword 1
++ value HKLM\...\Services\windows_exporter [FailureActions] = type 3 00000000000000000000000003000000140000000100000060ea00000100000060ea00000100000060ea0000
++ value HKLM\...\Services\windows_exporter [ImagePath] = expand ""{ProgramFiles}\windows_exporter\windows_exporter.exe" --config.file="{ProgramFiles}\windows_exporter\config.yaml"      "
++ value HKLM\...\Services\windows_exporter [ObjectName] = "LocalSystem"
++ value HKLM\...\Services\windows_exporter [Start] = dword 2
++ value HKLM\...\Services\windows_exporter [Type] = dword 16
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [AuthorizedCDFPrefix] = ""
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [Comments] = "Prometheus exporter for Windows machines"
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [Contact] = ""
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [DisplayName] = "windows_exporter"
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [DisplayVersion] = "0.32.0.5"
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [EstimatedSize] = <size>
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [HelpLink] = expand "https://github.com/prometheus-community/windows_exporter/issues"
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [HelpTelephone] = ""
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [InstallDate] = <date>
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [InstallLocation] = "{ProgramFiles}\windows_exporter\"
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [InstallSource] = "{PackageDir}\"
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [Language] = dword 1033
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [ModifyPath] = expand "MsiExec.exe /I{0D76D917-5083-57F4-A641-3EAF572433B8}"
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [NoRepair] = dword 1
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [Publisher] = "prometheus-community"
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [Readme] = ""
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [Size] = dword 10000
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [URLInfoAbout] = "https://github.com/prometheus-community/windows_exporter"
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [URLUpdateInfo] = ""
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [UninstallString] = expand "MsiExec.exe /I{0D76D917-5083-57F4-A641-3EAF572433B8}"
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [VersionMajor] = dword 0
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [VersionMinor] = dword 32
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [Version] = dword 2097152
++ value HKLM\...\Uninstall\{0D76D917-5083-57F4-A641-3EAF572433B8} [WindowsInstaller] = dword 1
+
+[uninstall]
++ dir {ProgramFiles}\windows_exporter
++ file {ProgramFiles}\windows_exporter\config.yaml = 0 bytes sha256:e3b0c44298fc1c14
