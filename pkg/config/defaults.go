@@ -91,8 +91,9 @@ func ApplyDefaults(cfg *Config) {
 		cfg.Upgrade = &Upgrade{}
 	}
 
-	// RUN-24: only a late removal keeps a NeverOverwrite resource, also
-	// when upgrading from a version without it.
+	// RUN-24: a late removal keeps a NeverOverwrite key file or value
+	// without Permanent, also when the old version had the same component
+	// without the flag.
 	if cfg.Upgrade.RemoveOld == "" && preserves(cfg) {
 		cfg.Upgrade.RemoveOld = PreserveRemoveOld
 	}
