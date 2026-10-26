@@ -407,22 +407,24 @@ packages). `none` writes a NULL ComponentId and is only accepted with
 `permanent: true`, because such a component is never removed (specification
 section 8.4).
 
-**Preserved configuration.** `preserve: true` keeps the component's files
-and registry values as the user left them across major upgrades. It sets
+**Preserved configuration.** `preserve: true` keeps a configuration file
+or registry value as the user left it across major upgrades. It sets
 `neverOverwrite`, and `upgrade.removeOld` then defaults to
 `afterInstallExecute`; an explicit early `removeOld` is an error, also
 with `permanent`, and `afterInstallFinalize` gets a warning because RUN-24
-did not test it. RUN-24
-showed why: with the old product removed first, the new product skips a
-`neverOverwrite` component because its files exist, and the removal of the
-old product then deletes them, so the edits are gone. With the late removal
-the edits survive, also when upgrading from a version built without
-`preserve`, and uninstall still removes the files. `neverOverwrite` +
-`permanent` with an early removal keeps edits too, but only when the old
-version already had both flags, and the files then stay after uninstall.
-A preserved component is never updated, so put only the configuration in
-it; a service is rejected. `neverOverwrite` without `permanent` and an
-early `removeOld` gets a warning.
+did not test it. RUN-24 showed why, with one file or one registry value
+as the component's key path: with the old product removed first, the new
+product skips a `neverOverwrite` component because its key file exists, and
+the removal of the old product then deletes it, so the edit is gone. With
+the late removal the edit survives, also when upgrading from a version
+built without `preserve`, and uninstall still removes the resource.
+`neverOverwrite` + `permanent` with an early removal keeps the edit too
+when the old version already had both flags (lost when it had neither; other
+combinations not tested), and the resource then stays after uninstall.
+The engine decides on the key path, so give each preserved file or value its
+own component; resources beside the key path were not tested. A preserved
+component is never updated, so a service is rejected. `neverOverwrite`
+without `permanent` and an early `removeOld` gets a warning.
 
 ```yaml
 components:

@@ -170,8 +170,8 @@ type Component struct {
 	Condition      string           `yaml:"condition"`
 	Permanent      bool             `yaml:"permanent"`
 	NeverOverwrite bool             `yaml:"neverOverwrite"`
-	// Preserve keeps the component's files and registry values as the user
-	// left them across major upgrades: it sets NeverOverwrite, and removeOld
+	// Preserve keeps the component's key file or registry value as the user
+	// left it across major upgrades: it sets NeverOverwrite, and removeOld
 	// defaults to afterInstallExecute (RUN-24).
 	Preserve          bool         `yaml:"preserve"`
 	SharedDLLRefCount bool         `yaml:"sharedDllRefCount"`

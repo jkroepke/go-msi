@@ -495,8 +495,13 @@ func (v *validator) removeOld(removeOld, field string, comp *Component) {
 		v.warnf(field+".preserve", "only removeOld afterInstallExecute is tested to keep preserved files and "+
 			"registry values (RUN-24); %s is not", removeOld)
 	case comp.NeverOverwrite && !comp.Permanent && early:
+		hint := "use preserve: true"
+		if len(comp.Services) > 0 {
+			hint = "move the service to its own component and use preserve: true"
+		}
+
 		v.warnf(field+".neverOverwrite", "with removeOld %s a major upgrade deletes this component's files and registry values "+
-			"instead of keeping them (RUN-24); use preserve: true", removeOld)
+			"instead of keeping them (RUN-24); %s", removeOld, hint)
 	}
 }
 
