@@ -114,8 +114,12 @@ or run the container image for Linux on amd64 and arm64:
 docker run --rm -v "$PWD:/work" ghcr.io/jkroepke/go-msi build -o hello.msi msi.yaml
 ```
 
+`go-msi completion <shell>` prints a completion script for Bash, Zsh, fish or
+PowerShell; `go-msi completion <shell> --help` shows how to load it.
+
 ## Documentation
 
+- [Command-line reference](docs/cli/go-msi.md)
 - [YAML schema](docs/design/yaml-schema.md)
 - [Signing](docs/signing.md)
 - [MSI specification](docs/spec/MSISPEC.md) and its

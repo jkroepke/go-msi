@@ -25,8 +25,8 @@ go-msi verify hello.msi
 | `--description TEXT` | program name in the UAC prompt; `build` uses the product name |
 | `--url URL` | "more information" link |
 
-`go-msi sign` replaces an existing signature and writes in place unless `-o`
-is given. `go-msi verify` checks the content digest, the signature and the
+`go-msi sign` replaces an existing signature and writes in place unless `--output`
+(`-o`) is given. `go-msi verify` checks the content digest, the signature and the
 timestamp token, and prints the signer. It does not check certificate trust
 or revocation; Windows does that at install time.
 

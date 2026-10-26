@@ -40,8 +40,8 @@ implementation details that may change without notice.
   [`internal/codepage`](internal/codepage), [`internal/artwork`](internal/artwork):
   standard table definitions, PE version resources, the condition grammar,
   sequence numbering, code pages and the wizard bitmaps.
-- [`cmd/go-msi`](cmd/go-msi): CLI with `build`, `validate`, `inspect`, `sign`
-  and `verify`.
+- [`cmd/go-msi`](cmd/go-msi): CLI with `build`, `validate`, `inspect`, `sign`,
+  `verify`, `completion` and `version`, built on `spf13/cobra`.
 - [`internal/spool`](internal/spool), [`internal/memtest`](internal/memtest),
   [`internal/testpe`](internal/testpe): the spool target shared by file and
   in-memory builds, the peak-heap sampler for bounded-memory tests, and a
@@ -126,8 +126,24 @@ go test ./... -shuffle=on -race
 - Readers (`cfb`, `cab`, `msidb.Unmarshal`) treat their input as untrusted:
   bounds-check every offset and sector, detect chain cycles, and never allocate
   from a size the input declares without checking it against the input length.
-- Use only the standard library in `cmd/go-msi` (`flag`), and no new module
-  dependencies elsewhere without discussing them first.
+- `cmd/go-msi` uses `spf13/cobra` (with `spf13/pflag`) and nothing else
+  outside the standard library; never import `cobra/doc`, which pulls in a
+  man-page renderer. Add no new module dependencies elsewhere without
+  discussing them first.
+
+## Command line
+
+- Flags are POSIX style: long flags take two dashes (`--pfx`), and only common
+  flags get a one-letter shorthand (`-o`, `-q`). Every flag and positional
+  argument registers a completion (`MarkFlagFilename`,
+  `RegisterFlagCompletionFunc`, `ValidArgsFunction`).
+- Help goes to stdout; errors, diagnostics and usage hints go to stderr. `run`
+  returns 0 on success, 1 when the command failed and 2 for a usage error.
+  Wrap command-line mistakes (argument count, flag combinations) in
+  `usageError`; flag parse errors are wrapped by the root's flag error func.
+- [`docs/cli`](docs/cli) is generated from the command tree by `TestDocs`
+  (`cmd/go-msi/docs_test.go`). After changing a command, flag or help text,
+  run `go generate ./cmd/go-msi`; the test fails while the pages are stale.
 
 ## Documentation
 

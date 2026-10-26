@@ -70,7 +70,7 @@ flowchart LR
 | `internal/codepage` | ANSI code page encoders for the string pool and summary | §3, §4 | `golang.org/x/text` |
 | `internal/artwork` | Draws the wizard bitmaps (our own artwork, generated in code) and decodes a theme's BMP, PNG or JPEG pictures | | stdlib |
 | `internal/rtf` | Converts a plain-text license to RTF and checks an RTF license for the ScrollableText control | | stdlib |
-| `cmd/go-msi` | CLI: `build`, `validate`, `inspect` | | `builder`, `config`, `msidb` |
+| `cmd/go-msi` | CLI: `build`, `validate`, `inspect`, `sign`, `verify`, `completion`, `version` | | `builder`, `config`, `msidb`, `sign`, `spf13/cobra` |
 
 `pkg/config` (PR #2) stays as it is: the builder consumes a validated `*config.Config`
 and never reads YAML.
@@ -299,11 +299,15 @@ through `schema`, ICE18/19/21, ICE04/71, ICE27/63/77, ICE80, ICE87, ICE105).
 ### 1.10 `cmd/go-msi`
 
 - `go-msi build [--var NAME=value]... [--env] [-o out.msi] msi.yaml`
-- `go-msi validate msi.yaml` runs config validation and the input checks.
-- `go-msi inspect pkg.msi [--table Name]` dumps tables and streams through
-  `msidb.Unmarshal`; this is the cross-OS debugging tool.
+- `go-msi validate msi.yaml` runs config validation.
+- `go-msi inspect [--table Name] pkg.msi` dumps tables and streams through
+  `msidb.Decode`; this is the cross-OS debugging tool.
+- `go-msi sign` and `go-msi verify` sign and check packages (`pkg/sign`).
 
-Only the standard library `flag` package is used.
+The commands are built with `spf13/cobra` (POSIX flags, shell completion).
+Help goes to stdout, errors to stderr; the exit code is 0 on success, 1 when
+the command failed and 2 for a usage error. [`docs/cli`](../cli/go-msi.md) is
+generated from the command tree.
 
 ### 1.11 Internal helpers
 
