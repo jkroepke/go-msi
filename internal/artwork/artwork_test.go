@@ -86,12 +86,14 @@ func TestEncodeICO(t *testing.T) {
 	}
 
 	if endian.Uint16(out[2:]) != 1 || endian.Uint16(out[4:]) != 1 || out[6] != 2 || out[7] != 2 ||
+		out[8] != 0 || out[9] != 0 || endian.Uint16(out[10:]) != 1 ||
 		endian.Uint16(out[12:]) != 32 || endian.Uint32(out[14:]) != 40+16+8 || endian.Uint32(out[18:]) != 22 {
 		t.Errorf("directory %v", out[:22])
 	}
 
 	dib := out[22:]
-	if endian.Uint32(dib) != 40 || endian.Uint32(dib[4:]) != 2 || endian.Uint32(dib[8:]) != 4 || endian.Uint16(dib[14:]) != 32 {
+	if endian.Uint32(dib) != 40 || endian.Uint32(dib[4:]) != 2 || endian.Uint32(dib[8:]) != 4 || endian.Uint16(dib[14:]) != 32 ||
+		endian.Uint32(dib[16:]) != 0 || endian.Uint32(dib[20:]) != 0 {
 		t.Errorf("header %v", dib[:40])
 	}
 

@@ -81,9 +81,10 @@ func (b *build) license() string {
 	return text
 }
 
-// themePictures returns the banner and dialog background as bitmaps: the
-// theme's own pictures, or the built-in ones in the theme's colours.
-func (b *build) themePictures() ([]byte, []byte) {
+// themePictures returns the banner and dialog background as bitmaps (the
+// theme's own pictures, or the built-in ones in the theme's colours) and the
+// error dialog icon in the theme's colours.
+func (b *build) themePictures() ([]byte, []byte, []byte) {
 	theme := &b.cfg.UI.Theme
 	palette := themePalette(theme.Colors)
 
@@ -101,7 +102,7 @@ func (b *build) themePictures() ([]byte, []byte) {
 		background = artwork.EncodeBMP(artwork.Dialog(palette))
 	}
 
-	return banner, background
+	return banner, background, artwork.EncodeICO(artwork.ErrorIcon(palette))
 }
 
 // pictureSpec is the control rectangle of a theme picture in dialog units

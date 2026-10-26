@@ -169,7 +169,7 @@ func (w *wizard) modalBoxes() {
 	// Without an ErrorIcon control the engine logs error 2835 whenever it
 	// shows this dialog; the icon must name a real icon in the Binary table
 	// (an empty or dangling Text fails with 2888).
-	errBox.control(&uiControl{name: "ErrorIcon", typ: "Icon", x: 15, y: 15, w: 24, h: 24, attrs: ctlVisible | ctlFixed | ctlIcon32, text: binError})
+	errBox.control(&uiControl{name: "ErrorIcon", typ: "Icon", x: 15, y: 15, w: 24, h: 24, attrs: ctlErrorIcon, text: binError})
 	errBox.control(text("ErrorText", 50, 15, 200, 45, ""))
 
 	for _, btn := range []struct {

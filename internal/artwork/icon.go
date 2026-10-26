@@ -19,18 +19,18 @@ func ErrorIcon(palette Palette) *image.NRGBA {
 
 	for y := range IconSize {
 		for x := range IconSize {
-			px, py := float64(x)+0.5, float64(y)+0.5
+			midX, midY := float64(x)+0.5, float64(y)+0.5
 
-			disc := min(max(centre-0.5-math.Hypot(px-centre, py-centre), 0), 1)
+			disc := min(max(centre-0.5-math.Hypot(midX-centre, midY-centre), 0), 1)
 			if disc == 0 {
 				continue
 			}
 
 			colour := palette.Accent
 
-			// The bar of the mark spans rows 7–19, the dot rows 22–25.
-			bar := math.Abs(px-centre) <= 2 && py >= 7 && py <= 20
-			dot := math.Hypot(px-centre, py-23.5) <= 2.25
+			// The bar of the mark spans rows 7–19, the dot rows 21–25.
+			bar := math.Abs(midX-centre) <= 2 && midY >= 7 && midY <= 20
+			dot := math.Hypot(midX-centre, midY-23.5) <= 2.25
 
 			if bar || dot {
 				colour = white
