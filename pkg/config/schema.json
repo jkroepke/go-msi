@@ -491,6 +491,22 @@
             ],
             "additionalProperties": false
           },
+          "run": {
+            "type": "object",
+            "description": "Runs a command through the custom action DLL go-msi embeds: hidden window, output in the log, exit code checked.",
+            "properties": {
+              "command": {
+                "type": "string"
+              },
+              "directory": {
+                "$ref": "#/$defs/directoryRef"
+              }
+            },
+            "required": [
+              "command"
+            ],
+            "additionalProperties": false
+          },
           "dll": {
             "type": "object",
             "properties": {
@@ -542,7 +558,7 @@
                 "$ref": "#/$defs/var"
               }
             ],
-            "description": "Required for exec and execProperty."
+            "description": "Required for exec, execProperty and run."
           },
           "hideTarget": {
             "$ref": "#/$defs/bool"
@@ -662,6 +678,11 @@
             "required": [
               "dll"
             ]
+          },
+          {
+            "required": [
+              "run"
+            ]
           }
         ],
         "allOf": [
@@ -676,6 +697,11 @@
                 {
                   "required": [
                     "execProperty"
+                  ]
+                },
+                {
+                  "required": [
+                    "run"
                   ]
                 }
               ]

@@ -1312,7 +1312,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 
 	for _, set := range []bool{
 		action.SetProperty != nil, action.SetDirectory != nil, action.Error != "",
-		action.Exec != nil, action.ExecProperty != nil, action.DLL != nil,
+		action.Exec != nil, action.ExecProperty != nil, action.DLL != nil, action.Run != nil,
 	} {
 		if set {
 			kinds++
@@ -1320,7 +1320,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 	}
 
 	if kinds != 1 {
-		v.errorf(actionPath, "exactly one of setProperty, setDirectory, error, exec, execProperty or dll is required")
+		v.errorf(actionPath, "exactly one of setProperty, setDirectory, error, exec, execProperty, dll or run is required")
 	}
 
 	v.oneOf(actionPath+".execute", action.Execute, executeImmediate, "deferred", "rollback", "commit")
@@ -1363,6 +1363,16 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 		}
 
 		v.required(actionPath+".dll.entry", action.DLL.Entry)
+	case action.Run != nil:
+		v.required(actionPath+".run.command", action.Run.Command)
+
+		if dir := action.Run.Directory; dir != "" && dir != "TARGETDIR" && known.dirs[dir] == nil && !standardFolders[dir] {
+			v.errorf(actionPath+".run.directory", "directory %q is not defined", dir)
+		}
+
+		if action.Return == "asyncNoWait" {
+			v.errorf(actionPath+".return", "run actions cannot use asyncNoWait; the DLL waits for the command")
+		}
 	}
 }
 
@@ -1370,7 +1380,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 // processing and once.
 func (v *validator) actionRun(cfg *Config, actionPath string, action *CustomAction) { //nolint:cyclop // a flat list of independent checks
 	inScript := action.Execute != executeImmediate
-	isExec := action.Exec != nil || action.ExecProperty != nil
+	isExec := action.Exec != nil || action.ExecProperty != nil || action.Run != nil
 
 	if !*action.Impersonate && !inScript {
 		v.errorf(actionPath+".impersonate", "impersonate: false needs a deferred, rollback or commit action")
@@ -1381,7 +1391,7 @@ func (v *validator) actionRun(cfg *Config, actionPath string, action *CustomActi
 	}
 
 	if isExec && action.Return == "" {
-		v.errorf(actionPath+".return", "required for exec actions: check fails the install on a non-zero exit "+
+		v.errorf(actionPath+".return", "required for exec and run actions: check fails the install on a non-zero exit "+
 			"code, ignore does not (CA-02)")
 	} else if action.Return != "" {
 		v.oneOf(actionPath+".return", action.Return, "check", "ignore", "asyncWait", "asyncNoWait")

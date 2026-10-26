@@ -165,7 +165,7 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 
 		// exec actions must state how their exit code is handled; the
 		// validator reports a missing value instead of defaulting it.
-		if action.Return == "" && action.Exec == nil && action.ExecProperty == nil {
+		if action.Return == "" && action.Exec == nil && action.ExecProperty == nil && action.Run == nil {
 			action.Return = "check"
 		}
 
