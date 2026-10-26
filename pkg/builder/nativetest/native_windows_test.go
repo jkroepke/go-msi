@@ -42,6 +42,18 @@ const (
 	pidTemplate      = 7
 )
 
+// call runs p and turns a non-zero result into an error.
+//
+// Callers pass out-parameters as uintptr(unsafe.Pointer(&v)). Outside the
+// argument list of a function the compiler knows takes such pointers, that
+// conversion hides v from the compiler: v stays on the goroutine stack, a
+// stack growth before the system call moves it, and msi.dll writes the
+// handle to the old stack. The caller then reads 0, and the next call fails
+// with ERROR_INVALID_HANDLE (6) while the real handle leaks and keeps the
+// package open. uintptrescapes moves those values to the heap and keeps them
+// alive for the call, as it does for (*syscall.LazyProc).Call.
+//
+//go:uintptrescapes
 func call(name string, p *syscall.LazyProc, args ...uintptr) error {
 	r, _, _ := p.Call(args...)
 	if r != 0 {
@@ -51,7 +63,10 @@ func call(name string, p *syscall.LazyProc, args ...uintptr) error {
 	return nil
 }
 
-func wstr(t *testing.T, s string) uintptr {
+// wstr returns s as a NUL-terminated UTF-16 string. Convert the result to
+// uintptr only inside the argument list of call or Call, so that the buffer
+// stays alive until msi.dll has read it.
+func wstr(t *testing.T, s string) *uint16 {
 	t.Helper()
 
 	p, err := syscall.UTF16PtrFromString(s)
@@ -59,7 +74,7 @@ func wstr(t *testing.T, s string) uintptr {
 		t.Fatal(err)
 	}
 
-	return uintptr(unsafe.Pointer(p))
+	return p
 }
 
 func closeHandle(h uint32) { _, _, _ = pMsiCloseHandle.Call(uintptr(h)) }
@@ -68,7 +83,7 @@ func openDB(t *testing.T, path string) uint32 {
 	t.Helper()
 
 	var h uint32
-	if err := call("MsiOpenDatabaseW", pMsiOpenDatabaseW, wstr(t, path), 0 /* MSIDBOPEN_READONLY */, uintptr(unsafe.Pointer(&h))); err != nil {
+	if err := call("MsiOpenDatabaseW", pMsiOpenDatabaseW, uintptr(unsafe.Pointer(wstr(t, path))), 0 /* MSIDBOPEN_READONLY */, uintptr(unsafe.Pointer(&h))); err != nil {
 		t.Fatal(err)
 	}
 
@@ -90,7 +105,7 @@ func query(t *testing.T, db uint32, sql string) [][]string {
 	t.Helper()
 
 	var view uint32
-	if err := call("MsiDatabaseOpenViewW", pMsiDatabaseOpenViewW, uintptr(db), wstr(t, sql), uintptr(unsafe.Pointer(&view))); err != nil {
+	if err := call("MsiDatabaseOpenViewW", pMsiDatabaseOpenViewW, uintptr(db), uintptr(unsafe.Pointer(wstr(t, sql))), uintptr(unsafe.Pointer(&view))); err != nil {
 		t.Fatalf("%s: %v", sql, err)
 	}
 

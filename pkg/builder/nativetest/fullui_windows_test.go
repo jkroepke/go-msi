@@ -363,7 +363,7 @@ func fullUI(t *testing.T, dir string, args ...string) (int, string) {
 func productInstalled(t *testing.T, code string) bool {
 	t.Helper()
 
-	r, _, _ := pMsiQueryProductStateW.Call(wstr(t, code))
+	r, _, _ := pMsiQueryProductStateW.Call(uintptr(unsafe.Pointer(wstr(t, code))))
 
 	return r == installStateDefault
 }
