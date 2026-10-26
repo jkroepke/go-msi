@@ -801,6 +801,16 @@ func TestShorthandFeatureFirewallCarrierPlace(t *testing.T) {
 		}
 	}
 
+	// Without a configurable directory, the carrier joins the feature's
+	// component instead of adding an install dir.
+	plain := "directories:\n  - id: ProgramFiles64Folder\n    children: [{ id: COMPANY, name: Example, children: [{ id: APPDIR, name: App }] }]\n" +
+		"components: [{ id: App, directory: APPDIR, files: [{ source: hello.exe }] }]\n"
+
+	stray := parseValid(t, short+plain+"features:\n  - { id: Main, components: [App], "+rule+" }\n")
+	if dir := stray.Components[1].Directory; dir != "APPDIR" || dirPath(stray.Directories, config.DefaultInstallDirID) != nil {
+		t.Errorf("carrier in %s; install dir %v", dir, dirPath(stray.Directories, config.DefaultInstallDirID))
+	}
+
 	// A component set from Go after parsing stands.
 	cfg.Firewall[0].Component = "App"
 	if config.ApplyDefaults(cfg); cfg.Firewall[0].Component != "App" {

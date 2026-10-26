@@ -983,7 +983,13 @@
       "required": [
         "id"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "default",
+          "level"
+        ]
+      }
     },
     "guid": {
       "anyOf": [

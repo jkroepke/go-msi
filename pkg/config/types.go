@@ -203,8 +203,8 @@ type Component struct {
 	// firewallFeature is the feature whose firewall rules a generated
 	// component carries.
 	firewallFeature string
-	// featureDir is the directory of that feature, if it has one.
-	featureDir string
+	// carrierOf is that feature.
+	carrierOf *Feature
 }
 
 // FirewallFeature returns the feature whose firewall rules the component

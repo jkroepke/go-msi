@@ -134,7 +134,7 @@ func firewallCarrier(cfg *Config, feature *Feature, featurePath string) *Compone
 		// user can change.
 		origin:          featurePath,
 		firewallFeature: feature.ID,
-		featureDir:      feature.Directory,
+		carrierOf:       feature,
 	}
 
 	cfg.Components = append(cfg.Components, carrier)
@@ -150,14 +150,18 @@ func unplacedCarrier(comp *Component) bool {
 }
 
 // carrierDirectory places a carrier: in its feature's directory, else in
-// the install dir when the package has one, else in the first configurable
-// directory outside the user profile. Only without any of these does it add
-// the install dir.
+// the install dir when the package has one, else beside a component of the
+// feature, else in the first configurable directory, both outside the user
+// profile. Only without any of these does it add the install dir.
 func (t *dirTree) carrierDirectory(carrier *Component) string {
-	for _, dirID := range []string{carrier.featureDir, t.cfg.InstallDir.ID} {
+	for _, dirID := range []string{carrier.carrierOf.Directory, t.cfg.InstallDir.ID} {
 		if dirID != "" && t.byID[dirID] != nil {
 			return dirID
 		}
+	}
+
+	if dirID := t.featureComponentDir(carrier.carrierOf); dirID != "" {
+		return dirID
 	}
 
 	if dirID := configurableDir(t.cfg.Directories, ""); dirID != "" {
@@ -167,6 +171,62 @@ func (t *dirTree) carrierDirectory(carrier *Component) string {
 	t.ensureInstallDir()
 
 	return t.cfg.InstallDir.ID
+}
+
+// featureComponentDir returns the directory of the first component of a
+// feature, or of its sub-features, outside the user profile.
+func (t *dirTree) featureComponentDir(feature *Feature) string {
+	byID := make(map[string]*Component, len(t.cfg.Components))
+	for _, comp := range t.cfg.Components {
+		if comp.ID != "" {
+			byID[comp.ID] = comp
+		}
+	}
+
+	found := ""
+
+	eachFeature([]*Feature{feature}, func(f *Feature, _ int) {
+		for _, entry := range f.Components {
+			comp := entry
+			if entry.ref {
+				comp = byID[entry.ID]
+			}
+
+			if found == "" && comp != nil && !unplacedCarrier(comp) && t.byID[comp.Directory] != nil &&
+				!profileFolders[t.topFolder(comp.Directory)] {
+				found = comp.Directory
+			}
+		}
+	})
+
+	return found
+}
+
+// topFolder returns the top-level folder above a directory.
+func (t *dirTree) topFolder(dirID string) string {
+	var find func([]*Directory) bool
+
+	top := dirID
+
+	find = func(dirs []*Directory) bool {
+		for _, dir := range dirs {
+			if dir.ID == dirID || find(dir.Children) {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	for _, dir := range t.cfg.Directories {
+		if dir.ID == dirID || find(dir.Children) {
+			top = dir.ID
+
+			break
+		}
+	}
+
+	return top
 }
 
 // configurableDir returns the first configurable directory whose top-level

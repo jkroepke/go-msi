@@ -92,6 +92,8 @@ func TestJSONSchemaRejectsMistakes(t *testing.T) {
 		"string for bool":        strings.Replace(base, "upgrade: {}", "upgrade: {allowSameVersion: yes please}", 1) + appComponent,
 		"missing required":       strings.Replace(base, "  manufacturer: Example\n", "", 1) + appComponent,
 		"rule without component": base + appComponent + "firewall: [{ name: a, program: x }]\n",
+		"default with level": strings.Replace(base, "components: [App]\n", "components: [App]\n    default: off\n    level: 3\n", 1) +
+			appComponent,
 		"feature rule with component": strings.Replace(base, "components: [App]\n",
 			"components: [App]\n    firewall: [{ name: a, program: x, component: App }]\n", 1) + appComponent,
 	} {

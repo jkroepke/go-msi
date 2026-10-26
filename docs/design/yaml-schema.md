@@ -687,9 +687,9 @@ features:
 
 The loader adds an empty component `FirewallException_Firewall` to the
 feature and points the rules at it. The component goes in the feature's
-`directory`, else in the install dir, else in the first configurable
-directory outside the user profile; only a tree with none of these gets the
-install dir added for it. Its GUID comes from the
+`directory`, else in the install dir, else beside one of the feature's
+components, else in the first configurable directory, both outside the user
+profile; only a tree with none of these gets the install dir added for it. Its GUID comes from the
 upgrade code, the bitness and the feature ID, so it does not collide with
 other components keyed on the install dir. Errors name the rule's place
 under the feature, such as `features[1].firewall[0].program`.
