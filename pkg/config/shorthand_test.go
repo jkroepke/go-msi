@@ -811,6 +811,26 @@ func TestShorthandFeatureFirewallCarrierPlace(t *testing.T) {
 		t.Errorf("carrier in %s; install dir %v", dir, dirPath(stray.Directories, config.DefaultInstallDirID))
 	}
 
+	// A feature naming its component by a generated id, and a 32-bit
+	// component on a 64-bit package.
+	for name, doc := range map[string]string{
+		"generated id": "directories:\n  - id: ProgramFiles64Folder\n    children: [{ id: CO, name: Example, children: [{ id: APPDIR, name: App }] }]\n" +
+			"components: [{ directory: APPDIR, files: [{ source: hello.exe }] }]\n" +
+			"features:\n  - { id: Main, components: [hello.exe], " + rule + " }\n",
+		"32-bit": "directories:\n  - id: ProgramFilesFolder\n    children: [{ id: APPDIR, name: Hello }]\n" +
+			"components: [{ id: App, directory: APPDIR, bitness: '32', files: [{ source: hello.exe }] }]\n" +
+			"features:\n  - { id: Main, components: [App], " + rule + " }\n",
+	} {
+		cfg := parseValid(t, short+doc)
+		if dir := cfg.Components[1].Directory; dir != "APPDIR" || dirPath(cfg.Directories, config.DefaultInstallDirID) != nil {
+			t.Errorf("%s: carrier in %s", name, dir)
+		}
+
+		if ds := config.Validate(cfg); len(ds) != 0 {
+			t.Errorf("%s: %v", name, ds)
+		}
+	}
+
 	// A component set from Go after parsing stands.
 	cfg.Firewall[0].Component = "App"
 	if config.ApplyDefaults(cfg); cfg.Firewall[0].Component != "App" {

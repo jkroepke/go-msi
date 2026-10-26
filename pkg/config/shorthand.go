@@ -67,13 +67,20 @@ func expandShorthands(cfg *Config) {
 		}
 	}
 
+	// Generated ids first, so that a feature can name the component the
+	// carrier joins by one.
+	componentIDs(cfg)
+
 	for _, comp := range cfg.Components {
 		if unplacedCarrier(comp) {
 			comp.Directory = tree.carrierDirectory(comp)
+
+			// A carrier in a 32-bit folder is a 32-bit component (ICE80).
+			if cfg.Package.Platform.Is64Bit() && comp.Bitness == "" && folders32[tree.topFolder(comp.Directory)] {
+				comp.Bitness = "32"
+			}
 		}
 	}
-
-	componentIDs(cfg)
 
 	for _, rule := range cfg.Firewall {
 		// Only the first run fills it in; a component set from Go since
