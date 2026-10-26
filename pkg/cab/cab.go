@@ -89,7 +89,8 @@ type Options struct {
 	// Window is the LZX window as a power of two, 15 to 21; 0 means 21.
 	Window int
 	// Workers is the number of MSZIP blocks compressed at once; 0 means
-	// GOMAXPROCS, at most 4. The cabinet is the same for any number.
+	// GOMAXPROCS, at most 4. The cabinet is the same for any number; each
+	// worker adds about 2 MB of heap at level 9.
 	Workers int
 
 	// lzxBlock forces the LZX block type in tests.
