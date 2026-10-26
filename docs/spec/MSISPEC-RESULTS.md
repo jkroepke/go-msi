@@ -198,7 +198,7 @@ Silent-failure cases a producer has to guard against itself:
 | RUN-26 | Confirmed | [removefile-upgrade](msitest/results/RUN-26/removefile-upgrade/log.md), [purge-upgrade](msitest/results/RUN-26/purge-upgrade/log.md); `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-run-24-to-run-27) |
 | RUN-27 | Confirmed | [per-step](msitest/results/RUN-27/per-step/log.md); per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-run-24-to-run-27) |
 | RUN-28 | Confirmed | [hkcu-folder](msitest/results/RUN-28/hkcu-folder/log.md), [file-component](msitest/results/RUN-28/file-component/log.md), [file-component-folder](msitest/results/RUN-28/file-component-folder/log.md), [advertised](msitest/results/RUN-28/advertised/log.md), [per-user](msitest/results/RUN-28/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-run-28) |
-| RUN-29 | Confirmed | [probe](msitest/results/RUN-29/probe/log.md); Word Count bit 1 changed only the source path of the `short\|long` directory: the target folder and an administrative image keep the long name, `SHORTFILENAMES=1` installs to the short one; [details](#short-name-packages-run-29) |
+| RUN-29 | Confirmed | [probe](msitest/results/RUN-29/probe/log.md); in a Word Count 3 package the target folder and an administrative image kept the long part of the `short\|long` directory, and `SHORTFILENAMES=1` installed to the short one; [details](#short-name-packages-run-29) |
 | UI-01 | Confirmed | Wizard rendering on Windows Server 2025, go-msi packages driven by hand and by window messages, with PrintWindow and screen captures (2026-10-26); [details](#wizard-rendering-ui-01) |
 | SEC-01 | Confirmed | File, [CreateFolder](msitest/results/SEC-01/createfolder/log.md), [Registry](msitest/results/SEC-01/registry/log.md) and [ServiceInstall](msitest/results/SEC-01/service/log.md) rows get the authored DACL; [`/fa` and `/fvomus` restore it](msitest/results/SEC-01/file/log.md); [owner and group](msitest/results/SEC-01/file-owner-group/log.md) are set; `[Property]` stays literal (1943) but [`<[%USERDOMAIN]\[%USERNAME]>`](msitest/results/SEC-01/account-angle-env/log.md) and [`<BUILTIN\Users>`](msitest/results/SEC-01/account-angle-builtin/log.md) resolve; invalid SDDL 1943, two true rows 1942, both tables 1941; [deny ACE for `BU`](msitest/results/SEC-01/file-deny-ace/log.md) leaves the file on uninstall |
 | VAL-01 | Confirmed | [log](msitest/results/VAL-01/msival2-compare/log.md); the Go runner and `msival2.exe` agree on all three packages (1, 25 and 26 warning and error findings; Info lines left out); ICE08 reports the duplicate GUID |
@@ -366,9 +366,11 @@ cabinet and `INSTALLDIR` as `owyyokav|Short Name Probe` under
 | `/a TARGETDIR=C:\sfn-admin` | `C:\sfn-admin\PFiles64\Short Name Probe\` | image written |
 | `/i SHORTFILENAMES=1` | `C:\Program Files\owyyokav\` | installed and removed |
 
-- Bit 1 reaches only the source side for the directory: the log resolves `ShortSubPath:
-  PFiles64\owyyokav\` and `SetSourceFolder(Folder=1\PFiles64\owyyokav\|…)`,
-  while `SetTargetFolder` gets the long name.
+- The source side lists the short part first:
+  `SetSourceFolder(Folder=1\PFiles64\owyyokav\|…)` (the `Dir (source)` line
+  logs both `LongSubPath` and `ShortSubPath`), while `SetTargetFolder` gets
+  the long name. No long-name package was run, so this run does not show how
+  bit 1 changes source paths (section 8.3, reported).
 - The administrative image uses long names, and its `.msi` has Word Count 4
   (administrative image; long names, uncompressed): the engine clears 0x1
   when it writes the image.
