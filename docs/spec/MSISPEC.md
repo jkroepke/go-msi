@@ -292,7 +292,7 @@ These are format and integrity requirements for a conforming, lossless serialize
 | 15 | Word Count | I4 | **Required.** 0x1 short names, 0x2 compressed, 0x8 no elevation; typically 2 |
 | 18 / 19 | Creating Application / Security | LPSTR / I4 | tool name and version / 2 |
 
-- Omit PIDs 8, 11 and 16 and empty strings; never write 10 or 17. Fail on text the code page cannot represent.
+- Omit PIDs 8, 11 and 16 and empty strings; never write 10 or 17. Text the summary code page cannot represent is replaced by `?` with a warning rather than failing the build: the summary is informational, and a 65001 database with non-Latin product names would otherwise never build (deliberate deviation, unlike the string pool).
 - Template platform is `Intel`, `x64`, `Intel64`, `Arm` or `Arm64`, spelled exactly; empty means Intel. One language per package; 0 is neutral.
 - There is no architecture-neutral token: a package without 64-bit components uses `Intel`, which installs on every Windows platform. User-facing options SHOULD accept `x86`, `x64` and `arm64` in any case and map them to these tokens, since users repeatedly ask which spelling a tool wants (reported).
 - Page Count: `x64` and `Intel64` need ≥ 200, `Arm64` ≥ 500, `Arm` uses 500; never below 100. Never set Word Count 0x4 (administrative image).

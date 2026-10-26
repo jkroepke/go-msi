@@ -9,7 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"unicode"
+
 	"github.com/jkroepke/go-msi/internal/condition"
+	"github.com/jkroepke/go-msi/pkg/msidb"
 )
 
 // Limits checked by Validate. Section references are to docs/spec/MSISPEC.md;
@@ -27,6 +30,16 @@ const (
 	minSequenceNumber    = -4
 	maxSequenceNumber    = 32767
 )
+
+// cabinetForbidden are the characters a cabinet file name cannot hold.
+const cabinetForbidden = `\/:*?"<>|#`
+
+// plainFileName reports whether name holds none of cabinetForbidden and no
+// control characters, which also keeps the cabinet off the streams that
+// start with U+0005, such as \x05SummaryInformation.
+func plainFileName(name string) bool {
+	return !strings.ContainsAny(name, cabinetForbidden) && !strings.ContainsFunc(name, unicode.IsControl)
+}
 
 // Validate fills in defaults, checks cfg and returns every finding. It reads
 // no input files; checks that need them (PE versions, sequence numbering,
@@ -237,12 +250,10 @@ func (v *validator) pkg(cfg *Config) {
 
 	v.oneOf("package.compression", pkg.Compression, "mszip", "none")
 
-	if len(pkg.Cabinet) > MaxStreamNameLength {
-		v.errorf("package.cabinet", "at most %d characters (DB-11)", MaxStreamNameLength)
-	}
-
-	if strings.ContainsAny(pkg.Cabinet, `\/:*?"<>|#`) {
+	if !plainFileName(pkg.Cabinet) {
 		v.errorf("package.cabinet", "%q is not a plain file name", pkg.Cabinet)
+	} else if err := msidb.CheckStreamName(pkg.Cabinet); err != nil {
+		v.errorf("package.cabinet", "not a valid stream name (DB-11): %v", err)
 	}
 }
 

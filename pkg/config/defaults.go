@@ -1,6 +1,10 @@
 package config
 
-import "time"
+import (
+	"time"
+
+	"github.com/jkroepke/go-msi/pkg/msidb"
+)
 
 // Defaults of docs/design/yaml-schema.md section 4.
 const (
@@ -8,6 +12,7 @@ const (
 	DefaultInstallerVersion = "5.0"
 	DefaultCodepage         = 1252
 	DefaultCompression      = "mszip"
+	DefaultCabinet          = "product.cab"
 	DefaultRemoveOld        = "afterInstallInitialize"
 	PreserveRemoveOld       = "afterInstallExecute"
 	DefaultUpgradeProperty  = "OLDERVERSIONBEINGUPGRADED"
@@ -41,11 +46,11 @@ func ApplyDefaults(cfg *Config) {
 	}
 
 	if p.Description == "" {
-		p.Description = p.Name + " " + p.Version + " installer"
+		p.Description = DefaultDescription(p)
 	}
 
 	if p.Comments == "" {
-		p.Comments = "This installer database contains the logic and data required to install " + p.Name + "."
+		p.Comments = DefaultComments(p)
 	}
 
 	pkg := &cfg.Package
@@ -67,6 +72,12 @@ func ApplyDefaults(cfg *Config) {
 
 	if pkg.Cabinet == "" {
 		pkg.Cabinet = p.Name + ".cab"
+		if msidb.CheckStreamName(pkg.Cabinet) != nil || !plainFileName(pkg.Cabinet) {
+			// The product name may be longer than a stream name or use
+			// characters a stream name cannot hold, such as non-ASCII
+			// letters with case.
+			pkg.Cabinet = DefaultCabinet
+		}
 	}
 
 	if pkg.LongFileNames == nil {
@@ -301,4 +312,15 @@ func eachFeature(features []*Feature, fn func(*Feature, int)) {
 	}
 
 	walk(features, 1)
+}
+
+// DefaultDescription is the description, and so the summary subject, of a
+// product that sets none.
+func DefaultDescription(p *Product) string {
+	return p.Name + " " + p.Version + " installer"
+}
+
+// DefaultComments are the summary comments of a product that sets none.
+func DefaultComments(p *Product) string {
+	return "This installer database contains the logic and data required to install " + p.Name + "."
 }

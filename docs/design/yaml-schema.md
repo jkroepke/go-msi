@@ -85,8 +85,8 @@ closes each one.
 |---|---|---|
 | Template platform tokens are exact and case-sensitive; `X64` and `arm64` give 1633 | SUM-02 | `package.platform` takes `x86`, `x64` or `arm64` in any case, plus the aliases `intel`, `amd64` and `aarch64`, and the builder writes the exact token. |
 | Two languages in the Template give 1624 | SUM-02 | `product.language` is one integer LCID, not a list. |
-| Summary code page 65001 or 1200 gives 1620; a 65001 database works | SUM-04, DB-08 | `package.codepage` sets the database code page (1252 by default, 65001 allowed). The summary code page is the database code page when that is an ANSI page, else 1252. |
-| Stream names are limited to 62 characters | DB-11 | `icons` keys are at most 57 characters and `binaries` keys at most 55 (`Icon.` and `Binary.` count). The embedded cabinet name is at most 62 characters. |
+| Summary code page 65001 or 1200 gives 1620; a 65001 database works | SUM-04, DB-08 | `package.codepage` sets the database code page (1252 by default, 65001 allowed). The summary code page is the database code page when that is an ANSI page, else 1252. Every table string must fit the database code page, or the build fails with a `package.codepage` error. Summary text that the summary code page cannot hold is stored with `?` in place of those characters, with a warning. |
+| Stream names are limited to 62 characters | DB-11 | `icons` keys are at most 57 characters and `binaries` keys at most 55 (`Icon.` and `Binary.` count). The 62-character limit holds only for names made of `0`–`9`, `A`–`Z`, `a`–`z`, `.` and `_`: every other BMP character takes a stream-name unit of its own and a character outside the BMP two (31 in all), and `!`, `/`, `\`, `:`, NUL, U+3800–U+4840 and letters with case from U+0080 to U+D7FF are rejected. `package.cabinet` is checked with the stream-name encoder. |
 | The minimum integer of a column type is stored as NULL | DB-02 | `tables[].rows` reject −32768 in `i2` columns and −2147483648 in `i4` columns. |
 | `MsiGetFileHash` returns zeros for an empty file | RUN-12 | Writer: an empty unversioned file gets a hash row of four zeros. |
 | A service is deleted at uninstall only with `ServiceControl` event 128 | RUN-05 | `services[].control.deleteOnUninstall` defaults to `true`. |
@@ -222,7 +222,7 @@ them braced and upper case.
 | `installerVersion` | string | `"5.0"` | Page Count = major × 100 + minor. x86: 1.0 to 5.0, x64: 2.0 to 5.0, arm64: 5.0 |
 | `codepage` | int | `1252` | Database code page, section 2.3 |
 | `compression` | enum | `mszip` | `mszip` or `none` (stored blocks) |
-| `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters |
+| `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters (fewer outside `0-9A-Za-z._`). The default is `product.cab` when `<name>.cab` cannot be a stream name or a plain filename |
 | `longFileNames` | bool | `true` | `false` sets Word Count bit 1 and requires 8.3 names |
 | `summary` | map | | `title` (`Installation Database`), `keywords` (`Installer`), `author` (manufacturer) |
 
@@ -800,6 +800,14 @@ tables:
 At most 31 columns (DB-07), a name of at most 31 characters, integers inside
 the column type's range without its minimum (DB-02). Standard tables that the
 builder writes cannot be redefined here.
+
+A binary cell (a `v0` or `V0` column, at most one per table) names a file to embed. It
+is stored in the stream `<table>.<key1>.<key2>…`, which must be a valid stream
+name (DB-11) and must not match the name of the cabinet, an `icons` or
+`binaries` entry, a wizard bitmap, or another row. A bad name is reported at
+`tables[i].rows[j]`. A clash names both owners and is reported at the later
+one: `binaries`, `ui` and `icons` come first, then `tables` in file order,
+then `package.cabinet`.
 
 ## 5. Validation
 
