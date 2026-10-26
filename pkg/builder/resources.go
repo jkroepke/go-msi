@@ -98,7 +98,7 @@ func (b *build) writeRegistry(info *componentInfo) {
 
 // writeEnvironment emits Environment rows. The removal flag is always
 // written explicitly, because the machine-scope flag does not imply it
-// (MSISPEC-RESULTS RUN-08).
+// (MSISPEC-RESULTS ENVVAR-01).
 func (b *build) writeEnvironment(info *componentInfo) {
 	tbl := b.table("Environment")
 	comp := info.cfg
@@ -262,7 +262,7 @@ func serviceID(prefix, name string) string {
 
 // recoveryAction schedules the sc.exe failure command that replaces the
 // MsiServiceConfigFailureActions table, which fails with 1939 for restart
-// actions (MSISPEC-RESULTS RUN-05).
+// actions (MSISPEC-RESULTS SVC-01).
 func (b *build) recoveryAction(info *componentInfo, svc *config.Service) {
 	rec := svc.Recovery
 
@@ -301,7 +301,7 @@ func (b *build) recoveryAction(info *componentInfo, svc *config.Service) {
 
 // purgeAction schedules a deferred rmdir of the component's directory tree
 // on a real uninstall. RemoveFile rows cannot do it: they never recurse and
-// they also run on the uninstall half of a major upgrade (RUN-26).
+// they also run on the uninstall half of a major upgrade (FILE-03).
 func (b *build) purgeAction(info *componentInfo) {
 	comp := info.cfg
 	if !comp.Purge.Enabled() {
@@ -323,7 +323,7 @@ func (b *build) purgeAction(info *componentInfo) {
 	if comp.Purge.Condition != "" {
 		cond += " AND (" + comp.Purge.Condition + ")"
 
-		// RUN-26 tested the opt-in with a secure property; a public one
+		// FILE-03 tested the opt-in with a secure property; a public one
 		// set on the client must reach the server.
 		for _, prop := range condition.Properties(comp.Purge.Condition) {
 			if config.IsPublicProperty(prop) {

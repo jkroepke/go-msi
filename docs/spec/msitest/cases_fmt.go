@@ -11,19 +11,19 @@ import (
 )
 
 func init() {
-	cases["DB-14"] = caseDB14
+	cases["SUM-07"] = caseSum07
 	cases["SUM-02"] = caseSum02
 	cases["SUM-03"] = caseSum03
 	cases["SUM-04"] = caseSum04
-	cases["DB-07"] = caseDB07
-	cases["DB-04"] = caseDB04
+	cases["MSIDB-07"] = caseMSIDB07
+	cases["MSIDB-04"] = caseMSIDB04
 	cases["CFB-01"] = caseCFB01
 	cases["CFB-02"] = caseCFB02
 	cases["CFB-03"] = caseCFB03
 	cases["CFB-04"] = caseCFB04
 	cases["CFB-06"] = caseCFB06
-	cases["DB-09"] = caseDB09
-	cases["DB-10"] = caseDB10
+	cases["MSIDB-09"] = caseMSIDB09
+	cases["MSIDB-10"] = caseMSIDB10
 }
 
 // nativeOpen opens a package read-only, reads ProductCode and the summary.
@@ -86,8 +86,8 @@ func tryInstall(c *caseLog, label, path string) int {
 	return r.Exit
 }
 
-func caseDB14() {
-	c := newCase("DB-14", "summary-system-identifier")
+func caseSum07() {
+	c := newCase("SUM-07", "summary-system-identifier")
 	defer c.close()
 	p := &pkg{Name: "db14", Is64: true}
 	out := control(c, p, "native.msi")
@@ -197,8 +197,8 @@ func mustRead(p string) []byte {
 	return b
 }
 
-func caseDB07() {
-	c := newCase("DB-07", "column-limit")
+func caseMSIDB07() {
+	c := newCase("MSIDB-07", "column-limit")
 	defer c.close()
 	for _, n := range []int{31, 32, 33} {
 		path, _ := filepath.Abs(c.path(fmt.Sprintf("cols%d.msi", n)))
@@ -280,8 +280,8 @@ func lenFirst(r [][]string) int {
 	return len(r[0])
 }
 
-func caseDB04() {
-	c := newCase("DB-04", "long-strings")
+func caseMSIDB04() {
+	c := newCase("MSIDB-04", "long-strings")
 	defer c.close()
 	path, _ := filepath.Abs(c.path("long.msi"))
 	os.Remove(path)
@@ -598,8 +598,8 @@ func caseCFB06() {
 	}
 }
 
-func caseDB09() {
-	c := newCase("DB-09", "empty-table")
+func caseMSIDB09() {
+	c := newCase("MSIDB-09", "empty-table")
 	defer c.close()
 	p := &pkg{Name: "db09", Is64: true, Extra: map[string][][]string{"LaunchCondition": nil}}
 	out := control(c, p, "native.msi")
@@ -636,8 +636,8 @@ func caseDB09() {
 	c.logf("RESULT empty physical stream -> install %d", ex)
 }
 
-func caseDB10() {
-	c := newCase("DB-10", "validation-table")
+func caseMSIDB10() {
+	c := newCase("MSIDB-10", "validation-table")
 	defer c.close()
 	p := &pkg{Name: "db10", Is64: true}
 	out := control(c, p, "missing.msi")

@@ -13,13 +13,13 @@ import (
 )
 
 func init() {
-	cases["RUN-03"] = caseRun03
-	cases["RUN-04"] = caseRun04
-	cases["RUN-17"] = caseRun17
-	cases["RUN-11"] = caseRun11
-	cases["RUN-07"] = caseRun07
-	cases["RUN-08"] = caseRun08
-	cases["RUN-02"] = caseRun02
+	cases["UPG-01"] = caseUpg01
+	cases["UPG-02"] = caseUpg02
+	cases["UPG-04"] = caseUpg04
+	cases["UPG-03"] = caseUpg03
+	cases["REG-01"] = caseReg01
+	cases["ENVVAR-01"] = caseEnvVar01
+	cases["FILE-01"] = caseFile01
 }
 
 func registered(code string) bool {
@@ -60,14 +60,14 @@ func upgradePkg(c *caseLog, file, version string, rep string, extra func(p *pkg)
 	return p, control(c, p, file)
 }
 
-func caseRun03() {
+func caseUpg01() {
 	for _, v := range []struct{ name, first, second string }{
 		{"higher", "1.0.0", "2.0.0"},
 		{"equal", "1.0.0", "1.0.0"},
 		{"lower", "2.0.0", "1.0.0"},
 		{"fourth-field-only", "1.0.0.1", "1.0.0.2"},
 	} {
-		c := newCase("RUN-03", v.name)
+		c := newCase("UPG-01", v.name)
 		p1, m1 := upgradePkg(c, "first.msi", v.first, "1401", nil)
 		p2, m2 := upgradePkg(c, "second.msi", v.second, "1401", nil)
 		r1 := runMsiexec(c, "install-first.log", "/i", m1)
@@ -92,9 +92,9 @@ func logProperty(log, name string) string {
 	return ""
 }
 
-func caseRun04() {
+func caseUpg02() {
 	for _, v := range []string{"launchcondition", "type19"} {
-		c := newCase("RUN-04", v)
+		c := newCase("UPG-02", v)
 		p2, m2 := upgradePkg(c, "newer.msi", "2.0.0", "1401", nil)
 		p1, m1 := upgradePkg(c, "older.msi", "1.0.0", "1401", func(p *pkg) {
 			if v == "launchcondition" {
@@ -114,9 +114,9 @@ func caseRun04() {
 	}
 }
 
-func caseRun17() {
+func caseUpg04() {
 	for _, pos := range []string{"1401", "1501", "6551", "6601", "5802", "1399"} {
-		c := newCase("RUN-17", "rep-"+pos)
+		c := newCase("UPG-04", "rep-"+pos)
 		p1, m1 := upgradePkg(c, "v1.msi", "1.0.0", "1401", nil)
 		p2, m2 := upgradePkg(c, "v2.msi", "2.0.0", pos, nil)
 		runMsiexec(c, "install-v1.log", "/i", m1)
@@ -129,8 +129,8 @@ func caseRun17() {
 	}
 }
 
-func caseRun11() {
-	c := newCase("RUN-11", "same-productcode")
+func caseUpg03() {
+	c := newCase("UPG-03", "same-productcode")
 	defer c.close()
 	code := newGUID()
 	pa := &pkg{Name: "run11", Is64: true, ProductCode: code}
@@ -146,9 +146,9 @@ func caseRun11() {
 	removeProduct(c, code)
 }
 
-func caseRun07() {
+func caseReg01() {
 	for _, plat := range []string{"x64", "Intel"} {
-		c := newCase("RUN-07", plat)
+		c := newCase("REG-01", plat)
 		p := &pkg{Name: "run07" + plat, Is64: plat == "x64", Template: plat + ";1033"}
 		p.Extra = map[string][][]string{
 			"Component": {
@@ -202,8 +202,8 @@ func envSet(name, val string) {
 
 func envDel(name string) { exec.Command("reg.exe", "delete", envKey, "/v", name, "/f").Run() }
 
-func caseRun08() {
-	c := newCase("RUN-08", "environment")
+func caseEnvVar01() {
+	c := newCase("ENVVAR-01", "environment")
 	defer c.close()
 	type row struct{ key, name, value, pre string }
 	rows := []row{
@@ -266,7 +266,7 @@ func versionedCopy(dst string, ms, ls uint32) error {
 	return os.WriteFile(dst, b, 0o644)
 }
 
-func caseRun02() {
+func caseFile01() {
 	for _, v := range []struct {
 		name     string
 		authored bool
@@ -277,7 +277,7 @@ func caseRun02() {
 		{"empty-version-rep6601", false, "6601"},
 		{"empty-version-rep1401", false, "1401"},
 	} {
-		c := newCase("RUN-02", v.name)
+		c := newCase("FILE-01", v.name)
 		dir, _ := filepath.Abs(c.dir)
 		e1, e2 := filepath.Join(dir, "app-1.exe"), filepath.Join(dir, "app-2.exe")
 		versionedCopy(e1, 1<<16, 0)

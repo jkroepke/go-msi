@@ -220,7 +220,7 @@ const (
 
 // rememberInstallDir reads back the folder installDir.remember stored. The
 // search fills a separate public property, and a type-51 action copies it
-// into the install dir only when the command line did not set one: RUN-25
+// into the install dir only when the command line did not set one: SEARCH-03
 // showed that searching straight into the install dir overrides a command
 // line value, and that AppSearch fails with 2228 without a Signature table,
 // even for a registry search. Both run in the UI and the execute sequence,

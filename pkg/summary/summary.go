@@ -38,7 +38,7 @@ const (
 	PIDSecurity     = 19
 	maxPID          = 19
 	maxStreamSize   = 262144
-	systemIdentifer = 0x0002000A // what the native writer stores (DB-14)
+	systemIdentifer = 0x0002000A // what the native writer stores (SUM-07)
 )
 
 // Variant types.

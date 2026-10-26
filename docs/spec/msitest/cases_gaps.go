@@ -14,10 +14,10 @@ import (
 )
 
 func init() {
-	cases["RUN-24"] = caseRun24
-	cases["RUN-25"] = caseRun25
-	cases["RUN-26"] = caseRun26
-	cases["RUN-27"] = caseRun27
+	cases["UPG-05"] = caseUpg05
+	cases["SEARCH-03"] = caseSearch03
+	cases["FILE-03"] = caseFile03
+	cases["SVC-03"] = caseSvc03
 }
 
 const (
@@ -92,10 +92,10 @@ func forgetComponents(c *caseLog, guids ...string) {
 	}
 }
 
-// caseRun24: does a component with neverOverwrite and/or permanent keep a
+// caseUpg05: does a component with neverOverwrite and/or permanent keep a
 // file and a registry value the user edited across a major upgrade, for an
 // early (1401) and a late (6551) RemoveExistingProducts?
-func caseRun24() {
+func caseUpg05() {
 	for _, v := range []struct {
 		name         string
 		bits1, bits2 int
@@ -112,7 +112,7 @@ func caseRun24() {
 		{"neverperm-retrofit-early", 0, attrNeverOverwrite | attrPermanent, "1401", true},
 		{"never-retrofit-late", 0, attrNeverOverwrite, "6551", true},
 	} {
-		c := newCase("RUN-24", v.name)
+		c := newCase("UPG-05", v.name)
 		// Each variant has its own component GUIDs, so that a permanent
 		// registration of one variant cannot change the next (the GUIDs of
 		// the first harness version are cleaned up too).
@@ -167,12 +167,12 @@ func caseRun24() {
 
 const rememberKey = `SOFTWARE\MsiSpecTest\remember`
 
-// caseRun25: a registry value written at install and read back by AppSearch
+// caseSearch03: a registry value written at install and read back by AppSearch
 // keeps a custom install folder across a major upgrade. Checks whether
 // AppSearch overwrites INSTALLDIR given on the command line, and a guarded
 // type-51 action that only applies the remembered value when INSTALLDIR is
 // empty before CostFinalize.
-func caseRun25() {
+func caseSearch03() {
 	custom := `C:\MsiSpecCustom\`
 	other := `C:\MsiSpecOther\`
 	for _, v := range []struct {
@@ -185,7 +185,7 @@ func caseRun25() {
 		{"guarded", "guarded", ""},
 		{"guarded-cmdline", "guarded", other},
 	} {
-		c := newCase("RUN-25", v.name)
+		c := newCase("SEARCH-03", v.name)
 		mk := func(file, version string, search bool) (*pkg, string) {
 			return upgradePkg(c, file, version, "1401", func(p *pkg) {
 				p.Extra["Component"] = [][]string{{"C_rem", guidFor("upg-remember" + upgradeUC), "INSTALLDIR", fmt.Sprint(attr64 | attrRegKeyPath), "", "R_rem"}}
@@ -233,10 +233,10 @@ func caseRun25() {
 	}
 }
 
-// caseRun26: RemoveFile rows and a deferred rmdir action on a data folder the
+// caseFile03: RemoveFile rows and a deferred rmdir action on a data folder the
 // application filled at run time, on a real uninstall and on the uninstall
 // half of a major upgrade with an early RemoveExistingProducts.
-func caseRun26() {
+func caseFile03() {
 	data := filepath.Join(os.Getenv("ProgramData"), "MsiSpecData")
 	fill := func() {
 		os.MkdirAll(filepath.Join(data, "sub"), 0o755)
@@ -271,7 +271,7 @@ func caseRun26() {
 		{"purge-optin-off", "purge-optin", false, nil},
 		{"purge-optin-on", "purge-optin", false, []string{"DELETE_DATA=1"}},
 	} {
-		c := newCase("RUN-26", v.name)
+		c := newCase("FILE-03", v.name)
 		os.RemoveAll(data)
 		mk := func(file, version string) (*pkg, string) {
 			return upgradePkg(c, file, version, "1401", func(p *pkg) {
@@ -322,9 +322,9 @@ func caseRun26() {
 	}
 }
 
-// caseRun27: sc.exe failure with a different delay per step and a reset
+// caseSvc03: sc.exe failure with a different delay per step and a reset
 // period that is not a whole number of days.
-func caseRun27() {
+func caseSvc03() {
 	for _, v := range []struct{ name, args string }{
 		{"per-step", "reset= 3600 actions= restart/60000/restart/300000/restart/300000"},
 		{"two-steps", "reset= 86400 actions= restart/1000/none/0"},
@@ -332,7 +332,7 @@ func caseRun27() {
 		{"zero-reset", "reset= 0 actions= restart/1000/restart/2000"},
 		{"max-reset", "reset= 2147483647 actions= restart/2147483647"},
 	} {
-		c := newCase("RUN-27", v.name)
+		c := newCase("SVC-03", v.name)
 		p := &pkg{Name: "run27", Is64: true, Files: svcPayload()}
 		p.Extra = map[string][][]string{
 			"Directory":      {{"System64Folder", "TARGETDIR", "."}},

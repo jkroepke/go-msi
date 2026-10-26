@@ -115,7 +115,7 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 		cfg.Upgrade = &Upgrade{}
 	}
 
-	// RUN-24: a late removal keeps a NeverOverwrite key file or value
+	// UPG-05: a late removal keeps a NeverOverwrite key file or value
 	// without Permanent, also when the old version had the same component
 	// without the flag.
 	if cfg.Upgrade.RemoveOld == "" && preserves(cfg) {

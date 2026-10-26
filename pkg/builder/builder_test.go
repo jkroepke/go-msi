@@ -1133,11 +1133,11 @@ components:
 
 	secure := fmt.Sprint(cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "SecureCustomProperties" }))
 	if !strings.Contains(";"+secure+";", ";DELETE_DATA;") {
-		t.Errorf("SecureCustomProperties %q lacks DELETE_DATA (RUN-26 opt-in)", secure)
+		t.Errorf("SecureCustomProperties %q lacks DELETE_DATA (FILE-03 opt-in)", secure)
 	}
 }
 
-// TestRememberInstallDir checks the RUN-25 recipe for installDir.remember:
+// TestRememberInstallDir checks the SEARCH-03 recipe for installDir.remember:
 // a registry value with the folder, a raw 64-bit RegLocator search into a
 // separate property, an empty Signature table, and a guarded type-51 action
 // after AppSearch in both sequences.
@@ -1202,7 +1202,7 @@ components:
 	}
 
 	if database.Table("Signature") == nil {
-		t.Error("Signature table missing (RUN-25: AppSearch fails with 2228 without it)")
+		t.Error("Signature table missing (SEARCH-03: AppSearch fails with 2228 without it)")
 	}
 
 	if got := cell(t, database, "CustomAction", "Type", func(r []any) bool { return r[0] == "RestoreInstallDir" }); got != 51 {

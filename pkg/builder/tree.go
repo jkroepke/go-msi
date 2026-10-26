@@ -91,7 +91,7 @@ func (b *build) identity() error {
 
 // deriveProductCode computes productCode: auto from the upgrade code, the
 // platform, the version and a digest of the configuration and every input
-// file, so that changed content gives a new code (RUN-11) and unchanged
+// file, so that changed content gives a new code (UPG-03) and unchanged
 // content the same one.
 func (b *build) deriveProductCode() error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	if b.productCode != "" {
@@ -447,7 +447,7 @@ func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentI
 		if file.isPE { //nolint:nestif // reads best as one block
 			if !info.HasVersion {
 				if !cfgFile.AllowUnversionedExecutable {
-					b.errorf(diagPath+".version", "%s is a PE file without a version resource; an upgrade can delete it (RUN-02). "+
+					b.errorf(diagPath+".version", "%s is a PE file without a version resource; an upgrade can delete it (FILE-01). "+
 						"Set allowUnversionedExecutable: true if this is intended", file.LongName)
 				}
 			} else {
@@ -505,7 +505,7 @@ func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentI
 }
 
 // fileHash computes the MsiFileHash words from the file's MD5: four
-// little-endian int32, zeros for an empty file (RUN-12).
+// little-endian int32, zeros for an empty file (FILE-02).
 func fileHash(sum []byte, size int64) *[4]int32 {
 	var out [4]int32
 

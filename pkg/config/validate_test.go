@@ -98,23 +98,23 @@ func TestValidate(t *testing.T) {
 			pkg(`{platform: arm64, installerVersion: "4.5"}`) + appComponent,
 			sevError, "package.installerVersion", "at least 5.0",
 		},
-		// RUN-02: an unversioned executable is deleted by an upgrade.
+		// FILE-01: an unversioned executable is deleted by an upgrade.
 		"unversioned exe": {
 			base + appComponent + "      - source: helper.dll\n        version: none\n",
-			sevError, "components[0].files[1].version", "RUN-02",
+			sevError, "components[0].files[1].version", "FILE-01",
 		},
 		"unversioned exe acknowledged": {
 			base + appComponent + "      - source: helper.dll\n        version: none\n        allowUnversionedExecutable: true\n",
-			sevWarning, "components[0].files[1].version", "RUN-02",
+			sevWarning, "components[0].files[1].version", "FILE-01",
 		},
 		"empty version is not none": {
 			base + appComponent + "      - source: data.txt\n        version: \"1.x\"\n",
 			sevError, "components[0].files[1].version", "not auto, none",
 		},
-		// RUN-03 and RUN-11.
+		// UPG-01 and UPG-03.
 		"four-field version": {
 			strings.Replace(base, "version: 1.0.0", "version: 1.0.0.5", 1) + appComponent,
-			sevWarning, "product.version", "RUN-03",
+			sevWarning, "product.version", "UPG-01",
 		},
 		"nil upgrade code": {
 			strings.Replace(base, "3f2504e0-4f89-41d3-9a0c-0305e82c3301", `"{00000000-0000-0000-0000-000000000000}"`, 1) + appComponent,
@@ -128,7 +128,7 @@ func TestValidate(t *testing.T) {
 			strings.Replace(base, "  upgradeCode:", "  productCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3302\n  upgradeCode:", 1) + appComponent,
 			sevWarning, "product.productCode", "1638",
 		},
-		// RUN-18: exec actions must say how an exit code is handled.
+		// CA-02: exec actions must say how an exit code is handled.
 		"exec without return": {
 			base + appComponent + `customActions:
   - id: Run
@@ -136,7 +136,7 @@ func TestValidate(t *testing.T) {
     execute: deferred
     schedule: [{sequence: execute, after: InstallFiles}]
 `,
-			sevError, "customActions[0].return", "RUN-18",
+			sevError, "customActions[0].return", "CA-02",
 		},
 		"deferred set property": {
 			base + appComponent + `customActions:
@@ -172,11 +172,11 @@ func TestValidate(t *testing.T) {
 `,
 			sevError, "customActions[0].schedule[0]", "Nowhere",
 		},
-		// Finding 1 (DB-07) and DB-02.
+		// Finding 1 (MSIDB-07) and MSIDB-02.
 		"32 columns": {
 			base + appComponent + "tables:\n  - name: Wide\n    columns:\n" +
 				strings.Repeat("      - {name: C, type: I2, key: true}\n", 32),
-			sevError, "tables[0].columns", "DB-07",
+			sevError, "tables[0].columns", "MSIDB-07",
 		},
 		"i2 minimum": {
 			base + appComponent + `tables:
@@ -190,12 +190,12 @@ func TestValidate(t *testing.T) {
 			base + appComponent + "tables:\n  - name: Property\n    columns: [{name: K, type: s72, key: true}]\n",
 			sevError, "tables[0].name", "written by the builder",
 		},
-		// DB-11.
+		// MSIDB-11.
 		"binary key too long": {
 			base + appComponent + "binaries:\n  " + strings.Repeat("b", 56) + ": x.dll\n",
-			sevError, "binaries." + strings.Repeat("b", 56), "DB-11",
+			sevError, "binaries." + strings.Repeat("b", 56), "MSIDB-11",
 		},
-		// RUN-08: removal is never implied by scope.
+		// ENVVAR-01: removal is never implied by scope.
 		"environment prefix": {
 			base + strings.Replace(appComponent, "    files:", "    environment: [{name: '*PATH', value: x}]\n    files:", 1),
 			sevError, "components[0].environment[0].name", "plain name",
@@ -213,10 +213,10 @@ func TestValidate(t *testing.T) {
 			pkg(`{platform: x64, codepage: 1200}`) + appComponent,
 			sevError, "package.codepage", "1200",
 		},
-		// RUN-05.
+		// SVC-01.
 		"service keeps registration": {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, control: {deleteOnUninstall: false}}]\n    files:", 1),
-			sevWarning, "components[0].services[0].control.deleteOnUninstall", "RUN-05",
+			sevWarning, "components[0].services[0].control.deleteOnUninstall", "SVC-01",
 		},
 		"service on dll": {
 			base + strings.Replace(strings.Replace(appComponent, "app.exe", "app.dll", 1), "    files:", "    services: [{name: svc}]\n    files:", 1),
@@ -279,7 +279,7 @@ func TestValidate(t *testing.T) {
 			base + appComponent + "customActions:\n  - id: Set\n    setProperty: {name: A, value: b}\n    schedule: [{sequence: adminExecute, after: CostFinalize, when: install}]\n",
 			sevError, "customActions[0].schedule[0].when", "administrative",
 		},
-		// RUN-25.
+		// SEARCH-03.
 		"remember with a component of the same id": {
 			strings.Replace(base, "        configurable: true\n", "        configurable: true\ninstallDir: {id: INSTALLDIR, remember: true}\n", 1) +
 				strings.Replace(appComponent, "id: App", "id: RememberInstallDir", 1),
@@ -295,7 +295,7 @@ func TestValidate(t *testing.T) {
 				"customActions:\n  - id: RestoreInstallDir\n    setProperty: {name: A, value: b}\n    schedule: [{sequence: execute, after: CostFinalize}]\n",
 			sevError, "customActions[0].id", "installDir.remember adds",
 		},
-		// RUN-26.
+		// FILE-03.
 		"purge configurable folder": {
 			base + strings.Replace(appComponent, "    files:", "    purge: true\n    files:", 1),
 			sevError, "components[0].purge", "configurable",
@@ -376,10 +376,10 @@ func TestValidate(t *testing.T) {
 			strings.Replace(base, "        configurable: true\n", "        children: [{id: DATADIR, name: data}]\n", 1) + strings.Replace(appComponent, "    files:", "    purge: {condition: 'DELETE_DATA='}\n    files:", 1),
 			sevError, "components[0].purge.condition", "",
 		},
-		// RUN-24.
+		// UPG-05.
 		"neverOverwrite with early removal": {
 			base + strings.Replace(appComponent, "    files:", "    neverOverwrite: true\n    files:", 1),
-			sevWarning, "components[0].neverOverwrite", "RUN-24",
+			sevWarning, "components[0].neverOverwrite", "UPG-05",
 		},
 		"neverOverwrite service with early removal": {
 			base + strings.Replace(appComponent, "    files:", "    neverOverwrite: true\n    services: [{name: svc}]\n    files:", 1),
@@ -639,14 +639,14 @@ func TestPreserve(t *testing.T) {
 	}
 
 	early := strings.Replace(doc, "upgrade: {}", "upgrade: {removeOld: afterInstallInitialize}", 1)
-	if ds := validate(t, early); !find(ds, config.SeverityError, "components[0].preserve", "RUN-24") {
+	if ds := validate(t, early); !find(ds, config.SeverityError, "components[0].preserve", "UPG-05") {
 		t.Errorf("preserve with an early removeOld: diagnostics %v, want an error", ds)
 	}
 
-	// RUN-24 neverperm-retrofit-early: permanent does not save an edit made
+	// UPG-05 neverperm-retrofit-early: permanent does not save an edit made
 	// in a version without the flags.
 	perm := strings.Replace(early, "    preserve: true\n", "    preserve: true\n    permanent: true\n", 1)
-	if ds := validate(t, perm); !find(ds, config.SeverityError, "components[0].preserve", "RUN-24") {
+	if ds := validate(t, perm); !find(ds, config.SeverityError, "components[0].preserve", "UPG-05") {
 		t.Errorf("preserve and permanent with an early removeOld: diagnostics %v, want an error", ds)
 	}
 

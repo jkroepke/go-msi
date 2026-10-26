@@ -1,6 +1,6 @@
 package main
 
-// RUN-28: shortcuts. Which component layouts install and remove a
+// SHORTCUT-01: shortcuts. Which component layouts install and remove a
 // non-advertised Start menu and desktop shortcut, what the .lnk holds, and
 // whether an advertised shortcut and an icon work.
 
@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-func init() { cases["RUN-28"] = caseRun28 }
+func init() { cases["SHORTCUT-01"] = caseShortcut01 }
 
 const shortcutRegKey = `Software\MsiSpecTest\shortcut`
 
@@ -61,7 +61,7 @@ func hkcuValue(key, name string) string {
 	return "<absent>"
 }
 
-// caseRun28 installs and removes shortcuts in four layouts:
+// caseShortcut01 installs and removes shortcuts in four layouts:
 //
 //   - hkcu-folder: per-machine; a shortcut component of its own with an HKCU
 //     registry key path (ICE38, ICE43), a Start menu subfolder removed by a
@@ -74,10 +74,10 @@ func hkcuValue(key, name string) string {
 //     with no RemoveFile row: is the folder removed at uninstall?
 //   - advertised: Target is the feature, with an icon, in the file's component.
 //   - per-user: ALLUSERS absent, the hkcu-folder layout; where does it land?
-func caseRun28() {
+func caseShortcut01() {
 	appData, err := os.ReadFile(filepath.Join(os.Getenv("SystemRoot"), "System32", "whoami.exe"))
 	if err != nil {
-		fmt.Println("RUN-28: cannot read whoami.exe:", err)
+		fmt.Println("SHORTCUT-01: cannot read whoami.exe:", err)
 		return
 	}
 	icon := testIcon()
@@ -101,7 +101,7 @@ func caseRun28() {
 		{name: "advertised", withIcon: true},
 		{name: "per-user", perUser: true, ownComp: true, subfolder: true, removeFile: true, withIcon: true},
 	} {
-		c := newCase("RUN-28", v.name)
+		c := newCase("SHORTCUT-01", v.name)
 		p := &pkg{Name: "sc", Is64: true, PerUser: v.perUser}
 		p.Files = []payload{{Key: "f_app", Name: "app.exe", Data: appData}}
 		p.Extra = map[string][][]string{

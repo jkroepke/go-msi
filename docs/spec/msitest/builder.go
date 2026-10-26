@@ -319,7 +319,7 @@ func (p *pkg) build(out string) error {
 		tables[k] = append(tables[k], v...)
 	}
 	if _, ok := tables["AppSearch"]; ok && !p.NoSignature {
-		// AppSearch queries Signature even for registry searches (RUN-25):
+		// AppSearch queries Signature even for registry searches (SEARCH-03):
 		// without the table it fails with 2228 and 1603.
 		if _, ok := tables["Signature"]; !ok {
 			tables["Signature"] = [][]string{}

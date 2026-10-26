@@ -40,7 +40,7 @@ func TestStreamNames(t *testing.T) {
 		}
 	}
 
-	// 62 alphabet characters fit, 63 do not (DB-11).
+	// 62 alphabet characters fit, 63 do not (MSIDB-11).
 	if _, err := EncodeStreamName("Binary."+strings.Repeat("k", 55), false); err != nil {
 		t.Error(err)
 	}

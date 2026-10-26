@@ -1750,7 +1750,7 @@
           "$ref": "#/$defs/bool"
         },
         "purge": {
-          "description": "Delete the component's directory with everything in it on uninstall, not on a major upgrade (RUN-26). The directory and the folders above it must not be configurable.",
+          "description": "Delete the component's directory with everything in it on uninstall, not on a major upgrade (FILE-03). The directory and the folders above it must not be configurable.",
           "anyOf": [
             {
               "$ref": "#/$defs/bool"
