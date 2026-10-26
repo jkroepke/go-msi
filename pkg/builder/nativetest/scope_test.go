@@ -66,18 +66,20 @@ func (pkg scope) hasWord(word string) bool {
 		return false
 	}
 
-	for rest := pkg.strings; ; {
-		i := strings.Index(rest, word)
+	for off := 0; ; {
+		i := strings.Index(pkg.strings[off:], word)
 		if i < 0 {
 			return false
 		}
 
-		end := i + len(word)
-		if (i == 0 || !wordByte(rest[i-1])) && (end == len(rest) || !wordByte(rest[end])) {
+		start := off + i
+		end := start + len(word)
+
+		if (start == 0 || !wordByte(pkg.strings[start-1])) && (end == len(pkg.strings) || !wordByte(pkg.strings[end])) {
 			return true
 		}
 
-		rest = rest[i+1:]
+		off = start + 1
 	}
 }
 
@@ -103,7 +105,7 @@ func TestScopeOwns(t *testing.T) {
 		"windows_exporter": {"windows_exporter", "{ProductCode}", "SourceHash{ProductCode}"},
 	}
 	foreign := []string{
-		"Mozilla", "Google", "GitHub", "Microsoft", "Package Cache", ".NET", ".cache", "MpKsl1a2b3c4d", "Go", "",
+		"Mozilla", "Google", "GitHub", "Microsoft", "Package Cache", ".NET", ".cache", "MpKsl1a2b3c4d", "Go", "00", "ss", "",
 	}
 	examples := exampletest.Examples()
 

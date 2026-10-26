@@ -361,10 +361,12 @@ generated from the command tree.
   the watched places (files under the known folders, registry keys,
   services, event log sources, the ARP entry, shortcut targets) and the
   firewall rules with `pkg/builder/nativetest/testdata/install/<name>.txt`.
-  They also run the full ICE suite on the examples through `internal/ice`, with
-  the `darice.cub` that CI installs from the Windows SDK (cached; its SHA-256
-  is logged). The install test needs elevation; all of them are skipped with
-  `-short`.
+  They also run the full ICE suite on the examples through
+  `internal/ice`, with the `darice.cub` that CI installs from the Windows
+  SDK (cached; its SHA-256 is logged). The install test needs elevation;
+  all of them are skipped with `-short`. `TestScopeOwns`, the one test of
+  the package that builds on every platform, checks the ownership rule and
+  runs with `-short`.
 - **Real experiments** on Joe's SERVER2025 dev box through Remote Control for
   anything a runner cannot answer (services, upgrades, comparing the ICE
   runner with `msival2.exe`).
