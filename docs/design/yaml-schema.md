@@ -912,10 +912,10 @@ exit, fatal error, files in use, Restart Manager and the error dialog. Added
 dialogs are laid out automatically: one label and one edit field per
 property (at most four per dialog), Back, Next and Cancel. A `password`
 field is an edit field with the Password attribute (0x200000), and its
-property is added to `MsiHiddenProperties`. A `checkbox` field is a check
-box with the label as its text, in the space of a label and an edit
+property is added to `MsiHiddenProperties`. A `checkbox` field is a
+checkbox with the label as its text, in the space of a label and an edit
 field; its `CheckBox` row holds `value`, so a checked box sets the property
-to it. Two check boxes on one property must set the same value. Whether
+to it. Two checkboxes on one property must set the same value. Whether
 the box starts checked when the property has a value, what an unchecked
 box leaves in the property, and whether the password stays out of the log
 were not tested on Windows. `after` names the
