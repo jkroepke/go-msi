@@ -12,8 +12,37 @@ on:
 permissions: {}
 
 jobs:
+  # Pull requests that only touch Markdown or docs/ skip the Go jobs below.
+  # docs/cli is generated and checked by a test, and docs/spec/msitest is Go
+  # code, so changes there still count. Other events always run every job.
+  detect-changes:
+    name: Detect changes
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.set-output.outputs.changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          # The merge commit and its first parent, the base it was built on.
+          fetch-depth: 2
+          persist-credentials: 'false'
+
+      - id: set-output
+        name: Detect changes
+        if: github.event_name == 'pull_request'
+        run: |
+          git diff --name-only HEAD^1 HEAD > "${RUNNER_TEMP}/files"
+          code=$(grep -cEv '^docs/|\.md$' "${RUNNER_TEMP}/files" || true)
+          generated=$(grep -cE '^docs/(cli|spec/msitest)/' "${RUNNER_TEMP}/files" || true)
+          echo "changed=$((code + generated))" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build & Test (${{ matrix.os }})
+    needs: detect-changes
+    if: github.event_name != 'pull_request' || needs.detect-changes.outputs.changed != '0'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -129,6 +158,8 @@ jobs:
           files: coverage.out
 
   goreleaser:
+    needs: detect-changes
+    if: github.event_name != 'pull_request' || needs.detect-changes.outputs.changed != '0'
     runs-on: ubuntu-26.04
     name: Test goreleaser
     permissions:
@@ -178,6 +209,8 @@ jobs:
           path: dist/
 
   lint:
+    needs: detect-changes
+    if: github.event_name != 'pull_request' || needs.detect-changes.outputs.changed != '0'
     name: lint
     runs-on: ubuntu-26.04
     permissions:
@@ -253,6 +286,7 @@ jobs:
     name: fail
     if: "${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}"
     needs:
+      - detect-changes
       - build
       - goreleaser
       - lint
