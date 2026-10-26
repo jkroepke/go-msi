@@ -45,6 +45,10 @@ const (
 	ctlFixedVol = 0x20000
 	ctlRemoteV  = 0x40000
 	ctlPassword = 0x200000
+	// ctlErrorIcon is Visible | 0x80000 | FixedSize, the ErrorIcon value
+	// tested on Windows. Microsoft documents 0x80000 as the Icon attribute
+	// of buttons and IconSize32 as 0x400000; neither reading is verified.
+	ctlErrorIcon = 0x180001
 
 	ctlActive   = ctlVisible | ctlEnabled
 	ctlText     = ctlActive | ctlNoPrefix
@@ -102,6 +106,7 @@ const (
 
 	binBanner = "BannerBmp"
 	binDialog = "DialogBmp"
+	binError  = "ErrorIco"
 
 	styleDefault = "DefaultFont"
 	styleTitle   = "TitleFont"
@@ -120,6 +125,7 @@ const (
 	condAlways    = "1"
 
 	typPushButton = "PushButton"
+	typIcon       = "Icon"
 	typListBox    = "ListBox"
 	typDirCombo   = "DirectoryCombo"
 	typDirList    = "DirectoryList"
@@ -308,7 +314,7 @@ func (b *build) ui() error {
 	b.addedDialogs(wiz)
 	wiz.link()
 
-	banner, background := b.themePictures()
+	banner, background, errorIcon := b.themePictures()
 
 	if err := b.diags.Err(); err != nil {
 		return err //nolint:wrapcheck // the diagnostics carry their own paths
@@ -316,6 +322,7 @@ func (b *build) ui() error {
 
 	b.table("Binary").Add(binBanner, banner)
 	b.table("Binary").Add(binDialog, background)
+	b.table("Binary").Add(binError, errorIcon)
 	b.writeWizard(wiz)
 	b.checkUI(wiz)
 

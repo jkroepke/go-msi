@@ -20,6 +20,16 @@ var endDialogArgs = map[string]bool{ //nolint:gochecknoglobals // lookup table
 	"ErrorOk": true, "ErrorCancel": true, "ErrorAbort": true, "ErrorRetry": true, "ErrorIgnore": true, "ErrorYes": true, "ErrorNo": true,
 }
 
+// Control events whose spelling was confirmed on Windows. The engine matches
+// event names case-sensitively: RmShutdownAndRestart instead of
+// RMShutdownAndRestart ends MsiRMFilesInUse with error 2866.
+var eventSpellings = map[string]string{ //nolint:gochecknoglobals // lookup table
+	"rmshutdownandrestart": "RMShutdownAndRestart",
+	"enddialog":            evEndDialog,
+	"newdialog":            evNewDialog,
+	"spawndialog":          evSpawnDialog,
+}
+
 const (
 	maxDialogName  = 72
 	maxControlName = 50
@@ -29,7 +39,7 @@ const (
 // generated tables: it guards the generator and the added dialogs.
 func (b *build) checkUI(wiz *wizard) {
 	styles := map[string]bool{styleDefault: true, styleTitle: true, styleBig: true}
-	pictures := map[string]bool{binBanner: true, binDialog: true}
+	pictures := map[string]bool{binBanner: true, binDialog: true, binError: true}
 
 	for _, d := range wiz.dialogs {
 		b.checkDialog(wiz, d, styles, pictures)
@@ -61,7 +71,7 @@ func (b *build) checkControl(wiz *wizard, path string, ctl *uiControl, styles, p
 		b.errorf(path, "push button %s publishes no event (ICE17)", ctl.name)
 	}
 
-	if ctl.typ == "Bitmap" && !pictures[ctl.text] {
+	if (ctl.typ == "Bitmap" || ctl.typ == typIcon) && !pictures[ctl.text] {
 		b.errorf(path, "control %s shows %q, which is not in the Binary table (ICE17)", ctl.name, ctl.text)
 	}
 
@@ -79,6 +89,10 @@ func (b *build) checkControl(wiz *wizard, path string, ctl *uiControl, styles, p
 	for _, event := range ctl.events {
 		if _, ok := wiz.byName[event.arg]; dialogEvents[event.event] && !ok {
 			b.errorf(path, "control %s opens dialog %q, which does not exist (ICE44)", ctl.name, event.arg)
+		}
+
+		if want, ok := eventSpellings[strings.ToLower(event.event)]; ok && event.event != want {
+			b.errorf(path, "control %s publishes %q; Windows Installer only knows %q", ctl.name, event.event, want)
 		}
 
 		if event.event == evEndDialog && !endDialogArgs[event.arg] {

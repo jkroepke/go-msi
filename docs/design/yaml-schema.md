@@ -1053,9 +1053,9 @@ to its rectangle, so other sizes work as long as the ratio is kept: a ratio
 more than 5 % away from the control's is an error, a picture smaller than
 the size above is a warning, and a side above 8192 pixels or more than
 4096×4096 pixels in all is an error.
-`colors` recolours the built-in pictures; a colour that is not given keeps
-its default. A license, theme, install folder page or launch checkbox without a wizard
-is an error.
+`colors` recolours the built-in pictures and the error dialog's icon (drawn
+in `accent`); a colour that is not given keeps its default. A license,
+theme, install folder page or launch checkbox without a wizard is an error.
 
 ### 4.13 `tables`
 
@@ -1078,7 +1078,7 @@ builder writes cannot be redefined here.
 A binary cell (a `v0` or `V0` column, at most one per table) names a file to embed. It
 is stored in the stream `<table>.<key1>.<key2>…`, which must be a valid stream
 name (DB-11) and must not match the name of the cabinet, an `icons` or
-`binaries` entry, a wizard bitmap, or another row. A bad name is reported at
+`binaries` entry, a wizard picture (`BannerBmp`, `DialogBmp`, `ErrorIco`), or another row. A bad name is reported at
 `tables[i].rows[j]`. A clash names both owners and is reported at the later
 one: `binaries`, `ui` and `icons` come first, then `tables` in file order,
 then `package.cabinet`.

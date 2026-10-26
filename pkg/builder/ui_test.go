@@ -108,10 +108,39 @@ func TestFeatureTreeWizard(t *testing.T) {
 		t.Error("BannerBmp missing")
 	}
 
+	checkErrorIcon(t, res)
+
+	// The Restart Manager OK button: event names are case-sensitive (2866).
+	rmEvents := map[any]string{}
+
+	for _, row := range rows(t, database, "ControlEvent") {
+		if row[0] == "MsiRMFilesInUse" && row[1] == "OK" {
+			rmEvents[row[5]] = fmt.Sprint(row[2], " ", row[3])
+		}
+	}
+
+	if want := map[any]string{1: "RMShutdownAndRestart 0", 2: "EndDialog Return"}; fmt.Sprint(rmEvents) != fmt.Sprint(want) {
+		t.Errorf("MsiRMFilesInUse OK publishes %v, want %v", rmEvents, want)
+	}
+
 	for _, row := range rows(t, database, "Property") {
 		if row[0] == "ARPNOMODIFY" {
 			t.Error("a feature tree wizard must keep Modify in Apps & features")
 		}
+	}
+}
+
+// checkErrorIcon verifies that the error box shows its icon (error 2835
+// without it) from a 32×32 32-bit icon in the Binary table (error 2888 for an
+// empty or dangling one).
+func checkErrorIcon(t *testing.T, res *builder.Result) {
+	t.Helper()
+
+	icon := cell(t, res.Database, "Control", "Text", func(r []any) bool { return r[0] == "ErrorDlg" && r[1] == "ErrorIcon" })
+	data, ok := cell(t, res.Database, "Binary", "Data", func(r []any) bool { return r[0] == icon }).([]byte)
+
+	if want := 6 + 16 + 40 + 32*32*4 + 4*32; !ok || len(data) != want || data[2] != 1 || data[6] != 32 || data[7] != 32 {
+		t.Errorf("ErrorIcon shows %v, which is not a 32×32 icon in the Binary table (%d bytes)", icon, len(data))
 	}
 }
 
@@ -189,6 +218,7 @@ func TestMinimalWizard(t *testing.T) {
 	}
 
 	checkRings(t, res)
+	checkErrorIcon(t, res)
 }
 
 func TestWizardErrors(t *testing.T) {
