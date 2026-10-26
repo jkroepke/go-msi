@@ -97,6 +97,7 @@ func TestRunActions(t *testing.T) {
 	}
 
 	seq := map[string]int{}
+
 	for _, row := range rows(t, database, "InstallExecuteSequence") {
 		if n, ok := row[2].(int); ok {
 			seq[fmt.Sprint(row[0])] = n
