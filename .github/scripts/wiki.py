@@ -33,7 +33,7 @@ PAGES = {
 # Code is copied as it is. Links are inline links, with an optional title,
 # and reference definitions.
 TOKEN = re.compile(
-    r"(?P<code>^[ \t]*(?P<fence>`{3,}|~{3,}).*?^[ \t]*(?P=fence)[`~]*[ \t]*$"
+    r"(?P<code>^[ \t]*(?P<fence>`{3,}(?=[^`\n]*$)|~{3,}).*?^[ \t]*(?P=fence)[`~]*[ \t]*$"
     r"|(?P<tick>`+)(?:(?!(?P=tick)).)+?(?P=tick))"
     r"|(?P<open>\]\(<?)(?P<target>[^)\s<>]+)"
     r"(?P<close>>?(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\))"
