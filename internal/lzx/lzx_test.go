@@ -9,7 +9,7 @@ import (
 )
 
 // scaled returns n, or a fifth of it under -short or -race: with the race
-// detector and atomic coverage the encoder runs fifteen to fifty times slower.
+// detector and atomic coverage the encoder runs up to fifty times slower.
 func scaled(n int) int {
 	if testing.Short() || raceEnabled {
 		return n / 5
@@ -107,20 +107,22 @@ func TestRoundTrip(t *testing.T) {
 
 	for name, data := range inputs {
 		for _, opts := range []Options{{}, {Window: 15, Level: 1}, {Window: 16, Block: blockVerb}, {Window: 18, Block: blockAligned}, {Window: 21, Level: 4, Block: blockAligned}, {Window: 17, Block: blockStored}} {
-			t.Run(fmt.Sprintf("%s/w%d-l%d-b%d", name, opts.Window, opts.Level, opts.Block), func(t *testing.T) {
-				t.Parallel()
+			if raceEnabled {
+				// The inputs of more than two frames run only with the 32 KB
+				// and the 2 MB window, and the default two-pass parse of
+				// levels 7 to 9 is replaced with level 4; CI runs every
+				// combination without -race.
+				if len(data) > 2*FrameSize && opts.Window != 15 && opts.Window != 21 {
+					continue
+				}
 
-				// The two-pass parse of levels 7 to 9 is the slowest part under
-				// -race; CI runs the default level without -race.
-				if raceEnabled && opts.Level == 0 {
+				if opts.Level == 0 {
 					opts.Level = 4
 				}
+			}
 
-				// Under -race the inputs of more than two frames keep the
-				// smallest and the largest window only.
-				if raceEnabled && len(data) > 2*FrameSize && opts.Window != 15 && opts.Window != 21 {
-					t.Skip("CI runs every combination without -race")
-				}
+			t.Run(fmt.Sprintf("%s/w%d-l%d-b%d", name, opts.Window, opts.Level, opts.Block), func(t *testing.T) {
+				t.Parallel()
 
 				frames, err := Compress(data, opts)
 				if err != nil {
@@ -352,8 +354,8 @@ func TestEncoderSlides(t *testing.T) {
 		window = 17
 	}
 
-	// The history holds 2<<window+blockSpan bytes; under -race one frame
-	// between the repeats still makes it slide.
+	// The two copies of chunk alone overflow the history, so under -race one
+	// frame between them is enough.
 	middle := 2 * blockSpan
 	if raceEnabled {
 		middle = FrameSize

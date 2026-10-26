@@ -1,6 +1,6 @@
 //go:build !race
 
-package cab //nolint:testpackage // shared with the internal tests
+package cab //nolint:testpackage // the internal tests use it
 
-// raceEnabled reports a race detector build; see internal_race_test.go.
+// raceEnabled reports a race detector build; see race_test.go.
 const raceEnabled = false

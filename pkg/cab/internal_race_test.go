@@ -1,8 +1,7 @@
 //go:build race
 
-package cab //nolint:testpackage // shared with the internal tests
+package cab //nolint:testpackage // the internal tests use it
 
-// raceEnabled reports a race detector build. With -race and atomic coverage
-// the LZX encoder runs about fifteen to fifty times slower, so the tests that
-// compress the most shrink and CI runs them at full size without -race.
+// raceEnabled reports a race detector build for the internal tests, like the
+// one of package cab_test in race_test.go.
 const raceEnabled = true
