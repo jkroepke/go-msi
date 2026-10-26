@@ -965,7 +965,18 @@
           "type": "array",
           "description": "Rules that follow the feature's state, without component.",
           "items": {
-            "$ref": "#/$defs/firewallRule"
+            "allOf": [
+              {
+                "$ref": "#/$defs/firewallRule"
+              },
+              {
+                "not": {
+                  "required": [
+                    "component"
+                  ]
+                }
+              }
+            ]
           }
         }
       },

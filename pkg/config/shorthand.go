@@ -69,14 +69,16 @@ func expandShorthands(cfg *Config) {
 
 	for _, comp := range cfg.Components {
 		if unplacedCarrier(comp) {
-			comp.Directory = tree.carrierDirectory()
+			comp.Directory = tree.carrierDirectory(comp)
 		}
 	}
 
 	componentIDs(cfg)
 
 	for _, rule := range cfg.Firewall {
-		if rule.carrier != nil && !rule.ownComponent {
+		// Only the first run fills it in; a component set from Go since
+		// stands.
+		if rule.carrier != nil && !rule.ownComponent && rule.Component == "" {
 			rule.Component = rule.carrier.ID
 		}
 	}
@@ -117,8 +119,8 @@ func featureFirewall(cfg *Config) {
 }
 
 // firewallCarrier returns the component that carries a feature's firewall
-// rules, adding it on the first call. It lives in the feature's directory;
-// without one, carrierDirectory picks it once the tree is known.
+// rules, adding it on the first call. carrierDirectory places it once the
+// tree is known.
 func firewallCarrier(cfg *Config, feature *Feature, featurePath string) *Component {
 	for _, comp := range cfg.Components {
 		if comp.firewallFeature != "" && comp.firewallFeature == feature.ID {
@@ -127,10 +129,12 @@ func firewallCarrier(cfg *Config, feature *Feature, featurePath string) *Compone
 	}
 
 	carrier := &Component{
-		Directory:       feature.Directory,
-		KeyPath:         KeyPathDirectory,
-		origin:          featurePath + ".firewall",
+		KeyPath: KeyPathDirectory,
+		// Diagnostics about the carrier name the feature, the place the
+		// user can change.
+		origin:          featurePath,
 		firewallFeature: feature.ID,
+		featureDir:      feature.Directory,
 	}
 
 	cfg.Components = append(cfg.Components, carrier)
@@ -145,23 +149,49 @@ func unplacedCarrier(comp *Component) bool {
 	return comp.firewallFeature != "" && comp.Directory == ""
 }
 
-// carrierDirectory places a carrier without a directory: in the install dir
-// when the package has one, else beside the first other component, so that
-// the carrier adds no folder of its own.
-func (t *dirTree) carrierDirectory() string {
-	if t.byID[t.cfg.InstallDir.ID] != nil {
-		return t.cfg.InstallDir.ID
+// carrierDirectory places a carrier: in its feature's directory, else in
+// the install dir when the package has one, else in the first configurable
+// directory outside the user profile. Only without any of these does it add
+// the install dir.
+func (t *dirTree) carrierDirectory(carrier *Component) string {
+	for _, dirID := range []string{carrier.featureDir, t.cfg.InstallDir.ID} {
+		if dirID != "" && t.byID[dirID] != nil {
+			return dirID
+		}
 	}
 
-	for _, comp := range t.cfg.Components {
-		if !unplacedCarrier(comp) {
-			return comp.Directory
-		}
+	if dirID := configurableDir(t.cfg.Directories, ""); dirID != "" {
+		return dirID
 	}
 
 	t.ensureInstallDir()
 
 	return t.cfg.InstallDir.ID
+}
+
+// configurableDir returns the first configurable directory whose top-level
+// folder is not in the user profile.
+func configurableDir(dirs []*Directory, top string) string {
+	for _, dir := range dirs {
+		dirTop := top
+		if dirTop == "" {
+			dirTop = dir.ID
+		}
+
+		if profileFolders[dirTop] {
+			continue
+		}
+
+		if dir.Configurable {
+			return dir.ID
+		}
+
+		if found := configurableDir(dir.Children, dirTop); found != "" {
+			return found
+		}
+	}
+
+	return ""
 }
 
 // hoistFeatureComponents appends the components defined inside features to

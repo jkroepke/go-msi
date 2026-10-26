@@ -778,3 +778,52 @@ func TestShorthandFeatureDefaultFromGo(t *testing.T) {
 		t.Errorf("level %d, %v", *cfg.Features[0].Level, err)
 	}
 }
+
+func TestShorthandFeatureFirewallCarrierPlace(t *testing.T) {
+	t.Parallel()
+
+	rule := "firewall: [{ name: a, program: x, protocol: tcp }]"
+	tree := "directories:\n  - id: ProgramFiles64Folder\n    children: [{ id: APPDIR, name: Hello, configurable: true }]\n" +
+		"  - id: ProgramMenuFolder\n    children: [{ id: MENU, name: Hello }]\n"
+	comps := "components:\n" +
+		"  - { id: Menu, directory: MENU, keyPath: m, registry: [{ id: m, root: HKCU, key: Software\\Hello, name: m, type: dword, value: 1 }] }\n" +
+		"  - { id: App, directory: APPDIR, files: [{ source: hello.exe }] }\n"
+
+	// The carrier stays out of the profile folder of the first component.
+	cfg := parseValid(t, short+tree+comps+"features:\n  - { id: Main, components: [Menu, App], "+rule+" }\n")
+	if dir := cfg.Components[2].Directory; dir != "APPDIR" {
+		t.Errorf("carrier in %s, want APPDIR", dir)
+	}
+
+	for _, d := range config.Validate(cfg) {
+		if strings.HasPrefix(d.Path, "features") {
+			t.Errorf("carrier diagnostic: %v", d)
+		}
+	}
+
+	// A component set from Go after parsing stands.
+	cfg.Firewall[0].Component = "App"
+	if config.ApplyDefaults(cfg); cfg.Firewall[0].Component != "App" {
+		t.Errorf("rule follows %s, want App", cfg.Firewall[0].Component)
+	}
+
+	// An undefined feature directory is reported once, at the feature.
+	diags := validate(t, short+"components: [{ files: [{ source: hello.exe }] }]\n"+
+		"features:\n  - { id: Main, directory: NOPE, components: [hello.exe], "+rule+" }\n")
+
+	count := 0
+
+	for _, d := range diags {
+		if strings.Contains(d.Message, `"NOPE"`) {
+			count++
+
+			if d.Path != "features[0].directory" {
+				t.Errorf("reported at %s", d.Path)
+			}
+		}
+	}
+
+	if count != 1 {
+		t.Errorf("NOPE reported %d times: %v", count, diags)
+	}
+}
