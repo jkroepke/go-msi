@@ -92,6 +92,11 @@ func lastErrorInfo() string {
 	return syscall.UTF16ToString(buf)
 }
 
+// call runs p and turns a non-zero result into an *msiError. Convert pointers
+// to uintptr only inside its argument list: uintptrescapes then keeps them on
+// the heap and alive for the call, as it does for (*syscall.LazyProc).Call.
+//
+//go:uintptrescapes
 func call(op string, p *syscall.LazyProc, args ...uintptr) error {
 	r, _, _ := p.Call(args...)
 	if r != 0 {
@@ -100,16 +105,16 @@ func call(op string, p *syscall.LazyProc, args ...uintptr) error {
 	return nil
 }
 
-func wstr(s string) uintptr {
+func wstr(s string) *uint16 {
 	p, _ := syscall.UTF16PtrFromString(s)
-	return uintptr(unsafe.Pointer(p))
+	return p
 }
 
 func closeHandle(h uint32) { pMsiCloseHandle.Call(uintptr(h)) }
 
 func openDB(path string, mode uintptr) (uint32, error) {
 	var h uint32
-	err := call("MsiOpenDatabaseW", pMsiOpenDatabaseW, wstr(path), mode, uintptr(unsafe.Pointer(&h)))
+	err := call("MsiOpenDatabaseW", pMsiOpenDatabaseW, uintptr(unsafe.Pointer(wstr(path))), mode, uintptr(unsafe.Pointer(&h)))
 	return h, err
 }
 
@@ -118,7 +123,7 @@ func commit(db uint32) error { return call("MsiDatabaseCommit", pMsiDatabaseComm
 // exec runs a statement and returns all rows as strings (NULL as "\x00NULL").
 func query(db uint32, sql string, params ...string) ([][]string, error) {
 	var view uint32
-	if err := call("MsiDatabaseOpenViewW", pMsiDatabaseOpenViewW, uintptr(db), wstr(sql), uintptr(unsafe.Pointer(&view))); err != nil {
+	if err := call("MsiDatabaseOpenViewW", pMsiDatabaseOpenViewW, uintptr(db), uintptr(unsafe.Pointer(wstr(sql))), uintptr(unsafe.Pointer(&view))); err != nil {
 		return nil, err
 	}
 	defer closeHandle(view)
@@ -127,7 +132,7 @@ func query(db uint32, sql string, params ...string) ([][]string, error) {
 		rec, _, _ = pMsiCreateRecord.Call(uintptr(len(params)))
 		defer closeHandle(uint32(rec))
 		for i, p := range params {
-			pMsiRecordSetStringW.Call(rec, uintptr(i+1), wstr(p))
+			pMsiRecordSetStringW.Call(rec, uintptr(i+1), uintptr(unsafe.Pointer(wstr(p))))
 		}
 	}
 	if err := call("MsiViewExecute", pMsiViewExecute, uintptr(view), rec); err != nil {
@@ -187,7 +192,7 @@ func recordString(r uint32, i uintptr) string {
 // readStreamField fetches the binary field of the first row of a query.
 func readStreamField(db uint32, sql string, field uintptr) ([]byte, error) {
 	var view uint32
-	if err := call("MsiDatabaseOpenViewW", pMsiDatabaseOpenViewW, uintptr(db), wstr(sql), uintptr(unsafe.Pointer(&view))); err != nil {
+	if err := call("MsiDatabaseOpenViewW", pMsiDatabaseOpenViewW, uintptr(db), uintptr(unsafe.Pointer(wstr(sql))), uintptr(unsafe.Pointer(&view))); err != nil {
 		return nil, err
 	}
 	defer closeHandle(view)
@@ -219,7 +224,7 @@ func readStreamField(db uint32, sql string, field uintptr) ([]byte, error) {
 func insertStream(db uint32, table, name, file string) error {
 	var view uint32
 	sql := fmt.Sprintf("SELECT * FROM `%s`", table)
-	if err := call("MsiDatabaseOpenViewW", pMsiDatabaseOpenViewW, uintptr(db), wstr(sql), uintptr(unsafe.Pointer(&view))); err != nil {
+	if err := call("MsiDatabaseOpenViewW", pMsiDatabaseOpenViewW, uintptr(db), uintptr(unsafe.Pointer(wstr(sql))), uintptr(unsafe.Pointer(&view))); err != nil {
 		return err
 	}
 	defer closeHandle(view)
@@ -228,8 +233,8 @@ func insertStream(db uint32, table, name, file string) error {
 	}
 	rec, _, _ := pMsiCreateRecord.Call(2)
 	defer closeHandle(uint32(rec))
-	pMsiRecordSetStringW.Call(rec, 1, wstr(name))
-	if err := call("MsiRecordSetStreamW", pMsiRecordSetStreamW, rec, 2, wstr(file)); err != nil {
+	pMsiRecordSetStringW.Call(rec, 1, uintptr(unsafe.Pointer(wstr(name))))
+	if err := call("MsiRecordSetStreamW", pMsiRecordSetStreamW, rec, 2, uintptr(unsafe.Pointer(wstr(file)))); err != nil {
 		return err
 	}
 	const modifyInsert = 1
@@ -237,11 +242,11 @@ func insertStream(db uint32, table, name, file string) error {
 }
 
 func importIDT(db uint32, dir, file string) error {
-	return call("MsiDatabaseImportW("+file+")", pMsiDatabaseImportW, uintptr(db), wstr(dir), wstr(file))
+	return call("MsiDatabaseImportW("+file+")", pMsiDatabaseImportW, uintptr(db), uintptr(unsafe.Pointer(wstr(dir))), uintptr(unsafe.Pointer(wstr(file))))
 }
 
 func exportIDT(db uint32, table, dir, file string) error {
-	return call("MsiDatabaseExportW", pMsiDatabaseExportW, uintptr(db), wstr(table), wstr(dir), wstr(file))
+	return call("MsiDatabaseExportW", pMsiDatabaseExportW, uintptr(db), uintptr(unsafe.Pointer(wstr(table))), uintptr(unsafe.Pointer(wstr(dir))), uintptr(unsafe.Pointer(wstr(file))))
 }
 
 type sumProp struct {
@@ -254,24 +259,25 @@ type sumProp struct {
 
 func openSummary(db uint32, path string, updates uint32) (uint32, error) {
 	var h uint32
-	var p uintptr
+	var p *uint16
 	if path != "" {
 		p = wstr(path)
 	}
-	err := call("MsiGetSummaryInformationW", pMsiGetSummaryInformation, uintptr(db), p, uintptr(updates), uintptr(unsafe.Pointer(&h)))
+	err := call("MsiGetSummaryInformationW", pMsiGetSummaryInformation, uintptr(db), uintptr(unsafe.Pointer(p)), uintptr(updates), uintptr(unsafe.Pointer(&h)))
 	return h, err
 }
 
 func setSummary(h uint32, p sumProp) error {
-	var ft uintptr
+	var ft *[2]uint32
 	if p.VT == vtFILETIME {
-		ft = uintptr(unsafe.Pointer(&p.FT))
+		ft = &p.FT
 	}
-	var s uintptr
+	var s *uint16
 	if p.VT == vtLPSTR {
 		s = wstr(p.Text)
 	}
-	return call(fmt.Sprintf("MsiSummaryInfoSetPropertyW(%d)", p.PID), pMsiSummaryInfoSetProp, uintptr(h), uintptr(p.PID), uintptr(p.VT), uintptr(p.Int), ft, s)
+	return call(fmt.Sprintf("MsiSummaryInfoSetPropertyW(%d)", p.PID), pMsiSummaryInfoSetProp, uintptr(h), uintptr(p.PID), uintptr(p.VT), uintptr(p.Int),
+		uintptr(unsafe.Pointer(ft)), uintptr(unsafe.Pointer(s)))
 }
 
 func getSummary(h uint32, pid uint32) (sumProp, error) {
@@ -295,6 +301,6 @@ func fileHash(path string) ([4]int32, error) {
 		Data [4]int32
 	}
 	info.Size = 20
-	err := call("MsiGetFileHashW", pMsiGetFileHashW, wstr(path), 0, uintptr(unsafe.Pointer(&info)))
+	err := call("MsiGetFileHashW", pMsiGetFileHashW, uintptr(unsafe.Pointer(wstr(path))), 0, uintptr(unsafe.Pointer(&info)))
 	return info.Data, err
 }

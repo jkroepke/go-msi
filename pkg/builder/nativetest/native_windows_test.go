@@ -42,16 +42,11 @@ const (
 	pidTemplate      = 7
 )
 
-// call runs p and turns a non-zero result into an error.
-//
-// Callers pass out-parameters as uintptr(unsafe.Pointer(&v)). Outside the
-// argument list of a function the compiler knows takes such pointers, that
-// conversion hides v from the compiler: v stays on the goroutine stack, a
-// stack growth before the system call moves it, and msi.dll writes the
-// handle to the old stack. The caller then reads 0, and the next call fails
-// with ERROR_INVALID_HANDLE (6) while the real handle leaks and keeps the
-// package open. uintptrescapes moves those values to the heap and keeps them
-// alive for the call, as it does for (*syscall.LazyProc).Call.
+// call runs p and turns a non-zero result into an error. Convert pointers to
+// uintptr only inside its argument list: like (*syscall.LazyProc).Call, it is
+// a //go:uintptrescapes function, so the pointed-to values move to the heap
+// and stay alive for the call. Otherwise an out-parameter can stay on the
+// stack and msi.dll writes to a stale copy after a stack move.
 //
 //go:uintptrescapes
 func call(name string, p *syscall.LazyProc, args ...uintptr) error {

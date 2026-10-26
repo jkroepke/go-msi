@@ -104,6 +104,13 @@ go test ./... -shuffle=on -race
   `pkg/builder/nativetest`, `pkg/cab/native_windows_test.go`) and the bounded-memory
   tests (`TestBoundedMemory`, `TestLargePayloadBoundedMemory`). CI runs
   `-short` on Linux and the full set on Windows.
+- Windows syscall helpers that forward `...uintptr` to `(*syscall.LazyProc).Call`
+  need `//go:uintptrescapes`, and every `uintptr(unsafe.Pointer(...))` must be
+  written inside the call's argument list. Without that, out-parameters stay on
+  the goroutine stack: a stack move makes `msi.dll` write the handle to the old
+  copy, the caller reads 0, and the next call fails with error 6 while the
+  leaked handle keeps the package open. Check with
+  `GOOS=windows go test -c -gcflags=-m` and look for `moved to heap`.
 - Changes that affect the generated packages need a Windows run. Use the
   `msitest` harness or the native tests on a Windows machine; state in the
   pull request which checks ran and which could not.
