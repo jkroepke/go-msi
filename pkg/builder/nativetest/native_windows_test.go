@@ -422,7 +422,7 @@ func TestMsiexecInstallsExamples(t *testing.T) {
 
 		t.Run(name, func(t *testing.T) {
 			inputs := example.inputs(t)
-			path, _ := buildExample(t, name, example.vars, inputs)
+			path, res := buildExample(t, name, example.vars, inputs)
 			log := filepath.Join(filepath.Dir(path), "install.log")
 			installed := true
 
@@ -483,7 +483,7 @@ func TestMsiexecInstallsExamples(t *testing.T) {
 				}
 			}
 
-			report := snapshotReport(name, changes(before, afterInstall), changes(before, afterUninstall))
+			report := snapshotReport(name, res.ProductCode, changes(before, afterInstall), changes(before, afterUninstall))
 			if !exampletest.CompareSnapshot(t, filepath.Join("testdata", "install", name+".txt"), report) {
 				saveSnapshot(t, name, report)
 			}

@@ -3,32 +3,32 @@
 
 [install]
 + dir {ProgramFiles}\Hello
-+ file {Installer}\SourceHash{0277F3F1-EF91-5AE8-830A-54F062A7AEEC}
++ file {Installer}\SourceHash{ProductCode}
 + file {ProgramFiles}\Hello\hello.exe = input hello.exe
-+ key HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC}
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [AuthorizedCDFPrefix] = ""
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [Comments] = ""
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [Contact] = ""
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [DisplayName] = "Hello"
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [DisplayVersion] = "1.0.0"
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [EstimatedSize] = <size>
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [HelpLink] = ""
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [HelpTelephone] = ""
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [InstallDate] = <date>
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [InstallLocation] = ""
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [InstallSource] = "{PackageDir}\"
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [Language] = dword 1033
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [ModifyPath] = expand "MsiExec.exe /X{0277F3F1-EF91-5AE8-830A-54F062A7AEEC}"
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [NoModify] = dword 1
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [Publisher] = "Example"
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [Readme] = ""
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [Size] = ""
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [URLInfoAbout] = ""
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [URLUpdateInfo] = ""
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [UninstallString] = expand "MsiExec.exe /X{0277F3F1-EF91-5AE8-830A-54F062A7AEEC}"
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [VersionMajor] = dword 1
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [VersionMinor] = dword 0
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [Version] = dword 16777216
-+ value HKLM\...\Uninstall\{0277F3F1-EF91-5AE8-830A-54F062A7AEEC} [WindowsInstaller] = dword 1
++ key HKLM\...\Uninstall\{ProductCode}
++ value HKLM\...\Uninstall\{ProductCode} [AuthorizedCDFPrefix] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Comments] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Contact] = ""
++ value HKLM\...\Uninstall\{ProductCode} [DisplayName] = "Hello"
++ value HKLM\...\Uninstall\{ProductCode} [DisplayVersion] = "1.0.0"
++ value HKLM\...\Uninstall\{ProductCode} [EstimatedSize] = <size>
++ value HKLM\...\Uninstall\{ProductCode} [HelpLink] = ""
++ value HKLM\...\Uninstall\{ProductCode} [HelpTelephone] = ""
++ value HKLM\...\Uninstall\{ProductCode} [InstallDate] = <date>
++ value HKLM\...\Uninstall\{ProductCode} [InstallLocation] = ""
++ value HKLM\...\Uninstall\{ProductCode} [InstallSource] = "{PackageDir}\"
++ value HKLM\...\Uninstall\{ProductCode} [Language] = dword 1033
++ value HKLM\...\Uninstall\{ProductCode} [ModifyPath] = expand "MsiExec.exe /X{ProductCode}"
++ value HKLM\...\Uninstall\{ProductCode} [NoModify] = dword 1
++ value HKLM\...\Uninstall\{ProductCode} [Publisher] = "Example"
++ value HKLM\...\Uninstall\{ProductCode} [Readme] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Size] = ""
++ value HKLM\...\Uninstall\{ProductCode} [URLInfoAbout] = ""
++ value HKLM\...\Uninstall\{ProductCode} [URLUpdateInfo] = ""
++ value HKLM\...\Uninstall\{ProductCode} [UninstallString] = expand "MsiExec.exe /X{ProductCode}"
++ value HKLM\...\Uninstall\{ProductCode} [VersionMajor] = dword 1
++ value HKLM\...\Uninstall\{ProductCode} [VersionMinor] = dword 0
++ value HKLM\...\Uninstall\{ProductCode} [Version] = dword 16777216
++ value HKLM\...\Uninstall\{ProductCode} [WindowsInstaller] = dword 1
 
 [uninstall]

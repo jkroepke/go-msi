@@ -2,17 +2,17 @@
 # Written by TestMsiexecInstallsExamples with GO_MSI_UPDATE_SNAPSHOTS=1.
 
 [install]
-+ dir {Installer}\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF}
++ dir {Installer}\{ProductCode}
 + dir {ProgramFiles}\Example
 + dir {ProgramFiles}\Example\Agent
-+ file {Installer}\SourceHash{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF}
-+ file {Installer}\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF}\icon.ico = input icon.ico
++ file {Installer}\SourceHash{ProductCode}
++ file {Installer}\{ProductCode}\icon.ico = input icon.ico
 + file {ProgramFiles}\Example\Agent\agent-service.exe = input agent-service.exe
 + file {ProgramFiles}\Example\Agent\agent.conf = input agent.conf
 + file {ProgramFiles}\Example\Agent\agent.exe = input agent.exe
 + file {ProgramFiles}\Example\Agent\icon.ico = input icon.ico
 + key HKLM\...\Services\ExampleAgent
-+ key HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF}
++ key HKLM\...\Uninstall\{ProductCode}
 + key HKLM\SOFTWARE\Example
 + key HKLM\SOFTWARE\Example\Agent
 + value HKLM\...\Services\ExampleAgent [Description] = "Example Agent service"
@@ -23,29 +23,29 @@
 + value HKLM\...\Services\ExampleAgent [ObjectName] = "LocalSystem"
 + value HKLM\...\Services\ExampleAgent [Start] = dword 2
 + value HKLM\...\Services\ExampleAgent [Type] = dword 16
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [AuthorizedCDFPrefix] = ""
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [Comments] = ""
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [Contact] = ""
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [DisplayName] = "Example Agent"
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [DisplayVersion] = "1.5.0"
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [EstimatedSize] = <size>
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [HelpLink] = ""
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [HelpTelephone] = ""
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [InstallDate] = <date>
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [InstallLocation] = ""
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [InstallSource] = "{PackageDir}\"
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [Language] = dword 1033
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [ModifyPath] = expand "MsiExec.exe /I{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF}"
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [Publisher] = "Example"
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [Readme] = ""
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [Size] = ""
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [URLInfoAbout] = ""
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [URLUpdateInfo] = ""
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [UninstallString] = expand "MsiExec.exe /I{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF}"
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [VersionMajor] = dword 1
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [VersionMinor] = dword 5
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [Version] = dword 17104896
-+ value HKLM\...\Uninstall\{F4FAF60A-2234-5BCE-B2AD-0FD2807BE7BF} [WindowsInstaller] = dword 1
++ value HKLM\...\Uninstall\{ProductCode} [AuthorizedCDFPrefix] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Comments] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Contact] = ""
++ value HKLM\...\Uninstall\{ProductCode} [DisplayName] = "Example Agent"
++ value HKLM\...\Uninstall\{ProductCode} [DisplayVersion] = "1.5.0"
++ value HKLM\...\Uninstall\{ProductCode} [EstimatedSize] = <size>
++ value HKLM\...\Uninstall\{ProductCode} [HelpLink] = ""
++ value HKLM\...\Uninstall\{ProductCode} [HelpTelephone] = ""
++ value HKLM\...\Uninstall\{ProductCode} [InstallDate] = <date>
++ value HKLM\...\Uninstall\{ProductCode} [InstallLocation] = ""
++ value HKLM\...\Uninstall\{ProductCode} [InstallSource] = "{PackageDir}\"
++ value HKLM\...\Uninstall\{ProductCode} [Language] = dword 1033
++ value HKLM\...\Uninstall\{ProductCode} [ModifyPath] = expand "MsiExec.exe /I{ProductCode}"
++ value HKLM\...\Uninstall\{ProductCode} [Publisher] = "Example"
++ value HKLM\...\Uninstall\{ProductCode} [Readme] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Size] = ""
++ value HKLM\...\Uninstall\{ProductCode} [URLInfoAbout] = ""
++ value HKLM\...\Uninstall\{ProductCode} [URLUpdateInfo] = ""
++ value HKLM\...\Uninstall\{ProductCode} [UninstallString] = expand "MsiExec.exe /I{ProductCode}"
++ value HKLM\...\Uninstall\{ProductCode} [VersionMajor] = dword 1
++ value HKLM\...\Uninstall\{ProductCode} [VersionMinor] = dword 5
++ value HKLM\...\Uninstall\{ProductCode} [Version] = dword 17104896
++ value HKLM\...\Uninstall\{ProductCode} [WindowsInstaller] = dword 1
 + value HKLM\SOFTWARE\Example\Agent [Arguments] = multi ["run", "{ProgramFiles}\Example\Agent\agent.conf"]
 + value HKLM\SOFTWARE\Example\Agent [] = "{ProgramFiles}\Example\Agent\agent.exe"
 

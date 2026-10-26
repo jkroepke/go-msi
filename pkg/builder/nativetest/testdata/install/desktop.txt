@@ -5,35 +5,35 @@
 + dir {ProgramFiles}\Example Viewer
 + file {CommonDesktop}\Example Viewer.lnk = shortcut {ProgramFiles}\Example Viewer\viewer.exe|{ProgramFiles}\Example Viewer\|
 + file {CommonPrograms}\Example Viewer.lnk = shortcut {ProgramFiles}\Example Viewer\viewer.exe|{ProgramFiles}\Example Viewer\|View example files
-+ file {Installer}\SourceHash{80F7F19E-E4FF-5059-98C3-646F2D291F8C}
++ file {Installer}\SourceHash{ProductCode}
 + file {ProgramFiles}\Example Viewer\viewer.exe = input viewer.exe
 + key HKCU\Software\Example
 + key HKCU\Software\Example\Example Viewer
-+ key HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C}
++ key HKLM\...\Uninstall\{ProductCode}
 + value HKCU\Software\Example\Example Viewer [cmpDC7F075D4854A7F87FB831277DA6373D] = dword 1
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [AuthorizedCDFPrefix] = ""
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [Comments] = ""
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [Contact] = ""
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [DisplayName] = "Example Viewer"
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [DisplayVersion] = "2.0.0"
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [EstimatedSize] = <size>
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [HelpLink] = ""
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [HelpTelephone] = ""
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [InstallDate] = <date>
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [InstallLocation] = ""
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [InstallSource] = "{PackageDir}\"
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [Language] = dword 1033
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [ModifyPath] = expand "MsiExec.exe /X{80F7F19E-E4FF-5059-98C3-646F2D291F8C}"
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [NoModify] = dword 1
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [Publisher] = "Example"
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [Readme] = ""
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [Size] = ""
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [URLInfoAbout] = ""
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [URLUpdateInfo] = ""
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [UninstallString] = expand "MsiExec.exe /X{80F7F19E-E4FF-5059-98C3-646F2D291F8C}"
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [VersionMajor] = dword 2
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [VersionMinor] = dword 0
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [Version] = dword 33554432
-+ value HKLM\...\Uninstall\{80F7F19E-E4FF-5059-98C3-646F2D291F8C} [WindowsInstaller] = dword 1
++ value HKLM\...\Uninstall\{ProductCode} [AuthorizedCDFPrefix] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Comments] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Contact] = ""
++ value HKLM\...\Uninstall\{ProductCode} [DisplayName] = "Example Viewer"
++ value HKLM\...\Uninstall\{ProductCode} [DisplayVersion] = "2.0.0"
++ value HKLM\...\Uninstall\{ProductCode} [EstimatedSize] = <size>
++ value HKLM\...\Uninstall\{ProductCode} [HelpLink] = ""
++ value HKLM\...\Uninstall\{ProductCode} [HelpTelephone] = ""
++ value HKLM\...\Uninstall\{ProductCode} [InstallDate] = <date>
++ value HKLM\...\Uninstall\{ProductCode} [InstallLocation] = ""
++ value HKLM\...\Uninstall\{ProductCode} [InstallSource] = "{PackageDir}\"
++ value HKLM\...\Uninstall\{ProductCode} [Language] = dword 1033
++ value HKLM\...\Uninstall\{ProductCode} [ModifyPath] = expand "MsiExec.exe /X{ProductCode}"
++ value HKLM\...\Uninstall\{ProductCode} [NoModify] = dword 1
++ value HKLM\...\Uninstall\{ProductCode} [Publisher] = "Example"
++ value HKLM\...\Uninstall\{ProductCode} [Readme] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Size] = ""
++ value HKLM\...\Uninstall\{ProductCode} [URLInfoAbout] = ""
++ value HKLM\...\Uninstall\{ProductCode} [URLUpdateInfo] = ""
++ value HKLM\...\Uninstall\{ProductCode} [UninstallString] = expand "MsiExec.exe /X{ProductCode}"
++ value HKLM\...\Uninstall\{ProductCode} [VersionMajor] = dword 2
++ value HKLM\...\Uninstall\{ProductCode} [VersionMinor] = dword 0
++ value HKLM\...\Uninstall\{ProductCode} [Version] = dword 33554432
++ value HKLM\...\Uninstall\{ProductCode} [WindowsInstaller] = dword 1
 
 [uninstall]

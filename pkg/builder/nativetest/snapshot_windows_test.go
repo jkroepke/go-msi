@@ -561,8 +561,10 @@ func saveSnapshot(t *testing.T, name, report string) {
 	t.Logf("new snapshot of %s saved as %s", name, file)
 }
 
-// snapshotReport is the snapshot file of one example.
-func snapshotReport(name string, install, uninstall []string) string {
+// snapshotReport is the snapshot file of one example. The product code
+// becomes {ProductCode}: it depends on the package contents, and the test
+// service the service examples install is built by the local Go toolchain.
+func snapshotReport(name, productCode string, install, uninstall []string) string {
 	var out strings.Builder
 
 	fmt.Fprintf(&out, "# What msiexec /i and then /x of examples/%s change on the machine.\n", name)
@@ -570,13 +572,13 @@ func snapshotReport(name string, install, uninstall []string) string {
 	out.WriteString("\n[install]\n")
 
 	for _, line := range install {
-		out.WriteString(line + "\n")
+		out.WriteString(strings.ReplaceAll(line, productCode, "{ProductCode}") + "\n")
 	}
 
 	out.WriteString("\n[uninstall]\n")
 
 	for _, line := range uninstall {
-		out.WriteString(line + "\n")
+		out.WriteString(strings.ReplaceAll(line, productCode, "{ProductCode}") + "\n")
 	}
 
 	return out.String()
