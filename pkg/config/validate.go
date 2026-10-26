@@ -521,6 +521,33 @@ func (v *validator) removeOld(removeOld, field string, comp *Component) {
 	}
 }
 
+// purge checks that a purged directory is a folder of the product: the
+// action deletes whatever the directory property points to at uninstall.
+func (v *validator) purge(known *refs, field string, comp *Component) {
+	if !comp.Purge.Enabled() {
+		return
+	}
+
+	dir := known.dirs[comp.Directory]
+
+	switch {
+	case dir == nil:
+		// Reported for the directory already.
+	case known.dirParent[comp.Directory] == "":
+		v.errorf(field+".purge", "%s is a standard folder; purge a folder below it", comp.Directory)
+	case dir.Name == "" || dir.Name == ".":
+		v.errorf(field+".purge", "%s is its parent folder; purge a folder with its own name", comp.Directory)
+	case dir.Configurable:
+		v.errorf(field+".purge", "%s is configurable and may point at any folder; purge a folder below it", comp.Directory)
+	}
+
+	if comp.Purge.Condition != "" {
+		if err := condition.Check(comp.Purge.Condition); err != nil {
+			v.errorf(field+".purge.condition", "%v", err)
+		}
+	}
+}
+
 func (v *validator) components(cfg *Config, r *refs) {
 	seen := map[string]bool{}
 	fileIDs := map[string]string{}
@@ -596,6 +623,7 @@ func (v *validator) components(cfg *Config, r *refs) {
 
 		v.oneOf(p+".bitness", c.Bitness, Auto, "32", "64")
 		v.preserve(cfg, p, c)
+		v.purge(r, p, c)
 
 		if c.Bitness == "64" && !cfg.Package.Platform.Is64Bit() {
 			v.errorf(p+".bitness", "64-bit components need an x64 or arm64 package")

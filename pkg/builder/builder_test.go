@@ -987,3 +987,49 @@ func TestSummaryExplicitFields(t *testing.T) {
 		}
 	}
 }
+
+func TestPurge(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "0.32.0.5", Languages: []int{1033}})
+	cfg := example(t, "windows_exporter", map[string]string{"VERSION": "0.32.0.5"}, map[string][]byte{
+		"windows_exporter.exe": exe,
+		"icon.ico":             append([]byte{0, 0, 1, 0, 1, 0}, bytes.Repeat([]byte{0xAB}, 64)...),
+	})
+
+	var comp *config.Component
+
+	for _, c := range cfg.Components {
+		if strings.HasSuffix(c.Directory, "_textfile_inputs") {
+			comp = c
+		}
+	}
+
+	if comp == nil {
+		t.Fatal("no component in textfile_inputs")
+	}
+
+	comp.Purge = &config.Purge{Condition: `DELETE_DATA="1"`}
+
+	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	name := "Purge_" + comp.ID
+	target := cell(t, database, "CustomAction", "Target", func(r []any) bool { return r[0] == name })
+
+	if want := `"[System64Folder]cmd.exe" /c rmdir /s /q "[` + comp.Directory + `]."`; target != want {
+		t.Errorf("purge command %q, want %q", target, want)
+	}
+
+	typ := cell(t, database, "CustomAction", "Type", func(r []any) bool { return r[0] == name })
+	if typ != 34|64|1024|2048 {
+		t.Errorf("purge type %v, want 3170", typ)
+	}
+
+	cond := cell(t, database, "InstallExecuteSequence", "Condition", func(r []any) bool { return r[0] == name })
+	if want := `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE AND ` + comp.Directory + ` AND (DELETE_DATA="1")`; cond != want {
+		t.Errorf("purge condition %q, want %q", cond, want)
+	}
+}

@@ -298,6 +298,40 @@ func (b *build) recoveryAction(info *componentInfo, svc *config.Service) {
 	b.schedule("InstallExecuteSequence", name, "$"+info.cfg.ID+"=3", "", actInstallServices, 0)
 }
 
+// purgeAction schedules a deferred rmdir of the component's directory tree
+// on a real uninstall. RemoveFile rows cannot do it: they never recurse and
+// they also run on the uninstall half of a major upgrade (RUN-26).
+func (b *build) purgeAction(info *componentInfo) {
+	comp := info.cfg
+	if !comp.Purge.Enabled() {
+		return
+	}
+
+	sysDir := b.systemDir()
+	// The "." keeps the trailing backslash of the folder path away from the
+	// closing quote.
+	cmd := fmt.Sprintf(`"[%s]cmd.exe" /c rmdir /s /q "[%s]."`, sysDir, comp.Directory)
+
+	typ := caExec | caDeferred | caContinue
+	if b.cfg.Package.Scope == config.ScopePerMachine {
+		typ |= caNoImpersonate
+	}
+
+	// An empty property would leave "." alone, the working folder.
+	cond := `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE AND ` + comp.Directory
+	if comp.Purge.Condition != "" {
+		cond += " AND (" + comp.Purge.Condition + ")"
+	}
+
+	name := generatedID("Purge", "Purge", comp.ID)
+	if config.IsIdentifier("Purge_"+comp.ID) && len("Purge_"+comp.ID) <= 72 {
+		name = "Purge_" + comp.ID
+	}
+
+	b.addAction(&actionInfo{name: name, typ: typ, source: sysDir, target: cmd})
+	b.schedule(seqInstallExecute, name, cond, actInstallFinalize, "", 0)
+}
+
 // systemDir returns the Directory key of the system folder that holds the
 // native command-line tools for this package's bitness.
 func (b *build) systemDir() string {

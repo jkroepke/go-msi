@@ -246,6 +246,19 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [restart, restart, restart, restart]}}]\n    files:", 1),
 			e, "components[0].services[0].recovery.actions", "one to three",
 		},
+		// RUN-26.
+		"purge configurable folder": {
+			base + strings.Replace(appComponent, "    files:", "    purge: true\n    files:", 1),
+			e, "components[0].purge", "configurable",
+		},
+		"purge standard folder": {
+			base + strings.Replace(appComponent, "directory: INSTALLDIR", "directory: ProgramFiles64Folder\n    purge: true", 1),
+			e, "components[0].purge", "standard folder",
+		},
+		"purge condition": {
+			strings.Replace(base, "        configurable: true\n", "        children: [{id: DATADIR, name: data}]\n", 1) + strings.Replace(appComponent, "    files:", "    purge: {condition: 'DELETE_DATA='}\n    files:", 1),
+			e, "components[0].purge.condition", "",
+		},
 		// RUN-24.
 		"neverOverwrite with early removal": {
 			base + strings.Replace(appComponent, "    files:", "    neverOverwrite: true\n    files:", 1),

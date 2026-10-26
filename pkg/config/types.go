@@ -173,7 +173,10 @@ type Component struct {
 	// Preserve keeps the component's key file or registry value as the user
 	// left it across major upgrades: it sets NeverOverwrite, and removeOld
 	// defaults to afterInstallExecute (RUN-24).
-	Preserve          bool         `yaml:"preserve"`
+	Preserve bool `yaml:"preserve"`
+	// Purge deletes the component's directory with everything in it when
+	// the product is uninstalled, but not on a major upgrade (RUN-26).
+	Purge             *Purge       `yaml:"purge"`
 	SharedDLLRefCount bool         `yaml:"sharedDllRefCount"`
 	Transitive        bool         `yaml:"transitive"`
 	KeyPath           string       `yaml:"keyPath"`
@@ -197,6 +200,19 @@ func (c *Component) Path(index int) string {
 	}
 
 	return "components[" + strconv.Itoa(index) + "]"
+}
+
+// Purge removes a directory tree on uninstall. "purge: true" is the short
+// form of an empty mapping; "purge: false" sets Disabled.
+type Purge struct {
+	// Condition is ANDed with the uninstall condition, e.g. DELETE_DATA="1".
+	Condition string `yaml:"condition"`
+	Disabled  bool   `yaml:"-"`
+}
+
+// Enabled reports whether p asks for a purge.
+func (p *Purge) Enabled() bool {
+	return p != nil && !p.Disabled
 }
 
 // Permissions secures an installed object with an SDDL string through
