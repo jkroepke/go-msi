@@ -83,14 +83,15 @@ type Entry struct {
 type Options struct {
 	// Level is the DEFLATE level for MSZIP and the effort for LZX, 1 to 9;
 	// 0 means 9.
-	Level       int
-	Compression Compression
+	Level int
 	// Window is the LZX window as a power of two, 15 to 21; 0 means 21.
 	Window int
-	SetID  uint16
 
 	// lzxBlock forces the LZX block type in tests.
 	lzxBlock int
+
+	Compression Compression
+	SetID       uint16
 }
 
 // lzxWindow is the LZX window of opts.
@@ -800,6 +801,7 @@ func parseHeader(src io.ReaderAt, size int64) (*header, error) { //nolint:cyclop
 // next returns the uncompressed bytes of one block, valid until the next call.
 type blockReader struct {
 	r       io.ReaderAt
+	lzx     *lzx.Decoder // created at the first LZX block
 	payload []byte
 	out     []byte
 	hist    []byte
@@ -808,19 +810,18 @@ type blockReader struct {
 	folder  int
 	index   int
 	blocks  int
-	typ     Compression
 	window  int
-	lzx     *lzx.Decoder // created at the first LZX block
+	typ     Compression
 }
 
-func newBlockReader(r io.ReaderAt, size int64, folder int, info folderInfo) *blockReader {
+func newBlockReader(src io.ReaderAt, size int64, folder int, info folderInfo) *blockReader {
 	limit := maxBlockData
 	if info.typ == LZX {
 		limit = lzx.MaxFrame
 	}
 
 	return &blockReader{
-		r: r, size: size, folder: folder, pos: info.start, blocks: info.blocks, typ: info.typ, window: info.window,
+		r: src, size: size, folder: folder, pos: info.start, blocks: info.blocks, typ: info.typ, window: info.window,
 		payload: make([]byte, limit), out: make([]byte, blockSize), hist: make([]byte, 0, blockSize),
 	}
 }

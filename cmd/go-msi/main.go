@@ -182,7 +182,7 @@ func cmdValidate(args []string, stderr io.Writer) error {
 	return nil
 }
 
-func cmdBuild(args []string, stdout, stderr io.Writer) error {
+func cmdBuild(args []string, stdout, stderr io.Writer) error { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
 	flags := flag.NewFlagSet("build", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 

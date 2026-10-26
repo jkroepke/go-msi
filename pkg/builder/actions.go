@@ -555,7 +555,7 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 	slices.SortStableFunc(b.actions, func(a, b *actionInfo) int { return strings.Compare(a.name, b.name) })
 
 	for _, a := range b.actions {
-		if !scheduled[a.name] {
+		if !scheduled[a.name] && !a.fromUI {
 			b.warnf("customActions", "custom action %s is not scheduled in any sequence", a.name)
 		}
 

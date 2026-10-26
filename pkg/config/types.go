@@ -14,7 +14,7 @@ import (
 const SchemaV1 = "go-msi/v1"
 
 // Config is a whole package description.
-type Config struct {
+type Config struct { //nolint:govet // field order is the YAML key order
 	Schema           string            `yaml:"schema"`
 	Vars             map[string]string `yaml:"vars"`
 	Product          Product           `yaml:"product"`
@@ -53,7 +53,7 @@ type Product struct {
 }
 
 // ARP holds the Add/Remove Programs properties.
-type ARP struct {
+type ARP struct { //nolint:govet // field order is the YAML key order
 	Comments        string `yaml:"comments"`
 	Contact         string `yaml:"contact"`
 	HelpLink        string `yaml:"helpLink"`
@@ -68,7 +68,7 @@ type ARP struct {
 }
 
 // Package holds platform and container settings.
-type Package struct {
+type Package struct { //nolint:govet // field order is the YAML key order
 	Platform         Platform `yaml:"platform"`
 	Scope            Scope    `yaml:"scope"`
 	InstallerVersion string   `yaml:"installerVersion"`
@@ -89,7 +89,7 @@ type Summary struct {
 // Upgrade is the major-upgrade policy. ApplyDefaults turns a nil *Upgrade
 // into the standard policy; "upgrade: false" sets Disabled, which writes no
 // Upgrade rows.
-type Upgrade struct {
+type Upgrade struct { //nolint:govet // field order is the YAML key order
 	Disabled         bool             `yaml:"-"`
 	AllowSameVersion *bool            `yaml:"allowSameVersion"`
 	Downgrade        string           `yaml:"downgrade"`
@@ -102,7 +102,7 @@ type Upgrade struct {
 }
 
 // RelatedProduct is an extra Upgrade row.
-type RelatedProduct struct {
+type RelatedProduct struct { //nolint:govet // field order is the YAML key order
 	UpgradeCode string `yaml:"upgradeCode"`
 	MinVersion  string `yaml:"minVersion"`
 	MaxVersion  string `yaml:"maxVersion"`
@@ -128,7 +128,7 @@ type InstallDir struct {
 }
 
 // Directory is a node of the install tree.
-type Directory struct {
+type Directory struct { //nolint:govet // field order is the YAML key order
 	ID           string       `yaml:"id"`
 	Name         string       `yaml:"name"`
 	Configurable bool         `yaml:"configurable"`
@@ -139,7 +139,7 @@ type Directory struct {
 }
 
 // Feature is a node of the feature tree.
-type Feature struct {
+type Feature struct { //nolint:govet // field order is the YAML key order
 	ID          string `yaml:"id"`
 	Title       string `yaml:"title"`
 	Description string `yaml:"description"`
@@ -175,7 +175,7 @@ func (f *Feature) levelIsDefault() bool {
 }
 
 // Component is a unit that is installed, repaired and removed together.
-type Component struct {
+type Component struct { //nolint:govet // field order is the YAML key order
 	ID             string           `yaml:"id"`
 	Directory      string           `yaml:"directory"`
 	GUID           string           `yaml:"guid"`
@@ -236,7 +236,7 @@ type Permissions struct {
 }
 
 // File is a payload file.
-type File struct {
+type File struct { //nolint:govet // field order is the YAML key order
 	Source                     string       `yaml:"source"`
 	Name                       string       `yaml:"name"`
 	ID                         string       `yaml:"id"`
@@ -252,7 +252,7 @@ type File struct {
 }
 
 // RegistryValue is a typed registry value or key.
-type RegistryValue struct {
+type RegistryValue struct { //nolint:govet // field order is the YAML key order
 	ID                string       `yaml:"id"`
 	Root              string       `yaml:"root"`
 	Key               string       `yaml:"key"`
@@ -266,7 +266,7 @@ type RegistryValue struct {
 }
 
 // Service is a Windows service installed from the component's key file.
-type Service struct {
+type Service struct { //nolint:govet // field order is the YAML key order
 	Name                             string           `yaml:"name"`
 	DisplayName                      string           `yaml:"displayName"`
 	Description                      string           `yaml:"description"`
@@ -318,7 +318,7 @@ type ServiceControl struct {
 }
 
 // ServiceRecovery is applied with sc.exe after InstallServices.
-type ServiceRecovery struct {
+type ServiceRecovery struct { //nolint:govet // field order is the YAML key order
 	ResetAfterDays int              `yaml:"resetAfterDays"`
 	ResetAfter     *Duration        `yaml:"resetAfter"`
 	Actions        []RecoveryAction `yaml:"actions"`
@@ -333,7 +333,7 @@ type RecoveryAction struct {
 }
 
 // EventSource is an event log source registered with plain Registry rows.
-type EventSource struct {
+type EventSource struct { //nolint:govet // field order is the YAML key order
 	Source         string `yaml:"source"`
 	Log            string `yaml:"log"`
 	MessageFile    string `yaml:"messageFile"`
@@ -341,7 +341,7 @@ type EventSource struct {
 }
 
 // Environment is an environment variable change.
-type Environment struct {
+type Environment struct { //nolint:govet // field order is the YAML key order
 	Name              string `yaml:"name"`
 	Value             string `yaml:"value"`
 	Action            string `yaml:"action"`
@@ -356,7 +356,7 @@ type LaunchCondition struct {
 }
 
 // CustomAction is one custom action and where it runs.
-type CustomAction struct {
+type CustomAction struct { //nolint:govet // field order is the YAML key order
 	ID           string        `yaml:"id"`
 	SetProperty  *SetProperty  `yaml:"setProperty"`
 	SetDirectory *SetDirectory `yaml:"setDirectory"`
@@ -407,7 +407,7 @@ type DLL struct {
 }
 
 // Placement puts an action into one sequence table.
-type Placement struct {
+type Placement struct { //nolint:govet // field order is the YAML key order
 	Sequence  string `yaml:"sequence"`
 	Before    string `yaml:"before"`
 	After     string `yaml:"after"`
@@ -416,7 +416,7 @@ type Placement struct {
 }
 
 // FirewallRule is an inbound rule that follows a component's state.
-type FirewallRule struct {
+type FirewallRule struct { //nolint:govet // field order is the YAML key order
 	Name            string     `yaml:"name"`
 	Description     string     `yaml:"description"`
 	Component       string     `yaml:"component"`
@@ -448,9 +448,28 @@ type UI struct {
 	Wizard string `yaml:"wizard"`
 	// License is a license file shown on a page with an accept check box
 	// after the welcome page: RTF, or plain text that is converted to RTF.
-	License string    `yaml:"license"`
+	License string `yaml:"license"`
+	// Launch adds a check box to the finish page that starts an installed
+	// program when the user clicks Finish.
+	Launch  *Launch   `yaml:"launch"`
 	Theme   Theme     `yaml:"theme"`
 	Dialogs []*Dialog `yaml:"dialogs"`
+	// InstallDirPage adds a page after the welcome and license pages that
+	// shows the install folder and lets the user change it.
+	InstallDirPage bool `yaml:"installDirPage"`
+}
+
+// Launch is the finish page's check box that starts an installed program.
+type Launch struct {
+	// Checked sets the box's initial state; the default is checked.
+	Checked *bool `yaml:"checked"`
+	// File is the id of an installed file: files[].id, or its name when
+	// it has no id.
+	File      string `yaml:"file"`
+	Arguments string `yaml:"arguments"`
+	// Text is the check box label, "&" marks the access key; the default is
+	// "&Launch [ProductName]".
+	Text string `yaml:"text"`
 }
 
 // Theme replaces the wizard's pictures or the colours they are drawn in.

@@ -32,6 +32,22 @@ func TestCheckSDDL(t *testing.T) {
 		{sddl: "D:(A;;FA;;BA)", wantErr: "fields"},
 		{sddl: "D:Q(A;;FA;;;BA)", wantErr: "ACL flags"},
 		{sddl: "O:XX", wantErr: "not a SID"},
+		// Refused by ConvertStringSecurityDescriptorToSecurityDescriptorW
+		// (FuzzCheckSDDLNative on windows-latest).
+		{sddl: "D:(A;;FA;;;BA)D:(A;;FA;;;BA)", wantErr: "twice"},
+		{sddl: "D:(A;;FA;x;;BA)", wantErr: "GUID"},
+		{sddl: "D:(OA;;CR;x;;BA)", wantErr: "not a GUID"},
+		{sddl: "D:(A;;FA;ab721a53-1e2f-11d0-9819-00aa0040529b;;BA)", wantErr: "no object GUID"},
+		{sddl: "D:(A;;FA;;;BA;x)", wantErr: "resource attribute"},
+		{sddl: "S:(RA;;FA;;;BA;x)", wantErr: "resource attribute"},
+		{sddl: "D:(XA;;FX;;;WD)", wantErr: "condition"},
+		{sddl: "S:(FL;;FA;;;BA)", wantErr: "condition"},
+		{sddl: "S:(RA;;FA;;;BA)", wantErr: "resource attribute"},
+		{sddl: "D:(A;;FA;;;S-1-5-21-1-2-3-4-5-6-7-8-9-10-11-12-13-14)"},
+		{sddl: "D:(A;;FA;;;S-1-5-21-1-2-3-4-5-6-7-8-9-10-11-12-13-14-15)", wantErr: "not a SID"},
+		{sddl: "D:(A;;FA;;;S-1-5-4294967296)", wantErr: "not a SID"},
+		{sddl: "D:(A;;FA;;;S-1-281474976710656-1)", wantErr: "not a SID"},
+		{sddl: "D:(OA;;CR;ab721a53-1e2f-11d0-9819-00aa0040529b;;BA)"},
 	} {
 		warnings, err := config.CheckSDDL(tc.sddl)
 

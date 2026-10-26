@@ -95,7 +95,7 @@ func (b *build) identity() error {
 // platform, the version and a digest of the configuration and every input
 // file, so that changed content gives a new code (RUN-11) and unchanged
 // content the same one.
-func (b *build) deriveProductCode() error {
+func (b *build) deriveProductCode() error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	if b.productCode != "" {
 		return nil
 	}
