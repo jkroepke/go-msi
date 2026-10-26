@@ -18,6 +18,7 @@ var (
 	envRef     = regexp.MustCompile(`\[%[A-Za-z_][A-Za-z0-9_]*\]`)
 	accountRef = regexp.MustCompile(`<[^<>]*>`)
 	hexRights  = regexp.MustCompile(`^(0[xX][0-9A-Fa-f]+|\d+)$`)
+	guid       = regexp.MustCompile(`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`)
 )
 
 // sidAliases are the two-letter SID strings of the SDDL grammar.
@@ -126,12 +127,19 @@ type sddlPart struct {
 }
 
 // splitSDDL cuts the string at the O:, G:, D: and S: markers.
+// Each may appear once: Windows refuses "D:(…)D:(…)".
 func splitSDDL(sddl string) ([]sddlPart, error) {
 	var parts []sddlPart
 
 	for sddl != "" {
 		if len(sddl) < 2 || sddl[1] != ':' || !strings.ContainsRune("OGDS", rune(sddl[0])) {
 			return nil, fmt.Errorf("expected O:, G:, D: or S: at %q", sddl)
+		}
+
+		for _, seen := range parts {
+			if seen.kind == sddl[0] {
+				return nil, fmt.Errorf("%c: appears twice", sddl[0])
+			}
 		}
 
 		part := sddlPart{kind: sddl[0]}
@@ -253,8 +261,8 @@ func checkACE(ace string) (string, error) {
 		}
 	}
 
-	if !validSID(fields[5]) {
-		return "", fmt.Errorf("%q is not a SID", fields[5])
+	if err := checkACETail(fields); err != nil {
+		return "", err
 	}
 
 	if strings.Contains(denyTypes, fields[0]) {
@@ -262,6 +270,26 @@ func checkACE(ace string) (string, error) {
 	}
 
 	return "", nil
+}
+
+// checkACETail checks the object GUIDs, the account SID and the resource
+// attribute field, which Windows accepts only on a resource attribute ACE.
+func checkACETail(fields []string) error {
+	for _, field := range fields[3:5] {
+		if field != "" && !guid.MatchString(field) {
+			return fmt.Errorf("%q is not a GUID", field)
+		}
+	}
+
+	if !validSID(fields[5]) {
+		return fmt.Errorf("%q is not a SID", fields[5])
+	}
+
+	if len(fields) == maxACEFields && fields[0] != "RA" {
+		return fmt.Errorf("a %s ACE has no resource attribute field", fields[0])
+	}
+
+	return nil
 }
 
 // pairs checks that s is a sequence of two-letter codes from the set.
