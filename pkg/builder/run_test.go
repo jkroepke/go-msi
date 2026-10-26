@@ -98,7 +98,9 @@ func TestRunActions(t *testing.T) {
 
 	seq := map[string]int{}
 	for _, row := range rows(t, database, "InstallExecuteSequence") {
-		seq[fmt.Sprint(row[0])], _ = row[2].(int)
+		if n, ok := row[2].(int); ok {
+			seq[fmt.Sprint(row[0])] = n
+		}
 	}
 
 	for _, name := range []string{"Later", "Now"} {
@@ -129,8 +131,8 @@ func TestRunActionDLLPerPlatform(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			data, _ := cell(t, database, "Binary", "Data", func(r []any) bool { return r[0] == cadll.Key }).([]byte)
-			if string(data) != string(dll) {
+			data, ok := cell(t, database, "Binary", "Data", func(r []any) bool { return r[0] == cadll.Key }).([]byte)
+			if !ok || string(data) != string(dll) {
 				t.Errorf("Binary.%s is not the %s DLL", cadll.Key, token)
 			}
 		})
