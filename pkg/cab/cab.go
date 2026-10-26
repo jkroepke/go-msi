@@ -987,8 +987,8 @@ func (f *folderReader) Read(buf []byte) (int, error) {
 }
 
 // Read extracts the files of a cabinet written by this package or any other
-// tool that uses stored or MSZIP folders without spanning. It verifies every
-// non-zero block checksum. Files may share or overlap folder bytes.
+// tool that uses stored, MSZIP or LZX folders without spanning. It verifies
+// every non-zero block checksum. Files may share or overlap folder bytes.
 func Read(raw []byte) ([]File, error) {
 	hdr, err := parseHeader(bytes.NewReader(raw), int64(len(raw)))
 	if err != nil {

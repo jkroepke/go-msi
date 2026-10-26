@@ -29,6 +29,11 @@ const (
 	twoPassLevel = 7
 )
 
+// levelDepth is the binary tree search depth of each level.
+//
+//nolint:gochecknoglobals // read-only lookup table
+var levelDepth = [9]int{1, 2, 3, 4, 5, 6, 8, 12, 16}
+
 type pair struct {
 	length int32
 	dist   int32
@@ -99,7 +104,7 @@ func newOptimal(hist *history, opts Options) *optimal {
 		tree:    make([]int32, 2<<span),
 		mask:    1<<span - 1,
 		maxDist: 1<<span - 3,
-		depth:   1 << max(0, opts.Level-5),
+		depth:   levelDepth[opts.Level-1],
 		passes:  1,
 		offsets: make([]int32, FrameSize+1),
 		nodes:   make([]pathNode, FrameSize+1),

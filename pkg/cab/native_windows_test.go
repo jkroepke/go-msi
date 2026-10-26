@@ -496,8 +496,8 @@ func alphabetShift() []byte {
 
 // lzxCases cover the LZX encoder: every window size, all three block types,
 // frame and block boundaries, E8 call translation near frame ends, matches
-// that reach back almost a whole window, and data that spans the encoder's
-// parallel segments.
+// that reach back as far as the encoder searches, and data that makes its
+// history buffer slide.
 func lzxCases(when time.Time, random, text []byte) []nativeCase {
 	lzx := func(window int) cab.Options { return cab.Options{Compression: cab.LZX, Window: window} }
 
@@ -522,11 +522,12 @@ func lzxCases(when time.Time, random, text []byte) []nativeCase {
 		}
 	}
 
-	// A random 64 KB chunk repeated almost a 2 MB window later.
-	far := make([]byte, 0, 1<<21+1<<16)
+	// A random 64 KB chunk repeated almost the encoder's 512 KB search span
+	// later.
+	far := make([]byte, 0, 1<<19+1<<16)
 	far = append(far, random[:65536]...)
 
-	for len(far) < 1<<21-100 {
+	for len(far) < 1<<19-100 {
 		far = append(far, byte(rng.Intn(256))) //nolint:gosec // below 256
 	}
 
@@ -565,7 +566,7 @@ func lzxCases(when time.Time, random, text []byte) []nativeCase {
 		nativeCase{name: "lzx-e8-frame-ends", opts: lzx(0), files: []cab.File{{Name: "e8", Data: calls, Time: when}}},
 		nativeCase{name: "lzx-e8-short-tail", opts: lzx(0), files: []cab.File{{Name: "e8", Data: e8tail, Time: when}}},
 		nativeCase{name: "lzx-e8-tiny-tail", opts: lzx(0), files: []cab.File{{Name: "e8", Data: calls[:32768+10], Time: when}}},
-		nativeCase{name: "lzx-segments", opts: lzx(0), files: []cab.File{
+		nativeCase{name: "lzx-history-slides", opts: lzx(0), files: []cab.File{
 			{Name: "code1.bin", Data: code, Time: when},
 			{Name: "code2.bin", Data: code, Time: when},
 			{Name: "code3.bin", Data: code, Time: when},

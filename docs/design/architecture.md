@@ -367,8 +367,8 @@ bundles.
   (CFB-01). v3 stays for tests and for tools that only know v3.
 - **Every refcount in 1…32767.** A string used more often is a build error
   until a real package needs it; none does.
-- **LZX:21 by default.** It makes the cabinets of the target payloads 14 to
-  30 % smaller than MSZIP (MSISPEC section 5). `internal/lzx` streams: it
+- **LZX:21 by default.** go-msi's LZX cabinets of the target payloads are
+  12 to 26 % smaller than MSZIP (MSISPEC section 5). `internal/lzx` streams: it
   keeps the last 512 KiB as match history and one 128 KiB block, so its
   memory does not grow with the window or the payload.
 - **Identifiers are deterministic.** Generated keys hash their content
