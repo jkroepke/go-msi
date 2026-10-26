@@ -50,7 +50,7 @@ jobs:
             exit 0
           fi
 
-          git diff --name-only "${base}" HEAD > "${RUNNER_TEMP}/files"
+          git diff --name-only --no-renames "${base}" HEAD > "${RUNNER_TEMP}/files"
           code=$(grep -cEv '^docs/|\.md$' "${RUNNER_TEMP}/files" || true)
           generated=$(grep -cE '^docs/(cli|spec/msitest)/' "${RUNNER_TEMP}/files" || true)
           echo "changed=$((code + generated))" >> "$GITHUB_OUTPUT"
