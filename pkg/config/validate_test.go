@@ -276,6 +276,11 @@ func TestValidate(t *testing.T) {
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DATADIR\n    purge: true", 1),
 			e, "components[0].purge", "DATADIR can be pointed",
 		},
+		"purge below TARGETDIR": {
+			strings.Replace(base, "directories:\n", "directories:\n  - id: TARGETDIR\n    children: [{id: DataDir, name: Data}]\n", 1) +
+				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    createFolder: true\n    purge: true", 1),
+			e, "components[0].purge", "TARGETDIR",
+		},
 		"purge folder set by a property": {
 			strings.Replace(base, "        configurable: true\n", "        children: [{id: DataDir, name: data}]\n", 1) +
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1) +

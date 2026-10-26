@@ -445,8 +445,10 @@ file and subfolder in it when the product is uninstalled, including what the
 application created there at runtime, but not on the uninstall half of a
 major upgrade. `RemoveFile` rows cannot do this: RUN-26 showed that they never
 recurse and that they also delete files during a major upgrade. The builder
-writes a deferred action (type 3170) running
-`cmd.exe /c rmdir /s /q "[DIR]."` right before InstallFinalize, with the
+writes a deferred action (type 3170, no-impersonate, in a per-machine x64
+or arm64 package) running `"[System64Folder]cmd.exe" /c rmdir /s /q "[DIR]."`
+right before InstallFinalize; a per-user package gets type 1122 and an x86
+package `[SystemFolder]cmd.exe`, neither tested. The action has the
 condition `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE AND DIR`. RUN-26 tested
 this command at 6590 without `AND DIR`; the builder adds it so that an empty
 property never runs `rmdir` on the working folder. RUN-26 removed the old
@@ -467,8 +469,9 @@ sets, `configurable`, a `setDirectory` or `setProperty` action, a
 `properties` entry or a dialog field. The action deletes whatever the
 property points to, so any of these could move the purge out of the
 product's folders. Data below the install dir therefore cannot be purged;
-use a path below a fixed standard folder, whose generated IDs are private,
-such as `CommonAppDataFolder/Vendor/Product`.
+use a path below a fixed standard folder other than TARGETDIR (public, and
+its drive can change), whose generated IDs are private, such as
+`CommonAppDataFolder/Vendor/Product`.
 
 ```yaml
 components:
