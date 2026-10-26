@@ -399,6 +399,14 @@ bundles.
   12 to 26 % smaller than MSZIP (MSISPEC section 5). `internal/lzx` streams: it
   keeps the last 512 KiB as match history and one 128 KiB block, so its
   memory does not grow with the window or the payload.
+- **No klauspost/compress.** Go 1.27's `compress/flate` already ships
+  klauspost/compress's DEFLATE encoder with byte-identical output; the
+  package takes only 15 to 24 % less time at level 9. Speed comes from
+  compressing MSZIP blocks in parallel instead (MSISPEC section 16,
+  "Decisions not adopted").
+- **No LZX folder splitting for speed.** A file cannot span folders inside a
+  cabinet, so a package of one large binary would not get faster (MSISPEC
+  section 16).
 - **Identifiers are deterministic.** Generated keys hash their content
   (§11.2 identity), short names hash parent and long name (§11.3), GUIDs are
   UUIDv5. Nothing depends on map iteration order or time.
