@@ -264,6 +264,51 @@ jobs:
           VALIDATE_XML: true
           VALIDATE_YAML: true
 
+  # Tags a new version from the conventional commit titles on main. A tag
+  # created with GITHUB_TOKEN does not trigger the tag push run of CI, but a
+  # workflow_dispatch does, so dispatch CI on the new tag like tag.yaml.
+  release:
+    if: github.repository_owner == 'jkroepke' && github.ref_name == 'main'
+    name: Release
+    runs-on: ubuntu-latest
+    environment: "Create Release Tag"
+    concurrency: create-tag
+    needs:
+      - build
+      - lint
+      - goreleaser
+      - super-lint
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: 'false'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx -y semantic-release
+
+      - name: Dispatch CI on the new tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG="$(git tag --points-at HEAD --list 'v*' | head -n 1)"
+          if [ -z "$TAG" ]; then
+            echo "::notice::No release-worthy commits, no tag created."
+            exit 0
+          fi
+
+          gh workflow run ci.yaml --ref "$TAG"
+
   publish:
     name: Publish release
     environment: Publish
