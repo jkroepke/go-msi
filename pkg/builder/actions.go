@@ -585,7 +585,8 @@ func (b *build) checkSequences() { //nolint:cyclop // one pass over the format; 
 				continue
 			}
 
-			if init < 0 || fin < 0 || numbered.Sequence <= init || numbered.Sequence >= fin {
+			// Find returns 0 for an action that is not scheduled.
+			if init == 0 || fin == 0 || numbered.Sequence <= init || numbered.Sequence >= fin {
 				b.errorf("customActions", "%s: deferred action %s at %d must run between InstallInitialize and InstallFinalize (ICE77)",
 					table, numbered.Name, numbered.Sequence)
 			}
@@ -594,8 +595,10 @@ func (b *build) checkSequences() { //nolint:cyclop // one pass over the format; 
 
 	seq := b.numbered[seqInstallExecute]
 
+	// Find returns 0 for an action that is not scheduled, as in a package
+	// without upgrade.
 	rep := sequence.Find(seq, "RemoveExistingProducts")
-	if rep < 0 {
+	if rep == 0 {
 		return
 	}
 
@@ -603,7 +606,7 @@ func (b *build) checkSequences() { //nolint:cyclop // one pass over the format; 
 	init := sequence.Find(seq, actInstallInitialize)
 	fin := sequence.Find(seq, actInstallFinalize)
 	next := func(after int) int {
-		if after < 0 {
+		if after == 0 {
 			return -2
 		}
 
@@ -620,7 +623,7 @@ func (b *build) checkSequences() { //nolint:cyclop // one pass over the format; 
 		rep == next(init) || // window 2
 		rep == next(sequence.Find(seq, "InstallExecute")) || // window 3
 		rep == next(sequence.Find(seq, "InstallExecuteAgain")) ||
-		rep > fin // window 4
+		fin != 0 && rep > fin // window 4
 
 	if !ok {
 		b.errorf("upgrade.removeOld", "RemoveExistingProducts at %d is outside its four windows (ICE63); the engine fails with 2613", rep)

@@ -3,6 +3,7 @@ package builder_test
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -162,8 +163,8 @@ func TestMinimal(t *testing.T) {
 		t.Fatalf("cabinet: %v, %d entries", err, len(entries))
 	}
 
-	// Component: 64-bit attribute, key path is the file.
-	attrs := cell(t, database, "Component", "Attributes", func(r []any) bool { return r[0] == "Hello" })
+	// Component: id from the key file, 64-bit attribute, key path is the file.
+	attrs := cell(t, database, "Component", "Attributes", func(r []any) bool { return r[0] == "hello.exe" })
 	if attrs != 256 {
 		t.Errorf("Component.Attributes %v", attrs)
 	}
@@ -266,6 +267,57 @@ func TestDeterministic(t *testing.T) {
 
 	if changed.PackageCode == first.PackageCode {
 		t.Error("package code did not change with the input")
+	}
+
+	// Turning the upgrade off changes the tables, so the product code too.
+	noUpgrade := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
+	noUpgrade.Upgrade.Disabled = true
+
+	if mustBuild(t, noUpgrade).ProductCode == first.ProductCode {
+		t.Error("product code did not change with upgrade: false")
+	}
+}
+
+// TestProductCodeFollowsStreams checks that productCode: auto changes with
+// the content of icons, binaries and binary cells of custom tables, not only
+// with the payload files (a changed custom action DLL under the old
+// ProductCode is refused with error 1638).
+func TestProductCodeFollowsStreams(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "0.32.0.5", Languages: []int{1033}})
+
+	icon := append([]byte{0, 0, 1, 0, 1, 0}, bytes.Repeat([]byte{0xAB}, 64)...)
+
+	build := func(inputs map[string][]byte) *builder.Result {
+		files := map[string][]byte{"windows_exporter.exe": exe, "icon.ico": icon, "ca.dll": []byte("dll v1"), "blob.bin": []byte("blob v1")}
+		maps.Copy(files, inputs)
+
+		cfg := example(t, "windows_exporter", map[string]string{"VERSION": "0.32.0.5"}, files)
+		cfg.Binaries = map[string]string{"ca.dll": "ca.dll"}
+		cfg.Tables = append(cfg.Tables, &config.Table{
+			Name:    "Blobs",
+			Columns: []config.Column{{Name: "Name", Type: "s72", Key: true}, {Name: "Data", Type: "V0"}},
+			Rows:    [][]any{{"blob", "blob.bin"}},
+		})
+
+		return mustBuild(t, cfg)
+	}
+
+	base := build(nil)
+
+	if again := build(nil); again.ProductCode != base.ProductCode {
+		t.Error("the product code is not stable")
+	}
+
+	for name, data := range map[string][]byte{
+		"icon.ico": append([]byte{0, 0, 1, 0, 1, 0}, bytes.Repeat([]byte{0xCD}, 64)...),
+		"ca.dll":   []byte("dll v2"),
+		"blob.bin": []byte("blob v2"),
+	} {
+		if changed := build(map[string][]byte{name: data}); changed.ProductCode == base.ProductCode {
+			t.Errorf("the product code did not change with %s", name)
+		}
 	}
 }
 
@@ -411,12 +463,130 @@ func TestWindowsExporter(t *testing.T) {
 		}
 	}
 
+	// Conditional service arguments are set right before InstallServices.
+	args := fmt.Sprint(cell(t, database, "ServiceInstall", "Arguments", func([]any) bool { return true }))
+	if args != "[Arg_windows_exporter_1] [Arg_windows_exporter_2] [Arg_windows_exporter_3] [Arg_windows_exporter_4] "+
+		"[Arg_windows_exporter_5] [Arg_windows_exporter_6] [EXTRA_FLAGS]" {
+		t.Errorf("ServiceInstall.Arguments %q", args)
+	}
+
+	for i := 1; i <= 6; i++ {
+		name := fmt.Sprintf("SetArg_windows_exporter_%d", i)
+		if n, ok := seqOf[name]; !ok || n <= seqOf["InstallFiles"] || n >= seqOf["InstallServices"] {
+			t.Errorf("%s at %d, want between InstallFiles and InstallServices", name, n)
+		}
+	}
+
 	if summary.Get(database.Summary, summary.PIDTemplate) != "x64;1033" {
 		t.Errorf("template %v", summary.Get(database.Summary, summary.PIDTemplate))
 	}
 
 	if strings.Contains(fmt.Sprint(res.Diagnostics), "wizard") {
 		t.Errorf("unexpected wizard diagnostic: %s", res.Diagnostics)
+	}
+}
+
+func TestInlineComponentPaths(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Parse([]byte(`schema: go-msi/v1
+product: { name: A, manufacturer: B, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+features:
+  - id: Main
+    components:
+      - files: [{ source: missing.exe }]
+`), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.BaseDir = t.TempDir()
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err == nil {
+		t.Fatal("built without the input file")
+	}
+
+	if msg := fmt.Sprint(err, res.Diagnostics); !strings.Contains(msg, "features[0].components[0].files[0]") {
+		t.Errorf("error does not name the feature path: %s", msg)
+	}
+}
+
+func TestTargetDirPaths(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg, err := config.Parse([]byte(`schema: go-msi/v1
+product: { name: A, manufacturer: B, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+installDir: { parent: TARGETDIR, name: Acme }
+components:
+  - files: [{ source: a.txt }]
+  - { directory: TARGETDIR/sub, files: [{ source: b.txt }] }
+`), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.BaseDir = dir
+
+	res := mustBuild(t, cfg)
+
+	database, err := msidb.Unmarshal(res.Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, id := range []string{"INSTALLDIR", "TARGETDIR_sub"} {
+		if cell(t, database, "Directory", "Directory_Parent", func(r []any) bool { return r[0] == id }) != "TARGETDIR" {
+			t.Errorf("%s is not below TARGETDIR", id)
+		}
+	}
+}
+
+func TestWithoutUpgrade(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Parse([]byte(`schema: go-msi/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+upgrade: false
+components:
+  - files: [{ source: hello.exe }]
+`), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.BaseDir = dir
+
+	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if tbl := database.Table("Upgrade"); tbl != nil && len(tbl.Rows) > 0 {
+		t.Errorf("Upgrade rows: %v", tbl.Rows)
+	}
+
+	for _, row := range rows(t, database, "InstallExecuteSequence") {
+		if row[0] == "RemoveExistingProducts" || row[0] == "FindRelatedProducts" {
+			t.Errorf("%s is scheduled without an upgrade", row[0])
+		}
 	}
 }
 

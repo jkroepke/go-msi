@@ -1,7 +1,9 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -245,4 +247,107 @@ func decodeStrict(node *yaml.Node, v any) error {
 	}
 
 	return nil
+}
+
+// The UnmarshalYAML methods below take the decoder's unmarshal function
+// instead of a node, so that the decoder's strict mode still rejects unknown
+// keys and reports the right lines. Each tries the short form first.
+
+type (
+	rawComponent  Component
+	rawUpgrade    Upgrade
+	rawInstallDir InstallDir
+	rawArgument   Argument
+)
+
+// publicTypeNames rewrites decoding errors that name the raw types above,
+// so that messages say config.Component, not config.rawComponent.
+func publicTypeNames(err error) error {
+	var typeErr *yaml.TypeError
+	if !errors.As(err, &typeErr) {
+		return err
+	}
+
+	out := &yaml.TypeError{Errors: make([]string, len(typeErr.Errors))}
+	for i, msg := range typeErr.Errors {
+		out.Errors[i] = rawTypeName.ReplaceAllString(msg, "config.$1")
+	}
+
+	return out
+}
+
+var rawTypeName = regexp.MustCompile(`config\.raw([A-Z]\w*)`)
+
+// UnmarshalYAML accepts a component id as a reference, which is how
+// features[].components names a component defined elsewhere.
+func (c *Component) UnmarshalYAML(unmarshal func(any) error) error {
+	var id string
+	if unmarshal(&id) == nil {
+		*c = Component{ID: id, ref: true}
+
+		return nil
+	}
+
+	if err := unmarshal((*rawComponent)(c)); err != nil {
+		return publicTypeNames(err)
+	}
+
+	c.defined = true
+
+	return nil
+}
+
+// UnmarshalYAML accepts true for the standard policy and false for none.
+func (u *Upgrade) UnmarshalYAML(unmarshal func(any) error) error {
+	var enabled bool
+	if unmarshal(&enabled) == nil {
+		*u = Upgrade{Disabled: !enabled}
+
+		return nil
+	}
+
+	return publicTypeNames(unmarshal((*rawUpgrade)(u)))
+}
+
+// UnmarshalYAML accepts the folder name alone.
+func (d *InstallDir) UnmarshalYAML(unmarshal func(any) error) error {
+	var name string
+	if unmarshal(&name) == nil {
+		*d = InstallDir{Name: name}
+
+		return nil
+	}
+
+	return publicTypeNames(unmarshal((*rawInstallDir)(d)))
+}
+
+// UnmarshalYAML accepts a whole command line or a list of pieces.
+func (a *Arguments) UnmarshalYAML(unmarshal func(any) error) error {
+	var line string
+	if unmarshal(&line) == nil {
+		*a = Arguments{{Value: line}}
+
+		return nil
+	}
+
+	var list []Argument
+	if err := unmarshal(&list); err != nil {
+		return err
+	}
+
+	*a = list
+
+	return nil
+}
+
+// UnmarshalYAML accepts a piece without a condition as a plain string.
+func (a *Argument) UnmarshalYAML(unmarshal func(any) error) error {
+	var value string
+	if unmarshal(&value) == nil {
+		*a = Argument{Value: value}
+
+		return nil
+	}
+
+	return publicTypeNames(unmarshal((*rawArgument)(a)))
 }

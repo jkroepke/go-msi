@@ -96,7 +96,7 @@ func newRefs(cfg *Config) *refs {
 
 	eachFeature(cfg.Features, func(f *Feature, _ int) {
 		for _, c := range f.Components {
-			r.inFeature[c] = true
+			r.inFeature[c.ID] = true
 		}
 	})
 
@@ -143,8 +143,8 @@ func (r *refs) topFolder(id string) string {
 func (v *validator) product(cfg *Config) {
 	p := cfg.Product
 
-	if v.required("product.name", p.Name) && len([]rune(p.Name)) > MaxProductNameLength {
-		v.errorf("product.name", "at most %d characters", MaxProductNameLength)
+	if v.required(productNamePath, p.Name) && len([]rune(p.Name)) > MaxProductNameLength {
+		v.errorf(productNamePath, "at most %d characters", MaxProductNameLength)
 	}
 
 	v.required("product.manufacturer", p.Manufacturer)
@@ -247,7 +247,7 @@ func (v *validator) pkg(cfg *Config) {
 
 func (v *validator) upgrade(cfg *Config) {
 	u := cfg.Upgrade
-	if u == nil {
+	if u == nil || u.Disabled {
 		return
 	}
 
@@ -312,8 +312,12 @@ func (v *validator) directories(cfg *Config, r *refs) {
 	var walk func([]*Directory, string, bool)
 
 	walk = func(ds []*Directory, prefix string, top bool) {
+		names := make(map[string]string)
+
 		for i, d := range ds {
 			p := fmt.Sprintf("%s[%d]", prefix, i)
+
+			v.sameFolder(names, p, d, top)
 
 			if v.required(p+".id", d.ID) {
 				if !IsIdentifier(d.ID) || len(d.ID) > MaxIdentifierLength {
@@ -333,6 +337,10 @@ func (v *validator) directories(cfg *Config, r *refs) {
 			case top && d.Name != "":
 				v.errorf(p+".name", "a standard folder has no name")
 			case !top && !v.required(p+".name", d.Name):
+			case !top && !validName(d.Name) && d.origin == productNamePath:
+				v.errorf(d.origin, "%q cannot be used as a folder name; set installDir.name", d.Name)
+			case !top && !validName(d.Name) && d.origin != "":
+				v.errorf(d.origin, "%q is not a valid folder name", d.Name)
 			case !top && !validName(d.Name):
 				v.errorf(p+".name", "%q is not a valid name or short|long pair", d.Name)
 			}
@@ -347,9 +355,45 @@ func (v *validator) directories(cfg *Config, r *refs) {
 
 	walk(cfg.Directories, "directories", true)
 
+	if install := cfg.InstallDir; r.dirs[install.ID] == nil {
+		switch {
+		case !IsIdentifier(install.ID) || !IsPublicProperty(install.ID):
+			v.errorf("installDir.id", "%q must be an upper-case identifier, so that it can be set on the command line", install.ID)
+		case !standardFolders[install.Parent]:
+			v.errorf("installDir.parent", "%q is not a standard folder such as ProgramFiles64Folder", install.Parent)
+		case len(splitPath(install.Name)) == 0:
+			v.errorf("installDir.name", "required")
+		}
+	}
+
 	if cfg.Product.ARP.InstallLocation != "" && r.dirs[cfg.Product.ARP.InstallLocation] == nil {
 		v.errorf("product.arp.installLocation", "directory %q is not defined", cfg.Product.ARP.InstallLocation)
 	}
+}
+
+// sameFolder warns when two sibling directories name the same folder: the
+// rows install to one place, but setting one on the command line leaves the
+// other behind.
+func (v *validator) sameFolder(names map[string]string, dirPath string, dir *Directory, top bool) {
+	// A standard folder's path comes from its property, not its name.
+	if top || dir.Name == "" || standardFolders[dir.ID] {
+		return
+	}
+
+	long := strings.ToLower(longPart(dir.Name))
+	if other, dup := names[long]; dup {
+		field := dirPath + ".name"
+		if dir.origin != "" {
+			field = dir.origin
+		}
+
+		v.warnf(field, "directories %s and %s are the same folder; moving one with a property "+
+			"leaves the other behind, so use one id", other, dir.ID)
+
+		return
+	}
+
+	names[long] = dir.ID
 }
 
 func (v *validator) features(cfg *Config, r *refs) {
@@ -361,17 +405,7 @@ func (v *validator) features(cfg *Config, r *refs) {
 		for i, f := range fs {
 			p := fmt.Sprintf("%s[%d]", prefix, i)
 
-			if v.required(p+".id", f.ID) {
-				if !IsIdentifier(f.ID) || len(f.ID) > MaxFeatureIDLength {
-					v.errorf(p+".id", "%q is not an identifier of at most %d characters", f.ID, MaxFeatureIDLength)
-				}
-
-				if seen[f.ID] {
-					v.errorf(p+".id", "feature %s is defined twice", f.ID)
-				}
-
-				seen[f.ID] = true
-			}
+			v.featureID(p, f.ID, seen)
 
 			if depth > MaxFeatureDepth {
 				v.errorf(p, "features nest at most %d deep", MaxFeatureDepth)
@@ -383,19 +417,7 @@ func (v *validator) features(cfg *Config, r *refs) {
 
 			v.oneOf(p+".display", f.Display, "expanded", "collapsed", "hidden")
 
-			if f.Directory != "" {
-				if d := r.dirs[f.Directory]; d == nil {
-					v.errorf(p+".directory", "directory %q is not defined", f.Directory)
-				} else if !d.Configurable {
-					v.errorf(p+".directory", "directory %s must be configurable", f.Directory)
-				}
-			}
-
-			for j, c := range f.Components {
-				if r.components[c] == nil {
-					v.errorf(fmt.Sprintf("%s.components[%d]", p, j), "component %q is not defined", c)
-				}
-			}
+			v.featureRefs(p, f, r)
 
 			walk(f.Features, p+".features", depth+1)
 		}
@@ -408,6 +430,40 @@ func (v *validator) features(cfg *Config, r *refs) {
 	}
 }
 
+// featureID checks a feature's id and records it in seen.
+func (v *validator) featureID(featurePath, featureID string, seen map[string]bool) {
+	if !v.required(featurePath+".id", featureID) {
+		return
+	}
+
+	if !IsIdentifier(featureID) || len(featureID) > MaxFeatureIDLength {
+		v.errorf(featurePath+".id", "%q is not an identifier of at most %d characters", featureID, MaxFeatureIDLength)
+	}
+
+	if seen[featureID] {
+		v.errorf(featurePath+".id", "feature %s is defined twice", featureID)
+	}
+
+	seen[featureID] = true
+}
+
+// featureRefs checks the directory and components a feature refers to.
+func (v *validator) featureRefs(featurePath string, feature *Feature, known *refs) {
+	if feature.Directory != "" {
+		if d := known.dirs[feature.Directory]; d == nil {
+			v.errorf(featurePath+".directory", "directory %q is not defined", feature.Directory)
+		} else if !d.Configurable {
+			v.errorf(featurePath+".directory", "directory %s must be configurable", feature.Directory)
+		}
+	}
+
+	for j, c := range feature.Components {
+		if known.components[c.ID] == nil {
+			v.errorf(fmt.Sprintf("%s.components[%d]", featurePath, j), "component %q is not defined", c.ID)
+		}
+	}
+}
+
 func (v *validator) components(cfg *Config, r *refs) {
 	seen := map[string]bool{}
 	fileIDs := map[string]string{}
@@ -416,7 +472,13 @@ func (v *validator) components(cfg *Config, r *refs) {
 	perUser := cfg.Package.Scope == ScopePerUser
 
 	for i, c := range cfg.Components {
-		p := fmt.Sprintf("components[%d]", i)
+		p := c.Path(i) //nolint:varnamelen // the YAML path, named p throughout this file
+
+		if c.ref {
+			v.errorf(p, "%q: a component here is a mapping; ids only refer to components from features", c.ID)
+
+			continue
+		}
 
 		if v.required(p+".id", c.ID) {
 			if !IsIdentifier(c.ID) || len(c.ID) > MaxIdentifierLength {
@@ -435,9 +497,12 @@ func (v *validator) components(cfg *Config, r *refs) {
 		}
 
 		if v.required(p+".directory", c.Directory) {
-			if r.dirs[c.Directory] == nil {
+			switch {
+			case r.dirs[c.Directory] == nil && c.Directory == cfg.InstallDir.ID && !validInstallDir(cfg.InstallDir):
+				// Reported at installDir.
+			case r.dirs[c.Directory] == nil:
 				v.errorf(p+".directory", "directory %q is not defined", c.Directory)
-			} else {
+			default:
 				top := r.topFolder(c.Directory)
 				if cfg.Package.Platform.Is64Bit() && c.Bitness != "32" && folders32[top] {
 					v.warnf(p+".directory", "%s is the 32-bit folder on 64-bit Windows (ICE80); "+
@@ -446,6 +511,17 @@ func (v *validator) components(cfg *Config, r *refs) {
 
 				if perUser && perMachineFolders[top] {
 					v.errorf(p+".directory", "a per-user package cannot install under %s (ICE105)", top)
+				}
+
+				switch {
+				case !profileFolders[top]:
+				case !userRegistryKeyPath(c, perUser):
+					v.warnf(p+".directory", "a component in the user profile (%s) needs an HKCU registry value "+
+						"as key path (ICE38), and its folders need RemoveFolder rows (ICE64), which go-msi "+
+						"does not write yet", top)
+				default:
+					v.warnf(p+".directory", "the folders of a component in the user profile (%s) need "+
+						"RemoveFolder rows (ICE64), which go-msi does not write yet", top)
 				}
 			}
 		}
@@ -545,6 +621,34 @@ func (v *validator) permissions(field string, perm *Permissions) bool {
 	}
 
 	return true
+}
+
+// userRegistryKeyPath reports whether the component's key path, resolved as
+// the builder does, is a registry value under HKCU (HKMU is HKCU in a
+// per-user package).
+func userRegistryKeyPath(c *Component, perUser bool) bool {
+	key := registryKeyPath(c)
+
+	return key != nil && (key.Root == "HKCU" || perUser && key.Root == "HKMU")
+}
+
+// registryKeyPath returns the registry value that is the component's key
+// path, or nil when the key path is a file or the directory.
+func registryKeyPath(comp *Component) *RegistryValue {
+	switch {
+	case comp.KeyPath == "" && len(comp.Files) == 0 && len(comp.Registry) > 0:
+		return comp.Registry[0]
+	case comp.KeyPath == "" || comp.KeyPath == "directory":
+		return nil
+	}
+
+	for _, value := range comp.Registry {
+		if value.ID == comp.KeyPath {
+			return value
+		}
+	}
+
+	return nil
 }
 
 func keyFileByRef(c *Component, ref string) *File {
@@ -913,6 +1017,12 @@ func (v *validator) customActions(cfg *Config, r *refs) {
 	for i, ca := range cfg.CustomActions {
 		p := fmt.Sprintf("customActions[%d]", i)
 
+		if ca.origin != "" {
+			v.generatedArgument(ca)
+
+			continue
+		}
+
 		if v.required(p+".id", ca.ID) {
 			if !IsIdentifier(ca.ID) || len(ca.ID) > MaxIdentifierLength {
 				v.errorf(p+".id", "%q is not an identifier", ca.ID)
@@ -1058,6 +1168,19 @@ func (v *validator) placement(p string, pl Placement, inScript bool, cfg *Config
 		if !hasCustomAction(cfg, anchor) && !hasDialog(cfg, anchor) {
 			v.errorf(p, "anchor %q is neither a standard action nor a custom action", anchor)
 		}
+	}
+}
+
+// generatedArgument checks the action made from a conditional service
+// argument at the argument's place in the file; the rest of the action is
+// generated and valid by construction.
+func (v *validator) generatedArgument(action *CustomAction) {
+	if action.SetProperty.Value == "" {
+		v.errorf(action.origin+".value", "required")
+	}
+
+	if err := condition.Check(action.Schedule[0].Condition); err != nil {
+		v.errorf(action.origin+".condition", "%v", err)
 	}
 }
 

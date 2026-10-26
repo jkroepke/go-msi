@@ -5,6 +5,11 @@
 // everything that can be checked without reading the referenced input files.
 package config
 
+import (
+	"strconv"
+	"strings"
+)
+
 // SchemaV1 is the only schema identifier this package accepts.
 const SchemaV1 = "go-msi/v1"
 
@@ -15,6 +20,7 @@ type Config struct {
 	Product          Product           `yaml:"product"`
 	Package          Package           `yaml:"package"`
 	Upgrade          *Upgrade          `yaml:"upgrade"`
+	InstallDir       InstallDir        `yaml:"installDir"`
 	Directories      []*Directory      `yaml:"directories"`
 	Features         []*Feature        `yaml:"features"`
 	Components       []*Component      `yaml:"components"`
@@ -80,8 +86,11 @@ type Summary struct {
 	Author   string `yaml:"author"`
 }
 
-// Upgrade is the major-upgrade policy. A nil *Upgrade writes no Upgrade rows.
+// Upgrade is the major-upgrade policy. ApplyDefaults turns a nil *Upgrade
+// into the standard policy; "upgrade: false" sets Disabled, which writes no
+// Upgrade rows.
 type Upgrade struct {
+	Disabled         bool             `yaml:"-"`
 	AllowSameVersion *bool            `yaml:"allowSameVersion"`
 	Downgrade        string           `yaml:"downgrade"`
 	DowngradeMessage string           `yaml:"downgradeMessage"`
@@ -103,26 +112,48 @@ type RelatedProduct struct {
 	Property    string `yaml:"property"`
 }
 
+// InstallDir is the product's main folder, the default directory of every
+// component. ApplyDefaults adds it to the directory tree unless directories
+// already define its id.
+type InstallDir struct {
+	// ID is the Directory key and the property that holds the path.
+	ID string `yaml:"id"`
+	// Name is the folder name below Parent; "/" separates nested folders.
+	Name string `yaml:"name"`
+	// Parent is the standard folder the install dir is created in.
+	Parent string `yaml:"parent"`
+
+	// expanded is set by the first expandShorthands.
+	expanded bool
+}
+
 // Directory is a node of the install tree.
 type Directory struct {
 	ID           string       `yaml:"id"`
 	Name         string       `yaml:"name"`
 	Configurable bool         `yaml:"configurable"`
 	Children     []*Directory `yaml:"children"`
+
+	// origin is the YAML path of the value a generated node comes from.
+	origin string
 }
 
 // Feature is a node of the feature tree.
 type Feature struct {
-	ID             string     `yaml:"id"`
-	Title          string     `yaml:"title"`
-	Description    string     `yaml:"description"`
-	Level          *int       `yaml:"level"`
-	Display        string     `yaml:"display"`
-	Directory      string     `yaml:"directory"`
-	AllowAbsent    *bool      `yaml:"allowAbsent"`
-	AllowAdvertise bool       `yaml:"allowAdvertise"`
-	Components     []string   `yaml:"components"`
-	Features       []*Feature `yaml:"features"`
+	ID             string `yaml:"id"`
+	Title          string `yaml:"title"`
+	Description    string `yaml:"description"`
+	Level          *int   `yaml:"level"`
+	Display        string `yaml:"display"`
+	Directory      string `yaml:"directory"`
+	AllowAbsent    *bool  `yaml:"allowAbsent"`
+	AllowAdvertise bool   `yaml:"allowAdvertise"`
+	// Components are the feature's components: an id of an entry in
+	// components, or a component defined in place. ApplyDefaults moves
+	// components defined in place to Config.Components, so afterwards every
+	// entry only carries an ID.
+	Components []*Component `yaml:"components"`
+	Features   []*Feature   `yaml:"features"`
 }
 
 // Component is a unit that is installed, repaired and removed together.
@@ -144,6 +175,24 @@ type Component struct {
 	KeyPath           string           `yaml:"keyPath"`
 	Bitness           string           `yaml:"bitness"`
 	FolderPermissions *Permissions     `yaml:"folderPermissions"`
+
+	// ref marks a features[].components entry written as an id.
+	ref bool
+	// defined marks a component decoded from a YAML mapping.
+	defined bool
+	// origin is the YAML path of a component defined inside a feature.
+	origin string
+}
+
+// Path returns the component's YAML path, given its index in
+// Config.Components: components[i], or its place in a feature for a
+// component defined there.
+func (c *Component) Path(index int) string {
+	if c.origin != "" {
+		return c.origin
+	}
+
+	return "components[" + strconv.Itoa(index) + "]"
 }
 
 // Permissions secures an installed object with an SDDL string through
@@ -195,12 +244,35 @@ type Service struct {
 	Vital                            bool             `yaml:"vital"`
 	Account                          string           `yaml:"account"`
 	Password                         string           `yaml:"password"`
-	Arguments                        string           `yaml:"arguments"`
+	Arguments                        Arguments        `yaml:"arguments"`
 	Dependencies                     []string         `yaml:"dependencies"`
 	FailureActionsOnNonCrashFailures bool             `yaml:"failureActionsOnNonCrashFailures"`
 	Control                          ServiceControl   `yaml:"control"`
 	Recovery                         *ServiceRecovery `yaml:"recovery"`
 	Permissions                      *Permissions     `yaml:"permissions"`
+}
+
+// Arguments is a service command line. Each entry is a piece of it; a piece
+// with a condition is only added when the condition is true at install time.
+type Arguments []Argument
+
+// Argument is one piece of a service command line.
+type Argument struct {
+	Value     string `yaml:"value"`
+	Condition string `yaml:"condition"`
+}
+
+// String joins the pieces that have no condition.
+func (a Arguments) String() string {
+	parts := make([]string, 0, len(a))
+
+	for _, arg := range a {
+		if arg.Condition == "" && arg.Value != "" {
+			parts = append(parts, arg.Value)
+		}
+	}
+
+	return strings.Join(parts, " ")
 }
 
 // ServiceControl selects the ServiceControl events.
@@ -265,6 +337,10 @@ type CustomAction struct {
 	HideTarget   bool          `yaml:"hideTarget"`
 	Once         string        `yaml:"once"`
 	Schedule     []Placement   `yaml:"schedule"`
+
+	// origin is the YAML path of the service argument an action was
+	// generated from.
+	origin string
 }
 
 // SetProperty is a type 51 action.

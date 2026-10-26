@@ -41,6 +41,10 @@ is the schema itself.
    can use.
 6. **Strict input.** Unknown keys are errors, so a typo never silently drops a
    setting. Every error names the YAML path (`components[0].files[1].source`).
+7. **Short by default.** A simple package is a product, a platform and its
+   files. The install folder, the feature, component IDs and the upgrade
+   policy have defaults (section 3.3), and the explicit forms stay for the
+   packages that need them.
 
 ## 2. What the Windows runs changed
 
@@ -97,8 +101,9 @@ schema: go-msi/v1        # required, selects this document
 vars: {}                 # defaults for ${NAME} substitution
 product: {}              # identity
 package: {}              # platform, scope, compression, summary information
-upgrade: {}              # major upgrade policy
-directories: []          # the install tree
+upgrade: {}              # major upgrade policy (on by default)
+installDir: {}           # the product's folder (default: Program Files\<name>)
+directories: []          # the install tree, for folders the shorthands do not cover
 features: []             # the feature tree
 components: []           # files, registry, services, folders, environment
 properties: {}           # Property table, Secure and Hidden flags
@@ -149,6 +154,44 @@ variable substitution, so every typed value also accepts a string with a
 other values and the rules of section 2 are checked only by
 `config.Validate`, which stays the authority. A test keeps the JSON Schema
 in step with the Go types.
+
+### 3.3 Defaults and shorthands
+
+The smallest package needs no directories, features or upgrade section:
+
+```yaml
+schema: go-msi/v1
+product:
+  name: Hello
+  manufacturer: Example
+  version: 1.0.0
+  upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301
+package:
+  platform: x64
+components:
+  - files:
+      - source: hello.exe
+```
+
+The loader expands the short forms into the explicit model before
+validation, so the builder and every rule below see the same thing either
+way:
+
+| Short form | Expands to |
+|---|---|
+| no `installDir` | `INSTALLDIR`, configurable, named after the product, under `ProgramFiles64Folder` (`ProgramFilesFolder` on x86, `LocalAppDataFolder\Programs` for `perUser`). Not added when `directories` already defines that ID (section 4.4). |
+| component without `directory` | the install dir |
+| `directory: bin` or `directory: CommonAppDataFolder/Hello/logs` | directory nodes for the path, with generated IDs such as `INSTALLDIR_bin` (section 4.4) |
+| component without `id` | an ID from the key file's name (`hello.exe`), else the first service name, else the directory ID |
+| no `features` | one feature `MainFeature`, titled with the product name, holding every component, with the install dir as its configurable directory |
+| a component written inside `features[].components` | the same component in `components`, referenced by ID |
+| `features[].components` entry that is only an ID | a reference to that component; in Go, `config.ComponentRef(id)` |
+| no `upgrade` | the standard policy of section 4.3, as `upgrade: {}`; `upgrade: false` writes no Upgrade rows |
+| a service argument with a `condition` | a private property set by an immediate `setProperty` action before InstallServices under that condition (section 4.6) |
+
+Generated IDs are stable: the same file gives the same IDs. Component GUIDs
+do not depend on component IDs (section 4.6), so renaming or dropping an ID
+never changes a GUID.
 
 ## 4. Sections
 
@@ -211,7 +254,8 @@ upgrade:
       property: OLDPRODUCTFOUND
 ```
 
-`upgrade` absent means no Upgrade rows at all. With `upgrade: {}` the builder
+`upgrade` absent, `upgrade: true` and `upgrade: {}` all mean the standard
+policy, and `upgrade: false` means no Upgrade rows at all. The builder
 writes the two standard rows: one removes versions up to this one
 (inclusive when `allowSameVersion`), and one detects newer versions.
 
@@ -231,10 +275,44 @@ detection row.
 Every property named here must be public, is added to
 `SecureCustomProperties` and must not appear in `properties`.
 
-### 4.4 `directories`
+### 4.4 `installDir` and `directories`
 
-A tree under standard folders. Every node has an `id` (the Directory key and
-the property that holds its path) and a `name`.
+Most packages only need `installDir`, the product's folder:
+
+```yaml
+installDir: windows_exporter          # the folder name alone
+installDir:
+  id: APPLICATIONFOLDER               # Directory key and property, default INSTALLDIR
+  name: Example/windows_exporter      # "/" nests folders, default product.name
+  parent: ProgramFiles64Folder        # a standard folder, default by platform and scope
+```
+
+The generated install dir is configurable, so `msiexec /i … INSTALLDIR=D:\App`
+and the wizard's Browse button can move it, and its ID must be upper case.
+When `directories` defines the install dir's ID, that node is used as
+written, including its `configurable` setting. A package with a directory
+tree and no `installDir` key gets the install dir only when a component
+lands in it, so an explicit tree never gains an unused folder.
+
+A per-user install dir lies in the user profile. Windows Installer wants an
+HKCU registry value as the key path of such components (ICE38) and
+RemoveFolder rows for their folders (ICE64); go-msi does not write either
+yet, and the validator warns about such components.
+
+A component's `directory` is a directory ID, a standard folder, or a folder
+path. A path starts at its first segment when that is a directory ID or a
+standard folder, and in the install dir otherwise; `./` forces the install
+dir. A single upper-case word is always an ID, and so is a word that
+matches a known ID or standard folder in another case; the same holds for
+the first segment of a path, so typos such as
+`INSTALDIR` or `ProgramFiles64folder` fail validation instead of creating a
+folder. Folders a path
+names are added below their parent with IDs from the parent ID and the name
+(`INSTALLDIR_textfile_inputs`); a folder that already exists is reused.
+
+`directories` is the explicit tree, for directory IDs that something else
+refers to or short names that must be pinned. Every node has an `id` (the
+Directory key and the property that holds its path) and a `name`.
 
 ```yaml
 directories:
@@ -260,6 +338,10 @@ directories:
 
 ### 4.5 `features`
 
+`features` is optional; without it every component goes into one feature
+(section 3.3). A feature lists components by ID, or defines them in place,
+which is the shortest form for a component that only one feature uses:
+
 ```yaml
 features:
   - id: DefaultFeature
@@ -270,7 +352,10 @@ features:
     directory: APPLICATIONFOLDER
     allowAbsent: false
     allowAdvertise: false
-    components: [Executable, TextfileDir]
+    components:
+      - Executable                 # defined in components
+      - files:                     # defined here
+          - source: README.md
     features:
       - id: FirewallException
         title: Firewall Exception
@@ -280,7 +365,8 @@ features:
 
 - Feature IDs are at most 38 characters; depth is at most 16.
 - `level: 0` disables a feature; `ADDLOCAL=ALL` cannot turn it on.
-- Every component is in at least one feature (ICE21).
+- Every component is in at least one feature (ICE21). A component used by
+  two features is defined once in `components` and named by ID in both.
 - `allowAdvertise` defaults to `false`; advertised installs are not in schema v1 (section 6).
 
 ### 4.6 `components`
@@ -291,8 +377,8 @@ key file, resources never move between components, and GUIDs are stable.
 
 ```yaml
 components:
-  - id: Executable
-    directory: APPLICATIONFOLDER
+  - id: Executable                 # default: the key file's name
+    directory: APPLICATIONFOLDER   # default: the install dir
     guid: 5546455E-B5EA-5AF8-A21A-AA526F04D083   # or auto (default) or none
     transitive: true
     files:
@@ -394,7 +480,10 @@ services:
     vital: true                  # ErrorControl | 0x8000
     account: '[SERVICE_ACCOUNT]'
     password: '[SERVICE_PASSWORD]'
-    arguments: '[ConfigFileFlag] [CollectorsFlag]'
+    arguments:                   # one string, or pieces
+      - --log.format=json
+      - value: --collectors.enabled [ENABLED_COLLECTORS]
+        condition: ENABLED_COLLECTORS
     dependencies: [wmiApSrv]
     failureActionsOnNonCrashFailures: true   # MsiServiceConfig ConfigType 4
     control:
@@ -411,6 +500,15 @@ services:
         - none
       restartDelay: 60s
 ```
+
+`arguments` is the service command line, as one formatted string or as a
+list of pieces joined with spaces. A piece with a `condition` is only part of
+the command line when the condition is true: it becomes a private property
+`Arg_<service>_<n>`, set by an immediate `setProperty` action
+`SetArg_<service>_<n>` before InstallServices, and the command line names
+the property. A property that is not set formats to an empty string, so the
+command line has no placeholder left over. Conditions are checked like
+those of section 4.9.
 
 `recovery` becomes a deferred, no-impersonate `sc.exe failure` action after
 InstallServices, with its exit code ignored (RUN-05). Each step is `restart`,
