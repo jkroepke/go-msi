@@ -41,6 +41,7 @@ func TestCheckSDDL(t *testing.T) {
 		{sddl: "D:(A;;FA;;;BA;x)", wantErr: "resource attribute"},
 		{sddl: "S:(RA;;FA;;;BA;x)", wantErr: "resource attribute"},
 		{sddl: "D:(XA;;FX;;;WD)", wantErr: "condition"},
+		{sddl: "S:(FL;;FA;;;BA)", wantErr: "condition"},
 		{sddl: "S:(RA;;FA;;;BA)", wantErr: "resource attribute"},
 		{sddl: "D:(A;;FA;;;S-1-5-21-1-2-3-4-5-6-7-8-9-10-11-12-13-14)"},
 		{sddl: "D:(A;;FA;;;S-1-5-21-1-2-3-4-5-6-7-8-9-10-11-12-13-14-15)", wantErr: "not a SID"},

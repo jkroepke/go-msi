@@ -44,7 +44,7 @@ var objectTypes = map[string]bool{"OA": true, "OD": true, "OU": true, "OL": true
 
 // trailingFieldTypes are the ACE types that need a field after the SID.
 var trailingFieldTypes = map[string]string{ //nolint:gochecknoglobals // lookup table
-	"XA": aceCondition, "XD": aceCondition, "XU": aceCondition, "ZA": aceCondition, "RA": "resource attribute",
+	"XA": aceCondition, "XD": aceCondition, "XU": aceCondition, "ZA": aceCondition, "FL": aceCondition, "RA": "resource attribute",
 }
 
 var aceFlags = map[string]bool{ //nolint:gochecknoglobals // lookup table
