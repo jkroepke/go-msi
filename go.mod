@@ -1,6 +1,6 @@
 module github.com/jkroepke/go-msi
 
-go 1.27
+go 1.27.3
 
 require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
