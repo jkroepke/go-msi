@@ -161,11 +161,17 @@ func (db *Database) MarshalTo(dst io.Writer, opts Options) (*cfb.Layout, error) 
 	}
 
 	seen := make(map[string]bool)
+	tables := make([]*Table, 0, len(db.Tables))
 
+	// Encode normalized copies so the caller's rows keep the values it
+	// stored; the encoders below rely on the canonical cell types.
 	for _, tbl := range db.Tables {
-		if err := tbl.Validate(); err != nil {
+		normalized, err := tbl.normalized()
+		if err != nil {
 			return nil, err
 		}
+
+		tables = append(tables, normalized)
 
 		if seen[tbl.Name] {
 			return nil, fmt.Errorf("msidb: table %s defined twice", tbl.Name)
@@ -179,7 +185,6 @@ func (db *Database) MarshalTo(dst io.Writer, opts Options) (*cfb.Layout, error) 
 		}
 	}
 
-	tables := append([]*Table(nil), db.Tables...)
 	slices.SortFunc(tables, func(a, b *Table) int { return strings.Compare(a.Name, b.Name) })
 
 	strPool := newPool(db.Codepage)
@@ -255,8 +260,9 @@ func (db *Database) MarshalTo(dst io.Writer, opts Options) (*cfb.Layout, error) 
 		}
 	}
 
-	for _, tbl := range []*Table{tablesTable, columnsTable} {
-		if err := tbl.Validate(); err != nil {
+	for _, system := range []*Table{tablesTable, columnsTable} {
+		tbl, err := system.normalized()
+		if err != nil {
 			return nil, err
 		}
 

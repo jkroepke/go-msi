@@ -48,9 +48,30 @@ type Result struct {
 	ProductCode string
 	PackageCode string
 	// Files lists every payload file in File.Sequence order.
-	Files []*fileInfo
+	Files []File
 	// Size is the package length in bytes.
 	Size int64
+}
+
+// File describes one payload file of a finished build.
+type File struct {
+	// Key is the File table primary key.
+	Key string
+	// Name is the long file name as installed.
+	Name string
+	// Source is the source path as written in the config.
+	Source string
+	// Component is the ID of the component that owns the file.
+	Component string
+	// Version is the File.Version value, or "" for an unversioned file.
+	Version string
+	// Language is the File.Language value, or "" when none is recorded.
+	Language string
+	// Size is the file size in bytes.
+	Size int64
+	// Sequence is the File.Sequence value, which orders the files in the
+	// cabinet.
+	Sequence int
 }
 
 // build holds the state of one build.
@@ -225,7 +246,20 @@ func (b *build) run(res *Result) error {
 	res.Database = database
 	res.ProductCode = b.productCode
 	res.PackageCode = b.packageCode
-	res.Files = b.files
+	res.Files = make([]File, 0, len(b.files))
+
+	for _, file := range b.files {
+		res.Files = append(res.Files, File{
+			Key:       file.Key,
+			Name:      file.LongName,
+			Source:    file.cfg.Source,
+			Component: file.Component.cfg.ID,
+			Version:   stringCell(file.Version),
+			Language:  stringCell(file.Language),
+			Size:      file.Size,
+			Sequence:  file.Sequence,
+		})
+	}
 
 	return nil
 }
@@ -283,4 +317,13 @@ func sortedKeys(m map[string]bool) []string {
 	slices.Sort(out)
 
 	return out
+}
+
+// stringCell returns a string cell, or "" for a NULL cell.
+func stringCell(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+
+	return ""
 }

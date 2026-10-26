@@ -238,7 +238,7 @@ type Result struct {
     Database    *msidb.Database
     Diagnostics config.Diagnostics
     ProductCode, PackageCode string
-    Files       []*fileInfo // payload files in File.Sequence order
+    Files       []File // payload files in File.Sequence order
 }
 func Build(cfg *config.Config, o Options) (*Result, error)
 ```

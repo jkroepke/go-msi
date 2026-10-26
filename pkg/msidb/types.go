@@ -354,18 +354,27 @@ func normalizeCell(col Column, value any) (any, error) { //nolint:cyclop // one 
 }
 
 // Validate checks the table shape: name, column count, key placement and
-// every cell.
-func (t *Table) Validate() error { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
+// every cell. It does not modify the table.
+func (t *Table) Validate() error {
+	_, err := t.normalized()
+
+	return err
+}
+
+// normalized validates the table and returns a copy whose cells hold the
+// canonical Go values (nil, string, int or []byte) that the encoders expect.
+// The caller's rows are left as they are.
+func (t *Table) normalized() (*Table, error) { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
 	if t.Name == "" || len(t.Name) > MaxTableName {
-		return fmt.Errorf("msidb: table name %q must be 1 to %d characters", t.Name, MaxTableName)
+		return nil, fmt.Errorf("msidb: table name %q must be 1 to %d characters", t.Name, MaxTableName)
 	}
 
 	if _, err := EncodeStreamName(t.Name, true); err != nil {
-		return err
+		return nil, err
 	}
 
 	if len(t.Columns) == 0 || len(t.Columns) > MaxColumns {
-		return fmt.Errorf("msidb: table %s has %d columns, want 1 to %d (the engine rejects the 32nd, DB-07)", t.Name, len(t.Columns), MaxColumns)
+		return nil, fmt.Errorf("msidb: table %s has %d columns, want 1 to %d (the engine rejects the 32nd, DB-07)", t.Name, len(t.Columns), MaxColumns)
 	}
 
 	keys, binaries := 0, 0
@@ -373,22 +382,22 @@ func (t *Table) Validate() error { //nolint:cyclop,gocognit // one pass over the
 
 	for i, col := range t.Columns {
 		if col.Name == "" || len(col.Name) > maxColumnName {
-			return fmt.Errorf("msidb: table %s: column %d has an invalid name %q", t.Name, i+1, col.Name)
+			return nil, fmt.Errorf("msidb: table %s: column %d has an invalid name %q", t.Name, i+1, col.Name)
 		}
 
 		if seen[col.Name] {
-			return fmt.Errorf("msidb: table %s: column %s defined twice", t.Name, col.Name)
+			return nil, fmt.Errorf("msidb: table %s: column %s defined twice", t.Name, col.Name)
 		}
 
 		seen[col.Name] = true
 
 		if col.Type.Key {
 			if i != keys {
-				return fmt.Errorf("msidb: table %s: key column %s must come before the other columns", t.Name, col.Name)
+				return nil, fmt.Errorf("msidb: table %s: key column %s must come before the other columns", t.Name, col.Name)
 			}
 
 			if col.Type.Kind == KindBinary {
-				return fmt.Errorf("msidb: table %s: binary column %s cannot be a key", t.Name, col.Name)
+				return nil, fmt.Errorf("msidb: table %s: binary column %s cannot be a key", t.Name, col.Name)
 			}
 
 			keys++
@@ -400,27 +409,33 @@ func (t *Table) Validate() error { //nolint:cyclop,gocognit // one pass over the
 	}
 
 	if keys == 0 {
-		return fmt.Errorf("msidb: table %s has no primary key", t.Name)
+		return nil, fmt.Errorf("msidb: table %s has no primary key", t.Name)
 	}
 
 	if binaries > 1 {
-		return fmt.Errorf("msidb: table %s has %d binary columns, at most one is allowed", t.Name, binaries)
+		return nil, fmt.Errorf("msidb: table %s has %d binary columns, at most one is allowed", t.Name, binaries)
 	}
+
+	rows := make([][]any, len(t.Rows))
 
 	for rowIdx, row := range t.Rows {
 		if len(row) != len(t.Columns) {
-			return fmt.Errorf("msidb: table %s row %d has %d cells, want %d", t.Name, rowIdx, len(row), len(t.Columns))
+			return nil, fmt.Errorf("msidb: table %s row %d has %d cells, want %d", t.Name, rowIdx, len(row), len(t.Columns))
 		}
+
+		cells := make([]any, len(row))
 
 		for i, c := range t.Columns {
 			v, err := normalizeCell(c, row[i])
 			if err != nil {
-				return fmt.Errorf("msidb: table %s row %d: %w", t.Name, rowIdx, err)
+				return nil, fmt.Errorf("msidb: table %s row %d: %w", t.Name, rowIdx, err)
 			}
 
-			row[i] = v
+			cells[i] = v
 		}
+
+		rows[rowIdx] = cells
 	}
 
-	return nil
+	return &Table{Name: t.Name, Columns: t.Columns, Rows: rows}, nil
 }
