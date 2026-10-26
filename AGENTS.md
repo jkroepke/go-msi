@@ -92,15 +92,18 @@ go test ./... -shuffle=on -race
   tables of every example, and `TestMsiexecInstallsExamples`
   (`pkg/builder/nativetest/testdata/install`) holds the entries that
   installing and removing each example adds under the watched folders and
-  registry keys on Windows, plus the firewall rules. Only entries whose name
-  occurs in one of the package's strings, or carries its product code, are
-  recorded, so other programs writing on the runner (`HKCU\Software\Mozilla`)
-  stay out; changes inside entries that existed before are not recorded. A change to the generated packages
-  updates them in the same pull request: rerun the tests with
+  registry keys on Windows, plus the firewall rules. Only entries whose name,
+  with or without its extension, occurs as a whole word in one of the
+  package's strings, or that carry its product code, are recorded, so other
+  programs writing on the runner (`HKCU\Software\Mozilla`) stay out;
+  `TestScopeOwns` checks that rule on every platform. Changes inside entries
+  that existed before are not recorded. A change to the generated packages
+  updates the snapshots in the same pull request: rerun the tests with
   `GO_MSI_UPDATE_SNAPSHOTS=1` and review the diff. The install snapshots need
   an elevated Windows machine; on a mismatch CI uploads the new ones as the
-  `install-snapshots` artifact. The example inputs live in `internal/exampletest`, and a new
-  example needs an entry there and in `installExamples`.
+  `install-snapshots` artifact. The example inputs live in
+  `internal/exampletest`, and a new example needs an entry there, in
+  `installExamples` and in `TestScopeOwns`.
 - `-short` skips the slow tests: the native tests that open packages with
   `msi.dll` and install them with `msiexec` (Windows only,
   `pkg/builder/nativetest`, `pkg/cab/native_windows_test.go`) and the bounded-memory

@@ -367,7 +367,7 @@ func msiexecQuiet(t *testing.T, log string, args ...string) {
 	t.Fatalf("msiexec %s: %v\n%s\n%s", strings.Join(args, " "), err, out, readLog(log))
 }
 
-// serviceState returns the STATE line of pkg query, or "" when the service
+// serviceState returns the STATE line of sc query, or "" when the service
 // does not exist.
 func serviceState(t *testing.T, name string) string {
 	t.Helper()

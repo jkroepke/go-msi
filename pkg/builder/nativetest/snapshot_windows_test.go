@@ -20,8 +20,6 @@ import (
 	"testing"
 	"unicode/utf16"
 	"unsafe"
-
-	"github.com/jkroepke/go-msi/pkg/builder"
 )
 
 //nolint:gochecknoglobals // lazy DLL procs, loaded on first use
@@ -154,50 +152,6 @@ func longPath(path string) string {
 	return syscall.UTF16ToString(buf[:size])
 }
 
-// scope is what a snapshot needs to know about the package: the labels for
-// machine paths, the input files and the names the package can own.
-type scope struct {
-	label  func(string) string
-	inputs map[string][]byte
-	// strings holds every string of the package, lower-cased and separated
-	// by NUL.
-	strings     string
-	productCode string
-}
-
-// newScope collects the strings of every table of the package.
-func newScope(res *builder.Result, label func(string) string, inputs map[string][]byte) scope {
-	var all strings.Builder
-
-	for _, tbl := range res.Database.Tables {
-		for _, row := range tbl.Rows {
-			for _, cell := range row {
-				if text, ok := cell.(string); ok {
-					all.WriteString(strings.ToLower(text) + "\x00")
-				}
-			}
-		}
-	}
-
-	return scope{label: label, inputs: inputs, strings: all.String(), productCode: res.ProductCode}
-}
-
-// owns reports whether a child of a watch can belong to the package: its
-// name, without an extension, occurs in one of the package's strings, or it
-// carries the product code. Other programs on the machine write next to
-// the package at the same time, such as HKCU\Software\Mozilla on a GitHub
-// runner, and stay out of the snapshot.
-func (pkg scope) owns(name string) bool {
-	if pkg.productCode != "" && strings.Contains(strings.ToUpper(name), strings.ToUpper(pkg.productCode)) {
-		return true
-	}
-
-	lower := strings.ToLower(name)
-
-	return strings.Contains(pkg.strings, lower) ||
-		strings.Contains(pkg.strings, strings.TrimSuffix(lower, filepath.Ext(lower)))
-}
-
 // takeSnapshot records every watch. Without a baseline it records only the
 // direct children; with one it also records the subtree of every child the
 // baseline does not have. Only children the package can own are recorded.
@@ -228,7 +182,7 @@ func snapDir(t *testing.T, snap, base snapshot, place watch, pkg scope) {
 	}
 
 	for _, entry := range entries {
-		if place.skip != nil && place.skip.MatchString(entry.Name()) || !pkg.owns(entry.Name()) {
+		if (place.skip != nil && place.skip.MatchString(entry.Name())) || !pkg.owns(entry.Name()) {
 			continue
 		}
 
@@ -327,7 +281,7 @@ func snapKey(t *testing.T, snap, base snapshot, place watch, pkg scope) {
 	defer syscall.RegCloseKey(key) //nolint:errcheck // read-only handle
 
 	for _, child := range subkeys(t, key) {
-		if place.skip != nil && place.skip.MatchString(child) || !pkg.owns(child) {
+		if (place.skip != nil && place.skip.MatchString(child)) || !pkg.owns(child) {
 			continue
 		}
 
