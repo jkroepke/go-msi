@@ -16,7 +16,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jkroepke/go-msi/internal/lzx"
@@ -86,12 +88,29 @@ type Options struct {
 	Level int
 	// Window is the LZX window as a power of two, 15 to 21; 0 means 21.
 	Window int
+	// Workers is the number of MSZIP blocks compressed at once; 0 means
+	// GOMAXPROCS, at most 4. The cabinet is the same for any number; each
+	// worker adds about 2 MB of heap at level 9.
+	Workers int
 
 	// lzxBlock forces the LZX block type in tests.
 	lzxBlock int
 
 	Compression Compression
 	SetID       uint16
+}
+
+// maxWorkers caps the default number of MSZIP workers. Each one adds about
+// 2 MB of heap at level 9, most of it the DEFLATE state.
+const maxWorkers = 4
+
+// workers is the number of MSZIP blocks compressed at once.
+func (opts Options) workers() int {
+	if opts.Workers > 0 {
+		return opts.Workers
+	}
+
+	return min(runtime.GOMAXPROCS(0), maxWorkers)
 }
 
 // lzxWindow is the LZX window of opts.
@@ -424,32 +443,15 @@ func encodeBlock(chunk, prev []byte, comp Compression, level int) ([]byte, error
 
 // writeBlocks compresses the folder bytes from src into CFDATA records.
 func writeBlocks(out *countingWriter, src io.Reader, folderBytes int64, opts Options, level int) error {
-	blocks := &blockWriter{out: out, comp: opts.Compression, level: level}
-
+	var err error
 	if opts.Compression == LZX {
-		enc, err := lzx.NewEncoder(folderBytes, lzx.Options{Window: opts.lzxWindow(), Level: level, Block: opts.lzxBlock})
-		if err != nil {
-			return fmt.Errorf("cab: %w", err)
-		}
-
-		blocks.lzx = enc
+		err = writeLZX(out, src, folderBytes, opts, level)
+	} else {
+		err = writeChunks(out, src, folderBytes, opts, level)
 	}
 
-	chunk, prev := make([]byte, blockSize), make([]byte, 0, blockSize)
-
-	for remaining := folderBytes; remaining > 0; {
-		want := int(min(remaining, blockSize))
-
-		if _, err := io.ReadFull(src, chunk[:want]); err != nil {
-			return fmt.Errorf("cab: read: %w", err)
-		}
-
-		if err := blocks.write(chunk[:want], prev); err != nil {
-			return err
-		}
-
-		remaining -= int64(want)
-		prev, chunk = chunk[:want], prev[:blockSize]
+	if err != nil {
+		return err
 	}
 
 	// The last entry has delivered its size; make sure it ends there, which
@@ -467,42 +469,99 @@ func writeBlocks(out *countingWriter, src io.Reader, folderBytes int64, opts Opt
 	return nil
 }
 
-// blockWriter turns folder chunks into CFDATA records.
-type blockWriter struct {
-	out *countingWriter
-	lzx *lzx.Encoder
-	// sizes holds the uncompressed sizes of the LZX frames not yet written:
-	// the encoder returns a block's frames together.
-	sizes []int
-	comp  Compression
-	level int
-}
+// writeChunks writes the stored or MSZIP records of a folder. Each MSZIP
+// block is compressed on its own with the chunk before it as its history, so
+// a batch of chunks is compressed at once and written in order: the records
+// are the same for any number of workers.
+func writeChunks(out *countingWriter, src io.Reader, folderBytes int64, opts Options, level int) error {
+	workers := opts.workers()
 
-// write encodes the next chunk; prev is the chunk before it.
-func (b *blockWriter) write(chunk, prev []byte) error {
-	if b.lzx == nil {
-		data, err := encodeBlock(chunk, prev, b.comp, b.level)
-		if err != nil {
-			return err
-		}
-
-		return writeRecord(b.out, data, len(chunk), maxBlockData)
+	// chunks[0] holds the chunk before the batch in chunks[1:].
+	chunks := make([][]byte, workers+1)
+	for i := range chunks {
+		chunks[i] = make([]byte, 0, blockSize)
 	}
 
-	frames, err := b.lzx.Frame(chunk)
+	payloads := make([][]byte, workers)
+	errs := make([]error, workers)
+
+	for remaining := folderBytes; remaining > 0; {
+		batch := 0
+
+		for ; batch < workers && remaining > 0; batch++ {
+			want := int(min(remaining, blockSize))
+			chunk := chunks[batch+1][:want]
+
+			if _, err := io.ReadFull(src, chunk); err != nil {
+				return fmt.Errorf("cab: read: %w", err)
+			}
+
+			chunks[batch+1] = chunk
+			remaining -= int64(want)
+		}
+
+		var wg sync.WaitGroup
+
+		for i := range batch {
+			wg.Go(func() {
+				payloads[i], errs[i] = encodeBlock(chunks[i+1], chunks[i], opts.Compression, level)
+			})
+		}
+
+		wg.Wait()
+
+		for i := range batch {
+			if errs[i] != nil {
+				return errs[i]
+			}
+
+			if err := writeRecord(out, payloads[i], len(chunks[i+1]), maxBlockData); err != nil {
+				return err
+			}
+		}
+
+		chunks[0], chunks[batch] = chunks[batch], chunks[0]
+	}
+
+	return nil
+}
+
+// writeLZX writes the LZX frames of a folder.
+func writeLZX(out *countingWriter, src io.Reader, folderBytes int64, opts Options, level int) error {
+	enc, err := lzx.NewEncoder(folderBytes, lzx.Options{Window: opts.lzxWindow(), Level: level, Block: opts.lzxBlock})
 	if err != nil {
 		return fmt.Errorf("cab: %w", err)
 	}
 
-	b.sizes = append(b.sizes, len(chunk))
+	chunk := make([]byte, blockSize)
 
-	for i, data := range frames {
-		if err := writeRecord(b.out, data, b.sizes[i], lzx.MaxFrame); err != nil {
-			return err
+	// sizes holds the uncompressed sizes of the frames not yet written: the
+	// encoder returns a block's frames together.
+	var sizes []int
+
+	for remaining := folderBytes; remaining > 0; {
+		want := int(min(remaining, blockSize))
+
+		if _, err := io.ReadFull(src, chunk[:want]); err != nil {
+			return fmt.Errorf("cab: read: %w", err)
 		}
-	}
 
-	b.sizes = b.sizes[:copy(b.sizes, b.sizes[len(frames):])]
+		frames, err := enc.Frame(chunk[:want])
+		if err != nil {
+			return fmt.Errorf("cab: %w", err)
+		}
+
+		sizes = append(sizes, want)
+
+		for i, data := range frames {
+			if err := writeRecord(out, data, sizes[i], lzx.MaxFrame); err != nil {
+				return err
+			}
+		}
+
+		sizes = sizes[:copy(sizes, sizes[len(frames):])]
+		remaining -= int64(want)
+	}
 
 	return nil
 }
