@@ -16,6 +16,7 @@ import (
 	"github.com/jkroepke/go-msi/pkg/builder"
 	"github.com/jkroepke/go-msi/pkg/config"
 	"github.com/jkroepke/go-msi/pkg/msidb"
+	"github.com/jkroepke/go-msi/pkg/summary"
 )
 
 // textTemplate puts the same text into every kind of string column the
@@ -91,6 +92,14 @@ func TestMsiDLLReadsText(t *testing.T) {
 
 			for _, tbl := range res.Database.Tables {
 				compareTable(t, database, tbl)
+			}
+
+			// The summary keeps its own code page, with '?' for what it
+			// cannot hold; msi.dll must return what the builder stored.
+			for _, pid := range []int{summary.PIDTitle, summary.PIDSubject, summary.PIDAuthor, summary.PIDComments} {
+				if got, want := summaryString(t, database, uintptr(pid)), summary.Get(res.Database.Summary, pid); got != want {
+					t.Errorf("summary PID %d %q, want %q", pid, got, want)
+				}
 			}
 
 			props := query(t, database, "SELECT `Value` FROM `Property` WHERE `Property` = 'TEXTPROP'")

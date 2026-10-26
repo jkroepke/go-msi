@@ -272,8 +272,8 @@ func checkACE(ace string) (string, error) {
 	return "", nil
 }
 
-// checkACETail checks the object GUIDs, the account SID and the resource
-// attribute field, which Windows accepts only on a resource attribute ACE.
+// checkACETail checks the object GUIDs and the account SID, and refuses the
+// resource attribute field: Windows refuses it on access ACEs (A, D, ...).
 func checkACETail(fields []string) error {
 	for _, field := range fields[3:5] {
 		if field != "" && !guid.MatchString(field) {
@@ -285,8 +285,10 @@ func checkACETail(fields []string) error {
 		return fmt.Errorf("%q is not a SID", fields[5])
 	}
 
-	if len(fields) == maxACEFields && fields[0] != "RA" {
-		return fmt.Errorf("a %s ACE has no resource attribute field", fields[0])
+	if len(fields) == maxACEFields {
+		// Only a resource attribute ACE has one, and its value is a
+		// parenthesised attribute this parser does not read.
+		return fmt.Errorf("resource attribute field %q is not supported", fields[6])
 	}
 
 	return nil

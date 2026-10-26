@@ -8,8 +8,8 @@ import (
 )
 
 // FuzzParse feeds arbitrary documents and variable values to Parse and
-// Validate. Neither may panic, and a variable value must arrive in the
-// config as it was given, without changing the document's structure.
+// Validate, neither of which may panic. FuzzVariable checks that a value
+// arrives as given.
 func FuzzParse(f *testing.F) {
 	f.Add([]byte(base+appComponent), "1.0.0")
 	f.Add([]byte(strings.Replace(base, "version: 1.0.0", "version: ${V}", 1)+appComponent), "1.2.3")

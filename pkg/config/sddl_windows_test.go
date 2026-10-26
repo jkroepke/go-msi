@@ -26,7 +26,7 @@ func nativeSDDL(t *testing.T, sddl string) bool {
 
 	ptr, err := syscall.UTF16PtrFromString(sddl)
 	if err != nil {
-		return false
+		t.Fatal(err)
 	}
 
 	var desc uintptr
@@ -51,7 +51,7 @@ func FuzzCheckSDDLNative(f *testing.F) {
 		"D:(A;;FA;;;S-1-5-21-1-2-3-500)", "D:(A;;KA;;;BA)S:(AU;SAFA;FA;;;WD)", "D:(A;;FA;;;BA)(D;;FW;;;BU)",
 		"D:(A;;FA;;;S-1-5)", "D:(A;;0xFFFFFFFFF;;;BA)", "D:(A;;FA;;;S-1-99999999999-1)", "D:(A;;FA;;;ba)",
 		"D:(A;;FA;;;BA)D:(A;;FA;;;BA)", "D:", "S:", "O:BA", "D:(OA;;FA;;;BA)", "D:(A;;FA;x;;BA)",
-		"D:(A;;FA;;;BA;x)", "D:(A;CI CI;FA;;;BA)", "D:P(A;;FA;;;BA)", "D:NO_ACCESS_CONTROL", "D:(A;;FAFA;;;BA)",
+		"D:(A;;FA;;;BA;x)", "S:(RA;;FA;;;BA;x)", "D:(A;CI CI;FA;;;BA)", "D:P(A;;FA;;;BA)", "D:NO_ACCESS_CONTROL", "D:(A;;FAFA;;;BA)",
 	} {
 		f.Add(seed)
 	}
@@ -63,6 +63,10 @@ func FuzzCheckSDDLNative(f *testing.F) {
 
 		if _, err := config.CheckSDDL(sddl); err != nil {
 			return
+		}
+
+		if strings.ContainsRune(sddl, 0) {
+			t.Fatalf("CheckSDDL accepts %q, which holds a NUL", sddl)
 		}
 
 		if !nativeSDDL(t, sddl) {

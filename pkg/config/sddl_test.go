@@ -37,6 +37,7 @@ func TestCheckSDDL(t *testing.T) {
 		{sddl: "D:(A;;FA;;;BA)D:(A;;FA;;;BA)", wantErr: "twice"},
 		{sddl: "D:(A;;FA;x;;BA)", wantErr: "GUID"},
 		{sddl: "D:(A;;FA;;;BA;x)", wantErr: "resource attribute"},
+		{sddl: "S:(RA;;FA;;;BA;x)", wantErr: "resource attribute"},
 		{sddl: "D:(OA;;CR;ab721a53-1e2f-11d0-9819-00aa0040529b;;BA)"},
 	} {
 		warnings, err := config.CheckSDDL(tc.sddl)
