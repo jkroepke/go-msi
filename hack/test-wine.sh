@@ -12,7 +12,7 @@ export WINEDLLOVERRIDES="mscoree=d;mshtml=d"
 work=$(mktemp -d)
 cp examples/minimal/msi.yaml "$work/"
 go run ./internal/testpe/cmd -o "$work/hello.exe"
-go run ./cmd/go-msi build -o "$work/minimal.msi" "$work/msi.yaml"
+go run ./cmd/go-msi build --output "$work/minimal.msi" "$work/msi.yaml"
 
 WINE="${WINE:-$(command -v wine || command -v wine64 || ls /usr/lib/wine/wine64)}"
 
