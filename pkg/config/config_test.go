@@ -29,6 +29,7 @@ func TestExamplesValidate(t *testing.T) {
 		{"../../examples/minimal/msi.yaml", nil},
 		{"../../examples/windows_exporter/msi.yaml", map[string]string{"VERSION": "0.32.0"}},
 		{"../../examples/windows_exporter/msi.yaml", map[string]string{"VERSION": "0.32.0", "ARCH": "arm64"}},
+		{"../../examples/branded/msi.yaml", map[string]string{"VERSION": "1.5.0"}},
 	} {
 		cfg := load(t, tc.path, tc.vars)
 

@@ -50,17 +50,21 @@ func TestPicturesAreDeterministic(t *testing.T) {
 		t.Error("banner differs between runs")
 	}
 
-	side := artwork.Side(palette)
-	if !bytes.Equal(artwork.EncodeBMP(side), artwork.EncodeBMP(artwork.Side(palette))) {
-		t.Error("side panel differs between runs")
+	dialog := artwork.Dialog(palette)
+	if !bytes.Equal(artwork.EncodeBMP(dialog), artwork.EncodeBMP(artwork.Dialog(palette))) {
+		t.Error("dialog background differs between runs")
 	}
 
-	if side.Bounds().Dx() != artwork.SideWidth || side.Bounds().Dy() != artwork.SideHeight {
-		t.Errorf("side panel is %v", side.Bounds())
+	if dialog.Bounds().Dx() != artwork.DialogWidth || dialog.Bounds().Dy() != artwork.DialogHeight {
+		t.Errorf("dialog background is %v", dialog.Bounds())
 	}
 
-	// The gradient runs from Dark at the top left to Light at the bottom right.
-	if got := side.RGBAAt(0, 0); got != palette.Dark {
+	// The panel gradient runs from Dark at the top left; right of the panel is paper.
+	if got := dialog.RGBAAt(0, 0); got != palette.Dark {
 		t.Errorf("top left is %v, want %v", got, palette.Dark)
+	}
+
+	if got := dialog.RGBAAt(artwork.SideWidth, 0); got != palette.Paper {
+		t.Errorf("right of the panel is %v, want %v", got, palette.Paper)
 	}
 }

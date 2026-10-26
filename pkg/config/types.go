@@ -400,8 +400,35 @@ type FirewallRule struct {
 
 // UI selects the built-in wizard and adds dialogs to it.
 type UI struct {
-	Wizard  string    `yaml:"wizard"`
+	Wizard string `yaml:"wizard"`
+	// License is a license file shown on a page with an accept check box
+	// after the welcome page: RTF, or plain text that is converted to RTF.
+	License string    `yaml:"license"`
+	Theme   Theme     `yaml:"theme"`
 	Dialogs []*Dialog `yaml:"dialogs"`
+}
+
+// Theme replaces the wizard's pictures or the colours they are drawn in.
+type Theme struct {
+	// Banner is the picture at the top of the inner pages, shown at
+	// 370×44 dialog units (493×58 pixels at 96 dpi).
+	Banner string `yaml:"banner"`
+	// Dialog is the background of the welcome and finish pages, shown at
+	// 370×234 dialog units (493×312 pixels at 96 dpi). The page text is
+	// drawn on its right part, from 135 units on.
+	Dialog string      `yaml:"dialog"`
+	Colors ThemeColors `yaml:"colors"`
+}
+
+// ThemeColors are the colours of the built-in pictures as #RRGGBB.
+type ThemeColors struct {
+	// Dark and Light are the two ends of the side panel gradient.
+	Dark  string `yaml:"dark"`
+	Light string `yaml:"light"`
+	// Accent draws the banner stripe and the shapes on the side panel.
+	Accent string `yaml:"accent"`
+	// Paper is the background behind the page titles and texts.
+	Paper string `yaml:"paper"`
 }
 
 // Dialog is a form dialog laid out by the builder.

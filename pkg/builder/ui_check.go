@@ -29,7 +29,7 @@ const (
 // generated tables: it guards the generator and the added dialogs.
 func (b *build) checkUI(wiz *wizard) {
 	styles := map[string]bool{styleDefault: true, styleTitle: true, styleBig: true}
-	pictures := map[string]bool{binBanner: true, binSide: true}
+	pictures := map[string]bool{binBanner: true, binDialog: true}
 
 	for _, d := range wiz.dialogs {
 		b.checkDialog(wiz, d, styles, pictures)
@@ -69,8 +69,8 @@ func (b *build) checkControl(wiz *wizard, path string, ctl *uiControl, styles, p
 		b.errorf(path, "control %s of type %s needs a property (error 2819)", ctl.name, ctl.typ)
 	}
 
-	if strings.HasPrefix(ctl.text, "{\\") {
-		style := ctl.text[2:strings.IndexByte(ctl.text, '}')]
+	if end := strings.IndexByte(ctl.text, '}'); strings.HasPrefix(ctl.text, "{\\") && end > 2 && ctl.typ != typScrollText {
+		style := ctl.text[2:end]
 		if !styles[style] {
 			b.errorf(path, "control %s uses the text style %q, which is not in the TextStyle table (ICE31)", ctl.name, style)
 		}

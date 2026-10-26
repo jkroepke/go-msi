@@ -1,0 +1,69 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/pkg/config/schema.json
+# A service with a license page and its own wizard pictures.
+#
+#   go-msi build --var VERSION=1.5.0 -o example-agent.msi msi.yaml
+#
+# The input files sit next to this file: agent.exe, agent-service.exe,
+# agent.conf, icon.ico, LICENSE.rtf (or a plain-text LICENSE, which is
+# converted to RTF), banner.bmp (493×58) and dialog.bmp (493×312, the left
+# 130 units are the picture, the page text is drawn from 135 units on).
+schema: go-msi/v1
+
+product:
+  name: Example Agent
+  manufacturer: Example
+  version: ${VERSION}
+  upgradeCode: 0f5a3c8e-6b1d-4f2a-9c7e-2d4b8a1e5f60
+  arp:
+    icon: icon.ico
+
+package:
+  platform: x64
+
+# C:\Program Files\Example\Agent, changeable in the feature tree.
+installDir:
+  id: INSTALLLOCATION
+  name: Example/Agent
+
+components:
+  - files:
+      - source: agent.exe
+  - files:
+      - source: agent.conf
+  - files:
+      - source: icon.ico
+  - id: AgentService
+    files:
+      - source: agent-service.exe
+        id: agent_service.exe   # a file key is an identifier, without "-"
+    services:
+      - name: ExampleAgent
+        displayName: Example Agent
+        description: Example Agent service
+        vital: true
+        recovery:
+          actions: [restart, restart, restart]
+          restartDelay: 1s
+    # The service wrapper reads the command line of agent.exe from here.
+    registry:
+      - root: HKLM
+        key: Software\Example\Agent
+        type: string
+        value: '[INSTALLLOCATION]agent.exe'
+      - root: HKLM
+        key: Software\Example\Agent
+        name: Arguments
+        type: multiString
+        value:
+          - run
+          - '[INSTALLLOCATION]agent.conf'
+
+icons:
+  icon.ico: icon.ico
+
+ui:
+  wizard: featureTree
+  license: LICENSE.rtf
+  theme:
+    banner: banner.bmp
+    dialog: dialog.bmp
