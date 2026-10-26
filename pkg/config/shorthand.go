@@ -41,7 +41,7 @@ const (
 // and conditional service arguments become setProperty actions. Every step
 // leaves an already expanded config unchanged, so ApplyDefaults stays
 // idempotent.
-func expandShorthands(cfg *Config) {
+func expandShorthands(cfg *Config) { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
 	hoistFeatureComponents(cfg)
 	featureFirewall(cfg)
 

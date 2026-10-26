@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -23,7 +24,7 @@ func (s Severity) String() string {
 }
 
 // Diagnostic is one validation finding.
-type Diagnostic struct {
+type Diagnostic struct { //nolint:govet // field order is the YAML key order
 	Severity Severity
 	// Path is the YAML path, such as components[0].files[1].version.
 	Path    string
@@ -90,10 +91,8 @@ func (v *validator) required(path, value string) bool {
 }
 
 func (v *validator) oneOf(path, value string, allowed ...string) {
-	for _, a := range allowed {
-		if value == a {
-			return
-		}
+	if slices.Contains(allowed, value) {
+		return
 	}
 
 	v.errorf(path, "%q is not one of %s", value, strings.Join(allowed, ", "))

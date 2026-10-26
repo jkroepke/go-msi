@@ -25,7 +25,7 @@ type Options struct {
 func Load(path string, opts Options) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck // the error names the file
 	}
 
 	cfg, err := Parse(data, opts)
@@ -39,10 +39,10 @@ func Load(path string, opts Options) (*Config, error) {
 }
 
 // Parse parses a YAML document, substitutes variables and applies defaults.
-func Parse(data []byte, opts Options) (*Config, error) {
+func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
 	var doc yaml.Node
 	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck // yaml errors carry the line
 	}
 
 	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
@@ -88,7 +88,7 @@ func Parse(data []byte, opts Options) (*Config, error) {
 
 	encoded, err := yaml.Marshal(&doc)
 	if err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck // re-encoding a decoded node
 	}
 
 	dec := yaml.NewDecoder(bytes.NewReader(encoded))
@@ -96,7 +96,7 @@ func Parse(data []byte, opts Options) (*Config, error) {
 
 	cfg := &Config{}
 	if err := dec.Decode(cfg); err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck // yaml errors carry the line
 	}
 
 	if cfg.Schema != SchemaV1 {
@@ -114,7 +114,7 @@ func Parse(data []byte, opts Options) (*Config, error) {
 
 // emptyComponents rejects null entries in the components, features and
 // firewall lists, which decode to nil pointers.
-func emptyComponents(cfg *Config) error {
+func emptyComponents(cfg *Config) error { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
 	var errs []error
 
 	for i, comp := range cfg.Components {
@@ -167,7 +167,7 @@ func fileVars(root *yaml.Node) (map[string]string, error) {
 			continue
 		}
 
-		vars := map[string]string{}
+		vars := make(map[string]string)
 		if err := root.Content[i+1].Decode(&vars); err != nil {
 			return nil, fmt.Errorf("vars: %w", err)
 		}
@@ -175,14 +175,14 @@ func fileVars(root *yaml.Node) (map[string]string, error) {
 		return vars, nil
 	}
 
-	return nil, nil
+	return make(map[string]string), nil
 }
 
 var varPattern = regexp.MustCompile(`\$\$\{|\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // substitute replaces ${NAME} in every scalar value below node. Mapping keys
 // are left alone. "$${" writes a literal "${".
-func substitute(node *yaml.Node, lookup func(string) (string, bool), errs *[]error) {
+func substitute(node *yaml.Node, lookup func(string) (string, bool), errs *[]error) { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
 	switch node.Kind {
 	case yaml.ScalarNode:
 		if !strings.Contains(node.Value, "${") {
