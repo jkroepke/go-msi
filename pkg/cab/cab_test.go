@@ -237,7 +237,12 @@ func TestLZXRoundTrip(t *testing.T) {
 		{Name: "again", Data: text[:40000]},
 	}
 
-	for _, window := range []int{0, 15, 18} {
+	windows := []int{0, 15, 18}
+	if raceEnabled {
+		windows = []int{15} // CI runs all of them without -race
+	}
+
+	for _, window := range windows {
 		out, err := Write(files, Options{Compression: LZX, Window: window})
 		if err != nil {
 			t.Fatal(err)

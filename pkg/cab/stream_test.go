@@ -359,8 +359,8 @@ func TestBoundedMemory(t *testing.T) { //nolint:paralleltest // measures the hea
 func boundedMemory(t *testing.T, comp cab.Compression) {
 	t.Helper()
 
-	if comp == cab.LZX && raceEnabled {
-		t.Skip("compresses 32 MB; CI runs it without -race")
+	if raceEnabled {
+		t.Skip("32 MB with -race and coverage takes minutes; CI runs it without -race")
 	}
 
 	const (
