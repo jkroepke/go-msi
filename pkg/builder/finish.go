@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -26,18 +28,56 @@ import (
 // that replacing it changes no offsets.
 const placeholderCode = "{00000000-0000-0000-0000-000000000000}"
 
-// readInput reads a source path relative to the YAML file.
-func (b *build) readInput(path string) ([]byte, error) {
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(b.cfg.BaseDir, filepath.FromSlash(path))
+// readInput reads a source path relative to the YAML file, or from cfg.FS.
+func (b *build) readInput(src string) ([]byte, error) {
+	file, err := openSource(b.cfg, nil, src)
+	if err != nil {
+		return nil, err
 	}
 
-	data, err := os.ReadFile(path)
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
+		return nil, fmt.Errorf("read %s: %w", src, err)
 	}
 
 	return data, nil
+}
+
+// slashPath cleans a relative source path into slash form. Like the file
+// names of a config, it treats a backslash as a separator on every OS.
+func slashPath(src string) string {
+	return path.Clean(strings.ReplaceAll(src, `\`, "/"))
+}
+
+// openSource opens src from fsys, else from cfg.FS, else relative to
+// cfg.BaseDir. An absolute path is always opened from the file system.
+func openSource(cfg *config.Config, fsys fs.FS, src string) (fs.File, error) {
+	if fsys == nil {
+		fsys = cfg.FS
+	}
+
+	var (
+		file fs.File
+		err  error
+	)
+
+	switch {
+	case filepath.IsAbs(src):
+		file, err = os.Open(src)
+	case fsys != nil:
+		file, err = fsys.Open(slashPath(src))
+	default:
+		src = filepath.Join(cfg.BaseDir, filepath.FromSlash(slashPath(src)))
+		file, err = os.Open(src)
+	}
+
+	if err != nil {
+		return nil, err //nolint:wrapcheck // the *fs.PathError names the path
+	}
+
+	return file, nil
 }
 
 // streams fills the Icon and Binary tables from the icons and binaries
@@ -108,8 +148,8 @@ func (b *build) customTables() error { //nolint:cyclop,gocognit // one pass over
 					continue
 				}
 
-				if path, ok := value.(string); ok && path != "" {
-					data, err := b.readInput(path)
+				if src, ok := value.(string); ok && src != "" {
+					data, err := b.readInput(src)
 					if err != nil {
 						b.errorf(fmt.Sprintf("%s.rows[%d][%d]", tablePath, rowIndex, colIndex), "%v", err)
 
@@ -306,26 +346,26 @@ func (b *build) newTarget(kind, output string) (spool.Target, func(), error) {
 	}, nil
 }
 
-// commitOutput moves the finished package from its temporary file to path
+// commitOutput moves the finished package from its temporary file to dest
 // (a symlink already resolved), so that an existing package is replaced only
 // by a verified one. An existing file keeps its mode.
-func commitOutput(file *os.File, path string) error {
+func commitOutput(file *os.File, dest string) error {
 	mode := os.FileMode(0o644)
 
-	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+	if info, err := os.Stat(dest); err == nil && info.Mode().IsRegular() {
 		mode = info.Mode().Perm()
 	}
 
 	if err := file.Chmod(mode); err != nil {
-		return fmt.Errorf("set the mode of %s: %w", path, err)
+		return fmt.Errorf("set the mode of %s: %w", dest, err)
 	}
 
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("close %s: %w", file.Name(), err)
 	}
 
-	if err := os.Rename(file.Name(), path); err != nil {
-		return fmt.Errorf("move the package to %s: %w", path, err)
+	if err := os.Rename(file.Name(), dest); err != nil {
+		return fmt.Errorf("move the package to %s: %w", dest, err)
 	}
 
 	return nil
@@ -354,16 +394,20 @@ func (b *build) cabinet(target spool.Target) (cfb.Source, error) {
 			Size:       entry.Size,
 			Time:       b.opts.BuildTime,
 			Attributes: cab.AttrArchive,
-			Open:       func() (io.ReadCloser, error) { return os.Open(entry.path) },
+			Open:       entry.open,
 		})
 	}
 
-	comp := cab.MSZIP
-	if b.cfg.Package.Compression == "none" {
-		comp = cab.None
+	opts := cab.Options{Compression: cab.MSZIP}
+
+	switch window, ok := config.LZXWindow(b.cfg.Package.Compression); {
+	case ok:
+		opts = cab.Options{Compression: cab.LZX, Window: window}
+	case b.cfg.Package.Compression == "none":
+		opts.Compression = cab.None
 	}
 
-	size, err := cab.WriteTo(target, entries, cab.Options{Compression: comp})
+	size, err := cab.WriteTo(target, entries, opts)
 	if err != nil {
 		return cfb.Source{}, fmt.Errorf("cabinet: %w", err)
 	}

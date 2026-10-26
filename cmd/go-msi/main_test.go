@@ -72,11 +72,18 @@ func TestBuildValidateInspect(t *testing.T) {
 		t.Errorf("inspect: exit %d, output %q", code, stdout.String())
 	}
 
+	stderr.Reset()
+
+	// An error without a diagnostic is printed with its cause.
+	if code := run([]string{"build", "-o", filepath.Join(dir, "missing", "x.msi"), yaml}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "build failed: ") || !strings.Contains(stderr.String(), "missing") {
+		t.Errorf("missing output directory: exit %d, stderr %q", code, stderr.String())
+	}
+
 	if code := run([]string{"build", filepath.Join(dir, "missing.yaml")}, &stdout, &stderr); code != 1 {
 		t.Errorf("missing file: exit %d", code)
 	}
 
-	if code := run(nil, &stdout, &stderr); code != 2 {
+	if code := run(nil, &stdout, &stderr); code != exitUsage {
 		t.Errorf("no command: exit %d", code)
 	}
 
@@ -242,19 +249,138 @@ func TestSignVerify(t *testing.T) {
 	}
 }
 
+func TestUsageErrors(t *testing.T) {
+	t.Parallel()
+
+	for name, args := range map[string][]string{
+		"unknown flag":       {"build", "--no-such-flag", "msi.yaml"},
+		"single-dash long":   {"sign", "-pfx", "key.pfx", "package.msi"},
+		"no argument":        {"validate"},
+		"two arguments":      {"inspect", "a.msi", "b.msi"},
+		"unknown command":    {"bild"},
+		"bad flag value":     {"build", "--cfb", "x", "msi.yaml"},
+		"bad --var":          {"build", "--var", "NOVALUE", "msi.yaml"},
+		"version argument":   {"version", "extra"},
+		"ignored sign flags": {"build", "--timestamp-url", "http://example.com", "msi.yaml"},
+		"cfb out of range":   {"build", "--cfb", "5", "missing.yaml"},
+		"bad hash":           {"sign", "--pfx", "key.pfx", "--hash", "md5", "missing.msi"},
+		"cert without key":   {"build", "--cert", "cert.pem", "missing.yaml"},
+		"key without cert":   {"sign", "--key", "key.pem", "missing.msi"},
+		"pfx and cert":       {"sign", "--pfx", "key.pfx", "--cert", "c.pem", "--key", "k.pem", "missing.msi"},
+		"no shell":           {"completion"},
+		"unknown shell":      {"completion", "fsh"},
+		"unknown help topic": {"help", "nosuch"},
+		"version shorthand":  {"-v"},
+		"double dash only":   {"--"},
+		"command after --":   {"--", "build"},
+	} {
+		var stdout, stderr bytes.Buffer
+
+		if code := run(args, &stdout, &stderr); code != exitUsage {
+			t.Errorf("%s: exit %d, want %d: %s", name, code, exitUsage, stderr.String())
+		}
+
+		if stdout.Len() != 0 || !strings.Contains(stderr.String(), "go-msi: ") || !strings.Contains(stderr.String(), "--help' for usage") {
+			t.Errorf("%s: stdout %q, stderr %q", name, stdout.String(), stderr.String())
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+
+	if code := run(nil, &stdout, &stderr); code != exitUsage || stdout.Len() != 0 || !strings.Contains(stderr.String(), "Available Commands:") {
+		t.Errorf("no command: exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
+	}
+
+	stderr.Reset()
+	run([]string{"bild"}, &stdout, &stderr)
+
+	if !strings.Contains(stderr.String(), "Did you mean this?\n\tbuild") {
+		t.Errorf("no suggestion for a misspelled command: %q", stderr.String())
+	}
+}
+
 func TestFlagErrorsGoToStderr(t *testing.T) {
 	t.Parallel()
 
-	for _, cmd := range []string{"build", "validate", "inspect", "sign", "verify"} {
+	for _, cmd := range []string{"build", "validate", "inspect", "sign", "verify", "version", "completion bash"} {
 		var stdout, stderr bytes.Buffer
 
-		if code := run([]string{cmd, "--no-such-flag"}, &stdout, &stderr); code == 0 {
-			t.Errorf("%s: exit 0 for an unknown flag", cmd)
+		if code := run(append(strings.Fields(cmd), "--no-such-flag"), &stdout, &stderr); code != exitUsage {
+			t.Errorf("%s: exit %d for an unknown flag", cmd, code)
 		}
 
-		// "Usage of" is the FlagSet's own output; run adds the error line.
-		if stdout.Len() != 0 || !strings.Contains(stderr.String(), "Usage of "+cmd) {
+		want := "go-msi: unknown flag: --no-such-flag\nRun 'go-msi " + cmd + " --help' for usage.\n"
+		if stdout.Len() != 0 || stderr.String() != want {
 			t.Errorf("%s: stdout %q, stderr %q", cmd, stdout.String(), stderr.String())
 		}
+	}
+}
+
+func TestHelpAndCompletion(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		args []string
+		want string
+	}{
+		"help":            {[]string{"--help"}, "Available Commands:"},
+		"command help":    {[]string{"build", "-h"}, "--password-env"},
+		"help command":    {[]string{"help", "sign"}, "--timestamp-url"},
+		"version flag":    {[]string{"--version"}, "go-msi dev (commit none"},
+		"version":         {[]string{"version"}, "go-msi dev (commit none"},
+		"bash completion": {[]string{"completion", "bash"}, "__start_go-msi"},
+		"fish completion": {[]string{"completion", "fish"}, "complete -c go-msi"},
+		"zsh completion":  {[]string{"completion", "zsh", "--no-descriptions"}, "#compdef go-msi"},
+		"ps completion":   {[]string{"completion", "powershell"}, "Register-ArgumentCompleter"},
+		"complete help":   {[]string{"__complete", "help", ""}, "inspect"},
+		"complete help 2": {[]string{"__complete", "help", "completion", "z"}, "zsh\tPrint the completion script for Zsh"},
+		"complete hash":   {[]string{"__complete", "sign", "--hash", ""}, "sha384"},
+		"complete cfb":    {[]string{"__complete", "build", "--cfb", ""}, "3\n4\n"},
+		"complete yaml":   {[]string{"__complete", "build", ""}, "yaml\nyml\n"},
+	} {
+		var stdout, stderr bytes.Buffer
+
+		if code := run(tc.args, &stdout, &stderr); code != exitOK || !strings.Contains(stdout.String(), tc.want) {
+			t.Errorf("%s: exit %d, stdout %q, stderr %q", name, code, stdout.String(), stderr.String())
+		}
+	}
+}
+
+func TestFlagsAfterArguments(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	src, err := os.ReadFile(filepath.Join("..", "..", "examples", "minimal", "msi.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	yaml := filepath.Join(dir, "msi.yaml")
+	if err := os.WriteFile(yaml, src, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(dir, "out.msi")
+
+	var stdout, stderr bytes.Buffer
+
+	if code := run([]string{"build", yaml, "--output", out, "--quiet"}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("build: exit %d: %s", code, stderr.String())
+	}
+
+	if stdout.Len() != 0 {
+		t.Errorf("--quiet printed %q", stdout.String())
+	}
+
+	stdout.Reset()
+
+	if code := run([]string{"__complete", "inspect", out, "--table", ""}, &stdout, &stderr); code != exitOK || !strings.Contains(stdout.String(), "\nFile\n") {
+		t.Errorf("table completion: exit %d, stdout %q", code, stdout.String())
 	}
 }

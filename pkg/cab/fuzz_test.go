@@ -16,7 +16,7 @@ func seedCabinets(f *testing.F) {
 
 	when := time.Date(2026, 1, 2, 3, 4, 6, 0, time.UTC)
 
-	for _, comp := range []cab.Compression{cab.None, cab.MSZIP} {
+	for _, comp := range []cab.Compression{cab.None, cab.MSZIP, cab.LZX} {
 		raw, err := cab.Write([]cab.File{
 			{Name: "a.txt", Data: []byte("hello"), Time: when},
 			{Name: "b.bin", Data: bytes.Repeat([]byte("0123456789"), 7000), Time: when},

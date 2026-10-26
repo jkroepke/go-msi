@@ -204,6 +204,10 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    environment: [{name: PATH, value: x}]\n    files:", 1),
 			sevWarning, "components[0].environment[0].action", "append",
 		},
+		"lzx window too small": {
+			pkg(`{platform: x64, compression: "lzx:14"}`) + appComponent,
+			sevError, "package.compression", `"lzx:14" is not one of`,
+		},
 		// SUM-04.
 		"utf-16 codepage": {
 			pkg(`{platform: x64, codepage: 1200}`) + appComponent,
@@ -499,13 +503,17 @@ func TestDefaultCabinet(t *testing.T) {
 	t.Parallel()
 
 	for name, want := range map[string]string{
-		"App":    "App.cab",
-		"My App": "My App.cab",
-		"Grüße":  config.DefaultCabinet,
-		"Привет": config.DefaultCabinet,
-		"A#B":    config.DefaultCabinet,
-		// 27 spaces take one stream name unit each.
-		strings.Repeat("A ", 27): config.DefaultCabinet,
+		"App": "App.cab",
+		// ICE03 wants an identifier.
+		"My App":                "MyApp.cab",
+		"Acme-Tool":             "AcmeTool.cab",
+		"Notepad++":             "Notepad.cab",
+		"7Zip":                  config.DefaultCabinet,
+		"   ":                   config.DefaultCabinet,
+		"Grüße":                 config.DefaultCabinet,
+		"Привет":                config.DefaultCabinet,
+		"A#B":                   "AB.cab",
+		strings.Repeat("A", 59): config.DefaultCabinet,
 	} {
 		doc := strings.Replace(base, "name: App\n  manufacturer", "name: '"+name+"'\n  manufacturer", 1)
 
@@ -548,6 +556,17 @@ func TestCabinetName(t *testing.T) {
 		ds := validate(t, pkg(`{platform: x64, cabinet: `+strconv.Quote(cabinet)+`}`)+appComponent)
 		if got := !find(ds, config.SeverityError, "package.cabinet", ""); got != valid {
 			t.Errorf("cabinet %q: valid = %v, want %v (%v)", cabinet, got, valid, ds)
+		}
+	}
+}
+
+func TestCabinetIdentifierWarns(t *testing.T) {
+	t.Parallel()
+
+	for cabinet, warns := range map[string]bool{"my app.cab": true, "my-app.cab": true, "my_app.cab": false} {
+		ds := validate(t, pkg(`{platform: x64, cabinet: "`+cabinet+`"}`)+appComponent)
+		if got := find(ds, config.SeverityWarning, "package.cabinet", "ICE03"); got != warns {
+			t.Errorf("cabinet %q: ICE03 warning = %v, want %v (%v)", cabinet, got, warns, ds)
 		}
 	}
 }

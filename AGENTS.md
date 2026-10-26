@@ -29,7 +29,9 @@ implementation details that may change without notice.
   read one.
 - [`pkg/cfb`](pkg/cfb): Compound File Binary v3/v4 writer and lazy reader.
 - [`pkg/cab`](pkg/cab): cabinet writer and reader, one folder per cabinet,
-  stored or MSZIP blocks, plus an `fs.FS` view.
+  stored, MSZIP or LZX blocks, plus an `fs.FS` view. The LZX encoder and
+  decoder are [`internal/lzx`](internal/lzx), written from [MS-PATCH] and
+  [MS-CAB] only.
 - [`pkg/summary`](pkg/summary): the summary information stream.
 - [`pkg/sign`](pkg/sign): Authenticode signing and verification of packages
   (spec chapter 12), written from the spec without cgo.
@@ -38,8 +40,8 @@ implementation details that may change without notice.
   [`internal/codepage`](internal/codepage), [`internal/artwork`](internal/artwork):
   standard table definitions, PE version resources, the condition grammar,
   sequence numbering, code pages and the wizard bitmaps.
-- [`cmd/go-msi`](cmd/go-msi): CLI with `build`, `validate`, `inspect`, `sign`
-  and `verify`.
+- [`cmd/go-msi`](cmd/go-msi): CLI with `build`, `validate`, `inspect`, `sign`,
+  `verify`, `completion` and `version`, built on `spf13/cobra`.
 - [`internal/spool`](internal/spool), [`internal/memtest`](internal/memtest),
   [`internal/testpe`](internal/testpe): the spool target shared by file and
   in-memory builds, the peak-heap sampler for bounded-memory tests, and a
@@ -103,12 +105,14 @@ go test ./... -shuffle=on -race
   output without sorting, no wall-clock times, no random GUIDs. Identities are
   derived from the upgrade code and stable names.
 - Keep memory bounded by the tables, not by the payload. File data flows from
-  `cab.Entry.Open` readers through MSZIP into the cabinet spool and from there
+  `cab.Entry.Open` readers through MSZIP or LZX into the cabinet spool and from there
   through `cfb.WriteTo` into the package; nothing reads a payload file into a
   byte slice. Verification reads the package back lazily (`cfb.Open`,
   `msidb.Decode`, `cab.Walk`) and compares the SHA-256 digests computed while
   hashing the sources. A new feature that needs file contents gets them from a
-  reader in the same pass as `MsiFileHash`.
+  reader in the same pass as `MsiFileHash`. Every input goes through
+  `openSource` (`pkg/builder/finish.go`), which picks `File.FS`, `Config.FS`
+  or `BaseDir`; never call `os.Open` on a source path directly.
 - Byte-slice entry points (`cab.Write`, `cfb.Write`, `msidb.Marshal`) are thin
   wrappers over the streaming functions and must stay byte-identical to them.
 - The builder removes a partial output when a build fails; every spool or
@@ -124,8 +128,24 @@ go test ./... -shuffle=on -race
 - Readers (`cfb`, `cab`, `msidb.Unmarshal`) treat their input as untrusted:
   bounds-check every offset and sector, detect chain cycles, and never allocate
   from a size the input declares without checking it against the input length.
-- Use only the standard library in `cmd/go-msi` (`flag`), and no new module
-  dependencies elsewhere without discussing them first.
+- `cmd/go-msi` uses `spf13/cobra` (with `spf13/pflag`) and nothing else
+  outside the standard library; never import `cobra/doc`, which pulls in a
+  man-page renderer. Add no new module dependencies elsewhere without
+  discussing them first.
+
+## Command line
+
+- Flags are POSIX style: long flags take two dashes (`--pfx`), and only common
+  flags get a one-letter shorthand (`-o`, `-q`). Every flag and positional
+  argument registers a completion (`MarkFlagFilename`,
+  `RegisterFlagCompletionFunc`, `ValidArgsFunction`).
+- Help goes to stdout; errors, diagnostics and usage hints go to stderr. `run`
+  returns 0 on success, 1 when the command failed and 2 for a usage error.
+  Wrap command-line mistakes (argument count, flag combinations) in
+  `usageError`; flag parse errors are wrapped by the root's flag error func.
+- [`docs/cli`](docs/cli) is generated from the command tree by `TestDocs`
+  (`cmd/go-msi/docs_test.go`). After changing a command, flag or help text,
+  run `go generate ./cmd/go-msi`; the test fails while the pages are stale.
 
 ## Documentation
 

@@ -1,11 +1,12 @@
 // Package cab writes and reads Microsoft cabinet files as Windows Installer
-// uses them: one folder, stored or MSZIP compression, a checksum on every data
-// block, and no spanning across cabinets.
+// uses them: one folder, stored, MSZIP or LZX compression, a checksum on every
+// data block, and no spanning across cabinets.
 //
 // The format is docs/spec/MSISPEC.md section 5. The writer is deterministic:
 // identical files and options give identical bytes with one Go version. It
 // streams: WriteTo reads every file once through its Open function and keeps
-// two blocks and the DEFLATE state in memory, however large the files are.
+// two blocks and the DEFLATE state, or the LZX encoder's bounded history and
+// match finder, in memory, however large the files are.
 package cab
 
 import (
@@ -18,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jkroepke/go-msi/internal/lzx"
 	"github.com/jkroepke/go-msi/internal/spool"
 )
 
@@ -28,6 +30,7 @@ type Compression uint16
 const (
 	None  Compression = 0
 	MSZIP Compression = 1
+	LZX   Compression = 3
 )
 
 const (
@@ -78,9 +81,26 @@ type Entry struct {
 
 // Options control the writer.
 type Options struct {
-	Level       int
+	// Level is the DEFLATE level for MSZIP and the effort for LZX, 1 to 9;
+	// 0 means 9.
+	Level int
+	// Window is the LZX window as a power of two, 15 to 21; 0 means 21.
+	Window int
+
+	// lzxBlock forces the LZX block type in tests.
+	lzxBlock int
+
 	Compression Compression
 	SetID       uint16
+}
+
+// lzxWindow is the LZX window of opts.
+func (opts Options) lzxWindow() int {
+	if opts.Window == 0 {
+		return lzx.MaxWindow
+	}
+
+	return opts.Window
 }
 
 // Checksum computes the CFDATA checksum over b with the given seed.
@@ -198,8 +218,12 @@ func Write(files []File, opts Options) ([]byte, error) {
 
 // checkOptions validates the options and returns the DEFLATE level.
 func checkOptions(opts Options) (int, error) {
-	if opts.Compression != None && opts.Compression != MSZIP {
+	if opts.Compression != None && opts.Compression != MSZIP && opts.Compression != LZX {
 		return 0, fmt.Errorf("cab: unsupported compression %d", opts.Compression)
+	}
+
+	if window := opts.lzxWindow(); opts.Compression == LZX && (window < lzx.MinWindow || window > lzx.MaxWindow) {
+		return 0, fmt.Errorf("cab: LZX window 2^%d, want 2^%d to 2^%d", window, lzx.MinWindow, lzx.MaxWindow)
 	}
 
 	level := opts.Level
@@ -305,7 +329,7 @@ func WriteTo(dst io.WriteSeeker, entries []Entry, opts Options) (int64, error) {
 	src := &concat{entries: entries}
 	defer src.Close()
 
-	if err := writeBlocks(out, src, folderBytes, opts.Compression, level); err != nil {
+	if err := writeBlocks(out, src, folderBytes, opts, level); err != nil {
 		return 0, err
 	}
 
@@ -354,7 +378,13 @@ func writeHeader(out *countingWriter, entries []Entry, folderBytes int64, opts O
 	order.PutUint16(hdr[0x20:], opts.SetID)
 	order.PutUint32(hdr[headerSize:], uint32(dataStart))
 	order.PutUint16(hdr[headerSize+4:], uint16(numBlocks)) //nolint:gosec // at most 65535 blocks by the folder limit
-	order.PutUint16(hdr[headerSize+6:], uint16(opts.Compression))
+
+	typeCompress := uint16(opts.Compression)
+	if opts.Compression == LZX {
+		typeCompress |= uint16(opts.lzxWindow()) << 8 //nolint:gosec // 15 to 21
+	}
+
+	order.PutUint16(hdr[headerSize+6:], typeCompress)
 
 	if _, err := out.Write(hdr); err != nil {
 		return err
@@ -393,10 +423,19 @@ func encodeBlock(chunk, prev []byte, comp Compression, level int) ([]byte, error
 }
 
 // writeBlocks compresses the folder bytes from src into CFDATA records.
-func writeBlocks(out *countingWriter, src io.Reader, folderBytes int64, comp Compression, level int) error {
-	order := binary.LittleEndian
+func writeBlocks(out *countingWriter, src io.Reader, folderBytes int64, opts Options, level int) error {
+	blocks := &blockWriter{out: out, comp: opts.Compression, level: level}
+
+	if opts.Compression == LZX {
+		enc, err := lzx.NewEncoder(folderBytes, lzx.Options{Window: opts.lzxWindow(), Level: level, Block: opts.lzxBlock})
+		if err != nil {
+			return fmt.Errorf("cab: %w", err)
+		}
+
+		blocks.lzx = enc
+	}
+
 	chunk, prev := make([]byte, blockSize), make([]byte, 0, blockSize)
-	rec := make([]byte, 8)
 
 	for remaining := folderBytes; remaining > 0; {
 		want := int(min(remaining, blockSize))
@@ -405,20 +444,7 @@ func writeBlocks(out *countingWriter, src io.Reader, folderBytes int64, comp Com
 			return fmt.Errorf("cab: read: %w", err)
 		}
 
-		data, err := encodeBlock(chunk[:want], prev, comp, level)
-		if err != nil {
-			return err
-		}
-
-		order.PutUint32(rec, blockChecksum(data, want))
-		order.PutUint16(rec[4:], uint16(len(data))) //nolint:gosec // bounded by maxBlockData
-		order.PutUint16(rec[6:], uint16(want))
-
-		if _, err := out.Write(rec); err != nil {
-			return err
-		}
-
-		if _, err := out.Write(data); err != nil {
+		if err := blocks.write(chunk[:want], prev); err != nil {
 			return err
 		}
 
@@ -439,6 +465,68 @@ func writeBlocks(out *countingWriter, src io.Reader, folderBytes int64, comp Com
 	}
 
 	return nil
+}
+
+// blockWriter turns folder chunks into CFDATA records.
+type blockWriter struct {
+	out *countingWriter
+	lzx *lzx.Encoder
+	// sizes holds the uncompressed sizes of the LZX frames not yet written:
+	// the encoder returns a block's frames together.
+	sizes []int
+	comp  Compression
+	level int
+}
+
+// write encodes the next chunk; prev is the chunk before it.
+func (b *blockWriter) write(chunk, prev []byte) error {
+	if b.lzx == nil {
+		data, err := encodeBlock(chunk, prev, b.comp, b.level)
+		if err != nil {
+			return err
+		}
+
+		return writeRecord(b.out, data, len(chunk), maxBlockData)
+	}
+
+	frames, err := b.lzx.Frame(chunk)
+	if err != nil {
+		return fmt.Errorf("cab: %w", err)
+	}
+
+	b.sizes = append(b.sizes, len(chunk))
+
+	for i, data := range frames {
+		if err := writeRecord(b.out, data, b.sizes[i], lzx.MaxFrame); err != nil {
+			return err
+		}
+	}
+
+	b.sizes = b.sizes[:copy(b.sizes, b.sizes[len(frames):])]
+
+	return nil
+}
+
+// writeRecord writes one CFDATA record of data, which holds uncompressed
+// bytes and may be at most limit bytes long.
+func writeRecord(out *countingWriter, data []byte, uncompressed, limit int) error {
+	if len(data) > limit {
+		return fmt.Errorf("cab: compressed block of %d bytes exceeds %d", len(data), limit)
+	}
+
+	var rec [8]byte
+
+	binary.LittleEndian.PutUint32(rec[:], blockChecksum(data, uncompressed))
+	binary.LittleEndian.PutUint16(rec[4:], uint16(len(data)))    //nolint:gosec // bounded by limit
+	binary.LittleEndian.PutUint16(rec[6:], uint16(uncompressed)) //nolint:gosec // at most blockSize
+
+	if _, err := out.Write(rec[:]); err != nil {
+		return err
+	}
+
+	_, err := out.Write(data)
+
+	return err
 }
 
 // countingWriter counts the bytes written and wraps write errors.
@@ -592,6 +680,7 @@ type folderInfo struct {
 	start  int64
 	blocks int
 	typ    Compression
+	window int // LZX window bits from the high byte of typeCompress
 }
 
 // fileRecord is a parsed CFFILE.
@@ -655,6 +744,7 @@ func parseHeader(src io.ReaderAt, size int64) (*header, error) { //nolint:cyclop
 			start:  int64(order.Uint32(fo)),
 			blocks: int(order.Uint16(fo[4:])),
 			typ:    Compression(order.Uint16(fo[6:]) & 0xF),
+			window: int(order.Uint16(fo[6:]) >> 8 & 0x1F),
 		}
 		hdr.folders = append(hdr.folders, info)
 		dataStart = min(dataStart, info.start)
@@ -711,6 +801,7 @@ func parseHeader(src io.ReaderAt, size int64) (*header, error) { //nolint:cyclop
 // next returns the uncompressed bytes of one block, valid until the next call.
 type blockReader struct {
 	r       io.ReaderAt
+	lzx     *lzx.Decoder // created at the first LZX block
 	payload []byte
 	out     []byte
 	hist    []byte
@@ -719,13 +810,19 @@ type blockReader struct {
 	folder  int
 	index   int
 	blocks  int
+	window  int
 	typ     Compression
 }
 
-func newBlockReader(r io.ReaderAt, size int64, folder int, info folderInfo) *blockReader {
+func newBlockReader(src io.ReaderAt, size int64, folder int, info folderInfo) *blockReader {
+	limit := maxBlockData
+	if info.typ == LZX {
+		limit = lzx.MaxFrame
+	}
+
 	return &blockReader{
-		r: r, size: size, folder: folder, pos: info.start, blocks: info.blocks, typ: info.typ,
-		payload: make([]byte, maxBlockData), out: make([]byte, blockSize), hist: make([]byte, 0, blockSize),
+		r: src, size: size, folder: folder, pos: info.start, blocks: info.blocks, typ: info.typ, window: info.window,
+		payload: make([]byte, limit), out: make([]byte, blockSize), hist: make([]byte, 0, blockSize),
 	}
 }
 
@@ -758,7 +855,7 @@ func (b *blockReader) record() ([]byte, int, error) {
 	}
 
 	if compressed > len(b.payload) {
-		return nil, 0, b.errorf("%d payload bytes exceed %d", compressed, maxBlockData)
+		return nil, 0, b.errorf("%d payload bytes exceed %d", compressed, len(b.payload))
 	}
 
 	if uncompressed > blockSize {
@@ -834,9 +931,36 @@ func (b *blockReader) decode(payload, out []byte) error {
 		if _, err := io.ReadFull(inflater, out); err != nil {
 			return b.errorf("%v", err)
 		}
+	case LZX:
+		return b.decodeLZX(payload, out)
 	default:
 		return fmt.Errorf("cab: compression type %d is not supported", b.typ)
 	}
+
+	return nil
+}
+
+// decodeLZX decodes the next frame of the folder's LZX stream.
+func (b *blockReader) decodeLZX(payload, out []byte) error {
+	if b.lzx == nil {
+		dec, err := lzx.NewDecoder(b.window)
+		if err != nil {
+			return b.errorf("%v", err)
+		}
+
+		b.lzx = dec
+	}
+
+	if len(out) == 0 {
+		return b.errorf("empty LZX block")
+	}
+
+	got, err := b.lzx.Decode(payload, len(out))
+	if err != nil {
+		return b.errorf("%v", err)
+	}
+
+	copy(out, got)
 
 	return nil
 }
@@ -864,8 +988,8 @@ func (f *folderReader) Read(buf []byte) (int, error) {
 }
 
 // Read extracts the files of a cabinet written by this package or any other
-// tool that uses stored or MSZIP folders without spanning. It verifies every
-// non-zero block checksum. Files may share or overlap folder bytes.
+// tool that uses stored, MSZIP or LZX folders without spanning. It verifies
+// every non-zero block checksum. Files may share or overlap folder bytes.
 func Read(raw []byte) ([]File, error) {
 	hdr, err := parseHeader(bytes.NewReader(raw), int64(len(raw)))
 	if err != nil {

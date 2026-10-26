@@ -10,6 +10,7 @@ package builder
 import (
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"slices"
 	"strconv"
@@ -54,26 +55,31 @@ type Result struct {
 
 // build holds the state of one build.
 type build struct { //nolint:govet // grouped by build step
-	secure      map[string]bool
-	cfg         *config.Config
-	numbered    map[string][]sequence.Numbered
-	tables      map[string]*msidb.Table
-	dirs        map[string]*dirInfo
-	schedules   map[string][]sequence.Action
-	components  map[string]*componentInfo
-	hidden      map[string]bool
-	fileByKey   map[string]*fileInfo
-	properties  map[string]string
-	upgradeCode string
-	productCode string
-	packageCode string
-	files       []*fileInfo
-	actions     []*actionInfo
-	dirOrder    []*dirInfo
-	diags       config.Diagnostics
-	opts        Options
-	version     config.Version
-	is64        bool
+	secure     map[string]bool
+	cfg        *config.Config
+	numbered   map[string][]sequence.Numbered
+	tables     map[string]*msidb.Table
+	dirs       map[string]*dirInfo
+	schedules  map[string][]sequence.Action
+	components map[string]*componentInfo
+	hidden     map[string]bool
+	// shortcutCarrier maps a component to the generated component that
+	// holds the shortcuts to its files.
+	shortcutCarrier map[string]string
+	// shortcutNames are the short names taken per shortcut directory.
+	shortcutNames map[string]map[string]bool
+	fileByKey     map[string]*fileInfo
+	properties    map[string]string
+	upgradeCode   string
+	productCode   string
+	packageCode   string
+	files         []*fileInfo
+	actions       []*actionInfo
+	dirOrder      []*dirInfo
+	diags         config.Diagnostics
+	opts          Options
+	version       config.Version
+	is64          bool
 	// summaryWarned holds the config paths already reported as made to fit
 	// the summary code page.
 	summaryWarned map[string]bool
@@ -106,12 +112,13 @@ type fileInfo struct {
 	Component *componentInfo
 	cfg       *config.File
 	Hash      *[4]int32
-	path      string
-	FileName  string
-	LongName  string
-	Key       string
-	Attrs     int
-	Sequence  int
+	// open reads the payload again, for the cabinet.
+	open     func() (io.ReadCloser, error)
+	FileName string
+	LongName string
+	Key      string
+	Attrs    int
+	Sequence int
 	// Size is the file length; digest its SHA-256.
 	Size   int64
 	digest [sha256.Size]byte
@@ -146,19 +153,21 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 	}
 
 	bld := &build{
-		cfg:        cfg,
-		opts:       opts,
-		diags:      diags,
-		tables:     make(map[string]*msidb.Table),
-		dirs:       make(map[string]*dirInfo),
-		components: make(map[string]*componentInfo),
-		fileByKey:  make(map[string]*fileInfo),
-		properties: make(map[string]string),
-		secure:     make(map[string]bool),
-		hidden:     make(map[string]bool),
-		schedules:  make(map[string][]sequence.Action),
-		numbered:   make(map[string][]sequence.Numbered),
-		is64:       cfg.Package.Platform.Is64Bit(),
+		cfg:             cfg,
+		opts:            opts,
+		diags:           diags,
+		tables:          make(map[string]*msidb.Table),
+		dirs:            make(map[string]*dirInfo),
+		components:      make(map[string]*componentInfo),
+		fileByKey:       make(map[string]*fileInfo),
+		properties:      make(map[string]string),
+		secure:          make(map[string]bool),
+		hidden:          make(map[string]bool),
+		shortcutCarrier: make(map[string]string),
+		shortcutNames:   make(map[string]map[string]bool),
+		schedules:       make(map[string][]sequence.Action),
+		numbered:        make(map[string][]sequence.Numbered),
+		is64:            cfg.Package.Platform.Is64Bit(),
 	}
 
 	res := &Result{}
@@ -184,6 +193,7 @@ func (b *build) run(res *Result) error {
 		b.writeComponents,
 		b.inputs,
 		b.sequenceFiles,
+		b.shortcuts,
 		b.features,
 		b.writeProperties,
 		b.upgrade,

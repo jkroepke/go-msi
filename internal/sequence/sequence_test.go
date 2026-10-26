@@ -17,7 +17,7 @@ func names(seq []Numbered) string {
 }
 
 // The examples of docs/spec/MSISPEC.md section 11.7.
-func TestWiXExamples(t *testing.T) {
+func TestSpecExamples(t *testing.T) {
 	t.Parallel()
 
 	seq, err := Number([]Action{

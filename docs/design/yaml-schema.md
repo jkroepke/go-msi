@@ -223,8 +223,8 @@ them braced and upper case.
 | `scope` | enum | `perMachine` | `perMachine` (`ALLUSERS=1`) or `perUser` (no `ALLUSERS`) |
 | `installerVersion` | string | `"5.0"` | Page Count = major × 100 + minor. x86: 1.0 to 5.0, x64: 2.0 to 5.0, arm64: 5.0 |
 | `codepage` | int | `1252` | Database code page, section 2.3 |
-| `compression` | enum | `mszip` | `mszip` or `none` (stored blocks) |
-| `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters (fewer outside `0-9A-Za-z._`). The default is `product.cab` when `<name>.cab` cannot be a stream name or a plain filename |
+| `compression` | enum | `lzx` | `lzx` (LZX with a 2 MB window), `lzx:15` … `lzx:21` (a window of 2^N bytes), `mszip` or `none` (stored blocks) |
+| `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters (fewer outside `0-9A-Za-z._`). ICE03 wants an identifier (letters, digits, `_` and `.`, not starting with a digit), so the default keeps only those characters of `<name>`, and an explicit name that is no identifier warns. The default is `product.cab` when that is no identifier, cannot be a stream name or `<name>` has non-ASCII characters |
 | `longFileNames` | bool | `true` | `false` sets Word Count bit 1 and requires 8.3 names |
 | `summary` | map | | `title` (`Installation Database`), `keywords` (`Installer`), `author` (manufacturer) |
 
@@ -333,6 +333,9 @@ directories:
   `TARGETDIR`. The builder adds `TARGETDIR` with `SourceDir` itself.
 - `name` may be `short|long`. Without a short part the builder generates one
   from a hash of the parent key and the long name (specification section 11.3).
+- File and directory names must be valid on Windows: no `\/:*?"<>|` or
+  control characters, no trailing dot or space, and no device name such as
+  `CON`, `CONIN$`, `nul.txt` or `COM1`, in either half of `short|long`.
 - A 64-bit package that installs a component under `ProgramFilesFolder`,
   `CommonFilesFolder` or `SystemFolder` gets a warning (ICE80): those are the
   32-bit folders on 64-bit Windows.
@@ -417,7 +420,11 @@ GUID, as the component rules require. A pinned GUID is kept as it is (the
 windows_exporter executable component keeps the GUID of its released
 packages). `none` writes a NULL ComponentId and is only accepted with
 `permanent: true`, because such a component is never removed (specification
-section 8.4).
+section 8.4). Two components must not end up with one ComponentId (ICE08):
+two `auto` components with the same bitness and key path, for example two
+components in one directory with only environment variables and so the
+directory as key path, need a pinned `guid` on one of them. The builder
+reports this, because it resolves the key paths; `go-msi validate` does not.
 
 **Preserved configuration.** `preserve: true` keeps a configuration file
 or registry value as the user left it across major upgrades. It sets
@@ -510,7 +517,7 @@ service must have the service executable as key file.
 
 | Key | Default | Notes |
 |---|---|---|
-| `source` | required | Path relative to the YAML file |
+| `source` | required | Path relative to the YAML file; `\` counts as `/` on every OS |
 | `name` | base name of `source` | `short|long` allowed |
 | `id` | the name, if it is a legal identifier and unique, else generated | File key |
 | `version` | `auto` | `auto`, a four-field version, the ID of another file (companion), or `none`; never empty (section 2.2) |
@@ -521,6 +528,60 @@ service must have the service executable as key file.
 | `readOnly`, `hidden`, `system` | `false` | |
 
 Unversioned files get an `MsiFileHash` row automatically.
+
+Two files must not resolve to the same target path, even through two
+directory IDs for one folder, and a file must not have the path of a
+directory. The one exception is two conditional components in different
+directory IDs, for example an x64 and an x86 variant of one file: that is a
+warning (ICE30), and the conditions must never both be true. ICE30 also
+only warns for two conditional components in one directory ID; go-msi keeps
+that an error. The
+components still need different ComponentIds; an automatic GUID differs by
+bitness and key file, otherwise set `guid` on one of them.
+
+**Shortcuts.** A file can list `shortcuts`, each a non-advertised `.lnk`
+to that file:
+
+```yaml
+files:
+  - source: viewer.exe
+    shortcuts:
+      - description: View example files         # Start menu > Programs > product.name
+      - directory: DesktopFolder                 # the desktop
+      - name: Viewer (safe mode)                 # default: product.name, no .lnk
+        directory: ProgramMenuFolder/Example     # an id, a standard folder or a folder path
+        arguments: --safe-mode                   # formatted text
+        workingDirectory: INSTALLDIR             # default: the file's directory
+        icon: viewer.ico                         # a key of icons; default: the file's own icon
+        iconIndex: 0                             # needs icon
+        show: minimized                          # normal (default), maximized or minimized
+```
+
+`directory` defaults to `ProgramMenuFolder` and is resolved like a
+component's directory, so `ProgramMenuFolder/Example` creates the Start menu
+folder. In a per-machine package the Start menu and desktop are the common
+ones for all users, in a per-user package the user's own (RUN-28). Two
+shortcuts with one name in one folder are an error, and a name ending in
+`.lnk` gets a warning, because Windows adds the extension. The target
+`[#id]` must fit the 72 characters of `Shortcut.Target`, so a file with
+shortcuts has an ID of at most 69 characters.
+
+The builder puts the shortcuts of one component's files into a generated
+component of their own: in the folder of the first shortcut, with the
+component's condition, 64-bit unless that folder is a 32-bit one (ICE80),
+an HKCU value under `Software\[Manufacturer]\[ProductName]` as its key path
+(ICE38, ICE43), `RemoveFile` rows for the folders it creates below a
+profile folder (ICE64), and in every feature of the file's component. In a
+per-user package that folder must not be a per-machine one (ICE105).
+RUN-28 installed and removed shortcuts from an own HKCU-keyed component and
+from the file's own component alike, and removed an empty Start menu folder
+without a `RemoveFile` row; the Windows tests run the ICE suite on the
+generated layout of a per-machine package (desktop, Start menu, a Start
+menu subfolder and an icon). A per-user package still gets the ICE38
+warning of section 4.4 for its files. An `icon` is stored in the `Icon` table and
+written to the product's installer folder; without one the shell shows the
+target's icon, and `iconIndex` without `icon` is an error. Advertised
+shortcuts are not supported (section 6).
 
 **Permissions.** A file, registry value, service or the component's folder
 can carry a `permissions` block (`folderPermissions` on the component, which
@@ -740,7 +801,8 @@ binaries:
 ```
 
 Keys are stream names, limited by the 62-character stream limit (section
-2.3). Binaries are for `dll` custom actions and for the UI's bitmaps.
+2.3). Icons are for `product.arp.icon` and shortcut `icon`s; binaries are
+for `dll` custom actions and for the UI's bitmaps.
 
 ### 4.11 `firewall` helper
 
@@ -959,8 +1021,10 @@ the generated tables, and the cabinet round trip.
 
 ## 6. Not in version 1
 
-Multiple languages in one package, advertised installs, script custom
-actions, and a top-level file harvester. A future `schema: go-msi/v2` can add
+Multiple languages in one package, advertised installs and advertised
+shortcuts, script custom
+actions, and a top-level file harvester (Go callers have
+`config.Config.AddTree`, see [Go API](../go-api.md)). A future `schema: go-msi/v2` can add
 them without changing the meaning of a v1 file.
 
 Patches, transforms, merge modules and bundles are out of scope for good

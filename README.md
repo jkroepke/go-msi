@@ -14,8 +14,8 @@ go-msi builds Windows Installer (MSI) packages from a single YAML file. It is
 written in pure Go without cgo, so the same binary builds packages on Linux,
 macOS and Windows, for example in a CI job next to the rest of your release.
 
-- **Declarative.** Describe directories, files, services, registry values and
-  actions. go-msi writes the tables, attribute bits and sequence numbers.
+- **Declarative.** Describe directories, files, shortcuts, services, registry
+  values and actions. go-msi writes the tables, attribute bits and sequence numbers.
 - **Safe by default.** Configurations that Windows would accept and then
   install in a broken state are rejected at build time.
 - **Reproducible.** The same configuration, inputs and `SOURCE_DATE_EPOCH`
@@ -69,6 +69,9 @@ go-msi verify hello.msi
 
 See [Signing](docs/signing.md) for PEM keys, `go-msi sign` and the Go API.
 
+Packages can also be built from Go without a YAML file, including a whole
+folder tree; see the [Go API](docs/go-api.md).
+
 A complete package with a Windows service, a firewall rule, an event log source
 and custom actions is in
 [`examples/windows_exporter`](examples/windows_exporter/msi.yaml).
@@ -86,14 +89,17 @@ agent with a service. These are not supported:
   bundles or bootstrappers.** Ship a new major-upgrade MSI instead of a patch.
 - **Multi-language packages.** A package has one language; there are no
   embedded language transforms. Not in schema v1.
-- **Spanned cabinets and LZX compression.** Cabinets are MSZIP or stored.
+- **Spanned cabinets.** Every cabinet holds one folder; cabinets are LZX
+  (the default), MSZIP or stored.
 - **Script custom actions** (VBScript, JScript). Use an executable or DLL
   action instead. Not in schema v1.
 - **Editing existing packages and WiX XML input.** `go-msi inspect` only
   reads packages to help debugging.
-- **Advertised installs.** Not in schema v1.
-- **File harvesting.** List each file of a component; a whole directory is
-  not added automatically. Not in schema v1.
+- **Advertised installs and advertised shortcuts.** Not in schema v1;
+  shortcuts are ordinary `.lnk` files.
+- **File harvesting in YAML.** List each file of a component; a YAML file
+  cannot add a whole directory. Not in schema v1. Go callers can use
+  `Config.AddTree` ([Go API](docs/go-api.md)).
 - **Hand-built dialogs.** The UI is a built-in wizard plus optional form
   pages that ask for properties; there is no free control layout.
 
@@ -113,10 +119,15 @@ or run the container image for Linux on amd64 and arm64:
 docker run --rm -v "$PWD:/work" ghcr.io/jkroepke/go-msi build -o hello.msi msi.yaml
 ```
 
+`go-msi completion <shell>` prints a completion script for Bash, Zsh, fish or
+PowerShell; `go-msi completion <shell> --help` shows how to load it.
+
 ## Documentation
 
+- [Command-line reference](docs/cli/go-msi.md)
 - [YAML schema](docs/design/yaml-schema.md)
 - [Signing](docs/signing.md)
+- [Go API](docs/go-api.md)
 - [MSI specification](docs/spec/MSISPEC.md) and its
   [Windows test results](docs/spec/MSISPEC-RESULTS.md)
 

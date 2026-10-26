@@ -2,6 +2,7 @@ package builder
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -205,6 +206,7 @@ var tableActions = map[string][]string{ //nolint:gochecknoglobals // lookup tabl
 	"ServiceInstall":   {actInstallServices, actStartServices, actStopServices, actDeleteServices},
 	"ServiceControl":   {actInstallServices, actStartServices, actStopServices, actDeleteServices},
 	"MsiServiceConfig": {"MsiConfigureServices"},
+	"Shortcut":         {"CreateShortcuts", "RemoveShortcuts"},
 }
 
 // addAction registers a custom action. The CustomAction row is written by
@@ -491,12 +493,12 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 		b.standardAt(seqInstallUI, "LaunchConditions")
 	}
 
-	for tbl, actions := range tableActions {
+	for _, tbl := range slices.Sorted(maps.Keys(tableActions)) {
 		if !b.hasRows(tbl) {
 			continue
 		}
 
-		for _, name := range actions {
+		for _, name := range tableActions[tbl] {
 			b.standardAt(seqInstallExecute, name)
 		}
 	}

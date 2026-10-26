@@ -69,8 +69,8 @@ func TestInvalid(t *testing.T) {
 func TestProperties(t *testing.T) {
 	t.Parallel()
 
-	got := Properties(`Installed OR (NOT WIX AND &F=3 AND %ENV="x" AND LISTEN_PORT<>9182)`)
-	want := []string{"Installed", "WIX", "LISTEN_PORT"}
+	got := Properties(`Installed OR (NOT SILENT AND &F=3 AND %ENV="x" AND LISTEN_PORT<>9182)`)
+	want := []string{"Installed", "SILENT", "LISTEN_PORT"}
 
 	if len(got) != len(want) {
 		t.Fatalf("%v", got)
