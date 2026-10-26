@@ -13,11 +13,10 @@
 // Input, in CustomActionData for deferred, rollback and commit actions and in
 // the property GoMsiRun for immediate actions:
 //
-//     <n>:<working directory><command line>
+//     <working directory>|<command line>
 //
-// where <n> is the decimal length in UTF-16 units of the working directory,
-// which may be empty. The command line follows directly after the directory.
-// A log line reads `GoMsiRun: ...`.
+// The directory may be empty; `|` cannot occur in a Windows path, so the
+// first one ends it. A log line reads `GoMsiRun: ...`.
 
 typedef unsigned int UINT;
 typedef unsigned long DWORD;
@@ -333,35 +332,28 @@ static const WCHAR msgCancel[] = {'c', 'a', 'n', 'c', 'e', 'l', 'l', 'e', 'd', '
 static const WCHAR propData[] = {'C', 'u', 's', 't', 'o', 'm', 'A', 'c', 't', 'i', 'o', 'n', 'D', 'a', 't', 'a', 0};
 static const WCHAR propRun[] = {'G', 'o', 'M', 's', 'i', 'R', 'u', 'n', 0};
 
-// parse splits "<n>:<dir><command>" into dir (0 when n is 0) and command. The
-// directory is terminated in place.
+// parse splits "<dir>|<command>" into dir (0 when empty) and command. `|`
+// cannot occur in a Windows path, so the first one ends the directory, which
+// is terminated in place.
 static int parse(WCHAR *data, WCHAR **dir, WCHAR **cmd)
 {
-    SIZE_T n = 0, i = 0;
-    if (data[0] < '0' || data[0] > '9') {
-        return 0;
-    }
-    while (data[i] >= '0' && data[i] <= '9') {
-        n = n * 10 + (SIZE_T)(data[i] - '0');
+    SIZE_T i = 0;
+    while (data[i] && data[i] != '|') {
         i++;
     }
-    if (data[i] != ':') {
+    if (data[i] != '|') {
         return 0;
     }
-    i++;
-    if (wlen(data + i) < n + 1) {
-        return 0;
-    }
-    *dir = n ? data + i : 0;
+    *dir = i ? data : 0;
     // The command needs a buffer of its own: CreateProcessW may modify it.
-    SIZE_T cmdLen = wlen(data + i + n);
+    SIZE_T cmdLen = wlen(data + i + 1);
     WCHAR *copy = HeapAlloc(GetProcessHeap(), 0, (cmdLen + 1) * sizeof(WCHAR));
     if (!copy) {
         return 0;
     }
-    memcpy(copy, data + i + n, (cmdLen + 1) * sizeof(WCHAR));
+    memcpy(copy, data + i + 1, (cmdLen + 1) * sizeof(WCHAR));
     *cmd = copy;
-    data[i + n] = 0;
+    data[i] = 0;
     return 1;
 }
 
