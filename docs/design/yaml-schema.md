@@ -413,7 +413,10 @@ or registry value as the user left it across major upgrades. It sets
 `afterInstallExecute`; an explicit early `removeOld` is an error, also
 with `permanent`, and `afterInstallFinalize` gets a warning because RUN-24
 did not test it. RUN-24 showed why, with one file or one registry value
-as the component's key path: with the old product removed first, the new
+as the component's key path and the early removal right after
+InstallValidate (`afterInstallValidate`; `afterInstallInitialize` also
+removes the old product first and is treated the same, not tested): with
+the old product removed first, the new
 product skips a `neverOverwrite` component because its key file exists, and
 the removal of the old product then deletes it, so the edit is gone. With
 the late removal the edit survives, also when upgrading from a version

@@ -250,6 +250,10 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    neverOverwrite: true\n    files:", 1),
 			w, "components[0].neverOverwrite", "RUN-24",
 		},
+		"neverOverwrite service with early removal": {
+			base + strings.Replace(appComponent, "    files:", "    neverOverwrite: true\n    services: [{name: svc}]\n    files:", 1),
+			w, "components[0].neverOverwrite", "own component",
+		},
 		"preserved service": {
 			base + strings.Replace(appComponent, "    files:", "    preserve: true\n    services: [{name: svc}]\n    files:", 1),
 			e, "components[0].preserve", "own component",

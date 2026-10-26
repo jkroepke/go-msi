@@ -484,14 +484,17 @@ func (v *validator) preserve(cfg *Config, field string, comp *Component) {
 
 // removeOld checks a component's NeverOverwrite against the removeOld window.
 func (v *validator) removeOld(removeOld, field string, comp *Component) {
+	// RUN-24 ran the early removal right after InstallValidate (1401).
+	// afterInstallInitialize also removes the old product before the new one
+	// installs its files, so it is treated the same (not tested).
 	early := removeOld == "afterInstallValidate" || removeOld == "afterInstallInitialize"
 
 	switch {
 	case comp.Preserve && early:
 		// Also with permanent: RUN-24 lost the edit when only the new
 		// version had both flags.
-		v.errorf(field+".preserve", "needs removeOld afterInstallExecute: with %s a major upgrade "+
-			"deletes the preserved files and registry values (RUN-24)", removeOld)
+		v.errorf(field+".preserve", "needs removeOld afterInstallExecute: %s removes the old product first, "+
+			"which deleted the preserved file and registry value in RUN-24 (tested right after InstallValidate)", removeOld)
 	case comp.Preserve && removeOld != PreserveRemoveOld:
 		v.warnf(field+".preserve", "only removeOld afterInstallExecute is tested to keep preserved files and "+
 			"registry values (RUN-24); %s is not", removeOld)
@@ -501,8 +504,8 @@ func (v *validator) removeOld(removeOld, field string, comp *Component) {
 			hint = "move the service to its own component and use preserve: true"
 		}
 
-		v.warnf(field+".neverOverwrite", "with removeOld %s a major upgrade deletes this component's files and registry values "+
-			"instead of keeping them (RUN-24); %s", removeOld, hint)
+		v.warnf(field+".neverOverwrite", "removeOld %s removes the old product first, which deleted a neverOverwrite "+
+			"component's file and registry value in RUN-24 (tested right after InstallValidate); %s", removeOld, hint)
 	}
 }
 
