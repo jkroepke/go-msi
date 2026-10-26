@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -18,6 +19,7 @@ var (
 	envRef     = regexp.MustCompile(`\[%[A-Za-z_][A-Za-z0-9_]*\]`)
 	accountRef = regexp.MustCompile(`<[^<>]*>`)
 	hexRights  = regexp.MustCompile(`^(0[xX][0-9A-Fa-f]+|\d+)$`)
+	guid       = regexp.MustCompile(`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`)
 )
 
 // sidAliases are the two-letter SID strings of the SDDL grammar.
@@ -33,6 +35,16 @@ var sidAliases = map[string]bool{ //nolint:gochecknoglobals // lookup table
 var aceTypes = map[string]bool{ //nolint:gochecknoglobals // lookup table
 	"A": true, "D": true, "OA": true, "OD": true, "AU": true, "AL": true, "OU": true, "OL": true, "ML": true,
 	"XA": true, "XD": true, "RA": true, "SP": true, "XU": true, "ZA": true, "TL": true, "FL": true,
+}
+
+const aceCondition = "condition"
+
+// objectTypes are the ACE types that may carry object GUIDs.
+var objectTypes = map[string]bool{"OA": true, "OD": true, "OU": true, "OL": true} //nolint:gochecknoglobals // lookup table
+
+// trailingFieldTypes are the ACE types that need a field after the SID.
+var trailingFieldTypes = map[string]string{ //nolint:gochecknoglobals // lookup table
+	"XA": aceCondition, "XD": aceCondition, "XU": aceCondition, "ZA": aceCondition, "FL": aceCondition, "RA": "resource attribute",
 }
 
 var aceFlags = map[string]bool{ //nolint:gochecknoglobals // lookup table
@@ -51,7 +63,9 @@ const (
 	placeholderSID = "BA"
 	minACEFields   = 6
 	maxACEFields   = 7
-	denyTypes      = "D OD XD"
+	// maxSubAuthorities is SID_MAX_SUB_AUTHORITIES.
+	maxSubAuthorities = 15
+	denyTypes         = "D OD XD"
 )
 
 // CheckSDDL validates an SDDL string the way the engine will see it. It
@@ -126,12 +140,19 @@ type sddlPart struct {
 }
 
 // splitSDDL cuts the string at the O:, G:, D: and S: markers.
+// Each may appear once: Windows refuses "D:(…)D:(…)".
 func splitSDDL(sddl string) ([]sddlPart, error) {
 	var parts []sddlPart
 
 	for sddl != "" {
 		if len(sddl) < 2 || sddl[1] != ':' || !strings.ContainsRune("OGDS", rune(sddl[0])) {
 			return nil, fmt.Errorf("expected O:, G:, D: or S: at %q", sddl)
+		}
+
+		for _, seen := range parts {
+			if seen.kind == sddl[0] {
+				return nil, fmt.Errorf("%c: appears twice", sddl[0])
+			}
 		}
 
 		part := sddlPart{kind: sddl[0]}
@@ -169,8 +190,33 @@ func nextMarker(sddl string, kind byte) int {
 	return len(sddl)
 }
 
-func validSID(s string) bool {
-	return sidAliases[s] || numericSID.MatchString(s)
+// validSID accepts an alias or S-1-authority-sub..., with a 48-bit
+// authority and 1 to 15 32-bit sub-authorities (SID_MAX_SUB_AUTHORITIES).
+func validSID(sid string) bool {
+	if sidAliases[sid] {
+		return true
+	}
+
+	if !numericSID.MatchString(sid) {
+		return false
+	}
+
+	parts := strings.Split(sid, "-")[2:]
+	if len(parts)-1 > maxSubAuthorities {
+		return false
+	}
+
+	if _, err := strconv.ParseUint(parts[0], 10, 48); err != nil {
+		return false
+	}
+
+	for _, sub := range parts[1:] {
+		if _, err := strconv.ParseUint(sub, 10, 32); err != nil {
+			return false
+		}
+	}
+
+	return true
 }
 
 // checkACL validates the flags and ACEs of a DACL or SACL.
@@ -253,8 +299,8 @@ func checkACE(ace string) (string, error) {
 		}
 	}
 
-	if !validSID(fields[5]) {
-		return "", fmt.Errorf("%q is not a SID", fields[5])
+	if err := checkACETail(fields); err != nil {
+		return "", err
 	}
 
 	if strings.Contains(denyTypes, fields[0]) {
@@ -262,6 +308,40 @@ func checkACE(ace string) (string, error) {
 	}
 
 	return "", nil
+}
+
+// checkACETail checks the object GUIDs and the account SID, and refuses a
+// seventh field: Windows refuses it on access ACEs (A, D, ...).
+func checkACETail(fields []string) error {
+	for _, field := range fields[3:5] {
+		switch {
+		case field == "":
+		case !objectTypes[fields[0]]:
+			// Windows refuses a GUID on an ACE that is not an object ACE.
+			return fmt.Errorf("a %s ACE has no object GUID, got %q", fields[0], field)
+		case !guid.MatchString(field):
+			return fmt.Errorf("%q is not a GUID", field)
+		}
+	}
+
+	if !validSID(fields[5]) {
+		return fmt.Errorf("%q is not a SID", fields[5])
+	}
+
+	if field, ok := trailingFieldTypes[fields[0]]; ok {
+		// Windows refuses a callback ACE without its condition (seen
+		// with ConvertStringSecurityDescriptorToSecurityDescriptorW), and
+		// a resource attribute ACE is meaningless without its attribute.
+		return fmt.Errorf("an ACE of type %s needs a %s, which is not supported", fields[0], field)
+	}
+
+	if len(fields) == maxACEFields {
+		// A resource attribute or a callback condition: both are
+		// parenthesised values this parser does not read.
+		return fmt.Errorf("the field %q after the SID (a resource attribute or condition) is not supported", fields[6])
+	}
+
+	return nil
 }
 
 // pairs checks that s is a sequence of two-letter codes from the set.
