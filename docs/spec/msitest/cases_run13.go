@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
+	"unsafe"
 )
 
 var pMsiQueryProductStateW = msiDLL.NewProc("MsiQueryProductStateW")
@@ -14,7 +15,7 @@ func init() { cases["RUN-13"] = caseRun13 }
 
 // productState returns INSTALLSTATE: 5 default (installed), -1 unknown, 1 advertised, 2 absent.
 func productState(code string) int32 {
-	r, _, _ := pMsiQueryProductStateW.Call(wstr(code))
+	r, _, _ := pMsiQueryProductStateW.Call(uintptr(unsafe.Pointer(wstr(code))))
 	return int32(r)
 }
 
