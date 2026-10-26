@@ -265,6 +265,16 @@ func TestValidate(t *testing.T) {
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: CommonAppDataFolder\n    createFolder: true\n    purge: true", 1),
 			e, "components[0].purge", "standard folder",
 		},
+		"purge below nested standard folder": {
+			strings.Replace(base, "        configurable: true\n", "        children: [{id: CommonAppDataFolder, name: x, children: [{id: DataDir, name: data}]}]\n", 1) +
+				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1),
+			e, "components[0].purge", "CommonAppDataFolder can be pointed",
+		},
+		"purge percent in name": {
+			strings.Replace(base, "        configurable: true\n", "        children: [{id: DataDir, name: '%TEMP%'}]\n", 1) +
+				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1),
+			e, "components[0].purge", "has a % in its name",
+		},
 		"purge below setDirectory": {
 			strings.Replace(base, "        configurable: true\n", "        children: [{id: DataDir, name: data}]\n", 1) +
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1) +

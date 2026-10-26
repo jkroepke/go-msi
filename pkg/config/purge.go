@@ -1,6 +1,10 @@
 package config
 
-import "github.com/jkroepke/go-msi/internal/condition"
+import (
+	"strings"
+
+	"github.com/jkroepke/go-msi/internal/condition"
+)
 
 // targetDir is the root of the directory tree.
 const targetDir = "TARGETDIR"
@@ -39,6 +43,9 @@ func (v *validator) purgeFolder(cfg *Config, known *refs, field string, comp *Co
 			"folder, such as CommonAppDataFolder/Vendor/Product", comp.Directory)
 	case dir.Name == "" || dir.Name == ".":
 		v.errorf(field+".purge", "%s is its parent folder; purge a folder with its own name", comp.Directory)
+	case percentInPath(known, comp.Directory) != "":
+		v.errorf(field+".purge", "%s has a %% in its name, which cmd.exe expands as an environment variable; purge a "+
+			"folder whose path has no %%", percentInPath(known, comp.Directory))
 	default:
 		if movable := movableAncestor(cfg, known, comp.Directory); movable != "" {
 			v.errorf(field+".purge", "%s can be pointed at any folder (a public id, configurable, or set by an action, "+
@@ -78,7 +85,8 @@ func setProperties(cfg *Config) map[string]bool {
 // movableAncestor returns the first directory from dirID up to (not
 // including) its root folder whose path something besides the Directory
 // table can set (specification section 8.3): a public id, which the command
-// line can set; a configurable one; or one named by a setDirectory or
+// line can set; a configurable one; a standard folder nested below another
+// one, which the installer resolves itself; or one named by a setDirectory or
 // setProperty action, a properties entry or a dialog field.
 func movableAncestor(cfg *Config, known *refs, dirID string) string {
 	set := setProperties(cfg)
@@ -89,8 +97,28 @@ func movableAncestor(cfg *Config, known *refs, dirID string) string {
 			return ""
 		}
 
-		if dir := known.dirs[dirID]; dir != nil && dir.Configurable || set[dirID] || IsPublicProperty(dirID) {
+		dir := known.dirs[dirID]
+		if dir != nil && dir.Configurable || set[dirID] || IsPublicProperty(dirID) || IsStandardFolder(dirID) {
 			return dirID
+		}
+
+		dirID = parent
+	}
+
+	return ""
+}
+
+// percentInPath returns the first directory from dirID up to its root folder
+// whose name has a %, which cmd.exe expands in the purge command line.
+func percentInPath(known *refs, dirID string) string {
+	for range 64 {
+		if dir := known.dirs[dirID]; dir != nil && strings.Contains(dir.Name, "%") {
+			return dirID
+		}
+
+		parent, ok := known.dirParent[dirID]
+		if !ok || parent == "" {
+			return ""
 		}
 
 		dirID = parent
