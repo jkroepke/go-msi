@@ -537,18 +537,25 @@ func lzxCases(when time.Time, random, text []byte) []nativeCase {
 	calls := bytes.Repeat([]byte{0xE8, 0x00, 0x10, 0x00, 0x00}, 32768/5*3)
 	e8tail := append(bytes.Clone(calls[:32768+11]), 0xE8, 1, 2, 3, 4, 0xE8)
 
+	// Under the race detector the large cases shrink to a few blocks; CI
+	// runs them at full size in a step without -race.
+	limit := len(code)
+	if raceEnabled {
+		limit = 5 * 32768
+	}
+
 	cases := make([]nativeCase, 0, 32)
 
 	for window := 15; window <= 21; window++ {
 		cases = append(cases, nativeCase{name: fmt.Sprintf("lzx-%d-code", window), opts: lzx(window), files: []cab.File{
-			{Name: "code.bin", Data: code[:min(len(code), 3<<window)], Time: when},
+			{Name: "code.bin", Data: code[:min(limit, 3<<window)], Time: when},
 			{Name: "text.txt", Data: text, Time: when},
 		}})
 	}
 
 	for _, block := range []int{1, 2, 3} {
 		cases = append(cases, nativeCase{name: fmt.Sprintf("lzx-block-type-%d", block), opts: cab.WithLZXBlock(lzx(21), block), files: []cab.File{
-			{Name: "code.bin", Data: code[:1<<20], Time: when},
+			{Name: "code.bin", Data: code[:min(limit, 1<<20)], Time: when},
 		}})
 	}
 
@@ -562,10 +569,17 @@ func lzxCases(when time.Time, random, text []byte) []nativeCase {
 		nativeCase{name: "lzx-one-block-plus-one", opts: lzx(0), files: []cab.File{{Name: "block", Data: text[:32769], Time: when}}},
 		nativeCase{name: "lzx-random", opts: lzx(0), files: []cab.File{{Name: "random", Data: random, Time: when}}},
 		nativeCase{name: "lzx-stored-fallback", opts: lzx(0), files: []cab.File{{Name: "shift", Data: alphabetShift(), Time: when}}},
-		nativeCase{name: "lzx-far-match", opts: lzx(21), files: []cab.File{{Name: "far", Data: far, Time: when}}},
 		nativeCase{name: "lzx-e8-frame-ends", opts: lzx(0), files: []cab.File{{Name: "e8", Data: calls, Time: when}}},
 		nativeCase{name: "lzx-e8-short-tail", opts: lzx(0), files: []cab.File{{Name: "e8", Data: e8tail, Time: when}}},
 		nativeCase{name: "lzx-e8-tiny-tail", opts: lzx(0), files: []cab.File{{Name: "e8", Data: calls[:32768+10], Time: when}}},
+	)
+
+	if raceEnabled {
+		return cases
+	}
+
+	return append(cases,
+		nativeCase{name: "lzx-far-match", opts: lzx(21), files: []cab.File{{Name: "far", Data: far, Time: when}}},
 		nativeCase{name: "lzx-history-slides", opts: lzx(0), files: []cab.File{
 			{Name: "code1.bin", Data: code, Time: when},
 			{Name: "code2.bin", Data: code, Time: when},
@@ -573,8 +587,6 @@ func lzxCases(when time.Time, random, text []byte) []nativeCase {
 			{Name: "far.bin", Data: far, Time: when},
 		}},
 	)
-
-	return cases
 }
 
 func TestNativeFDIExtracts(t *testing.T) { //nolint:paralleltest // the FDI callbacks share one package state
@@ -997,6 +1009,10 @@ func keys(m map[string][]byte) []string {
 func TestNativeLZXSystemBinaries(t *testing.T) { //nolint:paralleltest // the FDI callbacks share one package state
 	if testing.Short() {
 		t.Skip("native tests run without -short")
+	}
+
+	if raceEnabled {
+		t.Skip("compresses about 20 MB; CI runs it without -race")
 	}
 
 	system := filepath.Join(os.Getenv("SystemRoot"), "System32")

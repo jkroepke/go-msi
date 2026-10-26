@@ -96,6 +96,15 @@ jobs:
         shell: bash
         run: go test ./... ${{ runner.os != 'Windows' && '-short' || '' }} -shuffle=on -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./...
 
+      # The race detector slows the LZX encoder down about fifty times, so the
+      # race run above shrinks the large LZX cases; run them at full size.
+      - name: go test (LZX at full size)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          go test -count=1 -run 'TestNative(FDI|Expand)Extracts/lzx|TestNativeLZXSystemBinaries' ./pkg/cab/
+          go test -count=1 -run 'BoundedMemory' ./pkg/cab/ ./pkg/builder/
+
       # Print the Windows signature experiments (MSISPEC-RESULTS SIG-01…06).
       - name: go test (signature results)
         if: runner.os == 'Windows'
