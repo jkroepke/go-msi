@@ -358,12 +358,16 @@ func (b *build) cabinet(target spool.Target) (cfb.Source, error) {
 		})
 	}
 
-	comp := cab.MSZIP
-	if b.cfg.Package.Compression == "none" {
-		comp = cab.None
+	opts := cab.Options{Compression: cab.MSZIP}
+
+	switch window, ok := config.LZXWindow(b.cfg.Package.Compression); {
+	case ok:
+		opts = cab.Options{Compression: cab.LZX, Window: window}
+	case b.cfg.Package.Compression == "none":
+		opts.Compression = cab.None
 	}
 
-	size, err := cab.WriteTo(target, entries, cab.Options{Compression: comp})
+	size, err := cab.WriteTo(target, entries, opts)
 	if err != nil {
 		return cfb.Source{}, fmt.Errorf("cabinet: %w", err)
 	}

@@ -11,7 +11,7 @@ const (
 	DefaultLanguage         = 1033
 	DefaultInstallerVersion = "5.0"
 	DefaultCodepage         = 1252
-	DefaultCompression      = "mszip"
+	DefaultCompression      = "lzx"
 	DefaultCabinet          = "product.cab"
 	DefaultRemoveOld        = "afterInstallInitialize"
 	PreserveRemoveOld       = "afterInstallExecute"

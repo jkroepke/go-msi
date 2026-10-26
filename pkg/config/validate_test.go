@@ -204,6 +204,10 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    environment: [{name: PATH, value: x}]\n    files:", 1),
 			sevWarning, "components[0].environment[0].action", "append",
 		},
+		"lzx window too small": {
+			pkg(`{platform: x64, compression: "lzx:14"}`) + appComponent,
+			sevError, "package.compression", `"lzx:14" is not one of`,
+		},
 		// SUM-04.
 		"utf-16 codepage": {
 			pkg(`{platform: x64, codepage: 1200}`) + appComponent,

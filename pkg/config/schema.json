@@ -148,6 +148,14 @@
           "anyOf": [
             {
               "enum": [
+                "lzx",
+                "lzx:15",
+                "lzx:16",
+                "lzx:17",
+                "lzx:18",
+                "lzx:19",
+                "lzx:20",
+                "lzx:21",
                 "mszip",
                 "none"
               ]
@@ -156,7 +164,7 @@
               "$ref": "#/$defs/var"
             }
           ],
-          "default": "mszip"
+          "default": "lzx"
         },
         "cabinet": {
           "type": "string",

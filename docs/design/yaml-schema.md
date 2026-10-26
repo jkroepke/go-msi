@@ -223,7 +223,7 @@ them braced and upper case.
 | `scope` | enum | `perMachine` | `perMachine` (`ALLUSERS=1`) or `perUser` (no `ALLUSERS`) |
 | `installerVersion` | string | `"5.0"` | Page Count = major × 100 + minor. x86: 1.0 to 5.0, x64: 2.0 to 5.0, arm64: 5.0 |
 | `codepage` | int | `1252` | Database code page, section 2.3 |
-| `compression` | enum | `mszip` | `mszip` or `none` (stored blocks) |
+| `compression` | enum | `lzx` | `lzx` (LZX with a 2 MB window), `lzx:15` … `lzx:21` (a window of 2^N bytes), `mszip` or `none` (stored blocks) |
 | `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters (fewer outside `0-9A-Za-z._`). The default is `product.cab` when `<name>.cab` cannot be a stream name or a plain filename |
 | `longFileNames` | bool | `true` | `false` sets Word Count bit 1 and requires 8.3 names |
 | `summary` | map | | `title` (`Installation Database`), `keywords` (`Installer`), `author` (manufacturer) |
