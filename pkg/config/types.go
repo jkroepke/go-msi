@@ -467,7 +467,7 @@ type Launch struct {
 	// it has no id.
 	File      string `yaml:"file"`
 	Arguments string `yaml:"arguments"`
-	// Text is the check box label; the default is "Launch [ProductName]".
+	// Text is the check box label; the default is "&Launch [ProductName]".
 	Text string `yaml:"text"`
 }
 

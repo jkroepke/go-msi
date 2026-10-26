@@ -819,8 +819,10 @@ for it (226). It runs in the setup's own process, so the program runs as
 the user who started the setup. The box is shown, and the action runs, only
 after a new installation that installed the file's component
 (`NOT Installed AND NOT ACTION = "ADMIN" AND $component = 3`); silent
-installs never show the finish page, so they never start the program. The
-name `LaunchOnFinish` is reserved for custom actions when `launch` is set.
+installs never show the finish page, so they never start the program. `file`
+must be a program (a PE file): process creation cannot start a document.
+When `launch` is set, the custom action name and the property
+`LaunchOnFinish` are reserved.
 
 #### Theme
 

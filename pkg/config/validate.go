@@ -1387,6 +1387,9 @@ func (v *validator) ui(cfg *Config) {
 	}
 }
 
+// launchProperty is the property of the ui.launch check box.
+const launchProperty = "LaunchOnFinish"
+
 // wizardOptions checks the install folder page and the launch check box.
 func (v *validator) wizardOptions(cfg *Config, ids *refs) {
 	none := cfg.UI.Wizard == "none"
@@ -1397,7 +1400,7 @@ func (v *validator) wizardOptions(cfg *Config, ids *refs) {
 		}
 
 		if dir := ids.dirs[cfg.InstallDir.ID]; dir == nil || !dir.Configurable {
-			v.errorf("ui.installDirPage", "an install folder page needs installDir")
+			v.errorf("ui.installDirPage", "an install folder page needs installDir.id to name a configurable directory")
 		}
 	}
 
@@ -1412,6 +1415,12 @@ func (v *validator) wizardOptions(cfg *Config, ids *refs) {
 
 	if v.required("ui.launch.file", launch.File) && !ids.fileIDs[launch.File] {
 		v.errorf("ui.launch.file", "file %q is not defined", launch.File)
+	}
+
+	// The check box sets the property; a value from properties would
+	// override checked.
+	if _, taken := cfg.Properties[launchProperty]; taken {
+		v.errorf("properties."+launchProperty, "the property is set by the ui.launch check box")
 	}
 }
 

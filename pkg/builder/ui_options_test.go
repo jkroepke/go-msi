@@ -165,6 +165,72 @@ func TestLaunchCheckBox(t *testing.T) {
 	}
 }
 
+func TestLaunchLongCommandLine(t *testing.T) {
+	t.Parallel()
+
+	cfg := desktop(t)
+	cfg.UI.Launch.Arguments = strings.Repeat("x", 250)
+	res := mustBuild(t, cfg)
+
+	if !strings.Contains(fmt.Sprint(res.Diagnostics), "LaunchOnFinish: Target is") {
+		t.Errorf("diagnostics %s", res.Diagnostics)
+	}
+}
+
+// TestInstallOnlyPageLinks covers the flows around the license and install
+// folder pages that the other tests leave out.
+func TestInstallOnlyPageLinks(t *testing.T) {
+	t.Parallel()
+
+	field := []config.DialogField{{Property: "PROP"}}
+
+	for _, tc := range []struct {
+		name  string
+		setup func(*config.Config)
+		links map[[2]string]map[string]string
+	}{
+		{"page before both", func(c *config.Config) {
+			c.UI.Dialogs = []*config.Dialog{{ID: "ExtraDlg", Title: "Extra", After: "WelcomeDlg", Fields: field}}
+		}, map[[2]string]map[string]string{
+			{"ExtraDlg", "Next"}:            {"NOT Installed": "LicenseAgreementDlg", "Installed": "VerifyReadyDlg"},
+			{"ExtraDlg", "Back"}:            {"NOT Installed": "WelcomeDlg", "Installed": "MaintenanceTypeDlg"},
+			{"LicenseAgreementDlg", "Back"}: {"1": "ExtraDlg"},
+			{"InstallDirDlg", "Next"}:       {"1": "VerifyReadyDlg"},
+			{"VerifyReadyDlg", "Back"}:      {"NOT Installed": "InstallDirDlg", "Installed": "ExtraDlg"},
+		}},
+		{"feature tree without license", func(c *config.Config) {
+			c.UI.Wizard = "featureTree"
+			c.UI.License = ""
+		}, map[[2]string]map[string]string{
+			{"WelcomeDlg", "Next"}:           {"1": "InstallDirDlg"},
+			{"InstallDirDlg", "Back"}:        {"1": "WelcomeDlg"},
+			{"InstallDirDlg", "Next"}:        {"1": "CustomizeDlg"},
+			{"CustomizeDlg", "Back"}:         {"NOT Installed": "InstallDirDlg", "Installed": "MaintenanceTypeDlg"},
+			{"MaintenanceTypeDlg", "Change"}: {"1": "CustomizeDlg"},
+		}},
+		{"feature tree with license", func(c *config.Config) { c.UI.Wizard = "featureTree" }, map[[2]string]map[string]string{
+			{"CustomizeDlg", "Back"}:         {"NOT Installed": "InstallDirDlg", "Installed": "MaintenanceTypeDlg"},
+			{"MaintenanceTypeDlg", "Change"}: {"1": "CustomizeDlg"},
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := desktop(t)
+			tc.setup(cfg)
+			res := mustBuild(t, cfg)
+
+			for at, want := range tc.links {
+				if got := nextOf(t, res, at[0], at[1]); fmt.Sprint(got) != fmt.Sprint(want) {
+					t.Errorf("%s %s goes to %v, want %v", at[0], at[1], got, want)
+				}
+			}
+
+			checkRings(t, res)
+		})
+	}
+}
+
 func TestWizardOptionErrors(t *testing.T) {
 	t.Parallel()
 
@@ -176,7 +242,16 @@ func TestWizardOptionErrors(t *testing.T) {
 		{"unknown file", func(c *config.Config) { c.UI.Launch.File = "missing.exe" }, `file "missing.exe" is not defined`},
 		{"no wizard", func(c *config.Config) { c.UI.Wizard = "none"; c.UI.License = "" }, "an install folder page needs a wizard"},
 		{"launch without wizard", func(c *config.Config) { c.UI.Wizard = "none"; c.UI.License = ""; c.UI.InstallDirPage = false }, "a launch check box needs a wizard"},
-		{"long command line", func(c *config.Config) { c.UI.Launch.Arguments = strings.Repeat("x", 250) }, "longer than 255 characters"},
+		{"not a program", func(c *config.Config) {
+			c.Components[0].Files = append(c.Components[0].Files, &config.File{Source: "LICENSE.txt", Name: "readme.txt"})
+			c.UI.Launch.File = "readme.txt"
+		}, "readme.txt is not a program"},
+		{"property taken", func(c *config.Config) { c.Properties = config.Properties{"LaunchOnFinish": {Value: "0"}} }, "set by the ui.launch check box"},
+		{"install dir not configurable", func(c *config.Config) {
+			c.InstallDir = config.InstallDir{}
+			c.Directories = []*config.Directory{{ID: "ProgramFiles64Folder", Children: []*config.Directory{{ID: "APPDIR", Name: "Viewer"}}}}
+			c.Components[0].Directory = "APPDIR"
+		}, "installDir.id to name a configurable directory"},
 		{"action name", func(c *config.Config) {
 			c.CustomActions = append(c.CustomActions, &config.CustomAction{
 				ID: "LaunchOnFinish", Error: "x", Schedule: []config.Placement{{Sequence: "execute", Before: "InstallFinalize"}},

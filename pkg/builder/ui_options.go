@@ -29,7 +29,7 @@ var installOnly = map[string]bool{dlgLicense: true, dlgInstallDir: true} //nolin
 func (w *wizard) installDirDialog(dir string) {
 	page := w.add(&uiDialog{name: dlgInstallDir, attrs: dlgPage, first: ctlFolder})
 	page.innerHeader("Destination Folder", "Click Next to install to the default folder or click Change to choose another.")
-	page.control(text("FolderLabel", margin+5, 60, dlgWidth-2*margin-10, 12, "Install [ProductName] to:"))
+	page.control(text("FolderLabel", margin+5, 60, dlgWidth-2*margin-10, 12, "&Install [ProductName] to:"))
 	page.control(&uiControl{
 		name: ctlFolder, typ: typPathEdit, property: dir, ring: true,
 		x: margin + 5, y: 75, w: 260, h: 18, attrs: ctlActive,
@@ -60,6 +60,14 @@ func (b *build) launch(wiz *wizard) {
 		return
 	}
 
+	// A type 34 action starts the file with process creation, which runs
+	// programs only, not documents.
+	if !file.isPE {
+		b.errorf("ui.launch.file", "%s is not a program (no PE header), so the launch action cannot start it", cfg.File)
+
+		return
+	}
+
 	if b.action(actLaunch) != nil {
 		b.errorf("ui.launch", "the custom action name %s is taken", actLaunch)
 
@@ -71,13 +79,7 @@ func (b *build) launch(wiz *wizard) {
 		target += " " + cfg.Arguments
 	}
 
-	if len(target) > maxTargetLength {
-		b.errorf("ui.launch.arguments", "the command line is longer than %d characters", maxTargetLength)
-
-		return
-	}
-
-	b.actions = append(b.actions, &actionInfo{name: actLaunch, typ: caExec | caAsyncNoWait, source: file.Component.dir.id, target: target, fromUI: true})
+	b.addAction(&actionInfo{name: actLaunch, typ: caExec | caAsyncNoWait, source: file.Component.dir.id, target: target, fromUI: true})
 
 	shown := fmt.Sprintf(`NOT Installed AND NOT ACTION = "ADMIN" AND $%s = 3`, file.Component.cfg.ID)
 
