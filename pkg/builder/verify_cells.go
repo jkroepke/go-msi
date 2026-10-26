@@ -21,8 +21,11 @@ func compareTable(want, got *msidb.Table) error {
 	}
 
 	for i, col := range want.Columns {
-		if got.Columns[i].Name != col.Name || got.Columns[i].Type.String() != col.Type.String() {
-			return fmt.Errorf("table %s: column %d read back as %s %s, wrote %s %s", want.Name, i, got.Columns[i].Name, got.Columns[i].Type, col.Name, col.Type)
+		// Type is a plain struct, so == covers the kind, width, the
+		// nullable and localizable flags and the key flag.
+		if got.Columns[i].Name != col.Name || got.Columns[i].Type != col.Type {
+			return fmt.Errorf("table %s: column %d read back as %s %s (key %t), wrote %s %s (key %t)", want.Name, i,
+				got.Columns[i].Name, got.Columns[i].Type, got.Columns[i].Type.Key, col.Name, col.Type, col.Type.Key)
 		}
 	}
 
@@ -84,8 +87,9 @@ func canonicalRows(tbl *msidb.Table) ([]string, error) {
 }
 
 // canonicalCell returns a tagged encoding of a cell: N for NULL (nil or the
-// empty string), S for a string, I for any integer type and B for binary
-// data, which is represented by its SHA-256 digest and length.
+// empty string), S for a string (quoted, so that a separator inside the
+// value cannot shift cell boundaries), I for any integer type and B for
+// binary data, which is represented by its SHA-256 digest and length.
 func canonicalCell(cell any) (string, error) {
 	switch value := cell.(type) {
 	case nil:
@@ -95,7 +99,7 @@ func canonicalCell(cell any) (string, error) {
 			return "N", nil
 		}
 
-		return "S" + value, nil
+		return "S" + strconv.Quote(value), nil
 	case []byte:
 		sum := sha256.Sum256(value)
 
@@ -138,7 +142,7 @@ func describeRow(row string) string {
 		case cell == "N":
 			cells[i] = "NULL"
 		case strings.HasPrefix(cell, "S"):
-			cells[i] = strconv.Quote(cell[1:])
+			cells[i] = cell[1:]
 		case strings.HasPrefix(cell, "B"):
 			cells[i] = "binary " + cell[1:]
 		default:
