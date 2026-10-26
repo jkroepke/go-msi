@@ -271,7 +271,7 @@ detection row.
 |---|---|---|
 | `afterInstallValidate` | right after InstallValidate | old product removed first, outside the transaction |
 | `afterInstallInitialize` (default) | right after InstallInitialize | removed first, inside the transaction, so it rolls back |
-| `afterInstallExecute` | right after InstallExecute | new first, then old, one transaction; strict component rules |
+| `afterInstallExecute` (default when a component has `preserve: true`) | right after InstallExecute | new first, then old, one transaction; strict component rules |
 | `afterInstallFinalize` | after InstallFinalize | separate transaction; a failed removal leaves both |
 
 Every property named here must be public, is added to
@@ -403,6 +403,7 @@ components:
     condition: ""
     permanent: false
     neverOverwrite: false
+    preserve: false                  # neverOverwrite + a late removeOld, see below
     sharedDllRefCount: false
     keyPath: windows_exporter.exe   # file name, registry id or "directory"
     bitness: auto                    # auto (from platform) | 32 | 64
@@ -416,6 +417,38 @@ windows_exporter executable component keeps the GUID of its released
 packages). `none` writes a NULL ComponentId and is only accepted with
 `permanent: true`, because such a component is never removed (specification
 section 8.4).
+
+**Preserved configuration.** `preserve: true` keeps a configuration file
+or registry value as the user left it across major upgrades. It sets
+`neverOverwrite`, and `upgrade.removeOld` then defaults to
+`afterInstallExecute`; an explicit early `removeOld` is an error, also
+with `permanent`, and `afterInstallFinalize` gets a warning because RUN-24
+did not test it. RUN-24 showed why, with one file or one registry value
+as the component's key path and the early removal right after
+InstallValidate (`afterInstallValidate`; `afterInstallInitialize` also
+removes the old product first and is treated the same, not tested): with
+the old product removed first, the new
+product skips a `neverOverwrite` component because its key file exists, and
+the removal of the old product then deletes it, so the edit is gone. With
+the late removal the edit survives, also when upgrading from a version
+built without `preserve` that already had the file or value as the key path
+of its own component with the same component code (moving it out of another
+component was not tested), and uninstall still removes the resource.
+`neverOverwrite` + `permanent` with an early removal keeps the edit too
+when the old version already had both flags (lost when it had neither; other
+combinations not tested), and the resource then stays after uninstall.
+The engine decides on the key path, so give each preserved file or value its
+own component; resources beside the key path were not tested. A preserved
+component is never updated, so a service is rejected. `neverOverwrite`
+without `permanent` and an early `removeOld` gets a warning.
+
+```yaml
+components:
+  - id: Config
+    preserve: true
+    files:
+      - source: config.alloy
+```
 
 **Key path.** Default: the first file, else the first registry value, else
 the directory, which gets a `CreateFolder` row (ICE18). A component with a

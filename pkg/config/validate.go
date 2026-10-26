@@ -490,6 +490,51 @@ func (v *validator) featureRefs(featurePath string, feature *Feature, known *ref
 	}
 }
 
+// preserve checks components that keep what the user changed. RUN-24: with
+// the old product removed first, a NeverOverwrite component without
+// Permanent loses its key file or registry value, because the new product
+// skips it and the removal of the old one deletes it. A late removal keeps
+// it, also when the old version had the same component without the flag.
+// Permanent in both versions also kept it, but leaves it after uninstall.
+func (v *validator) preserve(cfg *Config, field string, comp *Component) {
+	if comp.Preserve && len(comp.Services) > 0 {
+		v.errorf(field+".preserve", "a preserved component is never updated; keep the service in its own component")
+	}
+
+	if cfg.Upgrade == nil || cfg.Upgrade.Disabled {
+		return
+	}
+
+	v.removeOld(cfg.Upgrade.RemoveOld, field, comp)
+}
+
+// removeOld checks a component's NeverOverwrite against the removeOld window.
+func (v *validator) removeOld(removeOld, field string, comp *Component) {
+	// RUN-24 ran the early removal right after InstallValidate (1401).
+	// afterInstallInitialize also removes the old product before the new one
+	// installs its files, so it is treated the same (not tested).
+	early := removeOld == "afterInstallValidate" || removeOld == "afterInstallInitialize"
+
+	switch {
+	case comp.Preserve && early:
+		// Also with permanent: RUN-24 lost the edit when only the new
+		// version had both flags.
+		v.errorf(field+".preserve", "needs removeOld afterInstallExecute: %s removes the old product first, "+
+			"which deleted the preserved file and registry value in RUN-24 (tested right after InstallValidate)", removeOld)
+	case comp.Preserve && removeOld != PreserveRemoveOld:
+		v.warnf(field+".preserve", "only removeOld afterInstallExecute is tested to keep preserved files and "+
+			"registry values (RUN-24); %s is not", removeOld)
+	case comp.NeverOverwrite && !comp.Permanent && early:
+		hint := "use preserve: true"
+		if len(comp.Services) > 0 {
+			hint = "move the service to its own component and use preserve: true"
+		}
+
+		v.warnf(field+".neverOverwrite", "removeOld %s removes the old product first, which deleted a neverOverwrite "+
+			"component's file and registry value in RUN-24 (tested right after InstallValidate); %s", removeOld, hint)
+	}
+}
+
 func (v *validator) components(cfg *Config, r *refs) {
 	seen := map[string]bool{}
 	fileIDs := map[string]string{}
@@ -564,6 +609,7 @@ func (v *validator) components(cfg *Config, r *refs) {
 		}
 
 		v.oneOf(p+".bitness", c.Bitness, Auto, "32", "64")
+		v.preserve(cfg, p, c)
 
 		if c.Bitness == "64" && !cfg.Package.Platform.Is64Bit() {
 			v.errorf(p+".bitness", "64-bit components need an x64 or arm64 package")
