@@ -64,7 +64,7 @@ func TestJSONSchemaAcceptsValidFiles(t *testing.T) {
 
 	docs := map[string]string{"base": base + appComponent}
 
-	for _, path := range []string{"../../examples/minimal/msi.yaml", "../../examples/windows_exporter/msi.yaml", "../../examples/branded/msi.yaml"} {
+	for _, path := range []string{"../../examples/minimal/msi.yaml", "../../examples/windows_exporter/msi.yaml", "../../examples/branded/msi.yaml", "../../examples/desktop/msi.yaml"} {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)

@@ -289,6 +289,13 @@ func (b *build) ui() error {
 		wiz.flow = slices.Insert(wiz.flow, 1, dlgLicense)
 	}
 
+	if b.cfg.UI.InstallDirPage {
+		wiz.installDirDialog(b.cfg.InstallDir.ID)
+		wiz.flow = slices.Insert(wiz.flow, wiz.shown(1, 1), dlgInstallDir)
+	}
+
+	b.launch(wiz)
+
 	b.addedDialogs(wiz)
 	wiz.link()
 
@@ -311,9 +318,9 @@ func (b *build) addedDialogs(wiz *wizard) {
 	for i, cfg := range b.cfg.UI.Dialogs {
 		path := fmt.Sprintf("ui.dialogs[%d]", i)
 
-		// The license page's name stays reserved without a license, since
-		// the flow links step over it by name.
-		if _, taken := wiz.byName[cfg.ID]; taken || cfg.ID == dlgLicense {
+		// The names of the optional pages stay reserved without them,
+		// since the flow links step over them by name.
+		if _, taken := wiz.byName[cfg.ID]; taken || installOnly[cfg.ID] {
 			b.errorf(path+".id", "%s is a wizard dialog", cfg.ID)
 
 			continue
@@ -395,30 +402,38 @@ func (d *uiDialog) navigation() {
 }
 
 // link wires Next and Back along the flow. Change in the maintenance menu
-// enters the flow at the page after the welcome page; that page goes back to
-// the menu when the product is installed. An installed product steps over
-// the license page: the pages around it link to each other under
+// enters the flow at the first page after the welcome page that an
+// installed product shows; that page goes back to the menu when the
+// product is installed. An installed product steps over the license and
+// install folder pages: the pages around them link to each other under
 // Installed.
 func (w *wizard) link() {
-	entry := 1
-	if w.flow[entry] == dlgLicense {
-		entry++
-	}
+	entry := w.shown(1, 1)
 
 	for i, name := range w.flow {
 		page := w.byName[name]
 
 		if i > 0 {
-			w.linkBack(page.find(ctlBack), i, entry)
+			back := page.find(ctlBack)
+
+			switch {
+			case i < entry:
+				back.on(evNewDialog, w.flow[i-1], condAlways)
+			case i == entry:
+				back.on(evNewDialog, w.flow[i-1], condNotInstalled)
+				back.on(evNewDialog, dlgMaintType, "Installed")
+			default:
+				step(back, w.flow[i-1], w.flow[w.shown(i-1, -1)])
+			}
 		}
 
 		if i+1 < len(w.flow) {
 			next := page.find(ctlNext)
-			if w.flow[i+1] == dlgLicense && i > 0 {
-				next.on(evNewDialog, dlgLicense, condNotInstalled)
-				next.on(evNewDialog, w.flow[i+2], "Installed")
-			} else {
+
+			if i < entry {
 				next.on(evNewDialog, w.flow[i+1], condAlways)
+			} else {
+				step(next, w.flow[i+1], w.flow[w.shown(i+1, 1)])
 			}
 		}
 	}
@@ -428,18 +443,27 @@ func (w *wizard) link() {
 	}
 }
 
-// linkBack wires the Back button of page i of the flow.
-func (w *wizard) linkBack(back *uiControl, i, entry int) {
-	switch {
-	case i == entry:
-		back.on(evNewDialog, w.flow[i-1], condNotInstalled)
-		back.on(evNewDialog, dlgMaintType, "Installed")
-	case w.flow[i-1] == dlgLicense:
-		back.on(evNewDialog, dlgLicense, condNotInstalled)
-		back.on(evNewDialog, w.flow[i-2], "Installed")
-	default:
-		back.on(evNewDialog, w.flow[i-1], condAlways)
+// shown returns the index of the first page from flow[i] in direction dir
+// that an installed product shows.
+func (w *wizard) shown(i, dir int) int {
+	for installOnly[w.flow[i]] {
+		i += dir
 	}
+
+	return i
+}
+
+// step opens target, or installed for an installed product when the two
+// differ.
+func step(button *uiControl, target, installed string) {
+	if target == installed {
+		button.on(evNewDialog, target, condAlways)
+
+		return
+	}
+
+	button.on(evNewDialog, target, condNotInstalled)
+	button.on(evNewDialog, installed, "Installed")
 }
 
 // writeWizard emits the tables.

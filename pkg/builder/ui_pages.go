@@ -237,6 +237,28 @@ func (w *wizard) featureDialogs() {
 	custom.control(button(ctlCancel, cancelX, buttonY, "Cancel")).on(evSpawnDialog, dlgCancel, condAlways)
 	custom.def, custom.cancel = ctlNext, ctlCancel
 
+	w.browseDialog()
+
+	cost := w.add(&uiDialog{name: dlgDiskCost, attrs: dlgCosting, first: "OK", def: "OK", cancel: "OK"})
+	cost.innerHeader("Disk space requirements", "The disk space required for the installation of the selected features.")
+	cost.control(text("Text", margin, 53, dlgWidth-2*margin, 40,
+		"The highlighted volumes do not have enough disk space available for the currently selected features. "+
+			"You can remove some files from the highlighted volumes, install fewer features, or select different destination drives."))
+	cost.control(&uiControl{
+		name: "VolumeList", typ: "VolumeCostList", x: margin, y: 100, w: dlgWidth - 2*margin, h: 120, attrs: ctlVolumes, text: "{120}{70}{70}{70}{70}",
+	})
+	cost.control(strip())
+	cost.control(button("OK", cancelX, buttonY, "&OK")).on(evEndDialog, endReturn, condAlways)
+}
+
+// browseDialog adds the folder browser that the feature tree and the
+// install folder page open. It edits the directory named by
+// _BrowseProperty.
+func (w *wizard) browseDialog() {
+	if w.byName[dlgBrowse] != nil {
+		return
+	}
+
 	browse := w.add(&uiDialog{name: dlgBrowse, attrs: dlgPage, first: typDirList, def: "OK", cancel: ctlCancel})
 	browse.innerHeader("Change destination folder", "Browse to the destination folder.")
 	browse.control(text("LookInLabel", margin+5, 58, 44, 10, "&Look in:"))
@@ -255,17 +277,6 @@ func (w *wizard) featureDialogs() {
 	browse.control(button(ctlCancel, cancelX, buttonY, "Cancel")).
 		on("Reset", "0", condAlways).
 		on(evEndDialog, endReturn, condAlways)
-
-	cost := w.add(&uiDialog{name: dlgDiskCost, attrs: dlgCosting, first: "OK", def: "OK", cancel: "OK"})
-	cost.innerHeader("Disk space requirements", "The disk space required for the installation of the selected features.")
-	cost.control(text("Text", margin, 53, dlgWidth-2*margin, 40,
-		"The highlighted volumes do not have enough disk space available for the currently selected features. "+
-			"You can remove some files from the highlighted volumes, install fewer features, or select different destination drives."))
-	cost.control(&uiControl{
-		name: "VolumeList", typ: "VolumeCostList", x: margin, y: 100, w: dlgWidth - 2*margin, h: 120, attrs: ctlVolumes, text: "{120}{70}{70}{70}{70}",
-	})
-	cost.control(strip())
-	cost.control(button("OK", cancelX, buttonY, "&OK")).on(evEndDialog, endReturn, condAlways)
 }
 
 // uiTexts are the UIText rows the selection tree, the volume list and the

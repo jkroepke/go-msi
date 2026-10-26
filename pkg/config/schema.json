@@ -723,6 +723,34 @@
           "type": "string",
           "description": "A license file shown with an accept check box after the welcome page: RTF, or UTF-8 text converted to RTF."
         },
+        "installDirPage": {
+          "type": "boolean",
+          "description": "Adds a page after the welcome and license pages that shows the install folder (installDir) and lets the user change it."
+        },
+        "launch": {
+          "type": "object",
+          "description": "A check box on the finish page that starts an installed program when the user clicks Finish.",
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "The id of an installed file, or its name when it has no id."
+            },
+            "arguments": {
+              "type": "string",
+              "description": "Formatted command-line arguments."
+            },
+            "text": {
+              "type": "string",
+              "description": "The check box label. Default: Launch [ProductName]."
+            },
+            "checked": {
+              "type": "boolean",
+              "description": "Whether the box starts checked. Default: true."
+            }
+          },
+          "required": ["file"],
+          "additionalProperties": false
+        },
         "theme": {
           "type": "object",
           "properties": {
