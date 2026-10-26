@@ -20,6 +20,8 @@ import (
 	"testing"
 	"unicode/utf16"
 	"unsafe"
+
+	"github.com/jkroepke/go-msi/pkg/builder"
 )
 
 //nolint:gochecknoglobals // lazy DLL procs, loaded on first use
@@ -152,28 +154,72 @@ func longPath(path string) string {
 	return syscall.UTF16ToString(buf[:size])
 }
 
+// scope is what a snapshot needs to know about the package: the labels for
+// machine paths, the input files and the names the package can own.
+type scope struct {
+	label  func(string) string
+	inputs map[string][]byte
+	// strings holds every string of the package, lower-cased and separated
+	// by NUL.
+	strings     string
+	productCode string
+}
+
+// newScope collects the strings of every table of the package.
+func newScope(res *builder.Result, label func(string) string, inputs map[string][]byte) scope {
+	var all strings.Builder
+
+	for _, tbl := range res.Database.Tables {
+		for _, row := range tbl.Rows {
+			for _, cell := range row {
+				if text, ok := cell.(string); ok {
+					all.WriteString(strings.ToLower(text) + "\x00")
+				}
+			}
+		}
+	}
+
+	return scope{label: label, inputs: inputs, strings: all.String(), productCode: res.ProductCode}
+}
+
+// owns reports whether a child of a watch can belong to the package: its
+// name, without an extension, occurs in one of the package's strings, or it
+// carries the product code. Other programs on the machine write next to
+// the package at the same time, such as HKCU\Software\Mozilla on a GitHub
+// runner, and stay out of the snapshot.
+func (pkg scope) owns(name string) bool {
+	if pkg.productCode != "" && strings.Contains(strings.ToUpper(name), strings.ToUpper(pkg.productCode)) {
+		return true
+	}
+
+	lower := strings.ToLower(name)
+
+	return strings.Contains(pkg.strings, lower) ||
+		strings.Contains(pkg.strings, strings.TrimSuffix(lower, filepath.Ext(lower)))
+}
+
 // takeSnapshot records every watch. Without a baseline it records only the
 // direct children; with one it also records the subtree of every child the
-// baseline does not have.
-func takeSnapshot(t *testing.T, base snapshot, label func(string) string, inputs map[string][]byte) snapshot {
+// baseline does not have. Only children the package can own are recorded.
+func takeSnapshot(t *testing.T, base snapshot, pkg scope) snapshot {
 	t.Helper()
 
 	snap := snapshot{}
 
 	for _, w := range watches() {
 		if w.dir != "" {
-			snapDir(t, snap, base, w, label, inputs)
+			snapDir(t, snap, base, w, pkg)
 		} else {
-			snapKey(t, snap, base, w, label)
+			snapKey(t, snap, base, w, pkg)
 		}
 	}
 
-	snapFirewall(t, snap, label)
+	snapFirewall(t, snap, pkg)
 
 	return snap
 }
 
-func snapDir(t *testing.T, snap, base snapshot, place watch, label func(string) string, inputs map[string][]byte) {
+func snapDir(t *testing.T, snap, base snapshot, place watch, pkg scope) {
 	t.Helper()
 
 	entries, err := os.ReadDir(place.dir)
@@ -182,7 +228,7 @@ func snapDir(t *testing.T, snap, base snapshot, place watch, label func(string) 
 	}
 
 	for _, entry := range entries {
-		if place.skip != nil && place.skip.MatchString(entry.Name()) {
+		if place.skip != nil && place.skip.MatchString(entry.Name()) || !pkg.owns(entry.Name()) {
 			continue
 		}
 
@@ -217,7 +263,7 @@ func snapDir(t *testing.T, snap, base snapshot, place watch, label func(string) 
 				return nil
 			}
 
-			snap["file "+place.label+`\`+rel] = fileContent(t, path, place.hashes, label, inputs)
+			snap["file "+place.label+`\`+rel] = fileContent(t, path, place.hashes, pkg.label, pkg.inputs)
 
 			return nil
 		})
@@ -271,7 +317,7 @@ func fileContent(t *testing.T, path string, hashes bool, label func(string) stri
 	return fmt.Sprintf("%d bytes sha256:%s", len(data), hex.EncodeToString(sum[:8]))
 }
 
-func snapKey(t *testing.T, snap, base snapshot, place watch, label func(string) string) {
+func snapKey(t *testing.T, snap, base snapshot, place watch, pkg scope) {
 	t.Helper()
 
 	key, err := openKey(place.root, place.key)
@@ -281,7 +327,7 @@ func snapKey(t *testing.T, snap, base snapshot, place watch, label func(string) 
 	defer syscall.RegCloseKey(key) //nolint:errcheck // read-only handle
 
 	for _, child := range subkeys(t, key) {
-		if place.skip != nil && place.skip.MatchString(child) {
+		if place.skip != nil && place.skip.MatchString(child) || !pkg.owns(child) {
 			continue
 		}
 
@@ -292,7 +338,7 @@ func snapKey(t *testing.T, snap, base snapshot, place watch, label func(string) 
 			continue
 		}
 
-		snapTree(t, snap, place.root, place.key+`\`+child, place.label+`\`+child, label)
+		snapTree(t, snap, place.root, place.key+`\`+child, place.label+`\`+child, pkg.label)
 	}
 }
 
@@ -325,7 +371,7 @@ func snapTree(t *testing.T, snap snapshot, root syscall.Handle, path, name strin
 
 // snapFirewall records the firewall rules by their names; the value names
 // that netsh picks are random.
-func snapFirewall(t *testing.T, snap snapshot, label func(string) string) {
+func snapFirewall(t *testing.T, snap snapshot, pkg scope) {
 	t.Helper()
 
 	key, err := openKey(syscall.HKEY_LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules`)
@@ -339,7 +385,7 @@ func snapFirewall(t *testing.T, snap snapshot, label func(string) string) {
 	for _, rule := range values(t, key) {
 		rule = strings.TrimSuffix(strings.TrimPrefix(rule, `"`), `"`)
 
-		rule = label(firewallVersion.ReplaceAllString(rule, ""))
+		rule = pkg.label(firewallVersion.ReplaceAllString(rule, ""))
 		name := "?"
 
 		for field := range strings.SplitSeq(rule, "|") {
@@ -352,6 +398,10 @@ func snapFirewall(t *testing.T, snap snapshot, label func(string) string) {
 	}
 
 	for name, list := range rules {
+		if !pkg.owns(name) {
+			continue
+		}
+
 		slices.Sort(list)
 		snap["firewall "+name] = strings.Join(list, " AND ")
 	}

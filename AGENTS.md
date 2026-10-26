@@ -92,8 +92,10 @@ go test ./... -shuffle=on -race
   tables of every example, and `TestMsiexecInstallsExamples`
   (`pkg/builder/nativetest/testdata/install`) holds the entries that
   installing and removing each example adds under the watched folders and
-  registry keys on Windows, plus the firewall rules (changes inside entries
-  that existed before are not recorded). A change to the generated packages
+  registry keys on Windows, plus the firewall rules. Only entries whose name
+  occurs in one of the package's strings, or carries its product code, are
+  recorded, so other programs writing on the runner (`HKCU\Software\Mozilla`)
+  stay out; changes inside entries that existed before are not recorded. A change to the generated packages
   updates them in the same pull request: rerun the tests with
   `GO_MSI_UPDATE_SNAPSHOTS=1` and review the diff. The install snapshots need
   an elevated Windows machine; on a mismatch CI uploads the new ones as the
