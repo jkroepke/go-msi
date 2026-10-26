@@ -383,6 +383,7 @@ func TestAddTreeErrors(t *testing.T) {
 	}{
 		{"unknown directory", "dist", "NOPE", config.TreeOptions{Feature: "Main"}, "directory NOPE"},
 		{"unknown feature", "dist", "INSTALLDIR", config.TreeOptions{Feature: "Nope"}, `feature "Nope"`},
+		{"no feature with features", "dist", "INSTALLDIR", config.TreeOptions{}, `feature ""`},
 		{"bad prefix", "dist", "INSTALLDIR", config.TreeOptions{Feature: "Main", Prefix: "1x"}, "prefix"},
 		{"bad root", "../dist", "INSTALLDIR", config.TreeOptions{Feature: "Main"}, "not a valid fs path"},
 		{"missing root", "nope", "INSTALLDIR", config.TreeOptions{Feature: "Main"}, "nope"},
@@ -415,5 +416,28 @@ func TestAddTreeErrors(t *testing.T) {
 				t.Errorf("err = %v, want it to mention %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestAddTreeIntoDefaultFeature(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{
+		Schema:  config.SchemaV1,
+		Product: config.Product{Name: "Hello", Manufacturer: "Example", Version: "1.0.0", UpgradeCode: "3f2504e0-4f89-41d3-9a0c-0305e82c3301"},
+		Package: config.Package{Platform: "x64"},
+	}
+	config.ApplyDefaults(cfg)
+
+	if _, err := cfg.AddTree(treeFS(), "dist", cfg.InstallDir.ID, config.TreeOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if diags := config.Validate(cfg); diags.Err() != nil {
+		t.Fatalf("validate: %v\n%s", diags.Err(), diags)
+	}
+
+	if len(cfg.Features) != 1 || cfg.Features[0].ID != config.DefaultFeatureID || len(cfg.Features[0].Components) != 4 {
+		t.Errorf("features %+v, want the default feature with 4 components", cfg.Features)
 	}
 }

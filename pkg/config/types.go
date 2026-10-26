@@ -38,8 +38,9 @@ type Config struct { //nolint:govet // field order is the YAML key order
 	// resolve against it. It is set by Load, not read from YAML.
 	BaseDir string `yaml:"-"`
 
-	// FS, when set, is where relative source paths (files, icons, binaries
-	// and binary cells of custom tables) are read from instead of BaseDir.
+	// FS, when set, is where every relative input path (files, icons,
+	// binaries, binary cells of custom tables, the license and theme
+	// pictures) is read from instead of BaseDir.
 	// Paths in it use forward slashes. It is for Go callers and is never
 	// read from YAML.
 	FS fs.FS `yaml:"-"`

@@ -13,7 +13,8 @@ import (
 // TreeOptions controls AddTree.
 type TreeOptions struct {
 	// Feature is the id of an existing feature that the generated components
-	// join. It is required.
+	// join. It may only be empty while the config has no features, so that
+	// the default feature takes them.
 	Feature string
 
 	// Prefix starts every generated id. The ids also cover the target
@@ -29,9 +30,10 @@ type TreeOptions struct {
 const MaxTreePrefixLength = MaxIdentifierLength - 22
 
 // AddTree adds every regular file under the folder root in fsys below the
-// existing directory dirID. Directories and features that only the
-// shorthands (installDir, the default feature) create exist after
-// ApplyDefaults, so call it first for such a config. Each subdirectory that holds a file, directly or
+// existing directory dirID. The directory of the installDir shorthand exists
+// after ApplyDefaults, so call it first for such a config. A config without
+// features may leave TreeOptions.Feature empty: the components then join
+// the default feature like every other component. Each subdirectory that holds a file, directly or
 // further down, becomes a child Directory, and each file becomes its own
 // Component with that one file, so every file has its own key path and GUID.
 // A subfolder that already exists below dirID under the same long name, for
@@ -90,8 +92,10 @@ func (c *Config) AddTree(fsys fs.FS, root, dirID string, opts TreeOptions) ([]*C
 
 	c.Components = append(c.Components, added...)
 
-	for _, comp := range added {
-		feature.Components = append(feature.Components, ComponentRef(comp.ID))
+	if feature != nil {
+		for _, comp := range added {
+			feature.Components = append(feature.Components, ComponentRef(comp.ID))
+		}
 	}
 
 	return added, nil
@@ -117,9 +121,15 @@ func (c *Config) treeTarget(fsys fs.FS, root, dirID string, opts TreeOptions) (*
 		return nil, nil, fmt.Errorf("add tree: directory %s is not defined; with installDir, call ApplyDefaults first", dirID)
 	}
 
+	// Without any feature, ApplyDefaults later puts every component into
+	// the default feature.
+	if opts.Feature == "" && len(c.Features) == 0 {
+		return parent, nil, nil
+	}
+
 	feature := findFeature(c.Features, opts.Feature)
 	if feature == nil {
-		return nil, nil, fmt.Errorf("add tree: feature %q is not defined; for the default feature, call ApplyDefaults first", opts.Feature)
+		return nil, nil, fmt.Errorf("add tree: feature %q is not defined", opts.Feature)
 	}
 
 	return parent, feature, nil

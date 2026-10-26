@@ -36,8 +36,8 @@ if err != nil {
 A relative `source` path is read, in this order of precedence, from:
 
 1. `File.FS`, the file system of that one file (`AddTree` sets it);
-2. `Config.FS`, for every file, icon, binary and binary cell of a custom
-   table, for example an `embed.FS` or an `fstest.MapFS`;
+2. `Config.FS`, for every file, icon, binary, binary cell of a custom
+   table, license and theme picture, for example an `embed.FS` or an `fstest.MapFS`;
 3. `Config.BaseDir`, the directory of the YAML file, which `config.Load` sets.
 
 In a relative path a backslash counts as a separator on every OS, and the
@@ -51,9 +51,9 @@ memory, so the files of an `fs.FS` must implement `io.ReaderAt`, as those of
 
 `Config.AddTree(fsys, root, dirID, opts)` adds every file under the folder
 `root` below the existing directory `dirID`. A config that relies on the
-shorthands, such as `installDir` or the default feature, gets those
-directories and features from `config.ApplyDefaults`; call it before
-`AddTree`. Use `"."` as `root` for the
+`installDir` shorthand gets that directory from `config.ApplyDefaults`; call
+it before `AddTree`. A config without features can leave `opts.Feature`
+empty, and the default feature takes the components. Use `"."` as `root` for the
 whole file system; an empty `root` is an error.
 
 - Each subdirectory that holds a file, directly or further down, becomes a
@@ -62,7 +62,8 @@ whole file system; an empty `root` is an error.
   defined, is reused. Folders without any file are skipped.
 - Each file becomes its own `Component` with that one file, so it has its
   own key path and an automatic GUID.
-- The components join the feature `opts.Feature`.
+- The components join the feature `opts.Feature`, or the default feature
+  when the config has none and `opts.Feature` is empty.
 - IDs are derived from `opts.Prefix` (default `tree`), `dirID`, `root` and
   the path below `root`. The same calls in the same order therefore give the
   same IDs, GUIDs and ProductCode on every build; with a fixed

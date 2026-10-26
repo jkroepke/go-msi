@@ -32,7 +32,7 @@ const placeholderCode = "{00000000-0000-0000-0000-000000000000}"
 func (b *build) readInput(src string) ([]byte, error) {
 	file, err := openSource(b.cfg, nil, src)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read %s: %w", src, err)
 	}
 
 	defer file.Close()
@@ -74,7 +74,7 @@ func openSource(cfg *config.Config, fsys fs.FS, src string) (fs.File, error) {
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", src, err)
+		return nil, err //nolint:wrapcheck // the *fs.PathError names the path
 	}
 
 	return file, nil
