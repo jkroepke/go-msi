@@ -170,8 +170,11 @@ go test ./... -shuffle=on -race
   public API or the pipeline changes, and
   [`docs/design/yaml-schema.md`](docs/design/yaml-schema.md) together with
   `pkg/config/schema.json` and the examples when the YAML schema changes.
-- `docs` is published to the wiki; the first line of every file is its title
-  and is removed on publish.
+- `docs` is published to the wiki by `.github/scripts/wiki.py`; the first
+  line of every file is its title and is removed on publish. Link with
+  relative `.md` paths; the script turns them into wiki page links. A new
+  page also goes into `docs/Home.md` and `docs/_Sidebar.md`, see
+  [`docs/README.md`](docs/README.md).
 - When a change establishes a useful implementation detail or debugging
   technique, record it here or in a scoped `AGENTS.md` next to the code.
 

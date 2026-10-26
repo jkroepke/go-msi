@@ -123,6 +123,7 @@ PowerShell; `go-msi completion <shell> --help` shows how to load it.
 
 ## Documentation
 
+- [Getting Started](docs/Getting%20Started.md)
 - [Command-line reference](docs/cli/go-msi.md)
 - [YAML schema](docs/design/yaml-schema.md)
 - [Signing](docs/signing.md)

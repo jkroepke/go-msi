@@ -8,6 +8,7 @@ on:
     paths:
       - docs/**
       - .github/workflows/wiki.yaml
+      - .github/scripts/wiki.py
 
 permissions:
   contents: write
@@ -27,13 +28,10 @@ jobs:
           repository: ${{ github.repository }}.wiki
           path: wiki.git
 
-      # docs/spec/msitest is the Windows test harness and its raw run logs, not documentation.
+      # Flattens docs/ into wiki pages, drops the title line and rewrites the
+      # links; see docs/README.md.
       - name: sync wiki
-        run: rsync -av --delete --exclude=README.md --exclude=.git --exclude=spec/msitest/ docs/ wiki.git/
-
-      # The wiki shows the file name as the page title.
-      - name: remove header line
-        run: find wiki.git -name '*.md' -not -path 'wiki.git/.git/*' -exec sed -i '1d' {} +
+        run: python3 -I .github/scripts/wiki.py docs wiki.git
 
       - name: Commit files
         run: |
