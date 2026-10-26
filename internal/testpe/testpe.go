@@ -161,10 +161,10 @@ func resourceSection(opts Options, dataRVA uint32) ([]byte, int) {
 }
 
 // Syso returns a COFF object file holding the version resource, for the Go
-// linker: dropped into a package directory as *_windows_amd64.syso (or
-// through a build overlay), it gives a Go executable a version resource.
-// The data entry carries an IMAGE_REL_AMD64_ADDR32NB relocation against
-// the section, which the linker resolves to the final RVA.
+// linker: dropped into a package directory as *_windows_amd64.syso, it
+// gives a Go executable a version resource. The data entry carries an
+// image-relative relocation against the section, which the linker resolves
+// to the final RVA.
 func Syso(opts Options) []byte {
 	order := binary.LittleEndian
 
@@ -200,10 +200,17 @@ func Syso(opts Options) []byte {
 	order.PutUint16(sec[32:], 1)
 	order.PutUint32(sec[36:], 0x40000040) // initialized data, readable
 
-	// One relocation: the data entry's OffsetToData against symbol 0.
+	// One relocation: the data entry's OffsetToData against symbol 0, as an
+	// image-relative 32-bit address (IMAGE_REL_AMD64_ADDR32NB, or the ARM64
+	// equivalent).
+	relocType := uint16(3)
+	if opts.Machine == 0xAA64 {
+		relocType = 2 // IMAGE_REL_ARM64_ADDR32NB
+	}
+
 	reloc := order.AppendUint32(nil, uint32(relocOff)) //nolint:gosec // small
 	reloc = order.AppendUint32(reloc, 0)
-	reloc = order.AppendUint16(reloc, 3) // IMAGE_REL_AMD64_ADDR32NB
+	reloc = order.AppendUint16(reloc, relocType)
 
 	// Symbol 0: the section itself, static.
 	sym := make([]byte, symbolSize)

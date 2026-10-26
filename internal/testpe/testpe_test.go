@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"debug/pe"
 	"encoding/binary"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 
+	gopeinfo "github.com/jkroepke/go-msi/internal/pe"
 	"github.com/jkroepke/go-msi/internal/testpe"
 )
 
@@ -50,15 +54,70 @@ func TestSysoIsACOFFObjectWithOneRelocatedResourceSection(t *testing.T) {
 	}
 }
 
-func TestBuildStillCarriesTheVersionResource(t *testing.T) {
+func TestBuildCarriesTheVersionResource(t *testing.T) {
 	t.Parallel()
 
-	img, err := pe.NewFile(bytes.NewReader(testpe.Build(testpe.Options{FileVersion: "2.0.0.0"})))
+	data := testpe.Build(testpe.Options{FileVersion: "2.0.0.0", Languages: []int{1031}})
+
+	info, err := gopeinfo.Parse(bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if img.Section(".rsrc") == nil {
-		t.Fatal("no .rsrc section")
+	if info.FileVersion != "2.0.0.0" || len(info.Languages) != 1 || info.Languages[0] != 1031 {
+		t.Fatalf("parsed %+v", *info)
+	}
+}
+
+// TestSysoLinksIntoAGoExecutable builds a trivial program for Windows with
+// the object beside it and reads the version back, pinning what the Go
+// linker accepts.
+func TestSysoLinksIntoAGoExecutable(t *testing.T) {
+	t.Parallel()
+
+	if testing.Short() {
+		t.Skip("builds a program")
+	}
+
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Skip("no go on PATH")
+	}
+
+	dir := t.TempDir()
+	files := map[string][]byte{
+		"go.mod":                  []byte("module t\n\ngo 1.27\n"),
+		"main.go":                 []byte("package main\n\nfunc main() {}\n"),
+		"rsrc_windows_amd64.syso": testpe.Syso(testpe.Options{FileVersion: "3.1.4.1", Languages: []int{1033}}),
+	}
+
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	exe := filepath.Join(dir, "t.exe")
+
+	cmd := exec.CommandContext(t.Context(), goBin, "build", "-o", exe, ".")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOOS=windows", "GOARCH=amd64", "CGO_ENABLED=0", "GOWORK=off", "GOFLAGS=-mod=mod") //nolint:wsl_v5 // configures cmd
+
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v\n%s", err, out)
+	}
+
+	linked, err := os.ReadFile(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := gopeinfo.Parse(bytes.NewReader(linked))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if info.FileVersion != "3.1.4.1" || len(info.Languages) != 1 || info.Languages[0] != 1033 {
+		t.Fatalf("linked executable reports %+v", *info)
 	}
 }
