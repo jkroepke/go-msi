@@ -7,10 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"image"
-	"image/color"
-	"image/draw"
-	"image/png"
 	"maps"
 	"os"
 	"os/exec"
@@ -19,12 +15,11 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 	"unsafe"
 
+	"github.com/jkroepke/go-msi/internal/exampletest"
 	"github.com/jkroepke/go-msi/internal/testpe"
 	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/config"
 )
 
 var (
@@ -161,49 +156,15 @@ func summaryString(t *testing.T, db uint32, pid uintptr) string {
 	return syscall.UTF16ToString(buf[:size])
 }
 
-// buildExample builds examples/<name> with synthetic inputs and writes the
+// buildExample builds examples/<name> with the given inputs and writes the
 // package to a temporary file.
 func buildExample(t *testing.T, name string, vars map[string]string, inputs map[string][]byte) (string, *builder.Result) {
 	t.Helper()
 
-	dir := t.TempDir()
-
-	src, err := os.ReadFile(filepath.Join("..", "..", "..", "examples", name, "msi.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.WriteFile(filepath.Join(dir, "msi.yaml"), src, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	for n, data := range inputs {
-		if err := os.WriteFile(filepath.Join(dir, n), data, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	cfg, err := config.Load(filepath.Join(dir, "msi.yaml"), config.Options{Vars: vars})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	res, err := builder.Build(cfg, builder.Options{BuildTime: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)})
-	if err != nil {
-		t.Fatalf("%v\n%v", err, res.Diagnostics)
-	}
-
-	path := filepath.Join(dir, name+".msi")
-	if err := os.WriteFile(path, res.Package, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	return path, res
+	return exampletest.Build(t, name, vars, inputs)
 }
 
-func minimalInputs() map[string][]byte {
-	return map[string][]byte{"hello.exe": testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})}
-}
+func minimalInputs() map[string][]byte { return exampletest.Examples()["minimal"].Inputs }
 
 // TestMsiDLLOpensPackages opens both examples with msi.dll, reads every
 // table and the summary information.
@@ -277,6 +238,8 @@ type installExample struct {
 	installed string
 	// service is the name of a service the package installs and starts.
 	service string
+	// properties are passed to msiexec /i.
+	properties []string
 }
 
 // installExamples lists every example with its inputs and checks. A new
@@ -284,7 +247,7 @@ type installExample struct {
 func installExamples(t *testing.T) map[string]installExample {
 	t.Helper()
 
-	exporterVars, _ := windowsExporterInputs()
+	examples := exampletest.Examples()
 
 	return map[string]installExample{
 		"minimal": {
@@ -292,7 +255,7 @@ func installExamples(t *testing.T) map[string]installExample {
 			installed: filepath.Join(os.Getenv("ProgramFiles"), "Hello", "hello.exe"),
 		},
 		"windows_exporter": {
-			vars: exporterVars,
+			vars: examples["windows_exporter"].Vars,
 			inputs: func(t *testing.T) map[string][]byte {
 				t.Helper()
 
@@ -305,51 +268,32 @@ func installExamples(t *testing.T) map[string]installExample {
 			},
 			installed: filepath.Join(os.Getenv("ProgramFiles"), "windows_exporter", "windows_exporter.exe"),
 			service:   "windows_exporter",
+			// The firewall rule is an optional feature.
+			properties: []string{"ADDLOCAL=ALL"},
 		},
 		"branded": {
-			vars:      map[string]string{"VERSION": "1.5.0"},
+			vars:      examples["branded"].Vars,
 			inputs:    brandedInputs,
 			installed: filepath.Join(os.Getenv("ProgramFiles"), "Example", "Agent", "agent.exe"),
 			service:   "ExampleAgent",
 		},
 		"desktop": {
-			vars:      map[string]string{"VERSION": "2.0.0"},
+			vars:      examples["desktop"].Vars,
 			inputs:    func(*testing.T) map[string][]byte { return desktopInputs() },
 			installed: filepath.Join(os.Getenv("ProgramFiles"), "Example Viewer", "viewer.exe"),
 		},
 	}
 }
 
-// brandedInputs are the input files of examples/branded: a service binary
-// that really runs, a license and the two theme pictures.
+// brandedInputs are the input files of examples/branded with a service
+// binary that really runs.
 func brandedInputs(t *testing.T) map[string][]byte {
 	t.Helper()
 
-	return map[string][]byte{
-		"agent.exe":         testpe.Build(testpe.Options{FileVersion: "1.5.0.0", Languages: []int{1033}}),
-		"agent-service.exe": testService(t),
-		"agent.conf":        []byte("logging {}\n"),
-		"icon.ico":          append([]byte{0, 0, 1, 0, 1, 0}, make([]byte, 64)...),
-		"LICENSE.rtf":       []byte(`{\rtf1\ansi\deff0{\fonttbl{\f0\fnil Courier New;}}\f0\fs16 Example License\par}`),
-		"banner.bmp":        picture(t, 493, 58),
-		"dialog.bmp":        picture(t, 493, 312),
-	}
-}
+	inputs := exampletest.Examples()["branded"].Inputs
+	inputs["agent-service.exe"] = testService(t)
 
-// picture is a width×height PNG in one colour; the builder re-encodes it as
-// BMP.
-func picture(t *testing.T, width, height int) []byte {
-	t.Helper()
-
-	img := image.NewNRGBA(image.Rect(0, 0, width, height))
-	draw.Draw(img, img.Bounds(), image.NewUniform(color.NRGBA{R: 0x14, G: 0x14, B: 0x14, A: 0xFF}), image.Point{}, draw.Src)
-
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		t.Fatal(err)
-	}
-
-	return buf.Bytes()
+	return inputs
 }
 
 // testService builds docs/spec/msitest/testsvc, a minimal Windows service
@@ -478,18 +422,36 @@ func TestMsiexecInstallsExamples(t *testing.T) {
 
 		t.Run(name, func(t *testing.T) {
 			inputs := example.inputs(t)
-			path, _ := buildExample(t, name, example.vars, inputs)
+			path, res := buildExample(t, name, example.vars, inputs)
 			log := filepath.Join(filepath.Dir(path), "install.log")
 			installed := true
 
-			// Leave the machine clean when a check fails after installing.
+			// The top folder of the installation under Program Files, such
+			// as Example for Example\Agent. The snapshot only sees what is
+			// new, so a folder left by an earlier run would hide the files.
+			rel, _ := filepath.Rel(os.Getenv("ProgramFiles"), example.installed)
+			installDir := filepath.Join(os.Getenv("ProgramFiles"), strings.SplitN(rel, string(filepath.Separator), 2)[0])
+
+			if _, err := os.Stat(installDir); err == nil {
+				t.Fatalf("%s exists before the installation; remove what an earlier run left", installDir)
+			}
+
+			// Leave the machine clean when a check fails after installing,
+			// and remove what the uninstall keeps on purpose.
 			t.Cleanup(func() {
 				if installed {
 					_, _ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn").CombinedOutput()
 				}
+
+				_ = os.RemoveAll(installDir)
 			})
 
-			msiexecQuiet(t, log, "/i", path)
+			label := pathLabels(filepath.Dir(path))
+			before := takeSnapshot(t, nil, label, inputs)
+
+			msiexecQuiet(t, log, append([]string{"/i", path}, example.properties...)...)
+
+			afterInstall := takeSnapshot(t, before, label, inputs)
 
 			data, err := os.ReadFile(example.installed)
 			if err != nil {
@@ -509,6 +471,7 @@ func TestMsiexecInstallsExamples(t *testing.T) {
 			msiexecQuiet(t, log, "/x", path)
 
 			installed = false
+			afterUninstall := takeSnapshot(t, before, label, inputs)
 
 			if _, err := os.Stat(example.installed); err == nil {
 				t.Errorf("%s is still installed after the uninstall", example.installed)
@@ -518,6 +481,11 @@ func TestMsiexecInstallsExamples(t *testing.T) {
 				if state := serviceState(t, example.service); state != "" {
 					t.Errorf("service %s after uninstall: %q", example.service, state)
 				}
+			}
+
+			report := snapshotReport(name, res.ProductCode, changes(before, afterInstall), changes(before, afterUninstall))
+			if !exampletest.CompareSnapshot(t, filepath.Join("testdata", "install", name+".txt"), report) {
+				saveSnapshot(t, name, report)
 			}
 		})
 	}

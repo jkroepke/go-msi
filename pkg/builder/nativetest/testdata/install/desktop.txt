@@ -1,0 +1,39 @@
+# What msiexec /i and then /x of examples/desktop change on the machine.
+# Written by TestMsiexecInstallsExamples with GO_MSI_UPDATE_SNAPSHOTS=1.
+
+[install]
++ dir {ProgramFiles}\Example Viewer
++ file {CommonDesktop}\Example Viewer.lnk = shortcut {ProgramFiles}\Example Viewer\viewer.exe|{ProgramFiles}\Example Viewer\|
++ file {CommonPrograms}\Example Viewer.lnk = shortcut {ProgramFiles}\Example Viewer\viewer.exe|{ProgramFiles}\Example Viewer\|View example files
++ file {Installer}\SourceHash{ProductCode}
++ file {ProgramFiles}\Example Viewer\viewer.exe = input viewer.exe
++ key HKCU\Software\Example
++ key HKCU\Software\Example\Example Viewer
++ key HKLM\...\Uninstall\{ProductCode}
++ value HKCU\Software\Example\Example Viewer [cmpDC7F075D4854A7F87FB831277DA6373D] = dword 1
++ value HKLM\...\Uninstall\{ProductCode} [AuthorizedCDFPrefix] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Comments] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Contact] = ""
++ value HKLM\...\Uninstall\{ProductCode} [DisplayName] = "Example Viewer"
++ value HKLM\...\Uninstall\{ProductCode} [DisplayVersion] = "2.0.0"
++ value HKLM\...\Uninstall\{ProductCode} [EstimatedSize] = <size>
++ value HKLM\...\Uninstall\{ProductCode} [HelpLink] = ""
++ value HKLM\...\Uninstall\{ProductCode} [HelpTelephone] = ""
++ value HKLM\...\Uninstall\{ProductCode} [InstallDate] = <date>
++ value HKLM\...\Uninstall\{ProductCode} [InstallLocation] = ""
++ value HKLM\...\Uninstall\{ProductCode} [InstallSource] = "{PackageDir}\"
++ value HKLM\...\Uninstall\{ProductCode} [Language] = dword 1033
++ value HKLM\...\Uninstall\{ProductCode} [ModifyPath] = expand "MsiExec.exe /X{ProductCode}"
++ value HKLM\...\Uninstall\{ProductCode} [NoModify] = dword 1
++ value HKLM\...\Uninstall\{ProductCode} [Publisher] = "Example"
++ value HKLM\...\Uninstall\{ProductCode} [Readme] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Size] = ""
++ value HKLM\...\Uninstall\{ProductCode} [URLInfoAbout] = ""
++ value HKLM\...\Uninstall\{ProductCode} [URLUpdateInfo] = ""
++ value HKLM\...\Uninstall\{ProductCode} [UninstallString] = expand "MsiExec.exe /X{ProductCode}"
++ value HKLM\...\Uninstall\{ProductCode} [VersionMajor] = dword 2
++ value HKLM\...\Uninstall\{ProductCode} [VersionMinor] = dword 0
++ value HKLM\...\Uninstall\{ProductCode} [Version] = dword 33554432
++ value HKLM\...\Uninstall\{ProductCode} [WindowsInstaller] = dword 1
+
+[uninstall]

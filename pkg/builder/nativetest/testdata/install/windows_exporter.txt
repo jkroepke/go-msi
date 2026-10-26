@@ -1,0 +1,56 @@
+# What msiexec /i and then /x of examples/windows_exporter change on the machine.
+# Written by TestMsiexecInstallsExamples with GO_MSI_UPDATE_SNAPSHOTS=1.
+
+[install]
++ dir {Installer}\{ProductCode}
++ dir {ProgramFiles}\windows_exporter
++ dir {ProgramFiles}\windows_exporter\textfile_inputs
++ file {Installer}\SourceHash{ProductCode}
++ file {Installer}\{ProductCode}\icon.ico = input icon.ico
++ file {ProgramFiles}\windows_exporter\config.yaml = 0 bytes sha256:e3b0c44298fc1c14
++ file {ProgramFiles}\windows_exporter\windows_exporter.exe = input windows_exporter.exe
++ firewall windows_exporter = Action=Allow|Active=TRUE|Dir=In|Protocol=6|LPort=9182|App={ProgramFiles}\windows_exporter\windows_exporter.exe|Name=windows_exporter|Desc=windows_exporter HTTP endpoint|
++ key HKLM\...\EventLog\Application\windows_exporter
++ key HKLM\...\Services\windows_exporter
++ key HKLM\...\Uninstall\{ProductCode}
++ value HKLM\...\EventLog\Application\windows_exporter [EventMessageFile] = expand "%SystemRoot%\System32\EventCreate.exe"
++ value HKLM\...\EventLog\Application\windows_exporter [TypesSupported] = dword 7
++ value HKLM\...\Services\windows_exporter [DelayedAutostart] = dword 1
++ value HKLM\...\Services\windows_exporter [DependOnService] = multi ["wmiApSrv"]
++ value HKLM\...\Services\windows_exporter [Description] = "Exports Prometheus metrics about the system"
++ value HKLM\...\Services\windows_exporter [DisplayName] = "windows_exporter"
++ value HKLM\...\Services\windows_exporter [ErrorControl] = dword 1
++ value HKLM\...\Services\windows_exporter [FailureActionsOnNonCrashFailures] = dword 1
++ value HKLM\...\Services\windows_exporter [FailureActions] = type 3 00000000000000000000000003000000140000000100000060ea00000100000060ea00000100000060ea0000
++ value HKLM\...\Services\windows_exporter [ImagePath] = expand ""{ProgramFiles}\windows_exporter\windows_exporter.exe" --config.file="{ProgramFiles}\windows_exporter\config.yaml"      "
++ value HKLM\...\Services\windows_exporter [ObjectName] = "LocalSystem"
++ value HKLM\...\Services\windows_exporter [Start] = dword 2
++ value HKLM\...\Services\windows_exporter [Type] = dword 16
++ value HKLM\...\Uninstall\{ProductCode} [AuthorizedCDFPrefix] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Comments] = "Prometheus exporter for Windows machines"
++ value HKLM\...\Uninstall\{ProductCode} [Contact] = ""
++ value HKLM\...\Uninstall\{ProductCode} [DisplayName] = "windows_exporter"
++ value HKLM\...\Uninstall\{ProductCode} [DisplayVersion] = "0.32.0.5"
++ value HKLM\...\Uninstall\{ProductCode} [EstimatedSize] = <size>
++ value HKLM\...\Uninstall\{ProductCode} [HelpLink] = expand "https://github.com/prometheus-community/windows_exporter/issues"
++ value HKLM\...\Uninstall\{ProductCode} [HelpTelephone] = ""
++ value HKLM\...\Uninstall\{ProductCode} [InstallDate] = <date>
++ value HKLM\...\Uninstall\{ProductCode} [InstallLocation] = "{ProgramFiles}\windows_exporter\"
++ value HKLM\...\Uninstall\{ProductCode} [InstallSource] = "{PackageDir}\"
++ value HKLM\...\Uninstall\{ProductCode} [Language] = dword 1033
++ value HKLM\...\Uninstall\{ProductCode} [ModifyPath] = expand "MsiExec.exe /I{ProductCode}"
++ value HKLM\...\Uninstall\{ProductCode} [NoRepair] = dword 1
++ value HKLM\...\Uninstall\{ProductCode} [Publisher] = "prometheus-community"
++ value HKLM\...\Uninstall\{ProductCode} [Readme] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Size] = dword 10000
++ value HKLM\...\Uninstall\{ProductCode} [URLInfoAbout] = "https://github.com/prometheus-community/windows_exporter"
++ value HKLM\...\Uninstall\{ProductCode} [URLUpdateInfo] = ""
++ value HKLM\...\Uninstall\{ProductCode} [UninstallString] = expand "MsiExec.exe /I{ProductCode}"
++ value HKLM\...\Uninstall\{ProductCode} [VersionMajor] = dword 0
++ value HKLM\...\Uninstall\{ProductCode} [VersionMinor] = dword 32
++ value HKLM\...\Uninstall\{ProductCode} [Version] = dword 2097152
++ value HKLM\...\Uninstall\{ProductCode} [WindowsInstaller] = dword 1
+
+[uninstall]
++ dir {ProgramFiles}\windows_exporter
++ file {ProgramFiles}\windows_exporter\config.yaml = 0 bytes sha256:e3b0c44298fc1c14

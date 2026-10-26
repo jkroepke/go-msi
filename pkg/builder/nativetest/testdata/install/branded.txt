@@ -1,0 +1,52 @@
+# What msiexec /i and then /x of examples/branded change on the machine.
+# Written by TestMsiexecInstallsExamples with GO_MSI_UPDATE_SNAPSHOTS=1.
+
+[install]
++ dir {Installer}\{ProductCode}
++ dir {ProgramFiles}\Example
++ dir {ProgramFiles}\Example\Agent
++ file {Installer}\SourceHash{ProductCode}
++ file {Installer}\{ProductCode}\icon.ico = input icon.ico
++ file {ProgramFiles}\Example\Agent\agent-service.exe = input agent-service.exe
++ file {ProgramFiles}\Example\Agent\agent.conf = input agent.conf
++ file {ProgramFiles}\Example\Agent\agent.exe = input agent.exe
++ file {ProgramFiles}\Example\Agent\icon.ico = input icon.ico
++ key HKLM\...\Services\ExampleAgent
++ key HKLM\...\Uninstall\{ProductCode}
++ key HKLM\SOFTWARE\Example
++ key HKLM\SOFTWARE\Example\Agent
++ value HKLM\...\Services\ExampleAgent [Description] = "Example Agent service"
++ value HKLM\...\Services\ExampleAgent [DisplayName] = "Example Agent"
++ value HKLM\...\Services\ExampleAgent [ErrorControl] = dword 1
++ value HKLM\...\Services\ExampleAgent [FailureActions] = type 3 000000000000000000000000030000001400000001000000e803000001000000e803000001000000e8030000
++ value HKLM\...\Services\ExampleAgent [ImagePath] = expand ""{ProgramFiles}\Example\Agent\agent-service.exe""
++ value HKLM\...\Services\ExampleAgent [ObjectName] = "LocalSystem"
++ value HKLM\...\Services\ExampleAgent [Start] = dword 2
++ value HKLM\...\Services\ExampleAgent [Type] = dword 16
++ value HKLM\...\Uninstall\{ProductCode} [AuthorizedCDFPrefix] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Comments] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Contact] = ""
++ value HKLM\...\Uninstall\{ProductCode} [DisplayName] = "Example Agent"
++ value HKLM\...\Uninstall\{ProductCode} [DisplayVersion] = "1.5.0"
++ value HKLM\...\Uninstall\{ProductCode} [EstimatedSize] = <size>
++ value HKLM\...\Uninstall\{ProductCode} [HelpLink] = ""
++ value HKLM\...\Uninstall\{ProductCode} [HelpTelephone] = ""
++ value HKLM\...\Uninstall\{ProductCode} [InstallDate] = <date>
++ value HKLM\...\Uninstall\{ProductCode} [InstallLocation] = ""
++ value HKLM\...\Uninstall\{ProductCode} [InstallSource] = "{PackageDir}\"
++ value HKLM\...\Uninstall\{ProductCode} [Language] = dword 1033
++ value HKLM\...\Uninstall\{ProductCode} [ModifyPath] = expand "MsiExec.exe /I{ProductCode}"
++ value HKLM\...\Uninstall\{ProductCode} [Publisher] = "Example"
++ value HKLM\...\Uninstall\{ProductCode} [Readme] = ""
++ value HKLM\...\Uninstall\{ProductCode} [Size] = ""
++ value HKLM\...\Uninstall\{ProductCode} [URLInfoAbout] = ""
++ value HKLM\...\Uninstall\{ProductCode} [URLUpdateInfo] = ""
++ value HKLM\...\Uninstall\{ProductCode} [UninstallString] = expand "MsiExec.exe /I{ProductCode}"
++ value HKLM\...\Uninstall\{ProductCode} [VersionMajor] = dword 1
++ value HKLM\...\Uninstall\{ProductCode} [VersionMinor] = dword 5
++ value HKLM\...\Uninstall\{ProductCode} [Version] = dword 17104896
++ value HKLM\...\Uninstall\{ProductCode} [WindowsInstaller] = dword 1
++ value HKLM\SOFTWARE\Example\Agent [Arguments] = multi ["run", "{ProgramFiles}\Example\Agent\agent.conf"]
++ value HKLM\SOFTWARE\Example\Agent [] = "{ProgramFiles}\Example\Agent\agent.exe"
+
+[uninstall]

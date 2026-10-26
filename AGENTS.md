@@ -88,6 +88,17 @@ go test ./... -shuffle=on -race
 - Tests add no test-only module dependencies. Test vectors from the spec appendix
   (stream names, compound files, summary stream, cabinets) are golden hashes:
   a writer change that alters them is a bug unless the spec changed.
+- Snapshots: `TestExampleTables` (`cmd/go-msi/testdata/tables`) holds the
+  tables of every example, and `TestMsiexecInstallsExamples`
+  (`pkg/builder/nativetest/testdata/install`) holds the entries that
+  installing and removing each example adds under the watched folders and
+  registry keys on Windows, plus the firewall rules (changes inside entries
+  that existed before are not recorded). A change to the generated packages
+  updates them in the same pull request: rerun the tests with
+  `GO_MSI_UPDATE_SNAPSHOTS=1` and review the diff. The install snapshots need
+  an elevated Windows machine; on a mismatch CI uploads the new ones as the
+  `install-snapshots` artifact. The example inputs live in `internal/exampletest`, and a new
+  example needs an entry there and in `installExamples`.
 - `-short` skips the slow tests: the native tests that open packages with
   `msi.dll` and install them with `msiexec` (Windows only,
   `pkg/builder/nativetest`, `pkg/cab/native_windows_test.go`) and the bounded-memory
