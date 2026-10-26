@@ -377,4 +377,3 @@ cabinet and `INSTALLDIR` as `owyyokav|Short Name Probe` under
   to `owyyokav` (not run, inferred from the `SHORTFILENAMES=1` case).
 - Not covered: a package with uncompressed files read from a source tree,
   where bit 1 decides which source folder must exist (section 8.3).
-
