@@ -819,6 +819,26 @@ shifts, when a chain runs into another fixed number. After numbering it
 checks deferred actions against InstallInitialize … InstallFinalize (ICE77)
 and RemoveExistingProducts against the windows of section 4.3.
 
+`when` names the case a placement runs in, ANDed with its `condition`:
+
+| `when` | Condition |
+|---|---|
+| `install` | `NOT Installed AND NOT <upgrade.property>` (`NOT Installed` with `upgrade: false`) |
+| `upgrade` | `NOT Installed AND <upgrade.property>`; needs `upgrade` |
+| `uninstall` | `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE` |
+| `maintenance` | `Installed AND NOT REMOVE~="ALL"` |
+
+```yaml
+schedule:
+  - { sequence: execute, before: RemoveFiles, when: uninstall, condition: DELETE_DATA="1" }
+```
+
+RUN-26 tested the `uninstall` condition in the execute sequence: true on a
+real uninstall, false while a major upgrade removes the old product. The
+other three follow from the Installed, REMOVE and upgrade properties and
+were not tested. `install` and `upgrade` depend on which versions set
+`upgrade.property` (section 4.3).
+
 Standard actions are added automatically for the tables a package uses. An
 action used only as an anchor is added at its default number.
 

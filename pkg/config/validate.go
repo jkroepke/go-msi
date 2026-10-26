@@ -1410,6 +1410,7 @@ func (v *validator) placement(placementPath string, place Placement, inScript bo
 	}
 
 	v.placementPosition(placementPath, place)
+	v.placementWhen(placementPath, place, cfg)
 
 	for _, anchor := range []string{place.Before, place.After} {
 		if anchor == "" || standardActions[anchor] {
