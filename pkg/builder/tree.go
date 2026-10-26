@@ -579,6 +579,7 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 		b.writeRegistry(info)
 		b.writeEnvironment(info)
 		b.writeServices(info)
+		b.purgeAction(info)
 	}
 
 	for _, fi := range b.files {

@@ -1662,6 +1662,24 @@
         "neverOverwrite": {
           "$ref": "#/$defs/bool"
         },
+        "purge": {
+          "description": "Delete the component's directory with everything in it on uninstall, not on a major upgrade (RUN-26). The directory and the folders above it must not be configurable.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/bool"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "condition": {
+                  "type": "string",
+                  "description": "ANDed with the uninstall condition, e.g. DELETE_DATA=\"1\"."
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
         "preserve": {
           "$ref": "#/$defs/bool",
           "description": "Keep the key file or registry value as the user left it across major upgrades: sets neverOverwrite; removeOld defaults to afterInstallExecute."

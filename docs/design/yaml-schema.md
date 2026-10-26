@@ -404,6 +404,7 @@ components:
     permanent: false
     neverOverwrite: false
     preserve: false                  # neverOverwrite + a late removeOld, see below
+    purge: false                     # true or {condition: …}, see below
     sharedDllRefCount: false
     keyPath: windows_exporter.exe   # file name, registry id or "directory"
     bitness: auto                    # auto (from platform) | 32 | 64
@@ -448,6 +449,57 @@ components:
     preserve: true
     files:
       - source: config.alloy
+```
+
+**Data removal.** `purge` deletes the component's directory with every
+file and subfolder in it when the product is uninstalled, including what the
+application created there at runtime, but not on the uninstall half of a
+major upgrade. `RemoveFile` rows cannot do this: in RUN-26 a `*` row left a subfolder
+behind, and the rows also deleted files during a major upgrade. The builder
+writes a deferred action (type 3170, no-impersonate, in a per-machine x64
+package) running `"[System64Folder]cmd.exe" /c rmdir /s /q "[DIR]."`
+right before InstallFinalize. An arm64 package gets the same action, a
+per-user package type 1122 and an x86 package `[SystemFolder]cmd.exe`;
+none of these was tested. The action has the
+condition `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE AND DIR`. RUN-26 tested
+this command at 6590 without `AND DIR`; the builder adds it so that an empty
+property never runs `rmdir` on the working folder. RUN-26 removed the old
+product at 1401 only, so "not on upgrade" is untested with a late
+`removeOld` (for example with `preserve`).
+`purge: {condition: DELETE_DATA="1"}` adds a condition, for example an
+opt-in property set on the command line or by a checkbox; the public
+properties it names are added to `SecureCustomProperties`, as in RUN-26.
+The action ignores failures; what stays when a file is in use, and whether a
+rollback after the action restores anything, were not tested. The condition does not look at the component's state, so the
+folder is deleted even when the component was never installed.
+
+The directory must be a named folder below a standard folder, and no folder
+from it up to and including that standard folder may have a path that something besides
+the Directory table can set (section 8.3 of the specification): a public
+(upper-case) ID, which a command line such as `DATADIR=C:\` can set
+(section 8.3; not tested at uninstall), `configurable`, a `setDirectory` or `setProperty` action, a
+`properties` entry or a dialog field. The action deletes whatever the
+property points to, so any of these could move the purge out of the
+product's folders. Whether the installer ignores a private directory ID
+given on the command line was not tested. A standard folder nested below
+another folder is rejected too, because the installer resolves its path
+itself, and so is a `%` in any folder name, because `cmd.exe` expands
+`%NAME%` as an environment variable, and a hand-written short name
+(`SHORT~1|Long`), because with `SHORTFILENAMES=1` it can resolve to another
+folder's 8.3 alias. A permanent component in the purged folder or below it
+is an error: the component would outlive the product, but its folder would
+not. Data below the install dir therefore cannot be purged;
+use a path below a fixed standard folder other than TARGETDIR (public, and
+its drive can change), whose generated IDs are private, such as
+`CommonAppDataFolder/Vendor/Product`.
+
+```yaml
+components:
+  - id: Data
+    directory: CommonAppDataFolder/Example/App/data
+    createFolder: true
+    purge:
+      condition: DELETE_DATA="1"
 ```
 
 **Key path.** Default: the first file, else the first registry value, else

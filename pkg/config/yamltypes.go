@@ -171,6 +171,34 @@ func (a RecoveryAction) MarshalYAML() (any, error) {
 	return map[string]string{recoveryRestart: time.Duration(*a.Restart).String()}, nil
 }
 
+// UnmarshalYAML accepts a boolean or a mapping.
+func (p *Purge) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		var on bool
+		if err := node.Decode(&on); err != nil {
+			return fmt.Errorf("line %d: purge is true, false or a mapping: %w", node.Line, err)
+		}
+
+		p.Disabled = !on
+
+		return nil
+	}
+
+	type plain Purge
+
+	return decodeStrict(node, (*plain)(p))
+}
+
+// MarshalYAML writes false for a disabled purge, so that the product code
+// derived from the marshalled config tells it from an enabled one.
+func (p Purge) MarshalYAML() (any, error) {
+	if p.Disabled {
+		return false, nil
+	}
+
+	return map[string]string{"condition": p.Condition}, nil
+}
+
 // Property is one Property table entry and its flags.
 type Property struct { //nolint:govet // field order is the YAML key order
 	Value  string `yaml:"value"`

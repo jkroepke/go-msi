@@ -176,18 +176,21 @@ func (f *Feature) levelIsDefault() bool {
 
 // Component is a unit that is installed, repaired and removed together.
 type Component struct { //nolint:govet // field order is the YAML key order
-	ID             string           `yaml:"id"`
-	Directory      string           `yaml:"directory"`
-	GUID           string           `yaml:"guid"`
-	Files          []*File          `yaml:"files"`
-	Registry       []*RegistryValue `yaml:"registry"`
-	Services       []*Service       `yaml:"services"`
-	EventLog       []*EventSource   `yaml:"eventLog"`
-	Environment    []*Environment   `yaml:"environment"`
-	CreateFolder   bool             `yaml:"createFolder"`
-	Condition      string           `yaml:"condition"`
-	Permanent      bool             `yaml:"permanent"`
-	NeverOverwrite bool             `yaml:"neverOverwrite"`
+	ID          string           `yaml:"id"`
+	Directory   string           `yaml:"directory"`
+	GUID        string           `yaml:"guid"`
+	Files       []*File          `yaml:"files"`
+	Registry    []*RegistryValue `yaml:"registry"`
+	Services    []*Service       `yaml:"services"`
+	EventLog    []*EventSource   `yaml:"eventLog"`
+	Environment []*Environment   `yaml:"environment"`
+	// Purge deletes the component's directory with everything in it when
+	// the product is uninstalled, but not on a major upgrade (RUN-26).
+	Purge          *Purge `yaml:"purge"`
+	CreateFolder   bool   `yaml:"createFolder"`
+	Condition      string `yaml:"condition"`
+	Permanent      bool   `yaml:"permanent"`
+	NeverOverwrite bool   `yaml:"neverOverwrite"`
 	// Preserve keeps the component's key file or registry value as the user
 	// left it across major upgrades: it sets NeverOverwrite, and removeOld
 	// defaults to afterInstallExecute (RUN-24).
@@ -226,6 +229,19 @@ func (c *Component) Path(index int) string {
 	}
 
 	return "components[" + strconv.Itoa(index) + "]"
+}
+
+// Purge removes a directory tree on uninstall. "purge: true" is the short
+// form of an empty mapping; "purge: false" sets Disabled.
+type Purge struct {
+	// Condition is ANDed with the uninstall condition, e.g. DELETE_DATA="1".
+	Condition string `yaml:"condition"`
+	Disabled  bool   `yaml:"-"`
+}
+
+// Enabled reports whether p asks for a purge.
+func (p *Purge) Enabled() bool {
+	return p != nil && !p.Disabled
 }
 
 // Permissions secures an installed object with an SDDL string through

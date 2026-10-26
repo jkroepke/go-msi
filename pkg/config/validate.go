@@ -558,6 +558,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 
 		v.oneOf(p+".bitness", comp.Bitness, Auto, "32", "64")
 		v.preserve(cfg, p, comp)
+		v.purge(cfg, known, p, comp)
 
 		if comp.Bitness == "64" && !cfg.Package.Platform.Is64Bit() {
 			v.errorf(p+".bitness", "64-bit components need an x64 or arm64 package")
