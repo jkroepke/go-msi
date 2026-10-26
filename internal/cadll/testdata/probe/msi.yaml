@@ -1,0 +1,83 @@
+schema: go-msi/v1
+
+product:
+  name: GoMsiRunProbe
+  manufacturer: go-msi
+  version: 1.0.0
+  upgradeCode: 7d1f6c2e-5a1b-4c3d-9e8f-0a1b2c3d4e5f
+
+package:
+  platform: x64
+
+components:
+  - files:
+      - source: readme.txt
+
+properties:
+  FAILPROBE:
+    value: '0'
+    secure: true
+
+customActions:
+  - id: ProbeDeferredSystem
+    run:
+      command: '"[System64Folder]cmd.exe" /c echo deferred-system [ProductName] & whoami & echo brackets [\[]ProductName] stay literal & echo umlaut-äöü-euro-€ & dir /b & echo stderr-line 1>&2'
+      directory: INSTALLDIR
+    execute: deferred
+    impersonate: false
+    return: check
+    schedule:
+      - { sequence: execute, after: InstallFiles }
+
+  - id: ProbeDeferredUser
+    run:
+      command: '"[System64Folder]cmd.exe" /c echo deferred-user & whoami & cd'
+    execute: deferred
+    impersonate: true
+    return: check
+    schedule:
+      - { sequence: execute, after: InstallFiles }
+
+  - id: ProbeRollback
+    run:
+      command: '"[System64Folder]cmd.exe" /c echo rollback-ran & whoami'
+    execute: rollback
+    impersonate: false
+    return: ignore
+    schedule:
+      - { sequence: execute, after: InstallFiles }
+
+  - id: ProbePowerShell
+    run:
+      command: '"[System64Folder]WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -Command "Write-Output (\"powershell says \" + $PSVersionTable.PSVersion); Write-Error oops; exit 0"'
+    execute: deferred
+    impersonate: false
+    return: check
+    schedule:
+      - { sequence: execute, after: InstallFiles }
+
+  - id: ProbeIgnored
+    run:
+      command: '"[System64Folder]cmd.exe" /c echo ignored-exit-3 & exit 3'
+    execute: deferred
+    impersonate: false
+    return: ignore
+    schedule:
+      - { sequence: execute, after: InstallFiles }
+
+  - id: ProbeFails
+    run:
+      command: '"[System64Folder]cmd.exe" /c echo about-to-fail & exit 7'
+    execute: deferred
+    impersonate: false
+    return: check
+    hideTarget: true
+    schedule:
+      - { sequence: execute, after: InstallFiles, condition: FAILPROBE="1" }
+
+  - id: ProbeImmediate
+    run:
+      command: '"[System64Folder]cmd.exe" /c echo immediate-after-finalize & whoami'
+    return: check
+    schedule:
+      - { sequence: execute, after: InstallFinalize }
