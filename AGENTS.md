@@ -124,7 +124,8 @@ go test ./... -shuffle=on -race
   wrappers over the streaming functions and must stay byte-identical to them.
 - The builder leaves out tables that got no rows. Create a table that must
   exist while empty (an action or dialog reads it, such as `Signature` for
-  `AppSearch` or `ListBox` with a `Dialog` table) with `build.ensure`, not
+  `AppSearch`, `ListBox` with a `Dialog` table, `Feature` and
+  `FeatureComponents`) with `build.ensure`, not
   `build.table`. Tables from the config's `tables` section are always kept.
 - The builder removes a partial output when a build fails; every spool or
   temporary file is cleaned up on every error path.

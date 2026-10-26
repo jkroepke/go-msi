@@ -1236,7 +1236,7 @@ The separator defaults to `;`. Create cannot combine with `[~]`, so append or pr
 ### 11.10 `_Validation`, modules and validation
 
 - `_Validation` has a row for every column of every output table, including itself and empty tables (observed: always). Values come from `internal/schema` (`schema.go`); custom tables use their declared metadata.
-- Output tables: those with rows, those ensured, and those a used library defines (observed v3: empty `ListBox` and `Signature`). Empty tables have no data stream. go-msi writes the tables with rows, the empty `ListBox` with a `Dialog` table, the empty `Signature` with `AppSearch`, and every table declared under `tables`; other empty tables are left out.
+- Output tables: those with rows, those ensured, and those a used library defines (observed v3: empty `ListBox` and `Signature`). Empty tables have no data stream. go-msi writes the tables with rows, the empty `ListBox` with a `Dialog` table, the empty `Signature` with `AppSearch`, `Feature` and `FeatureComponents` even without features, and every table declared under `tables`; other empty tables are left out.
 - Merge modules: modularizable keys get `.` + module GUID with `-` → `_`, formatted references are rewritten, files go in `MergeModule.CABinet`. Consuming modules is rejected.
 - A built-in static validator runs after binding; errors fail the build, and checks can be skipped. Full detail: chapter 10 §8–§15.
 

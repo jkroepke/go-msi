@@ -732,6 +732,11 @@ func (b *build) componentGUID(path string, info *componentInfo) error { //nolint
 
 // features writes Feature and FeatureComponents.
 func (b *build) features() error {
+	// Kept even without features: the selection tree and the feature
+	// actions read them.
+	b.ensure("Feature")
+	b.ensure("FeatureComponents")
+
 	tbl := b.table("Feature")
 	featureComps := b.table("FeatureComponents")
 	display := 0
