@@ -469,7 +469,7 @@ func (v *validator) featureRefs(featurePath string, feature *Feature, known *ref
 // the old product removed first, a NeverOverwrite component loses its files
 // and registry values, because the new product skips it and the removal of
 // the old one deletes it. Only a late removal keeps them, also when the old
-// version did not have the flag.
+// version had the same component without the flag.
 func (v *validator) preserve(cfg *Config, field string, comp *Component) {
 	if comp.Preserve && len(comp.Services) > 0 {
 		v.errorf(field+".preserve", "a preserved component is never updated; keep the service in its own component")

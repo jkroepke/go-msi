@@ -420,7 +420,9 @@ the old product removed first, the new
 product skips a `neverOverwrite` component because its key file exists, and
 the removal of the old product then deletes it, so the edit is gone. With
 the late removal the edit survives, also when upgrading from a version
-built without `preserve`, and uninstall still removes the resource.
+built without `preserve` that already had the file or value as the key path
+of its own component with the same component code (moving it out of another
+component was not tested), and uninstall still removes the resource.
 `neverOverwrite` + `permanent` with an early removal keeps the edit too
 when the old version already had both flags (lost when it had neither; other
 combinations not tested), and the resource then stays after uninstall.
