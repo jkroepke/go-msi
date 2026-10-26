@@ -1236,7 +1236,7 @@ The separator defaults to `;`. Create cannot combine with `[~]`, so append or pr
 ### 11.10 `_Validation`, modules and validation
 
 - `_Validation` has a row for every column of every output table, including itself and empty tables (observed: always). Values come from `internal/schema` (`schema.go`); custom tables use their declared metadata.
-- Output tables: those with rows, those ensured, and those a used library defines (observed v3: empty `ListBox` and `Signature`). Empty tables have no data stream.
+- Output tables: those with rows, those ensured, and those a used library defines (observed v3: empty `ListBox` and `Signature`). Empty tables have no data stream. go-msi also keeps the empty standard tables it creates (section 16, "Decisions not adopted").
 - Merge modules: modularizable keys get `.` + module GUID with `-` → `_`, formatted references are rewritten, files go in `MergeModule.CABinet`. Consuming modules is rejected.
 - A built-in static validator runs after binding; errors fail the build, and checks can be skipped. Full detail: chapter 10 §8–§15.
 
@@ -1533,6 +1533,13 @@ GNOME msitools and WiX are comparative implementations, not authorities for all 
 ### Interoperability reports
 
 Historical [GNOME msitools reports](https://gitlab.gnome.org/GNOME/msitools/-/issues) provide candidate tests for out-of-order table rows (#99), long-string encoding (#60), CAB continuation (#68), malformed FAT entries (#33) and UI control cycles (#63). These are **reported** cases until minimized fixtures are validated with native Windows Installer APIs and runtime. [WiX issues](https://github.com/wixtoolset/issues) add candidates for a raw `REG_MULTI_SZ` search (1108), costing without components (1790), OS-file version checks on Windows 10+ (5824), service failure actions (5964), per-user rollback (8574) and media above 2 GB (8601).
+
+### Decisions not adopted
+
+Behavior seen in other toolchains is not adopted because they do it. It is adopted only when it helps a go-msi package and agrees with this spec. These were considered and not adopted:
+
+- **Leaving empty tables out.** Other toolchains write a table only when it has rows. go-msi also writes the empty standard tables the builder creates. An empty table is valid: it is listed in `_Tables` and `_Columns`, has `_Validation` rows and no data stream (chapter 3, section 11.10; observed). Leaving it out saves only a few hundred bytes of catalog. A missing table is a known failure class, though: `AppSearch` fails with 2228 and 1603 without a `Signature` table, and an empty one is enough (observed, RUN-25). The same may hit a standard action scheduled by hand, a custom action that queries the table, and a transform or patch that adds rows to it (not tested). The small gain does not justify that risk.
+- **Reproducing WiX's short names.** Section 11.3 only requires a `short|long` value whenever a name is not a valid short name, with the short name unique in its directory. go-msi derives that short name with its own steps 1–4. Matching another toolchain's short names byte for byte (the algorithm 11.3 reports) brings no benefit to a package that is built only by go-msi.
 
 ### Native binary sample inspection
 
