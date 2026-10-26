@@ -41,6 +41,6 @@ msiexec /i probe.msi /qn SHORTFILENAMES=1 /l*v install-sfn.log -> exit 0
   SetTargetFolder(Folder=C:\Program Files\owyyokav\)
   created C:\Program Files\owyyokav\HELLO.EXE
 msiexec /x probe.msi /qn /l*v uninstall-sfn.log -> exit 0
-  both folders gone; no product left
+  both folders gone; Win32_Product query for "Short Name Probe" empty
 RESULT probe: bit 1 changes only the source path; target and admin image use long names unless SHORTFILENAMES=1
 ```
