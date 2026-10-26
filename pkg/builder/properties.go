@@ -239,7 +239,7 @@ func (b *build) rememberInstallDir() error {
 	}
 
 	typ := regLocatorRaw
-	if b.is64 {
+	if b.is64 && !remember32Bit(b.cfg) {
 		typ |= regLocator64Bit
 	}
 
@@ -248,7 +248,7 @@ func (b *build) rememberInstallDir() error {
 	b.table("RegLocator").Add(config.RememberComponentID, root, config.RememberKey(b.cfg), config.RememberValueName, typ)
 	b.secure[property] = true
 
-	const action = "RestoreInstallDir"
+	const action = config.RememberActionID
 
 	b.addAction(&actionInfo{name: action, typ: caSetProperty, source: install.ID, target: "[" + property + "]"})
 
@@ -258,4 +258,16 @@ func (b *build) rememberInstallDir() error {
 	}
 
 	return nil
+}
+
+// remember32Bit reports whether the component installDir.remember adds is a
+// 32-bit one, which writes to the 32-bit registry view.
+func remember32Bit(cfg *config.Config) bool {
+	for _, comp := range cfg.Components {
+		if comp.ID == config.RememberComponentID {
+			return comp.Bitness == "32"
+		}
+	}
+
+	return false
 }

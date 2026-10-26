@@ -308,6 +308,18 @@ search straight into `INSTALLDIR` overrode the command line, and a search
 without a `Signature` table failed with 2228 and 1603. The builder also
 schedules both actions in the UI sequence so that the wizard shows the
 remembered folder; that, `perUser`, x86 and arm64 were not tested.
+
+The install dir must be a configurable directory with an upper-case ID, and
+the IDs `RememberInstallDir` and `RestoreInstallDir` are taken. The component
+and the search use the 64-bit registry view in a 64-bit package, and the
+32-bit view when the install dir is below a 32-bit folder or the package is
+x86. So the folder is not found after a change of platform or of that
+parent folder, nor after a version without `remember`; the upgrade then
+uses the default folder. The search does not check that the folder still
+exists: a remembered folder on a drive that is gone is applied as it is,
+and what the install does then was not tested. Do not write your own
+registry value `InstallDir` under the same key, which the generated
+component owns.
 When `directories` defines the install dir's ID, that node is used as
 written, including its `configurable` setting. A package with a directory
 tree and no `installDir` key gets the install dir only when a component

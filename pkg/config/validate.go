@@ -382,18 +382,38 @@ func (v *validator) directories(cfg *Config, known *refs) { //nolint:cyclop,goco
 		}
 	}
 
-	v.rememberComponent(cfg)
+	v.rememberComponent(cfg, known)
 
 	if cfg.Product.ARP.InstallLocation != "" && known.dirs[cfg.Product.ARP.InstallLocation] == nil {
 		v.errorf("product.arp.installLocation", "directory %q is not defined", cfg.Product.ARP.InstallLocation)
 	}
 }
 
-// rememberComponent rejects a component that takes the ID of the one
-// installDir.remember adds.
-func (v *validator) rememberComponent(cfg *Config) {
+// rememberComponent checks installDir.remember: the install dir must be
+// public and configurable, and no component or action may take the ID of
+// the one it adds.
+func (v *validator) rememberComponent(cfg *Config, known *refs) {
 	if !cfg.InstallDir.Remember {
 		return
+	}
+
+	// RUN-25 only covers a public, configurable install dir: the command
+	// line must be able to set it, and AppSearch and secure properties must
+	// be public (ICE52).
+	if dir := known.dirs[cfg.InstallDir.ID]; dir != nil && (!dir.Configurable || !IsPublicProperty(dir.ID)) {
+		v.errorf("installDir.remember", "%s must be a configurable directory with an upper-case id", dir.ID)
+	}
+
+	v.rememberIDs(cfg)
+}
+
+// rememberIDs rejects a component or action that takes the ID of the one
+// installDir.remember adds.
+func (v *validator) rememberIDs(cfg *Config) {
+	for i, action := range cfg.CustomActions {
+		if action != nil && action.ID == RememberActionID {
+			v.errorf(fmt.Sprintf("customActions[%d].id", i), "%s is the action installDir.remember adds; rename this one", action.ID)
+		}
 	}
 
 	for i, comp := range cfg.Components {

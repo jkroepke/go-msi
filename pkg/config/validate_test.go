@@ -256,6 +256,16 @@ func TestValidate(t *testing.T) {
 				strings.Replace(appComponent, "id: App", "id: RememberInstallDir", 1),
 			sevError, "components[0].id", "installDir.remember adds",
 		},
+		"remember a private install dir": {
+			strings.Replace(base, "      - id: INSTALLDIR\n        name: App\n        configurable: true\n", "      - id: AppDir\n        name: App\n", 1) +
+				"installDir: {id: AppDir, remember: true}\n" + strings.Replace(appComponent, "INSTALLDIR", "AppDir", 1),
+			sevError, "installDir.remember", "configurable directory with an upper-case id",
+		},
+		"remember with an action of the same id": {
+			base + "installDir: {id: INSTALLDIR, remember: true}\n" + appComponent +
+				"customActions:\n  - id: RestoreInstallDir\n    setProperty: {name: A, value: b}\n    schedule: [{sequence: execute, after: CostFinalize}]\n",
+			sevError, "customActions[0].id", "installDir.remember adds",
+		},
 		// RUN-26.
 		"purge configurable folder": {
 			base + strings.Replace(appComponent, "    files:", "    purge: true\n    files:", 1),

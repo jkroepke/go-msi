@@ -1237,3 +1237,64 @@ func seqNumber(t *testing.T, value string) int {
 
 	return n
 }
+
+// TestRememberInstallDir32BitFolder checks that installDir.remember in a
+// 32-bit folder of an x64 package writes and searches the 32-bit registry
+// view (ICE80).
+func TestRememberInstallDir32BitFolder(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	src := `schema: go-msi/v1
+product:
+  name: Hello
+  manufacturer: Example
+  version: 1.0.0
+  upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301
+package:
+  platform: x64
+installDir:
+  parent: ProgramFilesFolder
+  remember: true
+components:
+  - bitness: "32"
+    files: [{ source: hello.exe }]
+`
+
+	if err := os.WriteFile(filepath.Join(dir, "msi.yaml"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(filepath.Join(dir, "msi.yaml"), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := mustBuild(t, cfg)
+	for _, d := range res.Diagnostics {
+		if strings.Contains(d.Message, "ICE80") {
+			t.Errorf("unexpected diagnostic: %v", d)
+		}
+	}
+
+	database, err := msidb.Unmarshal(res.Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	isRemember := func(r []any) bool { return r[0] == config.RememberComponentID }
+
+	if got := cell(t, database, "RegLocator", "Type", isRemember); got != 2 {
+		t.Errorf("RegLocator type %v, want 2 (raw, 32-bit)", got)
+	}
+
+	if got, ok := cell(t, database, "Component", "Attributes", isRemember).(int); !ok || got&256 != 0 {
+		t.Errorf("Component attributes %v, want a 32-bit component", got)
+	}
+}
