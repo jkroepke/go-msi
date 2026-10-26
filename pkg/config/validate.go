@@ -563,11 +563,14 @@ func (v *validator) components(cfg *Config, known *refs) {
 			v.errorf(p+".bitness", "64-bit components need an x64 or arm64 package")
 		}
 
-		keyFile := v.componentKeyFile(p, comp, v.componentFiles(cfg, p, comp, fileIDs, targets))
+		files := v.componentFiles(cfg, p, comp, fileIDs, targets)
 		v.componentRegistry(p, comp, regIDs, perUser)
+		keyFile := v.componentKeyFile(p, comp, files)
 
 		for j, svc := range comp.Services {
-			v.service(fmt.Sprintf("%s.services[%d]", p, j), svc, keyFile, perUser)
+			svcPath := fmt.Sprintf("%s.services[%d]", p, j)
+			v.service(svcPath, svc, keyFile, perUser)
+			v.permissions(svcPath+".permissions", svc.Permissions)
 		}
 
 		v.componentPermissions(p, comp)
@@ -674,13 +677,9 @@ func (v *validator) componentKeyFile(compPath string, comp *Component, keyFile *
 	return keyFile
 }
 
-// componentPermissions checks the permissions of a component's services,
-// files, registry values and folder.
+// componentPermissions checks the permissions of a component's files,
+// registry values and folder.
 func (v *validator) componentPermissions(compPath string, comp *Component) {
-	for j, svc := range comp.Services {
-		v.permissions(fmt.Sprintf("%s.services[%d].permissions", compPath, j), svc.Permissions)
-	}
-
 	for j, file := range comp.Files {
 		v.permissions(fmt.Sprintf("%s.files[%d].permissions", compPath, j), file.Permissions)
 	}
@@ -1144,10 +1143,8 @@ func (v *validator) customActions(cfg *Config, known *refs) {
 
 		v.actionID(actionPath, action.ID, seen)
 
-		v.oneOf(actionPath+".execute", action.Execute, executeImmediate, "deferred", "rollback", "commit")
-		inScript := action.Execute != executeImmediate
-
 		v.actionKind(cfg, actionPath, action, known)
+		inScript := action.Execute != executeImmediate
 		v.actionRun(cfg, actionPath, action)
 
 		if len(action.Schedule) == 0 {
@@ -1181,8 +1178,8 @@ func (v *validator) actionID(actionPath, actionID string, seen map[string]bool) 
 	seen[actionID] = true
 }
 
-// actionKind checks that a custom action does exactly one thing, and the
-// fields of that thing.
+// actionKind checks that a custom action does exactly one thing, its
+// execute value, and the fields of that thing.
 func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAction, known *refs) { //nolint:cyclop // a flat list of independent checks
 	kinds := 0
 
@@ -1199,6 +1196,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 		v.errorf(actionPath, "exactly one of setProperty, setDirectory, error, exec, execProperty or dll is required")
 	}
 
+	v.oneOf(actionPath+".execute", action.Execute, executeImmediate, "deferred", "rollback", "commit")
 	inScript := action.Execute != executeImmediate
 
 	switch {
