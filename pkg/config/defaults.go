@@ -170,7 +170,7 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 		}
 
 		if action.Exec != nil && action.Exec.Directory == "" {
-			action.Exec.Directory = "TARGETDIR"
+			action.Exec.Directory = targetDir
 		}
 	}
 

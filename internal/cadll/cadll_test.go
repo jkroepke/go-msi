@@ -56,7 +56,7 @@ func TestBinaries(t *testing.T) {
 				t.Errorf("machine %#x, want %#x", img.Machine, tc.machine)
 			}
 
-			if img.FileHeader.Characteristics&pe.IMAGE_FILE_DLL == 0 {
+			if img.Characteristics&pe.IMAGE_FILE_DLL == 0 {
 				t.Error("not a DLL")
 			}
 

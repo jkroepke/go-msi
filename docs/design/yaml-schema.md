@@ -784,9 +784,9 @@ customActions:
       - { sequence: execute, after: InstallFiles, condition: ENABLED_COLLECTORS }
 
   - id: CreateConfigFile
-    exec:
+    run:
       command: '"[%ComSpec]" /c TYPE NUL >>"[ConfigFile_Default]"'
-      directory: APPLICATIONFOLDER   # working directory, default TARGETDIR
+      directory: APPLICATIONFOLDER   # working directory, optional
     execute: deferred                # immediate | deferred | rollback | commit
     impersonate: false
     return: check                    # check | ignore | asyncWait | asyncNoWait
@@ -803,7 +803,28 @@ Kinds, exactly one per action:
 | `error` | 19 | Text or an `Error` table number |
 | `exec` | 34 | `command` is a formatted command line; deferred commands are formatted when the script is written, so no CustomActionData is needed |
 | `execProperty` | 50 | `property` holds the executable, `arguments` the rest |
+| `run` | 1 + 51 | `command` and an optional `directory`; see below |
 | `dll` | 1 | `binary` (a `binaries` key) and `entry` |
+
+**`run`.** The engine runs `exec` and `execProperty` commands with a visible
+console window and keeps none of their output (specification section
+17.1). `run` instead calls the custom action DLL that go-msi embeds
+(`internal/cadll`, written into the `Binary` table once as `GoMsiRun`, 7 to
+9 KB for the package's platform): it starts the command with no window,
+copies every line it writes to stdout or stderr into the verbose log as
+`GoMsiRun: <line>`, logs the exit code and returns success for 0 and
+`ERROR_INSTALL_FAILURE` otherwise, which `return: ignore` turns into a
+warning. The command line is formatted when the action is scheduled, like
+`exec`; a type-51 action named `<id>.Data` passes `<directory>|<command>`
+through `CustomActionData` to deferred, rollback and commit actions and
+through the `GoMsiRun` property to immediate ones. `hideTarget` hides the
+command in both places. `return` is required (`check` or `ignore`;
+`asyncWait` is allowed, `asyncNoWait` is not). Impersonation follows
+`impersonate`: the DLL starts the process with the impersonated user's
+token when there is one. The key `GoMsiRun` is reserved in `binaries`.
+Output is decoded as UTF-8 when it is valid UTF-8 and in the OEM code page
+otherwise, which covers Go programs, cmd.exe and PowerShell. Verified by
+CA-03 (specification Appendix C).
 
 Options: `execute` (default `immediate`), `impersonate` (default `true`;
 `false` needs a deferred action), `return` (required for `exec` and

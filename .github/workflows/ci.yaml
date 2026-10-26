@@ -297,6 +297,63 @@ jobs:
           VALIDATE_YAML: true
 
   # The one job to mark as required in branch protection. It only runs, and
+  # The custom action DLL of run actions (internal/cadll) is committed; this
+  # rebuilds it with the pinned clang of Ubuntu 24.04 and fails when the
+  # committed files differ, so every change to its source comes with a
+  # rebuild and SHA256SUMS stays true.
+  ca-dll:
+    name: Custom action DLL
+    needs: detect-changes
+    if: needs.detect-changes.outputs.changed != '0'
+    runs-on: ubuntu-26.04
+    container: ubuntu:24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: 'false'
+
+      - name: Install clang 18
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends clang-18 lld-18 llvm-18 git
+          clang-18 --version
+
+      - name: Rebuild and compare
+        env:
+          CLANG: clang-18
+          DLLTOOL: llvm-dlltool-18
+        run: |
+          internal/cadll/build.sh
+          (cd internal/cadll && sha256sum -c SHA256SUMS)
+          git config --global --add safe.directory "$PWD"
+          git diff --exit-code --stat -- internal/cadll
+
+  # Windows on Arm installs the run action probe natively (Arm64 package with
+  # the arm64 DLL) and under x64 emulation; the x64 runner in build covers
+  # x64 natively.
+  arm64:
+    name: Run actions on Windows Arm64
+    needs: detect-changes
+    if: needs.detect-changes.outputs.changed != '0'
+    runs-on: windows-11-arm
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: 'false'
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: "${{ github.actor != 'renovate[bot]' }}"
+
+      - name: go test
+        shell: bash
+        run: go test ./internal/cadll/ ./pkg/builder/nativetest/ -run 'TestBinaries|TestMsiexecRunActions' -v -shuffle=on
+
   # fails, when a needed job failed or was cancelled; GitHub counts the
   # skipped job as passed. Add every new check job to needs.
   fail:
@@ -305,6 +362,8 @@ jobs:
     needs:
       - detect-changes
       - build
+      - ca-dll
+      - arm64
       - goreleaser
       - lint
       - super-lint

@@ -1352,7 +1352,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 	case action.Exec != nil:
 		v.required(actionPath+".exec.command", action.Exec.Command)
 
-		if action.Exec.Directory != "TARGETDIR" && known.dirs[action.Exec.Directory] == nil && !standardFolders[action.Exec.Directory] {
+		if action.Exec.Directory != targetDir && known.dirs[action.Exec.Directory] == nil && !standardFolders[action.Exec.Directory] {
 			v.errorf(actionPath+".exec.directory", "directory %q is not defined", action.Exec.Directory)
 		}
 	case action.ExecProperty != nil:
@@ -1366,7 +1366,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 	case action.Run != nil:
 		v.required(actionPath+".run.command", action.Run.Command)
 
-		if dir := action.Run.Directory; dir != "" && dir != "TARGETDIR" && known.dirs[dir] == nil && !standardFolders[dir] {
+		if dir := action.Run.Directory; dir != "" && dir != targetDir && known.dirs[dir] == nil && !standardFolders[dir] {
 			v.errorf(actionPath+".run.directory", "directory %q is not defined", dir)
 		}
 

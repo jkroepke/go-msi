@@ -6,7 +6,7 @@ summary  4: prometheus-community
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install windows_exporter.
 summary  7: x64;1033
-summary  9: {D48C0743-8AEC-58C2-B827-C374B7C8F577}
+summary  9: {B72EFB8D-F45C-5EC5-999C-38D2D350E2E7}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500
@@ -50,12 +50,13 @@ InstallValidate		1400
 PublishFeatures		6300
 PublishProduct		6400
 
-== Binary (3 rows)
+== Binary (4 rows)
 Name	Data
 s72!	v0
 BannerBmp	[binary 85894 bytes]
 DialogBmp	[binary 461814 bytes]
 ErrorIco	[binary 4286 bytes]
+GoMsiRun	[binary 8704 bytes]
 
 == Component (3 rows)
 Component	ComponentId	Directory_	Attributes	Condition	KeyPath
@@ -314,11 +315,12 @@ s72!	s72!
 APPLICATIONFOLDER	FirewallException_Firewall
 APPLICATIONFOLDER_textfile_inputs	APPLICATIONFOLDER_textfile_inputs
 
-== CustomAction (21 rows)
+== CustomAction (22 rows)
 Action	Type	Source	Target	ExtendedType
 s72!	i2	S72	S255	I4
 CheckExtraFlags	19		The parameter '--config.file' must not be included in EXTRA_FLAGS. Use CONFIG_FILE instead. Please remove it and try again.	
-CreateConfigFile	3106	APPLICATIONFOLDER	"[%ComSpec]" /c TYPE NUL >>"[APPLICATIONFOLDER]config.yaml"	
+CreateConfigFile	3073	GoMsiRun	GoMsiRun	
+CreateConfigFile.Data	51	CreateConfigFile	[APPLICATIONFOLDER]|"[%ComSpec]" /c TYPE NUL >>"[APPLICATIONFOLDER]config.yaml"	
 FwAdd2DD00848	3106	System64Folder	"[System64Folder]netsh.exe" advfirewall firewall add rule name="windows_exporter" dir=in action=allow protocol=tcp localport=[LISTEN_PORT] program="[#windows_exporter.exe]" remoteip=[FwIP2DD00848] description="windows_exporter HTTP endpoint"	
 FwAddRollback2DD00848	3426	System64Folder	"[System64Folder]netsh.exe" advfirewall firewall delete rule name="windows_exporter" dir=in	
 FwClear2DD00848	3170	System64Folder	"[System64Folder]netsh.exe" advfirewall firewall delete rule name="windows_exporter" dir=in	
@@ -411,7 +413,7 @@ Name	Data
 s72!	v0
 icon.ico	[binary 70 bytes]
 
-== InstallExecuteSequence (50 rows)
+== InstallExecuteSequence (51 rows)
 Action	Condition	Sequence
 s72!	S255	I2
 AllocateRegistrySpace	NOT Installed	1550
@@ -419,6 +421,7 @@ CheckExtraFlags	EXTRA_FLAGS AND (EXTRA_FLAGS >< "--config.file")	1499
 CostFinalize		1000
 CostInitialize		800
 CreateConfigFile	CONFIG_FILE="config.yaml"	5793
+CreateConfigFile.Data	CONFIG_FILE="config.yaml"	5792
 CreateFolders		3700
 DeleteServices	VersionNT	2000
 FileCost		900
@@ -522,7 +525,7 @@ LISTEN_PORT	9182
 MSIRESTARTMANAGERCONTROL	Disable
 Manufacturer	prometheus-community
 MsiHiddenProperties	SERVICE_PASSWORD
-ProductCode	{2032BDE8-91AC-5F47-A03E-AA0CDB9D1563}
+ProductCode	{7B4744CE-A9A9-5B31-B566-3564E37B0F3B}
 ProductLanguage	1033
 ProductName	windows_exporter
 ProductVersion	0.32.0.5

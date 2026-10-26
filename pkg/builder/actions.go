@@ -391,6 +391,7 @@ func (b *build) runAction(custom *config.CustomAction, action *actionInfo) strin
 	}
 
 	directory := ""
+
 	if custom.Run.Directory != "" {
 		if config.IsStandardFolder(custom.Run.Directory) {
 			b.ensureStandardDir(custom.Run.Directory)
