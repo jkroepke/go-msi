@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"time"
 
 	"github.com/jkroepke/go-msi/pkg/msidb"
@@ -79,8 +80,9 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 	}
 
 	if pkg.Cabinet == "" {
-		pkg.Cabinet = product.Name + ".cab"
-		if msidb.CheckStreamName(pkg.Cabinet) != nil || !plainFileName(pkg.Cabinet) {
+		// ICE03 rejects a space in a Cabinet value.
+		pkg.Cabinet = strings.ReplaceAll(product.Name, " ", "") + ".cab"
+		if pkg.Cabinet == ".cab" || msidb.CheckStreamName(pkg.Cabinet) != nil || !plainFileName(pkg.Cabinet) {
 			// The product name may be longer than a stream name or use
 			// characters a stream name cannot hold, such as non-ASCII
 			// letters with case.

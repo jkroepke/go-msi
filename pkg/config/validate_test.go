@@ -504,12 +504,13 @@ func TestDefaultCabinet(t *testing.T) {
 
 	for name, want := range map[string]string{
 		"App":    "App.cab",
-		"My App": "My App.cab",
+		// ICE03 rejects a space in the cabinet name.
+		"My App": "MyApp.cab",
+		"   ":    config.DefaultCabinet,
 		"Grüße":  config.DefaultCabinet,
 		"Привет": config.DefaultCabinet,
 		"A#B":    config.DefaultCabinet,
-		// 27 spaces take one stream name unit each.
-		strings.Repeat("A ", 27): config.DefaultCabinet,
+		strings.Repeat("A", 59): config.DefaultCabinet,
 	} {
 		doc := strings.Replace(base, "name: App\n  manufacturer", "name: '"+name+"'\n  manufacturer", 1)
 
@@ -553,6 +554,15 @@ func TestCabinetName(t *testing.T) {
 		if got := !find(ds, config.SeverityError, "package.cabinet", ""); got != valid {
 			t.Errorf("cabinet %q: valid = %v, want %v (%v)", cabinet, got, valid, ds)
 		}
+	}
+}
+
+func TestCabinetSpaceWarns(t *testing.T) {
+	t.Parallel()
+
+	ds := validate(t, pkg(`{platform: x64, cabinet: "my app.cab"}`)+appComponent)
+	if !find(ds, config.SeverityWarning, "package.cabinet", "ICE03") {
+		t.Errorf("no ICE03 warning for a space in the cabinet name: %v", ds)
 	}
 }
 
