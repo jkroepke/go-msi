@@ -53,7 +53,7 @@ func expandShorthands(cfg *Config) {
 	// Add the install dir before any folder path, so that a path through
 	// the same folder reuses it whatever the order of the components.
 	for _, comp := range cfg.Components {
-		if tree.needsInstallDir(comp.Directory) {
+		if !unplacedCarrier(comp) && tree.needsInstallDir(comp.Directory) {
 			tree.ensureInstallDir()
 
 			break
@@ -61,8 +61,16 @@ func expandShorthands(cfg *Config) {
 	}
 
 	for i, comp := range cfg.Components {
-		tree.origin = comp.Path(i) + ".directory"
-		comp.Directory = tree.resolve(comp.Directory)
+		if !unplacedCarrier(comp) {
+			tree.origin = comp.Path(i) + ".directory"
+			comp.Directory = tree.resolve(comp.Directory)
+		}
+	}
+
+	for _, comp := range cfg.Components {
+		if unplacedCarrier(comp) {
+			comp.Directory = tree.carrierDirectory()
+		}
 	}
 
 	componentIDs(cfg)
@@ -89,14 +97,7 @@ func featureFirewall(cfg *Config) {
 			featurePath := fmt.Sprintf("%s[%d]", prefix, i)
 
 			if len(feature.Firewall) > 0 {
-				carrier := &Component{
-					KeyPath:         KeyPathDirectory,
-					origin:          featurePath + ".firewall",
-					firewallFeature: feature.ID,
-				}
-
-				cfg.Components = append(cfg.Components, carrier)
-				feature.Components = append(feature.Components, carrier)
+				carrier := firewallCarrier(cfg, feature, featurePath)
 
 				for j, rule := range feature.Firewall {
 					rule.origin = fmt.Sprintf("%s.firewall[%d]", featurePath, j)
@@ -113,6 +114,54 @@ func featureFirewall(cfg *Config) {
 	}
 
 	walk(cfg.Features, "features")
+}
+
+// firewallCarrier returns the component that carries a feature's firewall
+// rules, adding it on the first call. It lives in the feature's directory;
+// without one, carrierDirectory picks it once the tree is known.
+func firewallCarrier(cfg *Config, feature *Feature, featurePath string) *Component {
+	for _, comp := range cfg.Components {
+		if comp.firewallFeature != "" && comp.firewallFeature == feature.ID {
+			return comp
+		}
+	}
+
+	carrier := &Component{
+		Directory:       feature.Directory,
+		KeyPath:         KeyPathDirectory,
+		origin:          featurePath + ".firewall",
+		firewallFeature: feature.ID,
+	}
+
+	cfg.Components = append(cfg.Components, carrier)
+	feature.Components = append(feature.Components, carrier)
+
+	return carrier
+}
+
+// unplacedCarrier reports whether a component is a firewall carrier whose
+// directory carrierDirectory still has to pick.
+func unplacedCarrier(comp *Component) bool {
+	return comp.firewallFeature != "" && comp.Directory == ""
+}
+
+// carrierDirectory places a carrier without a directory: in the install dir
+// when the package has one, else beside the first other component, so that
+// the carrier adds no folder of its own.
+func (t *dirTree) carrierDirectory() string {
+	if t.byID[t.cfg.InstallDir.ID] != nil {
+		return t.cfg.InstallDir.ID
+	}
+
+	for _, comp := range t.cfg.Components {
+		if !unplacedCarrier(comp) {
+			return comp.Directory
+		}
+	}
+
+	t.ensureInstallDir()
+
+	return t.cfg.InstallDir.ID
 }
 
 // hoistFeatureComponents appends the components defined inside features to

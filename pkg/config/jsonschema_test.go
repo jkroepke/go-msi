@@ -86,11 +86,12 @@ func TestJSONSchemaRejectsMistakes(t *testing.T) {
 	sch := compileSchema(t)
 
 	for name, doc := range map[string]string{
-		"unknown key":      base + appComponent + "extraKey: []\n",
-		"bad enum":         strings.Replace(base, "upgrade: {}", "upgrade: {downgrade: block}", 1) + appComponent,
-		"bad platform":     pkg("{platform: mips}") + appComponent,
-		"string for bool":  strings.Replace(base, "upgrade: {}", "upgrade: {allowSameVersion: yes please}", 1) + appComponent,
-		"missing required": strings.Replace(base, "  manufacturer: Example\n", "", 1) + appComponent,
+		"unknown key":            base + appComponent + "extraKey: []\n",
+		"bad enum":               strings.Replace(base, "upgrade: {}", "upgrade: {downgrade: block}", 1) + appComponent,
+		"bad platform":           pkg("{platform: mips}") + appComponent,
+		"string for bool":        strings.Replace(base, "upgrade: {}", "upgrade: {allowSameVersion: yes please}", 1) + appComponent,
+		"missing required":       strings.Replace(base, "  manufacturer: Example\n", "", 1) + appComponent,
+		"rule without component": base + appComponent + "firewall: [{ name: a, program: x }]\n",
 	} {
 		if err := schemaValidate(t, sch, doc); err == nil {
 			t.Errorf("%s: accepted", name)
@@ -133,6 +134,7 @@ type schemaNode struct {
 	Items                *schemaNode            `json:"items"`
 	AdditionalProperties json.RawMessage        `json:"additionalProperties"`
 	AnyOf                []*schemaNode          `json:"anyOf"`
+	AllOf                []*schemaNode          `json:"allOf"`
 }
 
 // additional returns the schema of a map's values, or nil when
@@ -174,7 +176,7 @@ func TestJSONSchemaMatchesTypes(t *testing.T) {
 			return node
 		}
 
-		for _, branch := range node.AnyOf {
+		for _, branch := range append(node.AnyOf, node.AllOf...) {
 			if found := resolve(branch, match); found != nil {
 				return found
 			}

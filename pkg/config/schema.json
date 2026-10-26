@@ -690,7 +690,16 @@
     "firewall": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/firewallRule"
+        "allOf": [
+          {
+            "$ref": "#/$defs/firewallRule"
+          },
+          {
+            "required": [
+              "component"
+            ]
+          }
+        ]
       }
     },
     "ui": {

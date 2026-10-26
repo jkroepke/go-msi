@@ -93,9 +93,12 @@ func ApplyDefaults(cfg *Config) {
 	defaultUpgrade(cfg.Upgrade)
 
 	eachFeature(cfg.Features, func(feature *Feature, _ int) {
-		if feature.Level == nil {
-			feature.Level = new(defaultLevel(feature.Default))
-			feature.levelFromDefault = feature.Default != ""
+		// A level filled in by an earlier run follows a default set since.
+		if feature.Level == nil || feature.levelIsDefault() {
+			level := defaultLevel(feature.Default)
+			feature.Level = &level
+			feature.defaultedLevel = feature.Level
+			feature.defaultedValue = level
 		}
 
 		if feature.Display == "" {

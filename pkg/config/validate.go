@@ -438,7 +438,7 @@ func (v *validator) featureDefault(featurePath string, feature *Feature) {
 
 	v.oneOf(featurePath+".default", feature.Default, FeatureOn, FeatureOff, FeatureDisabled)
 
-	if !feature.levelFromDefault {
+	if !feature.levelIsDefault() {
 		v.errorf(featurePath+".default", "set default or level, not both")
 	}
 }

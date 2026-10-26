@@ -162,8 +162,16 @@ type Feature struct {
 	// carries the state.
 	Firewall []*FirewallRule `yaml:"firewall"`
 
-	// levelFromDefault records that Level was derived from Default.
-	levelFromDefault bool
+	// defaultedLevel and defaultedValue record the Level that ApplyDefaults
+	// filled in, so that a later run can tell it from one set by the caller.
+	defaultedLevel *int
+	defaultedValue int
+}
+
+// levelIsDefault reports whether Level is still the one ApplyDefaults filled
+// in.
+func (f *Feature) levelIsDefault() bool {
+	return f.Level != nil && f.Level == f.defaultedLevel && *f.Level == f.defaultedValue
 }
 
 // Component is a unit that is installed, repaired and removed together.
