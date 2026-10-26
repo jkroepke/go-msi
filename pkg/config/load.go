@@ -168,7 +168,7 @@ func fileVars(root *yaml.Node) (map[string]string, error) {
 			continue
 		}
 
-		vars := map[string]string{}
+		vars := make(map[string]string)
 		if err := root.Content[i+1].Decode(&vars); err != nil {
 			return nil, fmt.Errorf("vars: %w", err)
 		}
