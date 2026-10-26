@@ -264,3 +264,45 @@ func TestLZXRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// TestWorkersSameCabinet checks that the MSZIP cabinet does not depend on how
+// many blocks are compressed at once, including batches that end mid-folder.
+func TestWorkersSameCabinet(t *testing.T) {
+	t.Parallel()
+
+	rng := rand.New(rand.NewSource(4)) //nolint:gosec // reproducible test data
+	random := make([]byte, 70000)
+	rng.Read(random)
+
+	text := bytes.Repeat([]byte("MSZIP blocks keep the chunk before them as history.\r\n"), 9000)
+	files := []File{{Name: "text", Data: text}, {Name: "random", Data: random}, {Name: "tail", Data: text[:5]}}
+
+	for _, comp := range []Compression{MSZIP, None} {
+		want, err := Write(files, Options{Compression: comp, Workers: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, workers := range []int{2, 3, 4, 16} {
+			got, err := Write(files, Options{Compression: comp, Workers: workers})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !bytes.Equal(got, want) {
+				t.Errorf("compression %d, %d workers: the cabinet differs from one worker", comp, workers)
+			}
+		}
+
+		back, err := Read(want)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for i, f := range back {
+			if !bytes.Equal(f.Data, files[i].Data) {
+				t.Errorf("compression %d: file %d differs", comp, i)
+			}
+		}
+	}
+}

@@ -73,15 +73,23 @@ func (h *history) add(data []byte, pending int) {
 
 func (h *history) end() int { return h.base + len(h.buf) }
 
+// matches holds the plain matches of one frame: those at position i are
+// list[offsets[i]:offsets[i+1]].
+type matches struct {
+	list    []pair
+	offsets []int32
+}
+
 // optimal holds the match finder and parser state. Positions are absolute
-// stream offsets.
+// stream offsets. While the parser walks one frame, the match finder already
+// collects the next one into the other of the two found buffers.
 type optimal struct {
+	found   [2]matches
 	hist    *history
 	head    []int32
 	head3   []int32
 	tree    []int32
-	offsets []int32
-	list    []pair
+	list    []pair // the frame being collected
 	nodes   []pathNode
 	first   []token // the first pass of a frame
 	tokens  []token // the block being parsed
@@ -106,12 +114,15 @@ func newOptimal(hist *history, opts Options) *optimal {
 		maxDist: 1<<span - 3,
 		depth:   levelDepth[opts.Level-1],
 		passes:  1,
-		offsets: make([]int32, FrameSize+1),
 		nodes:   make([]pathNode, FrameSize+1),
 		first:   make([]token, 0, FrameSize),
 		tokens:  make([]token, 0, blockSpan),
 		cost:    newCosts(numSlots(opts.Window)),
 		rep:     initialRep(),
+	}
+
+	for i := range parser.found {
+		parser.found[i].offsets = make([]int32, FrameSize+1)
 	}
 
 	if opts.Level >= twoPassLevel {
@@ -248,14 +259,13 @@ func (p *optimal) search(pos, limit, bestLen int) {
 	}
 }
 
-// collect fills p.list and p.offsets with the matches of the frame
-// [start, end).
-func (p *optimal) collect(start, end int) {
-	size := end - start
-	p.list = p.list[:0]
+// collect fills dst with the matches of the frame [start, end).
+func (p *optimal) collect(start, end int, dst *matches) {
+	size, offsets := end-start, dst.offsets
+	p.list = dst.list[:0]
 
 	for i := 0; i < size; {
-		p.offsets[i] = int32(len(p.list)) //nolint:gosec // frame sized
+		offsets[i] = int32(len(p.list)) //nolint:gosec // frame sized
 		at := start + i
 		p.findAll(at, min(maxMatch, end-at), true)
 
@@ -263,36 +273,59 @@ func (p *optimal) collect(start, end int) {
 
 		// A long match is taken as is: the positions it covers get no list,
 		// but they still enter the tree.
-		if last := len(p.list); last > int(p.offsets[i-1]) && int(p.list[last-1].length) >= optimalNice {
+		if last := len(p.list); last > int(offsets[i-1]) && int(p.list[last-1].length) >= optimalNice {
 			for skip := int(p.list[last-1].length) - 1; skip > 0 && i < size; skip-- {
-				p.offsets[i] = int32(len(p.list)) //nolint:gosec // frame sized
+				offsets[i] = int32(len(p.list)) //nolint:gosec // frame sized
 				p.findAll(start+i, 0, false)
 				i++
 			}
 		}
 	}
 
-	p.offsets[size] = int32(len(p.list)) //nolint:gosec // frame sized
+	offsets[size] = int32(len(p.list)) //nolint:gosec // frame sized
+	dst.list = p.list
 }
 
 // block parses the block [start, end), which the history holds, frame by
 // frame. The tokens stay valid until the next call.
+//
+// A goroutine collects the matches of each frame while the parser walks the
+// one before it. The matches depend only on the history, never on the
+// parse, so the tokens are the same as when both run in turn.
 func (p *optimal) block(start, end int) []token {
 	p.tokens = p.tokens[:0]
 
+	free := make(chan *matches, len(p.found))
+	ready := make(chan *matches, len(p.found))
+
+	for i := range p.found {
+		free <- &p.found[i]
+	}
+
+	go func() {
+		for frame := start; frame < end; frame += FrameSize {
+			dst := <-free
+			p.collect(frame, min(frame+FrameSize, end), dst)
+
+			ready <- dst
+		}
+	}()
+
 	for frame := start; frame < end; frame += FrameSize {
 		size := min(FrameSize, end-frame)
-		p.collect(frame, frame+size)
+		found := <-ready
 
 		rep := p.rep
-		tokens := p.shortestPath(frame, size, p.first[:0])
+		tokens := p.shortestPath(frame, size, found, p.first[:0])
 
 		if p.passes == 2 {
 			stats := count(tokens, rep, p.slots)
 			p.cost.set(buildLengths(stats.main, maxCodeLen), buildLengths(stats.len, maxCodeLen))
 			p.rep = rep
-			tokens = p.shortestPath(frame, size, tokens[:0])
+			tokens = p.shortestPath(frame, size, found, tokens[:0])
 		}
+
+		free <- found
 
 		stats := count(tokens, rep, p.slots)
 		p.cost.set(buildLengths(stats.main, maxCodeLen), buildLengths(stats.len, maxCodeLen))
@@ -330,7 +363,7 @@ func (p *optimal) relax(nodes []pathNode, i, from, upTo int, dist, formatted uin
 
 // shortestPath runs one pass over the size positions of the frame at start,
 // appends the tokens to dst and leaves the final repeated offsets in p.rep.
-func (p *optimal) shortestPath(start, size int, dst []token) []token { //nolint:cyclop // one pass over the edges
+func (p *optimal) shortestPath(start, size int, found *matches, dst []token) []token { //nolint:cyclop // one pass over the edges
 	data, base := p.hist.buf, p.hist.base
 	nodes := p.nodes[:size+1]
 
@@ -370,7 +403,7 @@ func (p *optimal) shortestPath(start, size int, dst []token) []token { //nolint:
 
 		prevLen := minMatch
 
-		for _, found := range p.list[p.offsets[i]:p.offsets[i+1]] {
+		for _, found := range found.list[found.offsets[i]:found.offsets[i+1]] {
 			dist := uint32(found.dist) //nolint:gosec // positive
 			if dist != rep[0] && dist != rep[1] && dist != rep[2] {
 				p.relax(nodes, i, prevLen, int(found.length), dist, dist+2)

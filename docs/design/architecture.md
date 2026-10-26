@@ -130,9 +130,13 @@ func Entries(fsys fs.FS) ([]Entry, error)
   entry that is shorter or longer than its declared `Size` is an error), and
   the CFDATA count follows from the folder size; only `cbCabinet` is patched
   afterwards through the seeker. `Write` is `WriteTo` into memory with byte-identical output.
+- MSZIP blocks are compressed up to four at a time (`Options.Workers`),
+  each with the chunk before it as history, and written in order; the
+  cabinet is the same for any number of workers.
 - LZX frames come from `lzx.Encoder` a block (four frames) at a time;
   a block whose compressed frame would exceed 32768 + 6144 bytes is
-  stored uncompressed instead.
+  stored uncompressed instead. The encoder finds the next frame's matches
+  while it parses the current one.
 - `Walk` decodes one block at a time and hands every file's bytes to `visit`
   as a reader; it serves verification without materializing the cabinet.
 
