@@ -53,7 +53,7 @@ type Result struct {
 }
 
 // build holds the state of one build.
-type build struct {
+type build struct { //nolint:govet // grouped by build step
 	secure      map[string]bool
 	cfg         *config.Config
 	numbered    map[string][]sequence.Numbered
@@ -123,6 +123,8 @@ type actionInfo struct {
 	target any
 	name   string
 	typ    int
+	// fromUI marks an action that a control runs with DoAction.
+	fromUI bool
 }
 
 // Build builds the package described by cfg. Validation diagnostics of the

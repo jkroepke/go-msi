@@ -75,8 +75,8 @@ func TestValidate(t *testing.T) {
 	t.Parallel()
 
 	const (
-		e = config.SeverityError
-		w = config.SeverityWarning
+		sevError   = config.SeverityError
+		sevWarning = config.SeverityWarning
 	)
 
 	for name, tc := range map[string]struct {
@@ -88,45 +88,45 @@ func TestValidate(t *testing.T) {
 		// MSISPEC-RESULTS finding 2 (SUM-03).
 		"page count above 500": {
 			pkg(`{platform: x64, installerVersion: "5.1"}`) + appComponent,
-			e, "package.installerVersion", "1613",
+			sevError, "package.installerVersion", "1613",
 		},
 		"x64 below 2.0": {
 			pkg(`{platform: x64, installerVersion: "1.5"}`) + appComponent,
-			e, "package.installerVersion", "at least 2.0",
+			sevError, "package.installerVersion", "at least 2.0",
 		},
 		"arm64 below 5.0": {
 			pkg(`{platform: arm64, installerVersion: "4.5"}`) + appComponent,
-			e, "package.installerVersion", "at least 5.0",
+			sevError, "package.installerVersion", "at least 5.0",
 		},
 		// RUN-02: an unversioned executable is deleted by an upgrade.
 		"unversioned exe": {
 			base + appComponent + "      - source: helper.dll\n        version: none\n",
-			e, "components[0].files[1].version", "RUN-02",
+			sevError, "components[0].files[1].version", "RUN-02",
 		},
 		"unversioned exe acknowledged": {
 			base + appComponent + "      - source: helper.dll\n        version: none\n        allowUnversionedExecutable: true\n",
-			w, "components[0].files[1].version", "RUN-02",
+			sevWarning, "components[0].files[1].version", "RUN-02",
 		},
 		"empty version is not none": {
 			base + appComponent + "      - source: data.txt\n        version: \"1.x\"\n",
-			e, "components[0].files[1].version", "not auto, none",
+			sevError, "components[0].files[1].version", "not auto, none",
 		},
 		// RUN-03 and RUN-11.
 		"four-field version": {
 			strings.Replace(base, "version: 1.0.0", "version: 1.0.0.5", 1) + appComponent,
-			w, "product.version", "RUN-03",
+			sevWarning, "product.version", "RUN-03",
 		},
 		"nil upgrade code": {
 			strings.Replace(base, "3f2504e0-4f89-41d3-9a0c-0305e82c3301", `"{00000000-0000-0000-0000-000000000000}"`, 1) + appComponent,
-			e, "product.upgradeCode", "nil GUID",
+			sevError, "product.upgradeCode", "nil GUID",
 		},
 		"nil related upgrade code": {
 			strings.Replace(base, "upgrade: {}", "upgrade: {related: [{upgradeCode: 00000000-0000-0000-0000-000000000000, maxVersion: 1.0.0}]}", 1) + appComponent,
-			e, "upgrade.related[0].upgradeCode", "nil GUID",
+			sevError, "upgrade.related[0].upgradeCode", "nil GUID",
 		},
 		"pinned product code": {
 			strings.Replace(base, "  upgradeCode:", "  productCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3302\n  upgradeCode:", 1) + appComponent,
-			w, "product.productCode", "1638",
+			sevWarning, "product.productCode", "1638",
 		},
 		// RUN-18: exec actions must say how an exit code is handled.
 		"exec without return": {
@@ -136,7 +136,7 @@ func TestValidate(t *testing.T) {
     execute: deferred
     schedule: [{sequence: execute, after: InstallFiles}]
 `,
-			e, "customActions[0].return", "RUN-18",
+			sevError, "customActions[0].return", "RUN-18",
 		},
 		"deferred set property": {
 			base + appComponent + `customActions:
@@ -145,7 +145,7 @@ func TestValidate(t *testing.T) {
     execute: deferred
     schedule: [{sequence: execute, after: InstallFiles}]
 `,
-			e, "customActions[0].execute", "cannot be deferred",
+			sevError, "customActions[0].execute", "cannot be deferred",
 		},
 		"no impersonation immediate": {
 			base + appComponent + `customActions:
@@ -154,7 +154,7 @@ func TestValidate(t *testing.T) {
     impersonate: false
     schedule: [{sequence: execute, after: InstallFiles}]
 `,
-			e, "customActions[0].impersonate", "deferred",
+			sevError, "customActions[0].impersonate", "deferred",
 		},
 		"standard action name": {
 			base + appComponent + `customActions:
@@ -162,7 +162,7 @@ func TestValidate(t *testing.T) {
     error: no
     schedule: [{sequence: execute, after: CostFinalize}]
 `,
-			e, "customActions[0].id", "ICE93",
+			sevError, "customActions[0].id", "ICE93",
 		},
 		"unknown anchor": {
 			base + appComponent + `customActions:
@@ -170,13 +170,13 @@ func TestValidate(t *testing.T) {
     error: no
     schedule: [{sequence: execute, after: Nowhere}]
 `,
-			e, "customActions[0].schedule[0]", "Nowhere",
+			sevError, "customActions[0].schedule[0]", "Nowhere",
 		},
 		// Finding 1 (DB-07) and DB-02.
 		"32 columns": {
 			base + appComponent + "tables:\n  - name: Wide\n    columns:\n" +
 				strings.Repeat("      - {name: C, type: I2, key: true}\n", 32),
-			e, "tables[0].columns", "DB-07",
+			sevError, "tables[0].columns", "DB-07",
 		},
 		"i2 minimum": {
 			base + appComponent + `tables:
@@ -184,209 +184,209 @@ func TestValidate(t *testing.T) {
     columns: [{name: K, type: s72, key: true}, {name: V, type: I2}]
     rows: [[a, -32768]]
 `,
-			e, "tables[0].rows[0][1]", "outside",
+			sevError, "tables[0].rows[0][1]", "outside",
 		},
 		"standard table": {
 			base + appComponent + "tables:\n  - name: Property\n    columns: [{name: K, type: s72, key: true}]\n",
-			e, "tables[0].name", "written by the builder",
+			sevError, "tables[0].name", "written by the builder",
 		},
 		// DB-11.
 		"binary key too long": {
 			base + appComponent + "binaries:\n  " + strings.Repeat("b", 56) + ": x.dll\n",
-			e, "binaries." + strings.Repeat("b", 56), "DB-11",
+			sevError, "binaries." + strings.Repeat("b", 56), "DB-11",
 		},
 		// RUN-08: removal is never implied by scope.
 		"environment prefix": {
 			base + strings.Replace(appComponent, "    files:", "    environment: [{name: '*PATH', value: x}]\n    files:", 1),
-			e, "components[0].environment[0].name", "plain name",
+			sevError, "components[0].environment[0].name", "plain name",
 		},
 		"PATH set": {
 			base + strings.Replace(appComponent, "    files:", "    environment: [{name: PATH, value: x}]\n    files:", 1),
-			w, "components[0].environment[0].action", "append",
+			sevWarning, "components[0].environment[0].action", "append",
 		},
 		// SUM-04.
 		"utf-16 codepage": {
 			pkg(`{platform: x64, codepage: 1200}`) + appComponent,
-			e, "package.codepage", "1200",
+			sevError, "package.codepage", "1200",
 		},
 		// RUN-05.
 		"service keeps registration": {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, control: {deleteOnUninstall: false}}]\n    files:", 1),
-			w, "components[0].services[0].control.deleteOnUninstall", "RUN-05",
+			sevWarning, "components[0].services[0].control.deleteOnUninstall", "RUN-05",
 		},
 		"service on dll": {
 			base + strings.Replace(strings.Replace(appComponent, "app.exe", "app.dll", 1), "    files:", "    services: [{name: svc}]\n    files:", 1),
-			e, "components[0].services[0]", "not an .exe",
+			sevError, "components[0].services[0]", "not an .exe",
 		},
 		"literal password": {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, password: hunter2}]\n    files:", 1),
-			e, "components[0].services[0].password", "hidden property",
+			sevError, "components[0].services[0].password", "hidden property",
 		},
 		"recovery reset twice": {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {resetAfterDays: 1, resetAfter: 24h, actions: [restart]}}]\n    files:", 1),
-			e, "components[0].services[0].recovery.resetAfter", "not both",
+			sevError, "components[0].services[0].recovery.resetAfter", "not both",
 		},
 		"recovery reset fraction": {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {resetAfter: 1500ms, actions: [restart]}}]\n    files:", 1),
-			e, "components[0].services[0].recovery.resetAfter", "whole number of seconds",
+			sevError, "components[0].services[0].recovery.resetAfter", "whole number of seconds",
 		},
 		"recovery step delay negative": {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [{restart: -1s}]}}]\n    files:", 1),
-			e, "components[0].services[0].recovery.actions[0].restart", "negative",
+			sevError, "components[0].services[0].recovery.actions[0].restart", "negative",
 		},
 		"recovery step delay too long": {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [{restart: 600h}]}}]\n    files:", 1),
-			e, "components[0].services[0].recovery.actions[0].restart", "too long",
+			sevError, "components[0].services[0].recovery.actions[0].restart", "too long",
 		},
 		"recovery reset days too long": {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {resetAfterDays: 30000, actions: [restart]}}]\n    files:", 1),
-			e, "components[0].services[0].recovery.resetAfterDays", "too long",
+			sevError, "components[0].services[0].recovery.resetAfterDays", "too long",
 		},
 		"recovery four steps": {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [restart, restart, restart, restart]}}]\n    files:", 1),
-			e, "components[0].services[0].recovery.actions", "one to three",
+			sevError, "components[0].services[0].recovery.actions", "one to three",
 		},
 		// RUN-26.
 		"purge configurable folder": {
 			base + strings.Replace(appComponent, "    files:", "    purge: true\n    files:", 1),
-			e, "components[0].purge", "configurable",
+			sevError, "components[0].purge", "configurable",
 		},
 		"purge standard folder": {
 			base + strings.Replace(appComponent, "directory: INSTALLDIR", "directory: ProgramFiles64Folder\n    purge: true", 1),
-			e, "components[0].purge", "standard folder",
+			sevError, "components[0].purge", "standard folder",
 		},
 		"purge below configurable folder": {
 			strings.Replace(base, "        configurable: true\n", "        configurable: true\n        children: [{id: DataDir, name: data}]\n", 1) +
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1),
-			e, "components[0].purge", "INSTALLDIR can be pointed",
+			sevError, "components[0].purge", "INSTALLDIR can be pointed",
 		},
 		"purge nested standard folder": {
 			strings.Replace(base, "directories:\n", "directories:\n  - id: TARGETDIR\n    children: [{id: CommonAppDataFolder, name: ProgramData}]\n", 1) +
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: CommonAppDataFolder\n    createFolder: true\n    purge: true", 1),
-			e, "components[0].purge", "standard folder",
+			sevError, "components[0].purge", "standard folder",
 		},
 		"purge below nested standard folder": {
 			strings.Replace(base, "        configurable: true\n", "        children: [{id: CommonAppDataFolder, name: x, children: [{id: DataDir, name: data}]}]\n", 1) +
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1),
-			e, "components[0].purge", "CommonAppDataFolder can be pointed",
+			sevError, "components[0].purge", "CommonAppDataFolder can be pointed",
 		},
 		"purge percent in name": {
 			strings.Replace(base, "        configurable: true\n", "        children: [{id: DataDir, name: '%TEMP%'}]\n", 1) +
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1),
-			e, "components[0].purge", "has a % in its name",
+			sevError, "components[0].purge", "has a % in its name",
 		},
 		"purge below setDirectory": {
 			strings.Replace(base, "        configurable: true\n", "        children: [{id: DataDir, name: data}]\n", 1) +
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1) +
 				"customActions:\n  - id: MoveIt\n    setDirectory: {directory: INSTALLDIR, value: '[WindowsFolder]'}\n",
-			e, "components[0].purge", "INSTALLDIR can be pointed",
+			sevError, "components[0].purge", "INSTALLDIR can be pointed",
 		},
 		"purge public folder id": {
 			strings.Replace(base, "        configurable: true\n", "        children: [{id: DATADIR, name: data}]\n", 1) +
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DATADIR\n    purge: true", 1),
-			e, "components[0].purge", "DATADIR can be pointed",
+			sevError, "components[0].purge", "DATADIR can be pointed",
 		},
 		"purge below TARGETDIR": {
 			strings.Replace(base, "directories:\n", "directories:\n  - id: TARGETDIR\n    children: [{id: DataDir, name: Data}]\n", 1) +
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    createFolder: true\n    purge: true", 1),
-			e, "components[0].purge", "TARGETDIR",
+			sevError, "components[0].purge", "TARGETDIR",
 		},
 		"purge folder set by a property": {
 			strings.Replace(base, "        configurable: true\n", "        children: [{id: DataDir, name: data}]\n", 1) +
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1) +
 				"properties:\n  DataDir: 'C:\\'\n",
-			e, "components[0].purge", "DataDir can be pointed",
+			sevError, "components[0].purge", "DataDir can be pointed",
 		},
 		"purge folder set by setProperty": {
 			strings.Replace(base, "        configurable: true\n", "        children: [{id: DataDir, name: data}]\n", 1) +
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1) +
 				"customActions:\n  - id: SetIt\n    setProperty: {name: DataDir, value: '[WindowsFolder]'}\n",
-			e, "components[0].purge", "DataDir can be pointed",
+			sevError, "components[0].purge", "DataDir can be pointed",
 		},
 		"purge condition": {
 			strings.Replace(base, "        configurable: true\n", "        children: [{id: DATADIR, name: data}]\n", 1) + strings.Replace(appComponent, "    files:", "    purge: {condition: 'DELETE_DATA='}\n    files:", 1),
-			e, "components[0].purge.condition", "",
+			sevError, "components[0].purge.condition", "",
 		},
 		// RUN-24.
 		"neverOverwrite with early removal": {
 			base + strings.Replace(appComponent, "    files:", "    neverOverwrite: true\n    files:", 1),
-			w, "components[0].neverOverwrite", "RUN-24",
+			sevWarning, "components[0].neverOverwrite", "RUN-24",
 		},
 		"neverOverwrite service with early removal": {
 			base + strings.Replace(appComponent, "    files:", "    neverOverwrite: true\n    services: [{name: svc}]\n    files:", 1),
-			w, "components[0].neverOverwrite", "own component",
+			sevWarning, "components[0].neverOverwrite", "own component",
 		},
 		"preserved service": {
 			base + strings.Replace(appComponent, "    files:", "    preserve: true\n    services: [{name: svc}]\n    files:", 1),
-			e, "components[0].preserve", "own component",
+			sevError, "components[0].preserve", "own component",
 		},
 		// Upgrade action properties (ICE61, section 8.10).
 		"private upgrade property": {
 			strings.Replace(base, "upgrade: {}", "upgrade: {property: oldFound}", 1) + appComponent,
-			e, "upgrade.property", "upper-case",
+			sevError, "upgrade.property", "upper-case",
 		},
 		"upgrade property in properties": {
 			base + appComponent + "properties: {OLDERVERSIONBEINGUPGRADED: x}\n",
-			e, "upgrade.property", "ICE61",
+			sevError, "upgrade.property", "ICE61",
 		},
 		"removeOld window": {
 			strings.Replace(base, "upgrade: {}", "upgrade: {removeOld: afterStartServices}", 1) + appComponent,
-			e, "upgrade.removeOld", "afterInstallValidate",
+			sevError, "upgrade.removeOld", "afterInstallValidate",
 		},
 		// Components.
 		"component without feature": {
 			base + appComponent + "  - id: Other\n    directory: INSTALLDIR\n    createFolder: true\n",
-			e, "components[1]", "ICE21",
+			sevError, "components[1]", "ICE21",
 		},
 		"guid none not permanent": {
 			base + strings.Replace(appComponent, "    files:", "    guid: none\n    files:", 1),
-			e, "components[0].guid", "never removed",
+			sevError, "components[0].guid", "never removed",
 		},
 		"32-bit folder in x64": {
 			strings.Replace(base, "ProgramFiles64Folder", "ProgramFilesFolder", 1) + appComponent,
-			w, "components[0].directory", "ICE80",
+			sevWarning, "components[0].directory", "ICE80",
 		},
 		"duplicate file key": {
 			base + appComponent + "  - id: Two\n    directory: INSTALLDIR\n    files: [{source: other/app.exe, name: x.exe, id: app.exe}]\n",
-			e, "components[1].files[0].id", "also used",
+			sevError, "components[1].files[0].id", "also used",
 		},
 		"per-user service": {
 			pkg(`{platform: x64, scope: perUser}`) + strings.Replace(appComponent, "    files:", "    services: [{name: svc}]\n    files:", 1),
-			e, "components[0].services[0]", "ICE105",
+			sevError, "components[0].services[0]", "ICE105",
 		},
 		"dword value": {
 			base + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\X, name: N, type: dword, value: abc}]\n    files:", 1),
-			e, "components[0].registry[0].value", "32-bit integer",
+			sevError, "components[0].registry[0].value", "32-bit integer",
 		},
 		"multi string marker": {
 			base + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\X, name: N, value: 'a[~]b'}]\n    files:", 1),
-			e, "components[0].registry[0].value", "multiString",
+			sevError, "components[0].registry[0].value", "multiString",
 		},
 		// Properties.
 		"builder property": {
 			base + appComponent + "properties: {ALLUSERS: \"1\"}\n",
-			e, "properties.ALLUSERS", "set by the builder",
+			sevError, "properties.ALLUSERS", "set by the builder",
 		},
 		"secure private": {
 			base + appComponent + "properties: {lower: {value: x, secure: true}}\n",
-			e, "properties.lower.secure", "public",
+			sevError, "properties.lower.secure", "public",
 		},
 		// UI.
 		"dialog without wizard": {
 			base + appComponent + "ui: {dialogs: [{id: D, title: T, after: X, fields: [{property: P}]}]}\n",
-			e, "ui.dialogs", "need a wizard",
+			sevError, "ui.dialogs", "need a wizard",
 		},
 		"license without wizard": {
 			base + appComponent + "ui: {license: LICENSE.rtf}\n",
-			e, "ui.license", "needs a wizard",
+			sevError, "ui.license", "needs a wizard",
 		},
 		"theme without wizard": {
 			base + appComponent + "ui: {theme: {banner: banner.bmp}}\n",
-			e, "ui.theme", "needs a wizard",
+			sevError, "ui.theme", "needs a wizard",
 		},
 		"bad theme colour": {
 			base + appComponent + "ui: {wizard: minimal, theme: {colors: {accent: \"#12345\"}}}\n",
-			e, "ui.theme.colors.accent", "#RRGGBB",
+			sevError, "ui.theme.colors.accent", "#RRGGBB",
 		},
 	} {
 		ds := validate(t, tc.doc)

@@ -95,7 +95,7 @@ func (b *build) identity() error {
 // platform, the version and a digest of the configuration and every input
 // file, so that changed content gives a new code (RUN-11) and unchanged
 // content the same one.
-func (b *build) deriveProductCode() error {
+func (b *build) deriveProductCode() error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	if b.productCode != "" {
 		return nil
 	}
@@ -696,6 +696,10 @@ func (b *build) componentGUID(path string, info *componentInfo) error { //nolint
 	var location string
 
 	switch {
+	case comp.FirewallFeature() != "":
+		// The generated component of a feature's firewall rules shares
+		// the install dir with other components keyed on it.
+		location = "firewall|" + comp.FirewallFeature()
 	case info.keyFile != nil:
 		location = "file|" + info.dir.canonical + "\\" + strings.ToLower(info.keyFile.LongName)
 	case info.keyPath != nil:

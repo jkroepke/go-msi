@@ -70,7 +70,7 @@ func (b *build) streams() error {
 
 // customTables copies the tables section into the database. A string in a
 // binary column names a file to embed.
-func (b *build) customTables() error { //nolint:cyclop // one pass over the format; splitting would scatter it
+func (b *build) customTables() error { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
 	for i, custom := range b.cfg.Tables {
 		tablePath := fmt.Sprintf("tables[%d]", i)
 
@@ -348,13 +348,13 @@ func sortedTableNames(m map[string]*msidb.Table) []string {
 func (b *build) cabinet(target spool.Target) (cfb.Source, error) {
 	entries := make([]cab.Entry, 0, len(b.files))
 
-	for _, fi := range b.files {
+	for _, entry := range b.files {
 		entries = append(entries, cab.Entry{
-			Name:       fi.Key,
-			Size:       fi.Size,
+			Name:       entry.Key,
+			Size:       entry.Size,
 			Time:       b.opts.BuildTime,
 			Attributes: cab.AttrArchive,
-			Open:       func() (io.ReadCloser, error) { return os.Open(fi.path) },
+			Open:       func() (io.ReadCloser, error) { return os.Open(entry.path) },
 		})
 	}
 
