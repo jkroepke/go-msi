@@ -110,7 +110,9 @@ go test ./... -shuffle=on -race
   the goroutine stack: a stack move makes `msi.dll` write the handle to the old
   copy, the caller reads 0, and the next call fails with error 6 while the
   leaked handle keeps the package open. Check with
-  `GOOS=windows go test -c -gcflags=-m` and look for `moved to heap`.
+  `GOOS=windows go test -c -o /dev/null -gcflags=-m ./pkg/builder/nativetest`
+  (or `GOOS=windows go build -o /dev/null -gcflags=-m .` in
+  `docs/spec/msitest`) and look for `moved to heap`.
 - Changes that affect the generated packages need a Windows run. Use the
   `msitest` harness or the native tests on a Windows machine; state in the
   pull request which checks ran and which could not.
