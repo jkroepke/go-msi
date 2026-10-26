@@ -800,7 +800,7 @@ next page. Like the license page, an installed product's Change and Back
 step over it, since an installed product keeps its folder. `ui.dialogs`
 can follow it with `after: InstallDirDlg`.
 
-#### Launch check box
+#### Launch checkbox
 
 ```yaml
 ui:
