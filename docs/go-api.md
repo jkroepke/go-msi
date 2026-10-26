@@ -24,12 +24,11 @@ if _, err := cfg.AddTree(os.DirFS("."), "dist", "INSTALLDIR", config.TreeOptions
 	return err
 }
 
-res, err := builder.Build(cfg, builder.Options{})
+// With Output set, the package is streamed to the file.
+res, err := builder.Build(cfg, builder.Options{Output: "my-app.msi"})
 if err != nil {
 	return fmt.Errorf("%w\n%s", err, res.Diagnostics)
 }
-
-return os.WriteFile("my-app.msi", res.Package, 0o644)
 ```
 
 ## Where files come from
@@ -51,7 +50,10 @@ memory, so the files of an `fs.FS` must implement `io.ReaderAt`, as those of
 ## Adding a folder tree
 
 `Config.AddTree(fsys, root, dirID, opts)` adds every file under the folder
-`root` below the existing directory `dirID`. Use `"."` as `root` for the
+`root` below the existing directory `dirID`. A config that relies on the
+shorthands, such as `installDir` or the default feature, gets those
+directories and features from `config.ApplyDefaults`; call it before
+`AddTree`. Use `"."` as `root` for the
 whole file system; an empty `root` is an error.
 
 - Each subdirectory that holds a file, directly or further down, becomes a

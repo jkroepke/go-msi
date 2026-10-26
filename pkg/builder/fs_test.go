@@ -270,3 +270,23 @@ func TestBuildFromStreamOnlyFS(t *testing.T) {
 		t.Errorf("err = %v, want a diagnostic about io.ReaderAt: %v", err, res.Diagnostics)
 	}
 }
+
+func TestProductCodeFollowsConfigFSInputs(t *testing.T) {
+	t.Parallel()
+
+	codes := map[string]bool{}
+
+	for _, content := range []string{"one", "two"} {
+		cfg := goConfig()
+		cfg.FS = fstest.MapFS{"bin/hello.txt": {Data: []byte("hello")}, "sub/helper.bin": {Data: []byte(content)}}
+		cfg.Binaries = map[string]string{"helper": `sub\helper.bin`}
+		cfg.Components = []*config.Component{{ID: "Hello", Directory: "INSTALLDIR", Files: []*config.File{{Source: "bin/hello.txt"}}}}
+		cfg.Features[0].Components = []*config.Component{config.ComponentRef("Hello")}
+
+		codes[mustBuild(t, cfg).ProductCode] = true
+	}
+
+	if len(codes) != 2 {
+		t.Error("a binary from cfg.FS with other content gives the same ProductCode")
+	}
+}

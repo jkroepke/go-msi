@@ -7,8 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -156,18 +154,14 @@ func (b *build) deriveProductCode() error { //nolint:cyclop // one pass over the
 	return nil
 }
 
-// hashInput writes label and the content of the input file at path (absolute
-// or relative to the YAML file) to hasher. An unreadable file contributes
+// hashInput writes label and the content of the input file at path (opened
+// like every input, by openSource) to hasher. An unreadable file contributes
 // only its label; the table loaders report the error with its YAML path
 // later.
 func (b *build) hashInput(hasher io.Writer, label, path string) {
 	_, _ = io.WriteString(hasher, label+"\x00")
 
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(b.cfg.BaseDir, filepath.FromSlash(path))
-	}
-
-	file, err := os.Open(path)
+	file, err := openSource(b.cfg, nil, path)
 	if err != nil {
 		return
 	}

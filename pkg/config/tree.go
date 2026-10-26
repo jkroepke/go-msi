@@ -29,7 +29,9 @@ type TreeOptions struct {
 const MaxTreePrefixLength = MaxIdentifierLength - 22
 
 // AddTree adds every regular file under the folder root in fsys below the
-// existing directory dirID. Each subdirectory that holds a file, directly or
+// existing directory dirID. Directories and features that only the
+// shorthands (installDir, the default feature) create exist after
+// ApplyDefaults, so call it first for such a config. Each subdirectory that holds a file, directly or
 // further down, becomes a child Directory, and each file becomes its own
 // Component with that one file, so every file has its own key path and GUID.
 // A subfolder that already exists below dirID under the same long name, for
@@ -112,12 +114,12 @@ func (c *Config) treeTarget(fsys fs.FS, root, dirID string, opts TreeOptions) (*
 
 	parent := findDirectory(c.Directories, dirID)
 	if parent == nil {
-		return nil, nil, fmt.Errorf("add tree: directory %s is not defined", dirID)
+		return nil, nil, fmt.Errorf("add tree: directory %s is not defined; with installDir, call ApplyDefaults first", dirID)
 	}
 
 	feature := findFeature(c.Features, opts.Feature)
 	if feature == nil {
-		return nil, nil, fmt.Errorf("add tree: feature %q is not defined", opts.Feature)
+		return nil, nil, fmt.Errorf("add tree: feature %q is not defined; for the default feature, call ApplyDefaults first", opts.Feature)
 	}
 
 	return parent, feature, nil

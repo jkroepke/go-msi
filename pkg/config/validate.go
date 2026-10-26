@@ -809,7 +809,6 @@ func hasRegistryID(c *Component, id string) bool {
 	return false
 }
 
-// componentFiles validates the files of c and returns its default key file.
 // folderPaths holds the default target paths of the directories and the
 // files installed to them so far.
 type folderPaths struct {
@@ -876,6 +875,8 @@ func exclusiveComponents(a, b *Component) bool {
 	return a.Directory != b.Directory && a.Condition != "" && b.Condition != ""
 }
 
+// componentFiles validates the files of c and returns its default key file.
+//
 //nolint:cyclop // flat checks
 func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component, ids map[string]string, paths *folderPaths) *File {
 	versioned := 0
