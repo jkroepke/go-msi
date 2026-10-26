@@ -66,9 +66,12 @@ launchConditions:
 
 // TestMsiDLLReadsText builds packages with non-ASCII text in each database
 // code page and checks that msi.dll returns every string cell as written.
+//
+// One package at a time: parallel msi.dll views failed once with
+// ERROR_INVALID_HANDLE on windows-latest.
+//
+//nolint:paralleltest // see above
 func TestMsiDLLReadsText(t *testing.T) {
-	t.Parallel()
-
 	if testing.Short() {
 		t.Skip("native tests need msi.dll time")
 	}
@@ -85,8 +88,6 @@ func TestMsiDLLReadsText(t *testing.T) {
 		{"Hello", 0},
 	} {
 		t.Run(strconv.Itoa(tc.codepage), func(t *testing.T) {
-			t.Parallel()
-
 			path, res := buildText(t, tc.text, tc.codepage)
 			database := openDB(t, path)
 
