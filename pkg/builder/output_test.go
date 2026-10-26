@@ -161,6 +161,13 @@ func TestLargePayloadBoundedMemory(t *testing.T) { //nolint:paralleltest // meas
 	}
 
 	cfg.Components[0].Files = append(cfg.Components[0].Files, &config.File{Source: "big.bin"})
+
+	// The default LZX takes too long for 32 MB under the race detector; CI
+	// runs this test without -race as well.
+	if raceEnabled {
+		cfg.Package.Compression = "mszip"
+	}
+
 	out := filepath.Join(cfg.BaseDir, "big.msi")
 
 	var res *builder.Result

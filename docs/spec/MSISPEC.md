@@ -315,7 +315,7 @@ Unverified:
 
 ## 5. Cabinets
 
-Files are stored in MSZIP-compressed Microsoft cabinets, embedded as database streams or placed beside the `.msi`.
+Files are stored in LZX- or MSZIP-compressed Microsoft cabinets, embedded as database streams or placed beside the `.msi`.
 
 ### Structure and checksum
 
@@ -333,7 +333,7 @@ Files are stored in MSZIP-compressed Microsoft cabinets, embedded as database st
 - Blocks hold exactly 32768 uncompressed bytes; a folder's last block holds 1–32768. An empty folder has `cCFData = 0`; never write `cbUncomp = 0`.
 - `date = ((year − 1980) << 9) | (month << 5) | day`, `time = (hour << 11) | (minute << 5) | (second >> 1)`, clamped to 0x0021/0x0000 … 0xFF9F/0xBF7D.
 - `attribs`: 0x01 read-only, 0x02 hidden, 0x04 system, 0x20 archive; never 0x40 (execute); 0x80 (UTF-8 name) only when a name byte is ≥ 0x80.
-- `typeCompress` low nibble: 0 none, 1 MSZIP, 2 Quantum, 3 LZX (window 15–21 in bits 8–12). Writers use 1 or 0; real packages used 0x0001 and 0x1503.
+- `typeCompress` low nibble: 0 none, 1 MSZIP, 2 Quantum, 3 LZX (window 15–21 in bits 8–12). Writers use 3 (LZX, window 21 by default), 1 or 0; real packages used 0x0001 and 0x1503.
 - Readers of other toolchains' packages MUST handle cabinet sets: flags 0x1/0x2 with the previous/next cabinet names, and `iFolder` 0xFFFD–0xFFFF for files continued across cabinets. Retail packages built by other toolchains use them with external LZX cabinets (reported); a reader that lacks them MUST fail with a clear message instead of extracting part of the set.
 
 ```
@@ -358,6 +358,26 @@ Each `ab` is `43 4B` ("CK") plus a raw RFC 1951 stream. Its last block has BFINA
 - Levels 0 and −2 ignore the dictionary, which is legal. A tested Go 1.27.3 encoder ends each stream with an empty fixed-Huffman final block, which is valid.
 - Decode with `flate.NewReaderDict(ab[2:], last 32768 bytes of history)` and `io.ReadFull` of `cbUncomp` bytes. <!-- codespell:ignore flate -->
 - A wrong history shows up as scattered wrong bytes in otherwise plausible files, or as "invalid chunk" errors in later blocks; an extractor regression did both on a real package (reported). Test decoding on a folder of more than two blocks with matches that reach back across block boundaries, and compare every extracted file with its source.
+
+### LZX
+
+`typeCompress = 3 | window << 8` with a window of 2^15 to 2^21 bytes. The bitstream is the LZX DELTA format of [MS-PATCH] without reference data (Documented, unverified where the cabinet tests below do not cover it). It differs from MS-PATCH in a cabinet as follows:
+
+- There is no chunk-size prefix: each CFDATA payload is one frame of 32768 uncompressed bytes (the last one shorter), and `cbData` gives its size. A frame ends padded with zero bits to a 16-bit boundary.
+- Windows are 2^15 to 2^21 bytes, with 30, 32, 34, 36, 38, 42 and 50 position slots. MS-PATCH lists only 2^17 and up; 30 and 32 follow its two slots per window bit, and cabinet.dll reads go-msi's LZX:15 and LZX:16 cabinets with them (Windows CI, 2026-10-26).
+- The E8 header (1 bit, then the translation size as two 16-bit words when set) opens the folder's first frame. The window, the trees, the repeated offsets and the current block carry across the folder's frames. A new folder starting fresh is not in MS-PATCH (unverified).
+- MS-PATCH's extra-length field for matches of 257 bytes and more is LZX DELTA only. go-msi writes matches of at most 256 bytes, so that question never arises.
+
+What go-msi's writer does (`internal/lzx`):
+
+- E8 translation on, with the folder's length as the translation size; it applies to every frame of more than 10 bytes below 1 GiB, as MS-PATCH 2.2.2 says.
+- Verbatim or aligned offset blocks of 128 KiB, whichever is smaller. A block is written uncompressed instead when one of its compressed frames would exceed 32768 + 6144 bytes, the CFDATA limit; incompressible data whose byte distribution changes inside a block does that. Matches never cross a 32 KiB frame boundary (MS-PATCH 2.1.5). An aligned offset block codes the low 3 footer bits of every slot with 3 or more footer bits through the aligned tree: MS-PATCH 2.6.3 says so for the encoder, while the decoder pseudocode in 2.7 reads "more than 3". cabinet.dll follows 2.6.3: it extracts go-msi's forced aligned offset blocks byte for byte (Windows CI, 2026-10-26).
+- Path lengths are coded as deltas against the previous block (mod 17) and runs of zeros with codes 17 and 18; code 19, whose delta base MS-PATCH leaves open for runs, is never written (the reader accepts it, using the first element's previous length). Every tree has at least two codes (MS-PATCH 2.4).
+- A cost-based parser picks each frame's tokens over a binary-tree match finder; from level 7 (9 by default) it parses every frame twice. Match finding for the next frame runs while the parser walks the current one, so two cores share the work; the matches depend only on the history, so the output is the same as one after the other. The match finder searches the last 512 KiB whatever the window, so the writer holds about 10 MB however large the folder is; against a 2 MiB search that costs 1.4 % on windows_exporter (13.29 MB) and 4 % on Alloy (75.76 MB).
+
+The reader follows the same rules and also reads uncompressed blocks: after the block header, 1 to 16 padding bits (16 when the stream is already aligned), R0, R1 and R2 as little-endian u32, the bytes, and a pad byte when the block size is odd.
+
+Measured on Windows Server 2025 with makecab.exe 5.00 (2026-10-25, LZX:21 against MSZIP; the log is not yet under `msitest/results`): windows_exporter 0.32.0 (33.4 MB) 13.27 MB against 15.39 MB, Grafana Alloy 1.21.2 (414.6 MB) 75.28 MB against 106.86 MB; expand.exe was not slower on LZX. go-msi's writer gave 13.47 MB and 78.74 MB for the same files, measured on Linux; cabinet.dll (FDI and expand.exe) extracts go-msi's LZX cabinets byte for byte on Windows Server 2025: every window from 15 to 21, forced verbatim, aligned offset and uncompressed blocks, the uncompressed fallback, E8 translation with the folder length as translation size, matches 512 KiB back, history slides and system DLLs; go-msi's reader reads makecab's LZX:15 and LZX:21 cabinets (`pkg/cab/native_windows_test.go`, Windows CI, 2026-10-26). The native tests run on Windows Server 2025 only; whether Windows Server 2016 installs LZX:21 cabinets is unverified, since no 2016 machine is available for testing.
 
 ### Windows Installer usage
 
@@ -842,7 +862,7 @@ Registry, environment, service, folder and shortcut rows are applied by standard
 
 **Folders and files**: `CreateFolder` rows create their directory for components going local and `RemoveFolders` removes them when the component goes absent, the top directory included; `RemoveFiles` also removes the directories it emptied. `DuplicateFile` with a `DestFolder` that is not a known property creates the missing intermediate directories under the component's directory and copies the file there; `MoveFile` with a relative `SourceFolder` or `DestFolder` is treated as a network path and does nothing, wildcards move the first match in directory order, and a wildcard that matches a directory is not moved.
 
-**Shortcuts and icons** (reported): a `Shortcut.Target` containing `[` is formatted into a path, otherwise the row is an advertised shortcut and the component's key path is the target; `WkDir` names a Directory key; `Icon_` names an `Icon` row whose stream is written under the product's installer folder (section 8.2) and `IconIndex` null means 0; the `.lnk` is written to `[Directory_]Name.lnk` and removed at uninstall.
+**Shortcuts and icons** (reported): a `Shortcut.Target` containing `[` is formatted into a path, otherwise the row is an advertised shortcut and the component's key path is the target; `WkDir` names a Directory key; `Icon_` names an `Icon` row whose stream is written under the product's installer folder (section 8.2) and `IconIndex` null means 0; the `.lnk` is written to `[Directory_]Name.lnk` and removed at uninstall. Observed on Windows Server 2025 (RUN-28): the `.lnk` holds the formatted target, `Arguments`, `Description`, `WkDir` with a trailing backslash and `ShowCmd`; the icon goes to `%SystemRoot%\Installer\{ProductCode}` per-machine and `%APPDATA%\Microsoft\Installer\{ProductCode}` per-user and is removed at uninstall; shortcuts in the file's own component (file key path, per-machine) install and uninstall like those in an HKCU-key-path component, and an empty Start menu subfolder the engine created is removed at uninstall without a `RemoveFile` row. ICE38, ICE43 and ICE64 still ask for the HKCU key path and the `RemoveFile` row (not tested).
 
 ### Unverified (chapter 07)
 
@@ -2007,6 +2027,7 @@ Every pitfall below has cost someone an install on a customer's machine. Each ro
 | RUN-25 | P1 | I | Registry value `[INSTALLDIR]` written by v1 installed to a custom folder; v2 with `AppSearch`/`RegLocator` into `INSTALLDIR` directly, and into the public, secure property `REMEMBERED` applied by a type-51 action only when `INSTALLDIR` is empty, with and without `INSTALLDIR` on the command line, and the direct search without a `Signature` table | Where does v2 install, and does the search overwrite a command-line value? | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | RUN-26 | P1 | I | Data folder filled at runtime with files and a subfolder; `RemoveFile` rows `*` and the folder itself, and a deferred `cmd.exe /c rmdir /s /q` action conditioned on `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE` (optionally `AND DELETE_DATA="1"`) | What is left after a real uninstall and after a major upgrade with `RemoveExistingProducts` at 1401? | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | RUN-27 | P1 | I | `sc.exe failure` with a different delay per restart, a reset in seconds, `reset= INFINITE`, `reset= 0` and the 32-bit maximum | `sc qfailure` shows each step's delay and the reset period (section 17.3). | Confirmed ([results](MSISPEC-RESULTS.md)) |
+| RUN-28 | P1 | I | Non-advertised Start menu and desktop shortcuts per-machine in their own HKCU-key-path component with a `RemoveFile` row and an icon, in the file's component (with and without a subfolder), an advertised shortcut, and a per-user install | Do they install, what does the `.lnk` hold, is the subfolder removed, where does the icon go (section 8.11)? | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | SEC-01 | P1 | I | `MsiLockPermissionsEx` on a File, CreateFolder, Registry and ServiceInstall row (plus a service baseline without it); owner and group, deny ACE, false condition, `[Property]`, `<domain\user>` and `[%ENV]` in SDDLText, invalid SDDL, two true rows for one object, and a package that also has `LockPermissions` | Install elevated; read the SDDL with `Get-Acl` or `sc sdshow`, repair with `/fa` and `/fvomus` after resetting the ACL each time; expect the SDDL applied as authored and errors 1941, 1942 and 1943 as documented (section 6.2). | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | VAL-01 | P1 | S/A | Darice.cub run through `msi.dll` without MsiVal2, against `msival2.exe -f` on a clean package, the `windows_exporter` example and a duplicate `ComponentId` variant | Merge the cub into a copy, open it as a package, run `_ICESequence` with `MsiDoActionW`, collect the user messages; compare ICE, type and description, plus table, column and keys where `msival2.exe` prints them (ICE03), with `msival2.exe -f` (section 9.5). | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | SIG-01 | P0 | S/A | Unsigned control signed with a disposable RSA test certificate | Sign using `signtool sign /fd SHA256`; decode the PKCS#7, compute the logical MSI digest, verify with signtool and `Get-AuthenticodeSignature`. | Confirmed (Server 2025) |

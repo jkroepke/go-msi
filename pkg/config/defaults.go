@@ -1,7 +1,9 @@
 package config
 
 import (
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/jkroepke/go-msi/pkg/msidb"
 )
@@ -11,7 +13,7 @@ const (
 	DefaultLanguage         = 1033
 	DefaultInstallerVersion = "5.0"
 	DefaultCodepage         = 1252
-	DefaultCompression      = "mszip"
+	DefaultCompression      = "lzx"
 	DefaultCabinet          = "product.cab"
 	DefaultRemoveOld        = "afterInstallInitialize"
 	PreserveRemoveOld       = "afterInstallExecute"
@@ -20,37 +22,45 @@ const (
 	DefaultDowngradeMessage = "A later version of [ProductName] is already installed. Setup will now exit."
 	DefaultRestartDelay     = time.Minute
 
+	// ShowNormal, ShowMaximized and ShowMinimized are the window states of a
+	// shortcut's show setting.
+	ShowNormal    = "normal"
+	ShowMaximized = "maximized"
+	ShowMinimized = "minimized"
+
 	// Auto marks a value that the builder derives (GUIDs, file versions).
 	Auto = "auto"
 	// None marks an explicitly absent value.
 	None = "none"
-)
 
-func ptr[T any](v T) *T { return &v }
+	// executeImmediate is the execute value of an action outside the
+	// install script.
+	executeImmediate = "immediate"
+)
 
 // ApplyDefaults fills in every unset field with its default. It only sets
 // empty fields, so applying it twice changes nothing. Load and Validate call
 // it; a Config built in Go can call it directly.
-func ApplyDefaults(cfg *Config) {
-	p := &cfg.Product
-	if p.Language == nil {
-		p.Language = ptr(DefaultLanguage)
+func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat list of independent defaults
+	product := &cfg.Product
+	if product.Language == nil {
+		product.Language = new(DefaultLanguage)
 	}
 
-	if p.ProductCode == "" {
-		p.ProductCode = Auto
+	if product.ProductCode == "" {
+		product.ProductCode = Auto
 	}
 
-	if p.PackageCode == "" {
-		p.PackageCode = Auto
+	if product.PackageCode == "" {
+		product.PackageCode = Auto
 	}
 
-	if p.Description == "" {
-		p.Description = DefaultDescription(p)
+	if product.Description == "" {
+		product.Description = DefaultDescription(product)
 	}
 
-	if p.Comments == "" {
-		p.Comments = DefaultComments(p)
+	if product.Comments == "" {
+		product.Comments = DefaultComments(product)
 	}
 
 	pkg := &cfg.Package
@@ -71,17 +81,20 @@ func ApplyDefaults(cfg *Config) {
 	}
 
 	if pkg.Cabinet == "" {
-		pkg.Cabinet = p.Name + ".cab"
-		if msidb.CheckStreamName(pkg.Cabinet) != nil || !plainFileName(pkg.Cabinet) {
-			// The product name may be longer than a stream name or use
-			// characters a stream name cannot hold, such as non-ASCII
-			// letters with case.
+		// After its # the Cabinet value is an identifier (ICE03), so keep
+		// only the product name's identifier characters.
+		pkg.Cabinet = strings.Map(identifierRune, product.Name) + ".cab"
+		if !IsIdentifier(pkg.Cabinet) || msidb.CheckStreamName(pkg.Cabinet) != nil ||
+			strings.ContainsFunc(product.Name, func(r rune) bool { return r > unicode.MaxASCII }) {
+			// The product name may be longer than a stream name, start
+			// with a digit, hold no identifier characters at all or
+			// letters that dropping would garble.
 			pkg.Cabinet = DefaultCabinet
 		}
 	}
 
 	if pkg.LongFileNames == nil {
-		pkg.LongFileNames = ptr(true)
+		pkg.LongFileNames = new(true)
 	}
 
 	if pkg.Summary.Title == "" {
@@ -93,7 +106,7 @@ func ApplyDefaults(cfg *Config) {
 	}
 
 	if pkg.Summary.Author == "" {
-		pkg.Summary.Author = p.Manufacturer
+		pkg.Summary.Author = product.Manufacturer
 	}
 
 	expandShorthands(cfg)
@@ -129,42 +142,66 @@ func ApplyDefaults(cfg *Config) {
 		}
 	})
 
-	for _, c := range cfg.Components {
-		defaultComponent(c)
+	for _, comp := range cfg.Components {
+		defaultComponent(comp)
+
+		for _, file := range comp.Files {
+			for _, shortcut := range file.Shortcuts {
+				if shortcut != nil {
+					defaultShortcut(shortcut, product, comp)
+				}
+			}
+		}
 	}
 
-	for _, ca := range cfg.CustomActions {
-		if ca.Execute == "" {
-			ca.Execute = "immediate"
+	for _, action := range cfg.CustomActions {
+		if action.Execute == "" {
+			action.Execute = executeImmediate
 		}
 
-		if ca.Impersonate == nil {
-			ca.Impersonate = ptr(true)
+		if action.Impersonate == nil {
+			action.Impersonate = new(true)
 		}
 
 		// exec actions must state how their exit code is handled; the
 		// validator reports a missing value instead of defaulting it.
-		if ca.Return == "" && ca.Exec == nil && ca.ExecProperty == nil {
-			ca.Return = "check"
+		if action.Return == "" && action.Exec == nil && action.ExecProperty == nil {
+			action.Return = "check"
 		}
 
-		if ca.Exec != nil && ca.Exec.Directory == "" {
-			ca.Exec.Directory = "TARGETDIR"
+		if action.Exec != nil && action.Exec.Directory == "" {
+			action.Exec.Directory = "TARGETDIR"
 		}
 	}
 
-	for _, fw := range cfg.Firewall {
-		if fw.Protocol == "" {
-			fw.Protocol = "tcp"
+	for _, rule := range cfg.Firewall {
+		if rule.Protocol == "" {
+			rule.Protocol = "tcp"
 		}
 
-		if len(fw.Profiles) == 0 {
-			fw.Profiles = StringList{"all"}
+		if len(rule.Profiles) == 0 {
+			rule.Profiles = StringList{"all"}
 		}
 	}
 
 	if cfg.UI.Wizard == "" {
-		cfg.UI.Wizard = "none"
+		cfg.UI.Wizard = None
+	}
+}
+
+// defaultShortcut names a shortcut after the product and starts it in its
+// file's folder.
+func defaultShortcut(shortcut *Shortcut, product *Product, comp *Component) {
+	if shortcut.Name == "" {
+		shortcut.Name = product.Name
+	}
+
+	if shortcut.WorkingDirectory == "" {
+		shortcut.WorkingDirectory = comp.Directory
+	}
+
+	if shortcut.Show == "" {
+		shortcut.Show = ShowNormal
 	}
 }
 
@@ -230,90 +267,90 @@ func preserves(cfg *Config) bool {
 	return false
 }
 
-func defaultComponent(c *Component) {
-	if c.Preserve {
-		c.NeverOverwrite = true
+func defaultComponent(comp *Component) { //nolint:cyclop,gocognit // a flat list of independent defaults
+	if comp.Preserve {
+		comp.NeverOverwrite = true
 	}
 
-	if c.GUID == "" {
-		c.GUID = Auto
+	if comp.GUID == "" {
+		comp.GUID = Auto
 	}
 
-	if c.Bitness == "" {
-		c.Bitness = Auto
+	if comp.Bitness == "" {
+		comp.Bitness = Auto
 	}
 
-	for _, f := range c.Files {
-		if f.Version == "" {
-			f.Version = Auto
+	for _, file := range comp.Files {
+		if file.Version == "" {
+			file.Version = Auto
 		}
 
-		if f.Language == "" {
-			f.Language = Auto
+		if file.Language == "" {
+			file.Language = Auto
 		}
 
-		if f.Vital == nil {
-			f.Vital = ptr(true)
+		if file.Vital == nil {
+			file.Vital = new(true)
 		}
 	}
 
-	for _, r := range c.Registry {
+	for _, r := range comp.Registry {
 		if r.Type == "" {
 			r.Type = "string"
 		}
 	}
 
-	for _, s := range c.Services {
-		if s.DisplayName == "" {
-			s.DisplayName = s.Name
+	for _, svc := range comp.Services {
+		if svc.DisplayName == "" {
+			svc.DisplayName = svc.Name
 		}
 
-		if s.Type == "" {
-			s.Type = "ownProcess"
+		if svc.Type == "" {
+			svc.Type = "ownProcess"
 		}
 
-		if s.Start == "" {
-			s.Start = "auto"
+		if svc.Start == "" {
+			svc.Start = "auto"
 		}
 
-		if s.ErrorControl == "" {
-			s.ErrorControl = "normal"
+		if svc.ErrorControl == "" {
+			svc.ErrorControl = "normal"
 		}
 
-		ctl := &s.Control
+		ctl := &svc.Control
 		for _, b := range []**bool{&ctl.StartOnInstall, &ctl.StopOnInstall, &ctl.StopOnUninstall, &ctl.DeleteOnUninstall, &ctl.Wait} {
 			if *b == nil {
-				*b = ptr(true)
+				*b = new(true)
 			}
 		}
 
-		if s.Recovery != nil && s.Recovery.RestartDelay == 0 {
-			s.Recovery.RestartDelay = Duration(DefaultRestartDelay)
+		if svc.Recovery != nil && svc.Recovery.RestartDelay == 0 {
+			svc.Recovery.RestartDelay = Duration(DefaultRestartDelay)
 		}
 	}
 
-	for _, e := range c.EventLog {
-		if e.Log == "" {
-			e.Log = "Application"
+	for _, source := range comp.EventLog {
+		if source.Log == "" {
+			source.Log = "Application"
 		}
 
-		if e.TypesSupported == nil {
-			e.TypesSupported = ptr(7)
+		if source.TypesSupported == nil {
+			source.TypesSupported = new(7)
 		}
 	}
 
-	for _, e := range c.Environment {
-		if e.Action == "" {
-			e.Action = "set"
+	for _, env := range comp.Environment {
+		if env.Action == "" {
+			env.Action = "set"
 		}
 
-		if e.Scope == "" {
-			e.Scope = "machine"
+		if env.Scope == "" {
+			env.Scope = "machine"
 		}
 
 		// A removal has nothing to undo at uninstall.
-		if e.RemoveOnUninstall == nil {
-			e.RemoveOnUninstall = ptr(e.Action != "remove")
+		if env.RemoveOnUninstall == nil {
+			env.RemoveOnUninstall = new(env.Action != "remove")
 		}
 	}
 }
@@ -342,4 +379,14 @@ func DefaultDescription(p *Product) string {
 // DefaultComments are the summary comments of a product that sets none.
 func DefaultComments(p *Product) string {
 	return "This installer database contains the logic and data required to install " + p.Name + "."
+}
+
+// identifierRune keeps the ASCII letters, digits, underscores and periods
+// of an identifier and drops every other rune.
+func identifierRune(r rune) rune {
+	if r == '_' || r == '.' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' {
+		return r
+	}
+
+	return -1
 }

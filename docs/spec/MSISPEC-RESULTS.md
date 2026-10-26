@@ -197,6 +197,7 @@ Silent-failure cases a producer has to guard against itself:
 | RUN-25 | Confirmed | [direct-cmdline](msitest/results/RUN-25/direct-cmdline/log.md), [guarded-cmdline](msitest/results/RUN-25/guarded-cmdline/log.md), [direct-nosignature](msitest/results/RUN-25/direct-nosignature/log.md); `AppSearch` into `INSTALLDIR` overrides the command line; the guarded type-51 form does not; no `Signature` table gives 2228/1603; [details](#use-case-gap-cases-run-24-to-run-27) |
 | RUN-26 | Confirmed | [removefile-upgrade](msitest/results/RUN-26/removefile-upgrade/log.md), [purge-upgrade](msitest/results/RUN-26/purge-upgrade/log.md); `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-run-24-to-run-27) |
 | RUN-27 | Confirmed | [per-step](msitest/results/RUN-27/per-step/log.md); per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-run-24-to-run-27) |
+| RUN-28 | Confirmed | [hkcu-folder](msitest/results/RUN-28/hkcu-folder/log.md), [file-component](msitest/results/RUN-28/file-component/log.md), [file-component-folder](msitest/results/RUN-28/file-component-folder/log.md), [advertised](msitest/results/RUN-28/advertised/log.md), [per-user](msitest/results/RUN-28/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-run-28) |
 | UI-01 | Confirmed | Wizard rendering on Windows Server 2025, go-msi packages driven by hand and by window messages, with PrintWindow and screen captures (2026-10-26); [details](#wizard-rendering-ui-01) |
 | SEC-01 | Confirmed | File, [CreateFolder](msitest/results/SEC-01/createfolder/log.md), [Registry](msitest/results/SEC-01/registry/log.md) and [ServiceInstall](msitest/results/SEC-01/service/log.md) rows get the authored DACL; [`/fa` and `/fvomus` restore it](msitest/results/SEC-01/file/log.md); [owner and group](msitest/results/SEC-01/file-owner-group/log.md) are set; `[Property]` stays literal (1943) but [`<[%USERDOMAIN]\[%USERNAME]>`](msitest/results/SEC-01/account-angle-env/log.md) and [`<BUILTIN\Users>`](msitest/results/SEC-01/account-angle-builtin/log.md) resolve; invalid SDDL 1943, two true rows 1942, both tables 1941; [deny ACE for `BU`](msitest/results/SEC-01/file-deny-ace/log.md) leaves the file on uninstall |
 | VAL-01 | Confirmed | [log](msitest/results/VAL-01/msival2-compare/log.md); the Go runner and `msival2.exe` agree on all three packages (1, 25 and 26 warning and error findings; Info lines left out); ICE08 reports the duplicate GUID |
@@ -313,3 +314,39 @@ values unchanged. The action ignores the exit code of `sc.exe`, so these
 read-backs, not the install exit codes, are the evidence. Only the read-back
 is tested: what a reset of 0 does when the service fails is not.
 
+## Shortcuts (RUN-28)
+
+Run on 2026-10-26 on Windows Server 2025 by
+[`msitest`](msitest/cases_shortcut.go), elevated, with `msiexec /qn`. Each
+variant installs `app.exe` to `Program Files\MsiSpecTest` with a Start menu
+shortcut (arguments `/user`, a description, `WkDir` `INSTALLDIR`, `ShowCmd`
+7) and a desktop shortcut without them, then uninstalls. The shell's own
+parser (`WScript.Shell.CreateShortcut`) reads the `.lnk` files back.
+
+| Variant | Layout | Shortcuts land in | Result |
+| --- | --- | --- | --- |
+| hkcu-folder | `ALLUSERS=1`; own component with an HKCU registry key path, Start menu subfolder with a `RemoveFile` row, `Icon` row | `ProgramData\…\Programs\MsiSpecTest`, `Users\Public\Desktop` | installed and removed |
+| file-component | `ALLUSERS=1`; shortcuts in the file's component (file key path), directly in `ProgramMenuFolder` and `DesktopFolder` | `ProgramData\…\Programs`, `Users\Public\Desktop` | installed and removed |
+| file-component-folder | as file-component, in a Start menu subfolder, no `RemoveFile` or `CreateFolder` row | `ProgramData\…\Programs\MsiSpecTest` | installed and removed, **subfolder removed** |
+| advertised | `Target` is the feature, `Icon` row, file's component | as file-component | installed and removed |
+| per-user | `ALLUSERS` absent, hkcu-folder layout | `%APPDATA%\…\Programs\MsiSpecTest`, `%USERPROFILE%\Desktop` | installed and removed |
+
+- The `.lnk` holds the resolved `[#f_app]` path as its target, the
+  arguments, the description, the working folder with a trailing backslash and
+  window style 7; a null `ShowCmd` reads back as 1 (normal).
+- A non-advertised shortcut with an `Icon_` points at
+  `%SystemRoot%\Installer\{ProductCode}\app.ico,0` for a per-machine install
+  and at `%APPDATA%\Microsoft\Installer\{ProductCode}\app.ico,0` for a
+  per-user one; the engine writes the icon there and removes it at uninstall.
+  Without an `Icon_` the location is empty and the shell shows the target's
+  icon.
+- WScript reads the advertised shortcut's target as the installed
+  `app.exe`; whether the `.lnk` carries a Darwin descriptor is not checked.
+- The per-user install of an elevated administrator still put the file in
+  `C:\Program Files`; only the profile folders moved.
+- The engine removed the empty Start menu subfolder it had created at
+  uninstall in every variant, with or without a `RemoveFile` row. ICE64 still
+  asks for one; that the engine needs it is not shown here.
+- Not covered: the ICE verdicts on these layouts (ICE38, ICE43, ICE57, ICE64),
+  repair of a deleted shortcut, a second user's profile after a per-machine
+  install, and `MsiShortcutProperty`.

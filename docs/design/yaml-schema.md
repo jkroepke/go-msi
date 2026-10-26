@@ -223,8 +223,8 @@ them braced and upper case.
 | `scope` | enum | `perMachine` | `perMachine` (`ALLUSERS=1`) or `perUser` (no `ALLUSERS`) |
 | `installerVersion` | string | `"5.0"` | Page Count = major × 100 + minor. x86: 1.0 to 5.0, x64: 2.0 to 5.0, arm64: 5.0 |
 | `codepage` | int | `1252` | Database code page, section 2.3 |
-| `compression` | enum | `mszip` | `mszip` or `none` (stored blocks) |
-| `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters (fewer outside `0-9A-Za-z._`). The default is `product.cab` when `<name>.cab` cannot be a stream name or a plain filename |
+| `compression` | enum | `lzx` | `lzx` (LZX with a 2 MB window), `lzx:15` … `lzx:21` (a window of 2^N bytes), `mszip` or `none` (stored blocks) |
+| `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters (fewer outside `0-9A-Za-z._`). ICE03 wants an identifier (letters, digits, `_` and `.`, not starting with a digit), so the default keeps only those characters of `<name>`, and an explicit name that is no identifier warns. The default is `product.cab` when that is no identifier, cannot be a stream name or `<name>` has non-ASCII characters |
 | `longFileNames` | bool | `true` | `false` sets Word Count bit 1 and requires 8.3 names |
 | `summary` | map | | `title` (`Installation Database`), `keywords` (`Installer`), `author` (manufacturer) |
 
@@ -287,10 +287,41 @@ installDir:
   id: APPLICATIONFOLDER               # Directory key and property, default INSTALLDIR
   name: Example/windows_exporter      # "/" nests folders, default product.name
   parent: ProgramFiles64Folder        # a standard folder, default by platform and scope
+  remember: true                      # reuse the folder of the last install, default false
 ```
 
 The generated install dir is configurable, so `msiexec /i … INSTALLDIR=D:\App`
 and the wizard's Browse button can move it, and its ID must be upper case.
+
+`remember: true` keeps a custom install dir across major upgrades. The
+package writes the folder to the registry value `InstallDir` below
+`HKLM\Software\<manufacturer>\<name>` (`HKCU` for `perUser`), in a component
+`RememberInstallDir` that joins every top-level feature. The next install
+searches that value with `AppSearch` into `<ID>_REMEMBERED` (a raw
+`RegLocator` search, in the 64-bit view on x64 and arm64, plus the empty
+`Signature` table that `AppSearch` needs) and a type-51 action
+`RestoreInstallDir` copies it into the install dir only when
+`<ID>_REMEMBERED AND NOT <ID>`. RUN-25 tested this form on x64 per machine,
+in the execute sequence of a quiet install: the upgrade went back to the
+remembered folder, and `INSTALLDIR=` on the command line still won, while a
+search straight into `INSTALLDIR` overrode the command line, and a search
+without a `Signature` table failed with 2228 and 1603. The builder also
+schedules both actions in the UI sequence so that the wizard shows the
+remembered folder; that, `perUser`, x86, arm64 and a 32-bit folder in a
+64-bit package were not tested.
+
+The install dir must be a configurable directory with an upper-case ID, and
+the IDs `RememberInstallDir` and `RestoreInstallDir` are taken. The component
+and the search use the 64-bit registry view in a 64-bit package, and the
+32-bit view when the install dir is below a 32-bit folder or the package is
+x86. So the folder should not be found after a change of platform or of
+that parent folder, nor after a version without `remember`, and the upgrade
+should use the default folder; this follows from the search but was not
+tested. The search does not check that the folder still
+exists: a remembered folder on a drive that is gone is applied as it is,
+and what the install does then was not tested. Do not write your own
+registry value `InstallDir` under the same key, which the generated
+component owns.
 When `directories` defines the install dir's ID, that node is used as
 written, including its `configurable` setting. A package with a directory
 tree and no `installDir` key gets the install dir only when a component
@@ -333,6 +364,9 @@ directories:
   `TARGETDIR`. The builder adds `TARGETDIR` with `SourceDir` itself.
 - `name` may be `short|long`. Without a short part the builder generates one
   from a hash of the parent key and the long name (specification section 11.3).
+- File and directory names must be valid on Windows: no `\/:*?"<>|` or
+  control characters, no trailing dot or space, and no device name such as
+  `CON`, `CONIN$`, `nul.txt` or `COM1`, in either half of `short|long`.
 - A 64-bit package that installs a component under `ProgramFilesFolder`,
   `CommonFilesFolder` or `SystemFolder` gets a warning (ICE80): those are the
   32-bit folders on 64-bit Windows.
@@ -404,6 +438,7 @@ components:
     permanent: false
     neverOverwrite: false
     preserve: false                  # neverOverwrite + a late removeOld, see below
+    purge: false                     # true or {condition: …}, see below
     sharedDllRefCount: false
     keyPath: windows_exporter.exe   # file name, registry id or "directory"
     bitness: auto                    # auto (from platform) | 32 | 64
@@ -416,7 +451,11 @@ GUID, as the component rules require. A pinned GUID is kept as it is (the
 windows_exporter executable component keeps the GUID of its released
 packages). `none` writes a NULL ComponentId and is only accepted with
 `permanent: true`, because such a component is never removed (specification
-section 8.4).
+section 8.4). Two components must not end up with one ComponentId (ICE08):
+two `auto` components with the same bitness and key path, for example two
+components in one directory with only environment variables and so the
+directory as key path, need a pinned `guid` on one of them. The builder
+reports this, because it resolves the key paths; `go-msi validate` does not.
 
 **Preserved configuration.** `preserve: true` keeps a configuration file
 or registry value as the user left it across major upgrades. It sets
@@ -450,6 +489,57 @@ components:
       - source: config.alloy
 ```
 
+**Data removal.** `purge` deletes the component's directory with every
+file and subfolder in it when the product is uninstalled, including what the
+application created there at runtime, but not on the uninstall half of a
+major upgrade. `RemoveFile` rows cannot do this: in RUN-26 a `*` row left a subfolder
+behind, and the rows also deleted files during a major upgrade. The builder
+writes a deferred action (type 3170, no-impersonate, in a per-machine x64
+package) running `"[System64Folder]cmd.exe" /c rmdir /s /q "[DIR]."`
+right before InstallFinalize. An arm64 package gets the same action, a
+per-user package type 1122 and an x86 package `[SystemFolder]cmd.exe`;
+none of these was tested. The action has the
+condition `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE AND DIR`. RUN-26 tested
+this command at 6590 without `AND DIR`; the builder adds it so that an empty
+property never runs `rmdir` on the working folder. RUN-26 removed the old
+product at 1401 only, so "not on upgrade" is untested with a late
+`removeOld` (for example with `preserve`).
+`purge: {condition: DELETE_DATA="1"}` adds a condition, for example an
+opt-in property set on the command line or by a checkbox; the public
+properties it names are added to `SecureCustomProperties`, as in RUN-26.
+The action ignores failures; what stays when a file is in use, and whether a
+rollback after the action restores anything, were not tested. The condition does not look at the component's state, so the
+folder is deleted even when the component was never installed.
+
+The directory must be a named folder below a standard folder, and no folder
+from it up to and including that standard folder may have a path that something besides
+the Directory table can set (section 8.3 of the specification): a public
+(upper-case) ID, which a command line such as `DATADIR=C:\` can set
+(section 8.3; not tested at uninstall), `configurable`, a `setDirectory` or `setProperty` action, a
+`properties` entry or a dialog field. The action deletes whatever the
+property points to, so any of these could move the purge out of the
+product's folders. Whether the installer ignores a private directory ID
+given on the command line was not tested. A standard folder nested below
+another folder is rejected too, because the installer resolves its path
+itself, and so is a `%` in any folder name, because `cmd.exe` expands
+`%NAME%` as an environment variable, and a hand-written short name
+(`SHORT~1|Long`), because with `SHORTFILENAMES=1` it can resolve to another
+folder's 8.3 alias. A permanent component in the purged folder or below it
+is an error: the component would outlive the product, but its folder would
+not. Data below the install dir therefore cannot be purged;
+use a path below a fixed standard folder other than TARGETDIR (public, and
+its drive can change), whose generated IDs are private, such as
+`CommonAppDataFolder/Vendor/Product`.
+
+```yaml
+components:
+  - id: Data
+    directory: CommonAppDataFolder/Example/App/data
+    createFolder: true
+    purge:
+      condition: DELETE_DATA="1"
+```
+
 **Key path.** Default: the first file, else the first registry value, else
 the directory, which gets a `CreateFolder` row (ICE18). A component with a
 service must have the service executable as key file.
@@ -458,7 +548,7 @@ service must have the service executable as key file.
 
 | Key | Default | Notes |
 |---|---|---|
-| `source` | required | Path relative to the YAML file |
+| `source` | required | Path relative to the YAML file; `\` counts as `/` on every OS |
 | `name` | base name of `source` | `short|long` allowed |
 | `id` | the name, if it is a legal identifier and unique, else generated | File key |
 | `version` | `auto` | `auto`, a four-field version, the ID of another file (companion), or `none`; never empty (section 2.2) |
@@ -469,6 +559,60 @@ service must have the service executable as key file.
 | `readOnly`, `hidden`, `system` | `false` | |
 
 Unversioned files get an `MsiFileHash` row automatically.
+
+Two files must not resolve to the same target path, even through two
+directory IDs for one folder, and a file must not have the path of a
+directory. The one exception is two conditional components in different
+directory IDs, for example an x64 and an x86 variant of one file: that is a
+warning (ICE30), and the conditions must never both be true. ICE30 also
+only warns for two conditional components in one directory ID; go-msi keeps
+that an error. The
+components still need different ComponentIds; an automatic GUID differs by
+bitness and key file, otherwise set `guid` on one of them.
+
+**Shortcuts.** A file can list `shortcuts`, each a non-advertised `.lnk`
+to that file:
+
+```yaml
+files:
+  - source: viewer.exe
+    shortcuts:
+      - description: View example files         # Start menu > Programs > product.name
+      - directory: DesktopFolder                 # the desktop
+      - name: Viewer (safe mode)                 # default: product.name, no .lnk
+        directory: ProgramMenuFolder/Example     # an id, a standard folder or a folder path
+        arguments: --safe-mode                   # formatted text
+        workingDirectory: INSTALLDIR             # default: the file's directory
+        icon: viewer.ico                         # a key of icons; default: the file's own icon
+        iconIndex: 0                             # needs icon
+        show: minimized                          # normal (default), maximized or minimized
+```
+
+`directory` defaults to `ProgramMenuFolder` and is resolved like a
+component's directory, so `ProgramMenuFolder/Example` creates the Start menu
+folder. In a per-machine package the Start menu and desktop are the common
+ones for all users, in a per-user package the user's own (RUN-28). Two
+shortcuts with one name in one folder are an error, and a name ending in
+`.lnk` gets a warning, because Windows adds the extension. The target
+`[#id]` must fit the 72 characters of `Shortcut.Target`, so a file with
+shortcuts has an ID of at most 69 characters.
+
+The builder puts the shortcuts of one component's files into a generated
+component of their own: in the folder of the first shortcut, with the
+component's condition, 64-bit unless that folder is a 32-bit one (ICE80),
+an HKCU value under `Software\[Manufacturer]\[ProductName]` as its key path
+(ICE38, ICE43), `RemoveFile` rows for the folders it creates below a
+profile folder (ICE64), and in every feature of the file's component. In a
+per-user package that folder must not be a per-machine one (ICE105).
+RUN-28 installed and removed shortcuts from an own HKCU-keyed component and
+from the file's own component alike, and removed an empty Start menu folder
+without a `RemoveFile` row; the Windows tests run the ICE suite on the
+generated layout of a per-machine package (desktop, Start menu, a Start
+menu subfolder and an icon). A per-user package still gets the ICE38
+warning of section 4.4 for its files. An `icon` is stored in the `Icon` table and
+written to the product's installer folder; without one the shell shows the
+target's icon, and `iconIndex` without `icon` is an error. Advertised
+shortcuts are not supported (section 6).
 
 **Permissions.** A file, registry value, service or the component's folder
 can carry a `permissions` block (`folderPermissions` on the component, which
@@ -675,6 +819,36 @@ shifts, when a chain runs into another fixed number. After numbering it
 checks deferred actions against InstallInitialize … InstallFinalize (ICE77)
 and RemoveExistingProducts against the windows of section 4.3.
 
+`when` names the case a placement runs in, ANDed with its `condition`:
+
+| `when` | Condition |
+|---|---|
+| `install` | `NOT Installed AND NOT <upgrade properties>` (`NOT Installed` with `upgrade: false`) |
+| `upgrade` | `NOT Installed AND <upgrade properties>`; needs `upgrade` |
+| `uninstall` | `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE` |
+| `maintenance` | `Installed AND NOT REMOVE~="ALL"`: repair, change, and also patches and minor upgrades |
+
+```yaml
+schedule:
+  - { sequence: execute, before: RemoveFiles, when: uninstall, condition: DELETE_DATA="1" }
+```
+
+The upgrade properties are `upgrade.property` and the `property` of every
+`upgrade.related` row without `onlyDetect`, ORed. `when` is allowed in the
+`execute` sequence, and `install` and `upgrade` also in `ui`; the
+administrative sequences have none of these properties. The builder warns
+when `install` or `upgrade` runs before FindRelatedProducts, which sets the
+upgrade properties, and when `uninstall` or `maintenance` runs before
+InstallValidate, since REMOVE is reliable only after it (specification
+section 8.8).
+
+RUN-26 tested the `uninstall` condition on a deferred execute action near
+InstallFinalize: true on `msiexec /x`, false while a major upgrade with
+RemoveExistingProducts at 1401 removed the old product. Other `removeOld`
+windows, a removal from the maintenance dialog and the other three
+conditions follow from the Installed, REMOVE and upgrade properties and
+were not tested.
+
 Standard actions are added automatically for the tables a package uses. An
 action used only as an anchor is added at its default number.
 
@@ -688,7 +862,8 @@ binaries:
 ```
 
 Keys are stream names, limited by the 62-character stream limit (section
-2.3). Binaries are for `dll` custom actions and for the UI's bitmaps.
+2.3). Icons are for `product.arp.icon` and shortcut `icon`s; binaries are
+for `dll` custom actions and for the UI's bitmaps.
 
 ### 4.11 `firewall` helper
 
@@ -749,6 +924,13 @@ ui:
           label: Comma-separated list of collectors to use. Use '[\[]defaults[\]]' for the defaults.
         - property: LISTEN_PORT
           label: Port to listen on
+        - property: API_TOKEN
+          label: API token
+          type: password              # text (default) | password | checkbox
+        - property: DELETE_DATA
+          label: '&Delete the data folder on uninstall'
+          type: checkbox
+          value: "1"                  # what a checked box sets, default 1
 ```
 
 The wizards are written from scratch for go-msi, including the bitmaps,
@@ -758,7 +940,19 @@ feature tree (`CustomizeDlg`) with Browse and disk usage. Both include
 maintenance (Repair and Remove; Change with the feature tree), cancel, user
 exit, fatal error, files in use, Restart Manager and the error dialog. Added
 dialogs are laid out automatically: one label and one edit field per
-property (at most four per dialog), Back, Next and Cancel. `after` names the
+property (at most four per dialog), Back, Next and Cancel. A `password`
+field is an edit field with the Password attribute (0x200000), and its
+property is added to `MsiHiddenProperties`. A `checkbox` field is a
+checkbox with the label as its text, in the space of a label and an edit
+field; its `CheckBox` row holds `value`. Two checkboxes on one property must
+set the same value. Microsoft's documentation reports that a checked box
+sets the property to `value`, that a box starts checked when its property has any
+value, and that the password characters are masked; none of this, what an
+unchecked box leaves in the property, or whether the password stays out of
+the log was tested on Windows. The validator warns when a checkbox
+property has a default in `properties`, since the box would start checked.
+An `&` in a checkbox label marks the access key, as in `&Delete`; write
+`&&` for a literal `&`. Text and password labels show `&` as it is. `after` names the
 page the dialog follows: `WelcomeDlg`, `CustomizeDlg` or an added dialog.
 `none` writes no UI tables; silent installs never depend on the UI in any
 mode. Without feature selection (`none`, `minimal`) `ARPNOMODIFY` is set.
@@ -907,8 +1101,10 @@ the generated tables, and the cabinet round trip.
 
 ## 6. Not in version 1
 
-Multiple languages in one package, advertised installs, script custom
-actions, and a top-level file harvester. A future `schema: go-msi/v2` can add
+Multiple languages in one package, advertised installs and advertised
+shortcuts, script custom
+actions, and a top-level file harvester (Go callers have
+`config.Config.AddTree`, see [Go API](../go-api.md)). A future `schema: go-msi/v2` can add
 them without changing the meaning of a v1 file.
 
 Patches, transforms, merge modules and bundles are out of scope for good

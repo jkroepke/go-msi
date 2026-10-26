@@ -42,6 +42,8 @@ var schema = map[string]tbl{
 	"Signature":              {Cols: []string{"Signature s72", "FileName s255", "MinVersion S20", "MaxVersion S20", "MinSize I4", "MaxSize I4", "MinDate I4", "MaxDate I4", "Languages S255"}, Keys: []string{"Signature"}},
 	"RemoveFile":             {Cols: []string{"FileKey s72", "Component_ s72", "FileName L255", "DirProperty s72", "InstallMode i2"}, Keys: []string{"FileKey"}},
 	"CreateFolder":           {Cols: []string{"Directory_ s72", "Component_ s72"}, Keys: []string{"Directory_", "Component_"}},
+	"Shortcut":               {Cols: []string{"Shortcut s72", "Directory_ s72", "Name l128", "Component_ s72", "Target s72", "Arguments S255", "Description L255", "Hotkey I2", "Icon_ S72", "IconIndex I2", "ShowCmd I2", "WkDir S72", "DisplayResourceDLL S255", "DisplayResourceId I2", "DescriptionResourceDLL S255", "DescriptionResourceId I2"}, Keys: []string{"Shortcut"}},
+	"Icon":                   {Cols: []string{"Name s72", "Data v0"}, Keys: []string{"Name"}},
 }
 
 type payload struct {
@@ -73,6 +75,7 @@ type pkg struct {
 	SkipCab        bool
 	CompAttr       map[string]int // extra Component attribute bits per file key
 	NoSignature    bool           // leave out the empty Signature table AppSearch needs
+	Icons          []payload      // Icon rows; Key is the Icon name
 }
 
 func newGUID() string {
@@ -322,6 +325,9 @@ func (p *pkg) build(out string) error {
 			tables["Signature"] = [][]string{}
 		}
 	}
+	if len(p.Icons) > 0 {
+		tables["Icon"] = [][]string{}
+	}
 	if forcedCodepage >= 0 {
 		fc := filepath.Join(dir, "_ForceCodepage.idt")
 		os.WriteFile(fc, []byte(fmt.Sprintf("\r\n\r\n%d\t_ForceCodepage\r\n", forcedCodepage)), 0o644)
@@ -339,6 +345,13 @@ func (p *pkg) build(out string) error {
 		t.Name = n
 		t.Rows = tables[n]
 		if err := importTable(db, dir, t); err != nil {
+			return err
+		}
+	}
+	for _, icon := range p.Icons {
+		ip := filepath.Join(dir, "icon-"+icon.Key)
+		os.WriteFile(ip, icon.Data, 0o644)
+		if err := insertStream(db, "Icon", icon.Key, ip); err != nil {
 			return err
 		}
 	}

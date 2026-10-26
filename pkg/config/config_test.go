@@ -87,7 +87,7 @@ func TestParseErrors(t *testing.T) {
 		yaml string
 		want string
 	}{
-		"unknown key":      {"schema: go-msi/v1\nproduct: {nmae: x}\n", "nmae"},
+		"unknown key":      {"schema: go-msi/v1\nproduct: {nickname: x}\n", "nickname"},
 		"unknown nested":   {"schema: go-msi/v1\nproperties: {A: {valeu: x}}\n", "valeu"},
 		"schema":           {"schema: go-msi/v2\n", "go-msi/v1"},
 		"undefined var":    {"schema: go-msi/v1\nproduct: {version: \"${NOPE}\"}\n", "undefined variable ${NOPE}"},
@@ -155,17 +155,17 @@ properties: {P: "${PORT}"}
 func TestPlatformTokens(t *testing.T) {
 	t.Parallel()
 
-	for in, want := range map[string]config.Platform{
+	for input, want := range map[string]config.Platform{
 		"x86": config.PlatformX86, "Intel": config.PlatformX86, "X64": config.PlatformX64,
 		"amd64": config.PlatformX64, "ARM64": config.PlatformArm64, "aarch64": config.PlatformArm64,
 	} {
-		cfg, err := config.Parse([]byte("schema: go-msi/v1\npackage: {platform: "+in+"}\n"), config.Options{})
+		cfg, err := config.Parse([]byte("schema: go-msi/v1\npackage: {platform: "+input+"}\n"), config.Options{})
 		if err != nil {
-			t.Fatalf("%s: %v", in, err)
+			t.Fatalf("%s: %v", input, err)
 		}
 
 		if cfg.Package.Platform != want {
-			t.Errorf("%s: got %q, want %q", in, cfg.Package.Platform, want)
+			t.Errorf("%s: got %q, want %q", input, cfg.Package.Platform, want)
 		}
 	}
 }
@@ -201,5 +201,28 @@ func TestRecoveryActionsMarshal(t *testing.T) {
 
 	if got, want := string(out), "- restart\n- none\n- restart: 5m0s\n"; got != want {
 		t.Errorf("marshalled actions %q, want %q", got, want)
+	}
+}
+
+// FuzzVariable findings: a value that spells null emptied a string field,
+// and a value that is not valid UTF-8 reached the config.
+func TestVariableValues(t *testing.T) {
+	t.Parallel()
+
+	doc := "schema: go-msi/v1\nproduct:\n  name: ${V}\n  manufacturer: '${V}'\npackage: {platform: x64}\n"
+
+	for _, value := range []string{"null", "Null", "NULL", "~"} {
+		cfg, err := config.Parse([]byte(doc), config.Options{Vars: map[string]string{"V": value}})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if cfg.Product.Name != value || cfg.Product.Manufacturer != value {
+			t.Errorf("${V} = %q gives name %q and manufacturer %q", value, cfg.Product.Name, cfg.Product.Manufacturer)
+		}
+	}
+
+	if _, err := config.Parse([]byte(doc), config.Options{Vars: map[string]string{"V": "\xff"}}); err == nil {
+		t.Error("a variable that is not valid UTF-8 was accepted")
 	}
 }

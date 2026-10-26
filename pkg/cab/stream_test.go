@@ -351,6 +351,18 @@ func TestBoundedMemory(t *testing.T) { //nolint:paralleltest // measures the hea
 		t.Skip("writes 32 MB")
 	}
 
+	for name, comp := range map[string]cab.Compression{"MSZIP": cab.MSZIP, "LZX": cab.LZX} { //nolint:paralleltest // measures the heap of the whole process
+		t.Run(name, func(t *testing.T) { boundedMemory(t, comp) })
+	}
+}
+
+func boundedMemory(t *testing.T, comp cab.Compression) {
+	t.Helper()
+
+	if comp == cab.LZX && raceEnabled {
+		t.Skip("compresses 32 MB; CI runs it without -race")
+	}
+
 	const (
 		size  = 32 << 20
 		limit = 16 << 20
@@ -376,7 +388,7 @@ func TestBoundedMemory(t *testing.T) { //nolint:paralleltest // measures the hea
 	)
 
 	peak := memtest.PeakHeap(limit, func() {
-		written, werr = cab.WriteTo(out, ents, cab.Options{Compression: cab.MSZIP})
+		written, werr = cab.WriteTo(out, ents, cab.Options{Compression: comp})
 	})
 
 	if werr != nil {

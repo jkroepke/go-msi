@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -110,6 +111,11 @@ func TestMinimal(t *testing.T) {
 
 	if len(res.Package) == 0 || res.Package[0] != 0xD0 {
 		t.Fatal("no package written")
+	}
+
+	wantFile := builder.File{Key: "hello.exe", Name: "hello.exe", Source: "hello.exe", Component: "hello.exe", Version: "1.0.0.0", Language: "1033", Size: int64(len(exe)), Sequence: 1}
+	if len(res.Files) != 1 || res.Files[0] != wantFile {
+		t.Errorf("file %+v, want %+v", res.Files[0], wantFile)
 	}
 
 	file, err := cfb.Read(res.Package)
@@ -1056,5 +1062,244 @@ func TestSummaryExplicitFields(t *testing.T) {
 		if !found {
 			t.Errorf("no summary warning at %s: %v", path, res.Diagnostics)
 		}
+	}
+}
+
+func TestPurge(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	src := `schema: go-msi/v1
+product:
+  name: Hello
+  manufacturer: Example
+  version: 1.0.0
+  upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301
+package:
+  platform: x64
+components:
+  - files: [{ source: hello.exe }]
+  - id: Data
+    directory: CommonAppDataFolder/Example/Hello
+    createFolder: true
+    purge:
+      condition: DELETE_DATA="1"
+`
+
+	if err := os.WriteFile(filepath.Join(dir, "msi.yaml"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(filepath.Join(dir, "msi.yaml"), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var comp *config.Component
+
+	for _, c := range cfg.Components {
+		if c.ID == "Data" {
+			comp = c
+		}
+	}
+
+	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	name := "Purge_" + comp.ID
+	target := cell(t, database, "CustomAction", "Target", func(r []any) bool { return r[0] == name })
+
+	if want := `"[System64Folder]cmd.exe" /c rmdir /s /q "[` + comp.Directory + `]."`; target != want {
+		t.Errorf("purge command %q, want %q", target, want)
+	}
+
+	typ := cell(t, database, "CustomAction", "Type", func(r []any) bool { return r[0] == name })
+	if typ != 34|64|1024|2048 {
+		t.Errorf("purge type %v, want 3170", typ)
+	}
+
+	cond := cell(t, database, "InstallExecuteSequence", "Condition", func(r []any) bool { return r[0] == name })
+	if want := `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE AND ` + comp.Directory + ` AND (DELETE_DATA="1")`; cond != want {
+		t.Errorf("purge condition %q, want %q", cond, want)
+	}
+
+	secure := fmt.Sprint(cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "SecureCustomProperties" }))
+	if !strings.Contains(";"+secure+";", ";DELETE_DATA;") {
+		t.Errorf("SecureCustomProperties %q lacks DELETE_DATA (RUN-26 opt-in)", secure)
+	}
+}
+
+// TestRememberInstallDir checks the RUN-25 recipe for installDir.remember:
+// a registry value with the folder, a raw 64-bit RegLocator search into a
+// separate property, an empty Signature table, and a guarded type-51 action
+// after AppSearch in both sequences.
+func TestRememberInstallDir(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	src := `schema: go-msi/v1
+product:
+  name: Hello
+  manufacturer: Example
+  version: 1.0.0
+  upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301
+package:
+  platform: x64
+installDir:
+  remember: true
+components:
+  - files: [{ source: hello.exe }]
+`
+
+	if err := os.WriteFile(filepath.Join(dir, "msi.yaml"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(filepath.Join(dir, "msi.yaml"), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	isRemember := func(r []any) bool { return r[0] == config.RememberComponentID }
+
+	if got := cell(t, database, "Registry", "Value", func(r []any) bool { return r[5] == config.RememberComponentID }); got != "[INSTALLDIR]" {
+		t.Errorf("Registry value %v, want [INSTALLDIR]", got)
+	}
+
+	if got := cell(t, database, "Registry", "Key", func(r []any) bool { return r[5] == config.RememberComponentID }); got != `Software\Example\Hello` {
+		t.Errorf("Registry key %v", got)
+	}
+
+	if got := cell(t, database, "RegLocator", "Type", isRemember); got != 18 {
+		t.Errorf("RegLocator type %v, want 18 (raw, 64-bit)", got)
+	}
+
+	if got := cell(t, database, "RegLocator", "Root", isRemember); got != 2 {
+		t.Errorf("RegLocator root %v, want 2 (HKLM)", got)
+	}
+
+	if got := cell(t, database, "AppSearch", "Property", func(r []any) bool { return r[1] == config.RememberComponentID }); got != "INSTALLDIR_REMEMBERED" {
+		t.Errorf("AppSearch property %v", got)
+	}
+
+	if database.Table("Signature") == nil {
+		t.Error("Signature table missing (RUN-25: AppSearch fails with 2228 without it)")
+	}
+
+	if got := cell(t, database, "CustomAction", "Type", func(r []any) bool { return r[0] == "RestoreInstallDir" }); got != 51 {
+		t.Errorf("RestoreInstallDir type %v, want 51", got)
+	}
+
+	for _, seq := range []string{"InstallExecuteSequence", "InstallUISequence"} {
+		match := func(name string) func([]any) bool { return func(r []any) bool { return r[0] == name } }
+
+		cond := cell(t, database, seq, "Condition", match("RestoreInstallDir"))
+		if cond != "INSTALLDIR_REMEMBERED AND NOT INSTALLDIR" {
+			t.Errorf("%s: condition %v", seq, cond)
+		}
+
+		search := fmt.Sprint(cell(t, database, seq, "Sequence", match("AppSearch")))
+		restore := fmt.Sprint(cell(t, database, seq, "Sequence", match("RestoreInstallDir")))
+		costFinalize := fmt.Sprint(cell(t, database, seq, "Sequence", match("CostFinalize")))
+
+		if seqNumber(t, search) >= seqNumber(t, restore) || seqNumber(t, restore) >= seqNumber(t, costFinalize) {
+			t.Errorf("%s: AppSearch %s, RestoreInstallDir %s, CostFinalize %s", seq, search, restore, costFinalize)
+		}
+	}
+
+	secure := fmt.Sprint(cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "SecureCustomProperties" }))
+	if !strings.Contains(";"+secure+";", ";INSTALLDIR_REMEMBERED;") {
+		t.Errorf("SecureCustomProperties %q lacks INSTALLDIR_REMEMBERED", secure)
+	}
+}
+
+func seqNumber(t *testing.T, value string) int {
+	t.Helper()
+
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		t.Fatalf("sequence %q: %v", value, err)
+	}
+
+	return n
+}
+
+// TestRememberInstallDir32BitFolder checks that installDir.remember in a
+// 32-bit folder of an x64 package writes and searches the 32-bit registry
+// view (ICE80).
+func TestRememberInstallDir32BitFolder(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	src := `schema: go-msi/v1
+product:
+  name: Hello
+  manufacturer: Example
+  version: 1.0.0
+  upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301
+package:
+  platform: x64
+installDir:
+  parent: ProgramFilesFolder
+  remember: true
+components:
+  - bitness: "32"
+    files: [{ source: hello.exe }]
+`
+
+	if err := os.WriteFile(filepath.Join(dir, "msi.yaml"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(filepath.Join(dir, "msi.yaml"), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := mustBuild(t, cfg)
+	for _, d := range res.Diagnostics {
+		if strings.Contains(d.Message, "ICE80") {
+			t.Errorf("unexpected diagnostic: %v", d)
+		}
+	}
+
+	database, err := msidb.Unmarshal(res.Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	isRemember := func(r []any) bool { return r[0] == config.RememberComponentID }
+
+	if got := cell(t, database, "RegLocator", "Type", isRemember); got != 2 {
+		t.Errorf("RegLocator type %v, want 2 (raw, 32-bit)", got)
+	}
+
+	if got, ok := cell(t, database, "Component", "Attributes", isRemember).(int); !ok || got&256 != 0 {
+		t.Errorf("Component attributes %v, want a 32-bit component", got)
 	}
 }

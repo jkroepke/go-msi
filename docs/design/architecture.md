@@ -47,7 +47,7 @@ flowchart LR
     artwork["artwork<br/>wizard bitmaps"]
     rtf["rtf<br/>license text"]
     cfb["cfb<br/>compound file"]
-    cab["cab<br/>MSCAB, MSZIP"]
+    cab["cab<br/>MSCAB, MSZIP, LZX"]
     schema["schema<br/>standard tables, _Validation"] --> msidb
     pe["pe<br/>version resource"]
     condition["condition<br/>grammar check"]
@@ -58,7 +58,7 @@ flowchart LR
 | Package | Responsibility | Spec | Depends on |
 |---|---|---|---|
 | `pkg/cfb` | Compound File Binary v3/v4 writer and reader: sectors, FAT, DIFAT, mini stream, red-black directory tree, name comparison | §2 | stdlib |
-| `pkg/cab` | Cabinet writer and reader: one folder per cabinet, stored or MSZIP blocks with carried DEFLATE history, checksums on every block | §5 | stdlib (`compress/flate`) |
+| `pkg/cab` | Cabinet writer and reader: one folder per cabinet, stored, MSZIP blocks with carried DEFLATE history or LZX frames (`internal/lzx`), checksums on every block | §5 | stdlib (`compress/flate`), `internal/lzx` |
 | `pkg/summary` | `\u0005SummaryInformation` property-set writer and reader (PIDs 1–19, VT_I2/I4/LPSTR/FILETIME) | §4 | `internal/codepage` |
 | `pkg/msidb` | The database: column types, typed rows, stream-name encoding, string pool with code pages, catalog, column-major table streams, binary streams, embedded streams; plus a reader that decodes a package back into tables | §3 | `cfb`, `summary`, `internal/codepage` (`golang.org/x/text`) |
 | `internal/schema` | Column definitions and `_Validation` metadata of every standard table the builder can write | §6 | `msidb` |
@@ -70,7 +70,7 @@ flowchart LR
 | `internal/codepage` | ANSI code page encoders for the string pool and summary | §3, §4 | `golang.org/x/text` |
 | `internal/artwork` | Draws the wizard bitmaps (our own artwork, generated in code) and decodes a theme's BMP, PNG or JPEG pictures | | stdlib |
 | `internal/rtf` | Converts a plain-text license to RTF and checks an RTF license for the ScrollableText control | | stdlib |
-| `cmd/go-msi` | CLI: `build`, `validate`, `inspect` | | `builder`, `config`, `msidb` |
+| `cmd/go-msi` | CLI: `build`, `validate`, `inspect`, `sign`, `verify`, `completion`, `version` | | `builder`, `config`, `msidb`, `sign`, `spf13/cobra` |
 
 `pkg/config` (PR #2) stays as it is: the builder consumes a validated `*config.Config`
 and never reads YAML.
@@ -117,7 +117,7 @@ func (f *File) Reader(name string) (*StreamReader, error) // io.ReaderAt/Reader/
 ```go
 type File struct { Name string; Data []byte; Time time.Time; Attributes uint16 }
 type Entry struct { Name string; Size int64; Time time.Time; Attributes uint16; Open func() (io.ReadCloser, error) }
-type Options struct { Compression Compression /* None, MSZIP */; Level int; SetID uint16 }
+type Options struct { Compression Compression /* None, MSZIP, LZX */; Level int; Window int; SetID uint16 }
 func Write(files []File, o Options) ([]byte, error)
 func WriteTo(dst io.WriteSeeker, entries []Entry, o Options) (int64, error)
 func Read(data []byte) ([]File, error)
@@ -130,6 +130,13 @@ func Entries(fsys fs.FS) ([]Entry, error)
   entry that is shorter or longer than its declared `Size` is an error), and
   the CFDATA count follows from the folder size; only `cbCabinet` is patched
   afterwards through the seeker. `Write` is `WriteTo` into memory with byte-identical output.
+- MSZIP blocks are compressed up to four at a time (`Options.Workers`),
+  each with the chunk before it as history, and written in order; the
+  cabinet is the same for any number of workers.
+- LZX frames come from `lzx.Encoder` a block (four frames) at a time;
+  a block whose compressed frame would exceed 32768 + 6144 bytes is
+  stored uncompressed instead. The encoder finds the next frame's matches
+  while it parses the current one.
 - `Walk` decodes one block at a time and hands every file's bytes to `visit`
   as a reader; it serves verification without materializing the cabinet.
 
@@ -235,7 +242,7 @@ type Result struct {
     Database    *msidb.Database
     Diagnostics config.Diagnostics
     ProductCode, PackageCode string
-    Files       []*fileInfo // payload files in File.Sequence order
+    Files       []File // payload files in File.Sequence order
 }
 func Build(cfg *config.Config, o Options) (*Result, error)
 ```
@@ -244,7 +251,10 @@ Pipeline, each step a file of its own:
 
 1. **Inputs**: read every source file, `pe.Parse` it, derive `File.Version`,
    `Language`, `MsiFileHash` (zeros for an empty file, RUN-12), size and
-   attributes. Missing files and unversioned PE files are errors.
+   attributes. Missing files and unversioned PE files are errors. A relative
+   source is opened from `File.FS`, else `Config.FS`, else `Config.BaseDir`
+   ([Go API](../go-api.md)); `Config.AddTree` fills in a folder tree before
+   the build.
 2. **Identities**: GUIDs normalized; `productCode: auto` from UUIDv5 over the
    upgrade code, platform, version and a digest of every input (payload
    files, icons, binaries and binary cells of custom tables);
@@ -255,7 +265,9 @@ Pipeline, each step a file of its own:
 4. **Components, features, files, media**: attributes (64-bit bit 256,
    permanent, transitive, …), key paths, `CreateFolder` rows, file sequence
    order (canonical directory, name, key), one `Media` row and one embedded
-   cabinet, `File.Attributes` (vital, checksum, read-only, hidden, system).
+   cabinet, `File.Attributes` (vital, checksum, read-only, hidden, system),
+   and the `Shortcut` rows with the generated component that carries them
+   (HKCU key path, `RemoveFile` rows for profile folders; `shortcuts.go`).
 5. **Registry, event log, environment, services**: value encodings
    (`#`, `#x`, `#%`, `##`, `[~]`), `=-*`-style environment names with an
    explicit `-` (RUN-08), `ServiceInstall`, `ServiceControl`,
@@ -296,11 +308,15 @@ through `schema`, ICE18/19/21, ICE04/71, ICE27/63/77, ICE80, ICE87, ICE105).
 ### 1.10 `cmd/go-msi`
 
 - `go-msi build [--var NAME=value]... [--env] [-o out.msi] msi.yaml`
-- `go-msi validate msi.yaml` runs config validation and the input checks.
-- `go-msi inspect pkg.msi [--table Name]` dumps tables and streams through
-  `msidb.Unmarshal`; this is the cross-OS debugging tool.
+- `go-msi validate msi.yaml` runs config validation.
+- `go-msi inspect [--table Name] pkg.msi` dumps tables and streams through
+  `msidb.Decode`; this is the cross-OS debugging tool.
+- `go-msi sign` and `go-msi verify` sign and check packages (`pkg/sign`).
 
-Only the standard library `flag` package is used.
+The commands are built with `spf13/cobra` (POSIX flags, shell completion).
+Help goes to stdout, errors to stderr; the exit code is 0 on success, 1 when
+the command failed and 2 for a usage error. [`docs/cli`](../cli/go-msi.md) is
+generated from the command tree.
 
 ### 1.11 Internal helpers
 
@@ -365,8 +381,10 @@ bundles.
   (CFB-01). v3 stays for tests and for tools that only know v3.
 - **Every refcount in 1…32767.** A string used more often is a build error
   until a real package needs it; none does.
-- **MSZIP only.** LZX is a reader concern for other toolchains' packages and
-  out of scope for a producer.
+- **LZX:21 by default.** go-msi's LZX cabinets of the target payloads are
+  12 to 26 % smaller than MSZIP (MSISPEC section 5). `internal/lzx` streams: it
+  keeps the last 512 KiB as match history and one 128 KiB block, so its
+  memory does not grow with the window or the payload.
 - **Identifiers are deterministic.** Generated keys hash their content
   (§11.2 identity), short names hash parent and long name (§11.3), GUIDs are
   UUIDv5. Nothing depends on map iteration order or time.

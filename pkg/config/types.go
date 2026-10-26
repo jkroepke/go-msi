@@ -6,6 +6,7 @@
 package config
 
 import (
+	"io/fs"
 	"strconv"
 	"strings"
 )
@@ -14,7 +15,7 @@ import (
 const SchemaV1 = "go-msi/v1"
 
 // Config is a whole package description.
-type Config struct {
+type Config struct { //nolint:govet // field order is the YAML key order
 	Schema           string            `yaml:"schema"`
 	Vars             map[string]string `yaml:"vars"`
 	Product          Product           `yaml:"product"`
@@ -36,6 +37,13 @@ type Config struct {
 	// BaseDir is the directory of the YAML file. Relative source paths
 	// resolve against it. It is set by Load, not read from YAML.
 	BaseDir string `yaml:"-"`
+
+	// FS, when set, is where every relative input path (files, icons,
+	// binaries, binary cells of custom tables, the license and theme
+	// pictures) is read from instead of BaseDir.
+	// Paths in it use forward slashes. It is for Go callers and is never
+	// read from YAML.
+	FS fs.FS `yaml:"-"`
 }
 
 // Product holds the product's identity.
@@ -53,7 +61,7 @@ type Product struct {
 }
 
 // ARP holds the Add/Remove Programs properties.
-type ARP struct {
+type ARP struct { //nolint:govet // field order is the YAML key order
 	Comments        string `yaml:"comments"`
 	Contact         string `yaml:"contact"`
 	HelpLink        string `yaml:"helpLink"`
@@ -68,7 +76,7 @@ type ARP struct {
 }
 
 // Package holds platform and container settings.
-type Package struct {
+type Package struct { //nolint:govet // field order is the YAML key order
 	Platform         Platform `yaml:"platform"`
 	Scope            Scope    `yaml:"scope"`
 	InstallerVersion string   `yaml:"installerVersion"`
@@ -89,7 +97,7 @@ type Summary struct {
 // Upgrade is the major-upgrade policy. ApplyDefaults turns a nil *Upgrade
 // into the standard policy; "upgrade: false" sets Disabled, which writes no
 // Upgrade rows.
-type Upgrade struct {
+type Upgrade struct { //nolint:govet // field order is the YAML key order
 	Disabled         bool             `yaml:"-"`
 	AllowSameVersion *bool            `yaml:"allowSameVersion"`
 	Downgrade        string           `yaml:"downgrade"`
@@ -102,7 +110,7 @@ type Upgrade struct {
 }
 
 // RelatedProduct is an extra Upgrade row.
-type RelatedProduct struct {
+type RelatedProduct struct { //nolint:govet // field order is the YAML key order
 	UpgradeCode string `yaml:"upgradeCode"`
 	MinVersion  string `yaml:"minVersion"`
 	MaxVersion  string `yaml:"maxVersion"`
@@ -122,13 +130,17 @@ type InstallDir struct {
 	Name string `yaml:"name"`
 	// Parent is the standard folder the install dir is created in.
 	Parent string `yaml:"parent"`
+	// Remember stores the chosen folder in the registry and reads it back
+	// on the next install, so that a major upgrade keeps a custom folder
+	// (RUN-25).
+	Remember bool `yaml:"remember"`
 
 	// expanded is set by the first expandShorthands.
 	expanded bool
 }
 
 // Directory is a node of the install tree.
-type Directory struct {
+type Directory struct { //nolint:govet // field order is the YAML key order
 	ID           string       `yaml:"id"`
 	Name         string       `yaml:"name"`
 	Configurable bool         `yaml:"configurable"`
@@ -139,7 +151,7 @@ type Directory struct {
 }
 
 // Feature is a node of the feature tree.
-type Feature struct {
+type Feature struct { //nolint:govet // field order is the YAML key order
 	ID          string `yaml:"id"`
 	Title       string `yaml:"title"`
 	Description string `yaml:"description"`
@@ -175,19 +187,22 @@ func (f *Feature) levelIsDefault() bool {
 }
 
 // Component is a unit that is installed, repaired and removed together.
-type Component struct {
-	ID             string           `yaml:"id"`
-	Directory      string           `yaml:"directory"`
-	GUID           string           `yaml:"guid"`
-	Files          []*File          `yaml:"files"`
-	Registry       []*RegistryValue `yaml:"registry"`
-	Services       []*Service       `yaml:"services"`
-	EventLog       []*EventSource   `yaml:"eventLog"`
-	Environment    []*Environment   `yaml:"environment"`
-	CreateFolder   bool             `yaml:"createFolder"`
-	Condition      string           `yaml:"condition"`
-	Permanent      bool             `yaml:"permanent"`
-	NeverOverwrite bool             `yaml:"neverOverwrite"`
+type Component struct { //nolint:govet // field order is the YAML key order
+	ID          string           `yaml:"id"`
+	Directory   string           `yaml:"directory"`
+	GUID        string           `yaml:"guid"`
+	Files       []*File          `yaml:"files"`
+	Registry    []*RegistryValue `yaml:"registry"`
+	Services    []*Service       `yaml:"services"`
+	EventLog    []*EventSource   `yaml:"eventLog"`
+	Environment []*Environment   `yaml:"environment"`
+	// Purge deletes the component's directory with everything in it when
+	// the product is uninstalled, but not on a major upgrade (RUN-26).
+	Purge          *Purge `yaml:"purge"`
+	CreateFolder   bool   `yaml:"createFolder"`
+	Condition      string `yaml:"condition"`
+	Permanent      bool   `yaml:"permanent"`
+	NeverOverwrite bool   `yaml:"neverOverwrite"`
 	// Preserve keeps the component's key file or registry value as the user
 	// left it across major upgrades: it sets NeverOverwrite, and removeOld
 	// defaults to afterInstallExecute (RUN-24).
@@ -228,6 +243,19 @@ func (c *Component) Path(index int) string {
 	return "components[" + strconv.Itoa(index) + "]"
 }
 
+// Purge removes a directory tree on uninstall. "purge: true" is the short
+// form of an empty mapping; "purge: false" sets Disabled.
+type Purge struct {
+	// Condition is ANDed with the uninstall condition, e.g. DELETE_DATA="1".
+	Condition string `yaml:"condition"`
+	Disabled  bool   `yaml:"-"`
+}
+
+// Enabled reports whether p asks for a purge.
+func (p *Purge) Enabled() bool {
+	return p != nil && !p.Disabled
+}
+
 // Permissions secures an installed object with an SDDL string through
 // MsiLockPermissionsEx (specification section 6.2).
 type Permissions struct {
@@ -236,7 +264,7 @@ type Permissions struct {
 }
 
 // File is a payload file.
-type File struct {
+type File struct { //nolint:govet // field order is the YAML key order
 	Source                     string       `yaml:"source"`
 	Name                       string       `yaml:"name"`
 	ID                         string       `yaml:"id"`
@@ -249,10 +277,35 @@ type File struct {
 	Hidden                     bool         `yaml:"hidden"`
 	System                     bool         `yaml:"system"`
 	Permissions                *Permissions `yaml:"permissions"`
+	Shortcuts                  []*Shortcut  `yaml:"shortcuts"`
+
+	// FS, when set, is where Source is read from, overriding Config.FS for
+	// this file. AddTree sets it. It is never read from YAML.
+	FS fs.FS `yaml:"-"`
+}
+
+// Shortcut is a non-advertised shortcut to the file it is listed under, in
+// the Start menu, on the desktop or in any other folder.
+type Shortcut struct { //nolint:govet // field order is the YAML key order
+	ID string `yaml:"id"`
+	// Name is the shortcut's name without ".lnk", default product.name.
+	Name string `yaml:"name"`
+	// Directory is a directory ID, a standard folder or a folder path,
+	// default ProgramMenuFolder.
+	Directory   string `yaml:"directory"`
+	Arguments   string `yaml:"arguments"`
+	Description string `yaml:"description"`
+	// WorkingDirectory is a directory ID, default the file's directory.
+	WorkingDirectory string `yaml:"workingDirectory"`
+	// Icon names an entry of Config.Icons; empty shows the target's icon.
+	Icon      string `yaml:"icon"`
+	IconIndex int    `yaml:"iconIndex"`
+	// Show is normal (default), maximized or minimized.
+	Show string `yaml:"show"`
 }
 
 // RegistryValue is a typed registry value or key.
-type RegistryValue struct {
+type RegistryValue struct { //nolint:govet // field order is the YAML key order
 	ID                string       `yaml:"id"`
 	Root              string       `yaml:"root"`
 	Key               string       `yaml:"key"`
@@ -266,7 +319,7 @@ type RegistryValue struct {
 }
 
 // Service is a Windows service installed from the component's key file.
-type Service struct {
+type Service struct { //nolint:govet // field order is the YAML key order
 	Name                             string           `yaml:"name"`
 	DisplayName                      string           `yaml:"displayName"`
 	Description                      string           `yaml:"description"`
@@ -318,7 +371,7 @@ type ServiceControl struct {
 }
 
 // ServiceRecovery is applied with sc.exe after InstallServices.
-type ServiceRecovery struct {
+type ServiceRecovery struct { //nolint:govet // field order is the YAML key order
 	ResetAfterDays int              `yaml:"resetAfterDays"`
 	ResetAfter     *Duration        `yaml:"resetAfter"`
 	Actions        []RecoveryAction `yaml:"actions"`
@@ -333,7 +386,7 @@ type RecoveryAction struct {
 }
 
 // EventSource is an event log source registered with plain Registry rows.
-type EventSource struct {
+type EventSource struct { //nolint:govet // field order is the YAML key order
 	Source         string `yaml:"source"`
 	Log            string `yaml:"log"`
 	MessageFile    string `yaml:"messageFile"`
@@ -341,7 +394,7 @@ type EventSource struct {
 }
 
 // Environment is an environment variable change.
-type Environment struct {
+type Environment struct { //nolint:govet // field order is the YAML key order
 	Name              string `yaml:"name"`
 	Value             string `yaml:"value"`
 	Action            string `yaml:"action"`
@@ -356,7 +409,7 @@ type LaunchCondition struct {
 }
 
 // CustomAction is one custom action and where it runs.
-type CustomAction struct {
+type CustomAction struct { //nolint:govet // field order is the YAML key order
 	ID           string        `yaml:"id"`
 	SetProperty  *SetProperty  `yaml:"setProperty"`
 	SetDirectory *SetDirectory `yaml:"setDirectory"`
@@ -407,16 +460,19 @@ type DLL struct {
 }
 
 // Placement puts an action into one sequence table.
-type Placement struct {
+type Placement struct { //nolint:govet // field order is the YAML key order
 	Sequence  string `yaml:"sequence"`
 	Before    string `yaml:"before"`
 	After     string `yaml:"after"`
 	At        int    `yaml:"at"`
 	Condition string `yaml:"condition"`
+	// When is install, upgrade, uninstall or maintenance: a condition that
+	// is ANDed with Condition (see Placement.FullCondition).
+	When string `yaml:"when"`
 }
 
 // FirewallRule is an inbound rule that follows a component's state.
-type FirewallRule struct {
+type FirewallRule struct { //nolint:govet // field order is the YAML key order
 	Name            string     `yaml:"name"`
 	Description     string     `yaml:"description"`
 	Component       string     `yaml:"component"`
@@ -504,10 +560,31 @@ type Dialog struct {
 	Fields      []DialogField `yaml:"fields"`
 }
 
-// DialogField is one label and edit field bound to a property.
+// DialogField is one field bound to a property: a label and an edit field,
+// or a check box.
 type DialogField struct {
 	Property string `yaml:"property"`
 	Label    string `yaml:"label"`
+	// Type is text (default), password or checkbox.
+	Type string `yaml:"type"`
+	// Value is what a checked checkbox sets the property to, default 1.
+	Value string `yaml:"value"`
+}
+
+// Dialog field types.
+const (
+	FieldText     = "text"
+	FieldPassword = "password"
+	FieldCheckBox = "checkbox"
+)
+
+// CheckBoxValue returns the value a checked checkbox field sets.
+func (f *DialogField) CheckBoxValue() string {
+	if f.Value == "" {
+		return "1"
+	}
+
+	return f.Value
 }
 
 // Table is a custom table written as given.

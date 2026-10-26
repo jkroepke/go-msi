@@ -13,6 +13,8 @@ import (
 const (
 	DefaultInstallDirID = "INSTALLDIR"
 	DefaultFeatureID    = "MainFeature"
+	// DefaultShortcutDirectory is the Start menu's Programs folder.
+	DefaultShortcutDirectory = "ProgramMenuFolder"
 
 	// KeyPathDirectory is the keyPath of a component keyed on its directory.
 	KeyPathDirectory = "directory"
@@ -41,7 +43,7 @@ const (
 // and conditional service arguments become setProperty actions. Every step
 // leaves an already expanded config unchanged, so ApplyDefaults stays
 // idempotent.
-func expandShorthands(cfg *Config) {
+func expandShorthands(cfg *Config) { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
 	hoistFeatureComponents(cfg)
 	featureFirewall(cfg)
 
@@ -67,6 +69,8 @@ func expandShorthands(cfg *Config) {
 		}
 	}
 
+	shortcutDirectories(cfg, tree)
+
 	// Generated ids first, so that a feature can name the component the
 	// carrier joins by one.
 	componentIDs(cfg)
@@ -90,9 +94,31 @@ func expandShorthands(cfg *Config) {
 		}
 	}
 
+	rememberInstallDir(cfg, tree)
 	referenceFeatureComponents(cfg)
 	defaultFeature(cfg)
 	serviceArguments(cfg)
+}
+
+// shortcutDirectories resolves the folder of every shortcut, the Start
+// menu by default, the way a component's directory is resolved.
+func shortcutDirectories(cfg *Config, tree *dirTree) {
+	for i, comp := range cfg.Components {
+		for fileIndex, file := range comp.Files {
+			for index, shortcut := range file.Shortcuts {
+				if shortcut == nil {
+					continue // reported by the validator
+				}
+
+				if shortcut.Directory == "" {
+					shortcut.Directory = DefaultShortcutDirectory
+				}
+
+				tree.origin = fmt.Sprintf("%s.files[%d].shortcuts[%d].directory", comp.Path(i), fileIndex, index)
+				shortcut.Directory = tree.resolve(shortcut.Directory)
+			}
+		}
+	}
 }
 
 // featureFirewall moves the firewall rules written under features to
@@ -361,6 +387,70 @@ func componentIDs(cfg *Config) {
 	}
 }
 
+// RememberComponentID is the component that installDir.remember adds.
+const RememberComponentID = "RememberInstallDir"
+
+// RememberActionID is the type-51 action that installDir.remember adds.
+const RememberActionID = "RestoreInstallDir"
+
+// rememberOrigin marks the component installDir.remember adds.
+const rememberOrigin = "installDir.remember"
+
+// RememberValueName is the registry value that holds the remembered folder.
+const RememberValueName = "InstallDir"
+
+// RememberKey returns the registry key below the root (HKLM per machine,
+// HKCU per user) that installDir.remember writes and searches.
+func RememberKey(cfg *Config) string {
+	return `Software\` + cfg.Product.Manufacturer + `\` + cfg.Product.Name
+}
+
+// RememberRoot returns the registry root of installDir.remember.
+func RememberRoot(cfg *Config) string {
+	if cfg.Package.Scope == ScopePerUser {
+		return "HKCU"
+	}
+
+	return "HKLM"
+}
+
+// rememberInstallDir adds the component that writes the install dir to the
+// registry for installDir.remember, and puts it into every top-level
+// feature. The builder adds the search that reads it back.
+func rememberInstallDir(cfg *Config, tree *dirTree) {
+	if !cfg.InstallDir.Remember || tree.ensureInstallDir() == nil {
+		return
+	}
+
+	for _, comp := range cfg.Components {
+		if comp.ID == RememberComponentID {
+			return
+		}
+	}
+
+	cfg.Components = append(cfg.Components, &Component{
+		ID:        RememberComponentID,
+		Directory: cfg.InstallDir.ID,
+		Registry: []*RegistryValue{{
+			Root:  RememberRoot(cfg),
+			Key:   RememberKey(cfg),
+			Name:  RememberValueName,
+			Value: StringList{"[" + cfg.InstallDir.ID + "]"},
+		}},
+		origin: rememberOrigin,
+	})
+
+	// In a 32-bit folder it is a 32-bit component (ICE80), and the search
+	// reads the same registry view.
+	if cfg.Package.Platform.Is64Bit() && folders32[tree.topFolder(cfg.InstallDir.ID)] {
+		cfg.Components[len(cfg.Components)-1].Bitness = "32"
+	}
+
+	for _, feature := range cfg.Features {
+		feature.Components = append(feature.Components, ComponentRef(RememberComponentID))
+	}
+}
+
 // defaultFeature puts every component into one feature when the file
 // defines none.
 func defaultFeature(cfg *Config) {
@@ -412,7 +502,7 @@ func serviceArguments(cfg *Config) {
 					ID:          action,
 					SetProperty: &SetProperty{Name: property, Value: arg.Value},
 					Schedule: []Placement{{
-						Sequence:  "execute",
+						Sequence:  sequenceExecute,
 						Before:    "InstallServices",
 						Condition: arg.Condition,
 					}},

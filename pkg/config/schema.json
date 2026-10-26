@@ -148,6 +148,14 @@
           "anyOf": [
             {
               "enum": [
+                "lzx",
+                "lzx:15",
+                "lzx:16",
+                "lzx:17",
+                "lzx:18",
+                "lzx:19",
+                "lzx:20",
+                "lzx:21",
                 "mszip",
                 "none"
               ]
@@ -156,7 +164,7 @@
               "$ref": "#/$defs/var"
             }
           ],
-          "default": "mszip"
+          "default": "lzx"
         },
         "cabinet": {
           "type": "string",
@@ -321,6 +329,11 @@
             "parent": {
               "type": "string",
               "description": "Standard folder. Default: ProgramFiles64Folder, ProgramFilesFolder on x86, LocalAppDataFolder for perUser."
+            },
+            "remember": {
+              "$ref": "#/$defs/bool",
+              "description": "Store the chosen folder in the registry and use it again on the next install, so that a major upgrade keeps a custom folder. A folder given on the command line still wins.",
+              "default": false
             }
           },
           "additionalProperties": false
@@ -580,6 +593,15 @@
                 },
                 "condition": {
                   "$ref": "#/$defs/condition"
+                },
+                "when": {
+                  "enum": [
+                    "install",
+                    "upgrade",
+                    "uninstall",
+                    "maintenance"
+                  ],
+                  "description": "ANDed with condition. install: first install, not a major upgrade. upgrade: the new version of a major upgrade. uninstall: a real removal, not the old product's removal during a major upgrade. maintenance: repair, change, patch or minor upgrade of an installed product. Allowed in execute; install and upgrade also in ui."
                 }
               },
               "required": [
@@ -845,6 +867,19 @@
                     },
                     "label": {
                       "type": "string"
+                    },
+                    "type": {
+                      "enum": [
+                        "text",
+                        "password",
+                        "checkbox"
+                      ],
+                      "default": "text",
+                      "description": "text: a label and an edit field. password: the same with the characters hidden; the property is added to MsiHiddenProperties. checkbox: a check box with the label as its text."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "checkbox only: the value a checked box sets the property to. Default: 1."
                     }
                   },
                   "required": [
@@ -1283,6 +1318,58 @@
               },
               "permissions": {
                 "$ref": "#/$defs/permissions"
+              },
+              "shortcuts": {
+                "type": "array",
+                "description": "Non-advertised shortcuts to this file.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "$ref": "#/$defs/identifier",
+                      "description": "Shortcut key; generated when empty."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Shortcut name without .lnk; `short|long` allowed. Defaults to product.name."
+                    },
+                    "directory": {
+                      "type": "string",
+                      "description": "A directory id, a standard folder such as DesktopFolder, or a folder path such as ProgramMenuFolder/Example.",
+                      "default": "ProgramMenuFolder"
+                    },
+                    "arguments": {
+                      "type": "string",
+                      "description": "Command-line arguments, formatted text."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Tooltip text."
+                    },
+                    "workingDirectory": {
+                      "$ref": "#/$defs/directoryRef",
+                      "description": "Defaults to the file's directory."
+                    },
+                    "icon": {
+                      "type": "string",
+                      "description": "A key of icons; empty shows the target's own icon."
+                    },
+                    "iconIndex": {
+                      "$ref": "#/$defs/int",
+                      "description": "Index of the icon in icon; needs icon.",
+                      "default": 0
+                    },
+                    "show": {
+                      "enum": [
+                        "normal",
+                        "maximized",
+                        "minimized"
+                      ],
+                      "default": "normal"
+                    }
+                  },
+                  "additionalProperties": false
+                }
               }
             },
             "required": [
@@ -1661,6 +1748,24 @@
         },
         "neverOverwrite": {
           "$ref": "#/$defs/bool"
+        },
+        "purge": {
+          "description": "Delete the component's directory with everything in it on uninstall, not on a major upgrade (RUN-26). The directory and the folders above it must not be configurable.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/bool"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "condition": {
+                  "type": "string",
+                  "description": "ANDed with the uninstall condition, e.g. DELETE_DATA=\"1\"."
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
         },
         "preserve": {
           "$ref": "#/$defs/bool",

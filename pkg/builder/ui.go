@@ -44,6 +44,7 @@ const (
 	ctlProg95   = 0x10000
 	ctlFixedVol = 0x20000
 	ctlRemoteV  = 0x40000
+	ctlPassword = 0x200000
 	// ctlErrorIcon is Visible | 0x80000 | FixedSize, the ErrorIcon value
 	// tested on Windows. Microsoft documents 0x80000 as the Icon attribute
 	// of buttons and IconSize32 as 0x400000; neither reading is verified.
@@ -131,6 +132,7 @@ const (
 	typPathEdit   = "PathEdit"
 	typScrollText = "ScrollableText"
 	typCheckBox   = "CheckBox"
+	typText       = "Text"
 )
 
 // uiDialog is one dialog with its controls in drawing order.
@@ -235,18 +237,18 @@ func (c *uiControl) when(action, cond string) {
 // Control constructors.
 
 func text(name string, x, y, w, h int, s string) *uiControl {
-	return &uiControl{name: name, typ: "Text", x: x, y: y, w: w, h: h, attrs: ctlText, text: s}
+	return &uiControl{name: name, typ: typText, x: x, y: y, w: w, h: h, attrs: ctlText, text: s}
 }
 
 // label is a text with a mnemonic: without NoPrefix the engine underlines
 // the letter after "&". Only for fixed texts, since an "&" from a property
 // would be eaten.
 func label(name string, x, y, w, h int, s string) *uiControl {
-	return &uiControl{name: name, typ: "Text", x: x, y: y, w: w, h: h, attrs: ctlActive, text: s}
+	return &uiControl{name: name, typ: typText, x: x, y: y, w: w, h: h, attrs: ctlActive, text: s}
 }
 
 func overlay(name string, x, y, w, h int, s string) *uiControl {
-	return &uiControl{name: name, typ: "Text", x: x, y: y, w: w, h: h, attrs: ctlOverlay, text: s}
+	return &uiControl{name: name, typ: typText, x: x, y: y, w: w, h: h, attrs: ctlOverlay, text: s}
 }
 
 func button(name string, x, y int, s string) *uiControl {
@@ -353,37 +355,88 @@ func (b *build) addedDialogs(wiz *wizard) {
 			continue
 		}
 
-		wiz.add(formDialog(cfg))
+		if !b.fieldCheckBoxes(wiz, path, cfg) {
+			continue
+		}
+
+		wiz.add(b.formDialog(cfg))
 		wiz.flow = slices.Insert(wiz.flow, index+1, cfg.ID)
 	}
 }
 
-// formDialog lays out an added dialog: one label and one edit per field.
-func formDialog(cfg *config.Dialog) *uiDialog {
+// formDialog lays out an added dialog: per field a label and an edit, or
+// a check box in the same space.
+func (b *build) formDialog(cfg *config.Dialog) *uiDialog {
 	dialog := &uiDialog{name: cfg.ID, attrs: dlgPage}
 	dialog.innerHeader(cfg.Title, cfg.Description)
 
 	top := fieldTop
+	width := dlgWidth - 2*margin - 10
 
-	for i, field := range cfg.Fields {
+	for i := range cfg.Fields {
+		field := &cfg.Fields[i]
+
 		label := field.Label
 		if label == "" {
 			label = field.Property
 		}
 
-		dialog.control(text(fmt.Sprintf("Label%d", i+1), margin+5, top, dlgWidth-2*margin-10, fieldLabelH, label))
-		dialog.control(&uiControl{
-			name: fmt.Sprintf("Edit%d", i+1), typ: "Edit", property: field.Property, ring: true,
-			x: margin + 5, y: top + fieldLabelH, w: dlgWidth - 2*margin - 10, h: fieldEditH, attrs: ctlActive,
-		})
+		var name string
+
+		switch field.Type {
+		case config.FieldCheckBox:
+			name = fmt.Sprintf("CheckBox%d", i+1)
+			dialog.control(&uiControl{
+				name: name, typ: typCheckBox, property: field.Property, text: label, ring: true,
+				x: margin + 5, y: top, w: width, h: fieldLabelH + fieldEditH, attrs: ctlActive,
+			})
+		default:
+			attrs := ctlActive
+			if field.Type == config.FieldPassword {
+				attrs |= ctlPassword
+				b.hidden[field.Property] = true
+			}
+
+			name = fmt.Sprintf("Edit%d", i+1)
+			dialog.control(text(fmt.Sprintf("Label%d", i+1), margin+5, top, width, fieldLabelH, label))
+			dialog.control(&uiControl{
+				name: name, typ: "Edit", property: field.Property, ring: true,
+				x: margin + 5, y: top + fieldLabelH, w: width, h: fieldEditH, attrs: attrs,
+			})
+		}
+
+		if dialog.first == "" {
+			dialog.first = name
+		}
 
 		top += fieldLabelH + fieldEditH + fieldGap
 	}
 
-	dialog.first = "Edit1"
 	dialog.navigation()
 
 	return dialog
+}
+
+// fieldCheckBoxes records the value each checkbox field of an added dialog
+// sets; the CheckBox table holds one value per property.
+func (b *build) fieldCheckBoxes(wiz *wizard, path string, cfg *config.Dialog) bool {
+	for index := range cfg.Fields {
+		field := &cfg.Fields[index]
+		if field.Type != config.FieldCheckBox {
+			continue
+		}
+
+		value := field.CheckBoxValue()
+		if have, taken := wiz.checkBoxes[field.Property]; taken && have != value {
+			b.errorf(fmt.Sprintf("%s.fields[%d].value", path, index), "another check box sets %s to %q", field.Property, have)
+
+			return false
+		}
+
+		wiz.checkBoxes[field.Property] = value
+	}
+
+	return true
 }
 
 // innerHeader adds the banner with the page title and description.
@@ -482,7 +535,6 @@ func step(button *uiControl, target, installed string) {
 
 // writeWizard emits the tables.
 func (b *build) writeWizard(wiz *wizard) {
-
 	styles := b.table("TextStyle")
 	styles.Add(styleDefault, "Tahoma", 8, nil, nil)
 	styles.Add(styleTitle, "Tahoma", 9, nil, 1)

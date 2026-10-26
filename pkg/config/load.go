@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -25,7 +26,7 @@ type Options struct {
 func Load(path string, opts Options) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck // the error names the file
 	}
 
 	cfg, err := Parse(data, opts)
@@ -39,10 +40,10 @@ func Load(path string, opts Options) (*Config, error) {
 }
 
 // Parse parses a YAML document, substitutes variables and applies defaults.
-func Parse(data []byte, opts Options) (*Config, error) {
+func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
 	var doc yaml.Node
 	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck // yaml errors carry the line
 	}
 
 	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
@@ -88,7 +89,7 @@ func Parse(data []byte, opts Options) (*Config, error) {
 
 	encoded, err := yaml.Marshal(&doc)
 	if err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck // re-encoding a decoded node
 	}
 
 	dec := yaml.NewDecoder(bytes.NewReader(encoded))
@@ -96,7 +97,7 @@ func Parse(data []byte, opts Options) (*Config, error) {
 
 	cfg := &Config{}
 	if err := dec.Decode(cfg); err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck // yaml errors carry the line
 	}
 
 	if cfg.Schema != SchemaV1 {
@@ -112,15 +113,19 @@ func Parse(data []byte, opts Options) (*Config, error) {
 	return cfg, nil
 }
 
-// emptyComponents rejects null entries in the components, features and
-// firewall lists, which decode to nil pointers.
-func emptyComponents(cfg *Config) error {
+// emptyComponents rejects null entries in the components, features, files,
+// shortcuts and firewall lists, which decode to nil pointers.
+func emptyComponents(cfg *Config) error { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
 	var errs []error
 
 	for i, comp := range cfg.Components {
 		if comp == nil {
 			errs = append(errs, fmt.Errorf("components[%d]: empty entry", i))
+
+			continue
 		}
+
+		errs = append(errs, emptyFiles(fmt.Sprintf("components[%d]", i), comp)...)
 	}
 
 	for i, rule := range cfg.Firewall {
@@ -141,9 +146,14 @@ func emptyComponents(cfg *Config) error {
 			}
 
 			for j, comp := range feature.Components {
+				compPath := fmt.Sprintf("%s.components[%d]", featurePath, j)
 				if comp == nil {
-					errs = append(errs, fmt.Errorf("%s.components[%d]: empty entry", featurePath, j))
+					errs = append(errs, fmt.Errorf("%s: empty entry", compPath))
+
+					continue
 				}
+
+				errs = append(errs, emptyFiles(compPath, comp)...)
 			}
 
 			for j, rule := range feature.Firewall {
@@ -161,13 +171,36 @@ func emptyComponents(cfg *Config) error {
 	return errors.Join(errs...)
 }
 
+// emptyFiles rejects null entries in a component's files and their
+// shortcuts.
+func emptyFiles(compPath string, comp *Component) []error {
+	var errs []error
+
+	for j, file := range comp.Files {
+		filePath := fmt.Sprintf("%s.files[%d]", compPath, j)
+		if file == nil {
+			errs = append(errs, fmt.Errorf("%s: empty entry", filePath))
+
+			continue
+		}
+
+		for k, shortcut := range file.Shortcuts {
+			if shortcut == nil {
+				errs = append(errs, fmt.Errorf("%s.shortcuts[%d]: empty entry", filePath, k))
+			}
+		}
+	}
+
+	return errs
+}
+
 func fileVars(root *yaml.Node) (map[string]string, error) {
 	for i := 0; i < len(root.Content); i += 2 {
 		if root.Content[i].Value != "vars" {
 			continue
 		}
 
-		vars := map[string]string{}
+		vars := make(map[string]string)
 		if err := root.Content[i+1].Decode(&vars); err != nil {
 			return nil, fmt.Errorf("vars: %w", err)
 		}
@@ -175,14 +208,18 @@ func fileVars(root *yaml.Node) (map[string]string, error) {
 		return vars, nil
 	}
 
-	return nil, nil
+	return make(map[string]string), nil
 }
+
+// yamlNulls are the plain scalars YAML 1.1 and 1.2 read as null, except the
+// empty string, which leaves an optional field unset.
+var yamlNulls = map[string]bool{"null": true, "Null": true, "NULL": true, "~": true} //nolint:gochecknoglobals // lookup table
 
 var varPattern = regexp.MustCompile(`\$\$\{|\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // substitute replaces ${NAME} in every scalar value below node. Mapping keys
 // are left alone. "$${" writes a literal "${".
-func substitute(node *yaml.Node, lookup func(string) (string, bool), errs *[]error) {
+func substitute(node *yaml.Node, lookup func(string) (string, bool), errs *[]error) { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
 	switch node.Kind {
 	case yaml.ScalarNode:
 		if !strings.Contains(node.Value, "${") {
@@ -196,18 +233,27 @@ func substitute(node *yaml.Node, lookup func(string) (string, bool), errs *[]err
 
 			name := m[2 : len(m)-1]
 
-			v, ok := lookup(name)
+			value, ok := lookup(name)
 			if !ok {
 				*errs = append(*errs, fmt.Errorf("line %d: undefined variable ${%s}", node.Line, name))
 			}
 
-			return v
+			if !utf8.ValidString(value) {
+				*errs = append(*errs, fmt.Errorf("line %d: variable ${%s} is not valid UTF-8", node.Line, name))
+			}
+
+			return value
 		})
 
 		// Resolve the tag again from the substituted text, so that an
-		// integer field can take "${PORT}".
+		// integer field can take "${PORT}". A value that spells null stays
+		// a string: dropping it would turn --var NAME=null into an empty
+		// field.
 		if node.Style == 0 {
 			node.Tag = ""
+			if yamlNulls[node.Value] {
+				node.Tag = "!!str"
+			}
 		}
 	case yaml.MappingNode:
 		for i := 1; i < len(node.Content); i += 2 {

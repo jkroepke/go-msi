@@ -375,3 +375,40 @@ func TestUnmarshalDetectsUnsortedRows(t *testing.T) {
 		t.Error("unsorted rows not reported")
 	}
 }
+
+// TestValidateKeepsCells checks that Validate and Marshal read the caller's
+// rows without rewriting them into the canonical cell types.
+func TestValidateKeepsCells(t *testing.T) {
+	t.Parallel()
+
+	tbl := &Table{
+		Name:    "T",
+		Columns: []Column{Col("K", "s72", true), Col("N", "I2", false), Col("S", "S0", false)},
+		Rows:    [][]any{{"a", int32(7), ""}},
+	}
+
+	if err := tbl.Validate(); err != nil {
+		t.Fatal(err)
+	}
+
+	db := &Database{Codepage: 1252, Tables: []*Table{tbl}}
+
+	data, err := db.Marshal(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := tbl.Rows[0][1].(int32); !ok || tbl.Rows[0][2] != "" {
+		t.Errorf("cells rewritten: %#v", tbl.Rows[0])
+	}
+
+	back, err := Unmarshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := back.Table("T").Rows[0]
+	if got[0] != "a" || got[1] != 7 || got[2] != nil {
+		t.Errorf("round trip %#v", got)
+	}
+}

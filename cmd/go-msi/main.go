@@ -5,29 +5,24 @@
 //	go-msi inspect [--table NAME] package.msi
 //	go-msi sign [signing options] [-o out.msi] package.msi
 //	go-msi verify package.msi
+//	go-msi completion bash|fish|powershell|zsh
 //	go-msi version
+//
+// docs/cli holds the reference for every command; it is generated from the
+// command tree (go generate ./cmd/go-msi).
 package main
 
+//go:generate go test -run ^TestDocs$ -update .
+
 import (
-	"context"
-	"crypto"
-	"crypto/x509"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
-	"time"
 
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/cfb"
-	"github.com/jkroepke/go-msi/pkg/config"
-	"github.com/jkroepke/go-msi/pkg/msidb"
-	"github.com/jkroepke/go-msi/pkg/sign"
+	"github.com/spf13/cobra"
 )
 
 // Set by the linker at release time.
@@ -37,644 +32,204 @@ var (
 	date    = "unknown" //nolint:gochecknoglobals // set by the linker
 )
 
-const usage = `usage: go-msi <command> [options]
-
-commands:
-  build     a package:   go-msi build [-o out.msi] [--var NAME=VALUE]... [--env] [--cfb 3|4] [signing options] msi.yaml
-  validate  check a file:      go-msi validate [--var NAME=VALUE]... [--env] msi.yaml
-  inspect   dump a package:    go-msi inspect [--table NAME] package.msi
-  sign      add a signature:   go-msi sign [-o out.msi] [signing options] package.msi
-  verify    check a signature: go-msi verify package.msi
-  version   print the version
-
-signing options:
-  --pfx FILE | --cert FILE --key FILE   key and certificate chain
-  --password-env NAME                   environment variable with the .pfx password
-  --hash sha256|sha384|sha512|sha1      digest algorithm (default sha256)
-  --timestamp-url URL                   RFC 3161 time-stamping authority
-  --description TEXT, --url URL         program name and link shown by Windows
-`
+// Exit codes of run.
+const (
+	exitOK      = 0
+	exitFailure = 1
+	exitUsage   = 2
+)
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-// run executes the command line and returns the exit code.
-func run(args []string, stdout, stderr io.Writer) int { //nolint:cyclop // one case per command
-	if len(args) == 0 {
-		_, _ = io.WriteString(stderr, usage)
+// run executes the command line and returns the exit code: 0 on success,
+// 1 when the command failed and 2 for a usage error. Help goes to stdout,
+// errors and diagnostics to stderr.
+func run(args []string, stdout, stderr io.Writer) int {
+	root := newRootCmd(stdout, stderr)
 
-		return 2
+	// A nil slice makes cobra read os.Args.
+	root.SetArgs(append(make([]string, 0, len(args)), args...))
+
+	cmd, err := root.ExecuteC()
+	if err == nil {
+		return exitOK
 	}
 
-	var err error
+	_, _ = fmt.Fprintf(stderr, "go-msi: %v\n", err)
 
-	switch args[0] {
-	case "build":
-		err = cmdBuild(args[1:], stdout, stderr)
-	case "validate":
-		err = cmdValidate(args[1:], stderr)
-	case "inspect":
-		err = cmdInspect(args[1:], stdout, stderr)
-	case "sign":
-		err = cmdSign(args[1:], stdout, stderr)
-	case "verify":
-		err = cmdVerify(args[1:], stdout, stderr)
-	case "version":
-		_, _ = fmt.Fprintf(stdout, "go-msi %s (commit %s, built %s)\n", version, commit, date)
-	case "-h", "--help", "help":
-		_, _ = io.WriteString(stdout, usage)
-	default:
-		_, _ = fmt.Fprintf(stderr, "go-msi: unknown command %q\n%s", args[0], usage)
-
-		return 2
+	// Errors of the root command are unknown commands.
+	if cmd != root && !isUsageError(err) {
+		return exitFailure
 	}
 
-	if err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 2
-		}
+	_, _ = fmt.Fprintf(stderr, "Run '%s --help' for usage.\n", cmd.CommandPath())
 
-		_, _ = fmt.Fprintf(stderr, "go-msi: %v\n", err)
-
-		return 1
-	}
-
-	return 0
+	return exitUsage
 }
 
-// vars collects repeated --var NAME=VALUE flags.
-type vars map[string]string
+// usageError marks a wrong command line: an unknown command or flag, a bad
+// flag value or the wrong number of arguments.
+type usageError struct{ err error }
 
-func (v vars) String() string { return "" }
+func (e usageError) Error() string { return e.err.Error() }
 
-func (v vars) Set(s string) error {
-	name, value, ok := strings.Cut(s, "=")
-	if !ok || name == "" {
-		return fmt.Errorf("--var wants NAME=VALUE, got %q", s)
-	}
+func (e usageError) Unwrap() error { return e.err }
 
-	v[name] = value
+func isUsageError(err error) bool {
+	var usage usageError
 
-	return nil
+	return errors.As(err, &usage)
 }
 
-// loadFlags are the flags shared by build and validate.
-type loadFlags struct {
-	vars vars
-	env  bool
-}
+func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
+	root := &cobra.Command{
+		Use:   "go-msi",
+		Short: "Build Windows Installer (MSI) packages from a YAML file",
+		Long: `go-msi builds Windows Installer (MSI) packages from a single YAML file,
+signs them with Authenticode and inspects existing packages. It is pure Go
+and builds the same packages on Linux, macOS and Windows.`,
+		Version: version,
+		// Without Args, cobra rejects unknown commands.
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 0 { // after --
+				return usageError{fmt.Errorf("unknown command %q", args[0])}
+			}
 
-func (l *loadFlags) register(fs *flag.FlagSet) {
-	l.vars = make(vars)
-	fs.Var(l.vars, "var", "set a variable (NAME=VALUE); repeatable")
-	fs.BoolVar(&l.env, "env", false, "let environment variables fill ${NAME} references")
-}
+			_, _ = io.WriteString(stderr, cmd.UsageString())
 
-func (l *loadFlags) load(path string) (*config.Config, error) {
-	opts := config.Options{Vars: l.vars}
-	if l.env {
-		opts.LookupEnv = os.LookupEnv
+			return usageError{errors.New("missing command")}
+		},
+		SilenceErrors: true,
+		SilenceUsage:  true,
 	}
 
-	cfg, err := config.Load(path, opts)
-	if err != nil {
-		return nil, fmt.Errorf("load: %w", err)
-	}
+	// Declared here so that cobra adds no -v shorthand.
+	root.Flags().Bool("version", false, "print the version")
+	root.SetHelpCommand(newHelpCmd())
+	// The root and completion commands only run to report a usage error, so
+	// their usage shows the "[command]" line alone.
+	root.SetUsageTemplate(strings.Replace(root.UsageTemplate(),
+		"{{if .Runnable}}", "{{if and .Runnable (not .HasAvailableSubCommands)}}", 1))
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	root.SetVersionTemplate(versionLine())
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err} })
 
-	return cfg, nil
-}
-
-func printDiagnostics(w io.Writer, ds config.Diagnostics) {
-	for _, d := range ds {
-		_, _ = fmt.Fprintln(w, d.String())
-	}
-}
-
-func cmdValidate(args []string, stderr io.Writer) error {
-	flags := flag.NewFlagSet("validate", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-
-	var load loadFlags
-
-	load.register(flags)
-
-	if err := flags.Parse(args); err != nil {
-		return fmt.Errorf("flags: %w", err)
-	}
-
-	if flags.NArg() != 1 {
-		return errors.New("validate wants exactly one msi.yaml")
-	}
-
-	cfg, err := load.load(flags.Arg(0))
-	if err != nil {
-		return err
-	}
-
-	ds := config.Validate(cfg)
-	printDiagnostics(stderr, ds)
-
-	if err := ds.Err(); err != nil {
-		return errors.New("validation failed")
-	}
-
-	return nil
-}
-
-func cmdBuild(args []string, stdout, stderr io.Writer) error {
-	flags := flag.NewFlagSet("build", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-
-	var (
-		load       loadFlags
-		out        string
-		cfbVersion int
-		skipVerify bool
-		quiet      bool
-		signing    signFlags
+	root.AddCommand(
+		newBuildCmd(),
+		newValidateCmd(),
+		newInspectCmd(),
+		newSignCmd(),
+		newVerifyCmd(),
+		newCompletionCmd(),
+		newVersionCmd(),
 	)
 
-	load.register(flags)
-	signing.register(flags)
-	flags.StringVar(&out, "o", "", "output file (default: <product name>-<version>.msi next to the YAML file)")
-	flags.IntVar(&cfbVersion, "cfb", 4, "compound file version, 3 (512-byte sectors) or 4 (4096-byte sectors)")
-	flags.BoolVar(&skipVerify, "skip-verify", false, "do not read the finished package back")
-	flags.BoolVar(&quiet, "q", false, "print nothing on success")
+	return root
+}
 
-	if err := flags.Parse(args); err != nil {
-		return fmt.Errorf("flags: %w", err)
+func versionLine() string {
+	return fmt.Sprintf("go-msi %s (commit %s, built %s)\n", version, commit, date)
+}
+
+// newHelpCmd replaces cobra's help command, which prints an unknown topic
+// to stdout and exits 0.
+func newHelpCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "help [command]",
+		Short:             "Show the help of a command",
+		Long:              "Help shows the help of a command, such as go-msi help build.",
+		ValidArgsFunction: completeHelp,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target, rest, err := cmd.Root().Find(args)
+			if err != nil || len(rest) != 0 {
+				return usageError{fmt.Errorf("unknown help topic %q", strings.Join(args, " "))}
+			}
+
+			target.InitDefaultHelpFlag()
+			target.InitDefaultVersionFlag()
+
+			return target.Help()
+		},
 	}
+}
 
-	if flags.NArg() != 1 {
-		return errors.New("build wants exactly one msi.yaml")
-	}
-
-	if err := signing.check(); err != nil {
-		return err
-	}
-
-	cfg, err := load.load(flags.Arg(0))
+// completeHelp offers the subcommands of the command named so far.
+func completeHelp(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	parent, _, err := cmd.Root().Find(args)
 	if err != nil {
-		return err
+		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 
-	if out == "" {
-		out = filepath.Join(cfg.BaseDir, cfg.Product.Name+"-"+cfg.Product.Version+".msi")
+	var names []cobra.Completion
+
+	for _, sub := range parent.Commands() {
+		if sub.IsAvailableCommand() && strings.HasPrefix(sub.Name(), toComplete) {
+			names = append(names, cobra.CompletionWithDesc(sub.Name(), sub.Short))
+		}
 	}
 
-	// Signing works on the whole package, so a signed build streams to a
-	// temporary file first and the signed bytes replace out atomically; a
-	// package already at out survives a failed signing.
-	target := out
+	return names, cobra.ShellCompDirectiveNoFileComp
+}
 
-	if signing.enabled() {
-		tmp, err := os.CreateTemp(filepath.Dir(out), ".go-msi-*.unsigned")
-		if err != nil {
-			return fmt.Errorf("create a temporary file: %w", err)
-		}
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "version",
+		Short:             "Print the version",
+		Args:              noArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			_, _ = io.WriteString(cmd.OutOrStdout(), versionLine())
 
-		target = tmp.Name()
-		_ = tmp.Close()
-
-		defer func() { _ = os.Remove(target) }()
+			return nil
+		},
 	}
+}
 
-	res, err := builder.Build(cfg, builder.Options{
-		CFBVersion: cfbVersion,
-		ToolName:   "go-msi " + version,
-		SkipVerify: skipVerify,
-		Output:     target,
-	})
-
-	printDiagnostics(stderr, res.Diagnostics)
-
-	if err != nil {
-		if res.Diagnostics.Err() != nil {
-			return errors.New("build failed")
-		}
-
-		return fmt.Errorf("build failed: %w", err)
-	}
-
-	if signing.enabled() {
-		pkg, err := os.ReadFile(target)
-		if err != nil {
-			return fmt.Errorf("read %s: %w", target, err)
-		}
-
-		signed, err := signing.signBuild(pkg, cfg.Product.Name)
-		if err != nil {
-			return err
-		}
-
-		if err := writeAtomic(out, signed); err != nil {
-			return err
-		}
-
-		res.Size = int64(len(signed))
-	}
-
-	if !quiet {
-		_, _ = fmt.Fprintf(stdout, "%s: %d bytes, %d files, ProductCode %s, PackageCode %s\n",
-			out, res.Size, len(res.Files), res.ProductCode, res.PackageCode)
+func noArgs(cmd *cobra.Command, args []string) error {
+	if len(args) != 0 {
+		return usageError{fmt.Errorf("%s takes no arguments, got %q", cmd.Name(), args)}
 	}
 
 	return nil
 }
 
-func cmdInspect(args []string, stdout, stderr io.Writer) error { //nolint:cyclop // one pass over the format; splitting would scatter it
-	flags := flag.NewFlagSet("inspect", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-
-	var table string
-
-	flags.StringVar(&table, "table", "", "print only this table")
-
-	if err := flags.Parse(args); err != nil {
-		return fmt.Errorf("flags: %w", err)
-	}
-
-	if flags.NArg() != 1 {
-		return errors.New("inspect wants exactly one package")
-	}
-
-	// Open lazily: cabinets stay in the file and are listed by size.
-	pkg, err := os.Open(flags.Arg(0))
-	if err != nil {
-		return fmt.Errorf("open: %w", err)
-	}
-
-	defer pkg.Close()
-
-	stat, err := pkg.Stat()
-	if err != nil {
-		return fmt.Errorf("stat: %w", err)
-	}
-
-	file, err := cfb.Open(pkg, stat.Size())
-	if err != nil {
-		return fmt.Errorf("%s: %w", flags.Arg(0), err)
-	}
-
-	database, err := msidb.Decode(file)
-	if err != nil {
-		return fmt.Errorf("%s: %w", flags.Arg(0), err)
-	}
-
-	if table != "" {
-		t := database.Table(table)
-		if t == nil {
-			return fmt.Errorf("no table %s", table)
+// exactlyOne accepts one positional argument, described by what.
+func exactlyOne(what string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) != 1 {
+			return usageError{fmt.Errorf("%s wants exactly one %s, got %d arguments", cmd.Name(), what, len(args))}
 		}
-
-		printTable(stdout, t)
 
 		return nil
 	}
-
-	_, _ = fmt.Fprintf(stdout, "codepage: %d\n", database.Codepage)
-
-	for _, p := range database.Summary {
-		_, _ = fmt.Fprintf(stdout, "summary %2d: %s\n", p.ID, formatValue(p.Value))
-	}
-
-	names := make([]string, 0, len(database.Streams)+len(database.Sources))
-	for _, s := range database.Streams {
-		names = append(names, fmt.Sprintf("%s (%d bytes)", s.Name, len(s.Data)))
-	}
-
-	for _, s := range database.Sources {
-		names = append(names, fmt.Sprintf("%s (%d bytes)", s.Name, s.Size))
-	}
-
-	slices.Sort(names)
-
-	if len(names) > 0 {
-		_, _ = fmt.Fprintf(stdout, "streams: %s\n", strings.Join(names, ", "))
-	}
-
-	for _, p := range database.Problems {
-		_, _ = fmt.Fprintf(stdout, "problem: %s\n", p)
-	}
-
-	for _, t := range database.Tables {
-		_, _ = fmt.Fprintln(stdout)
-		printTable(stdout, t)
-	}
-
-	return nil
 }
 
-func printTable(out io.Writer, tbl *msidb.Table) {
-	cols := make([]string, len(tbl.Columns))
-	types := make([]string, len(tbl.Columns))
-
-	for i, c := range tbl.Columns {
-		cols[i] = c.Name
-		types[i] = c.Type.String()
-
-		if c.Type.Key {
-			types[i] += "!"
-		}
-	}
-
-	_, _ = fmt.Fprintf(out, "== %s (%d rows)\n%s\n%s\n", tbl.Name, len(tbl.Rows), strings.Join(cols, "\t"), strings.Join(types, "\t"))
-
-	for _, r := range tbl.Rows {
-		cells := make([]string, len(r))
-		for i, v := range r {
-			cells[i] = formatValue(v)
+// fileArg completes the single positional argument with files that have
+// one of the extensions.
+func fileArg(extensions ...string) cobra.CompletionFunc {
+	return func(_ *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		if len(args) != 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 
-		_, _ = fmt.Fprintln(out, strings.Join(cells, "\t"))
+		return extensions, cobra.ShellCompDirectiveFilterFileExt
 	}
 }
 
-func formatValue(v any) string {
-	switch val := v.(type) {
-	case nil:
-		return ""
-	case string:
-		return val
-	case int:
-		return strconv.Itoa(val)
-	case []byte:
-		return fmt.Sprintf("[binary %d bytes]", len(val))
-	case time.Time:
-		return val.UTC().Format(time.RFC3339)
-	default:
-		return fmt.Sprint(val)
+// fixedValues completes a flag with a fixed set of values.
+func fixedValues(values ...string) cobra.CompletionFunc {
+	return func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return slices.Clone(values), cobra.ShellCompDirectiveNoFileComp
 	}
 }
 
-// signFlags are the signing options of build and sign.
-type signFlags struct {
-	pfx          string
-	cert         string
-	key          string
-	passwordEnv  string
-	hash         string
-	timestampURL string
-	description  string
-	url          string
-}
-
-func (s *signFlags) register(flags *flag.FlagSet) {
-	flags.StringVar(&s.pfx, "pfx", "", "sign with the key and certificates in this PKCS #12 file")
-	flags.StringVar(&s.cert, "cert", "", "sign with this PEM certificate chain (signing certificate first)")
-	flags.StringVar(&s.key, "key", "", "PEM private key for --cert")
-	flags.StringVar(&s.passwordEnv, "password-env", "", "environment variable holding the --pfx password")
-	flags.StringVar(&s.hash, "hash", "sha256", "signature digest: sha256, sha384, sha512 or sha1")
-	flags.StringVar(&s.timestampURL, "timestamp-url", "", "RFC 3161 time-stamping authority")
-	flags.StringVar(&s.description, "description", "", "program name shown in the UAC prompt")
-	flags.StringVar(&s.url, "url", "", "more-information link of the signature")
-}
-
-func (s *signFlags) enabled() bool { return s.pfx != "" || s.cert != "" || s.key != "" }
-
-// check refuses signing options that would be ignored.
-func (s *signFlags) check() error {
-	if !s.enabled() && (s.timestampURL != "" || s.description != "" || s.url != "" || s.passwordEnv != "" || s.hash != "sha256") {
-		return errors.New("signing options need --pfx, or --cert and --key")
-	}
-
-	if s.passwordEnv != "" && s.pfx == "" {
-		return errors.New("--password-env only applies to --pfx")
-	}
-
-	return nil
-}
-
-func (s *signFlags) options() (sign.Options, error) {
-	opts := sign.Options{TimestampURL: s.timestampURL, Description: s.description, URL: s.url}
-
-	hashes := map[string]crypto.Hash{"sha256": crypto.SHA256, "sha384": crypto.SHA384, "sha512": crypto.SHA512, "sha1": crypto.SHA1}
-
-	var ok bool
-	if opts.Hash, ok = hashes[s.hash]; !ok {
-		return opts, fmt.Errorf("--hash: unknown digest %q", s.hash)
-	}
-
-	var err error
-
-	opts.Signer, opts.Certificates, err = s.loadKey()
-
-	return opts, err
-}
-
-func (s *signFlags) loadKey() (crypto.Signer, []*x509.Certificate, error) {
-	switch {
-	case s.pfx != "" && (s.cert != "" || s.key != ""):
-		return nil, nil, errors.New("use either --pfx or --cert and --key")
-	case s.pfx != "":
-		return s.loadPFX()
-	case s.cert != "" && s.key != "":
-		certPEM, err := os.ReadFile(s.cert)
-		if err != nil {
-			return nil, nil, fmt.Errorf("read: %w", err)
-		}
-
-		keyPEM, err := os.ReadFile(s.key)
-		if err != nil {
-			return nil, nil, fmt.Errorf("read: %w", err)
-		}
-
-		return sign.LoadPEM(certPEM, keyPEM) //nolint:wrapcheck // sign errors carry their prefix
-	default:
-		return nil, nil, errors.New("signing needs --pfx, or --cert and --key")
-	}
-}
-
-func (s *signFlags) loadPFX() (crypto.Signer, []*x509.Certificate, error) {
-	data, err := os.ReadFile(s.pfx)
+// mustComplete registers flag completions; errors are programming errors
+// (an unknown flag name) that every test run would catch.
+func mustComplete(err error) {
 	if err != nil {
-		return nil, nil, fmt.Errorf("read: %w", err)
+		panic(err)
 	}
-
-	var password string
-
-	if s.passwordEnv != "" {
-		var ok bool
-		if password, ok = os.LookupEnv(s.passwordEnv); !ok {
-			return nil, nil, fmt.Errorf("--password-env: %s is not set", s.passwordEnv)
-		}
-	}
-
-	return sign.LoadPKCS12(data, password) //nolint:wrapcheck // sign errors carry their prefix
-}
-
-// signBuild signs a freshly built package when signing was asked for. The
-// program name defaults to the product name.
-func (s *signFlags) signBuild(pkg []byte, product string) ([]byte, error) {
-	if !s.enabled() {
-		return pkg, nil
-	}
-
-	if s.description == "" {
-		s.description = product
-	}
-
-	return s.sign(pkg)
-}
-
-func (s *signFlags) sign(pkg []byte) ([]byte, error) {
-	opts, err := s.options()
-	if err != nil {
-		return nil, err
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
-	signed, err := sign.Sign(ctx, pkg, opts)
-	if err != nil {
-		return nil, err //nolint:wrapcheck // sign errors carry their prefix
-	}
-
-	return signed, nil
-}
-
-func cmdSign(args []string, stdout, stderr io.Writer) error {
-	flags := flag.NewFlagSet("sign", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-
-	var (
-		signing signFlags
-		out     string
-		quiet   bool
-	)
-
-	signing.register(flags)
-	flags.StringVar(&out, "o", "", "output file (default: sign in place)")
-	flags.BoolVar(&quiet, "q", false, "print nothing on success")
-
-	if err := flags.Parse(args); err != nil {
-		return fmt.Errorf("flags: %w", err)
-	}
-
-	if flags.NArg() != 1 {
-		return errors.New("sign wants exactly one package")
-	}
-
-	if err := signing.check(); err != nil {
-		return err
-	}
-
-	in := flags.Arg(0)
-	if out == "" {
-		out = in
-	}
-
-	data, err := os.ReadFile(in)
-	if err != nil {
-		return fmt.Errorf("read: %w", err)
-	}
-
-	signed, err := signing.sign(data)
-	if err != nil {
-		return err
-	}
-
-	if err := writeAtomic(out, signed); err != nil {
-		return err
-	}
-
-	if !quiet {
-		return printSignature(stdout, out, signed)
-	}
-
-	return nil
-}
-
-// writeAtomic replaces path through a temporary file in the same
-// directory, so a failed write keeps the original package. An existing
-// file keeps its mode, and a symlink to an existing file keeps pointing at
-// the replaced file.
-func writeAtomic(path string, data []byte) error {
-	mode := os.FileMode(0o644)
-
-	if target, err := filepath.EvalSymlinks(path); err == nil {
-		path = target
-
-		if info, err := os.Stat(path); err == nil {
-			mode = info.Mode().Perm()
-		}
-	}
-
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".go-msi-*.msi")
-	if err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-
-	defer func() { _ = os.Remove(tmp.Name()) }()
-
-	for _, step := range []func() error{
-		func() error {
-			_, err := tmp.Write(data)
-
-			return err //nolint:wrapcheck // wrapped below
-		},
-		func() error { return tmp.Chmod(mode) },
-		tmp.Sync,
-	} {
-		if err := step(); err != nil {
-			_ = tmp.Close()
-
-			return fmt.Errorf("write %s: %w", path, err)
-		}
-	}
-
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-
-	if err := os.Rename(tmp.Name(), path); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-
-	return nil
-}
-
-func cmdVerify(args []string, stdout, stderr io.Writer) error {
-	flags := flag.NewFlagSet("verify", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-
-	if err := flags.Parse(args); err != nil {
-		return fmt.Errorf("flags: %w", err)
-	}
-
-	if flags.NArg() != 1 {
-		return errors.New("verify wants exactly one package")
-	}
-
-	data, err := os.ReadFile(flags.Arg(0))
-	if err != nil {
-		return fmt.Errorf("read: %w", err)
-	}
-
-	return printSignature(stdout, flags.Arg(0), data)
-}
-
-// printSignature verifies pkg and prints a one-line summary.
-func printSignature(stdout io.Writer, name string, pkg []byte) error {
-	sig, err := sign.Verify(pkg)
-	if err != nil {
-		return fmt.Errorf("%s: %w", name, err)
-	}
-
-	mode := "basic"
-	if sig.Extended {
-		mode = "extended"
-	}
-
-	stamp := "no timestamp"
-	if !sig.Timestamp.IsZero() {
-		stamp = "timestamped " + sig.Timestamp.UTC().Format(time.RFC3339)
-	}
-
-	_, _ = fmt.Fprintf(stdout, "%s: signature valid (%s, %v, %s), signer %q, issuer %q\n",
-		name, mode, sig.Hash, stamp, sig.Signer.Subject.String(), sig.Signer.Issuer.String())
-
-	return nil
 }

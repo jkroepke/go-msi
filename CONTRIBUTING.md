@@ -40,6 +40,10 @@ GOTOOLCHAIN=go1.27.3 go run github.com/golangci/golangci-lint/v2/cmd/golangci-li
 go test ./...
 ```
 
+After changing a command, flag or help text of the CLI, regenerate the
+[command-line reference](docs/cli/go-msi.md) with `go generate ./cmd/go-msi`;
+`go test` fails while it is out of date.
+
 golangci-lint must be built with the Go version from `go.mod`. A release binary
 built with an older Go refuses to lint this module.
 
