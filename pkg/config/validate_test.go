@@ -273,7 +273,22 @@ func TestValidate(t *testing.T) {
 		"purge percent in name": {
 			strings.Replace(base, "        configurable: true\n", "        children: [{id: DataDir, name: '%TEMP%'}]\n", 1) +
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1),
-			sevError, "components[0].purge", "has a % in its name",
+			sevError, "components[0].purge", "has a %",
+		},
+		"purge below a standard folder set by setDirectory": {
+			base + "components:\n  - id: Data\n    directory: CommonAppDataFolder/Example\n    createFolder: true\n    purge: true\n" +
+				"customActions:\n  - id: SetIt\n    setDirectory: {directory: CommonAppDataFolder, value: '[DATAROOT]'}\n" +
+				"    schedule: [{sequence: execute, after: CostFinalize}]\n",
+			sevError, "components[0].purge", "CommonAppDataFolder can be pointed",
+		},
+		"purge short name": {
+			strings.Replace(base, "        configurable: true\n", "        children: [{id: DataDir, name: 'DATA~1|Data'}]\n", 1) +
+				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1),
+			sevError, "components[0].purge", "short name",
+		},
+		"purge permanent": {
+			base + strings.Replace(appComponent, "    files:", "    permanent: true\n    purge: true\n    files:", 1),
+			sevError, "components[0].purge", "permanent",
 		},
 		"purge below setDirectory": {
 			strings.Replace(base, "        configurable: true\n", "        children: [{id: DataDir, name: data}]\n", 1) +

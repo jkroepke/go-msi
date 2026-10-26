@@ -16,6 +16,11 @@ func (v *validator) purge(cfg *Config, known *refs, field string, comp *Componen
 		return
 	}
 
+	if comp.Permanent {
+		v.errorf(field+".purge", "a permanent component outlives the product, but purge deletes its folder at "+
+			"uninstall; use one or the other")
+	}
+
 	v.purgeFolder(cfg, known, field, comp)
 
 	if comp.Purge.Condition != "" {
@@ -43,9 +48,10 @@ func (v *validator) purgeFolder(cfg *Config, known *refs, field string, comp *Co
 			"folder, such as CommonAppDataFolder/Vendor/Product", comp.Directory)
 	case dir.Name == "" || dir.Name == ".":
 		v.errorf(field+".purge", "%s is its parent folder; purge a folder with its own name", comp.Directory)
-	case percentInPath(known, comp.Directory) != "":
-		v.errorf(field+".purge", "%s has a %% in its name, which cmd.exe expands as an environment variable; purge a "+
-			"folder whose path has no %%", percentInPath(known, comp.Directory))
+	case unsafeNameInPath(known, comp.Directory) != "":
+		v.errorf(field+".purge", "%s has a %% or a short name (|) in its name: cmd.exe expands %%NAME%% as an "+
+			"environment variable, and with SHORTFILENAMES a short name can be another folder's 8.3 alias; purge "+
+			"a folder whose path has neither", unsafeNameInPath(known, comp.Directory))
 	default:
 		if movable := movableAncestor(cfg, known, comp.Directory); movable != "" {
 			v.errorf(field+".purge", "%s can be pointed at any folder (a public id, configurable, or set by an action, "+
@@ -93,7 +99,17 @@ func movableAncestor(cfg *Config, known *refs, dirID string) string {
 
 	for range 64 {
 		parent, ok := known.dirParent[dirID]
-		if !ok || parent == "" {
+		if !ok {
+			return ""
+		}
+
+		if parent == "" {
+			// The root folder: the installer resolves a standard folder
+			// itself, but an action or property can still move it.
+			if set[dirID] {
+				return dirID
+			}
+
 			return ""
 		}
 
@@ -108,11 +124,12 @@ func movableAncestor(cfg *Config, known *refs, dirID string) string {
 	return ""
 }
 
-// percentInPath returns the first directory from dirID up to its root folder
-// whose name has a %, which cmd.exe expands in the purge command line.
-func percentInPath(known *refs, dirID string) string {
+// unsafeNameInPath returns the first directory from dirID up to its root
+// folder whose name has a %, which cmd.exe expands in the purge command line,
+// or a hand-written short name, which SHORTFILENAMES selects.
+func unsafeNameInPath(known *refs, dirID string) string {
 	for range 64 {
-		if dir := known.dirs[dirID]; dir != nil && strings.Contains(dir.Name, "%") {
+		if dir := known.dirs[dirID]; dir != nil && strings.ContainsAny(dir.Name, "%|") {
 			return dirID
 		}
 
