@@ -466,6 +466,9 @@ type Placement struct { //nolint:govet // field order is the YAML key order
 	After     string `yaml:"after"`
 	At        int    `yaml:"at"`
 	Condition string `yaml:"condition"`
+	// When is install, upgrade, uninstall or maintenance: a condition that
+	// is ANDed with Condition (see Placement.FullCondition).
+	When string `yaml:"when"`
 }
 
 // FirewallRule is an inbound rule that follows a component's state.

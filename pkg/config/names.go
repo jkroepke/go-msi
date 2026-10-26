@@ -96,9 +96,12 @@ var standardTables = set( //nolint:gochecknoglobals // lookup table
 // sequenceAdminUI is the schedule name of the AdminUISequence.
 const sequenceAdminUI = "adminUI"
 
+// sequenceExecute is the schedule name of the InstallExecuteSequence.
+const sequenceExecute = "execute"
+
 // sequenceTables maps the schedule names to the sequence tables.
 var sequenceTables = map[string]string{ //nolint:gochecknoglobals // lookup table
-	"execute":       "InstallExecuteSequence",
+	sequenceExecute: "InstallExecuteSequence",
 	"ui":            "InstallUISequence",
 	"adminExecute":  "AdminExecuteSequence",
 	sequenceAdminUI: "AdminUISequence",

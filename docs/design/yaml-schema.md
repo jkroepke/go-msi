@@ -819,6 +819,36 @@ shifts, when a chain runs into another fixed number. After numbering it
 checks deferred actions against InstallInitialize … InstallFinalize (ICE77)
 and RemoveExistingProducts against the windows of section 4.3.
 
+`when` names the case a placement runs in, ANDed with its `condition`:
+
+| `when` | Condition |
+|---|---|
+| `install` | `NOT Installed AND NOT <upgrade properties>` (`NOT Installed` with `upgrade: false`) |
+| `upgrade` | `NOT Installed AND <upgrade properties>`; needs `upgrade` |
+| `uninstall` | `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE` |
+| `maintenance` | `Installed AND NOT REMOVE~="ALL"`: repair, change, and also patches and minor upgrades |
+
+```yaml
+schedule:
+  - { sequence: execute, before: RemoveFiles, when: uninstall, condition: DELETE_DATA="1" }
+```
+
+The upgrade properties are `upgrade.property` and the `property` of every
+`upgrade.related` row without `onlyDetect`, ORed. `when` is allowed in the
+`execute` sequence, and `install` and `upgrade` also in `ui`; the
+administrative sequences have none of these properties. The builder warns
+when `install` or `upgrade` runs before FindRelatedProducts, which sets the
+upgrade properties, and when `uninstall` or `maintenance` runs before
+InstallValidate, since REMOVE is reliable only after it (specification
+section 8.8).
+
+RUN-26 tested the `uninstall` condition on a deferred execute action near
+InstallFinalize: true on `msiexec /x`, false while a major upgrade with
+RemoveExistingProducts at 1401 removed the old product. Other `removeOld`
+windows, a removal from the maintenance dialog and the other three
+conditions follow from the Installed, REMOVE and upgrade properties and
+were not tested.
+
 Standard actions are added automatically for the tables a package uses. An
 action used only as an anchor is added at its default number.
 

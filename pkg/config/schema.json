@@ -593,6 +593,15 @@
                 },
                 "condition": {
                   "$ref": "#/$defs/condition"
+                },
+                "when": {
+                  "enum": [
+                    "install",
+                    "upgrade",
+                    "uninstall",
+                    "maintenance"
+                  ],
+                  "description": "ANDed with condition. install: first install, not a major upgrade. upgrade: the new version of a major upgrade. uninstall: a real removal, not the old product's removal during a major upgrade. maintenance: repair, change, patch or minor upgrade of an installed product. Allowed in execute; install and upgrade also in ui."
                 }
               },
               "required": [

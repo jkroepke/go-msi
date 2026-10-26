@@ -262,6 +262,23 @@ func TestValidate(t *testing.T) {
 			base + appComponent + "properties: {OPT: '0'}\nui:\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: checkbox}]}\n",
 			sevWarning, "ui.dialogs[0].fields[0].property", "starts checked",
 		},
+		"schedule when": {
+			base + appComponent + "customActions:\n  - id: Set\n    setProperty: {name: A, value: b}\n    schedule: [{sequence: execute, after: CostFinalize, when: always}]\n",
+			sevError, "customActions[0].schedule[0].when", "",
+		},
+		"schedule when upgrade without upgrades": {
+			strings.Replace(base, "upgrade: {}", "upgrade: false", 1) + appComponent +
+				"customActions:\n  - id: Set\n    setProperty: {name: A, value: b}\n    schedule: [{sequence: execute, after: CostFinalize, when: upgrade}]\n",
+			sevError, "customActions[0].schedule[0].when", "upgrade section",
+		},
+		"schedule when uninstall in ui": {
+			base + appComponent + "customActions:\n  - id: Set\n    setProperty: {name: A, value: b}\n    schedule: [{sequence: ui, after: CostFinalize, when: uninstall}]\n",
+			sevError, "customActions[0].schedule[0].when", "InstallValidate",
+		},
+		"schedule when in admin": {
+			base + appComponent + "customActions:\n  - id: Set\n    setProperty: {name: A, value: b}\n    schedule: [{sequence: adminExecute, after: CostFinalize, when: install}]\n",
+			sevError, "customActions[0].schedule[0].when", "administrative",
+		},
 		// RUN-25.
 		"remember with a component of the same id": {
 			strings.Replace(base, "        configurable: true\n", "        configurable: true\ninstallDir: {id: INSTALLDIR, remember: true}\n", 1) +

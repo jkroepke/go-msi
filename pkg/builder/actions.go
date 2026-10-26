@@ -351,7 +351,7 @@ func (b *build) customActions() error { //nolint:cyclop // one pass over the for
 				continue
 			}
 
-			b.schedule(table, custom.ID, placement.Condition, placement.Before, placement.After, placement.At)
+			b.schedule(table, custom.ID, placement.FullCondition(b.cfg), placement.Before, placement.After, placement.At)
 		}
 	}
 
@@ -543,6 +543,7 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 	}
 
 	b.checkSequences()
+	b.checkWhen()
 
 	scheduled := make(map[string]bool)
 

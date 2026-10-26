@@ -280,3 +280,42 @@ func TestDialogFieldTypes(t *testing.T) {
 
 	checkRings(t, res)
 }
+
+// TestScheduleWhen checks that a schedule's when is written into the
+// sequence condition, ANDed with its condition.
+func TestScheduleWhen(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
+	cfg.CustomActions = append(cfg.CustomActions, &config.CustomAction{
+		ID:          "Cleanup",
+		SetProperty: &config.SetProperty{Name: "CLEANUP", Value: "1"},
+		Schedule:    []config.Placement{{Sequence: "execute", Before: "RemoveFiles", When: config.WhenUninstall, Condition: "KEEP <> 1"}},
+	})
+	res := mustBuild(t, cfg)
+
+	got := cell(t, res.Database, "InstallExecuteSequence", "Condition", func(r []any) bool { return r[0] == "Cleanup" })
+	if want := `(REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE) AND (KEEP <> 1)`; got != want {
+		t.Errorf("condition %q, want %q", got, want)
+	}
+}
+
+// TestScheduleWhenTooEarly checks the warning for an uninstall placement
+// before InstallValidate, where REMOVE is not reliable yet.
+func TestScheduleWhenTooEarly(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
+	cfg.CustomActions = append(cfg.CustomActions, &config.CustomAction{
+		ID:          "Early",
+		SetProperty: &config.SetProperty{Name: "EARLY", Value: "1"},
+		Schedule:    []config.Placement{{Sequence: "execute", After: "CostFinalize", When: config.WhenUninstall}},
+	})
+	res := mustBuild(t, cfg)
+
+	if !strings.Contains(fmt.Sprint(res.Diagnostics), "before InstallValidate") {
+		t.Errorf("diagnostics %s", res.Diagnostics)
+	}
+}
