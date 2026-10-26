@@ -858,6 +858,19 @@
                     },
                     "label": {
                       "type": "string"
+                    },
+                    "type": {
+                      "enum": [
+                        "text",
+                        "password",
+                        "checkbox"
+                      ],
+                      "default": "text",
+                      "description": "text: a label and an edit field. password: the same with the characters hidden; the property is added to MsiHiddenProperties. checkbox: a check box with the label as its text."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "checkbox only: the value a checked box sets the property to. Default: 1."
                     }
                   },
                   "required": [

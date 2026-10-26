@@ -44,6 +44,7 @@ const (
 	ctlProg95   = 0x10000
 	ctlFixedVol = 0x20000
 	ctlRemoteV  = 0x40000
+	ctlPassword = 0x200000
 
 	ctlActive   = ctlVisible | ctlEnabled
 	ctlText     = ctlActive | ctlNoPrefix
@@ -347,37 +348,88 @@ func (b *build) addedDialogs(wiz *wizard) {
 			continue
 		}
 
-		wiz.add(formDialog(cfg))
+		if !b.fieldCheckBoxes(wiz, path, cfg) {
+			continue
+		}
+
+		wiz.add(b.formDialog(cfg))
 		wiz.flow = slices.Insert(wiz.flow, index+1, cfg.ID)
 	}
 }
 
-// formDialog lays out an added dialog: one label and one edit per field.
-func formDialog(cfg *config.Dialog) *uiDialog {
+// formDialog lays out an added dialog: per field a label and an edit, or
+// a check box in the same space.
+func (b *build) formDialog(cfg *config.Dialog) *uiDialog {
 	dialog := &uiDialog{name: cfg.ID, attrs: dlgPage}
 	dialog.innerHeader(cfg.Title, cfg.Description)
 
 	top := fieldTop
+	width := dlgWidth - 2*margin - 10
 
-	for i, field := range cfg.Fields {
+	for i := range cfg.Fields {
+		field := &cfg.Fields[i]
+
 		label := field.Label
 		if label == "" {
 			label = field.Property
 		}
 
-		dialog.control(text(fmt.Sprintf("Label%d", i+1), margin+5, top, dlgWidth-2*margin-10, fieldLabelH, label))
-		dialog.control(&uiControl{
-			name: fmt.Sprintf("Edit%d", i+1), typ: "Edit", property: field.Property, ring: true,
-			x: margin + 5, y: top + fieldLabelH, w: dlgWidth - 2*margin - 10, h: fieldEditH, attrs: ctlActive,
-		})
+		var name string
+
+		switch field.Type {
+		case config.FieldCheckBox:
+			name = fmt.Sprintf("CheckBox%d", i+1)
+			dialog.control(&uiControl{
+				name: name, typ: typCheckBox, property: field.Property, text: label, ring: true,
+				x: margin + 5, y: top + fieldLabelH, w: width, h: fieldEditH, attrs: ctlActive,
+			})
+		default:
+			attrs := ctlActive
+			if field.Type == config.FieldPassword {
+				attrs |= ctlPassword
+				b.hidden[field.Property] = true
+			}
+
+			name = fmt.Sprintf("Edit%d", i+1)
+			dialog.control(text(fmt.Sprintf("Label%d", i+1), margin+5, top, width, fieldLabelH, label))
+			dialog.control(&uiControl{
+				name: name, typ: "Edit", property: field.Property, ring: true,
+				x: margin + 5, y: top + fieldLabelH, w: width, h: fieldEditH, attrs: attrs,
+			})
+		}
+
+		if dialog.first == "" {
+			dialog.first = name
+		}
 
 		top += fieldLabelH + fieldEditH + fieldGap
 	}
 
-	dialog.first = "Edit1"
 	dialog.navigation()
 
 	return dialog
+}
+
+// fieldCheckBoxes records the value each checkbox field of an added dialog
+// sets; the CheckBox table holds one value per property.
+func (b *build) fieldCheckBoxes(wiz *wizard, path string, cfg *config.Dialog) bool {
+	for index := range cfg.Fields {
+		field := &cfg.Fields[index]
+		if field.Type != config.FieldCheckBox {
+			continue
+		}
+
+		value := field.CheckBoxValue()
+		if have, taken := wiz.checkBoxes[field.Property]; taken && have != value {
+			b.errorf(fmt.Sprintf("%s.fields[%d].value", path, index), "another check box sets %s to %q", field.Property, have)
+
+			return false
+		}
+
+		wiz.checkBoxes[field.Property] = value
+	}
+
+	return true
 }
 
 // innerHeader adds the banner with the page title and description.

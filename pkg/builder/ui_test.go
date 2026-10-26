@@ -208,6 +208,9 @@ func TestWizardErrors(t *testing.T) {
 		{"too many fields", config.Dialog{ID: "ExtraDlg", Title: "x", After: "WelcomeDlg", Fields: []config.DialogField{
 			{Property: "A1"}, {Property: "A2"}, {Property: "A3"}, {Property: "A4"}, {Property: "A5"},
 		}}, "at most 4 fields"},
+		{"two check box values", config.Dialog{ID: "ExtraDlg", Title: "x", After: "WelcomeDlg", Fields: []config.DialogField{
+			{Property: "OPT", Type: config.FieldCheckBox}, {Property: "OPT", Type: config.FieldCheckBox, Value: "yes"},
+		}}, "another check box sets OPT"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -223,4 +226,57 @@ func TestWizardErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestDialogFieldTypes checks the password and checkbox fields of an added
+// dialog: a password edit, a hidden property, and a CheckBox row with the
+// value a checked box sets.
+func TestDialogFieldTypes(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
+	cfg.UI.Wizard = "minimal"
+	cfg.UI.Dialogs = []*config.Dialog{{
+		ID: "ExtraDlg", Title: "Options", After: "WelcomeDlg", Fields: []config.DialogField{
+			{Property: "API_TOKEN", Label: "Token", Type: config.FieldPassword},
+			{Property: "DELETE_DATA", Label: "&Delete data on uninstall", Type: config.FieldCheckBox, Value: "yes"},
+		},
+	}}
+	res := mustBuild(t, cfg)
+
+	controls := make(map[string][]any)
+
+	for _, row := range rows(t, res.Database, "Control") {
+		if row[0] == "ExtraDlg" {
+			controls[fmt.Sprint(row[1])] = row
+		}
+	}
+
+	if edit := controls["Edit1"]; edit == nil || edit[2] != "Edit" || fmt.Sprint(edit[7]) != "2097155" {
+		t.Errorf("password edit %v", edit)
+	}
+
+	if box := controls["CheckBox2"]; box == nil || box[2] != "CheckBox" || box[8] != "DELETE_DATA" || box[9] != "&Delete data on uninstall" {
+		t.Errorf("check box %v", box)
+	}
+
+	if controls["Label2"] != nil {
+		t.Error("a check box field has a separate label")
+	}
+
+	if got := cell(t, res.Database, "CheckBox", "Value", func(r []any) bool { return r[0] == "DELETE_DATA" }); got != "yes" {
+		t.Errorf("CheckBox value %v", got)
+	}
+
+	hidden := cell(t, res.Database, "Property", "Value", func(r []any) bool { return r[0] == "MsiHiddenProperties" })
+	if !strings.Contains(fmt.Sprint(hidden), "API_TOKEN") {
+		t.Errorf("MsiHiddenProperties %v", hidden)
+	}
+
+	if first := cell(t, res.Database, "Dialog", "Control_First", func(r []any) bool { return r[0] == "ExtraDlg" }); first != "Edit1" {
+		t.Errorf("first control %v", first)
+	}
+
+	checkRings(t, res)
 }

@@ -1576,8 +1576,8 @@ func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independ
 			v.errorf(dialogPath+".fields", "at least one field")
 		}
 
-		for j, field := range dialog.Fields {
-			fieldPath := fmt.Sprintf("%s.fields[%d]", dialogPath, j)
+		for index, field := range dialog.Fields {
+			fieldPath := fmt.Sprintf("%s.fields[%d]", dialogPath, index)
 			if v.required(fieldPath+".property", field.Property) && !IsPublicProperty(field.Property) {
 				v.errorf(fieldPath+".property", "UI values reach the server side only through public properties")
 			}
@@ -1585,6 +1585,8 @@ func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independ
 			if _, ok := cfg.Properties[field.Property]; field.Property != "" && !ok {
 				v.warnf(fieldPath+".property", "%s is not declared in properties, so it is not secure", field.Property)
 			}
+
+			v.dialogField(fieldPath, &dialog.Fields[index])
 		}
 	}
 }
