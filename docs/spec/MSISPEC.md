@@ -377,7 +377,7 @@ What go-msi's writer does (`internal/lzx`):
 
 The reader follows the same rules and also reads uncompressed blocks: after the block header, 1 to 16 padding bits (16 when the stream is already aligned), R0, R1 and R2 as little-endian u32, the bytes, and a pad byte when the block size is odd.
 
-Measured on Windows Server 2025 with makecab.exe 5.00 (2026-10-25, LZX:21 against MSZIP; the log is not yet under `msitest/results`): windows_exporter 0.32.0 (33.4 MB) 13.27 MB against 15.39 MB, Grafana Alloy 1.21.2 (414.6 MB) 75.28 MB against 106.86 MB; expand.exe was not slower on LZX. go-msi's writer gave 13.47 MB and 78.74 MB for the same files, measured on Linux; that cabinet.dll reads them is unverified until the native cabinet tests run on Windows.
+Measured on Windows Server 2025 with makecab.exe 5.00 (2026-10-25, LZX:21 against MSZIP; the log is not yet under `msitest/results`): windows_exporter 0.32.0 (33.4 MB) 13.27 MB against 15.39 MB, Grafana Alloy 1.21.2 (414.6 MB) 75.28 MB against 106.86 MB; expand.exe was not slower on LZX. go-msi's writer gave 13.47 MB and 78.74 MB for the same files, measured on Linux; that cabinet.dll reads them is unverified until the native cabinet tests run on Windows. The native tests run on Windows Server 2025 only; whether Windows Server 2016 installs LZX:21 cabinets is unverified, since no 2016 machine is available for testing.
 
 ### Windows Installer usage
 
