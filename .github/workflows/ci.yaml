@@ -264,10 +264,75 @@ jobs:
           VALIDATE_XML: true
           VALIDATE_YAML: true
 
+  # Tags a new version from the conventional commit titles on main. A tag
+  # created with GITHUB_TOKEN does not trigger the tag push run of CI, but a
+  # workflow_dispatch does, so dispatch CI on the new tag like tag.yaml.
+  release:
+    if: github.repository_owner == 'jkroepke' && github.ref_name == 'main'
+    name: Release
+    runs-on: ubuntu-26.04
+    environment: "Create Release Tag"
+    concurrency: create-tag
+    needs:
+      - build
+      - lint
+      - goreleaser
+      - super-lint
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: 'false'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      # Tags already on HEAD, so a re-run does not dispatch an old release again.
+      - name: List existing tags
+        id: before
+        run: echo "tags=$(git tag --points-at HEAD --list 'v*' | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # The conventionalcommits preset understands the `feat!:` form that
+        # CONTRIBUTING.md asks for; the default angular preset ignores it.
+        run: npx -y -p semantic-release@25.0.9 -p conventional-changelog-conventionalcommits@9.3.1 semantic-release
+
+      - name: Dispatch CI on the new tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAGS_BEFORE: ${{ steps.before.outputs.tags }}
+        run: |
+          TAG=""
+          for t in $(git tag --points-at HEAD --list 'v*'); do
+            case " $TAGS_BEFORE " in
+              *" $t "*) ;;
+              *) TAG="$t" ;;
+            esac
+          done
+
+          if [ -z "$TAG" ]; then
+            echo "::notice::semantic-release created no tag."
+            exit 0
+          fi
+
+          # If this fails, a re-run finds the tag already on HEAD and stops.
+          # Publish it by hand: gh workflow run ci.yaml --ref <tag>
+          gh workflow run ci.yaml --ref "$TAG"
+
   publish:
     name: Publish release
     environment: Publish
-    # Tags created by the Create Tag workflow start this workflow by workflow_dispatch.
+    # Tags created by the Create Tag workflow or the release job start this
+    # workflow by workflow_dispatch.
     if: >-
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       && startsWith(github.ref, 'refs/tags/v')
