@@ -33,30 +33,30 @@ type Version struct {
 
 // ParseVersion parses major.minor.build[.revision] within the limits of
 // ProductVersion (255.255.65535, revision 65535).
-func ParseVersion(s string) (Version, error) {
-	parts := strings.Split(s, ".")
+func ParseVersion(text string) (Version, error) {
+	parts := strings.Split(text, ".")
 	if len(parts) < 2 || len(parts) > 4 {
-		return Version{}, fmt.Errorf("version %q must have two to four fields", s)
+		return Version{}, fmt.Errorf("version %q must have two to four fields", text)
 	}
 
 	limits := []int{255, 255, 65535, 65535}
-	v := Version{Fields: len(parts)}
-	dst := []*int{&v.Major, &v.Minor, &v.Build, &v.Revision}
+	version := Version{Fields: len(parts)}
+	dst := []*int{&version.Major, &version.Minor, &version.Build, &version.Revision}
 
 	for i, p := range parts {
-		n, err := strconv.Atoi(p)
-		if err != nil || n < 0 || p == "" || (len(p) > 1 && p[0] == '+') {
-			return Version{}, fmt.Errorf("version %q: field %d is not a number", s, i+1)
+		num, err := strconv.Atoi(p)
+		if err != nil || num < 0 || p == "" || (len(p) > 1 && p[0] == '+') {
+			return Version{}, fmt.Errorf("version %q: field %d is not a number", text, i+1)
 		}
 
-		if n > limits[i] {
-			return Version{}, fmt.Errorf("version %q: field %d exceeds %d", s, i+1, limits[i])
+		if num > limits[i] {
+			return Version{}, fmt.Errorf("version %q: field %d exceeds %d", text, i+1, limits[i])
 		}
 
-		*dst[i] = n
+		*dst[i] = num
 	}
 
-	return v, nil
+	return version, nil
 }
 
 // PageCount converts installerVersion ("5.0", "4.5") into the Summary
@@ -67,14 +67,14 @@ func PageCount(installerVersion string) (int, error) {
 		return 0, fmt.Errorf("installer version %q must be major.minor", installerVersion)
 	}
 
-	ma, err1 := strconv.Atoi(major)
-	mi, err2 := strconv.Atoi(minor)
+	majorNum, err1 := strconv.Atoi(major)
+	minorNum, err2 := strconv.Atoi(minor)
 
-	if err1 != nil || err2 != nil || ma < 0 || mi < 0 || mi > 99 {
+	if err1 != nil || err2 != nil || majorNum < 0 || minorNum < 0 || minorNum > 99 {
 		return 0, fmt.Errorf("installer version %q must be major.minor", installerVersion)
 	}
 
-	return ma*100 + mi, nil
+	return majorNum*100 + minorNum, nil
 }
 
 // MinPageCount is the lowest Page Count go-msi writes for a platform. x64
@@ -85,9 +85,10 @@ func MinPageCount(p Platform) int {
 		return 200
 	case PlatformArm64:
 		return 500
-	default:
-		return 100
+	case PlatformX86:
 	}
+
+	return 100
 }
 
 // MaxPageCount is the highest Page Count Windows Installer 5.0 accepts
@@ -105,7 +106,7 @@ func IsIdentifier(s string) bool {
 }
 
 // ansiCodepages may be stored in the Summary Information stream (SUM-04).
-var ansiCodepages = map[int]bool{
+var ansiCodepages = map[int]bool{ //nolint:gochecknoglobals // lookup table
 	874: true, 932: true, 936: true, 949: true, 950: true,
 	1250: true, 1251: true, 1252: true, 1253: true, 1254: true,
 	1255: true, 1256: true, 1257: true, 1258: true,

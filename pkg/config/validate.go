@@ -48,25 +48,25 @@ func plainFileName(name string) bool {
 func Validate(cfg *Config) Diagnostics {
 	ApplyDefaults(cfg)
 
-	v := &validator{}
-	r := newRefs(cfg)
+	checker := &validator{}
+	known := newRefs(cfg)
 
-	v.product(cfg)
-	v.pkg(cfg)
-	v.upgrade(cfg)
-	v.directories(cfg, r)
-	v.features(cfg, r)
-	v.components(cfg, r)
-	v.properties(cfg)
-	v.launchConditions(cfg)
-	v.customActions(cfg, r)
-	v.streams(cfg)
-	v.firewall(cfg, r)
-	v.ui(cfg)
-	v.wizardOptions(cfg, r)
-	v.tables(cfg)
+	checker.product(cfg)
+	checker.pkg(cfg)
+	checker.upgrade(cfg)
+	checker.directories(cfg, known)
+	checker.features(cfg, known)
+	checker.components(cfg, known)
+	checker.properties(cfg)
+	checker.launchConditions(cfg)
+	checker.customActions(cfg, known)
+	checker.streams(cfg)
+	checker.firewall(cfg, known)
+	checker.ui(cfg)
+	checker.wizardOptions(cfg, known)
+	checker.tables(cfg)
 
-	return v.diags
+	return checker.diags
 }
 
 // refs indexes the ids that other sections refer to.
@@ -79,43 +79,43 @@ type refs struct {
 }
 
 func newRefs(cfg *Config) *refs {
-	r := &refs{
-		dirs:       map[string]*Directory{},
-		dirParent:  map[string]string{},
-		components: map[string]*Component{},
-		fileIDs:    map[string]bool{},
-		inFeature:  map[string]bool{},
+	known := &refs{
+		dirs:       make(map[string]*Directory),
+		dirParent:  make(map[string]string),
+		components: make(map[string]*Component),
+		fileIDs:    make(map[string]bool),
+		inFeature:  make(map[string]bool),
 	}
 
 	var walk func([]*Directory, string)
 
 	walk = func(ds []*Directory, parent string) {
-		for _, d := range ds {
-			if _, dup := r.dirs[d.ID]; !dup {
-				r.dirs[d.ID] = d
-				r.dirParent[d.ID] = parent
+		for _, dir := range ds {
+			if _, dup := known.dirs[dir.ID]; !dup {
+				known.dirs[dir.ID] = dir
+				known.dirParent[dir.ID] = parent
 			}
 
-			walk(d.Children, d.ID)
+			walk(dir.Children, dir.ID)
 		}
 	}
 	walk(cfg.Directories, "")
 
 	for _, c := range cfg.Components {
-		r.components[c.ID] = c
+		known.components[c.ID] = c
 
 		for _, f := range c.Files {
-			r.fileIDs[fileID(f)] = true
+			known.fileIDs[fileID(f)] = true
 		}
 	}
 
 	eachFeature(cfg.Features, func(f *Feature, _ int) {
 		for _, c := range f.Components {
-			r.inFeature[c.ID] = true
+			known.inFeature[c.ID] = true
 		}
 	})
 
-	return r
+	return known
 }
 
 // fileName returns the long name of a file.
@@ -142,30 +142,30 @@ func fileID(f *File) string {
 }
 
 // topFolder returns the standard folder at the root of a directory's chain.
-func (r *refs) topFolder(id string) string {
-	for i := 0; i < 64; i++ {
-		parent, ok := r.dirParent[id]
+func (r *refs) topFolder(dirID string) string {
+	for range 64 {
+		parent, ok := r.dirParent[dirID]
 		if !ok || parent == "" {
-			return id
+			return dirID
 		}
 
-		id = parent
+		dirID = parent
 	}
 
-	return id
+	return dirID
 }
 
-func (v *validator) product(cfg *Config) {
-	p := cfg.Product
+func (v *validator) product(cfg *Config) { //nolint:cyclop // a flat list of independent checks
+	product := cfg.Product
 
-	if v.required(productNamePath, p.Name) && len([]rune(p.Name)) > MaxProductNameLength {
+	if v.required(productNamePath, product.Name) && len([]rune(product.Name)) > MaxProductNameLength {
 		v.errorf(productNamePath, "at most %d characters", MaxProductNameLength)
 	}
 
-	v.required("product.manufacturer", p.Manufacturer)
+	v.required("product.manufacturer", product.Manufacturer)
 
-	if v.required("product.version", p.Version) {
-		ver, err := ParseVersion(p.Version)
+	if v.required("product.version", product.Version) {
+		ver, err := ParseVersion(product.Version)
 		if err != nil {
 			v.errorf("product.version", "%v", err)
 		} else if ver.Fields == 4 {
@@ -174,36 +174,36 @@ func (v *validator) product(cfg *Config) {
 		}
 	}
 
-	if *p.Language < 0 || *p.Language > 0xFFFF {
-		v.errorf("product.language", "%d is not an LCID", *p.Language)
+	if *product.Language < 0 || *product.Language > 0xFFFF {
+		v.errorf("product.language", "%d is not an LCID", *product.Language)
 	}
 
-	v.upgradeCode("product.upgradeCode", p.UpgradeCode)
+	v.upgradeCode("product.upgradeCode", product.UpgradeCode)
 
-	if p.ProductCode != Auto {
-		v.guid("product.productCode", p.ProductCode)
+	if product.ProductCode != Auto {
+		v.guid("product.productCode", product.ProductCode)
 		v.warnf("product.productCode", "a fixed ProductCode makes every rebuild of this version fail "+
 			"with 1638 over an installed copy (RUN-11); use auto unless this is a minor upgrade")
 	}
 
-	if p.PackageCode != Auto {
-		v.guid("product.packageCode", p.PackageCode)
+	if product.PackageCode != Auto {
+		v.guid("product.packageCode", product.PackageCode)
 	}
 
-	if p.ARP.Icon != "" {
-		if _, ok := cfg.Icons[p.ARP.Icon]; !ok {
-			v.errorf("product.arp.icon", "icon %q is not defined in icons", p.ARP.Icon)
+	if product.ARP.Icon != "" {
+		if _, ok := cfg.Icons[product.ARP.Icon]; !ok {
+			v.errorf("product.arp.icon", "icon %q is not defined in icons", product.ARP.Icon)
 		}
 	}
 
-	if p.ARP.Size < 0 {
+	if product.ARP.Size < 0 {
 		v.errorf("product.arp.size", "must not be negative")
 	}
 }
 
-func (v *validator) guid(path, s string) {
+func (v *validator) guid(fieldPath, s string) {
 	if _, err := NormalizeGUID(s); err != nil {
-		v.errorf(path, "%v", err)
+		v.errorf(fieldPath, "%v", err)
 	}
 }
 
@@ -225,22 +225,22 @@ func (v *validator) upgradeCode(key, s string) {
 	}
 }
 
-func (v *validator) pkg(cfg *Config) {
+func (v *validator) pkg(cfg *Config) { //nolint:cyclop // a flat list of independent checks
 	pkg := cfg.Package
 
 	if pkg.Platform == "" {
 		v.errorf("package.platform", "required: x86, x64 or arm64")
 	}
 
-	pc, err := PageCount(pkg.InstallerVersion)
+	pages, err := PageCount(pkg.InstallerVersion)
 
 	switch {
 	case err != nil:
 		v.errorf("package.installerVersion", "%v", err)
-	case pc > MaxPageCount:
+	case pages > MaxPageCount:
 		v.errorf("package.installerVersion", "%s is above 5.0; Windows Installer 5.0 refuses such packages with 1613 (SUM-03)",
 			pkg.InstallerVersion)
-	case pkg.Platform != "" && pc < MinPageCount(pkg.Platform):
+	case pkg.Platform != "" && pages < MinPageCount(pkg.Platform):
 		v.errorf("package.installerVersion", "%s needs at least %d.%d", pkg.Platform,
 			MinPageCount(pkg.Platform)/100, MinPageCount(pkg.Platform)%100)
 	}
@@ -258,117 +258,117 @@ func (v *validator) pkg(cfg *Config) {
 	}
 }
 
-func (v *validator) upgrade(cfg *Config) {
-	u := cfg.Upgrade
-	if u == nil || u.Disabled {
+func (v *validator) upgrade(cfg *Config) { //nolint:cyclop // a flat list of independent checks
+	upg := cfg.Upgrade
+	if upg == nil || upg.Disabled {
 		return
 	}
 
-	v.oneOf("upgrade.downgrade", u.Downgrade, "error", "allow", "ignore")
-	v.oneOf("upgrade.removeOld", u.RemoveOld,
+	v.oneOf("upgrade.downgrade", upg.Downgrade, "error", "allow", "ignore")
+	v.oneOf("upgrade.removeOld", upg.RemoveOld,
 		"afterInstallValidate", "afterInstallInitialize", "afterInstallExecute", "afterInstallFinalize")
 
-	seen := map[string]string{}
+	seen := make(map[string]string)
 
-	actionProperty := func(path, name string) {
-		if !v.required(path, name) {
+	actionProperty := func(fieldPath, name string) {
+		if !v.required(fieldPath, name) {
 			return
 		}
 
 		if !IsIdentifier(name) || !IsPublicProperty(name) {
-			v.errorf(path, "%q must be an upper-case identifier, so that it is public", name)
+			v.errorf(fieldPath, "%q must be an upper-case identifier, so that it is public", name)
 		}
 
 		if other, dup := seen[name]; dup {
-			v.errorf(path, "%s is already used by %s", name, other)
+			v.errorf(fieldPath, "%s is already used by %s", name, other)
 		}
 
-		seen[name] = path
+		seen[name] = fieldPath
 
 		if _, ok := cfg.Properties[name]; ok {
-			v.errorf(path, "%s must not be defined in properties (ICE61)", name)
+			v.errorf(fieldPath, "%s must not be defined in properties (ICE61)", name)
 		}
 	}
 
-	actionProperty("upgrade.property", u.Property)
+	actionProperty("upgrade.property", upg.Property)
 
-	if u.Downgrade != "allow" {
-		actionProperty("upgrade.newerProperty", u.NewerProperty)
+	if upg.Downgrade != "allow" {
+		actionProperty("upgrade.newerProperty", upg.NewerProperty)
 	}
 
-	for i, rel := range u.Related {
-		p := fmt.Sprintf("upgrade.related[%d]", i)
+	for i, rel := range upg.Related {
+		relPath := fmt.Sprintf("upgrade.related[%d]", i)
 
-		v.upgradeCode(p+".upgradeCode", rel.UpgradeCode)
+		v.upgradeCode(relPath+".upgradeCode", rel.UpgradeCode)
 
 		if rel.MinVersion == "" && rel.MaxVersion == "" {
-			v.errorf(p, "minVersion or maxVersion is required")
+			v.errorf(relPath, "minVersion or maxVersion is required")
 		}
 
-		for _, f := range []struct{ path, val string }{{p + ".minVersion", rel.MinVersion}, {p + ".maxVersion", rel.MaxVersion}} {
-			if f.val == "" {
+		for _, check := range []struct{ path, val string }{{relPath + ".minVersion", rel.MinVersion}, {relPath + ".maxVersion", rel.MaxVersion}} {
+			if check.val == "" {
 				continue
 			}
 
-			if _, err := ParseVersion(f.val); err != nil {
-				v.errorf(f.path, "%v", err)
+			if _, err := ParseVersion(check.val); err != nil {
+				v.errorf(check.path, "%v", err)
 			}
 		}
 
-		actionProperty(p+".property", rel.Property)
+		actionProperty(relPath+".property", rel.Property)
 	}
 }
 
-func (v *validator) directories(cfg *Config, r *refs) {
-	seen := map[string]bool{}
+func (v *validator) directories(cfg *Config, known *refs) { //nolint:cyclop,gocognit // a flat list of independent checks
+	seen := make(map[string]bool)
 
 	var walk func([]*Directory, string, bool)
 
 	walk = func(ds []*Directory, prefix string, top bool) {
 		names := make(map[string]string)
 
-		for i, d := range ds {
-			p := fmt.Sprintf("%s[%d]", prefix, i)
+		for i, dir := range ds {
+			dirPath := fmt.Sprintf("%s[%d]", prefix, i)
 
-			v.sameFolder(names, p, d, top)
+			v.sameFolder(names, dirPath, dir, top)
 
-			if v.required(p+".id", d.ID) {
-				if !IsIdentifier(d.ID) || len(d.ID) > MaxIdentifierLength {
-					v.errorf(p+".id", "%q is not an identifier of at most %d characters", d.ID, MaxIdentifierLength)
+			if v.required(dirPath+".id", dir.ID) {
+				if !IsIdentifier(dir.ID) || len(dir.ID) > MaxIdentifierLength {
+					v.errorf(dirPath+".id", "%q is not an identifier of at most %d characters", dir.ID, MaxIdentifierLength)
 				}
 
-				if seen[d.ID] {
-					v.errorf(p+".id", "directory %s is defined twice", d.ID)
+				if seen[dir.ID] {
+					v.errorf(dirPath+".id", "directory %s is defined twice", dir.ID)
 				}
 
-				seen[d.ID] = true
+				seen[dir.ID] = true
 			}
 
 			switch {
-			case top && !standardFolders[d.ID]:
-				v.errorf(p+".id", "a top-level directory must be a standard folder such as ProgramFiles64Folder")
-			case top && d.Name != "":
-				v.errorf(p+".name", "a standard folder has no name")
-			case !top && !v.required(p+".name", d.Name):
-			case !top && !validName(d.Name) && d.origin == productNamePath:
-				v.errorf(d.origin, "%q cannot be used as a folder name; set installDir.name", d.Name)
-			case !top && !validName(d.Name) && d.origin != "":
-				v.errorf(d.origin, "%q is not a valid folder name", d.Name)
-			case !top && !validName(d.Name):
-				v.errorf(p+".name", "%q is not a valid name or short|long pair", d.Name)
+			case top && !standardFolders[dir.ID]:
+				v.errorf(dirPath+".id", "a top-level directory must be a standard folder such as ProgramFiles64Folder")
+			case top && dir.Name != "":
+				v.errorf(dirPath+".name", "a standard folder has no name")
+			case !top && !v.required(dirPath+".name", dir.Name):
+			case !top && !validName(dir.Name) && dir.origin == productNamePath:
+				v.errorf(dir.origin, "%q cannot be used as a folder name; set installDir.name", dir.Name)
+			case !top && !validName(dir.Name) && dir.origin != "":
+				v.errorf(dir.origin, "%q is not a valid folder name", dir.Name)
+			case !top && !validName(dir.Name):
+				v.errorf(dirPath+".name", "%q is not a valid name or short|long pair", dir.Name)
 			}
 
-			if d.Configurable && !IsPublicProperty(d.ID) {
-				v.errorf(p+".id", "a configurable directory needs an upper-case id")
+			if dir.Configurable && !IsPublicProperty(dir.ID) {
+				v.errorf(dirPath+".id", "a configurable directory needs an upper-case id")
 			}
 
-			walk(d.Children, p+".children", false)
+			walk(dir.Children, dirPath+".children", false)
 		}
 	}
 
 	walk(cfg.Directories, "directories", true)
 
-	if install := cfg.InstallDir; r.dirs[install.ID] == nil {
+	if install := cfg.InstallDir; known.dirs[install.ID] == nil {
 		switch {
 		case !IsIdentifier(install.ID) || !IsPublicProperty(install.ID):
 			v.errorf("installDir.id", "%q must be an upper-case identifier, so that it can be set on the command line", install.ID)
@@ -379,7 +379,7 @@ func (v *validator) directories(cfg *Config, r *refs) {
 		}
 	}
 
-	if cfg.Product.ARP.InstallLocation != "" && r.dirs[cfg.Product.ARP.InstallLocation] == nil {
+	if cfg.Product.ARP.InstallLocation != "" && known.dirs[cfg.Product.ARP.InstallLocation] == nil {
 		v.errorf("product.arp.installLocation", "directory %q is not defined", cfg.Product.ARP.InstallLocation)
 	}
 }
@@ -409,31 +409,31 @@ func (v *validator) sameFolder(names map[string]string, dirPath string, dir *Dir
 	names[long] = dir.ID
 }
 
-func (v *validator) features(cfg *Config, r *refs) {
-	seen := map[string]bool{}
+func (v *validator) features(cfg *Config, known *refs) {
+	seen := make(map[string]bool)
 
 	var walk func([]*Feature, string, int)
 
 	walk = func(fs []*Feature, prefix string, depth int) {
-		for i, f := range fs {
-			p := fmt.Sprintf("%s[%d]", prefix, i)
+		for i, feature := range fs {
+			featurePath := fmt.Sprintf("%s[%d]", prefix, i)
 
-			v.featureID(p, f.ID, seen)
+			v.featureID(featurePath, feature.ID, seen)
 
 			if depth > MaxFeatureDepth {
-				v.errorf(p, "features nest at most %d deep", MaxFeatureDepth)
+				v.errorf(featurePath, "features nest at most %d deep", MaxFeatureDepth)
 			}
 
-			if *f.Level < 0 || *f.Level > maxSequenceNumber {
-				v.errorf(p+".level", "must be between 0 and %d", maxSequenceNumber)
+			if *feature.Level < 0 || *feature.Level > maxSequenceNumber {
+				v.errorf(featurePath+".level", "must be between 0 and %d", maxSequenceNumber)
 			}
 
-			v.oneOf(p+".display", f.Display, "expanded", "collapsed", "hidden")
-			v.featureDefault(p, f)
+			v.oneOf(featurePath+".display", feature.Display, "expanded", "collapsed", "hidden")
+			v.featureDefault(featurePath, feature)
 
-			v.featureRefs(p, f, r)
+			v.featureRefs(featurePath, feature, known)
 
-			walk(f.Features, p+".features", depth+1)
+			walk(feature.Features, featurePath+".features", depth+1)
 		}
 	}
 
@@ -536,139 +536,179 @@ func (v *validator) removeOld(removeOld, field string, comp *Component) {
 	}
 }
 
-func (v *validator) components(cfg *Config, r *refs) {
-	seen := map[string]bool{}
-	fileIDs := map[string]string{}
-	targets := map[string]string{}
-	regIDs := map[string]bool{}
+func (v *validator) components(cfg *Config, known *refs) {
+	seen := make(map[string]bool)
+	fileIDs := make(map[string]string)
+	targets := make(map[string]string)
+	regIDs := make(map[string]bool)
 	perUser := cfg.Package.Scope == ScopePerUser
 
-	for i, c := range cfg.Components {
-		p := c.Path(i) //nolint:varnamelen // the YAML path, named p throughout this file
+	for i, comp := range cfg.Components {
+		p := comp.Path(i) //nolint:varnamelen // the YAML path, named p throughout this file
 
-		if c.ref {
-			v.errorf(p, "%q: a component here is a mapping; ids only refer to components from features", c.ID)
+		if comp.ref {
+			v.errorf(p, "%q: a component here is a mapping; ids only refer to components from features", comp.ID)
 
 			continue
 		}
 
-		if v.required(p+".id", c.ID) {
-			if !IsIdentifier(c.ID) || len(c.ID) > MaxIdentifierLength {
-				v.errorf(p+".id", "%q is not an identifier of at most %d characters", c.ID, MaxIdentifierLength)
-			}
+		v.componentID(p, comp, seen, known)
+		v.componentDirectory(cfg, p, comp, known)
+		v.componentGUID(p, comp)
 
-			if seen[c.ID] {
-				v.errorf(p+".id", "component %s is defined twice", c.ID)
-			}
+		v.oneOf(p+".bitness", comp.Bitness, Auto, "32", "64")
+		v.preserve(cfg, p, comp)
 
-			seen[c.ID] = true
-
-			if !r.inFeature[c.ID] {
-				v.errorf(p, "component %s is in no feature (ICE21)", c.ID)
-			}
-		}
-
-		if v.required(p+".directory", c.Directory) {
-			switch {
-			case r.dirs[c.Directory] == nil && c.Directory == cfg.InstallDir.ID && !validInstallDir(cfg.InstallDir):
-				// Reported at installDir.
-			case r.dirs[c.Directory] == nil:
-				v.errorf(p+".directory", "directory %q is not defined", c.Directory)
-			default:
-				top := r.topFolder(c.Directory)
-				if cfg.Package.Platform.Is64Bit() && c.Bitness != "32" && folders32[top] {
-					v.warnf(p+".directory", "%s is the 32-bit folder on 64-bit Windows (ICE80); "+
-						"use its 64-bit counterpart", top)
-				}
-
-				if perUser && perMachineFolders[top] {
-					v.errorf(p+".directory", "a per-user package cannot install under %s (ICE105)", top)
-				}
-
-				switch {
-				case !profileFolders[top]:
-				case !userRegistryKeyPath(c, perUser):
-					v.warnf(p+".directory", "a component in the user profile (%s) needs an HKCU registry value "+
-						"as key path (ICE38), and its folders need RemoveFolder rows (ICE64), which go-msi "+
-						"does not write yet", top)
-				default:
-					v.warnf(p+".directory", "the folders of a component in the user profile (%s) need "+
-						"RemoveFolder rows (ICE64), which go-msi does not write yet", top)
-				}
-			}
-		}
-
-		switch c.GUID {
-		case Auto:
-		case None:
-			if !c.Permanent {
-				v.errorf(p+".guid", "none is only allowed with permanent: true; "+
-					"a component without a GUID is never removed")
-			}
-		default:
-			v.guid(p+".guid", c.GUID)
-		}
-
-		v.oneOf(p+".bitness", c.Bitness, Auto, "32", "64")
-		v.preserve(cfg, p, c)
-
-		if c.Bitness == "64" && !cfg.Package.Platform.Is64Bit() {
+		if comp.Bitness == "64" && !cfg.Package.Platform.Is64Bit() {
 			v.errorf(p+".bitness", "64-bit components need an x64 or arm64 package")
 		}
 
-		keyFile := v.componentFiles(cfg, p, c, fileIDs, targets)
-		v.componentRegistry(p, c, regIDs, perUser)
+		files := v.componentFiles(cfg, p, comp, fileIDs, targets)
+		v.componentRegistry(p, comp, regIDs, perUser)
+		keyFile := v.componentKeyFile(p, comp, files)
 
-		switch kp := c.KeyPath; {
-		case kp == "" || kp == KeyPathDirectory:
-		case keyFileByRef(c, kp) != nil:
-			keyFile = keyFileByRef(c, kp)
-		case hasRegistryID(c, kp):
-			keyFile = nil
-		default:
-			v.errorf(p+".keyPath", "%q is neither a file nor a registry id of this component", kp)
+		for j, svc := range comp.Services {
+			svcPath := fmt.Sprintf("%s.services[%d]", p, j)
+			v.service(svcPath, svc, keyFile, perUser)
+			v.permissions(svcPath+".permissions", svc.Permissions)
 		}
 
-		if c.KeyPath == "" && len(c.Files) == 0 {
-			keyFile = nil
+		v.componentPermissions(p, comp)
+		v.componentEvents(p, comp, perUser)
+	}
+}
+
+// componentID checks a component's id and records it in seen.
+func (v *validator) componentID(compPath string, comp *Component, seen map[string]bool, known *refs) {
+	if !v.required(compPath+".id", comp.ID) {
+		return
+	}
+
+	if !IsIdentifier(comp.ID) || len(comp.ID) > MaxIdentifierLength {
+		v.errorf(compPath+".id", "%q is not an identifier of at most %d characters", comp.ID, MaxIdentifierLength)
+	}
+
+	if seen[comp.ID] {
+		v.errorf(compPath+".id", "component %s is defined twice", comp.ID)
+	}
+
+	seen[comp.ID] = true
+
+	if !known.inFeature[comp.ID] {
+		v.errorf(compPath, "component %s is in no feature (ICE21)", comp.ID)
+	}
+}
+
+// componentDirectory checks a component's directory and where it lies.
+func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Component, known *refs) { //nolint:cyclop // a flat list of independent checks
+	if !v.required(compPath+".directory", comp.Directory) {
+		return
+	}
+
+	if known.dirs[comp.Directory] == nil {
+		// An invalid installDir is reported there.
+		if comp.Directory != cfg.InstallDir.ID || validInstallDir(cfg.InstallDir) {
+			v.errorf(compPath+".directory", "directory %q is not defined", comp.Directory)
 		}
 
-		if keyFile != nil && keyFile.Version == None && len(c.Files) > 1 {
-			v.warnf(p+".keyPath", "the key file is unversioned; other files of the component are only "+
-				"replaced together with it")
-		}
+		return
+	}
 
-		for j, s := range c.Services {
-			v.service(fmt.Sprintf("%s.services[%d]", p, j), s, keyFile, perUser)
-			v.permissions(fmt.Sprintf("%s.services[%d].permissions", p, j), s.Permissions)
-		}
+	perUser := cfg.Package.Scope == ScopePerUser
+	top := known.topFolder(comp.Directory)
 
-		for j, f := range c.Files {
-			v.permissions(fmt.Sprintf("%s.files[%d].permissions", p, j), f.Permissions)
-		}
+	if cfg.Package.Platform.Is64Bit() && comp.Bitness != "32" && folders32[top] {
+		v.warnf(compPath+".directory", "%s is the 32-bit folder on 64-bit Windows (ICE80); "+
+			"use its 64-bit counterpart", top)
+	}
 
-		for j, r := range c.Registry {
-			v.permissions(fmt.Sprintf("%s.registry[%d].permissions", p, j), r.Permissions)
-		}
+	if perUser && perMachineFolders[top] {
+		v.errorf(compPath+".directory", "a per-user package cannot install under %s (ICE105)", top)
+	}
 
-		directoryKey := c.KeyPath == KeyPathDirectory || c.KeyPath == "" && len(c.Files) == 0 && len(c.Registry) == 0
-		if v.permissions(p+".folderPermissions", c.FolderPermissions) && !c.CreateFolder && !directoryKey {
-			v.errorf(p+".folderPermissions", "the component creates no folder row; set createFolder: true")
-		}
+	switch {
+	case !profileFolders[top]:
+	case !userRegistryKeyPath(comp, perUser):
+		v.warnf(compPath+".directory", "a component in the user profile (%s) needs an HKCU registry value "+
+			"as key path (ICE38), and its folders need RemoveFolder rows (ICE64), which go-msi "+
+			"does not write yet", top)
+	default:
+		v.warnf(compPath+".directory", "the folders of a component in the user profile (%s) need "+
+			"RemoveFolder rows (ICE64), which go-msi does not write yet", top)
+	}
+}
 
-		for j, e := range c.EventLog {
-			ep := fmt.Sprintf("%s.eventLog[%d]", p, j)
-			v.required(ep+".source", e.Source)
-			v.required(ep+".messageFile", e.MessageFile)
-
-			if perUser {
-				v.errorf(ep, "event log sources are per-machine (ICE105)")
-			}
+// componentGUID checks a component's GUID.
+func (v *validator) componentGUID(compPath string, comp *Component) {
+	switch comp.GUID {
+	case Auto:
+	case None:
+		if !comp.Permanent {
+			v.errorf(compPath+".guid", "none is only allowed with permanent: true; "+
+				"a component without a GUID is never removed")
 		}
+	default:
+		v.guid(compPath+".guid", comp.GUID)
+	}
+}
 
-		for j, e := range c.Environment {
-			v.environment(fmt.Sprintf("%s.environment[%d]", p, j), e, perUser)
+// componentKeyFile checks keyPath and returns the component's key file, if
+// its key path is a file. keyFile is the file componentFiles picked.
+func (v *validator) componentKeyFile(compPath string, comp *Component, keyFile *File) *File { //nolint:cyclop // a flat list of independent checks
+	switch keyPath := comp.KeyPath; {
+	case keyPath == "" || keyPath == KeyPathDirectory:
+	case keyFileByRef(comp, keyPath) != nil:
+		keyFile = keyFileByRef(comp, keyPath)
+	case hasRegistryID(comp, keyPath):
+		keyFile = nil
+	default:
+		v.errorf(compPath+".keyPath", "%q is neither a file nor a registry id of this component", keyPath)
+	}
+
+	if comp.KeyPath == "" && len(comp.Files) == 0 {
+		keyFile = nil
+	}
+
+	if keyFile != nil && keyFile.Version == None && len(comp.Files) > 1 {
+		v.warnf(compPath+".keyPath", "the key file is unversioned; other files of the component are only "+
+			"replaced together with it")
+	}
+
+	return keyFile
+}
+
+// componentPermissions checks the permissions of a component's files,
+// registry values and folder.
+func (v *validator) componentPermissions(compPath string, comp *Component) {
+	for j, file := range comp.Files {
+		v.permissions(fmt.Sprintf("%s.files[%d].permissions", compPath, j), file.Permissions)
+	}
+
+	for j, value := range comp.Registry {
+		v.permissions(fmt.Sprintf("%s.registry[%d].permissions", compPath, j), value.Permissions)
+	}
+
+	directoryKey := comp.KeyPath == KeyPathDirectory || comp.KeyPath == "" && len(comp.Files) == 0 && len(comp.Registry) == 0
+	if v.permissions(compPath+".folderPermissions", comp.FolderPermissions) && !comp.CreateFolder && !directoryKey {
+		v.errorf(compPath+".folderPermissions", "the component creates no folder row; set createFolder: true")
+	}
+}
+
+// componentEvents checks a component's event log sources and environment
+// variables.
+func (v *validator) componentEvents(compPath string, comp *Component, perUser bool) {
+	for j, source := range comp.EventLog {
+		sourcePath := fmt.Sprintf("%s.eventLog[%d]", compPath, j)
+		v.required(sourcePath+".source", source.Source)
+		v.required(sourcePath+".messageFile", source.MessageFile)
+
+		if perUser {
+			v.errorf(sourcePath, "event log sources are per-machine (ICE105)")
 		}
+	}
+
+	for j, env := range comp.Environment {
+		v.environment(fmt.Sprintf("%s.environment[%d]", compPath, j), env, perUser)
 	}
 }
 
@@ -745,57 +785,57 @@ func hasRegistryID(c *Component, id string) bool {
 }
 
 // componentFiles validates the files of c and returns its default key file.
-func (v *validator) componentFiles(cfg *Config, p string, c *Component, ids, targets map[string]string) *File {
+func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component, ids, targets map[string]string) *File { //nolint:cyclop // flat checks
 	versioned := 0
 
-	for j, f := range c.Files {
-		fp := fmt.Sprintf("%s.files[%d]", p, j)
+	for j, file := range comp.Files {
+		filePath := fmt.Sprintf("%s.files[%d]", compPath, j)
 
-		v.required(fp+".source", f.Source)
+		v.required(filePath+".source", file.Source)
 
-		name := f.Name
+		name := file.Name
 		if name == "" {
-			name = fileName(f)
+			name = fileName(file)
 		}
 
 		if !validName(name) {
-			v.errorf(fp+".name", "%q is not a valid file name or short|long pair", name)
+			v.errorf(filePath+".name", "%q is not a valid file name or short|long pair", name)
 		}
 
 		if !*cfg.Package.LongFileNames && !strings.Contains(name, "|") && !isShortName(name) {
-			v.errorf(fp+".name", "longFileNames is false, so %q needs a short name", name)
+			v.errorf(filePath+".name", "longFileNames is false, so %q needs a short name", name)
 		}
 
-		id := fileID(f)
-		if !IsIdentifier(id) || len(id) > MaxIdentifierLength {
-			v.errorf(fp+".id", "file key %q is not an identifier; set id", id)
+		fileKey := fileID(file)
+		if !IsIdentifier(fileKey) || len(fileKey) > MaxIdentifierLength {
+			v.errorf(filePath+".id", "file key %q is not an identifier; set id", fileKey)
 		}
 
-		if other, dup := ids[id]; dup {
-			v.errorf(fp+".id", "file key %q is also used by %s; set id on one of them", id, other)
+		if other, dup := ids[fileKey]; dup {
+			v.errorf(filePath+".id", "file key %q is also used by %s; set id on one of them", fileKey, other)
 		}
 
-		ids[id] = fp
+		ids[fileKey] = filePath
 
-		target := c.Directory + `\` + strings.ToLower(fileName(f))
+		target := comp.Directory + `\` + strings.ToLower(fileName(file))
 		if other, dup := targets[target]; dup {
-			v.errorf(fp, "%s installs the same file as %s", fileName(f), other)
+			v.errorf(filePath, "%s installs the same file as %s", fileName(file), other)
 		}
 
-		targets[target] = fp
+		targets[target] = filePath
 
-		v.fileVersion(fp, f, c)
+		v.fileVersion(filePath, file, comp)
 
-		if versionedFile(f) {
+		if versionedFile(file) {
 			versioned++
 		}
 
-		switch {
-		case f.Language == Auto, f.Language == None:
+		switch file.Language {
+		case Auto, None:
 		default:
-			for _, lcid := range strings.Split(f.Language, ",") {
+			for lcid := range strings.SplitSeq(file.Language, ",") {
 				if n, err := strconv.Atoi(lcid); err != nil || n < 0 || n > 0xFFFF {
-					v.errorf(fp+".language", "%q is not auto, none or a comma-separated LCID list", f.Language)
+					v.errorf(filePath+".language", "%q is not auto, none or a comma-separated LCID list", file.Language)
 
 					break
 				}
@@ -803,13 +843,13 @@ func (v *validator) componentFiles(cfg *Config, p string, c *Component, ids, tar
 		}
 	}
 
-	if c.GUID == Auto && versioned > 1 && len(c.Files) > 1 {
-		v.warnf(p+".files", "more than one versioned file in a component: only the key file decides "+
+	if comp.GUID == Auto && versioned > 1 && len(comp.Files) > 1 {
+		v.warnf(compPath+".files", "more than one versioned file in a component: only the key file decides "+
 			"whether the others are replaced")
 	}
 
-	if len(c.Files) > 0 {
-		return c.Files[0]
+	if len(comp.Files) > 0 {
+		return comp.Files[0]
 	}
 
 	return nil
@@ -831,102 +871,102 @@ func versionedFile(f *File) bool {
 
 // fileVersion enforces the RUN-02 rule: a PE file is never unversioned by
 // accident, since an upgrade with early removal then deletes it.
-func (v *validator) fileVersion(fp string, f *File, c *Component) {
-	isPE := peExtensions[strings.ToLower(path.Ext(fileName(f)))]
+func (v *validator) fileVersion(filePath string, file *File, comp *Component) { //nolint:cyclop // a flat list of independent checks
+	isPE := peExtensions[strings.ToLower(path.Ext(fileName(file)))]
 
-	switch f.Version {
+	switch file.Version {
 	case Auto:
 	case None:
-		if isPE && !f.AllowUnversionedExecutable {
-			v.errorf(fp+".version", "%s is an executable; without a version an upgrade can delete it "+
-				"(RUN-02). Set allowUnversionedExecutable: true if this is intended", fileName(f))
+		if isPE && !file.AllowUnversionedExecutable {
+			v.errorf(filePath+".version", "%s is an executable; without a version an upgrade can delete it "+
+				"(RUN-02). Set allowUnversionedExecutable: true if this is intended", fileName(file))
 		} else if isPE {
-			v.warnf(fp+".version", "unversioned executable: an upgrade with removeOld before "+
+			v.warnf(filePath+".version", "unversioned executable: an upgrade with removeOld before "+
 				"InstallFinalize deletes it when the installed copy was versioned (RUN-02)")
 		}
 	default:
-		if _, err := ParseVersion(f.Version); err == nil {
+		if _, err := ParseVersion(file.Version); err == nil {
 			return
 		}
 
 		companion := false
 
-		for _, other := range c.Files {
-			if other != f && fileID(other) == f.Version {
+		for _, other := range comp.Files {
+			if other != file && fileID(other) == file.Version {
 				companion = true
 			}
 		}
 
 		if !companion {
-			v.errorf(fp+".version", "%q is not auto, none, a version or the id of a file in this component", f.Version)
+			v.errorf(filePath+".version", "%q is not auto, none, a version or the id of a file in this component", file.Version)
 		}
 	}
 }
 
-func (v *validator) componentRegistry(p string, c *Component, ids map[string]bool, perUser bool) {
-	for j, rv := range c.Registry {
-		rp := fmt.Sprintf("%s.registry[%d]", p, j)
+func (v *validator) componentRegistry(p string, c *Component, ids map[string]bool, perUser bool) { //nolint:cyclop,gocognit // a flat list of independent checks
+	for j, value := range c.Registry {
+		valuePath := fmt.Sprintf("%s.registry[%d]", p, j)
 
-		if rv.ID != "" {
-			if !IsIdentifier(rv.ID) {
-				v.errorf(rp+".id", "%q is not an identifier", rv.ID)
+		if value.ID != "" {
+			if !IsIdentifier(value.ID) {
+				v.errorf(valuePath+".id", "%q is not an identifier", value.ID)
 			}
 
-			if ids[rv.ID] {
-				v.errorf(rp+".id", "registry id %s is defined twice", rv.ID)
+			if ids[value.ID] {
+				v.errorf(valuePath+".id", "registry id %s is defined twice", value.ID)
 			}
 
-			ids[rv.ID] = true
+			ids[value.ID] = true
 		}
 
-		v.oneOf(rp+".root", rv.Root, "HKLM", "HKCU", "HKCR", "HKU", "HKMU")
+		v.oneOf(valuePath+".root", value.Root, "HKLM", "HKCU", "HKCR", "HKU", "HKMU")
 
-		if perUser && (rv.Root == "HKLM" || rv.Root == "HKCR") {
-			v.errorf(rp+".root", "a per-user package cannot write %s (ICE105)", rv.Root)
+		if perUser && (value.Root == "HKLM" || value.Root == "HKCR") {
+			v.errorf(valuePath+".root", "a per-user package cannot write %s (ICE105)", value.Root)
 		}
 
-		v.required(rp+".key", rv.Key)
+		v.required(valuePath+".key", value.Key)
 
-		if strings.HasPrefix(rv.Key, `\`) || strings.HasSuffix(rv.Key, `\`) {
-			v.errorf(rp+".key", "no leading or trailing backslash")
+		if strings.HasPrefix(value.Key, `\`) || strings.HasSuffix(value.Key, `\`) {
+			v.errorf(valuePath+".key", "no leading or trailing backslash")
 		}
 
-		v.oneOf(rp+".type", rv.Type, "string", "expandString", "multiString", "dword", "binary", "key")
+		v.oneOf(valuePath+".type", value.Type, "string", "expandString", "multiString", "dword", "binary", "key")
 
-		switch rv.Type {
+		switch value.Type {
 		case "key":
-			if len(rv.Value) > 0 || rv.Name != "" {
-				v.errorf(rp, "type key takes neither name nor value")
+			if len(value.Value) > 0 || value.Name != "" {
+				v.errorf(valuePath, "type key takes neither name nor value")
 			}
 		case "multiString":
-			if len(rv.Value) == 0 {
-				v.errorf(rp+".value", "required")
+			if len(value.Value) == 0 {
+				v.errorf(valuePath+".value", "required")
 			}
 		default:
-			if len(rv.Value) != 1 {
-				v.errorf(rp+".value", "exactly one value is required for type %s", rv.Type)
+			if len(value.Value) != 1 {
+				v.errorf(valuePath+".value", "exactly one value is required for type %s", value.Type)
 
 				continue
 			}
 
-			v.registryScalar(rp+".value", rv.Type, rv.Value[0])
+			v.registryScalar(valuePath+".value", value.Type, value.Value[0])
 		}
 
-		if (rv.Append || rv.Prepend) && rv.Type != "multiString" {
-			v.errorf(rp, "append and prepend need type multiString")
+		if (value.Append || value.Prepend) && value.Type != "multiString" {
+			v.errorf(valuePath, "append and prepend need type multiString")
 		}
 
-		if rv.Append && rv.Prepend {
-			v.errorf(rp, "append and prepend are exclusive")
+		if value.Append && value.Prepend {
+			v.errorf(valuePath, "append and prepend are exclusive")
 		}
 
-		if rv.RemoveOnUninstall && rv.Type != "key" {
-			v.errorf(rp+".removeOnUninstall", "only for type key; values are always removed with their component")
+		if value.RemoveOnUninstall && value.Type != "key" {
+			v.errorf(valuePath+".removeOnUninstall", "only for type key; values are always removed with their component")
 		}
 	}
 }
 
-func (v *validator) registryScalar(path, typ, val string) {
+func (v *validator) registryScalar(fieldPath, typ, val string) { //nolint:cyclop // a flat list of independent checks
 	switch typ {
 	case "dword":
 		if strings.Contains(val, "[") {
@@ -935,83 +975,50 @@ func (v *validator) registryScalar(path, typ, val string) {
 
 		n, err := strconv.ParseInt(val, 0, 64)
 		if err != nil || n < math.MinInt32 || n > math.MaxUint32 {
-			v.errorf(path, "%q is not a 32-bit integer", val)
+			v.errorf(fieldPath, "%q is not a 32-bit integer", val)
 		}
 	case "binary":
 		h := strings.TrimPrefix(strings.ToLower(val), "0x")
 		if h == "" || strings.Trim(h, "0123456789abcdef") != "" {
-			v.errorf(path, "%q is not hexadecimal", val)
+			v.errorf(fieldPath, "%q is not hexadecimal", val)
 		}
 	case "string", "expandString":
 		if strings.Contains(val, "[~]") {
-			v.errorf(path, "[~] makes the value REG_MULTI_SZ; use type multiString")
+			v.errorf(fieldPath, "[~] makes the value REG_MULTI_SZ; use type multiString")
 		}
 	}
 }
 
-func (v *validator) service(p string, s *Service, keyFile *File, perUser bool) {
+func (v *validator) service(svcPath string, svc *Service, keyFile *File, perUser bool) {
 	if perUser {
-		v.errorf(p, "a per-user package cannot install services (ICE105)")
+		v.errorf(svcPath, "a per-user package cannot install services (ICE105)")
 	}
 
 	if keyFile == nil {
-		v.errorf(p, "a service needs its executable as the component's key file")
+		v.errorf(svcPath, "a service needs its executable as the component's key file")
 	} else if !strings.EqualFold(path.Ext(fileName(keyFile)), ".exe") {
-		v.errorf(p, "the key file %s is not an .exe", fileName(keyFile))
+		v.errorf(svcPath, "the key file %s is not an .exe", fileName(keyFile))
 	}
 
-	v.required(p+".name", s.Name)
-	v.oneOf(p+".type", s.Type, "ownProcess", "shareProcess")
-	v.oneOf(p+".start", s.Start, "auto", "demand", "disabled")
-	v.oneOf(p+".errorControl", s.ErrorControl, "ignore", "normal", "critical")
+	v.required(svcPath+".name", svc.Name)
+	v.oneOf(svcPath+".type", svc.Type, "ownProcess", "shareProcess")
+	v.oneOf(svcPath+".start", svc.Start, "auto", "demand", "disabled")
+	v.oneOf(svcPath+".errorControl", svc.ErrorControl, "ignore", "normal", "critical")
 
-	if s.DelayedAutoStart && s.Start != "auto" {
-		v.errorf(p+".delayedAutoStart", "needs start: auto")
+	if svc.DelayedAutoStart && svc.Start != "auto" {
+		v.errorf(svcPath+".delayedAutoStart", "needs start: auto")
 	}
 
-	if s.Password != "" && !strings.Contains(s.Password, "[") {
-		v.errorf(p+".password", "use a hidden property such as [SERVICE_PASSWORD], never a literal password")
+	if svc.Password != "" && !strings.Contains(svc.Password, "[") {
+		v.errorf(svcPath+".password", "use a hidden property such as [SERVICE_PASSWORD], never a literal password")
 	}
 
-	if !*s.Control.DeleteOnUninstall {
-		v.warnf(p+".control.deleteOnUninstall", "without it the service stays registered after uninstall (RUN-05)")
+	if !*svc.Control.DeleteOnUninstall {
+		v.warnf(svcPath+".control.deleteOnUninstall", "without it the service stays registered after uninstall (RUN-05)")
 	}
 
-	if rec := s.Recovery; rec != nil {
-		if len(rec.Actions) == 0 || len(rec.Actions) > 3 {
-			v.errorf(p+".recovery.actions", "one to three actions")
-		}
-
-		for j, a := range rec.Actions {
-			step := fmt.Sprintf("%s.recovery.actions[%d]", p, j)
-			v.oneOf(step, a.Action, "restart", "none")
-
-			if a.Restart != nil {
-				if a.Action != recoveryRestart {
-					v.errorf(step+".restart", "a delay is only allowed on a restart action")
-				}
-
-				v.recoveryDuration(step+".restart", *a.Restart, time.Millisecond)
-			}
-		}
-
-		v.recoveryDuration(p+".recovery.restartDelay", rec.RestartDelay, time.Millisecond)
-
-		if rec.ResetAfterDays < 0 {
-			v.errorf(p+".recovery.resetAfterDays", "must not be negative")
-		}
-
-		if rec.ResetAfterDays > math.MaxInt32/secondsPerDay {
-			v.errorf(p+".recovery.resetAfterDays", "is too long for sc.exe")
-		}
-
-		if rec.ResetAfter != nil {
-			if rec.ResetAfterDays != 0 {
-				v.errorf(p+".recovery.resetAfter", "set resetAfter or resetAfterDays, not both")
-			}
-
-			v.recoveryDuration(p+".recovery.resetAfter", *rec.ResetAfter, time.Second)
-		}
+	if svc.Recovery != nil {
+		v.recovery(svcPath+".recovery", svc.Recovery)
 	}
 }
 
@@ -1031,47 +1038,85 @@ func (v *validator) recoveryDuration(field string, value Duration, unit time.Dur
 	}
 }
 
-func (v *validator) environment(p string, e *Environment, perUser bool) {
-	if v.required(p+".name", e.Name) && strings.ContainsAny(e.Name[:1], "=+-!*") {
-		v.errorf(p+".name", "write the plain name; action, scope and removeOnUninstall set the prefix")
+// recovery checks a service's failure actions.
+func (v *validator) recovery(recPath string, rec *ServiceRecovery) {
+	if len(rec.Actions) == 0 || len(rec.Actions) > 3 {
+		v.errorf(recPath+".actions", "one to three actions")
 	}
 
-	v.oneOf(p+".action", e.Action, "set", "setIfAbsent", "append", "prepend", "remove")
-	v.oneOf(p+".scope", e.Scope, "machine", "user")
+	for j, recAction := range rec.Actions {
+		step := fmt.Sprintf("%s.actions[%d]", recPath, j)
+		v.oneOf(step, recAction.Action, "restart", "none")
 
-	if e.Scope == "machine" && perUser {
-		v.errorf(p+".scope", "a per-user package cannot change machine variables")
+		if recAction.Restart != nil {
+			if recAction.Action != recoveryRestart {
+				v.errorf(step+".restart", "a delay is only allowed on a restart action")
+			}
+
+			v.recoveryDuration(step+".restart", *recAction.Restart, time.Millisecond)
+		}
 	}
 
-	if e.Action != "remove" && e.Value == "" {
-		v.errorf(p+".value", "required")
+	v.recoveryDuration(recPath+".restartDelay", rec.RestartDelay, time.Millisecond)
+
+	if rec.ResetAfterDays < 0 {
+		v.errorf(recPath+".resetAfterDays", "must not be negative")
 	}
 
-	if strings.Contains(e.Value, "[~]") {
-		v.errorf(p+".value", "use action append or prepend instead of [~]")
+	if rec.ResetAfterDays > math.MaxInt32/secondsPerDay {
+		v.errorf(recPath+".resetAfterDays", "is too long for sc.exe")
 	}
 
-	if e.Action == "set" && strings.EqualFold(e.Name, "PATH") {
-		v.warnf(p+".action", "set replaces the whole PATH; use append or prepend")
+	if rec.ResetAfter != nil {
+		if rec.ResetAfterDays != 0 {
+			v.errorf(recPath+".resetAfter", "set resetAfter or resetAfterDays, not both")
+		}
+
+		v.recoveryDuration(recPath+".resetAfter", *rec.ResetAfter, time.Second)
+	}
+}
+
+func (v *validator) environment(envPath string, env *Environment, perUser bool) {
+	if v.required(envPath+".name", env.Name) && strings.ContainsAny(env.Name[:1], "=+-!*") {
+		v.errorf(envPath+".name", "write the plain name; action, scope and removeOnUninstall set the prefix")
+	}
+
+	v.oneOf(envPath+".action", env.Action, "set", "setIfAbsent", "append", "prepend", "remove")
+	v.oneOf(envPath+".scope", env.Scope, "machine", "user")
+
+	if env.Scope == "machine" && perUser {
+		v.errorf(envPath+".scope", "a per-user package cannot change machine variables")
+	}
+
+	if env.Action != "remove" && env.Value == "" {
+		v.errorf(envPath+".value", "required")
+	}
+
+	if strings.Contains(env.Value, "[~]") {
+		v.errorf(envPath+".value", "use action append or prepend instead of [~]")
+	}
+
+	if env.Action == "set" && strings.EqualFold(env.Name, "PATH") {
+		v.warnf(envPath+".action", "set replaces the whole PATH; use append or prepend")
 	}
 }
 
 func (v *validator) properties(cfg *Config) {
 	for _, name := range cfg.Properties.Names() {
 		prop := cfg.Properties[name]
-		p := "properties." + name
+		propPath := "properties." + name
 
 		if !IsIdentifier(name) || len(name) > MaxIdentifierLength {
-			v.errorf(p, "%q is not an identifier", name)
+			v.errorf(propPath, "%q is not an identifier", name)
 		}
 
 		if builderProperties[name] {
-			v.errorf(p, "%s is set by the builder or the installer; it cannot be defined here", name)
+			v.errorf(propPath, "%s is set by the builder or the installer; it cannot be defined here", name)
 		}
 
 		public := IsPublicProperty(name)
 		if prop.Secure != nil && *prop.Secure && !public {
-			v.errorf(p+".secure", "only public (upper-case) properties can be secure")
+			v.errorf(propPath+".secure", "only public (upper-case) properties can be secure")
 		}
 	}
 }
@@ -1084,163 +1129,193 @@ func (v *validator) launchConditions(cfg *Config) {
 	}
 }
 
-func (v *validator) customActions(cfg *Config, r *refs) {
-	seen := map[string]bool{}
+func (v *validator) customActions(cfg *Config, known *refs) {
+	seen := make(map[string]bool)
 
-	for i, ca := range cfg.CustomActions {
-		p := fmt.Sprintf("customActions[%d]", i)
+	for i, action := range cfg.CustomActions {
+		actionPath := fmt.Sprintf("customActions[%d]", i)
 
-		if ca.origin != "" {
-			v.generatedArgument(ca)
+		if action.origin != "" {
+			v.generatedArgument(action)
 
 			continue
 		}
 
-		if v.required(p+".id", ca.ID) {
-			if !IsIdentifier(ca.ID) || len(ca.ID) > MaxIdentifierLength {
-				v.errorf(p+".id", "%q is not an identifier", ca.ID)
-			}
+		v.actionID(actionPath, action.ID, seen)
 
-			if standardActions[ca.ID] {
-				v.errorf(p+".id", "%s is a standard action name (ICE93)", ca.ID)
-			}
+		v.actionKind(cfg, actionPath, action, known)
+		inScript := action.Execute != executeImmediate
+		v.actionRun(cfg, actionPath, action)
 
-			if seen[ca.ID] {
-				v.errorf(p+".id", "custom action %s is defined twice", ca.ID)
-			}
-
-			seen[ca.ID] = true
+		if len(action.Schedule) == 0 {
+			v.errorf(actionPath+".schedule", "required: an action that is never scheduled never runs")
 		}
 
-		kinds := 0
-		for _, set := range []bool{ca.SetProperty != nil, ca.SetDirectory != nil, ca.Error != "",
-			ca.Exec != nil, ca.ExecProperty != nil, ca.DLL != nil} {
-			if set {
-				kinds++
-			}
-		}
-
-		if kinds != 1 {
-			v.errorf(p, "exactly one of setProperty, setDirectory, error, exec, execProperty or dll is required")
-		}
-
-		v.oneOf(p+".execute", ca.Execute, "immediate", "deferred", "rollback", "commit")
-		inScript := ca.Execute != "immediate"
-		isExec := ca.Exec != nil || ca.ExecProperty != nil
-
-		switch {
-		case ca.SetProperty != nil:
-			if v.required(p+".setProperty.name", ca.SetProperty.Name) && !IsIdentifier(ca.SetProperty.Name) {
-				v.errorf(p+".setProperty.name", "%q is not an identifier", ca.SetProperty.Name)
-			}
-
-			if inScript {
-				v.errorf(p+".execute", "setProperty cannot be deferred; deferred actions read CustomActionData")
-			}
-		case ca.SetDirectory != nil:
-			if r.dirs[ca.SetDirectory.Directory] == nil {
-				v.errorf(p+".setDirectory.directory", "directory %q is not defined", ca.SetDirectory.Directory)
-			}
-
-			v.required(p+".setDirectory.value", ca.SetDirectory.Value)
-
-			if inScript {
-				v.errorf(p+".execute", "setDirectory cannot be deferred")
-			}
-		case ca.Error != "":
-			if inScript {
-				v.errorf(p+".execute", "error actions cannot be deferred")
-			}
-		case ca.Exec != nil:
-			v.required(p+".exec.command", ca.Exec.Command)
-
-			if ca.Exec.Directory != "TARGETDIR" && r.dirs[ca.Exec.Directory] == nil && !standardFolders[ca.Exec.Directory] {
-				v.errorf(p+".exec.directory", "directory %q is not defined", ca.Exec.Directory)
-			}
-		case ca.ExecProperty != nil:
-			v.required(p+".execProperty.property", ca.ExecProperty.Property)
-		case ca.DLL != nil:
-			if _, ok := cfg.Binaries[ca.DLL.Binary]; !ok {
-				v.errorf(p+".dll.binary", "binary %q is not defined", ca.DLL.Binary)
-			}
-
-			v.required(p+".dll.entry", ca.DLL.Entry)
-		}
-
-		if !*ca.Impersonate && !inScript {
-			v.errorf(p+".impersonate", "impersonate: false needs a deferred, rollback or commit action")
-		}
-
-		if !*ca.Impersonate && cfg.Package.Scope == ScopePerUser {
-			v.errorf(p+".impersonate", "a per-user package cannot run actions without impersonation (ICE105)")
-		}
-
-		if isExec && ca.Return == "" {
-			v.errorf(p+".return", "required for exec actions: check fails the install on a non-zero exit "+
-				"code, ignore does not (RUN-18)")
-		} else if ca.Return != "" {
-			v.oneOf(p+".return", ca.Return, "check", "ignore", "asyncWait", "asyncNoWait")
-		}
-
-		if (ca.Return == "asyncWait" || ca.Return == "asyncNoWait") && (!isExec || ca.Execute == "rollback") {
-			v.errorf(p+".return", "async needs an exec action that is not a rollback action")
-		}
-
-		if ca.Once != "" {
-			v.oneOf(p+".once", ca.Once, "firstSequence", "oncePerProcess", "clientRepeat")
-
-			if inScript {
-				v.errorf(p+".once", "only for immediate actions")
-			}
-		}
-
-		if len(ca.Schedule) == 0 {
-			v.errorf(p+".schedule", "required: an action that is never scheduled never runs")
-		}
-
-		for j, pl := range ca.Schedule {
-			v.placement(fmt.Sprintf("%s.schedule[%d]", p, j), pl, inScript, cfg)
+		for j, pl := range action.Schedule {
+			v.placement(fmt.Sprintf("%s.schedule[%d]", actionPath, j), pl, inScript, cfg)
 		}
 	}
 }
 
-func (v *validator) placement(p string, pl Placement, inScript bool, cfg *Config) {
-	if _, ok := sequenceTables[pl.Sequence]; !ok {
-		v.errorf(p+".sequence", "%q is not one of execute, ui, adminExecute, adminUI", pl.Sequence)
+// actionID checks a custom action's id and records it in seen.
+func (v *validator) actionID(actionPath, actionID string, seen map[string]bool) {
+	if !v.required(actionPath+".id", actionID) {
+		return
 	}
 
-	if inScript && (pl.Sequence == "ui" || pl.Sequence == "adminUI") {
-		v.errorf(p+".sequence", "deferred actions run only in execute sequences (ICE77)")
+	if !IsIdentifier(actionID) || len(actionID) > MaxIdentifierLength {
+		v.errorf(actionPath+".id", "%q is not an identifier", actionID)
 	}
 
-	n := 0
+	if standardActions[actionID] {
+		v.errorf(actionPath+".id", "%s is a standard action name (ICE93)", actionID)
+	}
 
-	for _, set := range []bool{pl.Before != "", pl.After != "", pl.At != 0} {
+	if seen[actionID] {
+		v.errorf(actionPath+".id", "custom action %s is defined twice", actionID)
+	}
+
+	seen[actionID] = true
+}
+
+// actionKind checks that a custom action does exactly one thing, its
+// execute value, and the fields of that thing.
+func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAction, known *refs) { //nolint:cyclop // a flat list of independent checks
+	kinds := 0
+
+	for _, set := range []bool{
+		action.SetProperty != nil, action.SetDirectory != nil, action.Error != "",
+		action.Exec != nil, action.ExecProperty != nil, action.DLL != nil,
+	} {
 		if set {
-			n++
+			kinds++
 		}
 	}
 
-	if n != 1 {
-		v.errorf(p, "exactly one of before, after or at is required")
+	if kinds != 1 {
+		v.errorf(actionPath, "exactly one of setProperty, setDirectory, error, exec, execProperty or dll is required")
 	}
 
-	if pl.At != 0 && (pl.At < minSequenceNumber || pl.At > maxSequenceNumber) {
-		v.errorf(p+".at", "must be between 1 and %d, or -1 to -4", maxSequenceNumber)
+	v.oneOf(actionPath+".execute", action.Execute, executeImmediate, "deferred", "rollback", "commit")
+	inScript := action.Execute != executeImmediate
+
+	switch {
+	case action.SetProperty != nil:
+		if v.required(actionPath+".setProperty.name", action.SetProperty.Name) && !IsIdentifier(action.SetProperty.Name) {
+			v.errorf(actionPath+".setProperty.name", "%q is not an identifier", action.SetProperty.Name)
+		}
+
+		if inScript {
+			v.errorf(actionPath+".execute", "setProperty cannot be deferred; deferred actions read CustomActionData")
+		}
+	case action.SetDirectory != nil:
+		if known.dirs[action.SetDirectory.Directory] == nil {
+			v.errorf(actionPath+".setDirectory.directory", "directory %q is not defined", action.SetDirectory.Directory)
+		}
+
+		v.required(actionPath+".setDirectory.value", action.SetDirectory.Value)
+
+		if inScript {
+			v.errorf(actionPath+".execute", "setDirectory cannot be deferred")
+		}
+	case action.Error != "":
+		if inScript {
+			v.errorf(actionPath+".execute", "error actions cannot be deferred")
+		}
+	case action.Exec != nil:
+		v.required(actionPath+".exec.command", action.Exec.Command)
+
+		if action.Exec.Directory != "TARGETDIR" && known.dirs[action.Exec.Directory] == nil && !standardFolders[action.Exec.Directory] {
+			v.errorf(actionPath+".exec.directory", "directory %q is not defined", action.Exec.Directory)
+		}
+	case action.ExecProperty != nil:
+		v.required(actionPath+".execProperty.property", action.ExecProperty.Property)
+	case action.DLL != nil:
+		if _, ok := cfg.Binaries[action.DLL.Binary]; !ok {
+			v.errorf(actionPath+".dll.binary", "binary %q is not defined", action.DLL.Binary)
+		}
+
+		v.required(actionPath+".dll.entry", action.DLL.Entry)
+	}
+}
+
+// actionRun checks how a custom action runs: impersonation, return
+// processing and once.
+func (v *validator) actionRun(cfg *Config, actionPath string, action *CustomAction) { //nolint:cyclop // a flat list of independent checks
+	inScript := action.Execute != executeImmediate
+	isExec := action.Exec != nil || action.ExecProperty != nil
+
+	if !*action.Impersonate && !inScript {
+		v.errorf(actionPath+".impersonate", "impersonate: false needs a deferred, rollback or commit action")
 	}
 
-	if pl.At < 0 && pl.Sequence != "ui" && pl.Sequence != "adminUI" {
-		v.errorf(p+".at", "termination numbers belong in UI sequences")
+	if !*action.Impersonate && cfg.Package.Scope == ScopePerUser {
+		v.errorf(actionPath+".impersonate", "a per-user package cannot run actions without impersonation (ICE105)")
 	}
 
-	for _, anchor := range []string{pl.Before, pl.After} {
+	if isExec && action.Return == "" {
+		v.errorf(actionPath+".return", "required for exec actions: check fails the install on a non-zero exit "+
+			"code, ignore does not (RUN-18)")
+	} else if action.Return != "" {
+		v.oneOf(actionPath+".return", action.Return, "check", "ignore", "asyncWait", "asyncNoWait")
+	}
+
+	if (action.Return == "asyncWait" || action.Return == "asyncNoWait") && (!isExec || action.Execute == "rollback") {
+		v.errorf(actionPath+".return", "async needs an exec action that is not a rollback action")
+	}
+
+	if action.Once != "" {
+		v.oneOf(actionPath+".once", action.Once, "firstSequence", "oncePerProcess", "clientRepeat")
+
+		if inScript {
+			v.errorf(actionPath+".once", "only for immediate actions")
+		}
+	}
+}
+
+func (v *validator) placement(placementPath string, place Placement, inScript bool, cfg *Config) {
+	if _, ok := sequenceTables[place.Sequence]; !ok {
+		v.errorf(placementPath+".sequence", "%q is not one of execute, ui, adminExecute, adminUI", place.Sequence)
+	}
+
+	if inScript && (place.Sequence == "ui" || place.Sequence == sequenceAdminUI) {
+		v.errorf(placementPath+".sequence", "deferred actions run only in execute sequences (ICE77)")
+	}
+
+	v.placementPosition(placementPath, place)
+
+	for _, anchor := range []string{place.Before, place.After} {
 		if anchor == "" || standardActions[anchor] {
 			continue
 		}
 
 		if !hasCustomAction(cfg, anchor) && !hasDialog(cfg, anchor) {
-			v.errorf(p, "anchor %q is neither a standard action nor a custom action", anchor)
+			v.errorf(placementPath, "anchor %q is neither a standard action nor a custom action", anchor)
 		}
+	}
+}
+
+// placementPosition checks that a placement has exactly one of before,
+// after and at, and a valid at.
+func (v *validator) placementPosition(placementPath string, placement Placement) {
+	count := 0
+
+	for _, set := range []bool{placement.Before != "", placement.After != "", placement.At != 0} {
+		if set {
+			count++
+		}
+	}
+
+	if count != 1 {
+		v.errorf(placementPath, "exactly one of before, after or at is required")
+	}
+
+	if placement.At != 0 && (placement.At < minSequenceNumber || placement.At > maxSequenceNumber) {
+		v.errorf(placementPath+".at", "must be between 1 and %d, or -1 to -4", maxSequenceNumber)
+	}
+
+	if placement.At < 0 && placement.Sequence != "ui" && placement.Sequence != sequenceAdminUI {
+		v.errorf(placementPath+".at", "termination numbers belong in UI sequences")
 	}
 }
 
@@ -1280,17 +1355,17 @@ func hasDialog(cfg *Config, id string) bool {
 func (v *validator) streams(cfg *Config) {
 	check := func(section string, m map[string]string, limit int) {
 		for key, src := range m {
-			p := section + "." + key
+			fieldPath := section + "." + key
 
 			if !IsIdentifier(key) {
-				v.errorf(p, "%q is not an identifier", key)
+				v.errorf(fieldPath, "%q is not an identifier", key)
 			}
 
 			if len(key) > limit {
-				v.errorf(p, "at most %d characters, so that the stream name fits in %d (DB-11)", limit, MaxStreamNameLength)
+				v.errorf(fieldPath, "at most %d characters, so that the stream name fits in %d (DB-11)", limit, MaxStreamNameLength)
 			}
 
-			v.required(p, src)
+			v.required(fieldPath, src)
 		}
 	}
 
@@ -1298,40 +1373,40 @@ func (v *validator) streams(cfg *Config) {
 	check("binaries", cfg.Binaries, maxBinaryKeyLength)
 }
 
-func (v *validator) firewall(cfg *Config, r *refs) {
-	names := map[string]bool{}
+func (v *validator) firewall(cfg *Config, known *refs) { //nolint:cyclop // a flat list of independent checks
+	names := make(map[string]bool)
 
-	for i, fw := range cfg.Firewall {
-		p := fw.Path(i) //nolint:varnamelen // the path of the rule, as in the other checks
+	for i, rule := range cfg.Firewall {
+		p := rule.Path(i) //nolint:varnamelen // the path of the rule, as in the other checks
 
-		if fw.ownComponent {
+		if rule.ownComponent {
 			v.errorf(p+".component", "a rule under a feature follows that feature; remove component")
 		}
 
-		if v.required(p+".name", fw.Name) {
-			if names[fw.Name] {
-				v.errorf(p+".name", "rule %q is defined twice", fw.Name)
+		if v.required(p+".name", rule.Name) {
+			if names[rule.Name] {
+				v.errorf(p+".name", "rule %q is defined twice", rule.Name)
 			}
 
-			names[fw.Name] = true
+			names[rule.Name] = true
 
-			if strings.ContainsAny(fw.Name, `"`) {
+			if strings.ContainsAny(rule.Name, `"`) {
 				v.errorf(p+".name", "must not contain a double quote")
 			}
 		}
 
-		if v.required(p+".component", fw.Component) && r.components[fw.Component] == nil {
-			v.errorf(p+".component", "component %q is not defined", fw.Component)
+		if v.required(p+".component", rule.Component) && known.components[rule.Component] == nil {
+			v.errorf(p+".component", "component %q is not defined", rule.Component)
 		}
 
-		v.required(p+".program", fw.Program)
-		v.oneOf(p+".protocol", fw.Protocol, "tcp", "udp", "any")
+		v.required(p+".program", rule.Program)
+		v.oneOf(p+".protocol", rule.Protocol, "tcp", "udp", "any")
 
-		if fw.Protocol == "any" && fw.Port != "" {
+		if rule.Protocol == "any" && rule.Port != "" {
 			v.errorf(p+".port", "a port needs protocol tcp or udp")
 		}
 
-		for j, prof := range fw.Profiles {
+		for j, prof := range rule.Profiles {
 			v.oneOf(fmt.Sprintf("%s.profiles[%d]", p, j), prof, "all", "domain", "private", "public")
 		}
 
@@ -1341,47 +1416,47 @@ func (v *validator) firewall(cfg *Config, r *refs) {
 	}
 }
 
-func (v *validator) ui(cfg *Config) {
+func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independent checks
 	v.oneOf("ui.wizard", cfg.UI.Wizard, "none", "minimal", "featureTree")
 
-	if cfg.UI.Wizard == "none" && len(cfg.UI.Dialogs) > 0 {
+	if cfg.UI.Wizard == None && len(cfg.UI.Dialogs) > 0 {
 		v.errorf("ui.dialogs", "dialogs need a wizard")
 	}
 
 	v.theme(cfg)
 
-	seen := map[string]bool{}
+	seen := make(map[string]bool)
 
-	for i, d := range cfg.UI.Dialogs {
-		p := fmt.Sprintf("ui.dialogs[%d]", i)
+	for i, dialog := range cfg.UI.Dialogs {
+		dialogPath := fmt.Sprintf("ui.dialogs[%d]", i)
 
-		if v.required(p+".id", d.ID) {
-			if !IsIdentifier(d.ID) {
-				v.errorf(p+".id", "%q is not an identifier", d.ID)
+		if v.required(dialogPath+".id", dialog.ID) {
+			if !IsIdentifier(dialog.ID) {
+				v.errorf(dialogPath+".id", "%q is not an identifier", dialog.ID)
 			}
 
-			if seen[d.ID] {
-				v.errorf(p+".id", "dialog %s is defined twice", d.ID)
+			if seen[dialog.ID] {
+				v.errorf(dialogPath+".id", "dialog %s is defined twice", dialog.ID)
 			}
 
-			seen[d.ID] = true
+			seen[dialog.ID] = true
 		}
 
-		v.required(p+".title", d.Title)
-		v.required(p+".after", d.After)
+		v.required(dialogPath+".title", dialog.Title)
+		v.required(dialogPath+".after", dialog.After)
 
-		if len(d.Fields) == 0 {
-			v.errorf(p+".fields", "at least one field")
+		if len(dialog.Fields) == 0 {
+			v.errorf(dialogPath+".fields", "at least one field")
 		}
 
-		for j, f := range d.Fields {
-			fp := fmt.Sprintf("%s.fields[%d]", p, j)
-			if v.required(fp+".property", f.Property) && !IsPublicProperty(f.Property) {
-				v.errorf(fp+".property", "UI values reach the server side only through public properties")
+		for j, field := range dialog.Fields {
+			fieldPath := fmt.Sprintf("%s.fields[%d]", dialogPath, j)
+			if v.required(fieldPath+".property", field.Property) && !IsPublicProperty(field.Property) {
+				v.errorf(fieldPath+".property", "UI values reach the server side only through public properties")
 			}
 
-			if _, ok := cfg.Properties[f.Property]; f.Property != "" && !ok {
-				v.warnf(fp+".property", "%s is not declared in properties, so it is not secure", f.Property)
+			if _, ok := cfg.Properties[field.Property]; field.Property != "" && !ok {
+				v.warnf(fieldPath+".property", "%s is not declared in properties, so it is not secure", field.Property)
 			}
 		}
 	}
@@ -1392,7 +1467,7 @@ const launchProperty = "LaunchOnFinish"
 
 // wizardOptions checks the install folder page and the launch check box.
 func (v *validator) wizardOptions(cfg *Config, ids *refs) {
-	none := cfg.UI.Wizard == "none"
+	none := cfg.UI.Wizard == None
 
 	if cfg.UI.InstallDirPage {
 		if none {
@@ -1428,7 +1503,7 @@ func (v *validator) wizardOptions(cfg *Config, ids *refs) {
 var colorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
 func (v *validator) theme(cfg *Config) {
-	none := cfg.UI.Wizard == "none"
+	none := cfg.UI.Wizard == None
 
 	if none && cfg.UI.License != "" {
 		v.errorf("ui.license", "a license page needs a wizard")
@@ -1448,112 +1523,112 @@ func (v *validator) theme(cfg *Config) {
 	}
 }
 
-func (v *validator) tables(cfg *Config) {
-	for i, t := range cfg.Tables {
-		p := fmt.Sprintf("tables[%d]", i)
+func (v *validator) tables(cfg *Config) { //nolint:cyclop // a flat list of independent checks
+	for i, table := range cfg.Tables {
+		tablePath := fmt.Sprintf("tables[%d]", i)
 
-		if v.required(p+".name", t.Name) {
-			if !IsIdentifier(t.Name) || len(t.Name) > MaxTableNameLength {
-				v.errorf(p+".name", "%q is not an identifier of at most %d characters", t.Name, MaxTableNameLength)
+		if v.required(tablePath+".name", table.Name) {
+			if !IsIdentifier(table.Name) || len(table.Name) > MaxTableNameLength {
+				v.errorf(tablePath+".name", "%q is not an identifier of at most %d characters", table.Name, MaxTableNameLength)
 			}
 
-			if standardTables[t.Name] {
-				v.errorf(p+".name", "%s is written by the builder", t.Name)
+			if standardTables[table.Name] {
+				v.errorf(tablePath+".name", "%s is written by the builder", table.Name)
 			}
 		}
 
-		if len(t.Columns) == 0 || len(t.Columns) > MaxColumns {
-			v.errorf(p+".columns", "one to %d columns (DB-07)", MaxColumns)
+		if len(table.Columns) == 0 || len(table.Columns) > MaxColumns {
+			v.errorf(tablePath+".columns", "one to %d columns (DB-07)", MaxColumns)
 		}
 
 		keys := 0
 
-		for j, c := range t.Columns {
-			cp := fmt.Sprintf("%s.columns[%d]", p, j)
+		for j, col := range table.Columns {
+			colPath := fmt.Sprintf("%s.columns[%d]", tablePath, j)
 
-			if v.required(cp+".name", c.Name) && !IsIdentifier(c.Name) {
-				v.errorf(cp+".name", "%q is not an identifier", c.Name)
+			if v.required(colPath+".name", col.Name) && !IsIdentifier(col.Name) {
+				v.errorf(colPath+".name", "%q is not an identifier", col.Name)
 			}
 
-			if !columnTypePattern.MatchString(c.Type) {
-				v.errorf(cp+".type", "%q is not a column type such as s72, S255, l0, i2, I4 or v0", c.Type)
+			if !columnTypePattern.MatchString(col.Type) {
+				v.errorf(colPath+".type", "%q is not a column type such as s72, S255, l0, i2, I4 or v0", col.Type)
 			}
 
-			if c.Key {
+			if col.Key {
 				keys++
 			}
 		}
 
-		if keys == 0 && len(t.Columns) > 0 {
-			v.errorf(p+".columns", "at least one key column")
+		if keys == 0 && len(table.Columns) > 0 {
+			v.errorf(tablePath+".columns", "at least one key column")
 		}
 
-		for j, row := range t.Rows {
-			v.tableRow(fmt.Sprintf("%s.rows[%d]", p, j), t.Columns, row)
+		for j, row := range table.Rows {
+			v.tableRow(fmt.Sprintf("%s.rows[%d]", tablePath, j), table.Columns, row)
 		}
 	}
 }
 
-func (v *validator) tableRow(p string, cols []Column, row []any) {
+func (v *validator) tableRow(rowPath string, cols []Column, row []any) { //nolint:cyclop,gocognit // a flat list of independent checks
 	if len(row) != len(cols) {
-		v.errorf(p, "%d values for %d columns", len(row), len(cols))
+		v.errorf(rowPath, "%d values for %d columns", len(row), len(cols))
 
 		return
 	}
 
-	for k, val := range row {
-		c := cols[k]
-		if len(c.Type) < 2 {
+	for index, val := range row {
+		col := cols[index]
+		if len(col.Type) < 2 {
 			continue
 		}
 
-		nullable := c.Type[0] >= 'A' && c.Type[0] <= 'Z'
-		cp := fmt.Sprintf("%s[%d]", p, k)
+		nullable := col.Type[0] >= 'A' && col.Type[0] <= 'Z'
+		cellPath := fmt.Sprintf("%s[%d]", rowPath, index)
 
 		if val == nil {
-			if !nullable || c.Key {
-				v.errorf(cp, "column %s is not nullable", c.Name)
+			if !nullable || col.Key {
+				v.errorf(cellPath, "column %s is not nullable", col.Name)
 			}
 
 			continue
 		}
 
-		switch c.Type[0] {
+		switch col.Type[0] {
 		case 'i', 'I':
-			n, ok := val.(int)
+			num, ok := val.(int)
 			if !ok {
-				v.errorf(cp, "column %s needs an integer", c.Name)
+				v.errorf(cellPath, "column %s needs an integer", col.Name)
 
 				continue
 			}
 
 			// The type's minimum is stored as NULL (DB-02).
-			lo, hi := math.MinInt16+1, math.MaxInt16
-			if c.Type[1] == '4' {
-				lo, hi = math.MinInt32+1, math.MaxInt32
+			low, high := math.MinInt16+1, math.MaxInt16
+			if col.Type[1] == '4' {
+				low, high = math.MinInt32+1, math.MaxInt32
 			}
 
-			if n < lo || n > hi {
-				v.errorf(cp, "%d is outside %d…%d", n, lo, hi)
+			if num < low || num > high {
+				v.errorf(cellPath, "%d is outside %d…%d", num, low, high)
 			}
 		case 's', 'S', 'l', 'L':
-			s, ok := val.(string)
+			str, ok := val.(string)
 			if !ok {
-				v.errorf(cp, "column %s needs a string", c.Name)
+				v.errorf(cellPath, "column %s needs a string", col.Name)
 
 				continue
 			}
 
-			if size, _ := strconv.Atoi(c.Type[1:]); size > 0 && len([]rune(s)) > size {
-				v.errorf(cp, "longer than %d characters", size)
+			if size, _ := strconv.Atoi(col.Type[1:]); size > 0 && len([]rune(str)) > size {
+				v.errorf(cellPath, "longer than %d characters", size)
 			}
 
-			if s == "" && !nullable {
-				v.errorf(cp, "column %s is not nullable and an empty string is NULL", c.Name)
+			if str == "" && !nullable {
+				v.errorf(cellPath, "column %s is not nullable and an empty string is NULL", col.Name)
 			}
 		case 'v', 'V':
 			if _, ok := val.(string); !ok {
-				v.errorf(cp, "column %s needs a source file path", c.Name)
+				v.errorf(cellPath, "column %s needs a source file path", col.Name)
 			}
 		}
 	}

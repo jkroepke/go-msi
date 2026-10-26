@@ -218,9 +218,6 @@ jobs:
           # are built with an older Go and refuse to lint a newer go.mod.
           install-mode: goinstall
           args: "--max-same-issues=0"
-          # The config package predates this linter config. Report findings in
-          # changed code only, until the existing findings are fixed.
-          only-new-issues: true
 
   super-lint:
     name: super-lint

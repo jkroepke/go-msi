@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -22,7 +22,7 @@ const (
 	PlatformArm64 Platform = "Arm64"
 )
 
-var platformNames = map[string]Platform{
+var platformNames = map[string]Platform{ //nolint:gochecknoglobals // lookup table
 	"x86":     PlatformX86,
 	"intel":   PlatformX86,
 	"x64":     PlatformX64,
@@ -34,14 +34,14 @@ var platformNames = map[string]Platform{
 // UnmarshalYAML accepts the user-facing names in any case and stores the
 // exact token, since the engine compares tokens case-sensitively (SUM-02).
 func (p *Platform) UnmarshalYAML(node *yaml.Node) error {
-	var s string
-	if err := node.Decode(&s); err != nil {
-		return err
+	var text string
+	if err := node.Decode(&text); err != nil {
+		return err //nolint:wrapcheck // yaml.v3 collects an unwrapped *yaml.TypeError with the others
 	}
 
-	v, ok := platformNames[strings.ToLower(strings.TrimSpace(s))]
+	v, ok := platformNames[strings.ToLower(strings.TrimSpace(text))]
 	if !ok {
-		return fmt.Errorf("line %d: unknown platform %q, want x86, x64 or arm64", node.Line, s)
+		return fmt.Errorf("line %d: unknown platform %q, want x86, x64 or arm64", node.Line, text)
 	}
 
 	*p = v
@@ -65,18 +65,18 @@ const (
 
 // UnmarshalYAML accepts perMachine and perUser in any case.
 func (s *Scope) UnmarshalYAML(node *yaml.Node) error {
-	var v string
-	if err := node.Decode(&v); err != nil {
-		return err
+	var text string
+	if err := node.Decode(&text); err != nil {
+		return err //nolint:wrapcheck // yaml.v3 collects an unwrapped *yaml.TypeError with the others
 	}
 
-	switch strings.ToLower(v) {
+	switch strings.ToLower(text) {
 	case "permachine":
 		*s = ScopePerMachine
 	case "peruser":
 		*s = ScopePerUser
 	default:
-		return fmt.Errorf("line %d: unknown scope %q, want perMachine or perUser", node.Line, v)
+		return fmt.Errorf("line %d: unknown scope %q, want perMachine or perUser", node.Line, text)
 	}
 
 	return nil
@@ -90,7 +90,7 @@ func (l *StringList) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind == yaml.ScalarNode {
 		var s string
 		if err := node.Decode(&s); err != nil {
-			return err
+			return err //nolint:wrapcheck // yaml.v3 collects an unwrapped *yaml.TypeError with the others
 		}
 
 		*l = StringList{s}
@@ -100,7 +100,7 @@ func (l *StringList) UnmarshalYAML(node *yaml.Node) error {
 
 	var list []string
 	if err := node.Decode(&list); err != nil {
-		return err
+		return err //nolint:wrapcheck // yaml.v3 collects an unwrapped *yaml.TypeError with the others
 	}
 
 	*l = list
@@ -115,7 +115,7 @@ type Duration time.Duration
 func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
 	var s string
 	if err := node.Decode(&s); err != nil {
-		return err
+		return err //nolint:wrapcheck // yaml.v3 collects an unwrapped *yaml.TypeError with the others
 	}
 
 	v, err := time.ParseDuration(s)
@@ -172,7 +172,7 @@ func (a RecoveryAction) MarshalYAML() (any, error) {
 }
 
 // Property is one Property table entry and its flags.
-type Property struct {
+type Property struct { //nolint:govet // field order is the YAML key order
 	Value  string `yaml:"value"`
 	Secure *bool  `yaml:"secure"`
 	Hidden bool   `yaml:"hidden"`
@@ -206,7 +206,7 @@ func (p *Properties) UnmarshalYAML(node *yaml.Node) error {
 			if err := decodeStrict(value, prop); err != nil {
 				return err
 			}
-		default:
+		case yaml.DocumentNode, yaml.SequenceNode, yaml.AliasNode:
 			return fmt.Errorf("line %d: property %s must be a value or a mapping", value.Line, name)
 		}
 
@@ -225,7 +225,7 @@ func (p Properties) Names() []string {
 		names = append(names, name)
 	}
 
-	sort.Strings(names)
+	slices.Sort(names)
 
 	return names
 }
@@ -233,16 +233,16 @@ func (p Properties) Names() []string {
 // decodeStrict decodes node into v and rejects unknown keys. yaml.Node.Decode
 // does not honour Decoder.KnownFields, so mappings decoded by hand go through
 // a re-encoded document.
-func decodeStrict(node *yaml.Node, v any) error {
+func decodeStrict(node *yaml.Node, out any) error {
 	data, err := yaml.Marshal(node)
 	if err != nil {
-		return err
+		return err //nolint:wrapcheck // re-encoding a decoded node
 	}
 
 	dec := yaml.NewDecoder(strings.NewReader(string(data)))
 	dec.KnownFields(true)
 
-	if err := dec.Decode(v); err != nil {
+	if err := dec.Decode(out); err != nil {
 		return fmt.Errorf("line %d: %w", node.Line, err)
 	}
 
