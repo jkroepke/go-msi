@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -178,6 +179,10 @@ func fileVars(root *yaml.Node) (map[string]string, error) {
 	return make(map[string]string), nil
 }
 
+// yamlNulls are the plain scalars YAML 1.1 and 1.2 read as null, except the
+// empty string, which leaves an optional field unset.
+var yamlNulls = map[string]bool{"null": true, "Null": true, "NULL": true, "~": true} //nolint:gochecknoglobals // lookup table
+
 var varPattern = regexp.MustCompile(`\$\$\{|\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // substitute replaces ${NAME} in every scalar value below node. Mapping keys
@@ -201,13 +206,22 @@ func substitute(node *yaml.Node, lookup func(string) (string, bool), errs *[]err
 				*errs = append(*errs, fmt.Errorf("line %d: undefined variable ${%s}", node.Line, name))
 			}
 
+			if !utf8.ValidString(v) {
+				*errs = append(*errs, fmt.Errorf("line %d: variable ${%s} is not valid UTF-8", node.Line, name))
+			}
+
 			return v
 		})
 
 		// Resolve the tag again from the substituted text, so that an
-		// integer field can take "${PORT}".
+		// integer field can take "${PORT}". A value that spells null stays
+		// a string: dropping it would turn --var NAME=null into an empty
+		// field.
 		if node.Style == 0 {
 			node.Tag = ""
+			if yamlNulls[node.Value] {
+				node.Tag = "!!str"
+			}
 		}
 	case yaml.MappingNode:
 		for i := 1; i < len(node.Content); i += 2 {
