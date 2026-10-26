@@ -301,6 +301,18 @@ func TestValidate(t *testing.T) {
 			base + appComponent + "ui: {dialogs: [{id: D, title: T, after: X, fields: [{property: P}]}]}\n",
 			e, "ui.dialogs", "need a wizard",
 		},
+		"license without wizard": {
+			base + appComponent + "ui: {license: LICENSE.rtf}\n",
+			e, "ui.license", "needs a wizard",
+		},
+		"theme without wizard": {
+			base + appComponent + "ui: {theme: {banner: banner.bmp}}\n",
+			e, "ui.theme", "needs a wizard",
+		},
+		"bad theme colour": {
+			base + appComponent + "ui: {wizard: minimal, theme: {colors: {accent: \"#12345\"}}}\n",
+			e, "ui.theme.colors.accent", "#RRGGBB",
+		},
 	} {
 		ds := validate(t, tc.doc)
 		if !find(ds, tc.sev, tc.path, tc.msg) {

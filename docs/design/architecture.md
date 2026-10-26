@@ -38,12 +38,14 @@ flowchart LR
     builder --> sequence
     builder --> summary
     builder --> artwork
+    builder --> rtf
     msidb["msidb<br/>string pool, tables, streams"] --> cfb
     msidb --> summary
     msidb --> codepage
     summary["summary<br/>OLE property set"] --> codepage
     codepage["codepage<br/>ANSI code pages"]
     artwork["artwork<br/>wizard bitmaps"]
+    rtf["rtf<br/>license text"]
     cfb["cfb<br/>compound file"]
     cab["cab<br/>MSCAB, MSZIP"]
     schema["schema<br/>standard tables, _Validation"] --> msidb
@@ -63,10 +65,11 @@ flowchart LR
 | `internal/pe` | PE version resource reader: file version, translations, "is this a PE file", PE checksum presence | §11.5 | stdlib |
 | `internal/condition` | Parser for the condition grammar, used to reject conditions the engine would ignore | §8.8 | stdlib |
 | `internal/sequence` | Numbering of sequence tables: fixed standard actions plus before/after chains, overlap and window checks | §9.2, §11.7 | stdlib |
-| `pkg/builder` | The config-to-tables layer: identities, directories and short names, components and GUIDs, files, media and cabinets, registry, services, environment, upgrades, custom actions, helpers, `_Validation`, summary; then the package bytes and a verification pass | §6–§11 | everything above, plus `config`, `internal/artwork` and `go.yaml.in/yaml/v3` |
+| `pkg/builder` | The config-to-tables layer: identities, directories and short names, components and GUIDs, files, media and cabinets, registry, services, environment, upgrades, custom actions, helpers, `_Validation`, summary; then the package bytes and a verification pass | §6–§11 | everything above, plus `config`, `internal/artwork`, `internal/rtf` and `go.yaml.in/yaml/v3` |
 | `pkg/config` | YAML decoding, defaults and validation into a `*config.Config` | | `internal/condition`, `go.yaml.in/yaml/v3` |
 | `internal/codepage` | ANSI code page encoders for the string pool and summary | §3, §4 | `golang.org/x/text` |
-| `internal/artwork` | Draws the wizard bitmaps (our own artwork, generated in code) | | stdlib |
+| `internal/artwork` | Draws the wizard bitmaps (our own artwork, generated in code) and decodes a theme's BMP, PNG or JPEG pictures | | stdlib |
+| `internal/rtf` | Converts a plain-text license to RTF and checks an RTF license for the ScrollableText control | | stdlib |
 | `cmd/go-msi` | CLI: `build`, `validate`, `inspect` | | `builder`, `config`, `msidb` |
 
 `pkg/config` (PR #2) stays as it is: the builder consumes a validated `*config.Config`
@@ -74,7 +77,7 @@ and never reads YAML.
 
 Packages under `pkg/` are the importable API: `config`, `builder` and the
 format packages `msidb`, `cfb`, `summary` and `cab`. Packages under `internal/` (`schema`, `pe`,
-`condition`, `sequence`, `codepage`, `artwork`, `testpe`, `ice`) are implementation
+`condition`, `sequence`, `codepage`, `artwork`, `rtf`, `testpe`, `ice`) are implementation
 details and may change without notice. `pkg/builder/nativetest` sits under
 `pkg/` only because it tests `pkg/builder`; it has no exported API.
 
@@ -267,8 +270,10 @@ Pipeline, each step a file of its own:
    chains, `sequence.Number`, the window checks.
 9. **UI**: the wizard pages as table data (`pkg/builder/ui*.go`): the flow of
    pages, `ui.dialogs` inserted after their anchor, the maintenance menu, the
-   end, cancel, error, files-in-use and Restart Manager dialogs, the bitmaps
-   drawn by `artwork` from a palette, and the ICE-style self-checks.
+   end, cancel, error, files-in-use and Restart Manager dialogs, the license
+   page (RTF checked or converted by `rtf`), the bitmaps drawn by `artwork`
+   from a palette or decoded from the theme's pictures and re-encoded as
+   24-bit BMP, and the ICE-style self-checks.
 10. **Finish**: `_Validation` from `schema`, summary information, then the
     streaming write: the cabinet is written with `cab.WriteTo` to a spool
     (memory when `Options.Output` is empty, otherwise a temporary file next to

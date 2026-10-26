@@ -695,6 +695,61 @@ page the dialog follows: `WelcomeDlg`, `CustomizeDlg` or an added dialog.
 `none` writes no UI tables; silent installs never depend on the UI in any
 mode. Without feature selection (`none`, `minimal`) `ARPNOMODIFY` is set.
 
+#### License page
+
+```yaml
+ui:
+  wizard: featureTree
+  license: LICENSE.rtf     # RTF as is, any other file is text converted to RTF
+```
+
+`license` adds `LicenseAgreementDlg` after the welcome page: the license in a
+ScrollableText control, an "I accept" checkbox bound to `LicenseAccepted`,
+Print (`MsiPrint`) and Back, Next and Cancel. Next is disabled until the box
+is checked. A file that starts with `{\rtf` is embedded as it is, after two
+checks: it must be 7-bit ASCII, because the Control table stores text in the
+package code page and RTF writes other characters as `\'xx` or `\u`
+escapes, and its braces must balance. Any other file is UTF-8 text (or
+UTF-16 with a byte order mark) and is converted to RTF in Courier New 8 pt,
+which keeps the layout of hand-wrapped license files; every non-ASCII
+character becomes a `\u` escape. Change in the maintenance menu skips the
+license page. `ui.dialogs` can follow it with `after: LicenseAgreementDlg`;
+`after: WelcomeDlg` puts a dialog before it.
+
+#### Theme
+
+```yaml
+ui:
+  theme:
+    banner: banner.bmp     # top of the inner pages, 493×58 pixels
+    dialog: dialog.bmp     # background of the welcome and finish pages, 493×312 pixels
+    colors:                # the built-in pictures, #RRGGBB
+      dark: "#122B4A"
+      light: "#1E8C9E"
+      accent: "#F2A93B"
+      paper: "#F4F6F8"
+```
+
+| Picture | Control | Pixels at 96 dpi | Default |
+|---|---|---|---|
+| `banner` | `BannerBmp`, 370×44 dialog units at the top of every inner page; the title and the two-line description are drawn over x 15 to 325, so a logo belongs in the right 45 units (60 pixels) | 493×58 | paper with an accent line and a mark at the right |
+| `dialog` | `DialogBmp`, 370×234 dialog units, the whole welcome, resume and finish pages above the buttons; the title and text are drawn over it from 135 units on, so the picture's own art stays in the left 130 units | 493×312 | the side panel gradient in the left 123 units, paper to the right |
+
+These are the sizes that other installer toolkits use for the same two
+pictures, so existing artwork fits unchanged. A picture is BMP (any header
+version, 1 to 32 bits, uncompressed or bit fields), PNG or JPEG, chosen by
+its content rather than its filename. The builder decodes it, blends
+transparent pixels onto `paper`, and always writes an uncompressed 24-bit
+bitmap with a BITMAPINFOHEADER, the form every Windows Installer version
+shows (newer engines also read PNG, older ones only BMP and JPEG, section
+19.1 of the specification, RUN-22). The Bitmap control stretches a picture
+to its rectangle, so other sizes work as long as the ratio is kept: a ratio
+more than 5 % away from the control's is an error, a picture smaller than
+the size above is a warning, and a side above 8192 pixels or more than
+4096×4096 pixels in all is an error.
+`colors` recolours the built-in pictures; a colour that is not given keeps
+its default. A license or theme without a wizard is an error.
+
 ### 4.13 `tables`
 
 An escape hatch for tables the schema does not model.
