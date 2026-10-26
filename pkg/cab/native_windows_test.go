@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -838,6 +839,13 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 			wantType := uint16(cab.MSZIP)
 			if comp == "stored" {
 				wantType = uint16(cab.None)
+			} else if _, memory, ok := strings.Cut(comp, ":"); ok {
+				window, err := strconv.Atoi(memory)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				wantType = uint16(cab.LZX) | uint16(window)<<8 //nolint:gosec // window is 15 or 21
 			}
 
 			if typ := uint16(raw[36+6]) | uint16(raw[36+7])<<8; typ != wantType {
