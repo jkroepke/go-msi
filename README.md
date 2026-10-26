@@ -83,8 +83,7 @@ agent with a service. These are not supported:
 
 - **MSIX.** Use [nFPM](https://github.com/goreleaser/nfpm).
 - **Running packages.** go-msi never installs or executes an MSI. Only its
-  tests do: on Windows without `-short` (elevated), and under Wine with
-  `hack/test-wine.sh`.
+  tests do, on Windows without `-short` (elevated).
 - **Transforms (`.mst`), patches (`.msp`), merge modules (`.msm`) and
   bundles or bootstrappers.** Ship a new major-upgrade MSI instead of a patch.
 - **Multi-language packages.** A package has one language; there are no

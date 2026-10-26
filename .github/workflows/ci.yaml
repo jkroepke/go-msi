@@ -117,41 +117,6 @@ jobs:
           use_oidc: true
           files: coverage.out
 
-  install-test:
-    name: Install test (Wine)
-    runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: 'false'
-
-      - name: Check for the install test
-        id: script
-        run: |
-          if [ -f hack/test-wine.sh ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::hack/test-wine.sh does not exist yet, skipping the install test."
-          fi
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: steps.script.outputs.present == 'true'
-        with:
-          go-version-file: 'go.mod'
-          cache: "${{ github.actor != 'renovate[bot]' }}"
-
-      - name: Install Wine
-        if: steps.script.outputs.present == 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends wine64 xvfb
-
-      - name: Install examples/minimal
-        if: steps.script.outputs.present == 'true'
-        run: hack/test-wine.sh
-
   goreleaser:
     runs-on: ubuntu-26.04
     name: Test goreleaser

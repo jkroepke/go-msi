@@ -1,15 +1,11 @@
-# mise (https://mise.jdx.dev) pins the toolchain and names the tasks CI runs,
-# so the same commands work locally.
+# mise (https://mise.jdx.dev) pins the toolchain and names local tasks that
+# mirror the commands CI runs.
 [tools]
 go = "1.27.3"
 
 [tasks.test]
 description = "Unit tests on this OS (on Windows this includes the msi.dll and msiexec tests)"
 run = "go test ./... -shuffle=on -race"
-
-[tasks."test:wine"]
-description = "Build examples/minimal and install it with Wine's msiexec (needs wine, optionally xvfb-run)"
-run = "hack/test-wine.sh"
 
 [tasks.lint]
 description = "golangci-lint, built with the Go version from go.mod"
