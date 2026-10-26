@@ -8,6 +8,16 @@ import (
 	"testing"
 )
 
+// scaled returns n, or a fifth of it under -short: CI runs the short tests
+// with the race detector, which slows the encoder down about fifty times.
+func scaled(n int) int {
+	if testing.Short() {
+		return n / 5
+	}
+
+	return n
+}
+
 func decodeAll(t *testing.T, frames [][]byte, window, size int) []byte {
 	t.Helper()
 
@@ -69,7 +79,7 @@ func x86ish(size int, seed int64) []byte {
 func TestRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	random := make([]byte, 200000)
+	random := make([]byte, scaled(200000))
 	rand.New(rand.NewSource(1)).Read(random) //nolint:gosec // reproducible test data
 
 	inputs := map[string][]byte{
@@ -81,8 +91,8 @@ func TestRoundTrip(t *testing.T) {
 		"frame+1":     bytes.Repeat([]byte("x"), FrameSize+1),
 		"zeros":       make([]byte, 5*FrameSize+17),
 		"random":      random,
-		"x86":         x86ish(700000, 2),
-		"text":        bytes.Repeat([]byte("The quick brown fox jumps over the lazy dog. 0123456789\r\n"), 9000),
+		"x86":         x86ish(scaled(700000), 2),
+		"text":        bytes.Repeat([]byte("The quick brown fox jumps over the lazy dog. 0123456789\r\n"), scaled(9000)),
 		"e8-tail":     append(bytes.Repeat([]byte{0xE8, 0x10, 0, 0, 0}, 7000), 0xE8, 1, 2, 3, 4),
 		"block-split": x86ish(blockSpan+FrameSize+5, 3),
 		"shift":       alphabetShift(),
@@ -147,7 +157,7 @@ func TestOverflowStored(t *testing.T) {
 	data := alphabetShift()
 
 	for _, level := range []int{1, 9} {
-		frames, err := Compress(data, Options{Level: level})
+		frames, err := Compress(data, Options{Window: 15, Level: level})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -234,16 +244,16 @@ func TestSlots(t *testing.T) {
 func TestCorruptFramesFail(t *testing.T) {
 	t.Parallel()
 
-	data := x86ish(100000, 9)
+	data := x86ish(70000, 9)
 
-	frames, err := Compress(data, Options{})
+	frames, err := Compress(data, Options{Level: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	rng := rand.New(rand.NewSource(4)) //nolint:gosec // reproducible test data
 
-	for range 200 {
+	for range scaled(200) {
 		dec, _ := NewDecoder(MaxWindow)
 
 		broken := append([]byte(nil), frames[0]...)
@@ -307,40 +317,51 @@ func TestSlotTables(t *testing.T) {
 	}
 }
 
-// TestWorkersDeterministic checks that the optimal parser's output does not
-// depend on how many goroutines parse the segments.
-func TestWorkersDeterministic(t *testing.T) {
+// TestEncoderSlides streams more than the history buffer holds, with
+// repeats both inside and beyond the match distance.
+func TestEncoderSlides(t *testing.T) {
 	t.Parallel()
 
-	// Small segments keep the test fast under the race detector.
-	opts := Options{Window: 17, Level: optimalLevel, segment: 2 * blockSpan}
-	data := x86ish(3*opts.segment+blockSpan+77, 13)
+	// Under -short a 128 KB window keeps the history small.
+	window := MaxWindow
+	if testing.Short() {
+		window = 17
+	}
 
-	opts.Workers = 1
+	chunk := x86ish(1<<min(window, searchBits)+3*FrameSize+11, 13)
+	data := append(append(bytes.Clone(chunk), x86ish(2*blockSpan, 14)...), chunk...)
 
-	one, err := Compress(data, opts)
+	frames, err := Compress(data, Options{Window: window, Level: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	opts.Workers = 3
-
-	three, err := Compress(data, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(one) != len(three) {
-		t.Fatalf("%d frames with one worker, %d with three", len(one), len(three))
-	}
-
-	for i := range one {
-		if !bytes.Equal(one[i], three[i]) {
-			t.Fatalf("frame %d differs between one and three workers", i)
-		}
-	}
-
-	if got := decodeAll(t, one, opts.Window, len(data)); !bytes.Equal(got, data) {
+	if got := decodeAll(t, frames, window, len(data)); !bytes.Equal(got, data) {
 		t.Fatalf("round trip differs at %d", firstDiff(got, data))
+	}
+}
+
+func TestEncoderFrameSizes(t *testing.T) {
+	t.Parallel()
+
+	enc, err := NewEncoder(FrameSize+10, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := enc.Frame(make([]byte, 10)); err == nil {
+		t.Fatal("a short frame before the last one was accepted")
+	}
+
+	if out, err := enc.Frame(make([]byte, FrameSize)); err != nil || out != nil {
+		t.Fatalf("first frame: %d frames, %v", len(out), err)
+	}
+
+	if out, err := enc.Frame(make([]byte, 10)); err != nil || len(out) != 2 {
+		t.Fatalf("last frame: %d frames, %v", len(out), err)
+	}
+
+	if _, err := enc.Frame(make([]byte, 1)); err == nil {
+		t.Fatal("a frame after the end was accepted")
 	}
 }

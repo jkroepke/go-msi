@@ -9,6 +9,11 @@
 // no match crosses a 32 KB frame, and uncompressed blocks only where a
 // compressed frame would exceed MaxFrame.
 //
+// Encoder streams: it holds the last 2^19 bytes as match history, one block
+// and the match finder, so its memory depends on neither the window nor the
+// stream's length. Matches therefore reach at most 512 KiB back, even in a
+// 2 MiB window.
+//
 // The format is docs/spec/MSISPEC.md section 5. cabinet.dll is the reference
 // decoder; pkg/cab/native_windows_test.go checks the encoder against it.
 package lzx

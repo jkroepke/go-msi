@@ -29,7 +29,9 @@ implementation details that may change without notice.
   read one.
 - [`pkg/cfb`](pkg/cfb): Compound File Binary v3/v4 writer and lazy reader.
 - [`pkg/cab`](pkg/cab): cabinet writer and reader, one folder per cabinet,
-  stored or MSZIP blocks, plus an `fs.FS` view.
+  stored, MSZIP or LZX blocks, plus an `fs.FS` view. The LZX encoder and
+  decoder are [`internal/lzx`](internal/lzx), written from [MS-PATCH] and
+  [MS-CAB] only.
 - [`pkg/summary`](pkg/summary): the summary information stream.
 - [`pkg/sign`](pkg/sign): Authenticode signing and verification of packages
   (spec chapter 12), written from the spec without cgo.
@@ -103,7 +105,7 @@ go test ./... -shuffle=on -race
   output without sorting, no wall-clock times, no random GUIDs. Identities are
   derived from the upgrade code and stable names.
 - Keep memory bounded by the tables, not by the payload. File data flows from
-  `cab.Entry.Open` readers through MSZIP into the cabinet spool and from there
+  `cab.Entry.Open` readers through MSZIP or LZX into the cabinet spool and from there
   through `cfb.WriteTo` into the package; nothing reads a payload file into a
   byte slice. Verification reads the package back lazily (`cfb.Open`,
   `msidb.Decode`, `cab.Walk`) and compares the SHA-256 digests computed while

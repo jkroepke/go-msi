@@ -15,27 +15,19 @@ var errTooLarge = errors.New("lzx: data exceeds 2 GiB")
 type Options struct {
 	// Window is the window size as a power of two, 15 to 21; 0 means 21.
 	Window int
-	// Level trades speed for size, 1 to 9; 0 means 9. Levels 1 to 6 parse
-	// lazily, 7 to 9 search for the cheapest token sequence.
+	// Level trades speed for size, 1 to 9; 0 means 9. It sets how deep the
+	// match finder searches; from 7 every frame is parsed twice.
 	Level int
 	// Block forces every block to one type, verbatim (1), aligned offset
 	// (2) or uncompressed (3); 0 picks the smaller per block. Tests use it
 	// to cover each type.
 	Block int
-	// Workers bounds the goroutines of the optimal parser; 0 means
-	// GOMAXPROCS, at most maxWorkers. The output does not depend on it.
-	Workers int
-	// segment is the optimal parser's segment size; 0 means segmentSize.
-	// Tests shrink it to cover several segments with little data.
-	segment int
 }
 
 const (
 	// blockSpan is the uncompressed size of one block: a multiple of the
 	// frame size so that blocks and frames end together.
 	blockSpan = 4 * FrameSize
-	// optimalLevel is the lowest level that uses the optimal parser.
-	optimalLevel = 7
 	// unusedCost is the estimated code length of a symbol the previous block
 	// did not use.
 	unusedCost = 14
@@ -194,10 +186,6 @@ func (opts Options) check() (Options, error) {
 		return opts, fmt.Errorf("lzx: block type %d, want 0 to 3", opts.Block)
 	}
 
-	if opts.segment == 0 {
-		opts.segment = segmentSize
-	}
-
 	return opts, nil
 }
 
@@ -205,49 +193,99 @@ func (opts Options) check() (Options, error) {
 // holds FrameSize uncompressed bytes (the last one the rest) and is a
 // cabinet's CFDATA payload.
 func Compress(data []byte, opts Options) ([][]byte, error) {
+	enc, err := NewEncoder(int64(len(data)), opts)
+	if err != nil {
+		return nil, err
+	}
+
+	var frames [][]byte
+
+	for off := 0; off < len(data); off += FrameSize {
+		out, err := enc.Frame(data[off:min(off+FrameSize, len(data))])
+		if err != nil {
+			return nil, err
+		}
+
+		frames = append(frames, out...)
+	}
+
+	return frames, nil
+}
+
+// Encoder compresses one LZX stream of a known size frame by frame. It holds
+// the match distance of history, one block and the match finder, whatever
+// the stream's size.
+type Encoder struct {
+	hist    *history
+	parser  *optimal
+	out     *writer
+	size    int
+	read    int // bytes received
+	pending int // first byte of the block not yet written
+}
+
+// NewEncoder returns an encoder for a stream of size bytes; the size is the
+// E8 translation size and tells the encoder where the last frame ends.
+func NewEncoder(size int64, opts Options) (*Encoder, error) {
 	opts, err := opts.check()
 	if err != nil {
 		return nil, err
 	}
 
-	if len(data) == 0 {
-		return nil, nil
-	}
-
-	if len(data) > math.MaxInt32 {
+	if size < 0 || size > math.MaxInt32 {
 		return nil, errTooLarge
 	}
 
-	// E8 translation runs on a copy, frame by frame, before matching.
-	src := append([]byte(nil), data...)
-	e8size := int32(len(data)) //nolint:gosec // checked above
-
-	for off := 0; off < len(src); off += FrameSize {
-		e8(src[off:min(off+FrameSize, len(src))], off, e8size, true)
+	hist := newHistory(1 << min(opts.Window, searchBits))
+	enc := &Encoder{
+		hist:   hist,
+		parser: newOptimal(hist, opts),
+		out:    newWriter(hist, int(size), opts),
+		size:   int(size),
 	}
 
-	out := newWriter(src, opts)
+	// E8 translation is on, with the stream's length as the translation
+	// size ([MS-PATCH] 2.2.2).
+	enc.out.bits.write(1, 1)
+	enc.out.bits.write(uint32(size)>>16, 16)
+	enc.out.bits.write(uint32(size)&0xFFFF, 16)
 
-	out.bits.write(1, 1)
-	out.bits.write(uint32(e8size)>>16, 16)
-	out.bits.write(uint32(e8size)&0xFFFF, 16)
+	return enc, nil
+}
 
-	if opts.Level >= optimalLevel {
-		parseOptimal(src, opts, out.block)
-	} else {
-		parser := newLazy(src, opts)
+var errFrame = errors.New("lzx: frame size")
 
-		for start := 0; start < len(src); start += blockSpan {
-			out.block(parser.parse(start, min(start+blockSpan, len(src))))
-		}
+// Frame compresses the next frame: FrameSize bytes, or the rest of the
+// stream for the last one. It returns the compressed frames that are
+// complete, in order: those of a whole block at a time, and the rest after
+// the last frame. The encoder copies data.
+func (e *Encoder) Frame(data []byte) ([][]byte, error) {
+	if want := min(FrameSize, e.size-e.read); len(data) != want || want == 0 {
+		return nil, fmt.Errorf("%w: %d bytes at %d of %d", errFrame, len(data), e.read, e.size)
 	}
 
-	return out.frames, nil
+	e.hist.add(data, e.pending)
+
+	// E8 translation runs on the copy, before matching.
+	e8(e.hist.buf[e.read-e.hist.base:], e.read, int32(e.size), true) //nolint:gosec // checked in NewEncoder
+	e.read += len(data)
+
+	if e.read-e.pending < blockSpan && e.read < e.size {
+		return nil, nil
+	}
+
+	e.out.block(e.parser.block(e.pending, e.read))
+	e.pending = e.read
+
+	frames := e.out.frames
+	e.out.frames = nil
+
+	return frames, nil
 }
 
 // writer turns token blocks into frames.
 type writer struct {
-	src      []byte // the E8-translated data, for uncompressed blocks
+	hist     *history // the E8-translated data, for uncompressed blocks
 	frames   [][]byte
 	prevMain []uint8
 	prevLen  []uint8
@@ -259,12 +297,12 @@ type writer struct {
 	rep      repState
 }
 
-func newWriter(src []byte, opts Options) *writer {
+func newWriter(hist *history, total int, opts Options) *writer {
 	slots := numSlots(opts.Window)
 
 	return &writer{
-		src:      src,
-		total:    len(src),
+		hist:     hist,
+		total:    total,
 		block0:   opts.Block,
 		slots:    slots,
 		prevMain: make([]uint8, numChars+8*slots),
@@ -350,7 +388,7 @@ func (w *writer) stored(size int) {
 
 	for left := size; left > 0; {
 		chunk := min(left, FrameSize-w.pos%FrameSize)
-		w.bits.out = append(w.bits.out, w.src[w.pos:w.pos+chunk]...)
+		w.bits.out = append(w.bits.out, w.hist.buf[w.pos-w.hist.base:][:chunk]...)
 		left -= chunk
 
 		if left == 0 && size%2 == 1 {

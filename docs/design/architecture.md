@@ -47,7 +47,7 @@ flowchart LR
     artwork["artwork<br/>wizard bitmaps"]
     rtf["rtf<br/>license text"]
     cfb["cfb<br/>compound file"]
-    cab["cab<br/>MSCAB, MSZIP"]
+    cab["cab<br/>MSCAB, MSZIP, LZX"]
     schema["schema<br/>standard tables, _Validation"] --> msidb
     pe["pe<br/>version resource"]
     condition["condition<br/>grammar check"]
@@ -58,7 +58,7 @@ flowchart LR
 | Package | Responsibility | Spec | Depends on |
 |---|---|---|---|
 | `pkg/cfb` | Compound File Binary v3/v4 writer and reader: sectors, FAT, DIFAT, mini stream, red-black directory tree, name comparison | §2 | stdlib |
-| `pkg/cab` | Cabinet writer and reader: one folder per cabinet, stored or MSZIP blocks with carried DEFLATE history, checksums on every block | §5 | stdlib (`compress/flate`) |
+| `pkg/cab` | Cabinet writer and reader: one folder per cabinet, stored, MSZIP blocks with carried DEFLATE history or LZX frames (`internal/lzx`), checksums on every block | §5 | stdlib (`compress/flate`), `internal/lzx` |
 | `pkg/summary` | `\u0005SummaryInformation` property-set writer and reader (PIDs 1–19, VT_I2/I4/LPSTR/FILETIME) | §4 | `internal/codepage` |
 | `pkg/msidb` | The database: column types, typed rows, stream-name encoding, string pool with code pages, catalog, column-major table streams, binary streams, embedded streams; plus a reader that decodes a package back into tables | §3 | `cfb`, `summary`, `internal/codepage` (`golang.org/x/text`) |
 | `internal/schema` | Column definitions and `_Validation` metadata of every standard table the builder can write | §6 | `msidb` |
@@ -130,6 +130,9 @@ func Entries(fsys fs.FS) ([]Entry, error)
   entry that is shorter or longer than its declared `Size` is an error), and
   the CFDATA count follows from the folder size; only `cbCabinet` is patched
   afterwards through the seeker. `Write` is `WriteTo` into memory with byte-identical output.
+- LZX frames come from `lzx.Encoder` a block (four frames) at a time;
+  a block whose compressed frame would exceed 32768 + 6144 bytes is
+  stored uncompressed instead.
 - `Walk` decodes one block at a time and hands every file's bytes to `visit`
   as a reader; it serves verification without materializing the cabinet.
 
@@ -364,8 +367,10 @@ bundles.
   (CFB-01). v3 stays for tests and for tools that only know v3.
 - **Every refcount in 1…32767.** A string used more often is a build error
   until a real package needs it; none does.
-- **MSZIP only.** LZX is a reader concern for other toolchains' packages and
-  out of scope for a producer.
+- **LZX:21 by default.** It makes the cabinets of the target payloads 14 to
+  30 % smaller than MSZIP (MSISPEC section 5). `internal/lzx` streams: it
+  keeps the last 512 KiB as match history and one 128 KiB block, so its
+  memory does not grow with the window or the payload.
 - **Identifiers are deterministic.** Generated keys hash their content
   (§11.2 identity), short names hash parent and long name (§11.3), GUIDs are
   UUIDv5. Nothing depends on map iteration order or time.

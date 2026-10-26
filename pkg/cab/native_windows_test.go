@@ -476,10 +476,6 @@ func nativeCases() []nativeCase {
 	return cases
 }
 
-// lzxCases cover the LZX encoder: every window size, both block types,
-// frame and block boundaries, E8 call translation near frame ends, matches
-// that reach back almost a whole window, and data that spans the encoder's
-// parallel segments.
 // alphabetShift is incompressible data whose first frame uses other byte
 // values than the rest of its LZX block: compressed with the block's trees,
 // that frame would exceed the CFDATA limit, so the encoder stores the block.
@@ -498,6 +494,10 @@ func alphabetShift() []byte {
 	return out
 }
 
+// lzxCases cover the LZX encoder: every window size, all three block types,
+// frame and block boundaries, E8 call translation near frame ends, matches
+// that reach back almost a whole window, and data that spans the encoder's
+// parallel segments.
 func lzxCases(when time.Time, random, text []byte) []nativeCase {
 	lzx := func(window int) cab.Options { return cab.Options{Compression: cab.LZX, Window: window} }
 
