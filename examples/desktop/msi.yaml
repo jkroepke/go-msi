@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/pkg/config/schema.json
-# A desktop program with a license, a page to pick the install folder and a
-# check box on the finish page that starts the program.
+# A desktop program with a license, a page to pick the install folder, a
+# check box on the finish page that starts the program, and shortcuts in the
+# Start menu and on the desktop.
 #
 #   go-msi build --var VERSION=2.0.0 -o example-viewer.msi msi.yaml
 #
@@ -24,6 +25,10 @@ installDir:
 components:
   - files:
       - source: viewer.exe
+        shortcuts:
+          # Start menu > Programs > Example Viewer.
+          - description: View example files
+          - directory: DesktopFolder
 
 ui:
   wizard: minimal

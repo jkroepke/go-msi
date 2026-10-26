@@ -1291,6 +1291,57 @@
               },
               "permissions": {
                 "$ref": "#/$defs/permissions"
+              },
+              "shortcuts": {
+                "type": "array",
+                "description": "Non-advertised shortcuts to this file.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "$ref": "#/$defs/identifier",
+                      "description": "Shortcut key; generated when empty."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Shortcut name without .lnk; `short|long` allowed. Defaults to product.name."
+                    },
+                    "directory": {
+                      "type": "string",
+                      "description": "A directory id, a standard folder such as DesktopFolder, or a folder path such as ProgramMenuFolder/Example.",
+                      "default": "ProgramMenuFolder"
+                    },
+                    "arguments": {
+                      "type": "string",
+                      "description": "Command-line arguments, formatted text."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Tooltip text."
+                    },
+                    "workingDirectory": {
+                      "$ref": "#/$defs/directoryRef",
+                      "description": "Defaults to the file's directory."
+                    },
+                    "icon": {
+                      "type": "string",
+                      "description": "A key of icons; empty shows the target's own icon."
+                    },
+                    "iconIndex": {
+                      "$ref": "#/$defs/int",
+                      "default": 0
+                    },
+                    "show": {
+                      "enum": [
+                        "normal",
+                        "maximized",
+                        "minimized"
+                      ],
+                      "default": "normal"
+                    }
+                  },
+                  "additionalProperties": false
+                }
               }
             },
             "required": [

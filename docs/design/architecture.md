@@ -261,7 +261,9 @@ Pipeline, each step a file of its own:
 4. **Components, features, files, media**: attributes (64-bit bit 256,
    permanent, transitive, …), key paths, `CreateFolder` rows, file sequence
    order (canonical directory, name, key), one `Media` row and one embedded
-   cabinet, `File.Attributes` (vital, checksum, read-only, hidden, system).
+   cabinet, `File.Attributes` (vital, checksum, read-only, hidden, system),
+   and the `Shortcut` rows with the generated component that carries them
+   (HKCU key path, `RemoveFile` rows for profile folders; `shortcuts.go`).
 5. **Registry, event log, environment, services**: value encodings
    (`#`, `#x`, `#%`, `##`, `[~]`), `=-*`-style environment names with an
    explicit `-` (RUN-08), `ServiceInstall`, `ServiceControl`,

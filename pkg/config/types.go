@@ -273,10 +273,31 @@ type File struct { //nolint:govet // field order is the YAML key order
 	Hidden                     bool         `yaml:"hidden"`
 	System                     bool         `yaml:"system"`
 	Permissions                *Permissions `yaml:"permissions"`
+	Shortcuts                  []*Shortcut  `yaml:"shortcuts"`
 
 	// FS, when set, is where Source is read from, overriding Config.FS for
 	// this file. AddTree sets it. It is never read from YAML.
 	FS fs.FS `yaml:"-"`
+}
+
+// Shortcut is a non-advertised shortcut to the file it is listed under, in
+// the Start menu, on the desktop or in any other folder.
+type Shortcut struct { //nolint:govet // field order is the YAML key order
+	ID string `yaml:"id"`
+	// Name is the shortcut's name without ".lnk", default product.name.
+	Name string `yaml:"name"`
+	// Directory is a directory ID, a standard folder or a folder path,
+	// default ProgramMenuFolder.
+	Directory   string `yaml:"directory"`
+	Arguments   string `yaml:"arguments"`
+	Description string `yaml:"description"`
+	// WorkingDirectory is a directory ID, default the file's directory.
+	WorkingDirectory string `yaml:"workingDirectory"`
+	// Icon names an entry of Config.Icons; empty shows the target's icon.
+	Icon      string `yaml:"icon"`
+	IconIndex int    `yaml:"iconIndex"`
+	// Show is normal (default), maximized or minimized.
+	Show string `yaml:"show"`
 }
 
 // RegistryValue is a typed registry value or key.

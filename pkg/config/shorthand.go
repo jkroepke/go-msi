@@ -13,6 +13,8 @@ import (
 const (
 	DefaultInstallDirID = "INSTALLDIR"
 	DefaultFeatureID    = "MainFeature"
+	// DefaultShortcutDirectory is the Start menu's Programs folder.
+	DefaultShortcutDirectory = "ProgramMenuFolder"
 
 	// KeyPathDirectory is the keyPath of a component keyed on its directory.
 	KeyPathDirectory = "directory"
@@ -67,6 +69,8 @@ func expandShorthands(cfg *Config) { //nolint:cyclop // one pass in a fixed orde
 		}
 	}
 
+	shortcutDirectories(cfg, tree)
+
 	// Generated ids first, so that a feature can name the component the
 	// carrier joins by one.
 	componentIDs(cfg)
@@ -93,6 +97,23 @@ func expandShorthands(cfg *Config) { //nolint:cyclop // one pass in a fixed orde
 	referenceFeatureComponents(cfg)
 	defaultFeature(cfg)
 	serviceArguments(cfg)
+}
+
+// shortcutDirectories resolves the folder of every shortcut, the Start
+// menu by default, the way a component's directory is resolved.
+func shortcutDirectories(cfg *Config, tree *dirTree) {
+	for i, comp := range cfg.Components {
+		for fileIndex, file := range comp.Files {
+			for index, shortcut := range file.Shortcuts {
+				if shortcut.Directory == "" {
+					shortcut.Directory = DefaultShortcutDirectory
+				}
+
+				tree.origin = fmt.Sprintf("%s.files[%d].shortcuts[%d].directory", comp.Path(i), fileIndex, index)
+				shortcut.Directory = tree.resolve(shortcut.Directory)
+			}
+		}
+	}
 }
 
 // featureFirewall moves the firewall rules written under features to

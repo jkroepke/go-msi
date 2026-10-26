@@ -59,7 +59,7 @@ func windowsExporterInputs() (map[string]string, map[string][]byte) {
 	}
 }
 
-// TestICEExamples runs the full ICE suite against both examples and fails on
+// TestICEExamples runs the full ICE suite against three examples and fails on
 // any ICE error or failure. Warnings are logged.
 //
 //nolint:paralleltest // msi.dll's external UI handler is process-wide
@@ -74,6 +74,7 @@ func TestICEExamples(t *testing.T) {
 	}{
 		{"minimal", nil, minimalInputs()},
 		{"windows_exporter", exporterVars, exporterInputs},
+		{"desktop", map[string]string{"VERSION": "2.0.0"}, desktopInputs()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path, _ := buildExample(t, tc.name, tc.vars, tc.inputs)

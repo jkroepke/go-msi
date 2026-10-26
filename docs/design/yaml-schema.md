@@ -539,6 +539,44 @@ that an error. The
 components still need different ComponentIds; an automatic GUID differs by
 bitness and key file, otherwise set `guid` on one of them.
 
+**Shortcuts.** A file can list `shortcuts`, each a non-advertised `.lnk`
+to that file:
+
+```yaml
+files:
+  - source: viewer.exe
+    shortcuts:
+      - description: View example files         # Start menu > Programs > product.name
+      - directory: DesktopFolder                 # the desktop
+      - name: Viewer (safe mode)                 # default: product.name, no .lnk
+        directory: ProgramMenuFolder/Example     # an id, a standard folder or a folder path
+        arguments: --safe-mode                   # formatted text
+        workingDirectory: INSTALLDIR             # default: the file's directory
+        icon: viewer.ico                         # a key of icons; default: the file's own icon
+        iconIndex: 0
+        show: minimized                          # normal (default), maximized or minimized
+```
+
+`directory` defaults to `ProgramMenuFolder` and is resolved like a
+component's directory, so `ProgramMenuFolder/Example` creates the Start menu
+folder. In a per-machine package the Start menu and desktop are the common
+ones for all users, in a per-user package the user's own (RUN-28). Two
+shortcuts with one name in one folder are an error, and a name ending in
+`.lnk` gets a warning, because Windows adds the extension.
+
+The builder puts the shortcuts of one component's files into a generated
+component of their own: in the folder of the first shortcut, with the
+component's condition and bitness, an HKCU value under
+`Software\[Manufacturer]\[ProductName]` as its key path (ICE38, ICE43),
+`RemoveFile` rows for the folders it creates below a profile folder (ICE64),
+and in every feature of the file's component. RUN-28 installed and removed
+shortcuts in this layout and in the file's own component alike, and removed
+an empty Start menu folder without a `RemoveFile` row; the generated
+component is what also passes the ICE suite. An `icon` is stored in the
+`Icon` table and written to the product's installer folder; without one the
+shell shows the target's icon. Advertised shortcuts are not supported
+(section 6).
+
 **Permissions.** A file, registry value, service or the component's folder
 can carry a `permissions` block (`folderPermissions` on the component, which
 then needs a `CreateFolder` row: `createFolder: true` or a directory key
@@ -757,7 +795,8 @@ binaries:
 ```
 
 Keys are stream names, limited by the 62-character stream limit (section
-2.3). Binaries are for `dll` custom actions and for the UI's bitmaps.
+2.3). Icons are for `product.arp.icon` and shortcut `icon`s; binaries are
+for `dll` custom actions and for the UI's bitmaps.
 
 ### 4.11 `firewall` helper
 
@@ -976,7 +1015,8 @@ the generated tables, and the cabinet round trip.
 
 ## 6. Not in version 1
 
-Multiple languages in one package, advertised installs, script custom
+Multiple languages in one package, advertised installs and advertised
+shortcuts, script custom
 actions, and a top-level file harvester (Go callers have
 `config.Config.AddTree`, see [Go API](../go-api.md)). A future `schema: go-msi/v2` can add
 them without changing the meaning of a v1 file.

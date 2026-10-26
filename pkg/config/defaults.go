@@ -20,6 +20,12 @@ const (
 	DefaultDowngradeMessage = "A later version of [ProductName] is already installed. Setup will now exit."
 	DefaultRestartDelay     = time.Minute
 
+	// ShowNormal, ShowMaximized and ShowMinimized are the window states of a
+	// shortcut's show setting.
+	ShowNormal    = "normal"
+	ShowMaximized = "maximized"
+	ShowMinimized = "minimized"
+
 	// Auto marks a value that the builder derives (GUIDs, file versions).
 	Auto = "auto"
 	// None marks an explicitly absent value.
@@ -133,6 +139,12 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 
 	for _, c := range cfg.Components {
 		defaultComponent(c)
+
+		for _, file := range c.Files {
+			for _, shortcut := range file.Shortcuts {
+				defaultShortcut(shortcut, product, c)
+			}
+		}
 	}
 
 	for _, action := range cfg.CustomActions {
@@ -167,6 +179,22 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 
 	if cfg.UI.Wizard == "" {
 		cfg.UI.Wizard = None
+	}
+}
+
+// defaultShortcut names a shortcut after the product and starts it in its
+// file's folder.
+func defaultShortcut(shortcut *Shortcut, product *Product, comp *Component) {
+	if shortcut.Name == "" {
+		shortcut.Name = product.Name
+	}
+
+	if shortcut.WorkingDirectory == "" {
+		shortcut.WorkingDirectory = comp.Directory
+	}
+
+	if shortcut.Show == "" {
+		shortcut.Show = ShowNormal
 	}
 }
 
