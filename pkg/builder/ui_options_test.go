@@ -246,6 +246,10 @@ func TestWizardOptionErrors(t *testing.T) {
 			c.Components[0].Files = append(c.Components[0].Files, &config.File{Source: "LICENSE.txt", Name: "readme.txt"})
 			c.UI.Launch.File = "readme.txt"
 		}, "readme.txt is not a program"},
+		{"library", func(c *config.Config) {
+			c.Components[0].Files = append(c.Components[0].Files, &config.File{Source: "viewer.exe", Name: "helper.dll"})
+			c.UI.Launch.File = "helper.dll"
+		}, "helper.dll is not a program"},
 		{"property taken", func(c *config.Config) { c.Properties = config.Properties{"LaunchOnFinish": {Value: "0"}} }, "set by the ui.launch check box"},
 		{"install dir not configurable", func(c *config.Config) {
 			c.InstallDir = config.InstallDir{}

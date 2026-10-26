@@ -2,7 +2,9 @@ package builder
 
 import (
 	"fmt"
+	"path"
 	"slices"
+	"strings"
 )
 
 const (
@@ -29,7 +31,7 @@ var installOnly = map[string]bool{dlgLicense: true, dlgInstallDir: true} //nolin
 func (w *wizard) installDirDialog(dir string) {
 	page := w.add(&uiDialog{name: dlgInstallDir, attrs: dlgPage, first: ctlFolder})
 	page.innerHeader("Destination Folder", "Click Next to install to the default folder or click Change to choose another.")
-	page.control(text("FolderLabel", margin+5, 60, dlgWidth-2*margin-10, 12, "&Install [ProductName] to:"))
+	page.control(text("FolderLabel", margin+5, 60, dlgWidth-2*margin-10, 12, "Install [ProductName] to:"))
 	page.control(&uiControl{
 		name: ctlFolder, typ: typPathEdit, property: dir, ring: true,
 		x: margin + 5, y: 75, w: 260, h: 18, attrs: ctlActive,
@@ -53,18 +55,8 @@ func (b *build) launch(wiz *wizard) {
 		return
 	}
 
-	file := b.fileByKey[cfg.File]
+	file := b.launchFile(cfg.File)
 	if file == nil {
-		b.errorf("ui.launch.file", "file %q is not defined", cfg.File)
-
-		return
-	}
-
-	// A type 34 action starts the file with process creation, which runs
-	// programs only, not documents.
-	if !file.isPE {
-		b.errorf("ui.launch.file", "%s is not a program (no PE header), so the launch action cannot start it", cfg.File)
-
 		return
 	}
 
@@ -103,4 +95,24 @@ func (b *build) launch(wiz *wizard) {
 	if cfg.Checked == nil || *cfg.Checked {
 		b.properties[propLaunch] = "1"
 	}
+}
+
+// launchFile returns the program ui.launch starts, or nil after an error.
+func (b *build) launchFile(key string) *fileInfo {
+	file := b.fileByKey[key]
+	if file == nil {
+		b.errorf("ui.launch.file", "file %q is not defined", key)
+
+		return nil
+	}
+
+	// A type 34 action starts the file with process creation, which runs
+	// programs only, not documents or libraries.
+	if ext := strings.ToLower(path.Ext(file.LongName)); !file.isPE || ext != ".exe" && ext != ".com" {
+		b.errorf("ui.launch.file", "%s is not a program (a PE file named .exe or .com), so the launch action cannot start it", key)
+
+		return nil
+	}
+
+	return file
 }
