@@ -14,6 +14,7 @@ const (
 	DefaultCompression      = "mszip"
 	DefaultCabinet          = "product.cab"
 	DefaultRemoveOld        = "afterInstallInitialize"
+	PreserveRemoveOld       = "afterInstallExecute"
 	DefaultUpgradeProperty  = "OLDERVERSIONBEINGUPGRADED"
 	DefaultNewerProperty    = "NEWERVERSIONDETECTED"
 	DefaultDowngradeMessage = "A later version of [ProductName] is already installed. Setup will now exit."
@@ -101,11 +102,22 @@ func ApplyDefaults(cfg *Config) {
 		cfg.Upgrade = &Upgrade{}
 	}
 
+	// RUN-24: a late removal keeps a NeverOverwrite key file or value
+	// without Permanent, also when the old version had the same component
+	// without the flag.
+	if cfg.Upgrade.RemoveOld == "" && preserves(cfg) {
+		cfg.Upgrade.RemoveOld = PreserveRemoveOld
+	}
+
 	defaultUpgrade(cfg.Upgrade)
 
 	eachFeature(cfg.Features, func(feature *Feature, _ int) {
-		if feature.Level == nil {
-			feature.Level = new(1)
+		// A level filled in by an earlier run follows a default set since.
+		if feature.Level == nil || feature.levelIsDefault() {
+			level := defaultLevel(feature.Default)
+			feature.Level = &level
+			feature.defaultedLevel = feature.Level
+			feature.defaultedValue = level
 		}
 
 		if feature.Display == "" {
@@ -192,7 +204,37 @@ func defaultUpgrade(upg *Upgrade) {
 	}
 }
 
+// defaultLevel is the feature level for a default: on installs the feature
+// at the default INSTALLLEVEL of 1, off needs a higher INSTALLLEVEL or
+// ADDLOCAL, and disabled is level 0. An invalid value, which the validator
+// reports, gives 1.
+func defaultLevel(value string) int {
+	switch value {
+	case FeatureOff:
+		return featureLevelOff
+	case FeatureDisabled:
+		return 0
+	default:
+		return 1
+	}
+}
+
+// preserves reports whether any component keeps user-edited resources.
+func preserves(cfg *Config) bool {
+	for _, c := range cfg.Components {
+		if c.Preserve {
+			return true
+		}
+	}
+
+	return false
+}
+
 func defaultComponent(c *Component) {
+	if c.Preserve {
+		c.NeverOverwrite = true
+	}
+
 	if c.GUID == "" {
 		c.GUID = Auto
 	}

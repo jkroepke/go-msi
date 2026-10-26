@@ -112,14 +112,20 @@ func Parse(data []byte, opts Options) (*Config, error) {
 	return cfg, nil
 }
 
-// emptyComponents rejects null entries in components lists, which decode to
-// nil pointers.
+// emptyComponents rejects null entries in the components, features and
+// firewall lists, which decode to nil pointers.
 func emptyComponents(cfg *Config) error {
 	var errs []error
 
 	for i, comp := range cfg.Components {
 		if comp == nil {
 			errs = append(errs, fmt.Errorf("components[%d]: empty entry", i))
+		}
+	}
+
+	for i, rule := range cfg.Firewall {
+		if rule == nil {
+			errs = append(errs, fmt.Errorf("firewall[%d]: empty entry", i))
 		}
 	}
 
@@ -137,6 +143,12 @@ func emptyComponents(cfg *Config) error {
 			for j, comp := range feature.Components {
 				if comp == nil {
 					errs = append(errs, fmt.Errorf("%s.components[%d]: empty entry", featurePath, j))
+				}
+			}
+
+			for j, rule := range feature.Firewall {
+				if rule == nil {
+					errs = append(errs, fmt.Errorf("%s.firewall[%d]: empty entry", featurePath, j))
 				}
 			}
 

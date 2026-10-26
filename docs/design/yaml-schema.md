@@ -187,6 +187,8 @@ way:
 | a component written inside `features[].components` | the same component in `components`, referenced by ID |
 | `features[].components` entry that is only an ID | a reference to that component; in Go, `config.ComponentRef(id)` |
 | no `upgrade` | the standard policy of section 4.3, as `upgrade: {}`; `upgrade: false` writes no Upgrade rows |
+| `features[].default: on`, `off` or `disabled` | `level: 1`, `2` or `0` (section 4.5) |
+| `features[].firewall` | the rules in `firewall`, following an empty component `<feature>_Firewall` that the feature holds (section 4.11) |
 | a service argument with a `condition` | a private property set by an immediate `setProperty` action before InstallServices under that condition (section 4.6) |
 
 Generated IDs are stable: the same file gives the same IDs. Component GUIDs
@@ -269,7 +271,7 @@ detection row.
 |---|---|---|
 | `afterInstallValidate` | right after InstallValidate | old product removed first, outside the transaction |
 | `afterInstallInitialize` (default) | right after InstallInitialize | removed first, inside the transaction, so it rolls back |
-| `afterInstallExecute` | right after InstallExecute | new first, then old, one transaction; strict component rules |
+| `afterInstallExecute` (default when a component has `preserve: true`) | right after InstallExecute | new first, then old, one transaction; strict component rules |
 | `afterInstallFinalize` | after InstallFinalize | separate transaction; a failed removal leaves both |
 
 Every property named here must be public, is added to
@@ -347,7 +349,7 @@ features:
   - id: DefaultFeature
     title: windows_exporter ${VERSION}
     description: The binary and configuration files for windows_exporter
-    level: 1
+    default: on                # on | off | disabled
     display: expanded          # expanded | collapsed | hidden
     directory: APPLICATIONFOLDER
     allowAbsent: false
@@ -359,11 +361,20 @@ features:
     features:
       - id: FirewallException
         title: Firewall Exception
-        level: 2
-        components: [FirewallException]
+        default: off
+        firewall:                  # section 4.11
+          - name: windows_exporter
+            program: '[#windows_exporter.exe]'
+            protocol: tcp
+            port: '[LISTEN_PORT]'
 ```
 
 - Feature IDs are at most 38 characters; depth is at most 16.
+- `default` says whether the feature is installed: `on` (the default) is
+  `level: 1`, `off` is `level: 2`, which a user turns on in the feature tree
+  or with `ADDLOCAL`, and `disabled` is `level: 0`. A higher `INSTALLLEVEL`
+  also installs `off` features. Set `default` or `level`, not both; `level`
+  is for packages that use more than these three levels.
 - `level: 0` disables a feature; `ADDLOCAL=ALL` cannot turn it on.
 - Every component is in at least one feature (ICE21). A component used by
   two features is defined once in `components` and named by ID in both.
@@ -392,6 +403,7 @@ components:
     condition: ""
     permanent: false
     neverOverwrite: false
+    preserve: false                  # neverOverwrite + a late removeOld, see below
     sharedDllRefCount: false
     keyPath: windows_exporter.exe   # file name, registry id or "directory"
     bitness: auto                    # auto (from platform) | 32 | 64
@@ -405,6 +417,38 @@ windows_exporter executable component keeps the GUID of its released
 packages). `none` writes a NULL ComponentId and is only accepted with
 `permanent: true`, because such a component is never removed (specification
 section 8.4).
+
+**Preserved configuration.** `preserve: true` keeps a configuration file
+or registry value as the user left it across major upgrades. It sets
+`neverOverwrite`, and `upgrade.removeOld` then defaults to
+`afterInstallExecute`; an explicit early `removeOld` is an error, also
+with `permanent`, and `afterInstallFinalize` gets a warning because RUN-24
+did not test it. RUN-24 showed why, with one file or one registry value
+as the component's key path and the early removal right after
+InstallValidate (`afterInstallValidate`; `afterInstallInitialize` also
+removes the old product first and is treated the same, not tested): with
+the old product removed first, the new
+product skips a `neverOverwrite` component because its key file exists, and
+the removal of the old product then deletes it, so the edit is gone. With
+the late removal the edit survives, also when upgrading from a version
+built without `preserve` that already had the file or value as the key path
+of its own component with the same component code (moving it out of another
+component was not tested), and uninstall still removes the resource.
+`neverOverwrite` + `permanent` with an early removal keeps the edit too
+when the old version already had both flags (lost when it had neither; other
+combinations not tested), and the resource then stays after uninstall.
+The engine decides on the key path, so give each preserved file or value its
+own component; resources beside the key path were not tested. A preserved
+component is never updated, so a service is rejected. `neverOverwrite`
+without `permanent` and an early `removeOld` gets a warning.
+
+```yaml
+components:
+  - id: Config
+    preserve: true
+    files:
+      - source: config.alloy
+```
 
 **Key path.** Default: the first file, else the first registry value, else
 the directory, which gets a `CreateFolder` row (ICE18). A component with a
@@ -666,6 +710,30 @@ rollback that deletes; on removal it deletes, with a rollback that adds. The
 `component` is usually an empty component with its own GUID, in the feature
 that switches the rule.
 
+A rule that a feature switches can be written under that feature instead,
+without `component`:
+
+```yaml
+features:
+  - id: FirewallException
+    title: Firewall Exception
+    default: off
+    firewall:
+      - name: windows_exporter
+        program: '[#windows_exporter.exe]'
+        protocol: tcp
+        port: '[LISTEN_PORT]'
+```
+
+The loader adds an empty component `FirewallException_Firewall` to the
+feature and points the rules at it. The component goes in the feature's
+`directory`, else in the install dir, else beside one of the feature's
+components, else in the first configurable directory, both outside the user
+profile; only a tree with none of these gets the install dir added for it. Its GUID comes from the
+upgrade code, the bitness and the feature ID, so it does not collide with
+other components keyed on the install dir. Errors name the rule's place
+under the feature, such as `features[1].firewall[0].program`.
+
 ### 4.12 `ui`
 
 ```yaml
@@ -716,6 +784,50 @@ character becomes a `\u` escape. Change in the maintenance menu skips the
 license page. `ui.dialogs` can follow it with `after: LicenseAgreementDlg`;
 `after: WelcomeDlg` puts a dialog before it.
 
+#### Install folder page
+
+```yaml
+ui:
+  wizard: minimal
+  installDirPage: true     # needs installDir
+```
+
+`installDirPage` adds `InstallDirDlg` after the welcome and license pages:
+the install folder (`installDir.id`) in a PathEdit control and Change,
+which opens the folder browser (`BrowseDlg`) on the same folder. Next sets
+the typed path as the folder's target, so the engine checks it before the
+next page. Like the license page, an installed product's Change and Back
+step over it, since an installed product keeps its folder. `ui.dialogs`
+can follow it with `after: InstallDirDlg`.
+
+#### Launch checkbox
+
+```yaml
+ui:
+  wizard: minimal
+  launch:
+    file: viewer.exe       # files[].id, or the file name when it has no id
+    arguments: --welcome   # formatted, optional
+    text: "Start Example Viewer now"   # default "&Launch [ProductName]"
+    checked: false         # default true
+```
+
+`launch` adds a checkbox (`LaunchOnFinish`) to the finish page, on the
+bottom strip left of the buttons: Windows paints the page's background
+picture over an opaque control placed on it (verified on Windows Server
+2025). In `text`, `&` marks the access key. When it is
+checked, Finish runs the custom action `LaunchOnFinish`, a type 34 action
+that starts `"[#file]" arguments` in the file's folder and does not wait
+for it (226). It runs in the setup's own process, so the program runs as
+the user who started the setup. The box is shown, and the action runs, only
+after a new installation that installed the file's component
+(`NOT Installed AND NOT ACTION = "ADMIN" AND $component = 3`); silent
+installs never show the finish page, so they never start the program. `file`
+must be a program, a PE file named `.exe` or `.com`: process creation
+cannot start a document or a library.
+When `launch` is set, the custom action name and the property
+`LaunchOnFinish` are reserved.
+
 #### Theme
 
 ```yaml
@@ -748,7 +860,8 @@ more than 5 % away from the control's is an error, a picture smaller than
 the size above is a warning, and a side above 8192 pixels or more than
 4096×4096 pixels in all is an error.
 `colors` recolours the built-in pictures and the error dialog's icon (drawn
-in `accent`); a colour that is not given keeps its default. A license or theme without a wizard is an error.
+in `accent`); a colour that is not given keeps its default. A license,
+theme, install folder page or launch checkbox without a wizard is an error.
 
 ### 4.13 `tables`
 

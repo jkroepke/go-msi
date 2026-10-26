@@ -690,89 +690,16 @@
     "firewall": {
       "type": "array",
       "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
+        "allOf": [
+          {
+            "$ref": "#/$defs/firewallRule"
           },
-          "description": {
-            "type": "string"
-          },
-          "component": {
-            "type": "string",
-            "description": "The rule follows this component's state."
-          },
-          "program": {
-            "type": "string"
-          },
-          "protocol": {
-            "anyOf": [
-              {
-                "enum": [
-                  "tcp",
-                  "udp",
-                  "any"
-                ]
-              },
-              {
-                "$ref": "#/$defs/var"
-              }
-            ]
-          },
-          "port": {
-            "type": [
-              "string",
-              "number"
-            ]
-          },
-          "remoteAddresses": {
-            "type": "string",
-            "description": "Empty means any."
-          },
-          "profiles": {
-            "anyOf": [
-              {
-                "anyOf": [
-                  {
-                    "enum": [
-                      "all",
-                      "domain",
-                      "private",
-                      "public"
-                    ]
-                  },
-                  {
-                    "$ref": "#/$defs/var"
-                  }
-                ]
-              },
-              {
-                "type": "array",
-                "items": {
-                  "anyOf": [
-                    {
-                      "enum": [
-                        "all",
-                        "domain",
-                        "private",
-                        "public"
-                      ]
-                    },
-                    {
-                      "$ref": "#/$defs/var"
-                    }
-                  ]
-                }
-              }
+          {
+            "required": [
+              "component"
             ]
           }
-        },
-        "required": [
-          "name",
-          "component",
-          "program"
-        ],
-        "additionalProperties": false
+        ]
       }
     },
     "ui": {
@@ -795,6 +722,34 @@
         "license": {
           "type": "string",
           "description": "A license file shown with an accept check box after the welcome page: RTF, or UTF-8 text converted to RTF."
+        },
+        "installDirPage": {
+          "type": "boolean",
+          "description": "Adds a page after the welcome and license pages that shows the install folder (installDir) and lets the user change it."
+        },
+        "launch": {
+          "type": "object",
+          "description": "A check box on the finish page that starts an installed program when the user clicks Finish.",
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "The id of an installed file, or its name when it has no id."
+            },
+            "arguments": {
+              "type": "string",
+              "description": "Formatted command-line arguments."
+            },
+            "text": {
+              "type": "string",
+              "description": "The check box label; & marks the access key. Default: &Launch [ProductName]."
+            },
+            "checked": {
+              "type": "boolean",
+              "description": "Whether the box starts checked. Default: true."
+            }
+          },
+          "required": ["file"],
+          "additionalProperties": false
         },
         "theme": {
           "type": "object",
@@ -1036,9 +991,24 @@
         "description": {
           "type": "string"
         },
+        "default": {
+          "anyOf": [
+            {
+              "enum": [
+                "on",
+                "off",
+                "disabled"
+              ]
+            },
+            {
+              "$ref": "#/$defs/var"
+            }
+          ],
+          "description": "Whether the feature is installed by default: on is level 1, off is level 2, disabled is level 0. Use it or level, not both."
+        },
         "level": {
           "$ref": "#/$defs/int",
-          "description": "0 disables the feature.",
+          "description": "0 disables the feature. Use it or default, not both.",
           "default": 1
         },
         "display": {
@@ -1087,12 +1057,36 @@
           "items": {
             "$ref": "#/$defs/feature"
           }
+        },
+        "firewall": {
+          "type": "array",
+          "description": "Rules that follow the feature's state, without component.",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/firewallRule"
+              },
+              {
+                "not": {
+                  "required": [
+                    "component"
+                  ]
+                }
+              }
+            ]
+          }
         }
       },
       "required": [
         "id"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "default",
+          "level"
+        ]
+      }
     },
     "guid": {
       "anyOf": [
@@ -1668,6 +1662,10 @@
         "neverOverwrite": {
           "$ref": "#/$defs/bool"
         },
+        "preserve": {
+          "$ref": "#/$defs/bool",
+          "description": "Keep the key file or registry value as the user left it across major upgrades: sets neverOverwrite; removeOld defaults to afterInstallExecute."
+        },
         "sharedDllRefCount": {
           "$ref": "#/$defs/bool"
         },
@@ -1700,6 +1698,90 @@
           "description": "Secures the component's directory; needs a CreateFolder row (createFolder: true or a directory key path)."
         }
       },
+      "additionalProperties": false
+    },
+    "firewallRule": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "component": {
+          "type": "string",
+          "description": "The rule follows this component's state. Required at the top level; a rule under a feature follows the feature."
+        },
+        "program": {
+          "type": "string"
+        },
+        "protocol": {
+          "anyOf": [
+            {
+              "enum": [
+                "tcp",
+                "udp",
+                "any"
+              ]
+            },
+            {
+              "$ref": "#/$defs/var"
+            }
+          ]
+        },
+        "port": {
+          "type": [
+            "string",
+            "number"
+          ]
+        },
+        "remoteAddresses": {
+          "type": "string",
+          "description": "Empty means any."
+        },
+        "profiles": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "domain",
+                    "private",
+                    "public"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/var"
+                }
+              ]
+            },
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "all",
+                      "domain",
+                      "private",
+                      "public"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/var"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "program"
+      ],
       "additionalProperties": false
     }
   }

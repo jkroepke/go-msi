@@ -140,9 +140,12 @@ type Directory struct {
 
 // Feature is a node of the feature tree.
 type Feature struct {
-	ID             string `yaml:"id"`
-	Title          string `yaml:"title"`
-	Description    string `yaml:"description"`
+	ID          string `yaml:"id"`
+	Title       string `yaml:"title"`
+	Description string `yaml:"description"`
+	// Default is on, off or disabled: whether the feature is installed by
+	// default. ApplyDefaults turns it into Level 1, 2 or 0.
+	Default        string `yaml:"default"`
 	Level          *int   `yaml:"level"`
 	Display        string `yaml:"display"`
 	Directory      string `yaml:"directory"`
@@ -154,27 +157,46 @@ type Feature struct {
 	// entry only carries an ID.
 	Components []*Component `yaml:"components"`
 	Features   []*Feature   `yaml:"features"`
+	// Firewall are rules that follow the feature's state. ApplyDefaults
+	// moves them to Config.Firewall, with a generated component that
+	// carries the state.
+	Firewall []*FirewallRule `yaml:"firewall"`
+
+	// defaultedLevel and defaultedValue record the Level that ApplyDefaults
+	// filled in, so that a later run can tell it from one set by the caller.
+	defaultedLevel *int
+	defaultedValue int
+}
+
+// levelIsDefault reports whether Level is still the one ApplyDefaults filled
+// in.
+func (f *Feature) levelIsDefault() bool {
+	return f.Level != nil && f.Level == f.defaultedLevel && *f.Level == f.defaultedValue
 }
 
 // Component is a unit that is installed, repaired and removed together.
 type Component struct {
-	ID                string           `yaml:"id"`
-	Directory         string           `yaml:"directory"`
-	GUID              string           `yaml:"guid"`
-	Files             []*File          `yaml:"files"`
-	Registry          []*RegistryValue `yaml:"registry"`
-	Services          []*Service       `yaml:"services"`
-	EventLog          []*EventSource   `yaml:"eventLog"`
-	Environment       []*Environment   `yaml:"environment"`
-	CreateFolder      bool             `yaml:"createFolder"`
-	Condition         string           `yaml:"condition"`
-	Permanent         bool             `yaml:"permanent"`
-	NeverOverwrite    bool             `yaml:"neverOverwrite"`
-	SharedDLLRefCount bool             `yaml:"sharedDllRefCount"`
-	Transitive        bool             `yaml:"transitive"`
-	KeyPath           string           `yaml:"keyPath"`
-	Bitness           string           `yaml:"bitness"`
-	FolderPermissions *Permissions     `yaml:"folderPermissions"`
+	ID             string           `yaml:"id"`
+	Directory      string           `yaml:"directory"`
+	GUID           string           `yaml:"guid"`
+	Files          []*File          `yaml:"files"`
+	Registry       []*RegistryValue `yaml:"registry"`
+	Services       []*Service       `yaml:"services"`
+	EventLog       []*EventSource   `yaml:"eventLog"`
+	Environment    []*Environment   `yaml:"environment"`
+	CreateFolder   bool             `yaml:"createFolder"`
+	Condition      string           `yaml:"condition"`
+	Permanent      bool             `yaml:"permanent"`
+	NeverOverwrite bool             `yaml:"neverOverwrite"`
+	// Preserve keeps the component's key file or registry value as the user
+	// left it across major upgrades: it sets NeverOverwrite, and removeOld
+	// defaults to afterInstallExecute (RUN-24).
+	Preserve          bool         `yaml:"preserve"`
+	SharedDLLRefCount bool         `yaml:"sharedDllRefCount"`
+	Transitive        bool         `yaml:"transitive"`
+	KeyPath           string       `yaml:"keyPath"`
+	Bitness           string       `yaml:"bitness"`
+	FolderPermissions *Permissions `yaml:"folderPermissions"`
 
 	// ref marks a features[].components entry written as an id.
 	ref bool
@@ -182,6 +204,17 @@ type Component struct {
 	defined bool
 	// origin is the YAML path of a component defined inside a feature.
 	origin string
+	// firewallFeature is the feature whose firewall rules a generated
+	// component carries.
+	firewallFeature string
+	// carrierOf is that feature.
+	carrierOf *Feature
+}
+
+// FirewallFeature returns the feature whose firewall rules the component
+// carries, for a component generated from features[].firewall, else "".
+func (c *Component) FirewallFeature() string {
+	return c.firewallFeature
 }
 
 // Path returns the component's YAML path, given its index in
@@ -392,6 +425,22 @@ type FirewallRule struct {
 	Port            string     `yaml:"port"`
 	RemoteAddresses string     `yaml:"remoteAddresses"`
 	Profiles        StringList `yaml:"profiles"`
+
+	// origin is the YAML path of a rule written under a feature.
+	origin string
+	// ownComponent records that a rule under a feature named a component.
+	ownComponent bool
+	// carrier is the generated component of a rule under a feature.
+	carrier *Component
+}
+
+// Path returns the YAML path of the rule at index in Config.Firewall.
+func (r *FirewallRule) Path(index int) string {
+	if r.origin != "" {
+		return r.origin
+	}
+
+	return "firewall[" + strconv.Itoa(index) + "]"
 }
 
 // UI selects the built-in wizard and adds dialogs to it.
@@ -399,9 +448,28 @@ type UI struct {
 	Wizard string `yaml:"wizard"`
 	// License is a license file shown on a page with an accept check box
 	// after the welcome page: RTF, or plain text that is converted to RTF.
-	License string    `yaml:"license"`
+	License string `yaml:"license"`
+	// Launch adds a check box to the finish page that starts an installed
+	// program when the user clicks Finish.
+	Launch  *Launch   `yaml:"launch"`
 	Theme   Theme     `yaml:"theme"`
 	Dialogs []*Dialog `yaml:"dialogs"`
+	// InstallDirPage adds a page after the welcome and license pages that
+	// shows the install folder and lets the user change it.
+	InstallDirPage bool `yaml:"installDirPage"`
+}
+
+// Launch is the finish page's check box that starts an installed program.
+type Launch struct {
+	// Checked sets the box's initial state; the default is checked.
+	Checked *bool `yaml:"checked"`
+	// File is the id of an installed file: files[].id, or its name when
+	// it has no id.
+	File      string `yaml:"file"`
+	Arguments string `yaml:"arguments"`
+	// Text is the check box label, "&" marks the access key; the default is
+	// "&Launch [ProductName]".
+	Text string `yaml:"text"`
 }
 
 // Theme replaces the wizard's pictures or the colours they are drawn in.

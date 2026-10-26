@@ -63,6 +63,7 @@ func Validate(cfg *Config) Diagnostics {
 	v.streams(cfg)
 	v.firewall(cfg, r)
 	v.ui(cfg)
+	v.wizardOptions(cfg, r)
 	v.tables(cfg)
 
 	return v.diags
@@ -428,6 +429,7 @@ func (v *validator) features(cfg *Config, r *refs) {
 			}
 
 			v.oneOf(p+".display", f.Display, "expanded", "collapsed", "hidden")
+			v.featureDefault(p, f)
 
 			v.featureRefs(p, f, r)
 
@@ -439,6 +441,19 @@ func (v *validator) features(cfg *Config, r *refs) {
 
 	if len(cfg.Components) > 0 && len(cfg.Features) == 0 {
 		v.errorf("features", "at least one feature is required")
+	}
+}
+
+// featureDefault checks default, which replaces level.
+func (v *validator) featureDefault(featurePath string, feature *Feature) {
+	if feature.Default == "" {
+		return
+	}
+
+	v.oneOf(featurePath+".default", feature.Default, FeatureOn, FeatureOff, FeatureDisabled)
+
+	if !feature.levelIsDefault() {
+		v.errorf(featurePath+".default", "set default or level, not both")
 	}
 }
 
@@ -473,6 +488,51 @@ func (v *validator) featureRefs(featurePath string, feature *Feature, known *ref
 		if known.components[c.ID] == nil {
 			v.errorf(fmt.Sprintf("%s.components[%d]", featurePath, j), "component %q is not defined", c.ID)
 		}
+	}
+}
+
+// preserve checks components that keep what the user changed. RUN-24: with
+// the old product removed first, a NeverOverwrite component without
+// Permanent loses its key file or registry value, because the new product
+// skips it and the removal of the old one deletes it. A late removal keeps
+// it, also when the old version had the same component without the flag.
+// Permanent in both versions also kept it, but leaves it after uninstall.
+func (v *validator) preserve(cfg *Config, field string, comp *Component) {
+	if comp.Preserve && len(comp.Services) > 0 {
+		v.errorf(field+".preserve", "a preserved component is never updated; keep the service in its own component")
+	}
+
+	if cfg.Upgrade == nil || cfg.Upgrade.Disabled {
+		return
+	}
+
+	v.removeOld(cfg.Upgrade.RemoveOld, field, comp)
+}
+
+// removeOld checks a component's NeverOverwrite against the removeOld window.
+func (v *validator) removeOld(removeOld, field string, comp *Component) {
+	// RUN-24 ran the early removal right after InstallValidate (1401).
+	// afterInstallInitialize also removes the old product before the new one
+	// installs its files, so it is treated the same (not tested).
+	early := removeOld == "afterInstallValidate" || removeOld == "afterInstallInitialize"
+
+	switch {
+	case comp.Preserve && early:
+		// Also with permanent: RUN-24 lost the edit when only the new
+		// version had both flags.
+		v.errorf(field+".preserve", "needs removeOld afterInstallExecute: %s removes the old product first, "+
+			"which deleted the preserved file and registry value in RUN-24 (tested right after InstallValidate)", removeOld)
+	case comp.Preserve && removeOld != PreserveRemoveOld:
+		v.warnf(field+".preserve", "only removeOld afterInstallExecute is tested to keep preserved files and "+
+			"registry values (RUN-24); %s is not", removeOld)
+	case comp.NeverOverwrite && !comp.Permanent && early:
+		hint := "use preserve: true"
+		if len(comp.Services) > 0 {
+			hint = "move the service to its own component and use preserve: true"
+		}
+
+		v.warnf(field+".neverOverwrite", "removeOld %s removes the old product first, which deleted a neverOverwrite "+
+			"component's file and registry value in RUN-24 (tested right after InstallValidate); %s", removeOld, hint)
 	}
 }
 
@@ -550,6 +610,7 @@ func (v *validator) components(cfg *Config, r *refs) {
 		}
 
 		v.oneOf(p+".bitness", c.Bitness, Auto, "32", "64")
+		v.preserve(cfg, p, c)
 
 		if c.Bitness == "64" && !cfg.Package.Platform.Is64Bit() {
 			v.errorf(p+".bitness", "64-bit components need an x64 or arm64 package")
@@ -559,7 +620,7 @@ func (v *validator) components(cfg *Config, r *refs) {
 		v.componentRegistry(p, c, regIDs, perUser)
 
 		switch kp := c.KeyPath; {
-		case kp == "" || kp == "directory":
+		case kp == "" || kp == KeyPathDirectory:
 		case keyFileByRef(c, kp) != nil:
 			keyFile = keyFileByRef(c, kp)
 		case hasRegistryID(c, kp):
@@ -590,7 +651,7 @@ func (v *validator) components(cfg *Config, r *refs) {
 			v.permissions(fmt.Sprintf("%s.registry[%d].permissions", p, j), r.Permissions)
 		}
 
-		directoryKey := c.KeyPath == "directory" || c.KeyPath == "" && len(c.Files) == 0 && len(c.Registry) == 0
+		directoryKey := c.KeyPath == KeyPathDirectory || c.KeyPath == "" && len(c.Files) == 0 && len(c.Registry) == 0
 		if v.permissions(p+".folderPermissions", c.FolderPermissions) && !c.CreateFolder && !directoryKey {
 			v.errorf(p+".folderPermissions", "the component creates no folder row; set createFolder: true")
 		}
@@ -650,7 +711,7 @@ func registryKeyPath(comp *Component) *RegistryValue {
 	switch {
 	case comp.KeyPath == "" && len(comp.Files) == 0 && len(comp.Registry) > 0:
 		return comp.Registry[0]
-	case comp.KeyPath == "" || comp.KeyPath == "directory":
+	case comp.KeyPath == "" || comp.KeyPath == KeyPathDirectory:
 		return nil
 	}
 
@@ -1241,7 +1302,11 @@ func (v *validator) firewall(cfg *Config, r *refs) {
 	names := map[string]bool{}
 
 	for i, fw := range cfg.Firewall {
-		p := fmt.Sprintf("firewall[%d]", i)
+		p := fw.Path(i) //nolint:varnamelen // the path of the rule, as in the other checks
+
+		if fw.ownComponent {
+			v.errorf(p+".component", "a rule under a feature follows that feature; remove component")
+		}
 
 		if v.required(p+".name", fw.Name) {
 			if names[fw.Name] {
@@ -1319,6 +1384,43 @@ func (v *validator) ui(cfg *Config) {
 				v.warnf(fp+".property", "%s is not declared in properties, so it is not secure", f.Property)
 			}
 		}
+	}
+}
+
+// launchProperty is the property of the ui.launch check box.
+const launchProperty = "LaunchOnFinish"
+
+// wizardOptions checks the install folder page and the launch check box.
+func (v *validator) wizardOptions(cfg *Config, ids *refs) {
+	none := cfg.UI.Wizard == "none"
+
+	if cfg.UI.InstallDirPage {
+		if none {
+			v.errorf("ui.installDirPage", "an install folder page needs a wizard")
+		}
+
+		if dir := ids.dirs[cfg.InstallDir.ID]; dir == nil || !dir.Configurable {
+			v.errorf("ui.installDirPage", "an install folder page needs installDir.id to name a configurable directory")
+		}
+	}
+
+	launch := cfg.UI.Launch
+	if launch == nil {
+		return
+	}
+
+	if none {
+		v.errorf("ui.launch", "a launch check box needs a wizard")
+	}
+
+	if v.required("ui.launch.file", launch.File) && !ids.fileIDs[launch.File] {
+		v.errorf("ui.launch.file", "file %q is not defined", launch.File)
+	}
+
+	// The check box sets the property; a value from properties would
+	// override checked.
+	if _, taken := cfg.Properties[launchProperty]; taken {
+		v.errorf("properties."+launchProperty, "the property is set by the ui.launch check box")
 	}
 }
 

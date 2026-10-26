@@ -234,6 +234,7 @@ func TestWizardErrors(t *testing.T) {
 		{"bad anchor", config.Dialog{ID: "ExtraDlg", Title: "x", After: "VerifyReadyDlg", Fields: []config.DialogField{{Property: "PROP"}}}, "not a wizard page"},
 		{"wizard name", config.Dialog{ID: "CancelDlg", Title: "x", After: "WelcomeDlg", Fields: []config.DialogField{{Property: "PROP"}}}, "is a wizard dialog"},
 		{"license name", config.Dialog{ID: "LicenseAgreementDlg", Title: "x", After: "WelcomeDlg", Fields: []config.DialogField{{Property: "PROP"}}}, "is a wizard dialog"},
+		{"install folder name", config.Dialog{ID: "InstallDirDlg", Title: "x", After: "WelcomeDlg", Fields: []config.DialogField{{Property: "PROP"}}}, "is a wizard dialog"},
 		{"too many fields", config.Dialog{ID: "ExtraDlg", Title: "x", After: "WelcomeDlg", Fields: []config.DialogField{
 			{Property: "A1"}, {Property: "A2"}, {Property: "A3"}, {Property: "A4"}, {Property: "A5"},
 		}}, "at most 4 fields"},

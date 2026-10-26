@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/pkg/config/schema.json
+# A desktop program with a license, a page to pick the install folder and a
+# check box on the finish page that starts the program.
+#
+#   go-msi build --var VERSION=2.0.0 -o example-viewer.msi msi.yaml
+#
+# The input files sit next to this file: viewer.exe and LICENSE.txt (plain
+# text, converted to RTF).
+schema: go-msi/v1
+
+product:
+  name: Example Viewer
+  manufacturer: Example
+  version: ${VERSION}
+  upgradeCode: 7c1e4b52-93a0-4d6f-8e25-b4f0a9d3c871
+
+package:
+  platform: x64
+
+# C:\Program Files\Example Viewer, shown on the install folder page.
+installDir:
+  name: Example Viewer
+
+components:
+  - files:
+      - source: viewer.exe
+
+ui:
+  wizard: minimal
+  license: LICENSE.txt
+  installDirPage: true
+  launch:
+    file: viewer.exe

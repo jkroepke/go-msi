@@ -271,7 +271,8 @@ Pipeline, each step a file of its own:
 9. **UI**: the wizard pages as table data (`pkg/builder/ui*.go`): the flow of
    pages, `ui.dialogs` inserted after their anchor, the maintenance menu, the
    end, cancel, error, files-in-use and Restart Manager dialogs, the license
-   page (RTF checked or converted by `rtf`), the bitmaps drawn by `artwork`
+   page (RTF checked or converted by `rtf`), the install folder page, the
+   launch checkbox on the finish page, the bitmaps drawn by `artwork`
    from a palette or decoded from the theme's pictures and re-encoded as
    24-bit BMP, and the ICE-style self-checks.
 10. **Finish**: `_Validation` from `schema`, summary information, then the
