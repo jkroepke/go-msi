@@ -356,13 +356,17 @@ generated from the command tree.
   the payload and the service, `/x`, verify removal; the examples with a
   service install the test service from `docs/spec/msitest/testsvc`). The
   install test also records the machine state before, after `/i` and after
-  `/x` and compares the entries added under the watched places (files under
-  the known folders, registry keys, services, event log sources, the ARP
-  entry, shortcut targets) and the firewall rules with `pkg/builder/nativetest/testdata/install/<name>.txt`. They
-  also run the full ICE suite on the examples through `internal/ice`, with
-  the `darice.cub` that CI installs from the Windows SDK (cached; its SHA-256
-  is logged). The install test needs elevation; all of them are skipped with
-  `-short`.
+  `/x` and compares the entries the package can own (their names occur as
+  a whole word in its strings, or they carry its product code) added under
+  the watched places (files under the known folders, registry keys,
+  services, event log sources, the ARP entry, shortcut targets) and the
+  firewall rules with `pkg/builder/nativetest/testdata/install/<name>.txt`.
+  They also run the full ICE suite on the examples through
+  `internal/ice`, with the `darice.cub` that CI installs from the Windows
+  SDK (cached; its SHA-256 is logged). The install test needs elevation;
+  all of them are skipped with `-short`. `TestScopeOwns`, the one test of
+  the package that builds on every platform, checks the ownership rule and
+  runs with `-short`.
 - **Real experiments** on Joe's SERVER2025 dev box through Remote Control for
   anything a runner cannot answer (services, upgrades, comparing the ICE
   runner with `msival2.exe`).

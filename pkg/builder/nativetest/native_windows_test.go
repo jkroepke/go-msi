@@ -456,12 +456,12 @@ func TestMsiexecInstallsExamples(t *testing.T) {
 				_ = os.RemoveAll(installDir)
 			})
 
-			label := pathLabels(filepath.Dir(path))
-			before := takeSnapshot(t, nil, label, inputs)
+			pkg := newScope(res, pathLabels(filepath.Dir(path)), inputs)
+			before := takeSnapshot(t, nil, pkg)
 
 			msiexecQuiet(t, log, append([]string{"/i", path}, example.properties...)...)
 
-			afterInstall := takeSnapshot(t, before, label, inputs)
+			afterInstall := takeSnapshot(t, before, pkg)
 
 			data, err := os.ReadFile(example.installed)
 			if err != nil {
@@ -481,7 +481,7 @@ func TestMsiexecInstallsExamples(t *testing.T) {
 			msiexecQuiet(t, log, "/x", path)
 
 			installed = false
-			afterUninstall := takeSnapshot(t, before, label, inputs)
+			afterUninstall := takeSnapshot(t, before, pkg)
 
 			if _, err := os.Stat(example.installed); err == nil {
 				t.Errorf("%s is still installed after the uninstall", example.installed)
