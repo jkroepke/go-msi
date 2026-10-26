@@ -428,6 +428,7 @@ func (v *validator) features(cfg *Config, r *refs) {
 			}
 
 			v.oneOf(p+".display", f.Display, "expanded", "collapsed", "hidden")
+			v.featureDefault(p, f)
 
 			v.featureRefs(p, f, r)
 
@@ -439,6 +440,19 @@ func (v *validator) features(cfg *Config, r *refs) {
 
 	if len(cfg.Components) > 0 && len(cfg.Features) == 0 {
 		v.errorf("features", "at least one feature is required")
+	}
+}
+
+// featureDefault checks default, which replaces level.
+func (v *validator) featureDefault(featurePath string, feature *Feature) {
+	if feature.Default == "" {
+		return
+	}
+
+	v.oneOf(featurePath+".default", feature.Default, FeatureOn, FeatureOff, FeatureDisabled)
+
+	if !feature.levelIsDefault() {
+		v.errorf(featurePath+".default", "set default or level, not both")
 	}
 }
 
@@ -605,7 +619,7 @@ func (v *validator) components(cfg *Config, r *refs) {
 		v.componentRegistry(p, c, regIDs, perUser)
 
 		switch kp := c.KeyPath; {
-		case kp == "" || kp == "directory":
+		case kp == "" || kp == KeyPathDirectory:
 		case keyFileByRef(c, kp) != nil:
 			keyFile = keyFileByRef(c, kp)
 		case hasRegistryID(c, kp):
@@ -636,7 +650,7 @@ func (v *validator) components(cfg *Config, r *refs) {
 			v.permissions(fmt.Sprintf("%s.registry[%d].permissions", p, j), r.Permissions)
 		}
 
-		directoryKey := c.KeyPath == "directory" || c.KeyPath == "" && len(c.Files) == 0 && len(c.Registry) == 0
+		directoryKey := c.KeyPath == KeyPathDirectory || c.KeyPath == "" && len(c.Files) == 0 && len(c.Registry) == 0
 		if v.permissions(p+".folderPermissions", c.FolderPermissions) && !c.CreateFolder && !directoryKey {
 			v.errorf(p+".folderPermissions", "the component creates no folder row; set createFolder: true")
 		}
@@ -696,7 +710,7 @@ func registryKeyPath(comp *Component) *RegistryValue {
 	switch {
 	case comp.KeyPath == "" && len(comp.Files) == 0 && len(comp.Registry) > 0:
 		return comp.Registry[0]
-	case comp.KeyPath == "" || comp.KeyPath == "directory":
+	case comp.KeyPath == "" || comp.KeyPath == KeyPathDirectory:
 		return nil
 	}
 
@@ -1287,7 +1301,11 @@ func (v *validator) firewall(cfg *Config, r *refs) {
 	names := map[string]bool{}
 
 	for i, fw := range cfg.Firewall {
-		p := fmt.Sprintf("firewall[%d]", i)
+		p := fw.Path(i) //nolint:varnamelen // the path of the rule, as in the other checks
+
+		if fw.ownComponent {
+			v.errorf(p+".component", "a rule under a feature follows that feature; remove component")
+		}
 
 		if v.required(p+".name", fw.Name) {
 			if names[fw.Name] {

@@ -90,13 +90,16 @@ features:
       - id: FirewallException
         title: Firewall Exception
         description: Allow windows_exporter to listen on a port
-        level: 2
+        default: off
         display: expanded
-        components:
-          # Empty component that carries the feature's state for the rule.
-          - id: FirewallException
-            guid: 9F522655-AC0E-42D2-A512-A7B19EBEC7F7
-            keyPath: directory
+        firewall:
+          - name: windows_exporter
+            description: windows_exporter HTTP endpoint
+            program: '[#windows_exporter.exe]'
+            protocol: tcp
+            port: '[LISTEN_PORT]'
+            remoteAddresses: '[REMOTE_ADDR]'
+            profiles: all
 
 properties:
   ENABLED_COLLECTORS: {}
@@ -162,16 +165,6 @@ customActions:
 
 icons:
   icon.ico: ${ICON}
-
-firewall:
-  - name: windows_exporter
-    description: windows_exporter HTTP endpoint
-    component: FirewallException
-    program: '[#windows_exporter.exe]'
-    protocol: tcp
-    port: '[LISTEN_PORT]'
-    remoteAddresses: '[REMOTE_ADDR]'
-    profiles: all
 
 ui:
   wizard: featureTree

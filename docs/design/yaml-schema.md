@@ -187,6 +187,8 @@ way:
 | a component written inside `features[].components` | the same component in `components`, referenced by ID |
 | `features[].components` entry that is only an ID | a reference to that component; in Go, `config.ComponentRef(id)` |
 | no `upgrade` | the standard policy of section 4.3, as `upgrade: {}`; `upgrade: false` writes no Upgrade rows |
+| `features[].default: on`, `off` or `disabled` | `level: 1`, `2` or `0` (section 4.5) |
+| `features[].firewall` | the rules in `firewall`, following an empty component `<feature>_Firewall` that the feature holds (section 4.11) |
 | a service argument with a `condition` | a private property set by an immediate `setProperty` action before InstallServices under that condition (section 4.6) |
 
 Generated IDs are stable: the same file gives the same IDs. Component GUIDs
@@ -347,7 +349,7 @@ features:
   - id: DefaultFeature
     title: windows_exporter ${VERSION}
     description: The binary and configuration files for windows_exporter
-    level: 1
+    default: on                # on | off | disabled
     display: expanded          # expanded | collapsed | hidden
     directory: APPLICATIONFOLDER
     allowAbsent: false
@@ -359,11 +361,20 @@ features:
     features:
       - id: FirewallException
         title: Firewall Exception
-        level: 2
-        components: [FirewallException]
+        default: off
+        firewall:                  # section 4.11
+          - name: windows_exporter
+            program: '[#windows_exporter.exe]'
+            protocol: tcp
+            port: '[LISTEN_PORT]'
 ```
 
 - Feature IDs are at most 38 characters; depth is at most 16.
+- `default` says whether the feature is installed: `on` (the default) is
+  `level: 1`, `off` is `level: 2`, which a user turns on in the feature tree
+  or with `ADDLOCAL`, and `disabled` is `level: 0`. A higher `INSTALLLEVEL`
+  also installs `off` features. Set `default` or `level`, not both; `level`
+  is for packages that use more than these three levels.
 - `level: 0` disables a feature; `ADDLOCAL=ALL` cannot turn it on.
 - Every component is in at least one feature (ICE21). A component used by
   two features is defined once in `components` and named by ID in both.
@@ -698,6 +709,30 @@ install and reinstall it deletes by name and program, then adds, with a
 rollback that deletes; on removal it deletes, with a rollback that adds. The
 `component` is usually an empty component with its own GUID, in the feature
 that switches the rule.
+
+A rule that a feature switches can be written under that feature instead,
+without `component`:
+
+```yaml
+features:
+  - id: FirewallException
+    title: Firewall Exception
+    default: off
+    firewall:
+      - name: windows_exporter
+        program: '[#windows_exporter.exe]'
+        protocol: tcp
+        port: '[LISTEN_PORT]'
+```
+
+The loader adds an empty component `FirewallException_Firewall` to the
+feature and points the rules at it. The component goes in the feature's
+`directory`, else in the install dir, else beside one of the feature's
+components, else in the first configurable directory, both outside the user
+profile; only a tree with none of these gets the install dir added for it. Its GUID comes from the
+upgrade code, the bitness and the feature ID, so it does not collide with
+other components keyed on the install dir. Errors name the rule's place
+under the feature, such as `features[1].firewall[0].program`.
 
 ### 4.12 `ui`
 

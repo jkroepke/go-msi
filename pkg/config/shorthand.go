@@ -14,12 +14,24 @@ const (
 	DefaultInstallDirID = "INSTALLDIR"
 	DefaultFeatureID    = "MainFeature"
 
+	// KeyPathDirectory is the keyPath of a component keyed on its directory.
+	KeyPathDirectory = "directory"
+
 	// productNamePath is the YAML path of an install dir name taken from
 	// the product name.
 	productNamePath = "product.name"
 
 	maxGeneratedIDLength = 60
-	hashSuffixLength     = 9 // "_" and 8 hex digits
+
+	// FeatureOn, FeatureOff and FeatureDisabled are the values of
+	// features[].default.
+	FeatureOn       = "on"
+	FeatureOff      = "off"
+	FeatureDisabled = "disabled"
+
+	// featureLevelOff is the level of a feature that is off by default.
+	featureLevelOff  = 2
+	hashSuffixLength = 9 // "_" and 8 hex digits
 )
 
 // expandShorthands rewrites the short forms of a file into the explicit
@@ -31,6 +43,7 @@ const (
 // idempotent.
 func expandShorthands(cfg *Config) {
 	hoistFeatureComponents(cfg)
+	featureFirewall(cfg)
 
 	tree := newDirTree(cfg)
 	tree.installDir()
@@ -40,7 +53,7 @@ func expandShorthands(cfg *Config) {
 	// Add the install dir before any folder path, so that a path through
 	// the same folder reuses it whatever the order of the components.
 	for _, comp := range cfg.Components {
-		if tree.needsInstallDir(comp.Directory) {
+		if !unplacedCarrier(comp) && tree.needsInstallDir(comp.Directory) {
 			tree.ensureInstallDir()
 
 			break
@@ -48,14 +61,204 @@ func expandShorthands(cfg *Config) {
 	}
 
 	for i, comp := range cfg.Components {
-		tree.origin = comp.Path(i) + ".directory"
-		comp.Directory = tree.resolve(comp.Directory)
+		if !unplacedCarrier(comp) {
+			tree.origin = comp.Path(i) + ".directory"
+			comp.Directory = tree.resolve(comp.Directory)
+		}
 	}
 
+	// Generated ids first, so that a feature can name the component the
+	// carrier joins by one.
 	componentIDs(cfg)
+
+	for _, comp := range cfg.Components {
+		if unplacedCarrier(comp) {
+			comp.Directory = tree.carrierDirectory(comp)
+
+			// A carrier in a 32-bit folder is a 32-bit component (ICE80).
+			if cfg.Package.Platform.Is64Bit() && comp.Bitness == "" && folders32[tree.topFolder(comp.Directory)] {
+				comp.Bitness = "32"
+			}
+		}
+	}
+
+	for _, rule := range cfg.Firewall {
+		// Only the first run fills it in; a component set from Go since
+		// stands.
+		if rule.carrier != nil && !rule.ownComponent && rule.Component == "" {
+			rule.Component = rule.carrier.ID
+		}
+	}
+
 	referenceFeatureComponents(cfg)
 	defaultFeature(cfg)
 	serviceArguments(cfg)
+}
+
+// featureFirewall moves the firewall rules written under features to
+// cfg.Firewall. Each such feature gets an empty component in the install dir
+// whose state the rules follow.
+func featureFirewall(cfg *Config) {
+	var walk func([]*Feature, string)
+
+	walk = func(features []*Feature, prefix string) {
+		for i, feature := range features {
+			featurePath := fmt.Sprintf("%s[%d]", prefix, i)
+
+			if len(feature.Firewall) > 0 {
+				carrier := firewallCarrier(cfg, feature, featurePath)
+
+				for j, rule := range feature.Firewall {
+					rule.origin = fmt.Sprintf("%s.firewall[%d]", featurePath, j)
+					rule.ownComponent = rule.Component != ""
+					rule.carrier = carrier
+				}
+
+				cfg.Firewall = append(cfg.Firewall, feature.Firewall...)
+				feature.Firewall = nil
+			}
+
+			walk(feature.Features, featurePath+".features")
+		}
+	}
+
+	walk(cfg.Features, "features")
+}
+
+// firewallCarrier returns the component that carries a feature's firewall
+// rules, adding it on the first call. carrierDirectory places it once the
+// tree is known.
+func firewallCarrier(cfg *Config, feature *Feature, featurePath string) *Component {
+	for _, comp := range cfg.Components {
+		if comp.firewallFeature != "" && comp.firewallFeature == feature.ID {
+			return comp
+		}
+	}
+
+	carrier := &Component{
+		KeyPath: KeyPathDirectory,
+		// Diagnostics about the carrier name the feature, the place the
+		// user can change.
+		origin:          featurePath,
+		firewallFeature: feature.ID,
+		carrierOf:       feature,
+	}
+
+	cfg.Components = append(cfg.Components, carrier)
+	feature.Components = append(feature.Components, carrier)
+
+	return carrier
+}
+
+// unplacedCarrier reports whether a component is a firewall carrier whose
+// directory carrierDirectory still has to pick.
+func unplacedCarrier(comp *Component) bool {
+	return comp.firewallFeature != "" && comp.Directory == ""
+}
+
+// carrierDirectory places a carrier: in its feature's directory, else in
+// the install dir when the package has one, else beside a component of the
+// feature, else in the first configurable directory, both outside the user
+// profile. Only without any of these does it add the install dir.
+func (t *dirTree) carrierDirectory(carrier *Component) string {
+	for _, dirID := range []string{carrier.carrierOf.Directory, t.cfg.InstallDir.ID} {
+		if dirID != "" && t.byID[dirID] != nil {
+			return dirID
+		}
+	}
+
+	if dirID := t.featureComponentDir(carrier.carrierOf); dirID != "" {
+		return dirID
+	}
+
+	if dirID := configurableDir(t.cfg.Directories, ""); dirID != "" {
+		return dirID
+	}
+
+	t.ensureInstallDir()
+
+	return t.cfg.InstallDir.ID
+}
+
+// featureComponentDir returns the directory of the first component of a
+// feature, or of its sub-features, outside the user profile.
+func (t *dirTree) featureComponentDir(feature *Feature) string {
+	byID := make(map[string]*Component, len(t.cfg.Components))
+	for _, comp := range t.cfg.Components {
+		if comp.ID != "" {
+			byID[comp.ID] = comp
+		}
+	}
+
+	found := ""
+
+	eachFeature([]*Feature{feature}, func(f *Feature, _ int) {
+		for _, entry := range f.Components {
+			comp := entry
+			if entry.ref {
+				comp = byID[entry.ID]
+			}
+
+			if found == "" && comp != nil && !unplacedCarrier(comp) && t.byID[comp.Directory] != nil &&
+				!profileFolders[t.topFolder(comp.Directory)] {
+				found = comp.Directory
+			}
+		}
+	})
+
+	return found
+}
+
+// topFolder returns the top-level folder above a directory.
+func (t *dirTree) topFolder(dirID string) string {
+	var find func([]*Directory) bool
+
+	top := dirID
+
+	find = func(dirs []*Directory) bool {
+		for _, dir := range dirs {
+			if dir.ID == dirID || find(dir.Children) {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	for _, dir := range t.cfg.Directories {
+		if dir.ID == dirID || find(dir.Children) {
+			top = dir.ID
+
+			break
+		}
+	}
+
+	return top
+}
+
+// configurableDir returns the first configurable directory whose top-level
+// folder is not in the user profile.
+func configurableDir(dirs []*Directory, top string) string {
+	for _, dir := range dirs {
+		dirTop := top
+		if dirTop == "" {
+			dirTop = dir.ID
+		}
+
+		if profileFolders[dirTop] {
+			continue
+		}
+
+		if dir.Configurable {
+			return dir.ID
+		}
+
+		if found := configurableDir(dir.Children, dirTop); found != "" {
+			return found
+		}
+	}
+
+	return ""
 }
 
 // hoistFeatureComponents appends the components defined inside features to
@@ -142,6 +345,8 @@ func componentIDs(cfg *Config) {
 		base := "Component"
 
 		switch {
+		case comp.firewallFeature != "":
+			base = comp.firewallFeature + "_Firewall"
 		case keyFileByRef(comp, comp.KeyPath) != nil:
 			base = fileName(keyFileByRef(comp, comp.KeyPath))
 		case len(comp.Files) > 0:

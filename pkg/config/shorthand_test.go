@@ -623,3 +623,237 @@ func TestShorthandNestedStandardFolder(t *testing.T) {
 		}
 	}
 }
+
+func TestShorthandFeatureDefault(t *testing.T) {
+	t.Parallel()
+
+	feature := func(fields string) string {
+		return short + "features:\n  - { id: F, " + fields + "components: [{ files: [{ source: hello.exe }] }] }\n"
+	}
+
+	for value, level := range map[string]int{"on": 1, "off": 2, "disabled": 0} {
+		cfg := parseValid(t, feature("default: "+value+", "))
+		if got := *cfg.Features[0].Level; got != level {
+			t.Errorf("default %s: level %d, want %d", value, got, level)
+		}
+	}
+
+	if ds := validate(t, feature("default: off, level: 3, ")); !find(ds, config.SeverityError, "features[0].default", "not both") {
+		t.Errorf("default with level: %v", ds)
+	}
+
+	if ds := validate(t, feature("default: maybe, ")); !find(ds, config.SeverityError, "features[0].default", "") {
+		t.Errorf("invalid default: %v", ds)
+	}
+}
+
+func TestShorthandFeatureFirewall(t *testing.T) {
+	t.Parallel()
+
+	rule := "{ name: %s, program: '[#hello.exe]', protocol: tcp, port: '9182' }"
+	doc := short + "features:\n  - id: Main\n    components: [{ files: [{ source: hello.exe }] }]\n" +
+		"    features:\n      - id: Fw\n        default: off\n        firewall: [" + fmt.Sprintf(rule, "a") + ", " + fmt.Sprintf(rule, "b") + "]\n" +
+		"      - id: Fw2\n        firewall: [" + fmt.Sprintf(rule, "c") + "]\n"
+
+	cfg := parseValid(t, doc)
+
+	carriers := map[string]string{}
+
+	for _, comp := range cfg.Components {
+		if feature := comp.FirewallFeature(); feature != "" {
+			carriers[feature] = comp.ID
+
+			if comp.Directory != config.DefaultInstallDirID || comp.KeyPath != config.KeyPathDirectory {
+				t.Errorf("carrier %s: directory %s, keyPath %s", comp.ID, comp.Directory, comp.KeyPath)
+			}
+		}
+	}
+
+	if carriers["Fw"] != "Fw_Firewall" || carriers["Fw2"] != "Fw2_Firewall" {
+		t.Fatalf("carriers: %v", carriers)
+	}
+
+	want := map[string]string{"a": "Fw_Firewall", "b": "Fw_Firewall", "c": "Fw2_Firewall"}
+	for _, fw := range cfg.Firewall {
+		if fw.Component != want[fw.Name] {
+			t.Errorf("rule %s follows %q, want %s", fw.Name, fw.Component, want[fw.Name])
+		}
+	}
+
+	if sub := cfg.Features[0].Features[0]; len(sub.Firewall) != 0 || len(sub.Components) != 1 || sub.Components[0].ID != "Fw_Firewall" {
+		t.Errorf("feature Fw: %d rules, components %v", len(sub.Firewall), sub.Components)
+	}
+
+	// Errors in a rule name its place under the feature.
+	bad := short + "components: [{ files: [{ source: hello.exe }] }]\nfeatures:\n  - id: Fw\n" +
+		"    firewall:\n      - { name: a, protocol: tcp }\n      - { name: b, component: hello.exe, program: x, protocol: tcp }\n"
+
+	diags := validate(t, bad)
+	if !find(diags, config.SeverityError, "features[0].firewall[0].program", "required") {
+		t.Errorf("no error at the rule's path: %v", diags)
+	}
+
+	if !find(diags, config.SeverityError, "features[0].firewall[1].component", "remove component") {
+		t.Errorf("component on a feature rule accepted: %v", diags)
+	}
+}
+
+func TestShorthandFeatureFirewallEdges(t *testing.T) {
+	t.Parallel()
+
+	main := "features:\n  - id: Main\n    components: [{ files: [{ source: hello.exe }] }]\n"
+	rule := "{ name: %s, program: '[#hello.exe]', protocol: tcp }"
+
+	// A null rule is an error, not a panic.
+	for doc, path := range map[string]string{
+		short + main + "    firewall: [~]\n":                                    "features[0].firewall[0]",
+		short + main + "firewall: [~]\n":                                        "firewall[0]",
+		short + "components: [{ files: [{ source: a.exe }] }]\nfirewall: [~]\n": "firewall[0]",
+	} {
+		if _, err := config.Parse([]byte(doc), config.Options{}); err == nil || !strings.Contains(err.Error(), path+": empty entry") {
+			t.Errorf("%s: %v", path, err)
+		}
+	}
+
+	// A rule added from Go after parsing reuses the feature's carrier.
+	cfg := parseValid(t, short+main+"    firewall: ["+fmt.Sprintf(rule, "a")+"]\n")
+	cfg.Features[0].Firewall = append(cfg.Features[0].Firewall, &config.FirewallRule{Name: "b", Program: "x", Protocol: "tcp"})
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	carriers := 0
+
+	for _, comp := range cfg.Components {
+		if comp.FirewallFeature() != "" {
+			carriers++
+		}
+	}
+
+	if carriers != 1 || len(cfg.Firewall) != 2 || cfg.Firewall[1].Component != "Main_Firewall" {
+		t.Errorf("%d carriers, %d rules", carriers, len(cfg.Firewall))
+	}
+
+	// With an explicit tree, the carrier joins the feature's directory and
+	// adds no install dir.
+	tree := "directories:\n  - id: ProgramFiles64Folder\n    children: [{ id: APPDIR, name: Hello, configurable: true }]\n" +
+		"components: [{ id: App, directory: APPDIR, files: [{ source: hello.exe }] }]\n"
+
+	for name, feature := range map[string]string{
+		"feature directory": "features:\n  - { id: Main, directory: APPDIR, components: [App], firewall: [" + fmt.Sprintf(rule, "a") + "] }\n",
+		"no directory":      "features:\n  - { id: Main, components: [App], firewall: [" + fmt.Sprintf(rule, "a") + "] }\n",
+	} {
+		cfg := parseValid(t, short+tree+feature)
+
+		ds := config.Validate(cfg)
+		if dirPath(cfg.Directories, config.DefaultInstallDirID) != nil || len(ds) != 0 {
+			t.Errorf("%s: install dir added or diagnostics %v", name, ds)
+		}
+
+		if dir := cfg.Components[1].Directory; dir != "APPDIR" {
+			t.Errorf("%s: carrier in %s, want APPDIR", name, dir)
+		}
+	}
+}
+
+func TestShorthandFeatureDefaultFromGo(t *testing.T) {
+	t.Parallel()
+
+	doc := short + "features:\n  - { id: F, components: [{ files: [{ source: hello.exe }] }] }\n"
+
+	// A default set after parsing still sets the level.
+	cfg := parseValid(t, doc)
+	cfg.Features[0].Default = config.FeatureOff
+
+	if err := config.Validate(cfg).Err(); err != nil || *cfg.Features[0].Level != 2 {
+		t.Errorf("level %d, %v", *cfg.Features[0].Level, err)
+	}
+
+	// A level set after parsing is kept.
+	cfg = parseValid(t, doc)
+	cfg.Features[0].Level = new(3)
+
+	if err := config.Validate(cfg).Err(); err != nil || *cfg.Features[0].Level != 3 {
+		t.Errorf("level %d, %v", *cfg.Features[0].Level, err)
+	}
+}
+
+func TestShorthandFeatureFirewallCarrierPlace(t *testing.T) {
+	t.Parallel()
+
+	rule := "firewall: [{ name: a, program: x, protocol: tcp }]"
+	tree := "directories:\n  - id: ProgramFiles64Folder\n    children: [{ id: APPDIR, name: Hello, configurable: true }]\n" +
+		"  - id: ProgramMenuFolder\n    children: [{ id: MENU, name: Hello }]\n"
+	comps := "components:\n" +
+		"  - { id: Menu, directory: MENU, keyPath: m, registry: [{ id: m, root: HKCU, key: Software\\Hello, name: m, type: dword, value: 1 }] }\n" +
+		"  - { id: App, directory: APPDIR, files: [{ source: hello.exe }] }\n"
+
+	// The carrier stays out of the profile folder of the first component.
+	cfg := parseValid(t, short+tree+comps+"features:\n  - { id: Main, components: [Menu, App], "+rule+" }\n")
+	if dir := cfg.Components[2].Directory; dir != "APPDIR" {
+		t.Errorf("carrier in %s, want APPDIR", dir)
+	}
+
+	for _, d := range config.Validate(cfg) {
+		if strings.HasPrefix(d.Path, "features") {
+			t.Errorf("carrier diagnostic: %v", d)
+		}
+	}
+
+	// Without a configurable directory, the carrier joins the feature's
+	// component instead of adding an install dir.
+	plain := "directories:\n  - id: ProgramFiles64Folder\n    children: [{ id: COMPANY, name: Example, children: [{ id: APPDIR, name: App }] }]\n" +
+		"components: [{ id: App, directory: APPDIR, files: [{ source: hello.exe }] }]\n"
+
+	stray := parseValid(t, short+plain+"features:\n  - { id: Main, components: [App], "+rule+" }\n")
+	if dir := stray.Components[1].Directory; dir != "APPDIR" || dirPath(stray.Directories, config.DefaultInstallDirID) != nil {
+		t.Errorf("carrier in %s; install dir %v", dir, dirPath(stray.Directories, config.DefaultInstallDirID))
+	}
+
+	// A feature naming its component by a generated id, and a 32-bit
+	// component on a 64-bit package.
+	for name, doc := range map[string]string{
+		"generated id": "directories:\n  - id: ProgramFiles64Folder\n    children: [{ id: CO, name: Example, children: [{ id: APPDIR, name: App }] }]\n" +
+			"components: [{ directory: APPDIR, files: [{ source: hello.exe }] }]\n" +
+			"features:\n  - { id: Main, components: [hello.exe], " + rule + " }\n",
+		"32-bit": "directories:\n  - id: ProgramFilesFolder\n    children: [{ id: APPDIR, name: Hello }]\n" +
+			"components: [{ id: App, directory: APPDIR, bitness: '32', files: [{ source: hello.exe }] }]\n" +
+			"features:\n  - { id: Main, components: [App], " + rule + " }\n",
+	} {
+		cfg := parseValid(t, short+doc)
+		if dir := cfg.Components[1].Directory; dir != "APPDIR" || dirPath(cfg.Directories, config.DefaultInstallDirID) != nil {
+			t.Errorf("%s: carrier in %s", name, dir)
+		}
+
+		if ds := config.Validate(cfg); len(ds) != 0 {
+			t.Errorf("%s: %v", name, ds)
+		}
+	}
+
+	// A component set from Go after parsing stands.
+	cfg.Firewall[0].Component = "App"
+	if config.ApplyDefaults(cfg); cfg.Firewall[0].Component != "App" {
+		t.Errorf("rule follows %s, want App", cfg.Firewall[0].Component)
+	}
+
+	// An undefined feature directory is reported once, at the feature.
+	diags := validate(t, short+"components: [{ files: [{ source: hello.exe }] }]\n"+
+		"features:\n  - { id: Main, directory: NOPE, components: [hello.exe], "+rule+" }\n")
+
+	count := 0
+
+	for _, d := range diags {
+		if strings.Contains(d.Message, `"NOPE"`) {
+			count++
+
+			if d.Path != "features[0].directory" {
+				t.Errorf("reported at %s", d.Path)
+			}
+		}
+	}
+
+	if count != 1 {
+		t.Errorf("NOPE reported %d times: %v", count, diags)
+	}
+}
