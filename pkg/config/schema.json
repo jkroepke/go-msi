@@ -1454,8 +1454,14 @@
                   "resetAfterDays": {
                     "$ref": "#/$defs/int"
                   },
+                  "resetAfter": {
+                    "type": "string",
+                    "description": "A Go duration in whole seconds, such as 24h; replaces resetAfterDays."
+                  },
                   "actions": {
                     "type": "array",
+                    "minItems": 1,
+                    "maxItems": 3,
                     "items": {
                       "anyOf": [
                         {
@@ -1463,6 +1469,19 @@
                             "restart",
                             "none"
                           ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "restart": {
+                              "type": "string",
+                              "description": "A Go duration such as 5m; the delay of this restart."
+                            }
+                          },
+                          "required": [
+                            "restart"
+                          ],
+                          "additionalProperties": false
                         },
                         {
                           "$ref": "#/$defs/var"

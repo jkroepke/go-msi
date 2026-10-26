@@ -6,6 +6,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jkroepke/go-msi/internal/condition"
 )
@@ -909,12 +910,51 @@ func (v *validator) service(p string, s *Service, keyFile *File, perUser bool) {
 		}
 
 		for j, a := range rec.Actions {
-			v.oneOf(fmt.Sprintf("%s.recovery.actions[%d]", p, j), a, "restart", "none")
+			step := fmt.Sprintf("%s.recovery.actions[%d]", p, j)
+			v.oneOf(step, a.Action, "restart", "none")
+
+			if a.Restart != nil {
+				if a.Action != recoveryRestart {
+					v.errorf(step+".restart", "a delay is only allowed on a restart action")
+				}
+
+				v.recoveryDuration(step+".restart", *a.Restart, time.Millisecond)
+			}
 		}
+
+		v.recoveryDuration(p+".recovery.restartDelay", rec.RestartDelay, time.Millisecond)
 
 		if rec.ResetAfterDays < 0 {
 			v.errorf(p+".recovery.resetAfterDays", "must not be negative")
 		}
+
+		if rec.ResetAfterDays > math.MaxInt32/secondsPerDay {
+			v.errorf(p+".recovery.resetAfterDays", "is too long for sc.exe")
+		}
+
+		if rec.ResetAfter != nil {
+			if rec.ResetAfterDays != 0 {
+				v.errorf(p+".recovery.resetAfter", "set resetAfter or resetAfterDays, not both")
+			}
+
+			v.recoveryDuration(p+".recovery.resetAfter", *rec.ResetAfter, time.Second)
+		}
+	}
+}
+
+// secondsPerDay converts resetAfterDays to the seconds sc.exe takes.
+const secondsPerDay = 86400
+
+// recoveryDuration checks a delay or reset period that sc.exe takes as a
+// whole number of units (milliseconds or seconds) in a 32-bit value.
+func (v *validator) recoveryDuration(field string, value Duration, unit time.Duration) {
+	switch {
+	case value < 0:
+		v.errorf(field, "must not be negative")
+	case time.Duration(value)%unit != 0:
+		v.errorf(field, "must be a whole number of %s", map[time.Duration]string{time.Millisecond: "milliseconds", time.Second: "seconds"}[unit])
+	case int64(time.Duration(value)/unit) > math.MaxInt32:
+		v.errorf(field, "is too long for sc.exe")
 	}
 }
 

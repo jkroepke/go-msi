@@ -286,9 +286,17 @@ type ServiceControl struct {
 
 // ServiceRecovery is applied with sc.exe after InstallServices.
 type ServiceRecovery struct {
-	ResetAfterDays int      `yaml:"resetAfterDays"`
-	Actions        []string `yaml:"actions"`
-	RestartDelay   Duration `yaml:"restartDelay"`
+	ResetAfterDays int              `yaml:"resetAfterDays"`
+	ResetAfter     *Duration        `yaml:"resetAfter"`
+	Actions        []RecoveryAction `yaml:"actions"`
+	RestartDelay   Duration         `yaml:"restartDelay"`
+}
+
+// RecoveryAction is one failure step: "restart", "none", or
+// {restart: 5m} for a restart with its own delay.
+type RecoveryAction struct {
+	Restart *Duration `yaml:"restart"`
+	Action  string    `yaml:"-"`
 }
 
 // EventSource is an event log source registered with plain Registry rows.

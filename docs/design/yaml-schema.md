@@ -493,8 +493,11 @@ services:
       deleteOnUninstall: true
       wait: true
     recovery:
-      resetAfterDays: 0
-      actions: [restart, restart, restart]
+      resetAfter: 24h            # or resetAfterDays: 1
+      actions:                   # one to three steps
+        - restart                # waits restartDelay
+        - { restart: 5m }        # a delay for this step only
+        - none
       restartDelay: 60s
 ```
 
@@ -508,7 +511,11 @@ command line has no placeholder left over. Conditions are checked like
 those of section 4.9.
 
 `recovery` becomes a deferred, no-impersonate `sc.exe failure` action after
-InstallServices, with its exit code ignored (RUN-05). A `password` is added
+InstallServices, with its exit code ignored (RUN-05). Each step is `restart`,
+`none` or `{restart: <delay>}`; a plain `restart` waits `restartDelay`
+(default 60s). Delays are whole milliseconds and `resetAfter` is whole
+seconds, as `sc.exe` takes them (RUN-27); `resetAfter` and `resetAfterDays`
+exclude each other. A `password` is added
 to `MsiHiddenProperties` when it names a property.
 
 **Event log sources** become Registry rows of the component:

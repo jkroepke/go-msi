@@ -3,6 +3,7 @@ package config_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jkroepke/go-msi/pkg/config"
 )
@@ -220,6 +221,30 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, password: hunter2}]\n    files:", 1),
 			e, "components[0].services[0].password", "hidden property",
 		},
+		"recovery reset twice": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {resetAfterDays: 1, resetAfter: 24h, actions: [restart]}}]\n    files:", 1),
+			e, "components[0].services[0].recovery.resetAfter", "not both",
+		},
+		"recovery reset fraction": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {resetAfter: 1500ms, actions: [restart]}}]\n    files:", 1),
+			e, "components[0].services[0].recovery.resetAfter", "whole number of seconds",
+		},
+		"recovery step delay negative": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [{restart: -1s}]}}]\n    files:", 1),
+			e, "components[0].services[0].recovery.actions[0].restart", "negative",
+		},
+		"recovery step delay too long": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [{restart: 600h}]}}]\n    files:", 1),
+			e, "components[0].services[0].recovery.actions[0].restart", "too long",
+		},
+		"recovery reset days too long": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {resetAfterDays: 30000, actions: [restart]}}]\n    files:", 1),
+			e, "components[0].services[0].recovery.resetAfterDays", "too long",
+		},
+		"recovery four steps": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [restart, restart, restart, restart]}}]\n    files:", 1),
+			e, "components[0].services[0].recovery.actions", "one to three",
+		},
 		// Upgrade action properties (ICE61, section 8.10).
 		"private upgrade property": {
 			strings.Replace(base, "upgrade: {}", "upgrade: {property: oldFound}", 1) + appComponent,
@@ -337,5 +362,26 @@ func TestHelpers(t *testing.T) {
 		if got := config.SummaryCodepage(db); got != want {
 			t.Errorf("SummaryCodepage(%d) = %d, want %d", db, got, want)
 		}
+	}
+}
+
+// TestRecoveryDelayOnNone covers a config built in Go, where a delay can be
+// set on a step that is not a restart.
+func TestRecoveryDelayOnNone(t *testing.T) {
+	t.Parallel()
+
+	doc := base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [none]}}]\n    files:", 1)
+
+	cfg, err := config.Parse([]byte(doc), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	delay := config.Duration(time.Minute)
+	cfg.Components[0].Services[0].Recovery.Actions[0].Restart = &delay
+
+	field := "components[0].services[0].recovery.actions[0].restart"
+	if ds := config.Validate(cfg); !find(ds, config.SeverityError, field, "only allowed on a restart") {
+		t.Errorf("diagnostics %v, want an error at %s", ds, field)
 	}
 }

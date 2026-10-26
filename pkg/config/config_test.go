@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jkroepke/go-msi/pkg/config"
+	"go.yaml.in/yaml/v3"
 )
 
 func load(t *testing.T, path string, vars map[string]string) *config.Config {
@@ -93,6 +94,9 @@ func TestParseErrors(t *testing.T) {
 		"property list":    {"schema: go-msi/v1\nproperties: {A: [1]}\n", "value or a mapping"},
 		"not a mapping":    {"- a\n", "mapping"},
 		"bad restartDelay": {"schema: go-msi/v1\ncomponents: [{services: [{recovery: {restartDelay: soon}}]}]\n", "duration"},
+		"bad step delay":   {"schema: go-msi/v1\ncomponents: [{services: [{recovery: {actions: [{restart: soon}]}}]}]\n", "duration"},
+		"bad step key":     {"schema: go-msi/v1\ncomponents: [{services: [{recovery: {actions: [{reboot: 1m}]}}]}]\n", "{restart: <delay>}"},
+		"null step delay":  {"schema: go-msi/v1\ncomponents: [{services: [{recovery: {actions: [{restart: ~}]}}]}]\n", "needs a delay"},
 	} {
 		_, err := config.Parse([]byte(tc.yaml), config.Options{})
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -173,5 +177,27 @@ func TestValidateGoAPI(t *testing.T) {
 
 	if err := config.Validate(cfg).Err(); err == nil {
 		t.Error("an incomplete config validated")
+	}
+}
+
+// TestRecoveryActionsMarshal keeps every recovery step in the marshalled
+// config, from which the builder derives the product code.
+func TestRecoveryActionsMarshal(t *testing.T) {
+	t.Parallel()
+
+	doc := "schema: go-msi/v1\ncomponents: [{services: [{recovery: {actions: [restart, none, {restart: 5m}]}}]}]\n"
+
+	cfg, err := config.Parse([]byte(doc), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := yaml.Marshal(cfg.Components[0].Services[0].Recovery.Actions)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := string(out), "- restart\n- none\n- restart: 5m0s\n"; got != want {
+		t.Errorf("marshalled actions %q, want %q", got, want)
 	}
 }
