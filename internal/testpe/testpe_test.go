@@ -54,6 +54,21 @@ func TestSysoIsACOFFObjectWithOneRelocatedResourceSection(t *testing.T) {
 	}
 }
 
+func TestSysoUsesTheARM64RelocationType(t *testing.T) {
+	t.Parallel()
+
+	data := testpe.Syso(testpe.Options{FileVersion: "1.0.0.0", Machine: 0xAA64})
+
+	obj, err := pe.NewFile(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if typ := binary.LittleEndian.Uint16(data[obj.Sections[0].PointerToRelocations+8:]); obj.Machine != pe.IMAGE_FILE_MACHINE_ARM64 || typ != 2 {
+		t.Fatalf("machine %#x, relocation type %d", obj.Machine, typ)
+	}
+}
+
 func TestBuildCarriesTheVersionResource(t *testing.T) {
 	t.Parallel()
 
@@ -75,10 +90,6 @@ func TestBuildCarriesTheVersionResource(t *testing.T) {
 func TestSysoLinksIntoAGoExecutable(t *testing.T) {
 	t.Parallel()
 
-	if testing.Short() {
-		t.Skip("builds a program")
-	}
-
 	goBin, err := exec.LookPath("go")
 	if err != nil {
 		t.Skip("no go on PATH")
@@ -86,7 +97,7 @@ func TestSysoLinksIntoAGoExecutable(t *testing.T) {
 
 	dir := t.TempDir()
 	files := map[string][]byte{
-		"go.mod":                  []byte("module t\n\ngo 1.27\n"),
+		"go.mod":                  []byte("module t\n\ngo 1.21\n"),
 		"main.go":                 []byte("package main\n\nfunc main() {}\n"),
 		"rsrc_windows_amd64.syso": testpe.Syso(testpe.Options{FileVersion: "3.1.4.1", Languages: []int{1033}}),
 	}
