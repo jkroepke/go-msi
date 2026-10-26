@@ -243,7 +243,6 @@ jobs:
     if: "${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}"
     needs:
       - build
-      - install-test
       - goreleaser
       - lint
       - super-lint

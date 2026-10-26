@@ -348,11 +348,13 @@ generated from the command tree.
   same tests, plus `//go:build windows` tests in `pkg/builder/nativetest` that open
   the built package with `msi.dll` (`MsiOpenDatabaseW`, views over every table,
   `MsiGetSummaryInformationW`, `MsiRecordReadStream` on the cabinet) and
-  install and uninstall the minimal example silently (`msiexec /i … /qn`,
-  verify the file, `/x`, verify removal). They also run the full ICE suite
-  on the examples through `internal/ice`, with the `darice.cub` that CI
-  installs from the Windows SDK (cached; its SHA-256 is logged). The install
-  test needs elevation; all of them are skipped with `-short`.
+  install and uninstall every example silently (`msiexec /i … /qn`, verify
+  the payload and the service, `/x`, verify removal; the examples with a
+  service install the test service from `docs/spec/msitest/testsvc`). They
+  also run the full ICE suite on the examples through `internal/ice`, with
+  the `darice.cub` that CI installs from the Windows SDK (cached; its SHA-256
+  is logged). The install test needs elevation; all of them are skipped with
+  `-short`.
 - **Real experiments** on Joe's SERVER2025 dev box through Remote Control for
   anything a runner cannot answer (services, upgrades, comparing the ICE
   runner with `msival2.exe`).
