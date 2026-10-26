@@ -201,16 +201,16 @@ func substitute(node *yaml.Node, lookup func(string) (string, bool), errs *[]err
 
 			name := m[2 : len(m)-1]
 
-			v, ok := lookup(name)
+			value, ok := lookup(name)
 			if !ok {
 				*errs = append(*errs, fmt.Errorf("line %d: undefined variable ${%s}", node.Line, name))
 			}
 
-			if !utf8.ValidString(v) {
+			if !utf8.ValidString(value) {
 				*errs = append(*errs, fmt.Errorf("line %d: variable ${%s} is not valid UTF-8", node.Line, name))
 			}
 
-			return v
+			return value
 		})
 
 		// Resolve the tag again from the substituted text, so that an
