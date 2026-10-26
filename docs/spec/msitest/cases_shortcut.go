@@ -162,6 +162,10 @@ func caseRun28() {
 		}
 		r := runMsiexec(c, "install.log", "/i", m)
 		iconFile := filepath.Join(os.Getenv("SystemRoot"), "Installer", p.ProductCode, "app.ico")
+		if v.perUser {
+			// A per-user install keeps its icons in the user's profile.
+			iconFile = filepath.Join(os.Getenv("APPDATA"), `Microsoft\Installer`, p.ProductCode, "app.ico")
+		}
 		c.logf("install exit %d", r.Exit)
 		c.logf("  start menu %s: %s", startLnk, lnkInfo(startLnk))
 		c.logf("  desktop %s: %s", deskLnk, lnkInfo(deskLnk))
