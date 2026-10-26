@@ -265,7 +265,18 @@ func TestShortcutValidation(t *testing.T) {
 		}
 	}
 
-	cfg := shortcutConfig(t, "  - files: [{ source: app.exe, shortcuts: [{ name: A }, { name: a }] }]\n")
+	// Shortcut.Target holds [#key] in 72 characters.
+	cfg := shortcutConfig(t, "  - files: [{ source: app.exe, id: "+strings.Repeat("a", 70)+", shortcuts: [{}] }]\n")
+	if _, err := builder.Build(cfg, builder.Options{BuildTime: buildTime}); err == nil || !strings.Contains(err.Error(), "files[0].shortcuts: the shortcut target") {
+		t.Errorf("a file id too long for the target: %v", err)
+	}
+
+	cfg = shortcutConfig(t, "  - files: [{ source: app.exe, id: "+strings.Repeat("a", 69)+", shortcuts: [{}] }]\n")
+	if _, err := builder.Build(cfg, builder.Options{BuildTime: buildTime}); err != nil {
+		t.Errorf("a file id that just fits the target: %v", err)
+	}
+
+	cfg = shortcutConfig(t, "  - files: [{ source: app.exe, shortcuts: [{ name: A }, { name: a }] }]\n")
 	if _, err := builder.Build(cfg, builder.Options{BuildTime: buildTime}); err == nil || !strings.Contains(err.Error(), "shortcuts[1].name") {
 		t.Errorf("two shortcuts of one name in one folder: %v", err)
 	}

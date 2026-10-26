@@ -503,13 +503,13 @@ func TestDefaultCabinet(t *testing.T) {
 	t.Parallel()
 
 	for name, want := range map[string]string{
-		"App":    "App.cab",
+		"App": "App.cab",
 		// ICE03 rejects a space in the cabinet name.
-		"My App": "MyApp.cab",
-		"   ":    config.DefaultCabinet,
-		"Grüße":  config.DefaultCabinet,
-		"Привет": config.DefaultCabinet,
-		"A#B":    config.DefaultCabinet,
+		"My App":                "MyApp.cab",
+		"   ":                   config.DefaultCabinet,
+		"Grüße":                 config.DefaultCabinet,
+		"Привет":                config.DefaultCabinet,
+		"A#B":                   config.DefaultCabinet,
 		strings.Repeat("A", 59): config.DefaultCabinet,
 	} {
 		doc := strings.Replace(base, "name: App\n  manufacturer", "name: '"+name+"'\n  manufacturer", 1)

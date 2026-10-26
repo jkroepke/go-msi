@@ -14,6 +14,8 @@ const (
 	removeOnUninstall = 2
 	// maxShortcutNameColumn is the width of Shortcut.Name (l128).
 	maxShortcutNameColumn = 128
+	// maxShortcutTargetColumn is the width of Shortcut.Target (s72).
+	maxShortcutTargetColumn = 72
 )
 
 // showCommands maps a shortcut's show setting to ShowCmd; normal is the
@@ -114,13 +116,18 @@ func (b *build) writeShortcut(path, carrier, fileKey string, shortcut *config.Sh
 		b.errorf(path+".name", "with its short name the shortcut name is %d characters, at most %d fit", n, maxShortcutNameColumn)
 	}
 
+	target := "[#" + fileKey + "]"
+	if len(target) > maxShortcutTargetColumn {
+		b.errorf(path, "the shortcut target %s is %d characters, at most %d fit", target, len(target), maxShortcutTargetColumn)
+	}
+
 	var icon, iconIndex any
 	if shortcut.Icon != "" {
 		icon, iconIndex = shortcut.Icon, shortcut.IconIndex
 	}
 
 	b.dirs[shortcut.WorkingDirectory].used = true
-	b.table("Shortcut").Add(key, dirID, name, carrier, "[#"+fileKey+"]", nullable(shortcut.Arguments), nullable(shortcut.Description),
+	b.table("Shortcut").Add(key, dirID, name, carrier, target, nullable(shortcut.Arguments), nullable(shortcut.Description),
 		nil, icon, iconIndex, showCommands[shortcut.Show], shortcut.WorkingDirectory, nil, nil, nil, nil)
 }
 

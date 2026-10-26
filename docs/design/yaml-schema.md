@@ -562,7 +562,9 @@ component's directory, so `ProgramMenuFolder/Example` creates the Start menu
 folder. In a per-machine package the Start menu and desktop are the common
 ones for all users, in a per-user package the user's own (RUN-28). Two
 shortcuts with one name in one folder are an error, and a name ending in
-`.lnk` gets a warning, because Windows adds the extension.
+`.lnk` gets a warning, because Windows adds the extension. The target
+`[#id]` must fit the 72 characters of `Shortcut.Target`, so a file with
+shortcuts has an id of at most 69 characters.
 
 The builder puts the shortcuts of one component's files into a generated
 component of their own: in the folder of the first shortcut, with the
