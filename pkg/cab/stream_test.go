@@ -360,7 +360,7 @@ func boundedMemory(t *testing.T, comp cab.Compression) {
 	t.Helper()
 
 	if raceEnabled {
-		t.Skip("compresses 32 MB; CI runs it without -race")
+		t.Skip("32 MB with -race and coverage takes minutes; CI runs it without -race")
 	}
 
 	const (
