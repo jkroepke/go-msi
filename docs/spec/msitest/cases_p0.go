@@ -13,14 +13,14 @@ import (
 
 func init() {
 	cases["VEC"] = caseVectors
-	cases["ENV-01"] = caseEnv01
-	cases["RUN-01"] = caseRun01
-	cases["DB-01"] = caseDB01
-	cases["SUM-01"] = caseSum01
-	cases["CAB-01"] = caseCab01
-	cases["CAB-02"] = caseCab02
-	cases["DB-03"] = caseDB03
-	cases["RUN-12"] = caseRun12
+	cases["ENV-01"] = caseENV01
+	cases["INST-01"] = caseINST01
+	cases["MSIDB-01"] = caseMSIDB01
+	cases["SUM-01"] = caseSUM01
+	cases["CAB-01"] = caseCAB01
+	cases["MSZIP-01"] = caseMSZIP01
+	cases["MSIDB-03"] = caseMSIDB03
+	cases["FILE-02"] = caseFILE02
 }
 
 func u16(s string) []uint16 { return utf16.Encode([]rune(s)) }
@@ -95,7 +95,7 @@ func caseVectors() {
 	// A.9-ish reproducible product code not needed natively.
 }
 
-func caseEnv01() {
+func caseENV01() {
 	c := newCase("ENV-01", "inventory")
 	defer c.close()
 	c.logf("OS: %s", strings.TrimSpace(cmdOut("powershell", "-NoProfile", "-Command", "$o=Get-CimInstance Win32_OperatingSystem; \"$($o.Caption) $($o.Version) build $($o.BuildNumber) $($o.OSArchitecture)\"")))
@@ -128,12 +128,12 @@ func caseEnv01() {
 	}
 }
 
-func caseRun01() {
+func caseINST01() {
 	for _, v := range []struct {
 		name string
 		is64 bool
 	}{{"x64-substitute", true}, {"intel-substitute", false}} {
-		c := newCase("RUN-01", v.name)
+		c := newCase("INST-01", v.name)
 		c.logf("Published test-vectors/minimal.msi is not in the repository; this is a labelled substitute built with the native importer.")
 		p := &pkg{Name: "run01" + v.name, Is64: v.is64}
 		out := control(c, p, "control.msi")
@@ -152,8 +152,8 @@ func caseRun01() {
 	}
 }
 
-func caseDB01() {
-	c := newCase("DB-01", "native-written-catalog")
+func caseMSIDB01() {
+	c := newCase("MSIDB-01", "native-written-catalog")
 	defer c.close()
 	p := &pkg{Name: "db01", Is64: true}
 	out := control(c, p, "control.msi")
@@ -280,7 +280,7 @@ func firstStrings(db *msiDB, n int) []string {
 	return out
 }
 
-func caseSum01() {
+func caseSUM01() {
 	c := newCase("SUM-01", "native-summary")
 	defer c.close()
 	p := &pkg{Name: "sum01", Is64: true}
@@ -335,7 +335,7 @@ func caseSum01() {
 	c.logf("PIDs in stored order: %v", pids)
 }
 
-func caseCab01() {
+func caseCAB01() {
 	data := []byte(strings.Repeat("CAB-01 payload line with some repetition 0123456789\r\n", 400))
 	for _, mode := range []string{"uncompressed", "uncompressed-resolvesource", "uncompressed-longonly-dir", "makecab-none", "makecab-mszip", "go-stored", "go-mszip"} {
 		c := newCase("CAB-01", mode)
@@ -404,10 +404,10 @@ func crossBlockData() []byte {
 	return b[:100*1024]
 }
 
-func caseCab02() {
+func caseMSZIP01() {
 	data := crossBlockData()
 	for _, mode := range []string{"makecab-mszip", "go-mszip", "go-nodict", "go-wrongdict"} {
-		c := newCase("CAB-02", mode)
+		c := newCase("MSZIP-01", mode)
 		p := &pkg{Name: "cab02" + mode, Is64: true, CabMode: mode, Files: []payload{{Key: "f_big", Name: "big.bin", Data: data}}}
 		out := control(c, p, "pkg.msi")
 		if out == "" {
@@ -462,8 +462,8 @@ func diffSummary(got, want []byte) string {
 	return fmt.Sprintf("(len %d vs %d, %d differing bytes, first at %d)", len(got), len(want), n, first)
 }
 
-func caseDB03() {
-	c := newCase("DB-03", "property-row-order")
+func caseMSIDB03() {
+	c := newCase("MSIDB-03", "property-row-order")
 	defer c.close()
 	p := &pkg{Name: "db03", Is64: true}
 	out := control(c, p, "sorted.msi")
@@ -502,8 +502,8 @@ func caseDB03() {
 	}
 }
 
-func caseRun12() {
-	c := newCase("RUN-12", "file-hash")
+func caseFILE02() {
+	c := newCase("FILE-02", "file-hash")
 	defer c.close()
 	inputs := map[string][]byte{
 		"empty.bin":  {},

@@ -56,14 +56,14 @@ schema surface; they are listed so that the writer's design starts from them.
 
 | Finding | Result on Windows | Schema rule |
 |---|---|---|
-| 1. Column limit (DB-07) | The 32nd column is rejected (2280, 2216); the limit is 31 | `tables[].columns` allows at most 31 entries. |
+| 1. Column limit (MSIDB-07) | The 32nd column is rejected (2280, 2216); the limit is 31 | `tables[].columns` allows at most 31 entries. |
 | 2. Page Count (SUM-03) | x64 installs from 150 up; above 500 fails with 1613 on every platform; 0 and 1 fail | `package.installerVersion` maps to Page Count. It accepts 2.0 to 5.0 for x64, 5.0 only for Arm64 and 1.0 to 5.0 for x86, and rejects anything above 5.0. x64 keeps 2.0 as its floor because ICE80 was not run (section 4.2). |
-| 3. String refcounts (DB-05) | `msi.dll` keeps refcounts in 15 bits and drops a string whose count is a multiple of 32768 | Writer: every refcount stays in 1 … 32767. A string referenced more often is a build error until the writer can split it; no realistic package gets there, so the schema has no knob. |
-| 4. `*` and removal (RUN-08) | `=*NAME` (machine scope, no `-`) survives uninstall | `environment[].scope` and `environment[].removeOnUninstall` are separate fields. Removal defaults to `true` and the builder always writes `-` explicitly; scope never implies it. |
-| 5. RemoveExistingProducts window (RUN-17) | 1399 (before InstallValidate) works like 1401; only 5802 gives 2613 | `upgrade.removeOld` names one of four windows. The validator checks the numbered result against the windows as the engine accepts them, not against a fixed number. |
+| 3. String refcounts (MSIDB-05) | `msi.dll` keeps refcounts in 15 bits and drops a string whose count is a multiple of 32768 | Writer: every refcount stays in 1 … 32767. A string referenced more often is a build error until the writer can split it; no realistic package gets there, so the schema has no knob. |
+| 4. `*` and removal (ENVVAR-01) | `=*NAME` (machine scope, no `-`) survives uninstall | `environment[].scope` and `environment[].removeOnUninstall` are separate fields. Removal defaults to `true` and the builder always writes `-` explicitly; scope never implies it. |
+| 5. RemoveExistingProducts window (UPG-04) | 1399 (before InstallValidate) works like 1401; only 5802 gives 2613 | `upgrade.removeOld` names one of four windows. The validator checks the numbered result against the windows as the engine accepts them, not against a fixed number. |
 | 6. Native CFB version (CFB-01) | `msi.dll` writes v4 even for small databases; v3 and v4 behave the same | Writer: emits v4 (4096-byte sectors) by default. No schema field. |
-| 7. Per-user rollback (RUN-13) | A deferred action failing after `PublishProduct` rolled back completely | The "deferred action after RegisterProduct in a per-user package" check is a warning, not an error. It stays a warning because the reported leftover may need a non-administrator user (RUN-09 was not run). |
-| 8. SystemIdentifier (DB-14) | The engine ignores it; the native writer stores `0x0002000A` | Writer: writes `0x0002000A` like the native writer. No schema field. |
+| 7. Per-user rollback (CA-01) | A deferred action failing after `PublishProduct` rolled back completely | The "deferred action after RegisterProduct in a per-user package" check is a warning, not an error. It stays a warning because the reported leftover may need a non-administrator user (PROP-01 was not run). |
+| 8. SystemIdentifier (SUM-07) | The engine ignores it; the native writer stores `0x0002000A` | Writer: writes `0x0002000A` like the native writer. No schema field. |
 
 ### 2.2 Silent failures
 
@@ -72,12 +72,12 @@ closes each one.
 
 | Case | What happens | Schema rule |
 |---|---|---|
-| Executable with an empty `File.Version` (RUN-02) | On a major upgrade with early removal the new, unversioned file is disallowed against the old versioned one, then the old product is removed: the executable is **deleted** | `files[].version` defaults to `auto` (read from the PE version resource). A PE file without a version resource is a build error. `version: none` must be written explicitly and is only allowed for non-PE files, or with `allowUnversionedExecutable: true`, which also makes the validator warn about the upgrade. An empty string is never accepted. |
-| Corrupted cabinet data (CAB-02, CAB-04) | Wrong DEFLATE history, or a bit flip without a checksum, installs a corrupted file | Writer: every cabinet data block gets a checksum, and the builder re-extracts every cabinet after writing it and compares each file's SHA-256 with the source. Neither can be turned off, so the schema has no field for them. |
-| Script custom actions (RUN-18) | Inline JScript/VBScript actions (types 37/38) report success whatever they return; a Binary script returning 5 ends the install with 0 and leaves files unregistered | There are no script custom actions. Actions run an executable (`exec`), a DLL (`dll`), set a property or directory, or fail with an error. |
-| EXE exit codes (RUN-18) | Any non-zero exit fails the install unless the action ignores it | `customActions[].return` is required for `exec` actions (`check` or `ignore`), so the author decides. |
-| Same ProductCode, new package (RUN-11) | Installing a rebuilt package over the installed one fails with 1638 | `product.productCode: auto` derives the code from the upgrade code, version, platform and a digest of every input. Changed content gives a new ProductCode (a major upgrade); unchanged content gives the same package byte for byte. A pinned ProductCode makes the validator warn. |
-| Versions that differ in the fourth field only (RUN-03) | Without an inclusive maximum both products stay installed side by side | `upgrade.allowSameVersion` defaults to `true` (maximum inclusive), so `0.32.0.5` replaces `0.32.0.4`. Four-field versions get a warning that Windows compares only three. |
+| Executable with an empty `File.Version` (FILE-01) | On a major upgrade with early removal the new, unversioned file is disallowed against the old versioned one, then the old product is removed: the executable is **deleted** | `files[].version` defaults to `auto` (read from the PE version resource). A PE file without a version resource is a build error. `version: none` must be written explicitly and is only allowed for non-PE files, or with `allowUnversionedExecutable: true`, which also makes the validator warn about the upgrade. An empty string is never accepted. |
+| Corrupted cabinet data (MSZIP-01, CAB-04) | Wrong DEFLATE history, or a bit flip without a checksum, installs a corrupted file | Writer: every cabinet data block gets a checksum, and the builder re-extracts every cabinet after writing it and compares each file's SHA-256 with the source. Neither can be turned off, so the schema has no field for them. |
+| Script custom actions (CA-02) | Inline JScript/VBScript actions (types 37/38) report success whatever they return; a Binary script returning 5 ends the install with 0 and leaves files unregistered | There are no script custom actions. Actions run an executable (`exec`), a DLL (`dll`), set a property or directory, or fail with an error. |
+| EXE exit codes (CA-02) | Any non-zero exit fails the install unless the action ignores it | `customActions[].return` is required for `exec` actions (`check` or `ignore`), so the author decides. |
+| Same ProductCode, new package (UPG-03) | Installing a rebuilt package over the installed one fails with 1638 | `product.productCode: auto` derives the code from the upgrade code, version, platform and a digest of every input. Changed content gives a new ProductCode (a major upgrade); unchanged content gives the same package byte for byte. A pinned ProductCode makes the validator warn. |
+| Versions that differ in the fourth field only (UPG-01) | Without an inclusive maximum both products stay installed side by side | `upgrade.allowSameVersion` defaults to `true` (maximum inclusive), so `0.32.0.5` replaces `0.32.0.4`. Four-field versions get a warning that Windows compares only three. |
 
 ### 2.3 Settled facts with a schema rule
 
@@ -85,13 +85,13 @@ closes each one.
 |---|---|---|
 | Template platform tokens are exact and case-sensitive; `X64` and `arm64` give 1633 | SUM-02 | `package.platform` takes `x86`, `x64` or `arm64` in any case, plus the aliases `intel`, `amd64` and `aarch64`, and the builder writes the exact token. |
 | Two languages in the Template give 1624 | SUM-02 | `product.language` is one integer LCID, not a list. |
-| Summary code page 65001 or 1200 gives 1620; a 65001 database works | SUM-04, DB-08 | `package.codepage` sets the database code page (1252 by default, 65001 allowed). The summary code page is the database code page when that is an ANSI page, else 1252. Every table string must fit the database code page, or the build fails with a `package.codepage` error. Summary text that the summary code page cannot hold is stored with `?` in place of those characters, with a warning. |
-| Stream names are limited to 62 characters | DB-11 | `icons` keys are at most 57 characters and `binaries` keys at most 55 (`Icon.` and `Binary.` count). The 62-character limit holds only for names made of `0`–`9`, `A`–`Z`, `a`–`z`, `.` and `_`: every other BMP character takes a stream-name unit of its own and a character outside the BMP two (31 in all), and `!`, `/`, `\`, `:`, NUL, U+3800–U+4840 and letters with case from U+0080 to U+D7FF are rejected. `package.cabinet` is checked with the stream-name encoder. |
-| The minimum integer of a column type is stored as NULL | DB-02 | `tables[].rows` reject −32768 in `i2` columns and −2147483648 in `i4` columns. |
-| `MsiGetFileHash` returns zeros for an empty file | RUN-12 | Writer: an empty unversioned file gets a hash row of four zeros. |
-| A service is deleted at uninstall only with `ServiceControl` event 128 | RUN-05 | `services[].control.deleteOnUninstall` defaults to `true`. |
-| `MsiServiceConfigFailureActions` with restart actions fails with 1939; `sc.exe failure` works | RUN-05 | `services[].recovery` is implemented with a deferred `sc.exe` action, never with that table. |
-| A launch-condition row and a type-19 action both block a downgrade with 1603 | RUN-04 | `upgrade.downgrade: error` uses a launch condition, which needs no custom action. |
+| Summary code page 65001 or 1200 gives 1620; a 65001 database works | SUM-04, MSIDB-08 | `package.codepage` sets the database code page (1252 by default, 65001 allowed). The summary code page is the database code page when that is an ANSI page, else 1252. Every table string must fit the database code page, or the build fails with a `package.codepage` error. Summary text that the summary code page cannot hold is stored with `?` in place of those characters, with a warning. |
+| Stream names are limited to 62 characters | MSIDB-11 | `icons` keys are at most 57 characters and `binaries` keys at most 55 (`Icon.` and `Binary.` count). The 62-character limit holds only for names made of `0`–`9`, `A`–`Z`, `a`–`z`, `.` and `_`: every other BMP character takes a stream-name unit of its own and a character outside the BMP two (31 in all), and `!`, `/`, `\`, `:`, NUL, U+3800–U+4840 and letters with case from U+0080 to U+D7FF are rejected. `package.cabinet` is checked with the stream-name encoder. |
+| The minimum integer of a column type is stored as NULL | MSIDB-02 | `tables[].rows` reject −32768 in `i2` columns and −2147483648 in `i4` columns. |
+| `MsiGetFileHash` returns zeros for an empty file | FILE-02 | Writer: an empty unversioned file gets a hash row of four zeros. |
+| A service is deleted at uninstall only with `ServiceControl` event 128 | SVC-01 | `services[].control.deleteOnUninstall` defaults to `true`. |
+| `MsiServiceConfigFailureActions` with restart actions fails with 1939; `sc.exe failure` works | SVC-01 | `services[].recovery` is implemented with a deferred `sc.exe` action, never with that table. |
+| A launch-condition row and a type-19 action both block a downgrade with 1603 | UPG-02 | `upgrade.downgrade: error` uses a launch condition, which needs no custom action. |
 | The root and directory tree of the compound file must be ordered | CFB-04, CFB-06 | Writer: a correctly ordered red-black-compatible tree; colours are free. |
 
 ## 3. File layout
@@ -225,7 +225,7 @@ them braced and upper case.
 | `codepage` | int | `1252` | Database code page, section 2.3 |
 | `compression` | enum | `lzx` | `lzx` (LZX with a 2 MB window), `lzx:15` … `lzx:21` (a window of 2^N bytes), `mszip` or `none` (stored blocks) |
 | `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters (fewer outside `0-9A-Za-z._`). ICE03 wants an identifier (letters, digits, `_` and `.`, not starting with a digit), so the default keeps only those characters of `<name>`, and an explicit name that is no identifier warns. The default is `product.cab` when that is no identifier, cannot be a stream name or `<name>` has non-ASCII characters |
-| `longFileNames` | bool | `true` | `false` sets Word Count bit 1 (short source paths). Each listed file needs a valid 8.3 name or an explicit `short\|long` name, and a harvested tree is refused; directories and shortcuts get a generated `short\|long` when their name is not a valid 8.3 name. Installed folders still get the long names unless `SHORTFILENAMES=1` is set (RUN-29) |
+| `longFileNames` | bool | `true` | `false` sets Word Count bit 1 (short source paths). Each listed file needs a valid 8.3 name or an explicit `short\|long` name, and a harvested tree is refused; directories and shortcuts get a generated `short\|long` when their name is not a valid 8.3 name. Installed folders still get the long names unless `SHORTFILENAMES=1` is set (FILE-06) |
 | `summary` | map | | `title` (`Installation Database`), `keywords` (`Installer`), `author` (manufacturer) |
 
 The x64 floor stays at 2.0 although the engine accepted 1.5 (SUM-03): ICE80
@@ -265,7 +265,7 @@ writes the two standard rows: one removes versions up to this one
 detects newer versions but installs side by side; `allow` drops the
 detection row.
 
-`removeOld` windows (section 9.2 of the specification, widened by RUN-17):
+`removeOld` windows (section 9.2 of the specification, widened by UPG-04):
 
 | Value | Placed | Behaviour |
 |---|---|---|
@@ -301,7 +301,7 @@ searches that value with `AppSearch` into `<ID>_REMEMBERED` (a raw
 `RegLocator` search, in the 64-bit view on x64 and arm64, plus the empty
 `Signature` table that `AppSearch` needs) and a type-51 action
 `RestoreInstallDir` copies it into the install dir only when
-`<ID>_REMEMBERED AND NOT <ID>`. RUN-25 tested this form on x64 per machine,
+`<ID>_REMEMBERED AND NOT <ID>`. SEARCH-03 tested this form on x64 per machine,
 in the execute sequence of a quiet install: the upgrade went back to the
 remembered folder, and `INSTALLDIR=` on the command line still won, while a
 search straight into `INSTALLDIR` overrode the command line, and a search
@@ -461,8 +461,8 @@ reports this, because it resolves the key paths; `go-msi validate` does not.
 or registry value as the user left it across major upgrades. It sets
 `neverOverwrite`, and `upgrade.removeOld` then defaults to
 `afterInstallExecute`; an explicit early `removeOld` is an error, also
-with `permanent`, and `afterInstallFinalize` gets a warning because RUN-24
-did not test it. RUN-24 showed why, with one file or one registry value
+with `permanent`, and `afterInstallFinalize` gets a warning because UPG-05
+did not test it. UPG-05 showed why, with one file or one registry value
 as the component's key path and the early removal right after
 InstallValidate (`afterInstallValidate`; `afterInstallInitialize` also
 removes the old product first and is treated the same, not tested): with
@@ -492,21 +492,21 @@ components:
 **Data removal.** `purge` deletes the component's directory with every
 file and subfolder in it when the product is uninstalled, including what the
 application created there at runtime, but not on the uninstall half of a
-major upgrade. `RemoveFile` rows cannot do this: in RUN-26 a `*` row left a subfolder
+major upgrade. `RemoveFile` rows cannot do this: in FILE-03 a `*` row left a subfolder
 behind, and the rows also deleted files during a major upgrade. The builder
 writes a deferred action (type 3170, no-impersonate, in a per-machine x64
 package) running `"[System64Folder]cmd.exe" /c rmdir /s /q "[DIR]."`
 right before InstallFinalize. An arm64 package gets the same action, a
 per-user package type 1122 and an x86 package `[SystemFolder]cmd.exe`;
 none of these was tested. The action has the
-condition `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE AND DIR`. RUN-26 tested
+condition `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE AND DIR`. FILE-03 tested
 this command at 6590 without `AND DIR`; the builder adds it so that an empty
-property never runs `rmdir` on the working folder. RUN-26 removed the old
+property never runs `rmdir` on the working folder. FILE-03 removed the old
 product at 1401 only, so "not on upgrade" is untested with a late
 `removeOld` (for example with `preserve`).
 `purge: {condition: DELETE_DATA="1"}` adds a condition, for example an
 opt-in property set on the command line or by a checkbox; the public
-properties it names are added to `SecureCustomProperties`, as in RUN-26.
+properties it names are added to `SecureCustomProperties`, as in FILE-03.
 The action ignores failures; what stays when a file is in use, and whether a
 rollback after the action restores anything, were not tested. The condition does not look at the component's state, so the
 folder is deleted even when the component was never installed.
@@ -591,7 +591,7 @@ files:
 `directory` defaults to `ProgramMenuFolder` and is resolved like a
 component's directory, so `ProgramMenuFolder/Example` creates the Start menu
 folder. In a per-machine package the Start menu and desktop are the common
-ones for all users, in a per-user package the user's own (RUN-28). Two
+ones for all users, in a per-user package the user's own (SHORTCUT-01). Two
 shortcuts with one name in one folder are an error, and a name ending in
 `.lnk` gets a warning, because Windows adds the extension. The target
 `[#id]` must fit the 72 characters of `Shortcut.Target`, so a file with
@@ -604,7 +604,7 @@ an HKCU value under `Software\[Manufacturer]\[ProductName]` as its key path
 (ICE38, ICE43), `RemoveFile` rows for the folders it creates below a
 profile folder (ICE64), and in every feature of the file's component. In a
 per-user package that folder must not be a per-machine one (ICE105).
-RUN-28 installed and removed shortcuts from an own HKCU-keyed component and
+SHORTCUT-01 installed and removed shortcuts from an own HKCU-keyed component and
 from the file's own component alike, and removed an empty Start menu folder
 without a `RemoveFile` row; the Windows tests run the ICE suite on the
 generated layout of a per-machine package (desktop, Start menu, a Start
@@ -699,10 +699,10 @@ command line has no placeholder left over. Conditions are checked like
 those of section 4.9.
 
 `recovery` becomes a deferred, no-impersonate `sc.exe failure` action after
-InstallServices, with its exit code ignored (RUN-05). Each step is `restart`,
+InstallServices, with its exit code ignored (SVC-01). Each step is `restart`,
 `none` or `{restart: <delay>}`; a plain `restart` waits `restartDelay`
 (default 60s). Delays are whole milliseconds and `resetAfter` is whole
-seconds, as `sc.exe` takes them (RUN-27); `resetAfter` and `resetAfterDays`
+seconds, as `sc.exe` takes them (SVC-03); `resetAfter` and `resetAfterDays`
 exclude each other. A `password` is added
 to `MsiHiddenProperties` when it names a property.
 
@@ -842,7 +842,7 @@ upgrade properties, and when `uninstall` or `maintenance` runs before
 InstallValidate, since REMOVE is reliable only after it (specification
 section 8.8).
 
-RUN-26 tested the `uninstall` condition on a deferred execute action near
+FILE-03 tested the `uninstall` condition on a deferred execute action near
 InstallFinalize: true on `msiexec /x`, false while a major upgrade with
 RemoveExistingProducts at 1401 removed the old product. Other `removeOld`
 windows, a removal from the maintenance dialog and the other three
@@ -1048,7 +1048,7 @@ its content rather than its filename. The builder decodes it, blends
 transparent pixels onto `paper`, and always writes an uncompressed 24-bit
 bitmap with a BITMAPINFOHEADER, the form every Windows Installer version
 shows (newer engines also read PNG, older ones only BMP and JPEG, section
-19.1 of the specification, RUN-22). The Bitmap control stretches a picture
+19.1 of the specification, UI-04). The Bitmap control stretches a picture
 to its rectangle, so other sizes work as long as the ratio is kept: a ratio
 more than 5 % away from the control's is an error, a picture smaller than
 the size above is a warning, and a side above 8192 pixels or more than
@@ -1071,13 +1071,13 @@ tables:
       - [first, 1]
 ```
 
-At most 31 columns (DB-07), a name of at most 31 characters, integers inside
-the column type's range without its minimum (DB-02). Standard tables that the
+At most 31 columns (MSIDB-07), a name of at most 31 characters, integers inside
+the column type's range without its minimum (MSIDB-02). Standard tables that the
 builder writes cannot be redefined here.
 
 A binary cell (a `v0` or `V0` column, at most one per table) names a file to embed. It
 is stored in the stream `<table>.<key1>.<key2>…`, which must be a valid stream
-name (DB-11) and must not match the name of the cabinet, an `icons` or
+name (MSIDB-11) and must not match the name of the cabinet, an `icons` or
 `binaries` entry, a wizard picture (`BannerBmp`, `DialogBmp`, `ErrorIco`), or another row. A bad name is reported at
 `tables[i].rows[j]`. A clash names both owners and is reported at the later
 one: `binaries`, `ui` and `icons` come first, then `tables` in file order,

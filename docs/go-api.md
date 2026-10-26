@@ -82,6 +82,6 @@ whole file system; an empty `root` is an error.
 `AddTree` returns the new components, for example to set `Permissions` or
 `AllowUnversionedExecutable` on some of them. The usual rules still apply to
 each file: an executable without a version resource is an error unless it
-is marked as allowed (RUN-02).
+is marked as allowed (FILE-01).
 
 YAML files cannot harvest a folder; that is not in schema v1.

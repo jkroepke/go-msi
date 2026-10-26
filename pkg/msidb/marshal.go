@@ -76,7 +76,8 @@ func (p *pool) assign() error {
 		p.ids[s] = uint32(i + 1)
 
 		if p.refs[s] > MaxRefcount {
-			return fmt.Errorf("msidb: string %.40q is referenced %d times; msi.dll keeps only 15 bits of a refcount (DB-05), the limit is %d", s, p.refs[s], MaxRefcount)
+			return fmt.Errorf("msidb: string %.40q is referenced %d times; msi.dll keeps only 15 bits of a refcount (MSIDB-05), the limit is %d",
+				s, p.refs[s], MaxRefcount)
 		}
 	}
 

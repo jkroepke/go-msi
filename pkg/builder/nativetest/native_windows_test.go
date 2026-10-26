@@ -309,7 +309,7 @@ func brandedInputs(t *testing.T) map[string][]byte {
 // testService builds docs/spec/msitest/testsvc, a minimal Windows service
 // that starts and stops on request. The source is copied into a temporary
 // module next to a resource object from testpe, so the executable carries a
-// version resource and passes the config validation (RUN-02) like a real
+// version resource and passes the config validation (FILE-01) like a real
 // service binary; the checked-in source stays unversioned for the spec
 // tests.
 func testService(t *testing.T) []byte {

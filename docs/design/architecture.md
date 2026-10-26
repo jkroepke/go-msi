@@ -140,7 +140,7 @@ func Entries(fsys fs.FS) ([]Entry, error)
   as a reader; it serves verification without materializing the cabinet.
 
 - One folder, blocks of 32768 bytes, history carried across blocks, the
-  stored fallback, "CK" prefix, checksum on every block (CAB-02, CAB-04).
+  stored fallback, "CK" prefix, checksum on every block (MSZIP-01, CAB-04).
 - Dates in UTC from the given instant, default 1980-01-01.
 - Limits: 65535 files, 0x7FFFFFFF bytes, name ≤ 255 bytes.
 - Test vectors: A.4 checksum and the 118-byte stored cabinet; a three-block
@@ -154,7 +154,7 @@ func Marshal(props []Property, codepage int) ([]byte, error)
 func Unmarshal(data []byte) ([]Property, error)
 ```
 
-Writes PIDs in ascending order, `SystemIdentifier` `0x0002000A` (DB-14), an
+Writes PIDs in ascending order, `SystemIdentifier` `0x0002000A` (SUM-07), an
 ANSI code page only, no padding after the last value. Test vector A.3.
 
 ### 1.4 `msidb`
@@ -177,8 +177,8 @@ Marshal implements the canonical writer of §3: validate the schema (at most 31
 columns, keys first, one binary column, encoded names ≤ 31 units), turn `""`
 into NULL, collect strings, assign IDs sorted by encoded bytes, count
 references including `_Tables` and `_Columns`, reject a count above 32767
-(15-bit refcounts, DB-05), pick 2- or 3-byte references when the highest ID
-reaches 65535 (DB-06), sort rows by stored keys, reject duplicate keys, then
+(15-bit refcounts, MSIDB-05), pick 2- or 3-byte references when the highest ID
+reaches 65535 (MSIDB-06), sort rows by stored keys, reject duplicate keys, then
 emit `_StringPool`, `_StringData`, `_Tables`, `_Columns`, one stream per
 non-empty table, one `Table.Key` stream per binary value, the summary stream
 and the extra streams through `cfb`. `Streams` hold small extra streams in
@@ -236,7 +236,7 @@ and a number outside 1…32767 are errors. The builder then checks ICE77
 (deferred actions inside InstallInitialize…InstallFinalize), ICE63 as the
 engine applies it (RemoveExistingProducts anywhere from after
 FindRelatedProducts up to InstallInitialize, right after InstallExecute or
-after InstallFinalize, RUN-17), and ICE27 ordering.
+after InstallFinalize, UPG-04), and ICE27 ordering.
 
 ### 1.9 `builder`
 
@@ -255,7 +255,7 @@ func Build(cfg *config.Config, o Options) (*Result, error)
 Pipeline, each step a file of its own:
 
 1. **Inputs**: read every source file, `pe.Parse` it, derive `File.Version`,
-   `Language`, `MsiFileHash` (zeros for an empty file, RUN-12), size and
+   `Language`, `MsiFileHash` (zeros for an empty file, FILE-02), size and
    attributes. Missing files and unversioned PE files are errors. A relative
    source is opened from `File.FS`, else `Config.FS`, else `Config.BaseDir`
    ([Go API](../go-api.md)); `Config.AddTree` fills in a folder tree before
@@ -275,9 +275,9 @@ Pipeline, each step a file of its own:
    (HKCU key path, `RemoveFile` rows for profile folders; `shortcuts.go`).
 5. **Registry, event log, environment, services**: value encodings
    (`#`, `#x`, `#%`, `##`, `[~]`), `=-*`-style environment names with an
-   explicit `-` (RUN-08), `ServiceInstall`, `ServiceControl`,
+   explicit `-` (ENVVAR-01), `ServiceInstall`, `ServiceControl`,
    `MsiServiceConfig` (delayed start, failure actions on non-crash), and the
-   `sc.exe failure` recovery action (RUN-05).
+   `sc.exe failure` recovery action (SVC-01).
 6. **Properties, launch conditions, upgrade**: `Property` rows, `ALLUSERS`,
    `SecureCustomProperties`, `MsiHiddenProperties`, `ARP*`, `Upgrade` rows
    from the policy, the downgrade launch condition, condition syntax checks.
@@ -416,7 +416,7 @@ bundles.
   UUIDv5. Nothing depends on map iteration order or time.
 - **The builder verifies its own output** by re-reading it with the
   independent readers in `msidb` and `cab`, cell by cell. This catches the
-  two silent failures of CAB-02 and CAB-04 and a string pool or integer
+  two silent failures of MSZIP-01 and CAB-04 and a string pool or integer
   encoding bug that keeps the row count, without any Windows machine.
 - **Windows-only code is test-only** (`//go:build windows` in
   `pkg/builder/nativetest`, `pkg/cab/native_windows_test.go` and the ICE

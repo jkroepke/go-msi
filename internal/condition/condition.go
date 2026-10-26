@@ -1,7 +1,7 @@
 // Package condition checks Windows Installer conditional statements against
 // the grammar of docs/spec/MSISPEC.md section 8.8. The engine ignores a
 // LaunchCondition or action condition that does not parse, so a builder has
-// to reject it (RUN-04, section 9.1). The package parses only; it does not
+// to reject it (UPG-02, section 9.1). The package parses only; it does not
 // evaluate.
 package condition
 

@@ -49,6 +49,9 @@ implementation details that may change without notice.
 - [`docs/spec`](docs/spec): the MSI specification go-msi implements
   (`MSISPEC.md`), the Windows test results that back it
   (`MSISPEC-RESULTS.md`) and the Windows test harness (`msitest`).
+  A test case ID is `<PREFIX>-<NN>`, the prefix naming the package or area
+  under test (Appendix C, "Case IDs"); a new case takes the next free
+  number of its prefix, and retired IDs are never reused.
   [`examples`](examples) holds complete configurations that tests build.
 
 ## Clean-room rules

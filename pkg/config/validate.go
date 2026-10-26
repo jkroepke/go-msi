@@ -22,9 +22,9 @@ const (
 	MaxFeatureIDLength   = 38
 	MaxFeatureDepth      = 16
 	MaxProductNameLength = 63
-	MaxStreamNameLength  = 62 // DB-11
+	MaxStreamNameLength  = 62 // MSIDB-11
 	MaxTableNameLength   = 31
-	MaxColumns           = 31 // DB-07: the 32nd column is rejected
+	MaxColumns           = 31 // MSIDB-07: the 32nd column is rejected
 	maxIconKeyLength     = MaxStreamNameLength - len("Icon.")
 	maxBinaryKeyLength   = MaxStreamNameLength - len("Binary.")
 	minSequenceNumber    = -4
@@ -171,7 +171,7 @@ func (v *validator) product(cfg *Config) { //nolint:cyclop // a flat list of ind
 			v.errorf("product.version", "%v", err)
 		} else if ver.Fields == 4 {
 			v.warnf("product.version", "Windows Installer compares only the first three fields; "+
-				"releases that differ in the fourth are the same version to upgrades (RUN-03)")
+				"releases that differ in the fourth are the same version to upgrades (UPG-01)")
 		}
 	}
 
@@ -184,7 +184,7 @@ func (v *validator) product(cfg *Config) { //nolint:cyclop // a flat list of ind
 	if product.ProductCode != Auto {
 		v.guid("product.productCode", product.ProductCode)
 		v.warnf("product.productCode", "a fixed ProductCode makes every rebuild of this version fail "+
-			"with 1638 over an installed copy (RUN-11); use auto unless this is a minor upgrade")
+			"with 1638 over an installed copy (UPG-03); use auto unless this is a minor upgrade")
 	}
 
 	if product.PackageCode != Auto {
@@ -255,7 +255,7 @@ func (v *validator) pkg(cfg *Config) { //nolint:cyclop // a flat list of indepen
 	if !plainFileName(pkg.Cabinet) {
 		v.errorf("package.cabinet", "%q is not a plain file name", pkg.Cabinet)
 	} else if err := msidb.CheckStreamName(pkg.Cabinet); err != nil {
-		v.errorf("package.cabinet", "not a valid stream name (DB-11): %v", err)
+		v.errorf("package.cabinet", "not a valid stream name (MSIDB-11): %v", err)
 	} else if !IsIdentifier(pkg.Cabinet) {
 		v.warnf("package.cabinet", "ICE03 reports bad cabinet syntax: an embedded cabinet name must be an identifier")
 	}
@@ -397,7 +397,7 @@ func (v *validator) rememberComponent(cfg *Config, known *refs) {
 		return
 	}
 
-	// RUN-25 only covers a public, configurable install dir: the command
+	// SEARCH-03 only covers a public, configurable install dir: the command
 	// line must be able to set it, and AppSearch and secure properties must
 	// be public (ICE52).
 	if dir := known.dirs[cfg.InstallDir.ID]; dir != nil && (!dir.Configurable || !IsPublicProperty(dir.ID)) {
@@ -530,7 +530,7 @@ func (v *validator) featureRefs(featurePath string, feature *Feature, known *ref
 	}
 }
 
-// preserve checks components that keep what the user changed. RUN-24: with
+// preserve checks components that keep what the user changed. UPG-05: with
 // the old product removed first, a NeverOverwrite component without
 // Permanent loses its key file or registry value, because the new product
 // skips it and the removal of the old one deletes it. A late removal keeps
@@ -550,20 +550,20 @@ func (v *validator) preserve(cfg *Config, field string, comp *Component) {
 
 // removeOld checks a component's NeverOverwrite against the removeOld window.
 func (v *validator) removeOld(removeOld, field string, comp *Component) {
-	// RUN-24 ran the early removal right after InstallValidate (1401).
+	// UPG-05 ran the early removal right after InstallValidate (1401).
 	// afterInstallInitialize also removes the old product before the new one
 	// installs its files, so it is treated the same (not tested).
 	early := removeOld == "afterInstallValidate" || removeOld == "afterInstallInitialize"
 
 	switch {
 	case comp.Preserve && early:
-		// Also with permanent: RUN-24 lost the edit when only the new
+		// Also with permanent: UPG-05 lost the edit when only the new
 		// version had both flags.
 		v.errorf(field+".preserve", "needs removeOld afterInstallExecute: %s removes the old product first, "+
-			"which deleted the preserved file and registry value in RUN-24 (tested right after InstallValidate)", removeOld)
+			"which deleted the preserved file and registry value in UPG-05 (tested right after InstallValidate)", removeOld)
 	case comp.Preserve && removeOld != PreserveRemoveOld:
 		v.warnf(field+".preserve", "only removeOld afterInstallExecute is tested to keep preserved files and "+
-			"registry values (RUN-24); %s is not", removeOld)
+			"registry values (UPG-05); %s is not", removeOld)
 	case comp.NeverOverwrite && !comp.Permanent && early:
 		hint := "use preserve: true"
 		if len(comp.Services) > 0 {
@@ -571,7 +571,7 @@ func (v *validator) removeOld(removeOld, field string, comp *Component) {
 		}
 
 		v.warnf(field+".neverOverwrite", "removeOld %s removes the old product first, which deleted a neverOverwrite "+
-			"component's file and registry value in RUN-24 (tested right after InstallValidate); %s", removeOld, hint)
+			"component's file and registry value in UPG-05 (tested right after InstallValidate); %s", removeOld, hint)
 	}
 }
 
@@ -996,7 +996,7 @@ func versionedFile(f *File) bool {
 	}
 }
 
-// fileVersion enforces the RUN-02 rule: a PE file is never unversioned by
+// fileVersion enforces the FILE-01 rule: a PE file is never unversioned by
 // accident, since an upgrade with early removal then deletes it.
 func (v *validator) fileVersion(filePath string, file *File, comp *Component) { //nolint:cyclop // a flat list of independent checks
 	isPE := peExtensions[strings.ToLower(path.Ext(fileName(file)))]
@@ -1006,10 +1006,10 @@ func (v *validator) fileVersion(filePath string, file *File, comp *Component) { 
 	case None:
 		if isPE && !file.AllowUnversionedExecutable {
 			v.errorf(filePath+".version", "%s is an executable; without a version an upgrade can delete it "+
-				"(RUN-02). Set allowUnversionedExecutable: true if this is intended", fileName(file))
+				"(FILE-01). Set allowUnversionedExecutable: true if this is intended", fileName(file))
 		} else if isPE {
 			v.warnf(filePath+".version", "unversioned executable: an upgrade with removeOld before "+
-				"InstallFinalize deletes it when the installed copy was versioned (RUN-02)")
+				"InstallFinalize deletes it when the installed copy was versioned (FILE-01)")
 		}
 	default:
 		if _, err := ParseVersion(file.Version); err == nil {
@@ -1141,7 +1141,7 @@ func (v *validator) service(svcPath string, svc *Service, keyFile *File, perUser
 	}
 
 	if !*svc.Control.DeleteOnUninstall {
-		v.warnf(svcPath+".control.deleteOnUninstall", "without it the service stays registered after uninstall (RUN-05)")
+		v.warnf(svcPath+".control.deleteOnUninstall", "without it the service stays registered after uninstall (SVC-01)")
 	}
 
 	if svc.Recovery != nil {
@@ -1382,7 +1382,7 @@ func (v *validator) actionRun(cfg *Config, actionPath string, action *CustomActi
 
 	if isExec && action.Return == "" {
 		v.errorf(actionPath+".return", "required for exec actions: check fails the install on a non-zero exit "+
-			"code, ignore does not (RUN-18)")
+			"code, ignore does not (CA-02)")
 	} else if action.Return != "" {
 		v.oneOf(actionPath+".return", action.Return, "check", "ignore", "asyncWait", "asyncNoWait")
 	}
@@ -1490,7 +1490,7 @@ func (v *validator) streams(cfg *Config) {
 			}
 
 			if len(key) > limit {
-				v.errorf(fieldPath, "at most %d characters, so that the stream name fits in %d (DB-11)", limit, MaxStreamNameLength)
+				v.errorf(fieldPath, "at most %d characters, so that the stream name fits in %d (MSIDB-11)", limit, MaxStreamNameLength)
 			}
 
 			v.required(fieldPath, src)
@@ -1668,7 +1668,7 @@ func (v *validator) tables(cfg *Config) { //nolint:cyclop // a flat list of inde
 		}
 
 		if len(table.Columns) == 0 || len(table.Columns) > MaxColumns {
-			v.errorf(tablePath+".columns", "one to %d columns (DB-07)", MaxColumns)
+			v.errorf(tablePath+".columns", "one to %d columns (MSIDB-07)", MaxColumns)
 		}
 
 		keys := 0
@@ -1732,7 +1732,7 @@ func (v *validator) tableRow(rowPath string, cols []Column, row []any) { //nolin
 				continue
 			}
 
-			// The type's minimum is stored as NULL (DB-02).
+			// The type's minimum is stored as NULL (MSIDB-02).
 			low, high := math.MinInt16+1, math.MaxInt16
 			if col.Type[1] == '4' {
 				low, high = math.MinInt32+1, math.MaxInt32

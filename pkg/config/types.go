@@ -132,7 +132,7 @@ type InstallDir struct {
 	Parent string `yaml:"parent"`
 	// Remember stores the chosen folder in the registry and reads it back
 	// on the next install, so that a major upgrade keeps a custom folder
-	// (RUN-25).
+	// (SEARCH-03).
 	Remember bool `yaml:"remember"`
 
 	// expanded is set by the first expandShorthands.
@@ -197,7 +197,7 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	EventLog    []*EventSource   `yaml:"eventLog"`
 	Environment []*Environment   `yaml:"environment"`
 	// Purge deletes the component's directory with everything in it when
-	// the product is uninstalled, but not on a major upgrade (RUN-26).
+	// the product is uninstalled, but not on a major upgrade (FILE-03).
 	Purge          *Purge `yaml:"purge"`
 	CreateFolder   bool   `yaml:"createFolder"`
 	Condition      string `yaml:"condition"`
@@ -205,7 +205,7 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	NeverOverwrite bool   `yaml:"neverOverwrite"`
 	// Preserve keeps the component's key file or registry value as the user
 	// left it across major upgrades: it sets NeverOverwrite, and removeOld
-	// defaults to afterInstallExecute (RUN-24).
+	// defaults to afterInstallExecute (UPG-05).
 	Preserve          bool         `yaml:"preserve"`
 	SharedDLLRefCount bool         `yaml:"sharedDllRefCount"`
 	Transitive        bool         `yaml:"transitive"`

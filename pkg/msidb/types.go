@@ -26,12 +26,12 @@ const (
 	KindBinary
 )
 
-// Limits of the engine (DB-07, DB-11, section 3).
+// Limits of the engine (MSIDB-07, MSIDB-11, section 3).
 const (
 	MaxColumns      = 31
 	MaxTableName    = 31
-	MaxRefcount     = 32767 // msi.dll keeps 15 bits (DB-05)
-	longRefThresh   = 65535 // highest ID at which references become 3 bytes (DB-06)
+	MaxRefcount     = 32767 // msi.dll keeps 15 bits (MSIDB-05)
+	longRefThresh   = 65535 // highest ID at which references become 3 bytes (MSIDB-06)
 	MinInt16        = -32767
 	MaxInt16        = 32767
 	MinInt32        = -2147483647
@@ -374,7 +374,7 @@ func (t *Table) normalized() (*Table, error) { //nolint:cyclop,gocognit // one p
 	}
 
 	if len(t.Columns) == 0 || len(t.Columns) > MaxColumns {
-		return nil, fmt.Errorf("msidb: table %s has %d columns, want 1 to %d (the engine rejects the 32nd, DB-07)", t.Name, len(t.Columns), MaxColumns)
+		return nil, fmt.Errorf("msidb: table %s has %d columns, want 1 to %d (the engine rejects the 32nd, MSIDB-07)", t.Name, len(t.Columns), MaxColumns)
 	}
 
 	keys, binaries := 0, 0

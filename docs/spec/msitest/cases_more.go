@@ -10,21 +10,21 @@ import (
 )
 
 func init() {
-	cases["DB-02"] = caseDB02
-	cases["DB-05"] = caseDB05
-	cases["DB-06"] = caseDB06
-	cases["DB-08"] = caseDB08
-	cases["DB-11"] = caseDB11
-	cases["SUM-05"] = caseSum05
-	cases["SUM-06"] = caseSum06
-	cases["CAB-04"] = caseCab04
-	cases["CAB-05"] = caseCab05
-	cases["CAB-06"] = caseCab06
-	cases["RUST-11"] = caseRust11
+	cases["MSIDB-02"] = caseMSIDB02
+	cases["MSIDB-05"] = caseMSIDB05
+	cases["MSIDB-06"] = caseMSIDB06
+	cases["MSIDB-08"] = caseMSIDB08
+	cases["MSIDB-11"] = caseMSIDB11
+	cases["SUM-05"] = caseSUM05
+	cases["SUM-06"] = caseSUM06
+	cases["CAB-04"] = caseCAB04
+	cases["CAB-05"] = caseCAB05
+	cases["CAB-06"] = caseCAB06
+	cases["FILE-04"] = caseFILE04
 }
 
-func caseDB02() {
-	c := newCase("DB-02", "nullable-integers")
+func caseMSIDB02() {
+	c := newCase("MSIDB-02", "nullable-integers")
 	defer c.close()
 	path, _ := filepath.Abs(c.path("ints.msi"))
 	os.Remove(path)
@@ -85,8 +85,8 @@ func bulkTable(c *caseLog, path string, n int, value func(i int) string) {
 	c.logf("import %d rows: %v; commit %v", n, importTable(db, dir, t), commit(db))
 }
 
-func caseDB05() {
-	c := newCase("DB-05", "refcount-overflow")
+func caseMSIDB05() {
+	c := newCase("MSIDB-05", "refcount-overflow")
 	defer c.close()
 	for _, n := range []int{32766, 32767, 32768, 65534, 65535, 65536, 70000} {
 		path, _ := filepath.Abs(c.path(fmt.Sprintf("ref%d.msi", n)))
@@ -125,8 +125,8 @@ func caseDB05() {
 	}
 }
 
-func caseDB06() {
-	c := newCase("DB-06", "string-id-width")
+func caseMSIDB06() {
+	c := newCase("MSIDB-06", "string-id-width")
 	defer c.close()
 	for _, n := range []int{65400, 65520, 65526, 65527, 65528, 65529, 65530, 70000} {
 		path, _ := filepath.Abs(c.path(fmt.Sprintf("ids%d.msi", n)))
@@ -149,7 +149,7 @@ func caseDB06() {
 	}
 }
 
-func caseDB08() {
+func caseMSIDB08() {
 	for _, v := range []struct {
 		name string
 		cp   int
@@ -160,7 +160,7 @@ func caseDB08() {
 		{"cp1251", 1251, "ÐŸÑ€Ð¸Ð²ÐµÑ‚"},
 		{"cp0-nonascii", 0, "CafÃ©"},
 	} {
-		c := newCase("DB-08", v.name)
+		c := newCase("MSIDB-08", v.name)
 		p := &pkg{Name: "db08" + v.name, Is64: true, InstallDirName: "MsiSpec" + v.name,
 			Files: []payload{{Key: "f_readme", Name: "msispec|" + "RÃ©sumÃ© " + v.name + ".txt", Data: []byte("x")}}}
 		p.ExtraProps = [][]string{{"TESTTEXT", v.text}}
@@ -229,8 +229,8 @@ func buildWithCodepage(p *pkg, out string, cp int) error {
 	return p.build(out)
 }
 
-func caseDB11() {
-	c := newCase("DB-11", "binary-stream-names")
+func caseMSIDB11() {
+	c := newCase("MSIDB-11", "binary-stream-names")
 	defer c.close()
 	path, _ := filepath.Abs(c.path("bin.msi"))
 	os.Remove(path)
@@ -271,7 +271,7 @@ func caseDB11() {
 	closeHandle(db)
 }
 
-func caseSum05() {
+func caseSUM05() {
 	c := newCase("SUM-05", "word-count")
 	defer c.close()
 	for _, wc := range []int32{0, 1, 2, 3, 4, 8, 10} {
@@ -295,7 +295,7 @@ func caseSum05() {
 	}
 }
 
-func caseSum06() {
+func caseSUM06() {
 	c := newCase("SUM-06", "revision-and-times")
 	defer c.close()
 	for _, pc := range []string{"{12345678-1234-1234-1234-1234567890AB}", "{12345678-1234-1234-1234-1234567890ab}", "12345678-1234-1234-1234-1234567890AB", "not-a-guid"} {
@@ -325,7 +325,7 @@ func cabWithMutation(files []payload, mut func(b []byte)) []byte {
 	return b
 }
 
-func caseCab04() {
+func caseCAB04() {
 	c := newCase("CAB-04", "header-mutations")
 	defer c.close()
 	data := crossBlockData()[:50000]
@@ -364,7 +364,7 @@ func caseCab04() {
 	}
 }
 
-func caseCab05() {
+func caseCAB05() {
 	c := newCase("CAB-05", "zero-byte-file")
 	defer c.close()
 	files := []payload{{Key: "f_empty", Name: "empty.txt", Data: []byte{}}, {Key: "f_readme", Name: "readme.txt", Data: []byte("x\r\n")}}
@@ -405,7 +405,7 @@ func caseCab05() {
 	c.logf("RESULT external cab missing: install %d", r.Exit)
 }
 
-func caseCab06() {
+func caseCAB06() {
 	c := newCase("CAB-06", "two-cabinets")
 	defer c.close()
 	a := []byte(strings.Repeat("A", 1000))
@@ -445,8 +445,8 @@ func caseCab06() {
 	}
 }
 
-func caseRust11() {
-	c := newCase("RUST-11", "msifilehash")
+func caseFILE04() {
+	c := newCase("FILE-04", "msifilehash")
 	defer c.close()
 	data := []byte("Hello from a clean-room MSI.\r\n")
 	for _, v := range []struct {

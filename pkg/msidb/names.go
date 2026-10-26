@@ -42,7 +42,7 @@ func alphaIndex(char rune) int {
 }
 
 // EncodeStreamName encodes a decoded stream or table name. It fails when the
-// result exceeds 31 UTF-16 units, which is the engine's limit (DB-11).
+// result exceeds 31 UTF-16 units, which is the engine's limit (MSIDB-11).
 func EncodeStreamName(name string, table bool) (string, error) {
 	if err := checkDecodedName(name); err != nil {
 		return "", err
@@ -132,7 +132,7 @@ func DecodeStreamName(encoded string) (string, bool) {
 
 // CheckStreamName reports whether name can be stored as a root stream that
 // is not a table: it must encode (section 3) to at most 31 UTF-16 units that
-// the compound file accepts. The 62-character limit of DB-11 holds only for
+// the compound file accepts. The 62-character limit of MSIDB-11 holds only for
 // names made of the 64 alphabet characters; every other character takes a
 // unit of its own.
 func CheckStreamName(name string) error {

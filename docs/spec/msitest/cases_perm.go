@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	cases["SEC-01"] = caseSec01
+	cases["SEC-01"] = caseSEC01
 }
 
 const permRegKey = `SOFTWARE\MsiSpecPerm`
@@ -28,7 +28,7 @@ func regSDDL(key string) string {
 	return psOut("(Get-Acl -Path 'HKLM:\\" + key + "').Sddl")
 }
 
-func caseSec01() {
+func caseSEC01() {
 	schema["MsiLockPermissionsEx"] = tbl{Cols: []string{"MsiLockPermissionsEx s72", "LockObject s72", "Table s32", "SDDLText s0", "Condition S255"}, Keys: []string{"MsiLockPermissionsEx"}}
 	schema["LockPermissions"] = tbl{Cols: []string{"LockObject s72", "Table s32", "Domain S255", "User s255", "Permission I4"}, Keys: []string{"LockObject", "Table", "Domain", "User"}}
 

@@ -35,7 +35,7 @@ func lnkTarget(t *testing.T, path string) string {
 
 // TestMsiexecInstallsShortcuts installs the desktop example, checks its
 // Start menu and desktop shortcuts and that the uninstall removes them
-// (RUN-28).
+// (SHORTCUT-01).
 func TestMsiexecInstallsShortcuts(t *testing.T) {
 	if testing.Short() {
 		t.Skip("installing needs msiexec time and elevation")

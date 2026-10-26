@@ -19,7 +19,7 @@ const (
 )
 
 // showCommands maps a shortcut's show setting to ShowCmd; normal is the
-// null default (RUN-28).
+// null default (SHORTCUT-01).
 var showCommands = map[string]any{config.ShowNormal: nil, config.ShowMaximized: 3, config.ShowMinimized: 7} //nolint:gochecknoglobals // lookup table
 
 // shortcuts writes the Shortcut rows. The shortcuts to the files of one
@@ -27,7 +27,7 @@ var showCommands = map[string]any{config.ShowNormal: nil, config.ShowMaximized: 
 // the first shortcut, with an HKCU registry value as key path (ICE38, ICE43)
 // and RemoveFile rows for the folders it creates in the user profile
 // (ICE64). The component joins every feature of the file's component.
-// RUN-28 installed and removed shortcuts from such a component and from the
+// SHORTCUT-01 installed and removed shortcuts from such a component and from the
 // file's own one alike; the ICE suite asks for this layout.
 func (b *build) shortcuts() error {
 	for _, comp := range b.cfg.Components {

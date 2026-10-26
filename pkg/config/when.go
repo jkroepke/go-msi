@@ -14,7 +14,7 @@ const (
 	WhenMaintenance = "maintenance"
 )
 
-// whenUninstall is the condition of a real uninstall that RUN-26 tested:
+// whenUninstall is the condition of a real uninstall that FILE-03 tested:
 // true when the product is removed, false on the removal of the old
 // product during a major upgrade.
 const whenUninstall = `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE`

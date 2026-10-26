@@ -10,8 +10,8 @@ import (
 )
 
 func init() {
-	cases["RUN-05"] = caseRun05
-	cases["RUN-18"] = caseRun18
+	cases["SVC-01"] = caseSVC01
+	cases["CA-02"] = caseCA02
 }
 
 const svcName = "MsiSpecTestSvc"
@@ -38,7 +38,7 @@ func svcState() string {
 	return out
 }
 
-func caseRun05() {
+func caseSVC01() {
 	type variant struct {
 		name  string
 		event string
@@ -58,7 +58,7 @@ func caseRun05() {
 	}
 	schema["MsiServiceConfigFailureActions"] = tbl{Cols: []string{"MsiServiceConfigFailureActions s72", "Name s255", "Event i2", "ResetPeriod I4", "RebootMessage L255", "Command L255", "Actions S255", "DelayActions S255", "Component_ s72"}, Keys: []string{"MsiServiceConfigFailureActions"}}
 	for _, v := range vs {
-		c := newCase("RUN-05", v.name)
+		c := newCase("SVC-01", v.name)
 		p := &pkg{Name: "run05", Is64: true, Files: svcPayload()}
 		p.Extra = map[string][][]string{
 			"ServiceInstall": {{"SI", svcName, "MsiSpec Test Service", "16", "3", "32769", "", "", "LocalSystem", "", "", "C_f_svc", "Disposable MSI spec test service"}},
@@ -91,7 +91,7 @@ func oneLine(s string) string {
 	return strings.Join(strings.Fields(strings.ReplaceAll(s, "\r", "")), " ")
 }
 
-func caseRun18() {
+func caseCA02() {
 	type variant struct {
 		name, typ, source, target string
 		seq                       string
@@ -121,7 +121,7 @@ func caseRun18() {
 		if only != "" && !strings.Contains(v.name, only) {
 			continue
 		}
-		c := newCase("RUN-18", v.name)
+		c := newCase("CA-02", v.name)
 		p := &pkg{Name: "run18", Is64: true}
 		p.Extra = map[string][][]string{"CustomAction": {{"TestCA", v.typ, v.source, v.target, ""}}}
 		p.ExtraSequence = [][]string{{"TestCA", "NOT REMOVE", v.seq}}
