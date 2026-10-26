@@ -784,6 +784,50 @@ character becomes a `\u` escape. Change in the maintenance menu skips the
 license page. `ui.dialogs` can follow it with `after: LicenseAgreementDlg`;
 `after: WelcomeDlg` puts a dialog before it.
 
+#### Install folder page
+
+```yaml
+ui:
+  wizard: minimal
+  installDirPage: true     # needs installDir
+```
+
+`installDirPage` adds `InstallDirDlg` after the welcome and license pages:
+the install folder (`installDir.id`) in a PathEdit control and Change,
+which opens the folder browser (`BrowseDlg`) on the same folder. Next sets
+the typed path as the folder's target, so the engine checks it before the
+next page. Like the license page, an installed product's Change and Back
+step over it, since an installed product keeps its folder. `ui.dialogs`
+can follow it with `after: InstallDirDlg`.
+
+#### Launch checkbox
+
+```yaml
+ui:
+  wizard: minimal
+  launch:
+    file: viewer.exe       # files[].id, or the file name when it has no id
+    arguments: --welcome   # formatted, optional
+    text: "Start Example Viewer now"   # default "&Launch [ProductName]"
+    checked: false         # default true
+```
+
+`launch` adds a checkbox (`LaunchOnFinish`) to the finish page, on the
+bottom strip left of the buttons: Windows paints the page's background
+picture over an opaque control placed on it (verified on Windows Server
+2025). In `text`, `&` marks the access key. When it is
+checked, Finish runs the custom action `LaunchOnFinish`, a type 34 action
+that starts `"[#file]" arguments` in the file's folder and does not wait
+for it (226). It runs in the setup's own process, so the program runs as
+the user who started the setup. The box is shown, and the action runs, only
+after a new installation that installed the file's component
+(`NOT Installed AND NOT ACTION = "ADMIN" AND $component = 3`); silent
+installs never show the finish page, so they never start the program. `file`
+must be a program, a PE file named `.exe` or `.com`: process creation
+cannot start a document or a library.
+When `launch` is set, the custom action name and the property
+`LaunchOnFinish` are reserved.
+
 #### Theme
 
 ```yaml
@@ -816,7 +860,8 @@ more than 5 % away from the control's is an error, a picture smaller than
 the size above is a warning, and a side above 8192 pixels or more than
 4096×4096 pixels in all is an error.
 `colors` recolours the built-in pictures; a colour that is not given keeps
-its default. A license or theme without a wizard is an error.
+its default. A license, theme, install folder page or launch checkbox without a wizard
+is an error.
 
 ### 4.13 `tables`
 

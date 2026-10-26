@@ -123,6 +123,8 @@ type actionInfo struct {
 	target any
 	name   string
 	typ    int
+	// fromUI marks an action that a control runs with DoAction.
+	fromUI bool
 }
 
 // Build builds the package described by cfg. Validation diagnostics of the

@@ -197,6 +197,7 @@ Silent-failure cases a producer has to guard against itself:
 | RUN-25 | Confirmed | [direct-cmdline](msitest/results/RUN-25/direct-cmdline/log.md), [guarded-cmdline](msitest/results/RUN-25/guarded-cmdline/log.md), [direct-nosignature](msitest/results/RUN-25/direct-nosignature/log.md); `AppSearch` into `INSTALLDIR` overrides the command line; the guarded type-51 form does not; no `Signature` table gives 2228/1603; [details](#use-case-gap-cases-run-24-to-run-27) |
 | RUN-26 | Confirmed | [removefile-upgrade](msitest/results/RUN-26/removefile-upgrade/log.md), [purge-upgrade](msitest/results/RUN-26/purge-upgrade/log.md); `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-run-24-to-run-27) |
 | RUN-27 | Confirmed | [per-step](msitest/results/RUN-27/per-step/log.md); per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-run-24-to-run-27) |
+| UI-01 | Confirmed | Wizard rendering on Windows Server 2025, go-msi packages driven by hand and by window messages, with PrintWindow and screen captures (2026-10-26); [details](#wizard-rendering-ui-01) |
 | SEC-01 | Confirmed | File, [CreateFolder](msitest/results/SEC-01/createfolder/log.md), [Registry](msitest/results/SEC-01/registry/log.md) and [ServiceInstall](msitest/results/SEC-01/service/log.md) rows get the authored DACL; [`/fa` and `/fvomus` restore it](msitest/results/SEC-01/file/log.md); [owner and group](msitest/results/SEC-01/file-owner-group/log.md) are set; `[Property]` stays literal (1943) but [`<[%USERDOMAIN]\[%USERNAME]>`](msitest/results/SEC-01/account-angle-env/log.md) and [`<BUILTIN\Users>`](msitest/results/SEC-01/account-angle-builtin/log.md) resolve; invalid SDDL 1943, two true rows 1942, both tables 1941; [deny ACE for `BU`](msitest/results/SEC-01/file-deny-ace/log.md) leaves the file on uninstall |
 | VAL-01 | Confirmed | [log](msitest/results/VAL-01/msival2-compare/log.md); the Go runner and `msival2.exe` agree on all three packages (1, 25 and 26 warning and error findings; Info lines left out); ICE08 reports the duplicate GUID |
 | SIG-01 | Confirmed | Windows Server 2025 CI runner, `pkg/builder/nativetest/sign_windows_test.go`: go-msi recomputes the digest of a `signtool sign /fd SHA256` package; a go-msi signature passes WinVerifyTrust and `Get-AuthenticodeSignature` |
@@ -215,6 +216,33 @@ Silent-failure cases a producer has to guard against itself:
 | RUST-12 | Confirmed | Same as RUN-12 |
 | RUST-17 | Confirmed | Same as RUN-11 |
 | Other RUST-* | Not run | Test a candidate writer; go-msi has none yet |
+
+## Wizard rendering (UI-01)
+
+Run on 2026-10-26 on Windows Server 2025 (10.0.26100) with full-UI installs
+of go-msi test packages; screenshots were taken with PrintWindow and a
+screen capture, with the mouse parked away from the dialog.
+
+- A CheckBox placed over a full-page Bitmap control (the welcome and finish
+  page background) is not drawn until the mouse hovers over it. This holds
+  both for a control that is hidden at creation and shown by a
+  `ControlCondition` `Show` row, and for one that is visible from the start
+  and only hidden by condition. After the hover it is drawn, and its whole
+  rectangle, caption included, is filled with the button face colour
+  (`#F0F0F0`), not the picture.
+- A transparent Text control (attribute 0x10000) over the same Bitmap is
+  drawn at once, on the picture.
+- The same CheckBox on the bottom strip (below the Bitmap, next to the
+  buttons) is drawn at once on the dialog colour.
+- Text with NoPrefix (0x20000) shows `&` as itself; without it the next
+  letter is underlined and works as the access key (BrowseDlg labels).
+- A PathEdit bound directly (without Indirect) to a directory property shows
+  the new path as soon as `BrowseDlg` returns from `SetTargetPath`; an invalid
+  path typed into it gives an engine message box on the page's
+  `SetTargetPath` and the page stays.
+- A type 226 action (34 + async, no wait) published by `DoAction` from the
+  finish page runs in the client process ("MSI (c)") as the interactive
+  user, and `[#file]` resolves to the installed file.
 
 ## Use-case gap cases (RUN-24 to RUN-27)
 

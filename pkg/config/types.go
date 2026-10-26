@@ -448,9 +448,28 @@ type UI struct {
 	Wizard string `yaml:"wizard"`
 	// License is a license file shown on a page with an accept check box
 	// after the welcome page: RTF, or plain text that is converted to RTF.
-	License string    `yaml:"license"`
+	License string `yaml:"license"`
+	// Launch adds a check box to the finish page that starts an installed
+	// program when the user clicks Finish.
+	Launch  *Launch   `yaml:"launch"`
 	Theme   Theme     `yaml:"theme"`
 	Dialogs []*Dialog `yaml:"dialogs"`
+	// InstallDirPage adds a page after the welcome and license pages that
+	// shows the install folder and lets the user change it.
+	InstallDirPage bool `yaml:"installDirPage"`
+}
+
+// Launch is the finish page's check box that starts an installed program.
+type Launch struct {
+	// Checked sets the box's initial state; the default is checked.
+	Checked *bool `yaml:"checked"`
+	// File is the id of an installed file: files[].id, or its name when
+	// it has no id.
+	File      string `yaml:"file"`
+	Arguments string `yaml:"arguments"`
+	// Text is the check box label, "&" marks the access key; the default is
+	// "&Launch [ProductName]".
+	Text string `yaml:"text"`
 }
 
 // Theme replaces the wizard's pictures or the colours they are drawn in.
