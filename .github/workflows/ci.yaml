@@ -12,9 +12,10 @@ on:
 permissions: {}
 
 jobs:
-  # Pull requests that only touch Markdown or docs/ skip the Go jobs below.
-  # docs/cli is generated and checked by a test, and docs/spec/msitest is Go
-  # code, so changes there still count. Other events always run every job.
+  # Pull requests and pushes to main that only touch Markdown or docs/ skip
+  # the Go jobs below. docs/cli is generated and checked by a test, and
+  # docs/spec/msitest is Go code, so changes there still count. Tags and
+  # workflow_dispatch always run every job.
   detect-changes:
     name: Detect changes
     runs-on: ubuntu-26.04
@@ -24,17 +25,32 @@ jobs:
       changed: ${{ steps.set-output.outputs.changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: github.event_name == 'pull_request'
         with:
-          # The merge commit and its first parent, the base it was built on.
-          fetch-depth: 2
+          fetch-depth: 0
           persist-credentials: 'false'
 
       - id: set-output
         name: Detect changes
-        if: github.event_name == 'pull_request'
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          BEFORE: ${{ github.event.before }}
         run: |
-          git diff --name-only HEAD^1 HEAD > "${RUNNER_TEMP}/files"
+          # A pull request runs on its merge commit, so its first parent is
+          # the base it was built on. A push to main compares with the
+          # commit main pointed to before the push.
+          case "${EVENT}:${REF}" in
+            pull_request:*) base=HEAD^1 ;;
+            push:refs/heads/main) base="${BEFORE}" ;;
+            *) base= ;;
+          esac
+
+          if [ -z "${base}" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            echo "changed=all" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git diff --name-only --no-renames "${base}" HEAD > "${RUNNER_TEMP}/files"
           code=$(grep -cEv '^docs/|\.md$' "${RUNNER_TEMP}/files" || true)
           generated=$(grep -cE '^docs/(cli|spec/msitest)/' "${RUNNER_TEMP}/files" || true)
           echo "changed=$((code + generated))" >> "$GITHUB_OUTPUT"
@@ -42,7 +58,7 @@ jobs:
   build:
     name: Build & Test (${{ matrix.os }})
     needs: detect-changes
-    if: github.event_name != 'pull_request' || needs.detect-changes.outputs.changed != '0'
+    if: needs.detect-changes.outputs.changed != '0'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -159,7 +175,7 @@ jobs:
 
   goreleaser:
     needs: detect-changes
-    if: github.event_name != 'pull_request' || needs.detect-changes.outputs.changed != '0'
+    if: needs.detect-changes.outputs.changed != '0'
     runs-on: ubuntu-26.04
     name: Test goreleaser
     permissions:
@@ -210,7 +226,7 @@ jobs:
 
   lint:
     needs: detect-changes
-    if: github.event_name != 'pull_request' || needs.detect-changes.outputs.changed != '0'
+    if: needs.detect-changes.outputs.changed != '0'
     name: lint
     runs-on: ubuntu-26.04
     permissions:
