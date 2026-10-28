@@ -214,6 +214,7 @@ Silent-failure cases a producer has to guard against itself:
 | SVC-03 | Confirmed | [per-step](msitest/results/SVC-03/per-step/log.md); per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
 | CA-01 | Contradicted | Per-user (`Assignment=0`), elevated administrator: a deferred EXE action failing [after PublishProduct](msitest/results/CA-01/fail-after-publishproduct/log.md) or [after InstallFiles](msitest/results/CA-01/fail-after-installfiles/log.md) rolls back completely (1603, no `Products` or `UserData` key left, state unknown); finding 7 |
 | CA-02 | Confirmed | EXE exit 1 fails unless Continue; [type-6 return 5](msitest/results/CA-02/vbs-binary-return-5-immediate/log.md) ends with 0 and skips the rest; [deferred](msitest/results/CA-02/vbs-binary-return-5-deferred/log.md) leaves files unregistered |
+| CA-03 | Confirmed | GitHub `windows-latest` (x64) and `windows-11-arm` runners, 2026-10-28, `TestMsiexecRunActions`: every stdout and stderr line of the seven run actions is in the verbose log as `GoMsiRun:`, `whoami` shows LocalSystem versus the user, brackets stay literal, OEM and UTF-8 output decode, exit 3 with `Continue` returns 1, exit 7 fails with 1603 and runs the rollback action with the hidden command absent; Arm64 package native and x64 package under emulation on Arm; [details](#embedded-custom-action-dll-ca-03). Not run on SERVER2025 |
 | SHORTCUT-01 | Confirmed | [hkcu-folder](msitest/results/SHORTCUT-01/hkcu-folder/log.md), [file-component](msitest/results/SHORTCUT-01/file-component/log.md), [file-component-folder](msitest/results/SHORTCUT-01/file-component-folder/log.md), [advertised](msitest/results/SHORTCUT-01/advertised/log.md), [per-user](msitest/results/SHORTCUT-01/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-shortcut-01) |
 | UI-01 | Confirmed | Wizard rendering on Windows Server 2025, go-msi packages driven by hand and by window messages, with PrintWindow and screen captures (2026-10-26); [details](#wizard-rendering-ui-01) |
 | UI-02 | Not run | Interactive full UI |
@@ -390,3 +391,53 @@ cabinet and `INSTALLDIR` as `owyyokav|Short Name Probe` under
 - Not covered: a file whose `FileName` is `short|long` (`HELLO.EXE` is a
   valid short name), and a package with uncompressed files read from a
   source tree, where 0x1 decides which source folder must exist (section 8.3).
+
+## Embedded custom action DLL (CA-03)
+
+Run on 2026-10-28 by `pkg/builder/nativetest/run_windows_test.go`
+(`TestMsiexecRunActions`) in CI run 40732521424 of PR #73: the
+`Build & Test (windows-latest)` job (Windows Server 2025 x64, `msi.dll`
+5.0.26100) installs the x64 probe, the `Run actions on Windows Arm64` job
+(`windows-11-arm`, Windows 11 24H2 Arm64) installs the Arm64 probe natively
+and the x64 probe under emulation. Each subtest installs with `/qn` and a
+verbose log, uninstalls, and installs again with `FAILPROBE=1`. The probe is
+[`internal/cadll/testdata/probe`](../../internal/cadll/testdata/probe/msi.yaml);
+the assertions below are the test's. The first runs (40334761225 and
+earlier) failed on two probe lines, both recorded here; the DLL itself was
+unchanged between those runs and the green one.
+
+| Action | Kind | Logged |
+| --- | --- | --- |
+| ProbeDeferredSystem | deferred, no impersonation, in `INSTALLDIR` | `token: the process`, `deferred-system GoMsiRunProbe`, `nt authority\system`, `brackets [ProductName] stay literal`, `oem-umlaut-äöü`, `readme.txt` (`dir /b`), `stderr-line`, `exit code 0` |
+| ProbeDeferredUser | deferred, impersonated | `token: the process`, `deferred-user`, `<machine>\runneradmin`, `C:\Windows\System32` (`cd`), `exit code 0` |
+| ProbePowerShell | deferred, `Write-Error` | `powershell says 5.1.26100.…`, the `Write-Error oops` block from stderr, `exit code 0` |
+| ProbeUtf8 | deferred, `[Console]::OutputEncoding` UTF-8 | `utf8-umlaut-äöü-euro-€`, `exit code 0` |
+| ProbeIgnored | deferred, `Continue`, exit 3 | `ignored-exit-3`, `exit code 3`, action "Return value 1" |
+| ProbeImmediate | immediate after `InstallFinalize` | `immediate-after-finalize`, `<machine>\runneradmin`, `exit code 0` |
+| ProbeFails (`FAILPROBE=1`) | deferred, `HideTarget`, exit 7 | `about-to-fail`, `exit code 7`, action "Return value 3", install 1603; ProbeRollback then logs `rollback-ran` and `nt authority\system`; the `.Data` row shows `**********` and `echo about-to-fail` is nowhere in the log |
+
+- A 7 KB freestanding DLL in the `Binary` table loads in the custom action
+  server of all three runs: x64 natively, Arm64 natively, and x64 under
+  emulation on Arm (the x64 package carries the x64 DLL and installs on the
+  Arm machine without a change). `MsiGetPropertyW`, `MsiProcessMessage`
+  with the fixed template `GoMsiRun: [1]` and the return codes behave as
+  section 17.6 describes.
+- The impersonation token (17.6) is not what the DLL sees. An impersonated
+  deferred action and an immediate action both log `token: the process`,
+  and `whoami` still prints the user: the engine runs them in a custom
+  action server whose process token is the user's, so `OpenThreadToken`
+  finds nothing and `CreateProcessW` is enough. The non-impersonated action
+  runs in the LocalSystem server. The `CreateProcessAsUserW` path was not
+  exercised in these runs and stays Documented (unverified).
+- `chcp 65001` inside a `cmd /c` line does not switch `echo` to UTF-8 on
+  the pipe: the line stayed in the OEM code page and `€` was written as `?`
+  by cmd.exe on both runners (run 40334761225). The umlauts of the same line
+  decoded correctly from the OEM code page. PowerShell writes UTF-8 once
+  `[Console]::OutputEncoding` is set, and the DLL's UTF-8 path decodes it.
+- A deferred action whose working directory is `INSTALLDIR` fails on
+  uninstall with `CreateProcess failed (error 267)` once `RemoveFiles` has
+  deleted the folder (run 40334482129); the probe conditions it with
+  `NOT REMOVE~="ALL"`.
+- Not run: SERVER2025 (offline during the run), a 32-bit (`Intel`) package,
+  a cancel from a UI handler, and Windows Server 2016.
+

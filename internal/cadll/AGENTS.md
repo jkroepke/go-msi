@@ -23,8 +23,12 @@ The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
   first one ends the directory.
 - The DLL starts the child with `CreateProcessAsUserW` and the thread's
   impersonation token when there is one, else `CreateProcessW`:
-  `CreateProcessW` ignores an impersonation token. The child inherits the
-  custom action server's environment block.
+  `CreateProcessW` ignores an impersonation token. CA-03 showed no thread
+  token in practice: impersonated deferred and immediate actions run in a
+  custom action server whose process token is the user's (the log says
+  `token: the process`, `whoami` prints the user), so the
+  `CreateProcessAsUserW` path is unexercised. The child inherits the custom
+  action server's environment block.
 - Output is read from one pipe for stdout and stderr, split at `\n`, logged
   per line through `MsiProcessMessage(INSTALLMESSAGE_INFO)` with the fixed
   template `GoMsiRun: [1]`, so brackets in the output are not formatted. A
