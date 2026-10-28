@@ -71,6 +71,29 @@ func TestBaseIsValid(t *testing.T) {
 	}
 }
 
+// TestValidateAccepted checks values that must not produce a diagnostic.
+func TestValidateAccepted(t *testing.T) {
+	t.Parallel()
+
+	for name, extra := range map[string]string{
+		"remote any":             "firewall: [{name: a, component: App, program: x, remoteAddresses: ANY}]\n",
+		"remote star":            "firewall: [{name: a, component: App, program: x, remoteAddresses: '*'}]\n",
+		"remote keyword list":    "firewall: [{name: a, component: App, program: x, remoteAddresses: 'localsubnet,10.0.0.1'}]\n",
+		"remote property":        "firewall: [{name: a, component: App, program: x, remoteAddresses: '[REMOTE_ADDR]'}]\n",
+		"environment two scopes": "",
+	} {
+		doc := base + appComponent + extra
+		if extra == "" {
+			doc = base + strings.Replace(appComponent, "    files:",
+				"    environment: [{name: FOO, value: a}, {name: FOO, value: b, scope: user}]\n    files:", 1)
+		}
+
+		if ds := validate(t, doc); len(ds) != 0 {
+			t.Errorf("%s: unexpected diagnostics: %v", name, ds)
+		}
+	}
+}
+
 func TestValidate(t *testing.T) {
 	t.Parallel()
 
@@ -262,12 +285,24 @@ func TestValidate(t *testing.T) {
 			sevError, "firewall[0].description", "double quote",
 		},
 		"firewall any with addresses": {
-			base + appComponent + "firewall: [{name: a, component: App, program: x, remoteAddresses: 'ANY, 10.0.0.1'}]\n",
+			base + appComponent + "firewall: [{name: a, component: App, program: x, remoteAddresses: 'ANY,10.0.0.1'}]\n",
 			sevError, "firewall[0].remoteAddresses", "ANY cannot be combined",
+		},
+		"firewall spaced addresses": {
+			base + appComponent + "firewall: [{name: a, component: App, program: x, remoteAddresses: '10.0.0.1, 10.0.0.2'}]\n",
+			sevError, "firewall[0].remoteAddresses", "must not contain spaces",
+		},
+		"firewall empty address": {
+			base + appComponent + "firewall: [{name: a, component: App, program: x, remoteAddresses: 'any,'}]\n",
+			sevError, "firewall[0].remoteAddresses", "empty entry",
 		},
 		"firewall star with addresses": {
 			base + appComponent + "firewall: [{name: a, component: App, program: x, remoteAddresses: '10.0.0.1,*'}]\n",
 			sevError, "firewall[0].remoteAddresses", "* cannot be combined",
+		},
+		"environment twice in another case": {
+			base + strings.Replace(appComponent, "    files:", "    environment: [{name: FOO, value: a}, {name: foo, value: b}]\n    files:", 1),
+			sevError, "components[0].environment[1]", "foo with action set and scope machine is set twice",
 		},
 		"PATH set": {
 			base + strings.Replace(appComponent, "    files:", "    environment: [{name: PATH, value: x}]\n    files:", 1),

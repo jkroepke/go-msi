@@ -5,6 +5,7 @@ import (
 	"math"
 	"path"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -772,14 +773,15 @@ func (v *validator) componentEvents(compPath string, comp *Component, perUser bo
 	}
 
 	// The builder keys an Environment row by name, action and scope, so a
-	// second entry with all three equal would be a duplicate key.
+	// second entry with all three equal would be a duplicate key. Windows
+	// variable names ignore case, so FOO and foo are the same variable.
 	seen := make(map[[3]string]bool)
 
 	for j, env := range comp.Environment {
 		envPath := fmt.Sprintf("%s.environment[%d]", compPath, j)
 		v.environment(envPath, env, perUser)
 
-		key := [3]string{env.Name, env.Action, env.Scope}
+		key := [3]string{strings.ToUpper(env.Name), env.Action, env.Scope}
 		if env.Name != "" && seen[key] {
 			v.errorf(envPath, "%s with action %s and scope %s is set twice in this component", env.Name, env.Action, env.Scope)
 		}
@@ -1599,18 +1601,31 @@ func (v *validator) firewall(cfg *Config, known *refs) { //nolint:cyclop // a fl
 	}
 }
 
-// remoteAddresses checks a firewall rule's remote address list. netsh
-// rejects a list that combines any or * with other entries, and the add
-// action then fails the install (MSISPEC CA-04). Other keywords such as
-// localsubnet combine with addresses.
+// remoteAddresses checks a firewall rule's remote address list, which the
+// builder passes to netsh's remoteip= unquoted. netsh rejects a list that
+// combines any or * with other entries, and the add action then fails the
+// install (MSISPEC CA-04). Other keywords such as localsubnet combine with
+// addresses.
 func (v *validator) remoteAddresses(field, list string) {
+	if strings.ContainsFunc(list, unicode.IsSpace) {
+		v.errorf(field, "must not contain spaces; separate entries with commas only")
+
+		return
+	}
+
 	entries := strings.Split(list, ",")
 	if len(entries) < 2 {
 		return
 	}
 
+	if slices.Contains(entries, "") {
+		v.errorf(field, "%q has an empty entry", list)
+
+		return
+	}
+
 	for _, entry := range entries {
-		if entry = strings.TrimSpace(entry); strings.EqualFold(entry, "any") || entry == "*" {
+		if strings.EqualFold(entry, "any") || entry == "*" {
 			v.errorf(field, "%s cannot be combined with other addresses; leave remoteAddresses empty for any", entry)
 
 			return

@@ -907,12 +907,14 @@ rollback that deletes; on removal it deletes, with a rollback that adds. The
 `component` is usually an empty component with its own GUID, in the feature
 that switches the rule.
 
-`remoteAddresses` is passed to netsh's `remoteip=` as written. `any` and `*`
-mean any address and cannot be combined with other entries: netsh rejects
-such a list and the install fails, so the build reports an error. Keywords
-such as `localsubnet` combine with addresses. Neither the name nor the
-description may contain a double quote; netsh drops quotes inside a quoted
-value (MSISPEC CA-04).
+`remoteAddresses` is passed to netsh's `remoteip=` unquoted, so it has no
+spaces. A value with property references goes through a property that falls
+back to `any` when it is empty at run time. `any` and `*` mean any address
+and cannot be combined with other entries: netsh rejects such a list and the
+install fails, so the build reports an error. Keywords such as `localsubnet`
+combine with addresses. Neither the name nor the description may contain a
+double quote; netsh drops quotes inside the quoted description (MSISPEC
+CA-04).
 
 A rule that a feature switches can be written under that feature instead,
 without `component`:
