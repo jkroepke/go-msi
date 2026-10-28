@@ -483,5 +483,6 @@ removed from the pull request afterwards; its output is in
   action has no `Continue` and would fail the install (section 17.3, CA-02).
 - Quotes inside a quoted description disappear without an error, so the
   builder rejects them like quotes in the name.
-- Not run: SERVER2025 (Remote Control did not start) and Windows Server
+- Not run: `*` after an address (`10.0.0.1,*`), other spellings of `any`
+  in a list, SERVER2025 (Remote Control did not start) and Windows Server
   2016.
