@@ -1,0 +1,2 @@
+# import libraries lld writes next to the DLLs
+*.lib

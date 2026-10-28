@@ -139,7 +139,7 @@ customActions:
   # config.yaml is not owned by a component, so it survives upgrades and
   # uninstall.
   - id: CreateConfigFile
-    exec:
+    run:
       command: '"[%ComSpec]" /c TYPE NUL >>"[APPLICATIONFOLDER]config.yaml"'
       directory: APPLICATIONFOLDER
     execute: deferred

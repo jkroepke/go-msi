@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/jkroepke/go-msi/internal/cadll"
 	"github.com/jkroepke/go-msi/internal/condition"
 	"github.com/jkroepke/go-msi/internal/sequence"
 	"github.com/jkroepke/go-msi/pkg/config"
@@ -275,9 +276,17 @@ func (b *build) standardAt(table, name string) {
 // customActions turns the customActions section into CustomAction rows and
 // placements.
 func (b *build) customActions() error { //nolint:cyclop // one pass over the format; splitting would scatter it
+	// The type-51 data actions of run actions, scheduled after the loop.
+	type dataPlacement struct {
+		table, name, condition, before string
+	}
+
+	var setters []dataPlacement
+
 	for i, custom := range b.cfg.CustomActions {
 		path := fmt.Sprintf("customActions[%d]", i)
 		action := &actionInfo{name: custom.ID}
+		setter := ""
 
 		switch {
 		case custom.SetProperty != nil:
@@ -296,6 +305,8 @@ func (b *build) customActions() error { //nolint:cyclop // one pass over the for
 			action.typ, action.source, action.target = caExecProperty, custom.ExecProperty.Property, nullable(custom.ExecProperty.Arguments)
 		case custom.DLL != nil:
 			action.typ, action.source, action.target = caDLL, custom.DLL.Binary, custom.DLL.Entry
+		case custom.Run != nil:
+			setter = b.runAction(custom, action)
 		}
 
 		switch custom.Execute {
@@ -352,10 +363,75 @@ func (b *build) customActions() error { //nolint:cyclop // one pass over the for
 			}
 
 			b.schedule(table, custom.ID, placement.FullCondition(b.cfg), placement.Before, placement.After, placement.At)
+
+			if setter != "" {
+				setters = append(setters, dataPlacement{table: table, name: setter, condition: placement.FullCondition(b.cfg), before: custom.ID})
+			}
 		}
 	}
 
+	// The data action must be the last one scheduled before its run action:
+	// internal/sequence places the before-anchored actions in the order they
+	// were added, so one scheduled later with before: <id> would land
+	// between the two, and an immediate run action would read another
+	// action's command line from the shared GoMsiRun property.
+	for _, setter := range setters {
+		b.schedule(setter.table, setter.name, setter.condition, setter.before, "", 0)
+	}
+
 	return nil
+}
+
+// runAction turns a run action into a type-1 action on the embedded custom
+// action DLL (internal/cadll) plus a type-51 action that hands it the
+// working directory and command line: through CustomActionData for
+// deferred, rollback and commit actions, which only see that property, and
+// through the GoMsiRun property for immediate ones. It returns the name of
+// the type-51 action, which the caller schedules right before the action.
+func (b *build) runAction(custom *config.CustomAction, action *actionInfo) string {
+	if b.cfg.Binaries[cadll.Key] != "" {
+		b.errorf("binaries."+cadll.Key, "the key %s is reserved for the custom action DLL of run actions", cadll.Key)
+	}
+
+	if !b.runDLL {
+		b.runDLL = true
+
+		dll, err := cadll.Binary(string(b.cfg.Package.Platform))
+		if err != nil {
+			b.errorf("package.platform", "%v", err)
+
+			return ""
+		}
+
+		b.table("Binary").Add(cadll.Key, dll)
+	}
+
+	directory := ""
+
+	if custom.Run.Directory != "" {
+		if config.IsStandardFolder(custom.Run.Directory) {
+			b.ensureStandardDir(custom.Run.Directory)
+		}
+
+		directory = "[" + custom.Run.Directory + "]"
+	}
+
+	property := cadll.DataProperty
+	if custom.Execute != "" && custom.Execute != "immediate" {
+		property = custom.ID
+	}
+
+	setter := &actionInfo{name: custom.ID + ".Data", typ: caSetProperty, source: property, target: cadll.Data(directory, custom.Run.Command)}
+	if custom.HideTarget {
+		setter.typ |= caHideTarget
+		b.hidden[property] = true
+	}
+
+	b.addAction(setter)
+
+	action.typ, action.source, action.target = caDLL, cadll.Key, cadll.Entry
+
+	return setter.name
 }
 
 // firewall writes the netsh actions of the firewall helper (section 17.3,

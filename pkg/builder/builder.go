@@ -76,7 +76,10 @@ type File struct {
 
 // build holds the state of one build.
 type build struct { //nolint:govet // grouped by build step
-	secure     map[string]bool
+	secure map[string]bool
+	// runDLL is set once the custom action DLL of run actions is in the
+	// Binary table.
+	runDLL     bool
 	cfg        *config.Config
 	numbered   map[string][]sequence.Numbered
 	tables     map[string]*msidb.Table

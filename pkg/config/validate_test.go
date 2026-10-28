@@ -138,6 +138,59 @@ func TestValidate(t *testing.T) {
 `,
 			sevError, "customActions[0].return", "CA-02",
 		},
+		// CA-03: run actions carry the same return rule and a few of their own.
+		"run without return": {
+			base + appComponent + `customActions:
+  - id: Run
+    run: {command: cmd.exe}
+    execute: deferred
+    schedule: [{sequence: execute, after: InstallFiles}]
+`,
+			sevError, "customActions[0].return", "CA-02",
+		},
+		"run async": {
+			base + appComponent + `customActions:
+  - id: Run
+    run: {command: cmd.exe}
+    execute: deferred
+    return: asyncNoWait
+    schedule: [{sequence: execute, after: InstallFiles}]
+`,
+			sevError, "customActions[0].return", "asyncNoWait",
+		},
+		"run unknown directory": {
+			base + appComponent + `customActions:
+  - id: Run
+    run: {command: cmd.exe, directory: NOWHERE}
+    execute: deferred
+    return: check
+    schedule: [{sequence: execute, after: InstallFiles}]
+`,
+			sevError, "customActions[0].run.directory", "not defined",
+		},
+		"run id too long for .Data": {
+			base + appComponent + `customActions:
+  - id: Run67890123456789012345678901234567890123456789012345678901234567890
+    run: {command: cmd.exe}
+    execute: deferred
+    return: check
+    schedule: [{sequence: execute, after: InstallFiles}]
+`,
+			sevError, "customActions[0].id", ".Data",
+		},
+		"run data id clash": {
+			base + appComponent + `customActions:
+  - id: Run
+    run: {command: cmd.exe}
+    execute: deferred
+    return: check
+    schedule: [{sequence: execute, after: InstallFiles}]
+  - id: Run.Data
+    setProperty: {name: A, value: b}
+    schedule: [{sequence: execute, after: InstallFiles}]
+`,
+			sevError, "customActions[1].id", "data action",
+		},
 		"deferred set property": {
 			base + appComponent + `customActions:
   - id: Set

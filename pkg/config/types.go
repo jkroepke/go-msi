@@ -417,6 +417,7 @@ type CustomAction struct { //nolint:govet // field order is the YAML key order
 	Exec         *Exec         `yaml:"exec"`
 	ExecProperty *ExecProperty `yaml:"execProperty"`
 	DLL          *DLL          `yaml:"dll"`
+	Run          *Run          `yaml:"run"`
 	Execute      string        `yaml:"execute"`
 	Impersonate  *bool         `yaml:"impersonate"`
 	Return       string        `yaml:"return"`
@@ -451,6 +452,13 @@ type Exec struct {
 type ExecProperty struct {
 	Property  string `yaml:"property"`
 	Arguments string `yaml:"arguments"`
+}
+
+// Run is a type 1 action on the custom action DLL go-msi embeds: the
+// command runs with a hidden window and its output goes to the log.
+type Run struct {
+	Command   string `yaml:"command"`
+	Directory string `yaml:"directory"`
 }
 
 // DLL is a type 1 action from the Binary table.

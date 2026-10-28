@@ -35,6 +35,9 @@ implementation details that may change without notice.
 - [`pkg/summary`](pkg/summary): the summary information stream.
 - [`pkg/sign`](pkg/sign): Authenticode signing and verification of packages
   (spec chapter 12), written from the spec without cgo.
+- [`internal/cadll`](internal/cadll): the custom action DLL that `run`
+  actions embed, built from C by `build.sh` with clang and lld and committed
+  for x86, x64 and arm64; see its `AGENTS.md` before touching it.
 - [`internal/schema`](internal/schema), [`internal/pe`](internal/pe),
   [`internal/condition`](internal/condition), [`internal/sequence`](internal/sequence),
   [`internal/codepage`](internal/codepage), [`internal/artwork`](internal/artwork):

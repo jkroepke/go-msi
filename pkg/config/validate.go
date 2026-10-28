@@ -1282,6 +1282,27 @@ func (v *validator) customActions(cfg *Config, known *refs) {
 			v.placement(fmt.Sprintf("%s.schedule[%d]", actionPath, j), pl, inScript, cfg)
 		}
 	}
+
+	v.runDataIDs(cfg)
+}
+
+// runDataIDs rejects an action named like the <id>.Data action the builder
+// adds for a run action, which would otherwise fail late as a duplicate.
+func (v *validator) runDataIDs(cfg *Config) {
+	index := make(map[string]int, len(cfg.CustomActions))
+	for i, action := range cfg.CustomActions {
+		index[action.ID] = i
+	}
+
+	for _, action := range cfg.CustomActions {
+		if action.Run == nil {
+			continue
+		}
+
+		if i, clash := index[action.ID+".Data"]; clash {
+			v.errorf(fmt.Sprintf("customActions[%d].id", i), "%s.Data is the data action the builder adds for the run action %s", action.ID, action.ID)
+		}
+	}
 }
 
 // actionID checks a custom action's id and records it in seen.
@@ -1312,7 +1333,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 
 	for _, set := range []bool{
 		action.SetProperty != nil, action.SetDirectory != nil, action.Error != "",
-		action.Exec != nil, action.ExecProperty != nil, action.DLL != nil,
+		action.Exec != nil, action.ExecProperty != nil, action.DLL != nil, action.Run != nil,
 	} {
 		if set {
 			kinds++
@@ -1320,7 +1341,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 	}
 
 	if kinds != 1 {
-		v.errorf(actionPath, "exactly one of setProperty, setDirectory, error, exec, execProperty or dll is required")
+		v.errorf(actionPath, "exactly one of setProperty, setDirectory, error, exec, execProperty, dll or run is required")
 	}
 
 	v.oneOf(actionPath+".execute", action.Execute, executeImmediate, "deferred", "rollback", "commit")
@@ -1352,7 +1373,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 	case action.Exec != nil:
 		v.required(actionPath+".exec.command", action.Exec.Command)
 
-		if action.Exec.Directory != "TARGETDIR" && known.dirs[action.Exec.Directory] == nil && !standardFolders[action.Exec.Directory] {
+		if action.Exec.Directory != targetDir && known.dirs[action.Exec.Directory] == nil && !standardFolders[action.Exec.Directory] {
 			v.errorf(actionPath+".exec.directory", "directory %q is not defined", action.Exec.Directory)
 		}
 	case action.ExecProperty != nil:
@@ -1363,6 +1384,20 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 		}
 
 		v.required(actionPath+".dll.entry", action.DLL.Entry)
+	case action.Run != nil:
+		v.required(actionPath+".run.command", action.Run.Command)
+
+		if dir := action.Run.Directory; dir != "" && dir != targetDir && known.dirs[dir] == nil && !standardFolders[dir] {
+			v.errorf(actionPath+".run.directory", "directory %q is not defined", dir)
+		}
+
+		if action.Return == "asyncNoWait" {
+			v.errorf(actionPath+".return", "run actions cannot use asyncNoWait; the DLL waits for the command")
+		}
+
+		if len(action.ID)+len(".Data") > MaxIdentifierLength {
+			v.errorf(actionPath+".id", "%q is too long: the builder adds a %s.Data action and identifiers hold %d characters", action.ID, action.ID, MaxIdentifierLength)
+		}
 	}
 }
 
@@ -1370,7 +1405,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 // processing and once.
 func (v *validator) actionRun(cfg *Config, actionPath string, action *CustomAction) { //nolint:cyclop // a flat list of independent checks
 	inScript := action.Execute != executeImmediate
-	isExec := action.Exec != nil || action.ExecProperty != nil
+	isExec := action.Exec != nil || action.ExecProperty != nil || action.Run != nil
 
 	if !*action.Impersonate && !inScript {
 		v.errorf(actionPath+".impersonate", "impersonate: false needs a deferred, rollback or commit action")
@@ -1381,7 +1416,7 @@ func (v *validator) actionRun(cfg *Config, actionPath string, action *CustomActi
 	}
 
 	if isExec && action.Return == "" {
-		v.errorf(actionPath+".return", "required for exec actions: check fails the install on a non-zero exit "+
+		v.errorf(actionPath+".return", "required for exec and run actions: check fails the install on a non-zero exit "+
 			"code, ignore does not (CA-02)")
 	} else if action.Return != "" {
 		v.oneOf(actionPath+".return", action.Return, "check", "ignore", "asyncWait", "asyncNoWait")
