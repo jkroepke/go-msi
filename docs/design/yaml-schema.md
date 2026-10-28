@@ -97,7 +97,8 @@ closes each one.
 ## 3. File layout
 
 ```yaml
-schema: msi-builder/v1        # required, selects this document
+schema: msi-builder/v1   # required, selects this document;
+                         # go-msi/v1 (the former name) fails with a hint
 vars: {}                 # defaults for ${NAME} substitution
 product: {}              # identity
 package: {}              # platform, scope, compression, summary information
