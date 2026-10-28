@@ -1,10 +1,14 @@
 // Package cadll holds the custom action DLL that go-msi embeds into packages
 // for `run` actions (docs/design/yaml-schema.md section 4.9). The DLL is
-// built from src/gomsirun.c by build.sh, once per platform, and committed;
-// go-msi itself stays free of cgo because it only copies the bytes into the
-// Binary table. SHA256SUMS pins the committed builds and the test checks
-// them, their PE machine, their exports and their imports.
+// built from src/gomsirun.c by build.sh (go generate), once per platform,
+// and committed; go-msi itself stays free of cgo because it only copies the
+// bytes into the Binary table. SHA256SUMS pins the committed builds and the
+// test checks them, their PE machine, their exports and their imports.
 package cadll
+
+// The rebuild needs clang 18, lld and llvm-dlltool (CLANG and DLLTOOL name
+// the binaries); build.sh refuses another clang, whose bytes would differ.
+//go:generate sh ./build.sh
 
 import (
 	"embed"

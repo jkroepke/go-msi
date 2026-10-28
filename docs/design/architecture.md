@@ -67,7 +67,7 @@ flowchart LR
 | `pkg/builder` | The config-to-tables layer: identities, directories and short names, components and GUIDs, files, media and cabinets, registry, services, environment, upgrades, custom actions, helpers, `_Validation`, summary; then the package bytes and a verification pass | §6–§11 | everything above, plus `config`, `internal/artwork`, `internal/cadll`, `internal/rtf` and `go.yaml.in/yaml/v3` |
 | `pkg/config` | YAML decoding, defaults and validation into a `*config.Config` | | `internal/condition`, `go.yaml.in/yaml/v3` |
 | `internal/codepage` | ANSI code page encoders for the string pool and summary | §3, §4 | `golang.org/x/text` |
-| `internal/cadll` | The custom action DLL of `run` actions: freestanding C (`src/gomsirun.c`), cross-built by `build.sh` with clang and lld for x86, x64 and arm64, committed, pinned by `SHA256SUMS` and embedded with `go:embed`; the builder copies the platform's DLL into the `Binary` table | §9.4 | stdlib |
+| `internal/cadll` | The custom action DLL of `run` actions: freestanding C (`src/gomsirun.c`), cross-built by `build.sh` (`go generate`) with clang 18 and lld for x86, x64 and arm64, committed, pinned by `SHA256SUMS` and embedded with `go:embed`; the builder copies the platform's DLL into the `Binary` table | §9.4 | stdlib |
 | `internal/artwork` | Draws the wizard bitmaps (our own artwork, generated in code) and decodes a theme's BMP, PNG or JPEG pictures | | stdlib |
 | `internal/rtf` | Converts a plain-text license to RTF and checks an RTF license for the ScrollableText control | | stdlib |
 | `cmd/go-msi` | CLI: `build`, `validate`, `inspect`, `sign`, `verify`, `completion`, `version` | | `builder`, `config`, `msidb`, `sign`, `spf13/cobra` |
