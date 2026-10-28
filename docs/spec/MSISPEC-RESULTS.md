@@ -214,7 +214,7 @@ Silent-failure cases a producer has to guard against itself:
 | SVC-03 | Confirmed | [per-step](msitest/results/SVC-03/per-step/log.md); per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
 | CA-01 | Contradicted | Per-user (`Assignment=0`), elevated administrator: a deferred EXE action failing [after PublishProduct](msitest/results/CA-01/fail-after-publishproduct/log.md) or [after InstallFiles](msitest/results/CA-01/fail-after-installfiles/log.md) rolls back completely (1603, no `Products` or `UserData` key left, state unknown); finding 7 |
 | CA-02 | Confirmed | EXE exit 1 fails unless Continue; [type-6 return 5](msitest/results/CA-02/vbs-binary-return-5-immediate/log.md) ends with 0 and skips the rest; [deferred](msitest/results/CA-02/vbs-binary-return-5-deferred/log.md) leaves files unregistered |
-| CA-03 | Confirmed | GitHub `windows-latest` (x64) and `windows-11-arm` runners, 2026-10-28, `TestMsiexecRunActions`: every stdout and stderr line of the seven run actions is in the verbose log as `GoMsiRun:`, `whoami` shows LocalSystem versus the user, brackets stay literal, OEM and UTF-8 output decode, exit 3 with `Continue` returns 1, exit 7 fails with 1603 and runs the rollback action with the hidden command absent; Arm64 package native and x64 package under emulation on Arm; [details](#embedded-custom-action-dll-ca-03). Not run on SERVER2025 |
+| CA-03 | Confirmed | GitHub `windows-latest` (x64) and `windows-11-arm` runners, 2026-10-28, `TestMsiexecRunActions`: every stdout and stderr line of the seven run actions is in the verbose log as `GoMsiRun:`, `whoami` shows LocalSystem versus the user, brackets stay literal, OEM and UTF-8 output decode, exit 3 with `Continue` returns 1, exit 7 fails with 1603 and runs the rollback action with the hidden command absent; Arm64 package native and x64 package under emulation on Arm; repeated on SERVER2025 with the same result; [details](#embedded-custom-action-dll-ca-03) |
 | SHORTCUT-01 | Confirmed | [hkcu-folder](msitest/results/SHORTCUT-01/hkcu-folder/log.md), [file-component](msitest/results/SHORTCUT-01/file-component/log.md), [file-component-folder](msitest/results/SHORTCUT-01/file-component-folder/log.md), [advertised](msitest/results/SHORTCUT-01/advertised/log.md), [per-user](msitest/results/SHORTCUT-01/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-shortcut-01) |
 | UI-01 | Confirmed | Wizard rendering on Windows Server 2025, go-msi packages driven by hand and by window messages, with PrintWindow and screen captures (2026-10-26); [details](#wizard-rendering-ui-01) |
 | UI-02 | Not run | Interactive full UI |
@@ -406,6 +406,16 @@ the assertions below are the test's. The first runs (40334761225 and
 earlier) failed on two probe lines, both recorded here; the DLL itself was
 unchanged between those runs and the green one.
 
+The same test and the same three `msiexec` runs by hand were repeated on
+SERVER2025 (Windows Server 2025, 10.0.26100, `msi.dll` 5.0.26100.1742,
+elevated, main at 9b735b4) later on 2026-10-28: test PASS, install 0,
+uninstall 0, `FAILPROBE=1` 1603, with the same `GoMsiRun:` lines as the
+runners (the user lines show `jkroepke\administrator`). The engine notes the
+`Continue` translation as `CustomAction ProbeIgnored returned actual error
+code 1603 but will be translated to success due to continue marking`, and
+`ProbeFails` as `returned actual error code 1603`, followed by
+`InstallFinalize. Return value 3`. The product was removed afterwards.
+
 | Action | Kind | Logged |
 | --- | --- | --- |
 | ProbeDeferredSystem | deferred, no impersonation, in `INSTALLDIR` | `token: the process`, `deferred-system GoMsiRunProbe`, `nt authority\system`, `brackets [ProductName] stay literal`, `oem-umlaut-äöü`, `readme.txt` (`dir /b`), `stderr-line`, `exit code 0` |
@@ -438,6 +448,6 @@ unchanged between those runs and the green one.
   uninstall with `CreateProcess failed (error 267)` once `RemoveFiles` has
   deleted the folder (run 40334482129); the probe conditions it with
   `NOT REMOVE~="ALL"`.
-- Not run: SERVER2025 (offline during the run), a 32-bit (`Intel`) package,
-  a cancel from a UI handler, and Windows Server 2016.
+- Not run: a 32-bit (`Intel`) package, a cancel from a UI handler, and
+  Windows Server 2016.
 
