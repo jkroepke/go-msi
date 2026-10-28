@@ -11,7 +11,7 @@ import (
 )
 
 // TestNetshProbe is a temporary probe: it logs how netsh treats remote
-// address keywords and quotes in a description. It never fails.
+// address keywords and quotes in a description. It fails on purpose so that its output shows in CI.
 func TestNetshProbe(t *testing.T) {
 	t.Parallel()
 
@@ -37,7 +37,7 @@ func TestNetshProbe(t *testing.T) {
 		cmd := exec.CommandContext(t.Context(), netsh)
 		cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: base + args}
 		out, err := cmd.CombinedOutput()
-		t.Logf("PROBE %s\nerr=%v\n%s", args, err, out)
+		t.Errorf("PROBE %s\nerr=%v\n%s", args, err, out)
 	}
 
 	for i, probe := range probes {
