@@ -773,8 +773,9 @@ func (v *validator) componentEvents(compPath string, comp *Component, perUser bo
 	}
 
 	// The builder keys an Environment row by name, action and scope, so a
-	// second entry with all three equal would be a duplicate key. Windows
-	// variable names ignore case, so FOO and foo are the same variable.
+	// second entry with all three equal would be a duplicate key. Names are
+	// compared without case to be safe; how the engine treats FOO and foo
+	// in two Environment rows is not tested.
 	seen := make(map[[3]string]bool)
 
 	for j, env := range comp.Environment {
@@ -1602,9 +1603,9 @@ func (v *validator) firewall(cfg *Config, known *refs) { //nolint:cyclop // a fl
 }
 
 // remoteAddresses checks a firewall rule's remote address list, which the
-// builder passes to netsh's remoteip= unquoted. netsh rejects a list that
-// combines any or * with other entries, and the add action then fails the
-// install (MSISPEC CA-04). Other keywords such as localsubnet combine with
+// builder passes to netsh's remoteip= unquoted. netsh rejects any before or
+// after an address and * before one, and the add action then fails the
+// install (MSISPEC CA-04); * after an address is rejected too, untested. Other keywords such as localsubnet combine with
 // addresses.
 func (v *validator) remoteAddresses(field, list string) {
 	if strings.ContainsFunc(list, func(r rune) bool { return unicode.IsSpace(r) || r == '"' }) {
