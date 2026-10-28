@@ -11,11 +11,13 @@ The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
   (`--target=<arch>-pc-windows-msvc`, `-nostdlib`, `/Brepro`). The import
   libraries come from `.def` lists in the script through `llvm-dlltool`; the
   x86 entries carry the stdcall argument sizes. After a change to the source
-  or the script: run `build.sh`, run `sha256sum gomsirun-*.dll > SHA256SUMS`
-  in this directory, and commit all of it. CI rebuilds with clang 18 on
-  Ubuntu 24.04 and fails when the committed DLLs differ, so build with the
-  same version (`CLANG=clang-18 DLLTOOL=llvm-dlltool-18 ./build.sh`); other
-  clang versions give different bytes.
+  or the script: run `go generate ./internal/cadll/` (it runs `build.sh`,
+  which also rewrites `SHA256SUMS`) and commit the DLLs and the sums. CI
+  rebuilds with clang 18 on Ubuntu 24.04 and fails when the committed DLLs
+  differ, so `build.sh` refuses any other clang major version; point it at
+  the right binaries with `CLANG=clang-18 DLLTOOL=llvm-dlltool-18`. `go
+  build` never runs generators, so building go-msi still needs no C
+  toolchain.
 - The exported entry point is `GoMsiRun` (`UINT __stdcall (MSIHANDLE)`).
   The builder (`pkg/builder/actions.go`, `runAction`) passes
   `<directory>|<command>` in `CustomActionData` (deferred, rollback, commit)

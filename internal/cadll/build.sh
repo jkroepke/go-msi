@@ -8,6 +8,17 @@ set -eu
 cd "$(dirname "$0")"
 CLANG=${CLANG:-clang}
 DLLTOOL=${DLLTOOL:-llvm-dlltool}
+
+# Only clang 18 reproduces the committed bytes; another major version
+# builds a working DLL that fails the CI comparison, so refuse it.
+want=18
+have=$("$CLANG" --version | sed -n 's/.*clang version \([0-9]*\).*/\1/p' | head -n 1)
+if [ "$have" != "$want" ]; then
+  echo "build.sh: $CLANG is clang ${have:-?}, the committed DLLs need clang $want" >&2
+  echo "build.sh: set CLANG=clang-$want DLLTOOL=llvm-dlltool-$want, or build in ubuntu:24.04 as ci.yaml does" >&2
+  exit 1
+fi
+
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
@@ -52,4 +63,5 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     -Wl,/Brepro -Wl,/nodefaultlib -Wl,/entry:_DllMainCRTStartup -Wl,/export:GoMsiRun \
     -Wl,/release -Wl,/opt:ref -Wl,/opt:icf -Wl,/subsystem:windows
 done
+sha256sum gomsirun-x86.dll gomsirun-x64.dll gomsirun-arm64.dll >SHA256SUMS
 ls -l gomsirun-*.dll
