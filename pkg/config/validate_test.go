@@ -75,19 +75,22 @@ func TestBaseIsValid(t *testing.T) {
 func TestValidateAccepted(t *testing.T) {
 	t.Parallel()
 
-	for name, extra := range map[string]string{
-		"remote any":             "firewall: [{name: a, component: App, program: x, remoteAddresses: ANY}]\n",
-		"remote star":            "firewall: [{name: a, component: App, program: x, remoteAddresses: '*'}]\n",
-		"remote keyword list":    "firewall: [{name: a, component: App, program: x, remoteAddresses: 'localsubnet,10.0.0.1'}]\n",
-		"remote property":        "firewall: [{name: a, component: App, program: x, remoteAddresses: '[REMOTE_ADDR]'}]\n",
-		"environment two scopes": "",
-	} {
-		doc := base + appComponent + extra
-		if extra == "" {
-			doc = base + strings.Replace(appComponent, "    files:",
-				"    environment: [{name: FOO, value: a}, {name: FOO, value: b, scope: user}]\n    files:", 1)
-		}
+	firewall := func(addresses string) string {
+		return base + appComponent + "firewall: [{name: a, component: App, program: x, remoteAddresses: '" + addresses + "'}]\n"
+	}
+	environment := func(entries string) string {
+		return base + strings.Replace(appComponent, "    files:", "    environment: ["+entries+"]\n    files:", 1)
+	}
 
+	for name, doc := range map[string]string{
+		"remote any":          firewall("ANY"),
+		"remote star":         firewall("*"),
+		"remote keyword list": firewall("localsubnet,10.0.0.1"),
+		"remote keywords":     firewall("LocalSubnet,dns"),
+		"remote property":     firewall("[REMOTE_ADDR]"),
+		"environment scopes":  environment("{name: FOO, value: a}, {name: FOO, value: b, scope: user}"),
+		"environment actions": environment("{name: FOO, value: a}, {name: FOO, value: b, action: append}"),
+	} {
 		if ds := validate(t, doc); len(ds) != 0 {
 			t.Errorf("%s: unexpected diagnostics: %v", name, ds)
 		}
