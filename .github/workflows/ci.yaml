@@ -296,7 +296,6 @@ jobs:
           VALIDATE_XML: true
           VALIDATE_YAML: true
 
-  # The one job to mark as required in branch protection. It only runs, and
   # The custom action DLL of run actions (internal/cadll) is committed; this
   # rebuilds it with the pinned clang of Ubuntu 24.04 and fails when the
   # committed files differ, so every change to its source comes with a
@@ -354,6 +353,7 @@ jobs:
         shell: bash
         run: go test ./internal/cadll/ ./pkg/builder/nativetest/ -run 'TestBinaries|TestMsiexecRunActions' -v -shuffle=on
 
+  # The one job to mark as required in branch protection. It only runs, and
   # fails, when a needed job failed or was cancelled; GitHub counts the
   # skipped job as passed. Add every new check job to needs.
   fail:

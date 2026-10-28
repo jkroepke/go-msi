@@ -276,6 +276,13 @@ func (b *build) standardAt(table, name string) {
 // customActions turns the customActions section into CustomAction rows and
 // placements.
 func (b *build) customActions() error { //nolint:cyclop // one pass over the format; splitting would scatter it
+	// The type-51 data actions of run actions, scheduled after the loop.
+	type dataPlacement struct {
+		table, name, condition, before string
+	}
+
+	var setters []dataPlacement
+
 	for i, custom := range b.cfg.CustomActions {
 		path := fmt.Sprintf("customActions[%d]", i)
 		action := &actionInfo{name: custom.ID}
@@ -358,9 +365,18 @@ func (b *build) customActions() error { //nolint:cyclop // one pass over the for
 			b.schedule(table, custom.ID, placement.FullCondition(b.cfg), placement.Before, placement.After, placement.At)
 
 			if setter != "" {
-				b.schedule(table, setter, placement.FullCondition(b.cfg), custom.ID, "", 0)
+				setters = append(setters, dataPlacement{table: table, name: setter, condition: placement.FullCondition(b.cfg), before: custom.ID})
 			}
 		}
+	}
+
+	// The data action must be the last one scheduled before its run action:
+	// internal/sequence places the before-anchored actions in the order they
+	// were added, so one scheduled later with before: <id> would land
+	// between the two, and an immediate run action would read another
+	// action's command line from the shared GoMsiRun property.
+	for _, setter := range setters {
+		b.schedule(setter.table, setter.name, setter.condition, setter.before, "", 0)
 	}
 
 	return nil

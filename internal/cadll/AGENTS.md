@@ -31,7 +31,9 @@ The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
   action server's environment block.
 - Output is read from one pipe for stdout and stderr, split at `\n`, logged
   per line through `MsiProcessMessage(INSTALLMESSAGE_INFO)` with the fixed
-  template `GoMsiRun: [1]`, so brackets in the output are not formatted. A
+  template `GoMsiRun: [1]`, so brackets in the output are not formatted.
+  An `IDCANCEL` return from that call terminates the child; it is the only
+  cancel signal, so a silent child runs to its end. A
   line is decoded as UTF-8 when valid, else in the OEM code page. `chcp
   65001` inside a `cmd /c` line does not make cmd.exe's `echo` write UTF-8
   on the pipe (CA-03 on the x64 and Arm64 runners: the line stayed OEM and

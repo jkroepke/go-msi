@@ -32,6 +32,12 @@ customActions:
     run: { command: '"[System64Folder]cmd.exe" /c echo now' }
     return: ignore
     schedule: [{ sequence: execute, after: InstallFinalize }]
+  # Scheduled before Now after Now.Data was: its rows must not land between
+  # Now.Data and Now, which share the GoMsiRun property with Earlier.
+  - id: Earlier
+    run: { command: '"[System64Folder]cmd.exe" /c echo earlier' }
+    return: ignore
+    schedule: [{ sequence: execute, before: Now }]
 `
 
 func buildRun(t *testing.T, platform string) *msidb.Database {
@@ -79,10 +85,12 @@ func TestRunActions(t *testing.T) {
 	}
 
 	for name, want := range map[string]string{
-		"Later":      "[11265 GoMsiRun GoMsiRun]",
-		"Later.Data": `[8243 Later [INSTALLDIR]|"[System64Folder]cmd.exe" /c echo [ProductName]]`,
-		"Now":        "[65 GoMsiRun GoMsiRun]",
-		"Now.Data":   `[51 GoMsiRun |"[System64Folder]cmd.exe" /c echo now]`,
+		"Later":        "[11265 GoMsiRun GoMsiRun]",
+		"Later.Data":   `[8243 Later [INSTALLDIR]|"[System64Folder]cmd.exe" /c echo [ProductName]]`,
+		"Now":          "[65 GoMsiRun GoMsiRun]",
+		"Now.Data":     `[51 GoMsiRun |"[System64Folder]cmd.exe" /c echo now]`,
+		"Earlier":      "[65 GoMsiRun GoMsiRun]",
+		"Earlier.Data": `[51 GoMsiRun |"[System64Folder]cmd.exe" /c echo earlier]`,
 	} {
 		row, found := actions[name]
 		if !found {
@@ -104,10 +112,14 @@ func TestRunActions(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{"Later", "Now"} {
+	for _, name := range []string{"Later", "Now", "Earlier"} {
 		if seq[name+".Data"] != seq[name]-1 {
 			t.Errorf("%s.Data at %d, %s at %d: the data action must come right before", name, seq[name+".Data"], name, seq[name])
 		}
+	}
+
+	if seq["Earlier"] >= seq["Now.Data"] {
+		t.Errorf("Earlier at %d, Now.Data at %d: a before-scheduled action must not split a run action from its data action", seq["Earlier"], seq["Now.Data"])
 	}
 
 	if hidden := cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "MsiHiddenProperties" }); hidden != "Later" {

@@ -1282,6 +1282,27 @@ func (v *validator) customActions(cfg *Config, known *refs) {
 			v.placement(fmt.Sprintf("%s.schedule[%d]", actionPath, j), pl, inScript, cfg)
 		}
 	}
+
+	v.runDataIDs(cfg)
+}
+
+// runDataIDs rejects an action named like the <id>.Data action the builder
+// adds for a run action, which would otherwise fail late as a duplicate.
+func (v *validator) runDataIDs(cfg *Config) {
+	index := make(map[string]int, len(cfg.CustomActions))
+	for i, action := range cfg.CustomActions {
+		index[action.ID] = i
+	}
+
+	for _, action := range cfg.CustomActions {
+		if action.Run == nil {
+			continue
+		}
+
+		if i, clash := index[action.ID+".Data"]; clash {
+			v.errorf(fmt.Sprintf("customActions[%d].id", i), "%s.Data is the data action the builder adds for the run action %s", action.ID, action.ID)
+		}
+	}
 }
 
 // actionID checks a custom action's id and records it in seen.

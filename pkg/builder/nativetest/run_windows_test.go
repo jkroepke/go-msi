@@ -96,7 +96,7 @@ func TestMsiexecRunActions(t *testing.T) {
 			dir := filepath.Dir(path)
 
 			t.Cleanup(func() {
-				_ = exec.Command("msiexec", "/x", path, "/qn").Run()
+				_ = exec.Command("msiexec", "/x", path, "/qn", "/norestart").Run()
 				_ = os.RemoveAll(filepath.Join(os.Getenv("ProgramFiles"), "GoMsiRunProbe"))
 			})
 
