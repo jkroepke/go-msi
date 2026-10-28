@@ -1607,8 +1607,8 @@ func (v *validator) firewall(cfg *Config, known *refs) { //nolint:cyclop // a fl
 // install (MSISPEC CA-04). Other keywords such as localsubnet combine with
 // addresses.
 func (v *validator) remoteAddresses(field, list string) {
-	if strings.ContainsFunc(list, unicode.IsSpace) {
-		v.errorf(field, "must not contain spaces; separate entries with commas only")
+	if strings.ContainsFunc(list, func(r rune) bool { return unicode.IsSpace(r) || r == '"' }) {
+		v.errorf(field, "must not contain spaces or double quotes; separate entries with commas only")
 
 		return
 	}

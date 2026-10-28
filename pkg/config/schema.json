@@ -1871,7 +1871,7 @@
         },
         "remoteAddresses": {
           "type": "string",
-          "description": "netsh remoteip list, comma-separated without spaces. Empty (or any, or *) means any; any and * cannot be combined with other entries."
+          "description": "netsh remoteip list, comma-separated without spaces or double quotes. Empty (or any, or *) means any; any and * cannot be combined with other entries."
         },
         "profiles": {
           "anyOf": [

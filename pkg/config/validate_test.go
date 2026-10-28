@@ -295,6 +295,10 @@ func TestValidate(t *testing.T) {
 			base + appComponent + "firewall: [{name: a, component: App, program: x, remoteAddresses: '10.0.0.1, 10.0.0.2'}]\n",
 			sevError, "firewall[0].remoteAddresses", "must not contain spaces",
 		},
+		"firewall quoted address": {
+			base + appComponent + "firewall: [{name: a, component: App, program: x, remoteAddresses: '\"10.0.0.1\"'}]\n",
+			sevError, "firewall[0].remoteAddresses", "double quotes",
+		},
 		"firewall empty address": {
 			base + appComponent + "firewall: [{name: a, component: App, program: x, remoteAddresses: 'any,'}]\n",
 			sevError, "firewall[0].remoteAddresses", "empty entry",
