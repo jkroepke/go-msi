@@ -1,4 +1,4 @@
-# `go-msi completion powershell`
+# `msi-builder completion powershell`
 
 Print the completion script for PowerShell
 
@@ -6,14 +6,14 @@ Prints the completion script for PowerShell.
 
 Load it in the current session with:
 
-    go-msi completion powershell | Out-String | Invoke-Expression
+    msi-builder completion powershell | Out-String | Invoke-Expression
 
 and add that line to your PowerShell profile to load it in every session.
 
 ## Usage
 
 ```text
-go-msi completion powershell [flags]
+msi-builder completion powershell [flags]
 ```
 
 ## Flags
@@ -25,4 +25,4 @@ go-msi completion powershell [flags]
 
 ## See also
 
-- [`go-msi completion`](go-msi_completion.md): Print a shell completion script
+- [`msi-builder completion`](msi-builder_completion.md): Print a shell completion script

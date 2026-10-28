@@ -11,7 +11,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/jkroepke/go-msi/internal/codepage"
+	"github.com/jkroepke/msi-builder/internal/codepage"
 )
 
 // StreamName is the literal name of the summary stream.

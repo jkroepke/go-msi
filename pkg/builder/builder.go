@@ -16,10 +16,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/jkroepke/go-msi/internal/schema"
-	"github.com/jkroepke/go-msi/internal/sequence"
-	"github.com/jkroepke/go-msi/pkg/config"
-	"github.com/jkroepke/go-msi/pkg/msidb"
+	"github.com/jkroepke/msi-builder/internal/schema"
+	"github.com/jkroepke/msi-builder/internal/sequence"
+	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/msidb"
 )
 
 // Options control a build.
@@ -173,7 +173,7 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 	opts.BuildTime = opts.BuildTime.UTC().Truncate(time.Second)
 
 	if opts.ToolName == "" {
-		opts.ToolName = "go-msi"
+		opts.ToolName = "msi-builder"
 	}
 
 	bld := &build{

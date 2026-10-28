@@ -1,4 +1,4 @@
-// Package schema defines the standard Windows Installer tables that go-msi
+// Package schema defines the standard Windows Installer tables that msi-builder
 // writes: their columns in .idt notation and the _Validation metadata of
 // every column (docs/spec/MSISPEC.md section 6). The definitions follow the
 // published table reference and the toolchain conventions the specification
@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jkroepke/go-msi/pkg/msidb"
+	"github.com/jkroepke/msi-builder/pkg/msidb"
 )
 
 // ColumnDef is a column with its _Validation row.

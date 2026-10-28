@@ -24,11 +24,11 @@ var completionShells = []completionShell{
 		setup: `The script needs the bash-completion package. Load it in the current
 shell with:
 
-    source <(go-msi completion bash)
+    source <(msi-builder completion bash)
 
 or install it for every new shell, for example on Linux:
 
-    go-msi completion bash > /etc/bash_completion.d/go-msi`,
+    msi-builder completion bash > /etc/bash_completion.d/msi-builder`,
 		gen: func(root *cobra.Command, w io.Writer, descriptions bool) error {
 			return root.GenBashCompletionV2(w, descriptions)
 		},
@@ -38,11 +38,11 @@ or install it for every new shell, for example on Linux:
 		title: "fish",
 		setup: `Load it in the current shell with:
 
-    go-msi completion fish | source
+    msi-builder completion fish | source
 
 or install it for every new shell:
 
-    go-msi completion fish > ~/.config/fish/completions/go-msi.fish`,
+    msi-builder completion fish > ~/.config/fish/completions/msi-builder.fish`,
 		gen: func(root *cobra.Command, w io.Writer, descriptions bool) error {
 			return root.GenFishCompletion(w, descriptions)
 		},
@@ -52,7 +52,7 @@ or install it for every new shell:
 		title: "PowerShell",
 		setup: `Load it in the current session with:
 
-    go-msi completion powershell | Out-String | Invoke-Expression
+    msi-builder completion powershell | Out-String | Invoke-Expression
 
 and add that line to your PowerShell profile to load it in every session.`,
 		gen: func(root *cobra.Command, w io.Writer, descriptions bool) error {
@@ -69,11 +69,11 @@ and add that line to your PowerShell profile to load it in every session.`,
 		setup: `Completion must be enabled in Zsh ("autoload -U compinit; compinit").
 Load it in the current shell with:
 
-    source <(go-msi completion zsh)
+    source <(msi-builder completion zsh)
 
 or install it into a directory of $fpath for every new shell:
 
-    go-msi completion zsh > "${fpath[1]}/_go-msi"`,
+    msi-builder completion zsh > "${fpath[1]}/_msi-builder"`,
 		gen: func(root *cobra.Command, w io.Writer, descriptions bool) error {
 			if descriptions {
 				return root.GenZshCompletion(w)
@@ -90,7 +90,7 @@ func newCompletionCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "completion",
 		Short: "Print a shell completion script",
-		Long: `Completion prints the script that completes go-msi commands, flags,
+		Long: `Completion prints the script that completes msi-builder commands, flags,
 file arguments, signature digests and, for inspect --table, the tables of
 the package on the command line. Each shell has its own command.`,
 		Args:              cobra.ArbitraryArgs,

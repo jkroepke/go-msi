@@ -6,7 +6,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/spool"
+	"github.com/jkroepke/msi-builder/internal/spool"
 )
 
 func TestBuffer(t *testing.T) {

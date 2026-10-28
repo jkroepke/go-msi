@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/cadll"
+	"github.com/jkroepke/msi-builder/internal/cadll"
 )
 
 // TestBinaries checks every committed DLL against SHA256SUMS and inspects
@@ -31,9 +31,9 @@ func TestBinaries(t *testing.T) {
 		platform, file string
 		machine        uint16
 	}{
-		{"Intel", "gomsirun-x86.dll", pe.IMAGE_FILE_MACHINE_I386},
-		{"x64", "gomsirun-x64.dll", pe.IMAGE_FILE_MACHINE_AMD64},
-		{"Arm64", "gomsirun-arm64.dll", pe.IMAGE_FILE_MACHINE_ARM64},
+		{"Intel", "builderrun-x86.dll", pe.IMAGE_FILE_MACHINE_I386},
+		{"x64", "builderrun-x64.dll", pe.IMAGE_FILE_MACHINE_AMD64},
+		{"Arm64", "builderrun-arm64.dll", pe.IMAGE_FILE_MACHINE_ARM64},
 	} {
 		t.Run(tc.platform, func(t *testing.T) {
 			t.Parallel()

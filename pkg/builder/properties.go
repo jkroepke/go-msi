@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jkroepke/go-msi/internal/condition"
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/internal/condition"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // writeProperties fills the Property table from the product identity, the ARP

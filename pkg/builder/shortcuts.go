@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 const (

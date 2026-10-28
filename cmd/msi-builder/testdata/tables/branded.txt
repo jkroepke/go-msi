@@ -6,12 +6,12 @@ summary  4: Example
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install Example Agent.
 summary  7: x64;1033
-summary  9: {ABCCE60D-CBBE-5CFF-8EAE-252B81C93D2C}
+summary  9: {D9149D46-CCD3-5DBA-94A8-698D45BE7E06}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500
 summary 15: 2
-summary 18: go-msi
+summary 18: msi-builder
 summary 19: 2
 streams: ExampleAgent.cab (478 bytes)
 
@@ -472,7 +472,7 @@ ARPPRODUCTICON	icon.ico
 DefaultUIFont	DefaultFont
 ErrorDialog	ErrorDlg
 Manufacturer	Example
-ProductCode	{8CEA6FF4-20F9-5341-AE0C-4052B999B2AE}
+ProductCode	{CEF908A6-5FA7-5D3E-969A-D88EA61C36A2}
 ProductLanguage	1033
 ProductName	Example Agent
 ProductVersion	1.5.0

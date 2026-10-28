@@ -77,7 +77,7 @@ func PageCount(installerVersion string) (int, error) {
 	return majorNum*100 + minorNum, nil
 }
 
-// MinPageCount is the lowest Page Count go-msi writes for a platform. x64
+// MinPageCount is the lowest Page Count msi-builder writes for a platform. x64
 // installed from 150 up in SUM-03, but 200 is kept until ICE80 has been run.
 func MinPageCount(p Platform) int {
 	switch p {

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/exampletest"
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/internal/exampletest"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // buildRunProbe builds internal/cadll/testdata/probe for a platform.
@@ -97,7 +97,7 @@ func TestMsiexecRunActions(t *testing.T) {
 
 			t.Cleanup(func() {
 				_ = exec.Command("msiexec", "/x", path, "/qn", "/norestart").Run()
-				_ = os.RemoveAll(filepath.Join(os.Getenv("ProgramFiles"), "GoMsiRunProbe"))
+				_ = os.RemoveAll(filepath.Join(os.Getenv("ProgramFiles"), "BuilderRunProbe"))
 			})
 
 			installLog := filepath.Join(dir, "install.log")
@@ -108,31 +108,31 @@ func TestMsiexecRunActions(t *testing.T) {
 			log := readLog(installLog)
 
 			for _, want := range []string{
-				"GoMsiRun: deferred-system GoMsiRunProbe",
-				"GoMsiRun: nt authority\\system",
-				"GoMsiRun: brackets [ProductName] stay literal",
-				"GoMsiRun: oem-umlaut-äöü",
-				"GoMsiRun: utf8-umlaut-äöü-euro-€",
-				"GoMsiRun: readme.txt",
-				"GoMsiRun: stderr-line",
-				"GoMsiRun: deferred-user",
-				"GoMsiRun: powershell says 5.1",
+				"BuilderRun: deferred-system BuilderRunProbe",
+				"BuilderRun: nt authority\\system",
+				"BuilderRun: brackets [ProductName] stay literal",
+				"BuilderRun: oem-umlaut-äöü",
+				"BuilderRun: utf8-umlaut-äöü-euro-€",
+				"BuilderRun: readme.txt",
+				"BuilderRun: stderr-line",
+				"BuilderRun: deferred-user",
+				"BuilderRun: powershell says 5.1",
 				"oops",
-				"GoMsiRun: ignored-exit-3",
-				"GoMsiRun: exit code 3",
-				"GoMsiRun: immediate-after-finalize",
-				"GoMsiRun: exit code 0",
+				"BuilderRun: ignored-exit-3",
+				"BuilderRun: exit code 3",
+				"BuilderRun: immediate-after-finalize",
+				"BuilderRun: exit code 0",
 			} {
 				if !strings.Contains(log, want) {
 					t.Errorf("install log lacks %q", want)
 				}
 			}
 
-			if strings.Contains(log, "GoMsiRun: about-to-fail") {
+			if strings.Contains(log, "BuilderRun: about-to-fail") {
 				t.Error("ProbeFails ran without FAILPROBE=1")
 			}
 
-			if strings.Contains(log, "GoMsiRun: rollback-ran") {
+			if strings.Contains(log, "BuilderRun: rollback-ran") {
 				t.Error("ProbeRollback ran during a successful install")
 			}
 
@@ -149,9 +149,9 @@ func TestMsiexecRunActions(t *testing.T) {
 			log = readLog(failLog)
 
 			for _, want := range []string{
-				"GoMsiRun: about-to-fail",
-				"GoMsiRun: exit code 7",
-				"GoMsiRun: rollback-ran",
+				"BuilderRun: about-to-fail",
+				"BuilderRun: exit code 7",
+				"BuilderRun: rollback-ran",
 			} {
 				if !strings.Contains(log, want) {
 					t.Errorf("failed-install log lacks %q", want)

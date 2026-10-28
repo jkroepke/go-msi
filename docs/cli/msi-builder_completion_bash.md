@@ -1,4 +1,4 @@
-# `go-msi completion bash`
+# `msi-builder completion bash`
 
 Print the completion script for Bash
 
@@ -7,16 +7,16 @@ Prints the completion script for Bash.
 The script needs the bash-completion package. Load it in the current
 shell with:
 
-    source <(go-msi completion bash)
+    source <(msi-builder completion bash)
 
 or install it for every new shell, for example on Linux:
 
-    go-msi completion bash > /etc/bash_completion.d/go-msi
+    msi-builder completion bash > /etc/bash_completion.d/msi-builder
 
 ## Usage
 
 ```text
-go-msi completion bash [flags]
+msi-builder completion bash [flags]
 ```
 
 ## Flags
@@ -28,4 +28,4 @@ go-msi completion bash [flags]
 
 ## See also
 
-- [`go-msi completion`](go-msi_completion.md): Print a shell completion script
+- [`msi-builder completion`](msi-builder_completion.md): Print a shell completion script

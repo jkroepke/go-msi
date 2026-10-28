@@ -7,7 +7,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 func treeConfig() *config.Config {

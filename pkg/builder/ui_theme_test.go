@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/artwork"
-	"github.com/jkroepke/go-msi/internal/testpe"
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/internal/artwork"
+	"github.com/jkroepke/msi-builder/internal/testpe"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 const licenseRTF = `{\rtf1\ansi\deff0{\fonttbl{\f0\fnil Courier New;}}\f0\fs16 Example License\par Version 1.0\par}`

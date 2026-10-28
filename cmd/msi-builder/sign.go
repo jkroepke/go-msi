@@ -15,7 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jkroepke/go-msi/pkg/sign"
+	"github.com/jkroepke/msi-builder/pkg/sign"
 )
 
 // signFlags are the signing options of build and sign.
@@ -207,8 +207,8 @@ func newSignCmd() *cobra.Command {
 one. It writes in place unless --output is given; a failed signing keeps the
 original file. The key comes from a PKCS #12 file (--pfx) or from a PEM
 certificate chain and key (--cert and --key). See docs/signing.md.`,
-		Example: `  go-msi sign --pfx codesign.pfx --password-env PFX_PASSWORD hello.msi
-  go-msi sign --cert chain.pem --key key.pem --timestamp-url http://timestamp.digicert.com hello.msi`,
+		Example: `  msi-builder sign --pfx codesign.pfx --password-env PFX_PASSWORD hello.msi
+  msi-builder sign --cert chain.pem --key key.pem --timestamp-url http://timestamp.digicert.com hello.msi`,
 		Args:              exactlyOne("package"),
 		ValidArgsFunction: fileArg("msi"),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -270,7 +270,7 @@ func writeAtomic(path string, data []byte) error {
 		}
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".go-msi-*.msi")
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".msi-builder-*.msi")
 	if err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
@@ -312,7 +312,7 @@ func newVerifyCmd() *cobra.Command {
 of a signed package and prints the signer. It does not check certificate
 trust or revocation; Windows does that at install time. The exit code is 1
 when the package is not signed or the signature does not match.`,
-		Example:           "  go-msi verify hello.msi",
+		Example:           "  msi-builder verify hello.msi",
 		Args:              exactlyOne("package"),
 		ValidArgsFunction: fileArg("msi"),
 		RunE: func(cmd *cobra.Command, args []string) error {

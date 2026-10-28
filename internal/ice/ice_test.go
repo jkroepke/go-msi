@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/ice"
+	"github.com/jkroepke/msi-builder/internal/ice"
 )
 
 func TestParse(t *testing.T) {

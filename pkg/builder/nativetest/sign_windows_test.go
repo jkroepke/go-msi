@@ -28,8 +28,8 @@ import (
 
 	"software.sslmate.com/src/go-pkcs12"
 
-	"github.com/jkroepke/go-msi/pkg/cfb"
-	"github.com/jkroepke/go-msi/pkg/sign"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
+	"github.com/jkroepke/msi-builder/pkg/sign"
 )
 
 var (
@@ -141,7 +141,7 @@ func newPKI(t *testing.T, leafKey crypto.Signer) *signingPKI {
 	now := time.Now()
 	caTmpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(now.UnixNano()),
-		Subject:               pkix.Name{CommonName: "go-msi test CA " + now.Format(time.RFC3339Nano)},
+		Subject:               pkix.Name{CommonName: "msi-builder test CA " + now.Format(time.RFC3339Nano)},
 		NotBefore:             now.Add(-time.Hour),
 		NotAfter:              now.Add(24 * time.Hour),
 		IsCA:                  true,
@@ -152,7 +152,7 @@ func newPKI(t *testing.T, leafKey crypto.Signer) *signingPKI {
 
 	leaf := newCertificate(t, &x509.Certificate{
 		SerialNumber: big.NewInt(now.UnixNano() + 1),
-		Subject:      pkix.Name{CommonName: "go-msi test signer"},
+		Subject:      pkix.Name{CommonName: "msi-builder test signer"},
 		NotBefore:    now.Add(-time.Hour),
 		NotAfter:     now.Add(24 * time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
@@ -201,7 +201,7 @@ func (p *signingPKI) wantValid() uint32 {
 }
 
 func (p *signingPKI) options(h crypto.Hash) sign.Options {
-	return sign.Options{Signer: p.leafKey, Certificates: []*x509.Certificate{p.leaf}, Hash: h, Description: "go-msi test"}
+	return sign.Options{Signer: p.leafKey, Certificates: []*x509.Certificate{p.leaf}, Hash: h, Description: "msi-builder test"}
 }
 
 func rsaLeafKey(t *testing.T) crypto.Signer {
@@ -333,7 +333,7 @@ func mustSign(t *testing.T, pkg []byte, opts sign.Options) []byte {
 	return signed
 }
 
-// TestSignatureSIG01 signs the minimal example with go-msi and with
+// TestSignatureSIG01 signs the minimal example with msi-builder and with
 // signtool and checks each against the other verifier (MSISPEC-RESULTS
 // SIG-01).
 func TestSignatureSIG01(t *testing.T) {
@@ -352,12 +352,12 @@ func TestSignatureSIG01(t *testing.T) {
 	signedPath := writeTemp(t, "signed.msi", signed)
 
 	if got := winVerifyTrust(t, signedPath); got != pki.wantValid() {
-		t.Errorf("go-msi signed: WinVerifyTrust = %#x, want %#x", got, pki.wantValid())
+		t.Errorf("msi-builder signed: WinVerifyTrust = %#x, want %#x", got, pki.wantValid())
 	}
 
 	if pki.trusted {
 		if got := authenticodeStatus(t, signedPath); got != "Valid" {
-			t.Errorf("go-msi signed: Get-AuthenticodeSignature = %s", got)
+			t.Errorf("msi-builder signed: Get-AuthenticodeSignature = %s", got)
 		}
 	}
 
@@ -397,7 +397,7 @@ func TestSignatureSIG01(t *testing.T) {
 
 	if pki.trusted {
 		if out, err := signtoolVerify(t, signtool, signedPath); err != nil {
-			t.Errorf("signtool verify of the go-msi signature: %v\n%s", err, out)
+			t.Errorf("signtool verify of the msi-builder signature: %v\n%s", err, out)
 		}
 	}
 
@@ -420,14 +420,14 @@ func TestSignatureSIG01(t *testing.T) {
 	}
 
 	if !sig.Extended && !bytes.Equal(sig.Digest, d) {
-		t.Errorf("signtool signed D %x, go-msi computes %x", sig.Digest, d)
+		t.Errorf("signtool signed D %x, msi-builder computes %x", sig.Digest, d)
 	}
 
-	t.Logf("SIG-01: signtool %s: D %x, extended %v; go-msi signature verified by WinVerifyTrust (trusted CA: %v)", signtool, sig.Digest, sig.Extended, pki.trusted)
+	t.Logf("SIG-01: signtool %s: D %x, extended %v; msi-builder signature verified by WinVerifyTrust (trusted CA: %v)", signtool, sig.Digest, sig.Extended, pki.trusted)
 }
 
 // TestSignatureSIG02 records whether signtool writes MsiDigitalSignatureEx
-// and checks the pre-hash go-msi computes against it.
+// and checks the pre-hash msi-builder computes against it.
 func TestSignatureSIG02(t *testing.T) {
 	if testing.Short() {
 		t.Skip("native signature tests")
@@ -464,7 +464,7 @@ func TestSignatureSIG02(t *testing.T) {
 			continue
 		}
 
-		t.Logf("SIG-02: signtool /fd %s: MsiDigitalSignatureEx present %v (%d bytes), go-msi verified %v, extended %v", digest, hasEx, len(ex), sig.Hash, sig.Extended)
+		t.Logf("SIG-02: signtool /fd %s: MsiDigitalSignatureEx present %v (%d bytes), msi-builder verified %v, extended %v", digest, hasEx, len(ex), sig.Hash, sig.Extended)
 	}
 }
 
@@ -531,7 +531,7 @@ func TestSignatureSIG04(t *testing.T) {
 
 	signed := mustSign(t, pkg, pki.options(crypto.SHA256))
 	if got := winVerifyTrust(t, writeTemp(t, "prefix.msi", signed)); got != pki.wantValid() {
-		t.Errorf("SIG-04 go-msi: WinVerifyTrust = %#x, want %#x", got, pki.wantValid())
+		t.Errorf("SIG-04 msi-builder: WinVerifyTrust = %#x, want %#x", got, pki.wantValid())
 	}
 
 	signtool := findSigntool()
@@ -551,11 +551,11 @@ func TestSignatureSIG04(t *testing.T) {
 	if err != nil {
 		t.Errorf("SIG-04 signtool signature: sign.Verify: %v", err)
 	} else {
-		t.Logf("SIG-04: signtool signature verified by go-msi, extended %v", sig.Extended)
+		t.Logf("SIG-04: signtool signature verified by msi-builder, extended %v", sig.Extended)
 	}
 }
 
-// TestSignatureSIG05 changes the root CLSID of a signed package. go-msi
+// TestSignatureSIG05 changes the root CLSID of a signed package. msi-builder
 // writes no sub-storages, so nested storages are not covered.
 func TestSignatureSIG05(t *testing.T) {
 	if testing.Short() {

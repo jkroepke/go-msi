@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/pkg/msidb"
+	"github.com/jkroepke/msi-builder/pkg/msidb"
 )
 
 func cellTable(rows ...[]any) *msidb.Table {

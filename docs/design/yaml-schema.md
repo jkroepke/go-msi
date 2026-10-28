@@ -1,6 +1,6 @@
-# go-msi YAML schema, version 1
+# msi-builder YAML schema, version 1
 
-This document defines the input format of go-msi: one YAML file that describes
+This document defines the input format of msi-builder: one YAML file that describes
 an MSI package. The `config` package implements it (types, loading, defaults
 and validation). The MSI writer builds on that package and never reads YAML
 itself.
@@ -97,7 +97,7 @@ closes each one.
 ## 3. File layout
 
 ```yaml
-schema: go-msi/v1        # required, selects this document
+schema: msi-builder/v1        # required, selects this document
 vars: {}                 # defaults for ${NAME} substitution
 product: {}              # identity
 package: {}              # platform, scope, compression, summary information
@@ -143,8 +143,8 @@ format. Editors that use the YAML language server pick it up from a comment
 in the first line:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/pkg/config/schema.json
-schema: go-msi/v1
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
+schema: msi-builder/v1
 ```
 
 The JSON Schema checks keys, types, enums and syntax such as GUIDs, and
@@ -160,7 +160,7 @@ in step with the Go types.
 The smallest package needs no directories, features or upgrade section:
 
 ```yaml
-schema: go-msi/v1
+schema: msi-builder/v1
 product:
   name: Hello
   manufacturer: Example
@@ -329,7 +329,7 @@ lands in it, so an explicit tree never gains an unused folder.
 
 A per-user install dir lies in the user profile. Windows Installer wants an
 HKCU registry value as the key path of such components (ICE38) and
-RemoveFolder rows for their folders (ICE64); go-msi does not write either
+RemoveFolder rows for their folders (ICE64); msi-builder does not write either
 yet, and the validator warns about such components.
 
 A component's `directory` is a directory ID, a standard folder, or a folder
@@ -455,7 +455,7 @@ section 8.4). Two components must not end up with one ComponentId (ICE08):
 two `auto` components with the same bitness and key path, for example two
 components in one directory with only environment variables and so the
 directory as key path, need a pinned `guid` on one of them. The builder
-reports this, because it resolves the key paths; `go-msi validate` does not.
+reports this, because it resolves the key paths; `msi-builder validate` does not.
 
 **Preserved configuration.** `preserve: true` keeps a configuration file
 or registry value as the user left it across major upgrades. It sets
@@ -565,7 +565,7 @@ directory IDs for one folder, and a file must not have the path of a
 directory. The one exception is two conditional components in different
 directory IDs, for example an x64 and an x86 variant of one file: that is a
 warning (ICE30), and the conditions must never both be true. ICE30 also
-only warns for two conditional components in one directory ID; go-msi keeps
+only warns for two conditional components in one directory ID; msi-builder keeps
 that an error. The
 components still need different ComponentIds; an automatic GUID differs by
 bitness and key file, otherwise set `guid` on one of them.
@@ -808,20 +808,20 @@ Kinds, exactly one per action:
 
 **`run`.** The engine runs `exec` and `execProperty` commands with a visible
 console window and keeps none of their output (specification section
-17.1). `run` instead calls the custom action DLL that go-msi embeds
-(`internal/cadll`, written into the `Binary` table once as `GoMsiRun`, 7 to
+17.1). `run` instead calls the custom action DLL that msi-builder embeds
+(`internal/cadll`, written into the `Binary` table once as `BuilderRun`, 7 to
 9 KB for the package's platform): it starts the command with no window,
 copies every line it writes to stdout or stderr into the verbose log as
-`GoMsiRun: <line>`, logs the exit code and returns success for 0 and
+`BuilderRun: <line>`, logs the exit code and returns success for 0 and
 `ERROR_INSTALL_FAILURE` otherwise, which `return: ignore` turns into a
 warning. The command line is formatted when the action is scheduled, like
 `exec`; a type-51 action named `<id>.Data` passes `<directory>|<command>`
 through `CustomActionData` to deferred, rollback and commit actions and
-through the `GoMsiRun` property to immediate ones. `hideTarget` hides the
+through the `BuilderRun` property to immediate ones. `hideTarget` hides the
 command in both places. `return` is required (`check` or `ignore`;
 `asyncWait` is allowed, `asyncNoWait` is not). Impersonation follows
 `impersonate`: the DLL starts the process with the impersonated user's
-token when there is one. The key `GoMsiRun` is reserved in `binaries`.
+token when there is one. The key `BuilderRun` is reserved in `binaries`.
 Output is decoded as UTF-8 when it is valid UTF-8 and in the OEM code page
 otherwise, which covers Go programs, cmd.exe and PowerShell. Specification
 section 17.6 and case CA-03 (Appendix C) hold the Windows evidence.
@@ -954,7 +954,7 @@ ui:
           value: "1"                  # what a checked box sets, default 1
 ```
 
-The wizards are written from scratch for go-msi, including the bitmaps,
+The wizards are written from scratch for msi-builder, including the bitmaps,
 which the `artwork` package draws from a colour palette at build time.
 `minimal` has welcome, ready, progress and finish; `featureTree` adds the
 feature tree (`CustomizeDlg`) with Browse and disk usage. Both include
@@ -1125,7 +1125,7 @@ the generated tables, and the cabinet round trip.
 Multiple languages in one package, advertised installs and advertised
 shortcuts, script custom
 actions, and a top-level file harvester (Go callers have
-`config.Config.AddTree`, see [Go API](../go-api.md)). A future `schema: go-msi/v2` can add
+`config.Config.AddTree`, see [Go API](../go-api.md)). A future `schema: msi-builder/v2` can add
 them without changing the meaning of a v1 file.
 
 Patches, transforms, merge modules and bundles are out of scope for good

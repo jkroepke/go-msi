@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jkroepke/go-msi/pkg/cfb"
-	"github.com/jkroepke/go-msi/pkg/summary"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
+	"github.com/jkroepke/msi-builder/pkg/summary"
 )
 
 // Test vector A.1 of docs/spec/MSISPEC.md section 3.

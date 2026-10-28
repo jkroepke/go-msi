@@ -3,8 +3,8 @@ package builder
 import (
 	"fmt"
 
-	"github.com/jkroepke/go-msi/internal/sequence"
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/internal/sequence"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // checkWhen warns when a schedule's when is placed where its properties are

@@ -8,12 +8,12 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/exampletest"
+	"github.com/jkroepke/msi-builder/internal/exampletest"
 )
 
 // TestExampleTables builds every example and compares what inspect prints
 // for it with testdata/tables/<name>.txt, so a change to the generated
-// tables shows up as a diff of the snapshot. GO_MSI_UPDATE_SNAPSHOTS=1
+// tables shows up as a diff of the snapshot. MSI_BUILDER_UPDATE_SNAPSHOTS=1
 // rewrites the snapshots.
 func TestExampleTables(t *testing.T) {
 	t.Parallel()

@@ -1,4 +1,4 @@
-# `go-msi completion zsh`
+# `msi-builder completion zsh`
 
 Print the completion script for Zsh
 
@@ -7,16 +7,16 @@ Prints the completion script for Zsh.
 Completion must be enabled in Zsh ("autoload -U compinit; compinit").
 Load it in the current shell with:
 
-    source <(go-msi completion zsh)
+    source <(msi-builder completion zsh)
 
 or install it into a directory of $fpath for every new shell:
 
-    go-msi completion zsh > "${fpath[1]}/_go-msi"
+    msi-builder completion zsh > "${fpath[1]}/_msi-builder"
 
 ## Usage
 
 ```text
-go-msi completion zsh [flags]
+msi-builder completion zsh [flags]
 ```
 
 ## Flags
@@ -28,4 +28,4 @@ go-msi completion zsh [flags]
 
 ## See also
 
-- [`go-msi completion`](go-msi_completion.md): Print a shell completion script
+- [`msi-builder completion`](msi-builder_completion.md): Print a shell completion script

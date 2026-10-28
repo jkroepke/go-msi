@@ -3,7 +3,7 @@ package config_test
 import (
 	"testing"
 
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 func TestLZXWindow(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jkroepke/go-msi/pkg/summary"
+	"github.com/jkroepke/msi-builder/pkg/summary"
 )
 
 // FuzzUnmarshal feeds corrupted property sets to the reader.

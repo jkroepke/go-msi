@@ -10,11 +10,11 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/jkroepke/go-msi/internal/testpe"
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/cab"
-	"github.com/jkroepke/go-msi/pkg/config"
-	"github.com/jkroepke/go-msi/pkg/msidb"
+	"github.com/jkroepke/msi-builder/internal/testpe"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/cab"
+	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/msidb"
 )
 
 // goConfig is the minimal example written in Go instead of YAML.

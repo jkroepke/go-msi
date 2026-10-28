@@ -25,7 +25,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/jkroepke/go-msi/pkg/cfb"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
 )
 
 // Options control Sign.

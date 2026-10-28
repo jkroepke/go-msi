@@ -1,7 +1,7 @@
 package builder
 
 import (
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // Tables MsiLockPermissionsEx can secure (spec section 6.2).

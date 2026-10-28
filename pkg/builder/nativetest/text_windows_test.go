@@ -12,17 +12,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jkroepke/go-msi/internal/testpe"
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/config"
-	"github.com/jkroepke/go-msi/pkg/msidb"
-	"github.com/jkroepke/go-msi/pkg/summary"
+	"github.com/jkroepke/msi-builder/internal/testpe"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/msidb"
+	"github.com/jkroepke/msi-builder/pkg/summary"
 )
 
 // textTemplate puts the same text into every kind of string column the
 // fuzz tests reach: names, a directory, a long file name, a registry key
 // and value, a property, a condition and the summary.
-const textTemplate = `schema: go-msi/v1
+const textTemplate = `schema: msi-builder/v1
 product:
   name: '%[1]s'
   manufacturer: '%[1]s'

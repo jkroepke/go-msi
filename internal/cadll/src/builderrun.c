@@ -1,5 +1,5 @@
-// gomsirun.c is the custom action DLL that go-msi embeds into packages for
-// `run` actions. The entry point GoMsiRun starts a command line with a
+// builderrun.c is the custom action DLL that msi-builder embeds into packages for
+// `run` actions. The entry point BuilderRun starts a command line with a
 // hidden window, copies everything the process writes to stdout or stderr
 // into the Windows Installer log through MsiProcessMessage, and turns the
 // exit code into a custom action return value: 0 for exit code 0,
@@ -11,12 +11,12 @@
 // build.sh with clang and lld for x86, x64 and arm64.
 //
 // Input, in CustomActionData for deferred, rollback and commit actions and in
-// the property GoMsiRun for immediate actions:
+// the property BuilderRun for immediate actions:
 //
 //     <working directory>|<command line>
 //
 // The directory may be empty; `|` cannot occur in a Windows path, so the
-// first one ends it. A log line reads `GoMsiRun: ...`.
+// first one ends it. A log line reads `BuilderRun: ...`.
 
 typedef unsigned int UINT;
 typedef unsigned long DWORD;
@@ -390,7 +390,7 @@ static BOOL start(MSIHANDLE install, WCHAR *cmd, const WCHAR *dir, STARTUPINFOW 
     return ok;
 }
 
-__declspec(dllexport) UINT WINAPI GoMsiRun(MSIHANDLE install)
+__declspec(dllexport) UINT WINAPI BuilderRun(MSIHANDLE install)
 {
     WCHAR *data = property(install, propData);
     if (!data) {

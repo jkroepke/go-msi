@@ -1,19 +1,19 @@
 codepage: 1252
 summary  1: 1252
 summary  2: Installation Database
-summary  3: Example Viewer 2.0.0 installer
-summary  4: Example
+summary  3: windows_exporter 0.32.0.5 installer
+summary  4: prometheus-community
 summary  5: Installer
-summary  6: This installer database contains the logic and data required to install Example Viewer.
+summary  6: This installer database contains the logic and data required to install windows_exporter.
 summary  7: x64;1033
-summary  9: {C0377714-EC08-5167-AC75-5C261E03300C}
+summary  9: {3554A5A4-DBB3-5C25-B8C6-6D11EA064FC2}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500
 summary 15: 2
-summary 18: go-msi
+summary 18: msi-builder
 summary 19: 2
-streams: ExampleViewer.cab (367 bytes)
+streams: windows_exporter.cab (379 bytes)
 
 == AdminExecuteSequence (8 rows)
 Action	Condition	Sequence
@@ -50,26 +50,22 @@ InstallValidate		1400
 PublishFeatures		6300
 PublishProduct		6400
 
-== Binary (3 rows)
+== Binary (4 rows)
 Name	Data
 s72!	v0
 BannerBmp	[binary 85894 bytes]
+BuilderRun	[binary 8192 bytes]
 DialogBmp	[binary 461814 bytes]
 ErrorIco	[binary 4286 bytes]
 
-== CheckBox (2 rows)
-Property	Value
-s72!	S64
-LaunchOnFinish	1
-LicenseAccepted	1
-
-== Component (2 rows)
+== Component (3 rows)
 Component	ComponentId	Directory_	Attributes	Condition	KeyPath
 s72!	S38	s72	i2	S255	S72
-cmpDC7F075D4854A7F87FB831277DA6373D	{E4E867C1-CBB3-521A-A812-037B2DBD33DF}	ProgramMenuFolder	260		regDC7F075D4854A7F87FB831277DA6373D
-viewer.exe	{8B93EB6B-F828-573A-9E04-0CEC555CCB06}	INSTALLDIR	256		viewer.exe
+APPLICATIONFOLDER_textfile_inputs	{D03EF58A-9CBF-4165-AD39-D143E9B27E14}	APPLICATIONFOLDER_textfile_inputs	256		
+Executable	{5546455E-B5EA-5AF8-A21A-AA526F04D083}	APPLICATIONFOLDER	320		windows_exporter.exe
+FirewallException_Firewall	{D1C02446-9264-5AF9-B5EA-D9A961A2E9FC}	APPLICATIONFOLDER	256		
 
-== Control (150 rows)
+== Control (169 rows)
 Dialog_	Control	Type	X	Y	Width	Height	Attributes	Property	Text	Control_Next	Help
 s72!	s50!	s20	i2	i2	i2	i2	I4	S50	L0	S50	L50
 BrowseDlg	Banner	Bitmap	0	0	370	44	1		BannerBmp		
@@ -88,6 +84,44 @@ BrowseDlg	Up	PushButton	292	55	26	19	3		&Up	NewFolder
 CancelDlg	No	PushButton	132	57	56	17	3		&No	Yes	
 CancelDlg	Text	Text	20	15	220	30	131075		Are you sure you want to cancel [ProductName] installation?		
 CancelDlg	Yes	PushButton	72	57	56	17	3		&Yes	No	
+ConfigDlg	Back	PushButton	180	243	56	17	3		< &Back	Next	
+ConfigDlg	Banner	Bitmap	0	0	370	44	1		BannerBmp		
+ConfigDlg	BottomLine	Line	0	234	370	0	1				
+ConfigDlg	Cancel	PushButton	304	243	56	17	3		Cancel	Edit1	
+ConfigDlg	Description	Text	25	21	300	22	196611		This page contains configuration related to windows_exporter		
+ConfigDlg	Edit1	Edit	25	78	320	15	3	ENABLED_COLLECTORS		Edit2	
+ConfigDlg	Edit2	Edit	25	118	320	15	3	EXTRA_FLAGS		Edit3	
+ConfigDlg	Edit3	Edit	25	158	320	15	3	LISTEN_PORT		Edit4	
+ConfigDlg	Edit4	Edit	25	198	320	15	3	CONFIG_FILE		Back	
+ConfigDlg	Label1	Text	25	58	320	20	131075		Comma-separated list of collectors to use. Use '[\[]defaults[\]]' as a placeholder for all the collectors enabled by default. If value is empty, the exporter default will be used.		
+ConfigDlg	Label2	Text	25	98	320	20	131075		Additional command line flags		
+ConfigDlg	Label3	Text	25	138	320	20	131075		Port to listen		
+ConfigDlg	Label4	Text	25	178	320	20	131075		Path to config file. If empty, no config will be used. If set to 'config.yaml', then the config.yaml at the install path will be used.		
+ConfigDlg	Next	PushButton	236	243	56	17	3		&Next >	Cancel	
+ConfigDlg	Title	Text	15	6	300	15	196611		{\TitleFont}windows_exporter configuration		
+CustomizeDlg	Back	PushButton	180	243	56	17	3		< &Back	Next	
+CustomizeDlg	Banner	Bitmap	0	0	370	44	1		BannerBmp		
+CustomizeDlg	BottomLine	Line	0	234	370	0	1				
+CustomizeDlg	Browse	PushButton	304	190	56	17	3		B&rowse...	Reset	
+CustomizeDlg	Cancel	PushButton	304	243	56	17	3		Cancel	Tree	
+CustomizeDlg	Description	Text	25	21	300	22	196611		Select the way you want features to be installed.		
+CustomizeDlg	DiskCost	PushButton	96	243	70	17	3		Disk &Usage	Back	
+CustomizeDlg	Hint	Text	25	55	320	20	131075		Click the icons in the tree below to change the way features will be installed.		
+CustomizeDlg	ItemDescription	Text	215	85	135	50	131075				
+CustomizeDlg	ItemSize	Text	215	140	135	40	131075				
+CustomizeDlg	Location	Text	75	192	215	24	131075				
+CustomizeDlg	LocationLabel	Text	25	192	50	10	131075		Location:		
+CustomizeDlg	Next	PushButton	236	243	56	17	3		&Next >	Cancel	
+CustomizeDlg	Reset	PushButton	20	243	70	17	3		Re&set	DiskCost	
+CustomizeDlg	Title	Text	15	6	300	15	196611		{\TitleFont}Custom Setup		
+CustomizeDlg	Tree	SelectionTree	25	85	175	95	7	_BrowseProperty		Browse	
+DiskCostDlg	Banner	Bitmap	0	0	370	44	1		BannerBmp		
+DiskCostDlg	BottomLine	Line	0	234	370	0	1				
+DiskCostDlg	Description	Text	25	21	300	22	196611		The disk space required for the installation of the selected features.		
+DiskCostDlg	OK	PushButton	304	243	56	17	3		&OK	OK	
+DiskCostDlg	Text	Text	20	53	330	40	131075		The highlighted volumes do not have enough disk space available for the currently selected features. You can remove some files from the highlighted volumes, install fewer features, or select different destination drives.		
+DiskCostDlg	Title	Text	15	6	300	15	196611		{\TitleFont}Disk space requirements		
+DiskCostDlg	VolumeList	VolumeCostList	20	100	330	120	393223		{120}{70}{70}{70}{70}		
 ErrorDlg	A	PushButton	100	72	56	17	3		&Abort		
 ErrorDlg	C	PushButton	212	72	56	17	3		Cancel		
 ErrorDlg	ErrorIcon	Icon	15	15	24	24	1572865		ErrorIco		
@@ -102,8 +136,7 @@ ExitDlg	Background	Bitmap	0	0	370	234	1		DialogBmp
 ExitDlg	BottomLine	Line	0	234	370	0	1				
 ExitDlg	Cancel	PushButton	304	243	56	17	1		Cancel		
 ExitDlg	Description	Text	135	90	220	80	196611		Click the Finish button to exit the Setup Wizard.		
-ExitDlg	Finish	PushButton	236	243	56	17	3		&Finish	LaunchCheckBox	
-ExitDlg	LaunchCheckBox	CheckBox	20	243	155	17	3	LaunchOnFinish	&Launch [ProductName]	Finish	
+ExitDlg	Finish	PushButton	236	243	56	17	3		&Finish	Finish	
 ExitDlg	Title	Text	135	20	220	60	196611		{\BigFont}Completed the [ProductName] Setup Wizard		
 FatalErrorDlg	Back	PushButton	180	243	56	17	1		< &Back		
 FatalErrorDlg	Background	Bitmap	0	0	370	234	1		DialogBmp		
@@ -121,39 +154,18 @@ FilesInUse	List	ListBox	20	87	330	130	7	FileInUseProcess		Exit
 FilesInUse	Retry	PushButton	304	243	56	17	3		&Retry	List	
 FilesInUse	Text	Text	20	55	330	30	131075		The following applications are using files that need to be updated by this setup. Close these applications and click Retry to continue.		
 FilesInUse	Title	Text	15	6	300	15	196611		{\TitleFont}Files in use		
-InstallDirDlg	Back	PushButton	180	243	56	17	3		< &Back	Next	
-InstallDirDlg	Banner	Bitmap	0	0	370	44	1		BannerBmp		
-InstallDirDlg	BottomLine	Line	0	234	370	0	1				
-InstallDirDlg	Cancel	PushButton	304	243	56	17	3		Cancel	Folder	
-InstallDirDlg	ChangeFolder	PushButton	292	75	56	17	3		&Change...	Back	
-InstallDirDlg	Description	Text	25	21	300	22	196611		Click Next to install to the default folder or click Change to choose another.		
-InstallDirDlg	Folder	PathEdit	25	75	260	18	3	INSTALLDIR		ChangeFolder	
-InstallDirDlg	FolderLabel	Text	25	60	320	12	131075		Install [ProductName] to:		
-InstallDirDlg	Next	PushButton	236	243	56	17	3		&Next >	Cancel	
-InstallDirDlg	Title	Text	15	6	300	15	196611		{\TitleFont}Destination Folder		
-LicenseAgreementDlg	Back	PushButton	180	243	56	17	3		< &Back	Next	
-LicenseAgreementDlg	Banner	Bitmap	0	0	370	44	1		BannerBmp		
-LicenseAgreementDlg	BottomLine	Line	0	234	370	0	1				
-LicenseAgreementDlg	Cancel	PushButton	304	243	56	17	3		Cancel	LicenseText	
-LicenseAgreementDlg	Description	Text	25	21	300	22	196611		Please read the following license agreement carefully.		
-LicenseAgreementDlg	LicenseAcceptedCheckBox	CheckBox	20	202	330	18	3	LicenseAccepted	I &accept the terms in the License Agreement	Print	
-LicenseAgreementDlg	LicenseText	ScrollableText	20	55	330	140	7		{\rtf1\ansi\ansicpg1252\deff0\uc1{\fonttbl{\f0\fmodern\fcharset0 Courier New;}}
-\f0\fs16 Example license\par
-}
-	LicenseAcceptedCheckBox	
-LicenseAgreementDlg	Next	PushButton	236	243	56	17	3		&Next >	Cancel	
-LicenseAgreementDlg	Print	PushButton	20	243	56	17	3		&Print	Back	
-LicenseAgreementDlg	Title	Text	15	6	300	15	196611		{\TitleFont}End-User License Agreement		
 MaintenanceTypeDlg	Back	PushButton	180	243	56	17	3		< &Back	Cancel	
 MaintenanceTypeDlg	Banner	Bitmap	0	0	370	44	1		BannerBmp		
 MaintenanceTypeDlg	BottomLine	Line	0	234	370	0	1				
-MaintenanceTypeDlg	Cancel	PushButton	304	243	56	17	3		Cancel	Repair	
+MaintenanceTypeDlg	Cancel	PushButton	304	243	56	17	3		Cancel	Change	
+MaintenanceTypeDlg	Change	PushButton	40	65	80	17	3		&Change	Repair	
+MaintenanceTypeDlg	ChangeText	Text	130	67	220	20	131075		Lets you change the way features are installed.		
 MaintenanceTypeDlg	Description	Text	25	21	300	22	196611		Select the operation you wish to perform.		
 MaintenanceTypeDlg	Next	PushButton	236	243	56	17	1		&Next >		
-MaintenanceTypeDlg	Remove	PushButton	40	105	80	17	3		&Remove	Back	
-MaintenanceTypeDlg	RemoveText	Text	130	107	220	20	131075		Removes [ProductName] from your computer.		
-MaintenanceTypeDlg	Repair	PushButton	40	65	80	17	3		Re&pair	Remove	
-MaintenanceTypeDlg	RepairText	Text	130	67	220	20	131075		Repairs errors in the most recent installation by fixing missing and corrupt files, shortcuts and registry entries.		
+MaintenanceTypeDlg	Remove	PushButton	40	145	80	17	3		&Remove	Back	
+MaintenanceTypeDlg	RemoveText	Text	130	147	220	20	131075		Removes [ProductName] from your computer.		
+MaintenanceTypeDlg	Repair	PushButton	40	105	80	17	3		Re&pair	Remove	
+MaintenanceTypeDlg	RepairText	Text	130	107	220	20	131075		Repairs errors in the most recent installation by fixing missing and corrupt files, shortcuts and registry entries.		
 MaintenanceTypeDlg	Title	Text	15	6	300	15	196611		{\TitleFont}Change, repair, or remove installation		
 MaintenanceWelcomeDlg	Back	PushButton	180	243	56	17	1		< &Back		
 MaintenanceWelcomeDlg	Background	Bitmap	0	0	370	234	1		DialogBmp		
@@ -226,12 +238,9 @@ WelcomeDlg	Description	Text	135	90	220	80	196611		The Setup Wizard will install 
 WelcomeDlg	Next	PushButton	236	243	56	17	3		&Next >	Cancel	
 WelcomeDlg	Title	Text	135	20	220	60	196611		{\BigFont}Welcome to the [ProductName] Setup Wizard		
 
-== ControlCondition (5 rows)
+== ControlCondition (2 rows)
 Dialog_	Control_	Action	Condition
 s72!	s50!	s50!	s255!
-ExitDlg	LaunchCheckBox	Hide	NOT (NOT Installed AND NOT ACTION = "ADMIN" AND $viewer.exe = 3)
-LicenseAgreementDlg	Next	Disable	LicenseAccepted <> "1"
-LicenseAgreementDlg	Next	Enable	LicenseAccepted = "1"
 MaintenanceTypeDlg	Remove	Disable	ARPNOREMOVE
 MaintenanceTypeDlg	Repair	Disable	ARPNOREPAIR
 
@@ -246,6 +255,17 @@ BrowseDlg	OK	SetTargetPath	[_BrowseProperty]	1	1
 BrowseDlg	Up	DirectoryListUp	0	1	1
 CancelDlg	No	EndDialog	Return	1	1
 CancelDlg	Yes	EndDialog	Exit	1	1
+ConfigDlg	Back	NewDialog	CustomizeDlg	1	1
+ConfigDlg	Cancel	SpawnDialog	CancelDlg	1	1
+ConfigDlg	Next	NewDialog	VerifyReadyDlg	1	1
+CustomizeDlg	Back	NewDialog	MaintenanceTypeDlg	Installed	2
+CustomizeDlg	Back	NewDialog	WelcomeDlg	NOT Installed	1
+CustomizeDlg	Browse	SelectionBrowse	BrowseDlg	1	1
+CustomizeDlg	Cancel	SpawnDialog	CancelDlg	1	1
+CustomizeDlg	DiskCost	SpawnDialog	DiskCostDlg	1	1
+CustomizeDlg	Next	NewDialog	ConfigDlg	1	1
+CustomizeDlg	Reset	Reset	0	1	1
+DiskCostDlg	OK	EndDialog	Return	1	1
 ErrorDlg	A	EndDialog	ErrorAbort	1	1
 ErrorDlg	C	EndDialog	ErrorCancel	1	1
 ErrorDlg	I	EndDialog	ErrorIgnore	1	1
@@ -253,24 +273,14 @@ ErrorDlg	N	EndDialog	ErrorNo	1	1
 ErrorDlg	O	EndDialog	ErrorOk	1	1
 ErrorDlg	R	EndDialog	ErrorRetry	1	1
 ErrorDlg	Y	EndDialog	ErrorYes	1	1
-ExitDlg	Finish	DoAction	LaunchOnFinish	LaunchOnFinish = "1" AND NOT Installed AND NOT ACTION = "ADMIN" AND $viewer.exe = 3	1
-ExitDlg	Finish	EndDialog	Return	1	2
+ExitDlg	Finish	EndDialog	Return	1	1
 FatalErrorDlg	Finish	EndDialog	Exit	1	1
 FilesInUse	Exit	EndDialog	Exit	1	1
 FilesInUse	Ignore	EndDialog	Ignore	1	1
 FilesInUse	Retry	EndDialog	Retry	1	1
-InstallDirDlg	Back	NewDialog	LicenseAgreementDlg	1	1
-InstallDirDlg	Cancel	SpawnDialog	CancelDlg	1	1
-InstallDirDlg	ChangeFolder	SpawnDialog	BrowseDlg	1	2
-InstallDirDlg	ChangeFolder	[_BrowseProperty]	INSTALLDIR	1	1
-InstallDirDlg	Next	NewDialog	VerifyReadyDlg	1	2
-InstallDirDlg	Next	SetTargetPath	INSTALLDIR	1	1
-LicenseAgreementDlg	Back	NewDialog	WelcomeDlg	1	1
-LicenseAgreementDlg	Cancel	SpawnDialog	CancelDlg	1	1
-LicenseAgreementDlg	Next	NewDialog	InstallDirDlg	1	1
-LicenseAgreementDlg	Print	MsiPrint	1	1	1
 MaintenanceTypeDlg	Back	NewDialog	MaintenanceWelcomeDlg	1	1
 MaintenanceTypeDlg	Cancel	SpawnDialog	CancelDlg	1	1
+MaintenanceTypeDlg	Change	NewDialog	CustomizeDlg	1	1
 MaintenanceTypeDlg	Remove	NewDialog	VerifyRemoveDlg	1	1
 MaintenanceTypeDlg	Repair	NewDialog	VerifyRepairDlg	1	1
 MaintenanceWelcomeDlg	Cancel	SpawnDialog	CancelDlg	1	1
@@ -282,8 +292,7 @@ ProgressDlg	Cancel	SpawnDialog	CancelDlg	1	1
 ResumeDlg	Cancel	SpawnDialog	CancelDlg	1	1
 ResumeDlg	Install	EndDialog	Return	1	1
 UserExitDlg	Finish	EndDialog	Exit	1	1
-VerifyReadyDlg	Back	NewDialog	InstallDirDlg	NOT Installed	1
-VerifyReadyDlg	Back	NewDialog	MaintenanceTypeDlg	Installed	2
+VerifyReadyDlg	Back	NewDialog	ConfigDlg	1	1
 VerifyReadyDlg	Cancel	SpawnDialog	CancelDlg	1	1
 VerifyReadyDlg	Install	EndDialog	Return	1	1
 VerifyRemoveDlg	Back	NewDialog	MaintenanceTypeDlg	1	1
@@ -297,26 +306,54 @@ VerifyRepairDlg	Repair	Reinstall	ALL	1	2
 VerifyRepairDlg	Repair	ReinstallMode	ecmus	1	1
 WaitForCostingDlg	Return	EndDialog	Exit	1	1
 WelcomeDlg	Cancel	SpawnDialog	CancelDlg	1	1
-WelcomeDlg	Next	NewDialog	LicenseAgreementDlg	1	2
+WelcomeDlg	Next	NewDialog	CustomizeDlg	1	2
 WelcomeDlg	Next	SpawnWaitDialog	WaitForCostingDlg	CostingComplete = 1	1
 
-== CustomAction (1 rows)
+== CreateFolder (2 rows)
+Directory_	Component_
+s72!	s72!
+APPLICATIONFOLDER	FirewallException_Firewall
+APPLICATIONFOLDER_textfile_inputs	APPLICATIONFOLDER_textfile_inputs
+
+== CustomAction (22 rows)
 Action	Type	Source	Target	ExtendedType
 s72!	i2	S72	S255	I4
-LaunchOnFinish	226	INSTALLDIR	"[#viewer.exe]"	
+CheckExtraFlags	19		The parameter '--config.file' must not be included in EXTRA_FLAGS. Use CONFIG_FILE instead. Please remove it and try again.	
+CreateConfigFile	3073	BuilderRun	BuilderRun	
+CreateConfigFile.Data	51	CreateConfigFile	[APPLICATIONFOLDER]|"[%ComSpec]" /c TYPE NUL >>"[APPLICATIONFOLDER]config.yaml"	
+FwAdd2DD00848	3106	System64Folder	"[System64Folder]netsh.exe" advfirewall firewall add rule name="windows_exporter" dir=in action=allow protocol=tcp localport=[LISTEN_PORT] program="[#windows_exporter.exe]" remoteip=[FwIP2DD00848] description="windows_exporter HTTP endpoint"	
+FwAddRollback2DD00848	3426	System64Folder	"[System64Folder]netsh.exe" advfirewall firewall delete rule name="windows_exporter" dir=in	
+FwClear2DD00848	3170	System64Folder	"[System64Folder]netsh.exe" advfirewall firewall delete rule name="windows_exporter" dir=in	
+FwRemove2DD00848	3170	System64Folder	"[System64Folder]netsh.exe" advfirewall firewall delete rule name="windows_exporter" dir=in	
+FwRemoveRollback2DD00848	3426	System64Folder	"[System64Folder]netsh.exe" advfirewall firewall add rule name="windows_exporter" dir=in action=allow protocol=tcp localport=[LISTEN_PORT] program="[#windows_exporter.exe]" remoteip=[FwIP2DD00848] description="windows_exporter HTTP endpoint"	
+KillProcess	3170	System64Folder	"[System64Folder]WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-Process -Name windows_exporter -ErrorAction SilentlyContinue | Where-Object Path -EQ '[APPLICATIONFOLDER]windows_exporter.exe' | Stop-Process -Force"	
+ServiceRecovery_windows_exporter	3170	System64Folder	"[System64Folder]sc.exe" failure "windows_exporter" reset= 0 actions= restart/60000/restart/60000/restart/60000	
+SetARPINSTALLLOCATION	51	ARPINSTALLLOCATION	[APPLICATIONFOLDER]	
+SetArg_windows_exporter_1	51	Arg_windows_exporter_1	--config.file="[APPLICATIONFOLDER]config.yaml"	
+SetArg_windows_exporter_2	51	Arg_windows_exporter_2	--config.file="[CONFIG_FILE]"	
+SetArg_windows_exporter_3	51	Arg_windows_exporter_3	--collectors.enabled [ENABLED_COLLECTORS]	
+SetArg_windows_exporter_4	51	Arg_windows_exporter_4	--web.listen-address="[LISTEN_ADDR]:[LISTEN_PORT]"	
+SetArg_windows_exporter_5	51	Arg_windows_exporter_5	--telemetry.path="[METRICS_PATH]"	
+SetArg_windows_exporter_6	51	Arg_windows_exporter_6	--collector.textfile.directories="[TEXTFILE_DIRS]"	
+SetFwRemoteIP2DD00848	51	FwIP2DD00848	[REMOTE_ADDR]	
+SetFwRemoteIPDefault2DD00848	51	FwIP2DD00848	any	
+SetMaintenance	51	MAINTENANCE	true	
+SetReinstallAll	51	REINSTALL	ALL	
+SetReinstallMode	51	REINSTALLMODE	amus	
 
-== Dialog (19 rows)
+== Dialog (20 rows)
 Dialog	HCentering	VCentering	Width	Height	Attributes	Title	Control_First	Control_Default	Control_Cancel
 s72!	i2	i2	i2	i2	I4	L128	s50	S50	S50
 BrowseDlg	50	50	370	270	7	[ProductName] Setup	DirectoryList	OK	Cancel
 CancelDlg	50	50	260	85	3	[ProductName] Setup	No	No	No
+ConfigDlg	50	50	370	270	7	[ProductName] Setup	Edit1	Next	Cancel
+CustomizeDlg	50	50	370	270	39	[ProductName] Setup	Tree	Next	Cancel
+DiskCostDlg	50	50	370	270	39	[ProductName] Setup	OK	OK	OK
 ErrorDlg	50	50	270	105	65543	[ProductName] Setup	ErrorText	O	
 ExitDlg	50	50	370	270	7	[ProductName] Setup	Finish	Finish	Finish
 FatalErrorDlg	50	50	370	270	7	[ProductName] Setup	Finish	Finish	Finish
 FilesInUse	50	50	370	270	23	[ProductName] Setup	Retry	Retry	Exit
-InstallDirDlg	50	50	370	270	7	[ProductName] Setup	Folder	Next	Cancel
-LicenseAgreementDlg	50	50	370	270	7	[ProductName] Setup	LicenseText	Next	Cancel
-MaintenanceTypeDlg	50	50	370	270	7	[ProductName] Setup	Repair		Cancel
+MaintenanceTypeDlg	50	50	370	270	7	[ProductName] Setup	Change		Cancel
 MaintenanceWelcomeDlg	50	50	370	270	7	[ProductName] Setup	Next	Next	Cancel
 MsiRMFilesInUse	50	50	370	270	23	[ProductName] Setup	OK	OK	Cancel
 ProgressDlg	50	50	370	270	5	[ProductName] Setup	Cancel	Cancel	Cancel
@@ -331,54 +368,78 @@ WelcomeDlg	50	50	370	270	7	[ProductName] Setup	Next	Next	Cancel
 == Directory (5 rows)
 Directory	Directory_Parent	DefaultDir
 s72!	S72	l255
-DesktopFolder	TARGETDIR	Desktop
-INSTALLDIR	ProgramFiles64Folder	2gt2mhnu|Example Viewer
+APPLICATIONFOLDER	ProgramFiles64Folder	nl6syarv|windows_exporter
+APPLICATIONFOLDER_textfile_inputs	APPLICATIONFOLDER	5jf7-_i-|textfile_inputs
 ProgramFiles64Folder	TARGETDIR	PFiles64
-ProgramMenuFolder	TARGETDIR	PMenu
+System64Folder	TARGETDIR	System64
 TARGETDIR		SourceDir
 
 == Environment (0 rows)
 Environment	Name	Value	Component_
 s72!	l255	L255	s72
 
-== EventMapping (2 rows)
+== EventMapping (8 rows)
 Dialog_	Control_	Event	Attribute
 s72!	s50!	s50!	s50
+CustomizeDlg	Browse	SelectionPathOn	Visible
+CustomizeDlg	ItemDescription	SelectionDescription	Text
+CustomizeDlg	ItemSize	SelectionSize	Text
+CustomizeDlg	Location	SelectionPath	Text
+CustomizeDlg	Location	SelectionPathOn	Visible
+CustomizeDlg	LocationLabel	SelectionPathOn	Visible
 ProgressDlg	ActionText	ActionText	Text
 ProgressDlg	ProgressBar	SetProgress	Progress
 
-== Feature (1 rows)
+== Feature (2 rows)
 Feature	Feature_Parent	Title	Description	Display	Level	Directory_	Attributes
 s38!	S38	L64	L255	I2	i2	S72	i2
-MainFeature		Example Viewer		3	1	INSTALLDIR	8
+DefaultFeature		windows_exporter 0.32.0.5	The binary and configuration files for windows_exporter	3	1	APPLICATIONFOLDER	24
+FirewallException	DefaultFeature	Firewall Exception	Allow windows_exporter to listen on a port	5	2		8
 
-== FeatureComponents (2 rows)
+== FeatureComponents (3 rows)
 Feature_	Component_
 s38!	s72!
-MainFeature	cmpDC7F075D4854A7F87FB831277DA6373D
-MainFeature	viewer.exe
+DefaultFeature	APPLICATIONFOLDER_textfile_inputs
+DefaultFeature	Executable
+FirewallException	FirewallException_Firewall
 
 == File (1 rows)
 File	Component_	FileName	FileSize	Version	Language	Attributes	Sequence
 s72!	s72	l255	i4	S72	S20	I2	i4
-viewer.exe	viewer.exe	viewer.exe	2048	2.0.0.0	1033	512	1
+windows_exporter.exe	Executable	0duuw-2s.exe|windows_exporter.exe	2048	0.32.0.5	1033	512	1
 
-== InstallExecuteSequence (26 rows)
+== Icon (1 rows)
+Name	Data
+s72!	v0
+icon.ico	[binary 70 bytes]
+
+== InstallExecuteSequence (51 rows)
 Action	Condition	Sequence
 s72!	S255	I2
 AllocateRegistrySpace	NOT Installed	1550
+CheckExtraFlags	EXTRA_FLAGS AND (EXTRA_FLAGS >< "--config.file")	1499
 CostFinalize		1000
 CostInitialize		800
+CreateConfigFile	CONFIG_FILE="config.yaml"	5793
+CreateConfigFile.Data	CONFIG_FILE="config.yaml"	5792
 CreateFolders		3700
-CreateShortcuts		4500
+DeleteServices	VersionNT	2000
 FileCost		900
 FindRelatedProducts		25
+FwAdd2DD00848	$FirewallException_Firewall=3	4005
+FwAddRollback2DD00848	$FirewallException_Firewall=3	4004
+FwClear2DD00848	$FirewallException_Firewall=3	4003
+FwRemove2DD00848	$FirewallException_Firewall=2	4002
+FwRemoveRollback2DD00848	$FirewallException_Firewall=2	4001
 InstallFiles		4000
 InstallFinalize		6600
 InstallInitialize		1500
+InstallServices	VersionNT	5800
 InstallValidate		1400
+KillProcess		3499
 LaunchConditions		100
 MigrateFeatureStates		1200
+MsiConfigureServices	VersionNT>=600	5850
 ProcessComponents		1600
 PublishFeatures		6300
 PublishProduct		6400
@@ -388,12 +449,26 @@ RemoveExistingProducts		1501
 RemoveFiles		3500
 RemoveFolders		3600
 RemoveRegistryValues		2600
-RemoveShortcuts		3200
+ServiceRecovery_windows_exporter	$Executable=3	5801
+SetARPINSTALLLOCATION		1001
+SetArg_windows_exporter_1	CONFIG_FILE="config.yaml"	5794
+SetArg_windows_exporter_2	CONFIG_FILE AND CONFIG_FILE<>"config.yaml"	5795
+SetArg_windows_exporter_3	ENABLED_COLLECTORS	5796
+SetArg_windows_exporter_4	LISTEN_ADDR<>"" OR LISTEN_PORT<>9182	5797
+SetArg_windows_exporter_5	METRICS_PATH	5798
+SetArg_windows_exporter_6	TEXTFILE_DIRS	5799
+SetFwRemoteIP2DD00848	REMOTE_ADDR	1003
+SetFwRemoteIPDefault2DD00848		1002
+SetMaintenance	Installed AND (NOT REMOVE) AND (NOT UPGRADINGPRODUCTCODE)	97
+SetReinstallAll	MAINTENANCE	98
+SetReinstallMode	MAINTENANCE	99
+StartServices	VersionNT	5900
+StopServices	VersionNT	1900
 UnpublishFeatures		1800
 ValidateProductID		700
 WriteRegistryValues		5000
 
-== InstallUISequence (15 rows)
+== InstallUISequence (16 rows)
 Action	Condition	Sequence
 s72!	S255	I2
 CostFinalize		1000
@@ -408,6 +483,7 @@ MaintenanceWelcomeDlg	Installed AND NOT RESUME AND NOT Preselected AND NOT PATCH
 MigrateFeatureStates		1200
 ProgressDlg		1280
 ResumeDlg	Installed AND (RESUME OR Preselected)	1240
+SetARPINSTALLLOCATION		1001
 UserExitDlg		-2
 ValidateProductID		700
 WelcomeDlg	NOT Installed	1230
@@ -424,24 +500,38 @@ s72!	i2!	s64	L64
 == Media (1 rows)
 DiskId	LastSequence	DiskPrompt	Cabinet	VolumeLabel	Source
 i2!	i4	L64	S255	S32	S72
-1	1		#ExampleViewer.cab		
+1	1		#windows_exporter.cab		
 
-== Property (13 rows)
+== MsiServiceConfig (2 rows)
+MsiServiceConfig	Name	Event	ConfigType	Argument	Component_
+s72!	s255	i2	i4	L0	s72
+scd_windows_exporter	windows_exporter	5	3	1	Executable
+scf_windows_exporter	windows_exporter	5	4	1	Executable
+
+== Property (21 rows)
 Property	Value
 s72!	l0
 ALLUSERS	1
-ARPNOMODIFY	1
+ARPCOMMENTS	Prometheus exporter for Windows machines
+ARPHELPLINK	https://github.com/prometheus-community/windows_exporter/issues
+ARPNOREPAIR	1
+ARPPRODUCTICON	icon.ico
+ARPSIZE	10000
+ARPURLINFOABOUT	https://github.com/prometheus-community/windows_exporter
+CONFIG_FILE	config.yaml
 DefaultUIFont	DefaultFont
 ErrorDialog	ErrorDlg
-LaunchOnFinish	1
-Manufacturer	Example
-ProductCode	{80F7F19E-E4FF-5059-98C3-646F2D291F8C}
+LISTEN_PORT	9182
+MSIRESTARTMANAGERCONTROL	Disable
+Manufacturer	prometheus-community
+MsiHiddenProperties	SERVICE_PASSWORD
+ProductCode	{318250F5-5ACD-51C5-9236-FF204BE4477B}
 ProductLanguage	1033
-ProductName	Example Viewer
-ProductVersion	2.0.0
+ProductName	windows_exporter
+ProductVersion	0.32.0.5
 RMOPTION	UseRM
-SecureCustomProperties	INSTALLDIR;NEWERVERSIONDETECTED;OLDERVERSIONBEINGUPGRADED
-UpgradeCode	{7C1E4B52-93A0-4D6F-8E25-B4F0A9D3C871}
+SecureCustomProperties	APPLICATIONFOLDER;CONFIG_FILE;ENABLED_COLLECTORS;EXTRA_FLAGS;LISTEN_ADDR;LISTEN_PORT;METRICS_PATH;MSIRESTARTMANAGERCONTROL;NEWERVERSIONDETECTED;OLDERVERSIONBEINGUPGRADED;REMOTE_ADDR;SERVICE_ACCOUNT;SERVICE_PASSWORD;TEXTFILE_DIRS
+UpgradeCode	{66A6EB5B-1FC2-4B14-A362-5CEEC6413308}
 
 == RadioButton (2 rows)
 Property	Order	Value	X	Y	Width	Height	Text	Help
@@ -449,16 +539,21 @@ s72!	i2!	s64	i2	i2	i2	i2	L64	L50
 RMOPTION	1	UseRM	0	0	330	16	Close the applications and attempt to restart them.	
 RMOPTION	2	DontUseRM	0	22	330	16	Do not close applications. A reboot will be required to complete the setup.	
 
-== Registry (1 rows)
+== Registry (2 rows)
 Registry	Root	Key	Name	Value	Component_
 s72!	i2	l255	L255	L0	s72
-regDC7F075D4854A7F87FB831277DA6373D	1	Software\[Manufacturer]\[ProductName]	cmpDC7F075D4854A7F87FB831277DA6373D	#1	cmpDC7F075D4854A7F87FB831277DA6373D
+regB818D01EFAAE44D17FA9D926E177AA99	2	SYSTEM\CurrentControlSet\Services\EventLog\Application\windows_exporter	TypesSupported	#7	Executable
+regE8F5189595D7517F07D276B5A5828D6B	2	SYSTEM\CurrentControlSet\Services\EventLog\Application\windows_exporter	EventMessageFile	#%%SystemRoot%\System32\EventCreate.exe	Executable
 
-== Shortcut (2 rows)
-Shortcut	Directory_	Name	Component_	Target	Arguments	Description	Hotkey	Icon_	IconIndex	ShowCmd	WkDir	DisplayResourceDLL	DisplayResourceId	DescriptionResourceDLL	DescriptionResourceId
-s72!	s72	l128	s72	s72	S255	L255	I2	S72	I2	I2	S72	S255	I2	S255	I2
-sc2BD3DDFC6BE890B78630576BDE764915	ProgramMenuFolder	hqra4yll|Example Viewer	cmpDC7F075D4854A7F87FB831277DA6373D	[#viewer.exe]		View example files					INSTALLDIR				
-scDD9046AA093F4C2C75FEB03510A4E184	DesktopFolder	v112se6s|Example Viewer	cmpDC7F075D4854A7F87FB831277DA6373D	[#viewer.exe]							INSTALLDIR				
+== ServiceControl (1 rows)
+ServiceControl	Name	Event	Arguments	Wait	Component_
+s72!	l255	i2	L255	I2	s72
+sc_windows_exporter	windows_exporter	163		1	Executable
+
+== ServiceInstall (1 rows)
+ServiceInstall	Name	DisplayName	ServiceType	StartType	ErrorControl	LoadOrderGroup	Dependencies	StartName	Password	Arguments	Component_	Description
+s72!	s255	L255	i4	i4	i4	S255	S255	S255	S255	S255	s72	L255
+svi_windows_exporter	windows_exporter	windows_exporter	16	2	32769		wmiApSrv[~][~]	[SERVICE_ACCOUNT]	[SERVICE_PASSWORD]	[Arg_windows_exporter_1] [Arg_windows_exporter_2] [Arg_windows_exporter_3] [Arg_windows_exporter_4] [Arg_windows_exporter_5] [Arg_windows_exporter_6] [EXTRA_FLAGS]	Executable	Exports Prometheus metrics about the system
 
 == TextStyle (3 rows)
 TextStyle	FaceName	Size	Color	StyleBits
@@ -526,10 +621,10 @@ bytes	bytes
 == Upgrade (2 rows)
 UpgradeCode	VersionMin	VersionMax	Language	Attributes	Remove	ActionProperty
 s38!	S20!	S20!	S255!	i4!	S255	s72
-{7C1E4B52-93A0-4D6F-8E25-B4F0A9D3C871}		2.0.0		513		OLDERVERSIONBEINGUPGRADED
-{7C1E4B52-93A0-4D6F-8E25-B4F0A9D3C871}	2.0.0			2		NEWERVERSIONDETECTED
+{66A6EB5B-1FC2-4B14-A362-5CEEC6413308}		0.32.0.5		513		OLDERVERSIONBEINGUPGRADED
+{66A6EB5B-1FC2-4B14-A362-5CEEC6413308}	0.32.0.5			2		NEWERVERSIONDETECTED
 
-== _Validation (162 rows)
+== _Validation (173 rows)
 Table	Column	Nullable	MinValue	MaxValue	KeyTable	KeyColumn	Category	Set	Description
 s32!	s32!	s4	I4	I4	S255	I2	S32	S255	S255
 AdminExecuteSequence	Action	N					Identifier		Name of action to invoke, either in the engine or the handler DLL.
@@ -543,8 +638,6 @@ AdvtExecuteSequence	Condition	Y					Condition		Optional expression which skips t
 AdvtExecuteSequence	Sequence	Y	-4	32767					Number that determines the sort order in which the actions are to be executed.  Leave blank to suppress action.
 Binary	Data	N					Binary		The unformatted binary data.
 Binary	Name	N					Identifier		Unique key identifying the binary data.
-CheckBox	Property	N					Identifier		A named property to be tied to the item.
-CheckBox	Value	Y					Formatted		The value string associated with the item.
 Component	Attributes	N							Remote execution option, one of irsEnum
 Component	Component	N					Identifier		Primary key used to identify a particular component record.
 Component	ComponentId	Y					Guid		A string GUID unique to this component, version, and language.
@@ -573,6 +666,8 @@ ControlEvent	Control_	N			Control	2	Identifier		A foreign key to the Control tab
 ControlEvent	Dialog_	N			Dialog	1	Identifier		A foreign key to the Dialog table, name of the dialog.
 ControlEvent	Event	N					Formatted		An identifier that specifies the type of the event that should take place when the user interacts with control specified by the first two entries.
 ControlEvent	Ordering	Y	0	2147483647					An integer used to order several events tied to the same control. Can be left blank.
+CreateFolder	Component_	N			Component	1	Identifier		Foreign key into the Component table.
+CreateFolder	Directory_	N			Directory	1	Identifier		Primary key, could be foreign key into the Directory table.
 CustomAction	Action	N					Identifier		Primary key, name of action, normally appears in sequence table unless private use.
 CustomAction	ExtendedType	Y	0	2147483647					A numeric custom action type that extends code type or option flags of the Type column.
 CustomAction	Source	Y					CustomSource		The table reference of the source of the code.
@@ -617,6 +712,8 @@ File	FileSize	N	0	2147483647					Size of file in bytes (long integer).
 File	Language	Y					Language		List of decimal language Ids, comma-separated if more than one.
 File	Sequence	N	1	2147483647					Sequence with respect to the media images; order must track cabinet order.
 File	Version	Y			File	1	Version		Version string for versioned files; Blank for unversioned files.
+Icon	Data	N					Binary		Binary stream. The binary icon data in PE (.DLL or .EXE) or icon (.ICO) format.
+Icon	Name	N					Identifier		Primary key. Name of the icon file.
 InstallExecuteSequence	Action	N					Identifier		Name of action to invoke, either in the engine or the handler DLL.
 InstallExecuteSequence	Condition	Y					Condition		Optional expression which skips the action if evaluates to expFalse.
 InstallExecuteSequence	Sequence	Y	-4	32767					Number that determines the sort order in which the actions are to be executed.  Leave blank to suppress action.
@@ -635,6 +732,12 @@ Media	DiskPrompt	Y					Text		Disk name: the visible text actually printed on the
 Media	LastSequence	N	0	2147483647					File sequence number for the last file for this media.
 Media	Source	Y					Property		The property defining the location of the cabinet file.
 Media	VolumeLabel	Y					Text		The label attributed to the volume.
+MsiServiceConfig	Argument	Y					Formatted		Argument(s) for service configuration.
+MsiServiceConfig	Component_	N			Component	1	Identifier		Required foreign key into the Component Table.
+MsiServiceConfig	ConfigType	N	1	7					Service configuration option.
+MsiServiceConfig	Event	N	0	7					Bit field: Install (1), Uninstall (2), Reinstall (4).
+MsiServiceConfig	MsiServiceConfig	N					Identifier		Primary key, non-localized token.
+MsiServiceConfig	Name	N					Formatted		Name of a service.
 Property	Property	N					Identifier		Name of property, uppercase if settable by launcher or loader.
 Property	Value	N					Text		String value for property.
 RadioButton	Height	N	0	32767					The height of the button.
@@ -652,22 +755,25 @@ Registry	Name	Y					Formatted		The registry value name.
 Registry	Registry	N					Identifier		Primary key, non-localized token.
 Registry	Root	N	-1	3					The predefined root key for the registry value, one of rrkEnum.
 Registry	Value	Y					Formatted		The registry value.
-Shortcut	Arguments	Y					Formatted		The command-line arguments for the shortcut.
-Shortcut	Component_	N			Component	1	Identifier		Foreign key into the Component table denoting the component whose selection gates the shortcut creation/deletion.
-Shortcut	Description	Y					Text		The description for the shortcut.
-Shortcut	DescriptionResourceDLL	Y					Formatted		The path to the language-neutral file that holds the description resource.
-Shortcut	DescriptionResourceId	Y	0	32767					The description index for the shortcut.
-Shortcut	Directory_	N			Directory	1	Identifier		Foreign key into the Directory table denoting the directory where the shortcut file is created.
-Shortcut	DisplayResourceDLL	Y					Formatted		The path to the language-neutral file that holds the display name resource.
-Shortcut	DisplayResourceId	Y	0	32767					The display name index for the shortcut.
-Shortcut	Hotkey	Y	0	32767					The hotkey for the shortcut: the virtual-key code in the low byte, the modifier flags in the high byte.
-Shortcut	IconIndex	Y	-32767	32767					The icon index for the shortcut.
-Shortcut	Icon_	Y			Icon	1	Identifier		Foreign key into the Icon table.
-Shortcut	Name	N					Filename		The name of the shortcut to be created.
-Shortcut	Shortcut	N					Identifier		Primary key, non-localized token.
-Shortcut	ShowCmd	Y						1;3;7	The show command for the application window.
-Shortcut	Target	N					Shortcut		The shortcut target: a Feature key for an advertised shortcut, otherwise a formatted path.
-Shortcut	WkDir	Y					Identifier		Name of the property that has the path of the working directory for the shortcut.
+ServiceControl	Arguments	Y					Formatted		Arguments for the service. Separate by [~].
+ServiceControl	Component_	N			Component	1	Identifier		Required foreign key into the Component Table that controls the startup of the service
+ServiceControl	Event	N	0	187					Bit field: Install: 0x1 = Start, 0x2 = Stop, 0x8 = Delete, Uninstall: 0x10 = Start, 0x20 = Stop, 0x80 = Delete
+ServiceControl	Name	N					Formatted		Name of a service. /, \, comma and space are invalid
+ServiceControl	ServiceControl	N					Identifier		Primary key, non-localized token.
+ServiceControl	Wait	Y	0	1					Boolean for whether to wait for the service to fully start
+ServiceInstall	Arguments	Y					Formatted		Arguments for the service. Separate by [~].
+ServiceInstall	Component_	N			Component	1	Identifier		Required foreign key into the Component Table that controls the startup of the service
+ServiceInstall	Dependencies	Y					Formatted		Other services this depends on to start. Separate by [~], and end with [~][~]
+ServiceInstall	Description	Y					Text		Description of service.
+ServiceInstall	DisplayName	Y					Formatted		External Name of the Service
+ServiceInstall	ErrorControl	N	-2147483647	2147483647					Severity of error if service fails to start
+ServiceInstall	LoadOrderGroup	Y					Formatted		LoadOrderGroup
+ServiceInstall	Name	N					Formatted		Internal Name of the Service
+ServiceInstall	Password	Y					Formatted		password to run service with. (with StartName)
+ServiceInstall	ServiceInstall	N					Identifier		Primary key, non-localized token.
+ServiceInstall	ServiceType	N	-2147483647	2147483647					Type of the service
+ServiceInstall	StartName	Y					Formatted		User or object name to run service as
+ServiceInstall	StartType	N	0	4					Type of the service
 TextStyle	Color	Y	0	16777215					A long integer indicating the color of the string in the RGB format (Red, Green, Blue each 0-255, RGB = R + 256*G + 256^2*B).
 TextStyle	FaceName	N					Text		A string indicating the name of the font used. Required. The string must be at most 31 characters long.
 TextStyle	Size	N	0	32767					The size of the font used. This size is given in our units (1/12 of the system font height). Assuming that the system font is set to 12 point size, this is equivalent to the point size.

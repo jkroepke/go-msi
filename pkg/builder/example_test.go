@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing/fstest"
 
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // A package built in Go from a folder tree, without a YAML file.

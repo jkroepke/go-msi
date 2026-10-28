@@ -9,7 +9,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/jkroepke/go-msi/pkg/cfb"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
 )
 
 // Stream name encoding of section 3: table streams carry a U+4840 prefix,

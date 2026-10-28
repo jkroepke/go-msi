@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	gopeinfo "github.com/jkroepke/go-msi/internal/pe"
-	"github.com/jkroepke/go-msi/internal/testpe"
+	gopeinfo "github.com/jkroepke/msi-builder/internal/pe"
+	"github.com/jkroepke/msi-builder/internal/testpe"
 )
 
 func TestSysoIsACOFFObjectWithOneRelocatedResourceSection(t *testing.T) {

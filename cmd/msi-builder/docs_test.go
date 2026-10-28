@@ -20,7 +20,7 @@ var update = flag.Bool("update", false, "rewrite docs/cli from the command tree"
 var docsDir = filepath.Join("..", "..", "docs", "cli") //nolint:gochecknoglobals // test constant
 
 // TestDocs checks that docs/cli matches the command tree. Run
-// go generate ./cmd/go-msi after changing a command or flag.
+// go generate ./cmd/msi-builder after changing a command or flag.
 func TestDocs(t *testing.T) {
 	t.Parallel()
 
@@ -51,7 +51,7 @@ func TestDocs(t *testing.T) {
 
 	for _, ent := range entries {
 		if _, ok := want[ent.Name()]; !ok {
-			t.Errorf("docs/cli/%s belongs to no command; run go generate ./cmd/go-msi", ent.Name())
+			t.Errorf("docs/cli/%s belongs to no command; run go generate ./cmd/msi-builder", ent.Name())
 		}
 	}
 
@@ -59,7 +59,7 @@ func TestDocs(t *testing.T) {
 		// A Windows checkout may convert the pages to CRLF.
 		got, err := os.ReadFile(filepath.Join(docsDir, name))
 		if err != nil || !bytes.Equal(bytes.ReplaceAll(got, []byte("\r\n"), []byte("\n")), data) {
-			t.Errorf("docs/cli/%s is out of date; run go generate ./cmd/go-msi", name)
+			t.Errorf("docs/cli/%s is out of date; run go generate ./cmd/msi-builder", name)
 		}
 	}
 }

@@ -131,18 +131,18 @@ jobs:
           # The same pinned manifest has given cubs with different hashes, so
           # the hash is logged for the record but not enforced (VAL-01 log).
           Get-FileHash C:\ice\darice.cub -Algorithm SHA256 | Format-List
-          'GO_MSI_ICE_CUB=C:\ice\darice.cub' >> $env:GITHUB_ENV
-          'GO_MSI_ICE_REQUIRED=1' >> $env:GITHUB_ENV
+          'MSI_BUILDER_ICE_CUB=C:\ice\darice.cub' >> $env:GITHUB_ENV
+          'MSI_BUILDER_ICE_REQUIRED=1' >> $env:GITHUB_ENV
 
       # Windows runs the native tests too: they open the built packages with
       # msi.dll, run the ICE suite and install them with msiexec. They are
       # skipped with -short.
       # The install snapshots that differ from testdata are saved to
-      # GO_MSI_SNAPSHOT_DIR and uploaded below.
+      # MSI_BUILDER_SNAPSHOT_DIR and uploaded below.
       - name: go test
         shell: bash
         env:
-          GO_MSI_SNAPSHOT_DIR: ${{ runner.temp }}/install-snapshots
+          MSI_BUILDER_SNAPSHOT_DIR: ${{ runner.temp }}/install-snapshots
         run: go test ./... ${{ runner.os != 'Windows' && '-short' || '' }} -shuffle=on -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./...
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -190,10 +190,10 @@ jobs:
       - name: Check for the CLI
         id: cli
         run: |
-          if [ -d cmd/go-msi ]; then
+          if [ -d cmd/msi-builder ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::cmd/go-msi does not exist yet, skipping the goreleaser snapshot."
+            echo "::notice::cmd/msi-builder does not exist yet, skipping the goreleaser snapshot."
           fi
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

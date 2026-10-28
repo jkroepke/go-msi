@@ -13,4 +13,4 @@ run = "GOTOOLCHAIN=go1.27.3 go run github.com/golangci/golangci-lint/v2/cmd/gola
 
 [tasks.build]
 description = "Build the CLI"
-run = "go build -o go-msi ./cmd/go-msi"
+run = "go build -o msi-builder ./cmd/msi-builder"

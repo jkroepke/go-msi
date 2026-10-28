@@ -6,7 +6,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/jkroepke/go-msi/pkg/cfb"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
 )
 
 // TestSourcesAndDecode checks that MarshalTo copies a source stream through,

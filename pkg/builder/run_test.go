@@ -7,15 +7,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/cadll"
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/config"
-	"github.com/jkroepke/go-msi/pkg/msidb"
+	"github.com/jkroepke/msi-builder/internal/cadll"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/msidb"
 )
 
 // runConfig is a one-file package with a deferred and an immediate run
 // action.
-const runConfig = `schema: go-msi/v1
+const runConfig = `schema: msi-builder/v1
 product: { name: A, manufacturer: B, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
 package: { platform: %s }
 components:
@@ -33,7 +33,7 @@ customActions:
     return: ignore
     schedule: [{ sequence: execute, after: InstallFinalize }]
   # Scheduled before Now after Now.Data was: its rows must not land between
-  # Now.Data and Now, which share the GoMsiRun property with Earlier.
+  # Now.Data and Now, which share the BuilderRun property with Earlier.
   - id: Earlier
     run: { command: '"[System64Folder]cmd.exe" /c echo earlier' }
     return: ignore
@@ -85,12 +85,12 @@ func TestRunActions(t *testing.T) {
 	}
 
 	for name, want := range map[string]string{
-		"Later":        "[11265 GoMsiRun GoMsiRun]",
+		"Later":        "[11265 BuilderRun BuilderRun]",
 		"Later.Data":   `[8243 Later [INSTALLDIR]|"[System64Folder]cmd.exe" /c echo [ProductName]]`,
-		"Now":          "[65 GoMsiRun GoMsiRun]",
-		"Now.Data":     `[51 GoMsiRun |"[System64Folder]cmd.exe" /c echo now]`,
-		"Earlier":      "[65 GoMsiRun GoMsiRun]",
-		"Earlier.Data": `[51 GoMsiRun |"[System64Folder]cmd.exe" /c echo earlier]`,
+		"Now":          "[65 BuilderRun BuilderRun]",
+		"Now.Data":     `[51 BuilderRun |"[System64Folder]cmd.exe" /c echo now]`,
+		"Earlier":      "[65 BuilderRun BuilderRun]",
+		"Earlier.Data": `[51 BuilderRun |"[System64Folder]cmd.exe" /c echo earlier]`,
 	} {
 		row, found := actions[name]
 		if !found {
@@ -156,7 +156,7 @@ func TestRunActionDLLPerPlatform(t *testing.T) {
 func TestRunActionReservedBinary(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := config.Parse(fmt.Appendf(nil, runConfig+"binaries: { GoMsiRun: a.txt }\n", "x64"), config.Options{})
+	cfg, err := config.Parse(fmt.Appendf(nil, runConfig+"binaries: { BuilderRun: a.txt }\n", "x64"), config.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestRunActionReservedBinary(t *testing.T) {
 		t.Fatal("built with a reserved binaries key")
 	}
 
-	if msg := fmt.Sprint(err, res.Diagnostics); !strings.Contains(msg, "binaries.GoMsiRun") {
+	if msg := fmt.Sprint(err, res.Diagnostics); !strings.Contains(msg, "binaries.BuilderRun") {
 		t.Errorf("error does not name the key: %s", msg)
 	}
 }

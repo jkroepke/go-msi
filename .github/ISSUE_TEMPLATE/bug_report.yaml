@@ -34,7 +34,7 @@ body:
       description: Steps to reproduce the behavior.
       placeholder: |
         1. With this config...
-        2. Run 'go-msi build ...'
+        2. Run 'msi-builder build ...'
         3. Install the package with 'msiexec /i package.msi /l*v install.log'
         4. See error...
       render: Markdown
@@ -46,11 +46,11 @@ body:
       label: Environment
       description: |
         examples:
-        - **go-msi Version**: 0.1.0
+        - **msi-builder Version**: 0.1.0
         - **Build OS / Arch**: Linux / amd64
         - **Install OS**: Windows Server 2025
       value: |
-        - go-msi Version:
+        - msi-builder Version:
         - Build OS / Arch:
         - Install OS:
     validations:
@@ -58,18 +58,18 @@ body:
 
   - type: textarea
     attributes:
-      label: go-msi configuration
+      label: msi-builder configuration
       description: |
-        The YAML configuration passed to go-msi. Remove secrets and internal names.
+        The YAML configuration passed to msi-builder. Remove secrets and internal names.
       render: yaml
     validations:
       required: true
 
   - type: textarea
     attributes:
-      label: go-msi output
+      label: msi-builder output
       description: |
-        Output of the go-msi command that built the package.
+        Output of the msi-builder command that built the package.
       render: shell
     validations:
       required: true
@@ -101,5 +101,5 @@ body:
         - required: true
           #language=markdown
           label: |
-            I could not find a solution in the [documentation](https://github.com/jkroepke/go-msi/wiki),
+            I could not find a solution in the [documentation](https://github.com/jkroepke/msi-builder/wiki),
             the existing issues or discussions.

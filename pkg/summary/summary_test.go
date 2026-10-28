@@ -23,7 +23,7 @@ func sample() []Property {
 		{ID: PIDCreated, Value: when},
 		{ID: PIDLastSaved, Value: when},
 		{ID: PIDPageCount, Value: 500},
-		{ID: PIDAppName, Value: "go-msi"},
+		{ID: PIDAppName, Value: "msi-builder"},
 		{ID: PIDSecurity, Value: 2},
 	}
 }

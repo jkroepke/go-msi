@@ -5,7 +5,7 @@ apply throughout the repository; also read any `AGENTS.md` in the area you edit.
 
 ## Project and source map
 
-go-msi builds Windows Installer (MSI) packages from a YAML file. It is pure Go
+msi-builder builds Windows Installer (MSI) packages from a YAML file. It is pure Go
 without cgo, builds the same packages on Linux, macOS and Windows, and never
 runs the packages it writes. MSIX is out of scope; signing is `pkg/sign`.
 [`docs/design/architecture.md`](docs/design/architecture.md) explains the
@@ -43,13 +43,13 @@ implementation details that may change without notice.
   [`internal/codepage`](internal/codepage), [`internal/artwork`](internal/artwork):
   standard table definitions, PE version resources, the condition grammar,
   sequence numbering, code pages and the wizard bitmaps.
-- [`cmd/go-msi`](cmd/go-msi): CLI with `build`, `validate`, `inspect`, `sign`,
+- [`cmd/msi-builder`](cmd/msi-builder): CLI with `build`, `validate`, `inspect`, `sign`,
   `verify`, `completion` and `version`, built on `spf13/cobra`.
 - [`internal/spool`](internal/spool), [`internal/memtest`](internal/memtest),
   [`internal/testpe`](internal/testpe): the spool target shared by file and
   in-memory builds, the peak-heap sampler for bounded-memory tests, and a
   generator for small PE files used in tests.
-- [`docs/spec`](docs/spec): the MSI specification go-msi implements
+- [`docs/spec`](docs/spec): the MSI specification msi-builder implements
   (`MSISPEC.md`), the Windows test results that back it
   (`MSISPEC-RESULTS.md`) and the Windows test harness (`msitest`).
   A test case ID is `<PREFIX>-<NN>`, the prefix naming the package or area
@@ -94,7 +94,7 @@ go test ./... -shuffle=on -race
 - Tests add no test-only module dependencies. Test vectors from the spec appendix
   (stream names, compound files, summary stream, cabinets) are golden hashes:
   a writer change that alters them is a bug unless the spec changed.
-- Snapshots: `TestExampleTables` (`cmd/go-msi/testdata/tables`) holds the
+- Snapshots: `TestExampleTables` (`cmd/msi-builder/testdata/tables`) holds the
   tables of every example, and `TestMsiexecInstallsExamples`
   (`pkg/builder/nativetest/testdata/install`) holds the entries that
   installing and removing each example adds under the watched folders and
@@ -105,7 +105,7 @@ go test ./... -shuffle=on -race
   `TestScopeOwns` checks that rule on every platform. Changes inside entries
   that existed before are not recorded. A change to the generated packages
   updates the snapshots in the same pull request: rerun the tests with
-  `GO_MSI_UPDATE_SNAPSHOTS=1` and review the diff. The install snapshots need
+  `MSI_BUILDER_UPDATE_SNAPSHOTS=1` and review the diff. The install snapshots need
   an elevated Windows machine; on a mismatch CI uploads the new ones as the
   `install-snapshots` artifact. The example inputs live in
   `internal/exampletest`, and a new example needs an entry there, in
@@ -165,7 +165,7 @@ go test ./... -shuffle=on -race
 - Readers (`cfb`, `cab`, `msidb.Unmarshal`) treat their input as untrusted:
   bounds-check every offset and sector, detect chain cycles, and never allocate
   from a size the input declares without checking it against the input length.
-- `cmd/go-msi` uses `spf13/cobra` (with `spf13/pflag`) and nothing else
+- `cmd/msi-builder` uses `spf13/cobra` (with `spf13/pflag`) and nothing else
   outside the standard library; never import `cobra/doc`, which pulls in a
   man-page renderer. Add no new module dependencies elsewhere without
   discussing them first.
@@ -181,8 +181,8 @@ go test ./... -shuffle=on -race
   Wrap command-line mistakes (argument count, flag combinations) in
   `usageError`; flag parse errors are wrapped by the root's flag error func.
 - [`docs/cli`](docs/cli) is generated from the command tree by `TestDocs`
-  (`cmd/go-msi/docs_test.go`). After changing a command, flag or help text,
-  run `go generate ./cmd/go-msi`; the test fails while the pages are stale.
+  (`cmd/msi-builder/docs_test.go`). After changing a command, flag or help text,
+  run `go generate ./cmd/msi-builder`; the test fails while the pages are stale.
 
 ## Documentation
 

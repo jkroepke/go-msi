@@ -8,7 +8,7 @@ import (
 	"flag"
 	"os"
 
-	"github.com/jkroepke/go-msi/internal/testpe"
+	"github.com/jkroepke/msi-builder/internal/testpe"
 )
 
 func main() {

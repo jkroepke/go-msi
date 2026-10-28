@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/artwork"
+	"github.com/jkroepke/msi-builder/internal/artwork"
 )
 
 var white = color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF} //nolint:gochecknoglobals // test constant

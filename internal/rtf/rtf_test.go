@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/rtf"
+	"github.com/jkroepke/msi-builder/internal/rtf"
 )
 
 func TestFromText(t *testing.T) {

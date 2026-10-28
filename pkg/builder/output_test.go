@@ -11,13 +11,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/memtest"
-	"github.com/jkroepke/go-msi/internal/testpe"
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/cab"
-	"github.com/jkroepke/go-msi/pkg/cfb"
-	"github.com/jkroepke/go-msi/pkg/config"
-	"github.com/jkroepke/go-msi/pkg/msidb"
+	"github.com/jkroepke/msi-builder/internal/memtest"
+	"github.com/jkroepke/msi-builder/internal/testpe"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/cab"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
+	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/msidb"
 )
 
 // TestOutputFile checks that a build written to a path gives the same bytes
@@ -83,7 +83,7 @@ func TestOutputFile(t *testing.T) {
 
 	left, _ = os.ReadDir(bad.BaseDir)
 	for _, ent := range left {
-		if strings.HasPrefix(ent.Name(), ".go-msi-") {
+		if strings.HasPrefix(ent.Name(), ".msi-builder-") {
 			t.Errorf("the failed build left the spool %s behind", ent.Name())
 		}
 	}

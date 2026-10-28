@@ -1,5 +1,5 @@
 # What msiexec /i and then /x of examples/windows_exporter change on the machine.
-# Written by TestMsiexecInstallsExamples with GO_MSI_UPDATE_SNAPSHOTS=1.
+# Written by TestMsiexecInstallsExamples with MSI_BUILDER_UPDATE_SNAPSHOTS=1.
 
 [install]
 + dir {Installer}\{ProductCode}

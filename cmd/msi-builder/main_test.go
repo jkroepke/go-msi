@@ -17,7 +17,7 @@ import (
 
 	"software.sslmate.com/src/go-pkcs12"
 
-	"github.com/jkroepke/go-msi/internal/testpe"
+	"github.com/jkroepke/msi-builder/internal/testpe"
 )
 
 func TestBuildValidateInspect(t *testing.T) {
@@ -105,7 +105,7 @@ func writeTestKey(t *testing.T, dir string) testKeyFiles {
 
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "go-msi CLI test"},
+		Subject:      pkix.Name{CommonName: "msi-builder CLI test"},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
@@ -218,7 +218,7 @@ func TestSignVerify(t *testing.T) {
 
 	left, _ := os.ReadDir(dir)
 	for _, ent := range left {
-		if strings.HasPrefix(ent.Name(), ".go-msi-") {
+		if strings.HasPrefix(ent.Name(), ".msi-builder-") {
 			t.Errorf("the failed signing build left %s behind", ent.Name())
 		}
 	}
@@ -236,7 +236,7 @@ func TestSignVerify(t *testing.T) {
 		"no key":       {"sign", unsigned},
 		"both":         {"sign", "--pfx", pfxFile, "--cert", certFile, "--key", keyFile, unsigned},
 		"bad hash":     {"sign", "--pfx", pfxFile, "--hash", "md5", unsigned},
-		"missing env":  {"sign", "--pfx", pfxFile, "--password-env", "GO_MSI_TEST_UNSET_VARIABLE", unsigned},
+		"missing env":  {"sign", "--pfx", pfxFile, "--password-env", "MSI_BUILDER_TEST_UNSET_VARIABLE", unsigned},
 		"cert only":    {"sign", "--cert", certFile, unsigned},
 		"no key build": {"build", "--timestamp-url", "http://example.com", yaml},
 		"env with pem": {"sign", "--cert", certFile, "--key", keyFile, "--password-env", "HOME", unsigned},
@@ -280,7 +280,7 @@ func TestUsageErrors(t *testing.T) {
 			t.Errorf("%s: exit %d, want %d: %s", name, code, exitUsage, stderr.String())
 		}
 
-		if stdout.Len() != 0 || !strings.Contains(stderr.String(), "go-msi: ") || !strings.Contains(stderr.String(), "--help' for usage") {
+		if stdout.Len() != 0 || !strings.Contains(stderr.String(), "msi-builder: ") || !strings.Contains(stderr.String(), "--help' for usage") {
 			t.Errorf("%s: stdout %q, stderr %q", name, stdout.String(), stderr.String())
 		}
 	}
@@ -309,7 +309,7 @@ func TestFlagErrorsGoToStderr(t *testing.T) {
 			t.Errorf("%s: exit %d for an unknown flag", cmd, code)
 		}
 
-		want := "go-msi: unknown flag: --no-such-flag\nRun 'go-msi " + cmd + " --help' for usage.\n"
+		want := "msi-builder: unknown flag: --no-such-flag\nRun 'msi-builder " + cmd + " --help' for usage.\n"
 		if stdout.Len() != 0 || stderr.String() != want {
 			t.Errorf("%s: stdout %q, stderr %q", cmd, stdout.String(), stderr.String())
 		}
@@ -326,11 +326,11 @@ func TestHelpAndCompletion(t *testing.T) {
 		"help":            {[]string{"--help"}, "Available Commands:"},
 		"command help":    {[]string{"build", "-h"}, "--password-env"},
 		"help command":    {[]string{"help", "sign"}, "--timestamp-url"},
-		"version flag":    {[]string{"--version"}, "go-msi dev (commit none"},
-		"version":         {[]string{"version"}, "go-msi dev (commit none"},
-		"bash completion": {[]string{"completion", "bash"}, "__start_go-msi"},
-		"fish completion": {[]string{"completion", "fish"}, "complete -c go-msi"},
-		"zsh completion":  {[]string{"completion", "zsh", "--no-descriptions"}, "#compdef go-msi"},
+		"version flag":    {[]string{"--version"}, "msi-builder dev (commit none"},
+		"version":         {[]string{"version"}, "msi-builder dev (commit none"},
+		"bash completion": {[]string{"completion", "bash"}, "__start_msi-builder"},
+		"fish completion": {[]string{"completion", "fish"}, "complete -c msi-builder"},
+		"zsh completion":  {[]string{"completion", "zsh", "--no-descriptions"}, "#compdef msi-builder"},
 		"ps completion":   {[]string{"completion", "powershell"}, "Register-ArgumentCompleter"},
 		"complete help":   {[]string{"__complete", "help", ""}, "inspect"},
 		"complete help 2": {[]string{"__complete", "help", "completion", "z"}, "zsh\tPrint the completion script for Zsh"},

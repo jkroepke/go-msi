@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // FuzzParse feeds arbitrary documents and variable values to Parse and

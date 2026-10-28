@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jkroepke/go-msi/internal/condition"
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/internal/condition"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // regTypeKey marks a registry row that creates a key without a value.

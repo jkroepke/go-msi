@@ -12,9 +12,9 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/jkroepke/go-msi/internal/memtest"
-	"github.com/jkroepke/go-msi/internal/spool"
-	"github.com/jkroepke/go-msi/pkg/cab"
+	"github.com/jkroepke/msi-builder/internal/memtest"
+	"github.com/jkroepke/msi-builder/internal/spool"
+	"github.com/jkroepke/msi-builder/pkg/cab"
 )
 
 func sampleFiles() []cab.File {

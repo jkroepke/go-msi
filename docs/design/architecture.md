@@ -1,6 +1,6 @@
-# go-msi writer architecture and implementation plan
+# msi-builder writer architecture and implementation plan
 
-go-msi turns one YAML file ([`yaml-schema.md`](yaml-schema.md)) into an
+msi-builder turns one YAML file ([`yaml-schema.md`](yaml-schema.md)) into an
 `.msi` package. It only builds packages and reads them back (`inspect`, the
 self-check): it never installs or executes one. Only its tests do: the
 Windows tests without `-short` (elevated). Everything is pure Go with no cgo
@@ -24,7 +24,7 @@ ICE tests.
 
 ```mermaid
 flowchart LR
-    cmd["cmd/go-msi<br/>CLI"] --> builder
+    cmd["cmd/msi-builder<br/>CLI"] --> builder
     cmd --> config
     cmd --> msidb
     builder["builder<br/>config → tables → package"] --> config
@@ -67,10 +67,10 @@ flowchart LR
 | `pkg/builder` | The config-to-tables layer: identities, directories and short names, components and GUIDs, files, media and cabinets, registry, services, environment, upgrades, custom actions, helpers, `_Validation`, summary; then the package bytes and a verification pass | §6–§11 | everything above, plus `config`, `internal/artwork`, `internal/cadll`, `internal/rtf` and `go.yaml.in/yaml/v3` |
 | `pkg/config` | YAML decoding, defaults and validation into a `*config.Config` | | `internal/condition`, `go.yaml.in/yaml/v3` |
 | `internal/codepage` | ANSI code page encoders for the string pool and summary | §3, §4 | `golang.org/x/text` |
-| `internal/cadll` | The custom action DLL of `run` actions: freestanding C (`src/gomsirun.c`), cross-built by `build.sh` (`go generate`) with clang 18 and lld for x86, x64 and arm64, committed, pinned by `SHA256SUMS` and embedded with `go:embed`; the builder copies the platform's DLL into the `Binary` table | §9.4 | stdlib |
+| `internal/cadll` | The custom action DLL of `run` actions: freestanding C (`src/builderrun.c`), cross-built by `build.sh` (`go generate`) with clang 18 and lld for x86, x64 and arm64, committed, pinned by `SHA256SUMS` and embedded with `go:embed`; the builder copies the platform's DLL into the `Binary` table | §9.4 | stdlib |
 | `internal/artwork` | Draws the wizard bitmaps (our own artwork, generated in code) and decodes a theme's BMP, PNG or JPEG pictures | | stdlib |
 | `internal/rtf` | Converts a plain-text license to RTF and checks an RTF license for the ScrollableText control | | stdlib |
-| `cmd/go-msi` | CLI: `build`, `validate`, `inspect`, `sign`, `verify`, `completion`, `version` | | `builder`, `config`, `msidb`, `sign`, `spf13/cobra` |
+| `cmd/msi-builder` | CLI: `build`, `validate`, `inspect`, `sign`, `verify`, `completion`, `version` | | `builder`, `config`, `msidb`, `sign`, `spf13/cobra` |
 
 `pkg/config` (PR #2) stays as it is: the builder consumes a validated `*config.Config`
 and never reads YAML.
@@ -311,17 +311,17 @@ Pipeline, each step a file of its own:
 Static ICE-style checks live next to the step that has the data (ICE03/06/32
 through `schema`, ICE18/19/21, ICE04/71, ICE27/63/77, ICE80, ICE87, ICE105).
 
-### 1.10 `cmd/go-msi`
+### 1.10 `cmd/msi-builder`
 
-- `go-msi build [--var NAME=value]... [--env] [-o out.msi] msi.yaml`
-- `go-msi validate msi.yaml` runs config validation.
-- `go-msi inspect [--table Name] pkg.msi` dumps tables and streams through
+- `msi-builder build [--var NAME=value]... [--env] [-o out.msi] msi.yaml`
+- `msi-builder validate msi.yaml` runs config validation.
+- `msi-builder inspect [--table Name] pkg.msi` dumps tables and streams through
   `msidb.Decode`; this is the cross-OS debugging tool.
-- `go-msi sign` and `go-msi verify` sign and check packages (`pkg/sign`).
+- `msi-builder sign` and `msi-builder verify` sign and check packages (`pkg/sign`).
 
 The commands are built with `spf13/cobra` (POSIX flags, shell completion).
 Help goes to stdout, errors to stderr; the exit code is 0 on success, 1 when
-the command failed and 2 for a usage error. [`docs/cli`](../cli/go-msi.md) is
+the command failed and 2 for a usage error. [`docs/cli`](../cli/msi-builder.md) is
 generated from the command tree.
 
 ### 1.11 Internal helpers
@@ -345,9 +345,9 @@ generated from the command tree.
   numbers, attribute bits, `_Validation` coverage, file-to-cabinet order.
   Golden hashes guard determinism: two builds with the same
   `SOURCE_DATE_EPOCH` are byte-identical.
-- **Table snapshots** (`cmd/go-msi`, every OS): `TestExampleTables` builds
+- **Table snapshots** (`cmd/msi-builder`, every OS): `TestExampleTables` builds
   every example with the inputs from `internal/exampletest` and compares the
-  `inspect` output with `cmd/go-msi/testdata/tables/<name>.txt`, so a change
+  `inspect` output with `cmd/msi-builder/testdata/tables/<name>.txt`, so a change
   to the generated tables shows up as a diff in the pull request.
 - **Windows runner** (`.github/workflows/ci.yaml`, `windows-latest`): the
   same tests, plus `//go:build windows` tests in `pkg/builder/nativetest` that open
@@ -384,7 +384,7 @@ generated from the command tree.
 | 3 | `summary`, `msidb` with stream names, pool, catalog, tables, reader | this PR |
 | 4 | `schema` for the tables of §6.2 that the schema can produce | this PR |
 | 5 | `pe`, `condition`, `sequence` | this PR |
-| 6 | `builder` steps 1–8 and 10, `cmd/go-msi`, example builds | this PR |
+| 6 | `builder` steps 1–8 and 10, `cmd/msi-builder`, example builds | this PR |
 | 7 | CI: Linux, macOS and Windows runners, native tests, mise | this PR |
 | 8 | `ui`: built-in wizards (`minimal`, `featureTree`), generated dialogs, `artwork` bitmaps | PR 2 |
 | 9 | ICE-style checks that still need the UI tables; `_Validation` for UI | PR 2 |
@@ -400,7 +400,7 @@ bundles.
   (CFB-01). v3 stays for tests and for tools that only know v3.
 - **Every refcount in 1…32767.** A string used more often is a build error
   until a real package needs it; none does.
-- **LZX:21 by default.** go-msi's LZX cabinets of the target payloads are
+- **LZX:21 by default.** msi-builder's LZX cabinets of the target payloads are
   12 to 26 % smaller than MSZIP (MSISPEC section 5). `internal/lzx` streams: it
   keeps the last 512 KiB as match history and one 128 KiB block, so its
   memory does not grow with the window or the payload.

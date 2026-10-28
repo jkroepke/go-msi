@@ -1,13 +1,13 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/pkg/config/schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
 # A service with a license page and its own wizard pictures.
 #
-#   go-msi build --var VERSION=1.5.0 -o example-agent.msi msi.yaml
+#   msi-builder build --var VERSION=1.5.0 -o example-agent.msi msi.yaml
 #
 # The input files sit next to this file: agent.exe, agent-service.exe,
 # agent.conf, icon.ico, LICENSE.rtf (or a plain-text LICENSE, which is
 # converted to RTF), banner.bmp (493×58) and dialog.bmp (493×312, the left
 # 130 units are the picture, the page text is drawn from 135 units on).
-schema: go-msi/v1
+schema: msi-builder/v1
 
 product:
   name: Example Agent

@@ -1,4 +1,4 @@
-// Package artwork draws the bitmaps of the go-msi setup wizard and encodes
+// Package artwork draws the bitmaps of the msi-builder setup wizard and encodes
 // them as Windows bitmaps for the Binary table. The built-in pictures are
 // generated from a Palette, so a package never ships third-party pictures
 // and a theme is a different palette. Decode reads the pictures a package
@@ -23,7 +23,7 @@ type Palette struct {
 	Paper color.RGBA
 }
 
-// Default is the standard go-msi palette: deep blue to teal with an amber
+// Default is the standard msi-builder palette: deep blue to teal with an amber
 // accent.
 func Default() Palette {
 	return Palette{

@@ -1,13 +1,13 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/pkg/config/schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
 # A desktop program with a license, a page to pick the install folder, a
 # check box on the finish page that starts the program, and shortcuts in the
 # Start menu and on the desktop.
 #
-#   go-msi build --var VERSION=2.0.0 -o example-viewer.msi msi.yaml
+#   msi-builder build --var VERSION=2.0.0 -o example-viewer.msi msi.yaml
 #
 # The input files sit next to this file: viewer.exe and LICENSE.txt (plain
 # text, converted to RTF).
-schema: go-msi/v1
+schema: msi-builder/v1
 
 product:
   name: Example Viewer

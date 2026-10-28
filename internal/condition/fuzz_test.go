@@ -3,7 +3,7 @@ package condition_test
 import (
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/condition"
+	"github.com/jkroepke/msi-builder/internal/condition"
 )
 
 // FuzzCheck feeds arbitrary conditions to the parser.

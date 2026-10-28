@@ -1,7 +1,7 @@
 # Getting Started
 
 This guide builds a first package: one executable that installs to
-`C:\Program Files\Hello`. You need go-msi on any operating system, see
+`C:\Program Files\Hello`. You need msi-builder on any operating system, see
 [Installation](Installation.md), and a Windows program to package, here
 `hello.exe`.
 
@@ -10,8 +10,8 @@ This guide builds a first package: one executable that installs to
 Save this file as `msi.yaml` next to `hello.exe`:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/pkg/config/schema.json
-schema: go-msi/v1
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
+schema: msi-builder/v1
 
 product:
   name: Hello
@@ -38,8 +38,8 @@ Every default can be spelled out. Section 3.3 of the
 ## Validate and build
 
 ```shell
-go-msi validate msi.yaml
-go-msi build -o hello.msi msi.yaml
+msi-builder validate msi.yaml
+msi-builder build -o hello.msi msi.yaml
 ```
 
 `validate` checks the file against the schema and runs the configuration
@@ -55,13 +55,13 @@ Windows shows an unknown publisher for an unsigned package. Pass a key and its
 certificate chain to sign while building:
 
 ```shell
-go-msi build --pfx codesign.pfx --password-env PFX_PASSWORD \
+msi-builder build --pfx codesign.pfx --password-env PFX_PASSWORD \
   --timestamp-url http://timestamp.digicert.com -o hello.msi msi.yaml
-go-msi verify hello.msi
+msi-builder verify hello.msi
 ```
 
 [Signing](signing.md) covers PEM keys, signing an existing package with
-`go-msi sign`, and the hash algorithms.
+`msi-builder sign`, and the hash algorithms.
 
 ## Install
 
@@ -80,6 +80,6 @@ msiexec /x hello.msi /qn
   wizard: see the sections of the [YAML Schema](design/yaml-schema.md). The
   [windows_exporter example](../examples/windows_exporter/msi.yaml) uses most
   of them.
-- Inspect a package: [`go-msi inspect`](cli/go-msi_inspect.md) prints its
+- Inspect a package: [`msi-builder inspect`](cli/msi-builder_inspect.md) prints its
   summary, streams and tables.
 - Build packages from Go code: [Go API](go-api.md).

@@ -26,7 +26,7 @@ import (
 
 	"software.sslmate.com/src/go-pkcs12"
 
-	"github.com/jkroepke/go-msi/pkg/cfb"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
 )
 
 // vectorStreams is the chapter 01 compound-file vector.
@@ -193,7 +193,7 @@ func rsaKey(t *testing.T) testKey {
 		t.Fatal(err)
 	}
 
-	return testKey{key, []*x509.Certificate{newCert(t, key, "go-msi test", x509.ExtKeyUsageCodeSigning)}}
+	return testKey{key, []*x509.Certificate{newCert(t, key, "msi-builder test", x509.ExtKeyUsageCodeSigning)}}
 }
 
 func ecKey(t *testing.T) testKey {
@@ -204,7 +204,7 @@ func ecKey(t *testing.T) testKey {
 		t.Fatal(err)
 	}
 
-	return testKey{key, []*x509.Certificate{newCert(t, key, "go-msi ec test", x509.ExtKeyUsageCodeSigning)}}
+	return testKey{key, []*x509.Certificate{newCert(t, key, "msi-builder ec test", x509.ExtKeyUsageCodeSigning)}}
 }
 
 func TestSignVerify(t *testing.T) {
