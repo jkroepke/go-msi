@@ -28,7 +28,10 @@ The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
 - Output is read from one pipe for stdout and stderr, split at `\n`, logged
   per line through `MsiProcessMessage(INSTALLMESSAGE_INFO)` with the fixed
   template `GoMsiRun: [1]`, so brackets in the output are not formatted. A
-  line is decoded as UTF-8 when valid, else in the OEM code page.
+  line is decoded as UTF-8 when valid, else in the OEM code page. `chcp
+  65001` inside a `cmd /c` line does not make cmd.exe's `echo` write UTF-8
+  on the pipe (CA-03 on the x64 and Arm64 runners: the line stayed OEM and
+  `€` came out as `?`); PowerShell with `[Console]::OutputEncoding` does.
 - `cadll_test.go` checks the checksums, the PE machine, the export and that
   the imports are only kernel32, advapi32 and msi. `testdata/probe` is the
   CA-03 package that `pkg/builder/nativetest` installs on Windows

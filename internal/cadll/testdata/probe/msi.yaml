@@ -39,7 +39,7 @@ customActions:
 
   - id: ProbeDeferredUser
     run:
-      command: '"[System64Folder]cmd.exe" /c echo deferred-user & whoami & cd & chcp 65001 >nul & echo utf8-umlaut-äöü-euro-€'
+      command: '"[System64Folder]cmd.exe" /c echo deferred-user & whoami & cd'
     execute: deferred
     impersonate: true
     return: check
@@ -58,6 +58,18 @@ customActions:
   - id: ProbePowerShell
     run:
       command: '"[System64Folder]WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -Command "Write-Output (\"powershell says \" + $PSVersionTable.PSVersion); Write-Error oops; exit 0"'
+    execute: deferred
+    impersonate: false
+    return: check
+    schedule:
+      - { sequence: execute, after: InstallFiles }
+
+  # The UTF-8 line comes from PowerShell: `chcp 65001` inside `cmd /c` does
+  # not switch cmd.exe's echo on the pipe (it stayed OEM and wrote € as ?
+  # on the x64 and Arm64 runners); PowerShell honours [Console]::OutputEncoding.
+  - id: ProbeUtf8
+    run:
+      command: '"[System64Folder]WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "[\[]Console]::OutputEncoding = New-Object Text.UTF8Encoding $false; ''utf8-umlaut-äöü-euro-€''"'
     execute: deferred
     impersonate: false
     return: check
