@@ -253,6 +253,18 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    environment: [{name: '*PATH', value: x}]\n    files:", 1),
 			sevError, "components[0].environment[0].name", "plain name",
 		},
+		"environment twice": {
+			base + strings.Replace(appComponent, "    files:", "    environment: [{name: FOO, value: a}, {name: FOO, value: b}]\n    files:", 1),
+			sevError, "components[0].environment[1]", "FOO with action set and scope machine is set twice",
+		},
+		"firewall description quote": {
+			base + appComponent + "firewall: [{name: a, component: App, program: x, description: 'say \"hi\"'}]\n",
+			sevError, "firewall[0].description", "double quote",
+		},
+		"firewall any with addresses": {
+			base + appComponent + "firewall: [{name: a, component: App, program: x, remoteAddresses: 'ANY, 10.0.0.1'}]\n",
+			sevError, "firewall[0].remoteAddresses", "any cannot be combined",
+		},
 		"PATH set": {
 			base + strings.Replace(appComponent, "    files:", "    environment: [{name: PATH, value: x}]\n    files:", 1),
 			sevWarning, "components[0].environment[0].action", "append",

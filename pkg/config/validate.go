@@ -771,8 +771,20 @@ func (v *validator) componentEvents(compPath string, comp *Component, perUser bo
 		}
 	}
 
+	// The builder keys an Environment row by name, action and scope, so a
+	// second entry with all three equal would be a duplicate key.
+	seen := make(map[[3]string]bool)
+
 	for j, env := range comp.Environment {
-		v.environment(fmt.Sprintf("%s.environment[%d]", compPath, j), env, perUser)
+		envPath := fmt.Sprintf("%s.environment[%d]", compPath, j)
+		v.environment(envPath, env, perUser)
+
+		key := [3]string{env.Name, env.Action, env.Scope}
+		if env.Name != "" && seen[key] {
+			v.errorf(envPath, "%s with action %s and scope %s is set twice in this component", env.Name, env.Action, env.Scope)
+		}
+
+		seen[key] = true
 	}
 }
 
@@ -1565,6 +1577,13 @@ func (v *validator) firewall(cfg *Config, known *refs) { //nolint:cyclop // a fl
 		v.required(p+".program", rule.Program)
 		v.oneOf(p+".protocol", rule.Protocol, "tcp", "udp", "any")
 
+		// The description is quoted on the netsh command line like the name.
+		if strings.ContainsAny(rule.Description, `"`) {
+			v.errorf(p+".description", "must not contain a double quote")
+		}
+
+		v.remoteAddresses(p+".remoteAddresses", rule.RemoteAddresses)
+
 		if rule.Protocol == "any" && rule.Port != "" {
 			v.errorf(p+".port", "a port needs protocol tcp or udp")
 		}
@@ -1575,6 +1594,24 @@ func (v *validator) firewall(cfg *Config, known *refs) { //nolint:cyclop // a fl
 
 		if cfg.Package.Scope == ScopePerUser {
 			v.errorf(p, "firewall rules need a per-machine package")
+		}
+	}
+}
+
+// remoteAddresses checks a firewall rule's remote address list. netsh
+// rejects a list that mixes the keyword any with other entries (MSISPEC
+// section 17.3), and the add action fails the install.
+func (v *validator) remoteAddresses(field, list string) {
+	entries := strings.Split(list, ",")
+	if len(entries) < 2 {
+		return
+	}
+
+	for _, entry := range entries {
+		if strings.EqualFold(strings.TrimSpace(entry), "any") {
+			v.errorf(field, "any cannot be combined with other addresses; leave remoteAddresses empty for any")
+
+			return
 		}
 	}
 }
