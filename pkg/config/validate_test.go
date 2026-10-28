@@ -263,7 +263,11 @@ func TestValidate(t *testing.T) {
 		},
 		"firewall any with addresses": {
 			base + appComponent + "firewall: [{name: a, component: App, program: x, remoteAddresses: 'ANY, 10.0.0.1'}]\n",
-			sevError, "firewall[0].remoteAddresses", "any cannot be combined",
+			sevError, "firewall[0].remoteAddresses", "ANY cannot be combined",
+		},
+		"firewall star with addresses": {
+			base + appComponent + "firewall: [{name: a, component: App, program: x, remoteAddresses: '10.0.0.1,*'}]\n",
+			sevError, "firewall[0].remoteAddresses", "* cannot be combined",
 		},
 		"PATH set": {
 			base + strings.Replace(appComponent, "    files:", "    environment: [{name: PATH, value: x}]\n    files:", 1),

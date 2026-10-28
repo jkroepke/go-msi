@@ -1577,7 +1577,8 @@ func (v *validator) firewall(cfg *Config, known *refs) { //nolint:cyclop // a fl
 		v.required(p+".program", rule.Program)
 		v.oneOf(p+".protocol", rule.Protocol, "tcp", "udp", "any")
 
-		// The description is quoted on the netsh command line like the name.
+		// The description is quoted on the netsh command line like the name;
+		// netsh drops quotes inside it (MSISPEC CA-04).
 		if strings.ContainsAny(rule.Description, `"`) {
 			v.errorf(p+".description", "must not contain a double quote")
 		}
@@ -1599,8 +1600,9 @@ func (v *validator) firewall(cfg *Config, known *refs) { //nolint:cyclop // a fl
 }
 
 // remoteAddresses checks a firewall rule's remote address list. netsh
-// rejects a list that mixes the keyword any with other entries (MSISPEC
-// section 17.3), and the add action fails the install.
+// rejects a list that combines any or * with other entries, and the add
+// action then fails the install (MSISPEC CA-04). Other keywords such as
+// localsubnet combine with addresses.
 func (v *validator) remoteAddresses(field, list string) {
 	entries := strings.Split(list, ",")
 	if len(entries) < 2 {
@@ -1608,8 +1610,8 @@ func (v *validator) remoteAddresses(field, list string) {
 	}
 
 	for _, entry := range entries {
-		if strings.EqualFold(strings.TrimSpace(entry), "any") {
-			v.errorf(field, "any cannot be combined with other addresses; leave remoteAddresses empty for any")
+		if entry = strings.TrimSpace(entry); strings.EqualFold(entry, "any") || entry == "*" {
+			v.errorf(field, "%s cannot be combined with other addresses; leave remoteAddresses empty for any", entry)
 
 			return
 		}

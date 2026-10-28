@@ -455,3 +455,32 @@ code 1603 but will be translated to success due to continue marking`, and
 - Not run: a 32-bit (`Intel`) package, a cancel from a UI handler, and
   Windows Server 2016.
 
+
+## Firewall arguments (CA-04)
+
+Run on 2026-10-28 in CI run 40787803798 of PR #77, `Build & Test
+(windows-latest)` job (Windows Server 2025 x64, elevated), by a temporary
+probe test that ran `netsh advfirewall firewall add rule name="MBProbeN"
+dir=in action=allow protocol=tcp localport=65001 …` with the arguments below,
+read each rule back with `show rule … verbose` and deleted it. The probe was
+removed from the pull request afterwards.
+
+| Argument | Exit | Stored |
+| --- | --- | --- |
+| `remoteip=any,10.0.0.1` | 1, "A specified IP address or address keyword is not valid." | no rule |
+| `remoteip=10.0.0.1,any` | 1, same message | no rule |
+| `remoteip=*` | 0 | RemoteIP `Any` |
+| `remoteip=*,10.0.0.1` | 1, same message | no rule |
+| `remoteip=localsubnet,10.0.0.1` | 0 | RemoteIP `LocalSubnet,10.0.0.1/32` |
+| `remoteip=ANY` | 0 | RemoteIP `Any` |
+| `remoteip=LocalSubnet,dns` | 0 | RemoteIP `LocalSubnet,DNS` |
+| `description="say "hi" now"` | 0 | Description `say hi now` |
+| `description="plain text"` | 0 | Description `plain text` |
+
+- `any` and `*` are accepted alone and rejected in a list with any other
+  entry. The builder rejects such a list (`pkg/config`), because the add
+  action has no `Continue` and would fail the install (section 17.3, CA-02).
+- Quotes inside a quoted description disappear without an error, so the
+  builder rejects them like quotes in the name.
+- Not run: SERVER2025 (Remote Control did not start) and Windows Server
+  2016.

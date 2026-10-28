@@ -1537,6 +1537,31 @@ GNOME msitools and WiX are comparative implementations, not authorities for all 
 
 Historical [GNOME msitools reports](https://gitlab.gnome.org/GNOME/msitools/-/issues) provide candidate tests for out-of-order table rows (#99), long-string encoding (#60), CAB continuation (#68), malformed FAT entries (#33) and UI control cycles (#63). These are **reported** cases until minimized fixtures are validated with native Windows Installer APIs and runtime. [WiX issues](https://github.com/wixtoolset/issues) add candidates for a raw `REG_MULTI_SZ` search (1108), costing without components (1790), OS-file version checks on Windows 10+ (5824), service failure actions (5964), per-user rollback (8574) and media above 2 GB (8601).
 
+### Reviewed msitools fixes (2026-10-28)
+
+The GNOME msitools commits whose message mentions a fix were reviewed on 2026-10-28, from their commit messages and linked issues only; no diff or source was read. Each was checked against this spec and msi-builder. Most are build-system, translation or `.wxi` package-list changes. The rest:
+
+| msitools fix (commit subject, abridged) | msi-builder |
+| --- | --- |
+| Long string table load and save format (#60) | Already covered: section 3 gives the long-entry layout; `pkg/msidb` has a test for it. |
+| Save table rows sorted by their primary key (#99); don't corrupt a table with temporary rows | Already covered: section 3 requires sorted rows and msi-builder sorts every table; it never writes temporary rows or edits existing packages. |
+| Open 0-byte streams; allocate decoded stream names; reject zero-length properties; fix `msi_load_string_table` | Reader robustness. Already covered by the rules for untrusted input (`AGENTS.md`) and the `cfb`, `msidb` and `summary` fuzz tests. |
+| Inverted `Environment/@Permanent` | Already covered: removal is a separate field and the `-` prefix is always written explicitly (section 11.9, ENVVAR-01). |
+| Include all generated `Environment` id parts, reject duplicates | Adopted: the key already covers name, action and scope; a second entry with all three equal now fails validation instead of the database writer. |
+| Default `Win64` for arm64 packages | Already covered: arm64 is a 64-bit platform for components and registry searches (section 8.2). |
+| Clamp cabinet file times to 1980–2107 | Already covered (`cab.DOSTime`). |
+| Reject a File Id over 72 characters; default and sanitize File Ids; validate `DefaultLanguage`; harden PE version parsing | Already covered: generated keys and configured identifiers are checked against their column widths, `language` is validated, and `internal/pe` is fuzzed. The WiX-style Id defaulting has no counterpart in the YAML schema. |
+| Firewall: keep port and protocol with a program; warn about a `Target` over 255 characters | Already covered: a rule writes program, protocol and port together, and any `Target` over 255 characters warns (section 17.3). |
+| Firewall: treat a `RemoteAddress` of `*` as any | Adopted differently: netsh itself treats `*` alone as any, so nothing is translated; `any` or `*` combined with other entries is now a build error (section 17.3, CA-04). |
+| Firewall: validate Ids | Already covered for names (unique, no quote); the description now gets the same quote check (CA-04). |
+| ServiceConfig failure actions compared case-insensitively | Not adopted: the YAML values are enums checked by the schema, and an unknown spelling is an error rather than a guess. |
+| UI: dialogs opened only by events, tab order, `UIText` rows, `Publish` ordering | Already covered by msi-builder's own wizard (section 7, ICE runs in CI); it does not consume WiX UI libraries. |
+| Place Before/After actions next to their anchor; topological sort (RemoveExistingProducts, error 2613) | Already covered: section 11.7 numbering, and section 11.8 placement of `RemoveExistingProducts`. |
+| Database code page from `Product/@Codepage`; crash on an invalid string conversion | Already covered: the code page is written to the pool and characters outside it are an error (section 3). |
+| `Upgrade` VersionMin/VersionMax NULL handling; crash without `Feature/@Level` | Already covered: NULL columns are written as NULL, and `Level` has a default. |
+| Summary information date parsing | Already covered: FILETIME is written from `SOURCE_DATE_EPOCH` and checked by the summary test vectors (section 4). |
+| Stable component GUIDs | Already covered: GUIDs are derived from the upgrade code and stable names (section 11.4). |
+
 ### Decisions not adopted
 
 Behavior seen in other toolchains is not adopted just because another toolchain does it, and an implementation option is not adopted just because it is available. Either is adopted only when it helps an msi-builder package and agrees with this spec. These were considered and not adopted:
@@ -1652,6 +1677,8 @@ Both recipes use EXE custom actions on `sc.exe` and `netsh.exe`, so a package ne
 - On install and repair, delete every rule by name and direction first, then add each rule; a rollback action deletes what was added. Delete all rules before adding any, so a TCP and a UDP rule with one name survive.
 - On removal, delete by name and direction only, because a port or address taken from a property may differ at maintenance time; a rollback action adds the rule back. Deleting never fails the install (Continue, 64).
 - Rules name a program (`program="[#File]"`) or a port and protocol (TCP by default), with remote addresses or a scope and a profile (all by default).
+- `remoteip=` takes `any`, `*` or a list. `any` (in any case) and `*` alone mean any address; a list that combines either with another entry fails with "A specified IP address or address keyword is not valid." and exit code 1, so the add action fails the install. Other keywords combine: `localsubnet,10.0.0.1` and `LocalSubnet,dns` are stored as given (observed, CA-04).
+- A double quote inside a quoted `description="…"` is dropped without an error: `description="say "hi" now"` is stored as `say hi now` (observed, CA-04). Reject quotes in the name and the description instead of letting them vanish.
 - Unverified: removing only the feature (`REMOVE=<Feature>`) when the port came from a property.
 
 ### 17.4 wixl, a toolchain without custom-action code
@@ -2161,6 +2188,7 @@ Until 2026-10-26 the cases used other IDs: `RUN-` for most installation and runt
 | CA-01 | P1 | A/I | Per-user package with a failing deferred action after `PublishProduct` and the same action after `InstallFiles` | Install, let the action fail, inspect Apps & features and `HKU\<SID>\Software\Microsoft\Installer\Products`; expect leftover registration for the first variant (section 8.2, W17). | Contradicted ([results](MSISPEC-RESULTS.md)) |
 | CA-02 | P1 | I | Deferred custom action returning 259, 1602, 1603 and an EXE action exiting 1 with and without Continue | Verbose logs and exit codes; confirm 259 ends the install successfully and skips later actions (section 8.11). | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | CA-03 | P1 | I | The `run` action probe (`internal/cadll/testdata/probe`): deferred no-impersonate, deferred impersonated, rollback, PowerShell with `Write-Error`, `Continue` with exit 3, hidden failing command behind `FAILPROBE=1`, and an immediate action after `InstallFinalize`; the Arm64 package on Windows on Arm and the x64 one under emulation | Install, uninstall and install with `FAILPROBE=1` with verbose logs. Do stdout and stderr lines of every action appear as `BuilderRun:` lines, does `whoami` show LocalSystem versus the user, do `[ProductName]` brackets in the output stay literal, is non-ASCII output decoded, does exit 3 with `Continue` return 1, does exit 7 fail with 1603 and run the rollback action with the hidden command absent from the log (section 17.6)? | Confirmed ([results](MSISPEC-RESULTS.md#embedded-custom-action-dll-ca-03); CI runners and SERVER2025) |
+| CA-04 | P2 | A | `netsh advfirewall firewall add rule` with `remoteip=` set to `any,10.0.0.1`, `10.0.0.1,any`, `*`, `*,10.0.0.1`, `localsubnet,10.0.0.1`, `ANY` and `LocalSubnet,dns`, and with `description="say "hi" now"` | Exit code and the rule as `show rule verbose` reads it back, then delete it. Which lists does netsh reject, and what happens to quotes inside the description (section 17.3)? | Confirmed ([results](MSISPEC-RESULTS.md#firewall-arguments-ca-04); CI runner) |
 | SHORTCUT-01 | P1 | I | Non-advertised Start menu and desktop shortcuts per-machine in their own HKCU-key-path component with a `RemoveFile` row and an icon, in the file's component (with and without a subfolder), an advertised shortcut, and a per-user install | Do they install, what does the `.lnk` hold, is the subfolder removed, where does the icon go (section 8.11)? | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | UI-02 | P1 | A/I | ControlEvent blank vs `1` conditions and a valid/invalid tab ring | Launch the interactive full UI; capture actual transitions, tab order and MSI error messages (2834). Do not infer UI behaviour from `/qn`. | Not run |
 | UI-03 | P2 | I | TrackDiskSpace dialog with a Text control reading `[INSTALLDIR]` with and without a trailing space | Full UI; observe whether the text updates after a folder change (section 7.2, W18). | Not run |
