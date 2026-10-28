@@ -1,4 +1,4 @@
-# `go-msi validate`
+# `msi-builder validate`
 
 Check a YAML file without building a package
 
@@ -10,13 +10,13 @@ exit code is 1 when there is an error.
 ## Usage
 
 ```text
-go-msi validate [flags] msi.yaml
+msi-builder validate [flags] msi.yaml
 ```
 
 ## Examples
 
 ```text
-  go-msi validate --var VERSION=1.2.3 msi.yaml
+  msi-builder validate --var VERSION=1.2.3 msi.yaml
 ```
 
 ## Flags
@@ -29,4 +29,4 @@ go-msi validate [flags] msi.yaml
 
 ## See also
 
-- [`go-msi`](go-msi.md): Build Windows Installer (MSI) packages from a YAML file
+- [`msi-builder`](msi-builder.md): Build Windows Installer (MSI) packages from a YAML file

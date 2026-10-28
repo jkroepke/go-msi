@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/jkroepke/go-msi/main/pkg/config/schema.json",
-  "title": "go-msi configuration, schema go-msi/v1",
-  "description": "Editor support for go-msi YAML files. docs/design/yaml-schema.md is the reference, and go-msi validate checks every rule, including the ones a JSON Schema cannot express.",
+  "$id": "https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json",
+  "title": "msi-builder configuration, schema msi-builder/v1",
+  "description": "Editor support for msi-builder YAML files. docs/design/yaml-schema.md is the reference, and msi-builder validate checks every rule, including the ones a JSON Schema cannot express.",
   "type": "object",
   "properties": {
     "schema": {
-      "const": "go-msi/v1"
+      "const": "msi-builder/v1"
     },
     "vars": {
       "type": "object",
@@ -493,7 +493,7 @@
           },
           "run": {
             "type": "object",
-            "description": "Runs a command through the custom action DLL go-msi embeds: hidden window, output in the log, exit code checked.",
+            "description": "Runs a command through the custom action DLL msi-builder embeds: hidden window, output in the log, exit code checked.",
             "properties": {
               "command": {
                 "type": "string"
@@ -1224,7 +1224,7 @@
     },
     "var": {
       "type": "string",
-      "description": "A value with a ${NAME} variable. It is checked after substitution, by go-msi validate.",
+      "description": "A value with a ${NAME} variable. It is checked after substitution, by msi-builder validate.",
       "pattern": "\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}"
     },
     "version": {

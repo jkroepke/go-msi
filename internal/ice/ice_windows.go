@@ -103,7 +103,7 @@ func Run(pkg, cub string) ([]Finding, error) {
 
 	defer runtime.UnlockOSThread()
 
-	tmp, err := os.MkdirTemp("", "go-msi-ice-")
+	tmp, err := os.MkdirTemp("", "msi-builder-ice-")
 	if err != nil {
 		return nil, fmt.Errorf("ice: %w", err)
 	}

@@ -6,10 +6,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/jkroepke/go-msi/internal/cadll"
-	"github.com/jkroepke/go-msi/internal/condition"
-	"github.com/jkroepke/go-msi/internal/sequence"
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/internal/cadll"
+	"github.com/jkroepke/msi-builder/internal/condition"
+	"github.com/jkroepke/msi-builder/internal/sequence"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // Custom action type words (section 9.4).
@@ -374,7 +374,7 @@ func (b *build) customActions() error { //nolint:cyclop // one pass over the for
 	// internal/sequence places the before-anchored actions in the order they
 	// were added, so one scheduled later with before: <id> would land
 	// between the two, and an immediate run action would read another
-	// action's command line from the shared GoMsiRun property.
+	// action's command line from the shared BuilderRun property.
 	for _, setter := range setters {
 		b.schedule(setter.table, setter.name, setter.condition, setter.before, "", 0)
 	}
@@ -386,7 +386,7 @@ func (b *build) customActions() error { //nolint:cyclop // one pass over the for
 // action DLL (internal/cadll) plus a type-51 action that hands it the
 // working directory and command line: through CustomActionData for
 // deferred, rollback and commit actions, which only see that property, and
-// through the GoMsiRun property for immediate ones. It returns the name of
+// through the BuilderRun property for immediate ones. It returns the name of
 // the type-51 action, which the caller schedules right before the action.
 func (b *build) runAction(custom *config.CustomAction, action *actionInfo) string {
 	if b.cfg.Binaries[cadll.Key] != "" {
@@ -591,7 +591,7 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 			}
 
 			if config.IsStandardAction(action.Name) {
-				b.errorf("customActions", "%s: standard action %s has no default number in go-msi; schedule it with an absolute number", table, action.Name)
+				b.errorf("customActions", "%s: standard action %s has no default number in msi-builder; schedule it with an absolute number", table, action.Name)
 
 				continue
 			}

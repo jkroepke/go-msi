@@ -6,8 +6,8 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/jkroepke/go-msi/internal/exampletest"
-	"github.com/jkroepke/go-msi/pkg/builder"
+	"github.com/jkroepke/msi-builder/internal/exampletest"
+	"github.com/jkroepke/msi-builder/pkg/builder"
 )
 
 // scope is what a snapshot needs to know about the package: the labels for

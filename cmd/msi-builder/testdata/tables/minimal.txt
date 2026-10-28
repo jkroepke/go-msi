@@ -6,12 +6,12 @@ summary  4: Example
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install Hello.
 summary  7: x64;1033
-summary  9: {19465B0E-ECFB-53FB-B837-BFC49DD1AFA0}
+summary  9: {211730DB-FF52-5D21-8A2D-1062744D509F}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500
 summary 15: 2
-summary 18: go-msi
+summary 18: msi-builder
 summary 19: 2
 streams: Hello.cab (362 bytes)
 
@@ -135,7 +135,7 @@ s72!	l0
 ALLUSERS	1
 ARPNOMODIFY	1
 Manufacturer	Example
-ProductCode	{0277F3F1-EF91-5AE8-830A-54F062A7AEEC}
+ProductCode	{77CF25DE-37FE-5E96-9703-86C60DBAF4ED}
 ProductLanguage	1033
 ProductName	Hello
 ProductVersion	1.0.0

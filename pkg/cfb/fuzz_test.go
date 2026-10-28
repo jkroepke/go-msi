@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/pkg/cfb"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
 )
 
 // FuzzRead feeds corrupted compound files to the reader. It must return an

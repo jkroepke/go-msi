@@ -9,7 +9,7 @@ If you think you have found a vulnerability in this repository, please report it
 Instead, report it using one of the following ways:
 
 * Contact the [maintainer](mailto:security@jkroepke.de) via email
-* Report a [vulnerability](https://github.com/jkroepke/go-msi/security/advisories/new) directly via private vulnerability reporting on GitHub
+* Report a [vulnerability](https://github.com/jkroepke/msi-builder/security/advisories/new) directly via private vulnerability reporting on GitHub
 
 Please include as much of the information listed below as you can to help us better understand and resolve the issue:
 

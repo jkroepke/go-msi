@@ -3,7 +3,7 @@ package config
 import (
 	"strings"
 
-	"github.com/jkroepke/go-msi/internal/condition"
+	"github.com/jkroepke/msi-builder/internal/condition"
 )
 
 // targetDir is the root of the directory tree.

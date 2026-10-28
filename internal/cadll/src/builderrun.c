@@ -1,5 +1,5 @@
-// gomsirun.c is the custom action DLL that go-msi embeds into packages for
-// `run` actions. The entry point GoMsiRun starts a command line with a
+// builderrun.c is the custom action DLL that msi-builder embeds into packages for
+// `run` actions. The entry point BuilderRun starts a command line with a
 // hidden window, copies everything the process writes to stdout or stderr
 // into the Windows Installer log through MsiProcessMessage, and turns the
 // exit code into a custom action return value: 0 for exit code 0,
@@ -11,12 +11,12 @@
 // build.sh with clang and lld for x86, x64 and arm64.
 //
 // Input, in CustomActionData for deferred, rollback and commit actions and in
-// the property GoMsiRun for immediate actions:
+// the property BuilderRun for immediate actions:
 //
 //     <working directory>|<command line>
 //
 // The directory may be empty; `|` cannot occur in a Windows path, so the
-// first one ends it. A log line reads `GoMsiRun: ...`.
+// first one ends it. A log line reads `BuilderRun: ...`.
 
 typedef unsigned int UINT;
 typedef unsigned long DWORD;
@@ -171,7 +171,7 @@ static void wappendnum(WCHAR *dst, SIZE_T *pos, DWORD value)
 // not formatted as properties.
 static int logw(MSIHANDLE install, const WCHAR *text)
 {
-    static const WCHAR template[] = {'G', 'o', 'M', 's', 'i', 'R', 'u', 'n', ':', ' ', '[', '1', ']', 0};
+    static const WCHAR template[] = {'B', 'u', 'i', 'l', 'd', 'e', 'r', 'R', 'u', 'n', ':', ' ', '[', '1', ']', 0};
     MSIHANDLE rec = MsiCreateRecord(1);
     if (!rec) {
         return 0;
@@ -332,7 +332,7 @@ static const WCHAR msgDupToken[] = {'D', 'u', 'p', 'l', 'i', 'c', 'a', 't', 'e',
 static const WCHAR msgExit[] = {'e', 'x', 'i', 't', ' ', 'c', 'o', 'd', 'e', 0};
 static const WCHAR msgCancel[] = {'c', 'a', 'n', 'c', 'e', 'l', 'l', 'e', 'd', ' ', 'b', 'y', ' ', 't', 'h', 'e', ' ', 'u', 's', 'e', 'r', 0};
 static const WCHAR propData[] = {'C', 'u', 's', 't', 'o', 'm', 'A', 'c', 't', 'i', 'o', 'n', 'D', 'a', 't', 'a', 0};
-static const WCHAR propRun[] = {'G', 'o', 'M', 's', 'i', 'R', 'u', 'n', 0};
+static const WCHAR propRun[] = {'B', 'u', 'i', 'l', 'd', 'e', 'r', 'R', 'u', 'n', 0};
 
 // parse splits "<dir>|<command>" into dir (0 when empty) and command. `|`
 // cannot occur in a Windows path, so the first one ends the directory, which
@@ -390,7 +390,7 @@ static BOOL start(MSIHANDLE install, WCHAR *cmd, const WCHAR *dir, STARTUPINFOW 
     return ok;
 }
 
-__declspec(dllexport) UINT WINAPI GoMsiRun(MSIHANDLE install)
+__declspec(dllexport) UINT WINAPI BuilderRun(MSIHANDLE install)
 {
     WCHAR *data = property(install, propData);
     if (!data) {

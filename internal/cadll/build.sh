@@ -1,5 +1,5 @@
 #!/bin/sh
-# build.sh builds gomsirun.dll for x86, x64 and arm64 from src/gomsirun.c
+# build.sh builds builderrun.dll for x86, x64 and arm64 from src/builderrun.c
 # with clang and lld. The DLL is freestanding (no C runtime, no SDK), so the
 # only build inputs are the source, the import definitions below and the
 # compiler. /Brepro makes the output reproducible for one clang version;
@@ -58,12 +58,12 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
   "$CLANG" --target="$triple-pc-windows-msvc" -std=c11 -O2 -Wall -Wextra -Werror \
     -fno-builtin -ffreestanding -fno-stack-protector -mno-stack-arg-probe \
     -fno-exceptions \
-    -c src/gomsirun.c -o "$tmp/$out/gomsirun.obj"
+    -c src/builderrun.c -o "$tmp/$out/builderrun.obj"
   "$CLANG" --target="$triple-pc-windows-msvc" -fuse-ld=lld -nostdlib -shared \
-    -o "gomsirun-$out.dll" "$tmp/$out/gomsirun.obj" \
+    -o "builderrun-$out.dll" "$tmp/$out/builderrun.obj" \
     "$tmp/$out/kernel32.lib" "$tmp/$out/advapi32.lib" "$tmp/$out/msi.lib" \
-    -Wl,/Brepro -Wl,/nodefaultlib -Wl,/entry:_DllMainCRTStartup -Wl,/export:GoMsiRun \
+    -Wl,/Brepro -Wl,/nodefaultlib -Wl,/entry:_DllMainCRTStartup -Wl,/export:BuilderRun \
     -Wl,/release -Wl,/opt:ref -Wl,/opt:icf -Wl,/subsystem:windows
 done
-sha256sum gomsirun-x86.dll gomsirun-x64.dll gomsirun-arm64.dll >SHA256SUMS
-ls -l gomsirun-*.dll
+sha256sum builderrun-x86.dll builderrun-x64.dll builderrun-arm64.dll >SHA256SUMS
+ls -l builderrun-*.dll

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/testpe"
+	"github.com/jkroepke/msi-builder/internal/testpe"
 )
 
 func TestSyntheticPE(t *testing.T) {

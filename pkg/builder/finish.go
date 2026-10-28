@@ -14,13 +14,13 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/jkroepke/go-msi/internal/schema"
-	"github.com/jkroepke/go-msi/internal/spool"
-	"github.com/jkroepke/go-msi/pkg/cab"
-	"github.com/jkroepke/go-msi/pkg/cfb"
-	"github.com/jkroepke/go-msi/pkg/config"
-	"github.com/jkroepke/go-msi/pkg/msidb"
-	"github.com/jkroepke/go-msi/pkg/summary"
+	"github.com/jkroepke/msi-builder/internal/schema"
+	"github.com/jkroepke/msi-builder/internal/spool"
+	"github.com/jkroepke/msi-builder/pkg/cab"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
+	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/msidb"
+	"github.com/jkroepke/msi-builder/pkg/summary"
 )
 
 // placeholderCode stands in for an automatic package code while the
@@ -333,7 +333,7 @@ func (b *build) newTarget(kind, output string) (spool.Target, func(), error) {
 		return &spool.Buffer{}, func() {}, nil
 	}
 
-	file, err := os.CreateTemp(filepath.Dir(output), ".go-msi-*."+kind)
+	file, err := os.CreateTemp(filepath.Dir(output), ".msi-builder-*."+kind)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create a temporary %s file: %w", kind, err)
 	}

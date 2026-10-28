@@ -12,9 +12,9 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/jkroepke/go-msi/internal/pe"
-	"github.com/jkroepke/go-msi/pkg/config"
-	"github.com/jkroepke/go-msi/pkg/msidb"
+	"github.com/jkroepke/msi-builder/internal/pe"
+	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/msidb"
 )
 
 // maxFileSize is the largest payload file: the cabinet stores sizes in 32

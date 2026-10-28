@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/testpe"
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/internal/testpe"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 func desktop(t *testing.T) *config.Config {

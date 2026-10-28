@@ -1,5 +1,5 @@
-/go-msi
-/go-msi.exe
+/msi-builder
+/msi-builder.exe
 *.msi
 /dist/
 /coverage.out

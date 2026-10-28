@@ -13,7 +13,7 @@ body:
       label: Problem Statement
       description: Without specifying a solution, describe what the project is missing today.
       placeholder: |
-        go-msi cannot install a Windows service that runs as a virtual account.
+        msi-builder cannot install a Windows service that runs as a virtual account.
     validations:
       required: false
   - type: textarea
@@ -52,5 +52,5 @@ body:
         - required: true
           #language=markdown
           label: |
-            I could not find a solution in the [documentation](https://github.com/jkroepke/go-msi/wiki),
+            I could not find a solution in the [documentation](https://github.com/jkroepke/msi-builder/wiki),
             the existing issues or discussions.

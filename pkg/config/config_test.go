@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/config"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -87,18 +87,19 @@ func TestParseErrors(t *testing.T) {
 		yaml string
 		want string
 	}{
-		"unknown key":      {"schema: go-msi/v1\nproduct: {nickname: x}\n", "nickname"},
-		"unknown nested":   {"schema: go-msi/v1\nproperties: {A: {valeu: x}}\n", "valeu"},
-		"schema":           {"schema: go-msi/v2\n", "go-msi/v1"},
-		"undefined var":    {"schema: go-msi/v1\nproduct: {version: \"${NOPE}\"}\n", "undefined variable ${NOPE}"},
-		"platform":         {"schema: go-msi/v1\npackage: {platform: ia64}\n", "unknown platform"},
-		"scope":            {"schema: go-msi/v1\npackage: {scope: global}\n", "unknown scope"},
-		"property list":    {"schema: go-msi/v1\nproperties: {A: [1]}\n", "value or a mapping"},
+		"unknown key":      {"schema: msi-builder/v1\nproduct: {nickname: x}\n", "nickname"},
+		"unknown nested":   {"schema: msi-builder/v1\nproperties: {A: {valeu: x}}\n", "valeu"},
+		"schema":           {"schema: msi-builder/v2\n", "msi-builder/v1"},
+		"former schema":    {"schema: go-msi/v1\n", "before the rename to msi-builder; write \"msi-builder/v1\""},
+		"undefined var":    {"schema: msi-builder/v1\nproduct: {version: \"${NOPE}\"}\n", "undefined variable ${NOPE}"},
+		"platform":         {"schema: msi-builder/v1\npackage: {platform: ia64}\n", "unknown platform"},
+		"scope":            {"schema: msi-builder/v1\npackage: {scope: global}\n", "unknown scope"},
+		"property list":    {"schema: msi-builder/v1\nproperties: {A: [1]}\n", "value or a mapping"},
 		"not a mapping":    {"- a\n", "mapping"},
-		"bad restartDelay": {"schema: go-msi/v1\ncomponents: [{services: [{recovery: {restartDelay: soon}}]}]\n", "duration"},
-		"bad step delay":   {"schema: go-msi/v1\ncomponents: [{services: [{recovery: {actions: [{restart: soon}]}}]}]\n", "duration"},
-		"bad step key":     {"schema: go-msi/v1\ncomponents: [{services: [{recovery: {actions: [{reboot: 1m}]}}]}]\n", "{restart: <delay>}"},
-		"null step delay":  {"schema: go-msi/v1\ncomponents: [{services: [{recovery: {actions: [{restart: ~}]}}]}]\n", "needs a delay"},
+		"bad restartDelay": {"schema: msi-builder/v1\ncomponents: [{services: [{recovery: {restartDelay: soon}}]}]\n", "duration"},
+		"bad step delay":   {"schema: msi-builder/v1\ncomponents: [{services: [{recovery: {actions: [{restart: soon}]}}]}]\n", "duration"},
+		"bad step key":     {"schema: msi-builder/v1\ncomponents: [{services: [{recovery: {actions: [{reboot: 1m}]}}]}]\n", "{restart: <delay>}"},
+		"null step delay":  {"schema: msi-builder/v1\ncomponents: [{services: [{recovery: {actions: [{restart: ~}]}}]}]\n", "needs a delay"},
 	} {
 		_, err := config.Parse([]byte(tc.yaml), config.Options{})
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -110,7 +111,7 @@ func TestParseErrors(t *testing.T) {
 func TestVariables(t *testing.T) {
 	t.Parallel()
 
-	doc := `schema: go-msi/v1
+	doc := `schema: msi-builder/v1
 vars: {NAME: fromFile, PORT: "1"}
 product: {name: "${NAME}", version: "$${LITERAL}"}
 package:
@@ -159,7 +160,7 @@ func TestPlatformTokens(t *testing.T) {
 		"x86": config.PlatformX86, "Intel": config.PlatformX86, "X64": config.PlatformX64,
 		"amd64": config.PlatformX64, "ARM64": config.PlatformArm64, "aarch64": config.PlatformArm64,
 	} {
-		cfg, err := config.Parse([]byte("schema: go-msi/v1\npackage: {platform: "+input+"}\n"), config.Options{})
+		cfg, err := config.Parse([]byte("schema: msi-builder/v1\npackage: {platform: "+input+"}\n"), config.Options{})
 		if err != nil {
 			t.Fatalf("%s: %v", input, err)
 		}
@@ -187,7 +188,7 @@ func TestValidateGoAPI(t *testing.T) {
 func TestRecoveryActionsMarshal(t *testing.T) {
 	t.Parallel()
 
-	doc := "schema: go-msi/v1\ncomponents: [{services: [{recovery: {actions: [restart, none, {restart: 5m}]}}]}]\n"
+	doc := "schema: msi-builder/v1\ncomponents: [{services: [{recovery: {actions: [restart, none, {restart: 5m}]}}]}]\n"
 
 	cfg, err := config.Parse([]byte(doc), config.Options{})
 	if err != nil {
@@ -209,7 +210,7 @@ func TestRecoveryActionsMarshal(t *testing.T) {
 func TestVariableValues(t *testing.T) {
 	t.Parallel()
 
-	doc := "schema: go-msi/v1\nproduct:\n  name: ${V}\n  manufacturer: '${V}'\npackage: {platform: x64}\n"
+	doc := "schema: msi-builder/v1\nproduct:\n  name: ${V}\n  manufacturer: '${V}'\npackage: {platform: x64}\n"
 
 	for _, value := range []string{"null", "Null", "NULL", "~"} {
 		cfg, err := config.Parse([]byte(doc), config.Options{Vars: map[string]string{"V": value}})

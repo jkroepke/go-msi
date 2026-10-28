@@ -1,8 +1,8 @@
-# Documentation of go-msi
+# Documentation of msi-builder
 
 With the exception of `README.md` files and the Windows test harness in
 `spec/msitest`, the files in this directory are published to the
-[go-msi GitHub Wiki](https://github.com/jkroepke/go-msi/wiki) by
+[msi-builder GitHub Wiki](https://github.com/jkroepke/msi-builder/wiki) by
 `.github/workflows/wiki.yaml`.
 
 - `Home.md` is the wiki landing page.
@@ -11,7 +11,7 @@ With the exception of `README.md` files and the Windows test harness in
   changes are reviewed. It starts with an empty line.
 - `Getting Started.md` is the first-package journey. Reference pages stay
   focused and link back to it when helpful.
-- `cli/` is generated with `go generate ./cmd/go-msi`; do not edit it by hand.
+- `cli/` is generated with `go generate ./cmd/msi-builder`; do not edit it by hand.
 
 The wiki has one flat list of page names. `.github/scripts/wiki.py` gives
 pages in subdirectories a readable name (its `PAGES` map, for example

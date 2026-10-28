@@ -6,9 +6,9 @@ before:
     - go mod tidy -diff
 
 builds:
-  - id: "go-msi"
-    binary: go-msi
-    main: ./cmd/go-msi
+  - id: "msi-builder"
+    binary: msi-builder
+    main: ./cmd/msi-builder
     goos:
       - linux
       - darwin
@@ -29,9 +29,9 @@ builds:
         -X main.date={{.Date}}
 
 archives:
-  - id: go-msi
+  - id: msi-builder
     ids:
-      - go-msi
+      - msi-builder
     formats: ['tar.gz']
     format_overrides:
       - goos: windows
@@ -41,9 +41,9 @@ archives:
 
 dockers_v2:
   - ids:
-      - go-msi
+      - msi-builder
     images:
-      - ghcr.io/jkroepke/go-msi
+      - ghcr.io/jkroepke/msi-builder
     tags:
       - '{{ .Version }}'
       - '{{ if and .Tag (not .Prerelease) (not .IsSnapshot) (ne .Branch "main") }}latest{{end}}'
@@ -52,10 +52,10 @@ dockers_v2:
       "org.opencontainers.image.authors": 'Jan-Otto Kröpke https://github.com/jkroepke/'
       "org.opencontainers.image.created": '{{.Date}}'
       "org.opencontainers.image.description": 'Builds Windows Installer (MSI) packages from a YAML file, on Linux, macOS and Windows.'
-      "org.opencontainers.image.documentation": 'https://github.com/jkroepke/go-msi/wiki'
+      "org.opencontainers.image.documentation": 'https://github.com/jkroepke/msi-builder/wiki'
       "org.opencontainers.image.licenses": 'Apache-2.0'
       "org.opencontainers.image.revision": '{{.FullCommit}}'
-      "org.opencontainers.image.source": 'https://github.com/jkroepke/go-msi'
+      "org.opencontainers.image.source": 'https://github.com/jkroepke/msi-builder'
       "org.opencontainers.image.title": '{{.ProjectName}}'
       "org.opencontainers.image.vendor": 'Jan-Otto Kröpke'
       "org.opencontainers.image.version": '{{.Version}}'
@@ -63,10 +63,10 @@ dockers_v2:
       "org.opencontainers.image.authors": 'Jan-Otto Kröpke https://github.com/jkroepke/'
       "org.opencontainers.image.created": '{{.Date}}'
       "org.opencontainers.image.description": 'Builds Windows Installer (MSI) packages from a YAML file, on Linux, macOS and Windows.'
-      "org.opencontainers.image.documentation": 'https://github.com/jkroepke/go-msi/wiki'
+      "org.opencontainers.image.documentation": 'https://github.com/jkroepke/msi-builder/wiki'
       "org.opencontainers.image.licenses": 'Apache-2.0'
       "org.opencontainers.image.revision": '{{.FullCommit}}'
-      "org.opencontainers.image.source": 'https://github.com/jkroepke/go-msi'
+      "org.opencontainers.image.source": 'https://github.com/jkroepke/msi-builder'
       "org.opencontainers.image.title": '{{.ProjectName}}'
       "org.opencontainers.image.vendor": 'Jan-Otto Kröpke'
       "org.opencontainers.image.version": '{{.Version}}'

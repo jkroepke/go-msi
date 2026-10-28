@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jkroepke/go-msi/internal/testpe"
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/cab"
-	"github.com/jkroepke/go-msi/pkg/cfb"
-	"github.com/jkroepke/go-msi/pkg/config"
-	"github.com/jkroepke/go-msi/pkg/msidb"
-	"github.com/jkroepke/go-msi/pkg/summary"
+	"github.com/jkroepke/msi-builder/internal/testpe"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/cab"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
+	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/msidb"
+	"github.com/jkroepke/msi-builder/pkg/summary"
 )
 
 var buildTime = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC) //nolint:gochecknoglobals // lookup table
@@ -495,7 +495,7 @@ func TestWindowsExporter(t *testing.T) {
 func TestInlineComponentPaths(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := config.Parse([]byte(`schema: go-msi/v1
+	cfg, err := config.Parse([]byte(`schema: msi-builder/v1
 product: { name: A, manufacturer: B, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
 package: { platform: x64 }
 features:
@@ -529,7 +529,7 @@ func TestTargetDirPaths(t *testing.T) {
 		}
 	}
 
-	cfg, err := config.Parse([]byte(`schema: go-msi/v1
+	cfg, err := config.Parse([]byte(`schema: msi-builder/v1
 product: { name: A, manufacturer: B, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
 package: { platform: x64 }
 installDir: { parent: TARGETDIR, name: Acme }
@@ -567,7 +567,7 @@ func TestWithoutUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg, err := config.Parse([]byte(`schema: go-msi/v1
+	cfg, err := config.Parse([]byte(`schema: msi-builder/v1
 product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
 package: { platform: x64 }
 upgrade: false
@@ -604,7 +604,7 @@ func TestFeatureDisplay(t *testing.T) {
 
 	dir := t.TempDir()
 
-	src := `schema: go-msi/v1
+	src := `schema: msi-builder/v1
 product:
   name: Hello
   manufacturer: Example
@@ -717,7 +717,7 @@ func TestFeatureFirewall(t *testing.T) {
 
 	rule := "[{ name: %s, program: '[#hello.exe]', protocol: tcp, port: '80' }]"
 
-	cfg, err := config.Parse([]byte(`schema: go-msi/v1
+	cfg, err := config.Parse([]byte(`schema: msi-builder/v1
 product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
 package: { platform: x64 }
 features:
@@ -1070,7 +1070,7 @@ func TestPurge(t *testing.T) {
 
 	dir := t.TempDir()
 
-	src := `schema: go-msi/v1
+	src := `schema: msi-builder/v1
 product:
   name: Hello
   manufacturer: Example
@@ -1146,7 +1146,7 @@ func TestRememberInstallDir(t *testing.T) {
 
 	dir := t.TempDir()
 
-	src := `schema: go-msi/v1
+	src := `schema: msi-builder/v1
 product:
   name: Hello
   manufacturer: Example
@@ -1251,7 +1251,7 @@ func TestRememberInstallDir32BitFolder(t *testing.T) {
 
 	dir := t.TempDir()
 
-	src := `schema: go-msi/v1
+	src := `schema: msi-builder/v1
 product:
   name: Hello
   manufacturer: Example

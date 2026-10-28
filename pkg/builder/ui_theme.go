@@ -5,9 +5,9 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/jkroepke/go-msi/internal/artwork"
-	"github.com/jkroepke/go-msi/internal/rtf"
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/internal/artwork"
+	"github.com/jkroepke/msi-builder/internal/rtf"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 const (

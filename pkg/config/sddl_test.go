@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 func TestCheckSDDL(t *testing.T) {

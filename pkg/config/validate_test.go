@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // base is a valid package; each case appends to or replaces parts of it.
-const base = `schema: go-msi/v1
+const base = `schema: msi-builder/v1
 product:
   name: App
   manufacturer: Example
@@ -644,7 +644,7 @@ func TestCabinetName(t *testing.T) {
 		"a/b.cab":               false,
 		// Not a forbidden file-name character, but CFB rejects it.
 		"a!b.cab": false,
-		// A control character could name a stream go-msi writes itself.
+		// A control character could name a stream msi-builder writes itself.
 		"\x05SummaryInformation": false,
 		"a\tb.cab":               false,
 		// Outside the BMP: two units each.

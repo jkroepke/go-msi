@@ -1,18 +1,18 @@
 # Installation
 
-go-msi is one static binary for Linux, macOS and Windows on amd64 and arm64.
+msi-builder is one static binary for Linux, macOS and Windows on amd64 and arm64.
 
 ## Release binaries
 
 Download an archive from the
-[releases page](https://github.com/jkroepke/go-msi/releases/latest): a `.tar.gz`
-for Linux and macOS, a `.zip` for Windows. Extract `go-msi` and put it on your
+[releases page](https://github.com/jkroepke/msi-builder/releases/latest): a `.tar.gz`
+for Linux and macOS, a `.zip` for Windows. Extract `msi-builder` and put it on your
 `PATH`.
 
 ## Go
 
 ```shell
-go install github.com/jkroepke/go-msi/cmd/go-msi@latest
+go install github.com/jkroepke/msi-builder/cmd/msi-builder@latest
 ```
 
 ## Container image
@@ -21,19 +21,19 @@ The image runs on Linux for amd64 and arm64. Mount the directory with the
 configuration and its files at `/work`:
 
 ```shell
-docker run --rm -v "$PWD:/work" ghcr.io/jkroepke/go-msi build -o hello.msi msi.yaml
+docker run --rm -v "$PWD:/work" ghcr.io/jkroepke/msi-builder build -o hello.msi msi.yaml
 ```
 
 ## Shell completion
 
-`go-msi completion <shell>` prints a completion script for Bash, Zsh, fish or
-PowerShell, and `go-msi completion <shell> --help` shows how to load it. See
-[`go-msi completion`](cli/go-msi_completion.md).
+`msi-builder completion <shell>` prints a completion script for Bash, Zsh, fish or
+PowerShell, and `msi-builder completion <shell> --help` shows how to load it. See
+[`msi-builder completion`](cli/msi-builder_completion.md).
 
 ## Check the installation
 
 ```shell
-go-msi version
+msi-builder version
 ```
 
 Continue with [Getting Started](Getting%20Started.md).

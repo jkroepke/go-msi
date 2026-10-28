@@ -10,17 +10,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/condition"
-	"github.com/jkroepke/go-msi/internal/testpe"
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/cab"
-	"github.com/jkroepke/go-msi/pkg/config"
-	"github.com/jkroepke/go-msi/pkg/msidb"
+	"github.com/jkroepke/msi-builder/internal/condition"
+	"github.com/jkroepke/msi-builder/internal/testpe"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/cab"
+	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/msidb"
 )
 
 // fuzzTemplate takes every fuzzed value through ${VAR} substitution, so that
 // the values need no YAML quoting and the substitution itself is exercised.
-const fuzzTemplate = `schema: go-msi/v1
+const fuzzTemplate = `schema: msi-builder/v1
 product:
   name: '${NAME}'
   manufacturer: '${MANUFACTURER}'

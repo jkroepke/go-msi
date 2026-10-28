@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jkroepke/go-msi/pkg/cfb"
-	"github.com/jkroepke/go-msi/pkg/msidb"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
+	"github.com/jkroepke/msi-builder/pkg/msidb"
 )
 
 func newInspectCmd() *cobra.Command {
@@ -25,8 +25,8 @@ func newInspectCmd() *cobra.Command {
 every table of a package, or a single table with --table. Columns are
 separated by tabs; the second line of a table holds the column types, with
 "!" marking key columns. Cabinets stay in the file and are listed by size.`,
-		Example: `  go-msi inspect hello.msi
-  go-msi inspect --table File hello.msi`,
+		Example: `  msi-builder inspect hello.msi
+  msi-builder inspect --table File hello.msi`,
 		Args:              exactlyOne("package"),
 		ValidArgsFunction: fileArg("msi"),
 		RunE: func(cmd *cobra.Command, args []string) error {

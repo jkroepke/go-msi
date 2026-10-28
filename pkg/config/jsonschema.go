@@ -13,7 +13,7 @@ import (
 //go:embed schema.json
 var schemaJSON []byte
 
-// JSONSchema returns the JSON Schema (draft 2020-12) of schema go-msi/v1.
+// JSONSchema returns the JSON Schema (draft 2020-12) of schema msi-builder/v1.
 func JSONSchema() []byte {
 	return bytes.Clone(schemaJSON)
 }

@@ -6,7 +6,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/jkroepke/go-msi/pkg/cab"
+	"github.com/jkroepke/msi-builder/pkg/cab"
 )
 
 func TestFS(t *testing.T) {

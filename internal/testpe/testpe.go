@@ -1,6 +1,6 @@
 // Package testpe synthesizes small Portable Executable files for tests: a
 // valid PE32+ image with one .rsrc section holding a VS_VERSIONINFO resource.
-// The image is not runnable, but msi.dll's version reader and go-msi's pe
+// The image is not runnable, but msi.dll's version reader and msi-builder's pe
 // package both accept it.
 package testpe
 

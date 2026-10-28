@@ -1,15 +1,15 @@
-// Command go-msi builds Windows Installer packages from a YAML description.
+// Command msi-builder builds Windows Installer packages from a YAML description.
 //
-//	go-msi build [-o out.msi] [--var NAME=VALUE]... [--env] msi.yaml
-//	go-msi validate [--var NAME=VALUE]... [--env] msi.yaml
-//	go-msi inspect [--table NAME] package.msi
-//	go-msi sign [signing options] [-o out.msi] package.msi
-//	go-msi verify package.msi
-//	go-msi completion bash|fish|powershell|zsh
-//	go-msi version
+//	msi-builder build [-o out.msi] [--var NAME=VALUE]... [--env] msi.yaml
+//	msi-builder validate [--var NAME=VALUE]... [--env] msi.yaml
+//	msi-builder inspect [--table NAME] package.msi
+//	msi-builder sign [signing options] [-o out.msi] package.msi
+//	msi-builder verify package.msi
+//	msi-builder completion bash|fish|powershell|zsh
+//	msi-builder version
 //
 // docs/cli holds the reference for every command; it is generated from the
-// command tree (go generate ./cmd/go-msi).
+// command tree (go generate ./cmd/msi-builder).
 package main
 
 //go:generate go test -run ^TestDocs$ -update .
@@ -57,7 +57,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitOK
 	}
 
-	_, _ = fmt.Fprintf(stderr, "go-msi: %v\n", err)
+	_, _ = fmt.Fprintf(stderr, "msi-builder: %v\n", err)
 
 	// Errors of the root command are unknown commands.
 	if cmd != root && !isUsageError(err) {
@@ -85,9 +85,9 @@ func isUsageError(err error) bool {
 
 func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	root := &cobra.Command{
-		Use:   "go-msi",
+		Use:   "msi-builder",
 		Short: "Build Windows Installer (MSI) packages from a YAML file",
-		Long: `go-msi builds Windows Installer (MSI) packages from a single YAML file,
+		Long: `msi-builder builds Windows Installer (MSI) packages from a single YAML file,
 signs them with Authenticode and inspects existing packages. It is pure Go
 and builds the same packages on Linux, macOS and Windows.`,
 		Version: version,
@@ -131,7 +131,7 @@ and builds the same packages on Linux, macOS and Windows.`,
 }
 
 func versionLine() string {
-	return fmt.Sprintf("go-msi %s (commit %s, built %s)\n", version, commit, date)
+	return fmt.Sprintf("msi-builder %s (commit %s, built %s)\n", version, commit, date)
 }
 
 // newHelpCmd replaces cobra's help command, which prints an unknown topic
@@ -140,7 +140,7 @@ func newHelpCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:               "help [command]",
 		Short:             "Show the help of a command",
-		Long:              "Help shows the help of a command, such as go-msi help build.",
+		Long:              "Help shows the help of a command, such as msi-builder help build.",
 		ValidArgsFunction: completeHelp,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target, rest, err := cmd.Root().Find(args)

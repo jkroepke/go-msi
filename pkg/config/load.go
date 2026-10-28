@@ -100,6 +100,10 @@ func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one 
 		return nil, err //nolint:wrapcheck // yaml errors carry the line
 	}
 
+	if cfg.Schema == legacySchemaV1 {
+		return nil, fmt.Errorf("schema: %q is the identifier from before the rename to msi-builder; write %q", cfg.Schema, SchemaV1)
+	}
+
 	if cfg.Schema != SchemaV1 {
 		return nil, fmt.Errorf("schema: got %q, want %q", cfg.Schema, SchemaV1)
 	}

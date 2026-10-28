@@ -1,4 +1,4 @@
-# `go-msi verify`
+# `msi-builder verify`
 
 Check the Authenticode signature of a package
 
@@ -10,13 +10,13 @@ when the package is not signed or the signature does not match.
 ## Usage
 
 ```text
-go-msi verify package.msi [flags]
+msi-builder verify package.msi [flags]
 ```
 
 ## Examples
 
 ```text
-  go-msi verify hello.msi
+  msi-builder verify hello.msi
 ```
 
 ## Flags
@@ -27,4 +27,4 @@ go-msi verify package.msi [flags]
 
 ## See also
 
-- [`go-msi`](go-msi.md): Build Windows Installer (MSI) packages from a YAML file
+- [`msi-builder`](msi-builder.md): Build Windows Installer (MSI) packages from a YAML file

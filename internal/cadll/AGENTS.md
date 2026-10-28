@@ -2,12 +2,12 @@
 
 The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
 
-- `src/gomsirun.c` is the whole DLL: freestanding C11, no C runtime, no SDK
+- `src/builderrun.c` is the whole DLL: freestanding C11, no C runtime, no SDK
   header. Every Win32 and MSI prototype it uses is declared in the file from
   Microsoft's documentation of that function. Keep it that way: a header or
   CRT dependency would pull in a toolchain's runtime and its licence, and the
   size would grow from a few kilobytes to hundreds.
-- `build.sh` cross-builds `gomsirun-{x86,x64,arm64}.dll` with clang and lld
+- `build.sh` cross-builds `builderrun-{x86,x64,arm64}.dll` with clang and lld
   (`--target=<arch>-pc-windows-msvc`, `-nostdlib`, `/Brepro`). The import
   libraries come from `.def` lists in the script through `llvm-dlltool`; the
   x86 entries carry the stdcall argument sizes. After a change to the source
@@ -16,12 +16,15 @@ The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
   rebuilds with clang 18 on Ubuntu 24.04 and fails when the committed DLLs
   differ, so `build.sh` refuses any other clang major version; point it at
   the right binaries with `CLANG=clang-18 DLLTOOL=llvm-dlltool-18`. `go
-  build` never runs generators, so building go-msi still needs no C
+  build` never runs generators, so building msi-builder still needs no C
   toolchain.
-- The exported entry point is `GoMsiRun` (`UINT __stdcall (MSIHANDLE)`).
+- The exported entry point is `BuilderRun` (`UINT __stdcall (MSIHANDLE)`).
+  It was `GoMsiRun` before the rename to msi-builder. Never give it, or any
+  other name of our own in a package, the prefix `Msi`: Microsoft
+  reserves it for the engine (spec 17.6).
   The builder (`pkg/builder/actions.go`, `runAction`) passes
   `<directory>|<command>` in `CustomActionData` (deferred, rollback, commit)
-  or the `GoMsiRun` property (immediate); `|` cannot occur in a path, so the
+  or the `BuilderRun` property (immediate); `|` cannot occur in a path, so the
   first one ends the directory.
 - The DLL starts the child with `CreateProcessAsUserW` and the thread's
   impersonation token when there is one, else `CreateProcessW`:
@@ -33,7 +36,7 @@ The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
   action server's environment block.
 - Output is read from one pipe for stdout and stderr, split at `\n`, logged
   per line through `MsiProcessMessage(INSTALLMESSAGE_INFO)` with the fixed
-  template `GoMsiRun: [1]`, so brackets in the output are not formatted.
+  template `BuilderRun: [1]`, so brackets in the output are not formatted.
   An `IDCANCEL` return from that call terminates the child; it is the only
   cancel signal, so a silent child runs to its end. A
   line is decoded as UTF-8 when valid, else in the OEM code page. `chcp

@@ -17,9 +17,9 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/jkroepke/go-msi/internal/exampletest"
-	"github.com/jkroepke/go-msi/internal/testpe"
-	"github.com/jkroepke/go-msi/pkg/builder"
+	"github.com/jkroepke/msi-builder/internal/exampletest"
+	"github.com/jkroepke/msi-builder/internal/testpe"
+	"github.com/jkroepke/msi-builder/pkg/builder"
 )
 
 var (

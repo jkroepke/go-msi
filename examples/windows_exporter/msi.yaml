@@ -1,9 +1,9 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/go-msi/main/pkg/config/schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
 # windows_exporter, the reference package and first acceptance test.
 #
-#   go-msi build --var VERSION=0.32.0.5 --var ARCH=x64 \
+#   msi-builder build --var VERSION=0.32.0.5 --var ARCH=x64 \
 #     --var BINARY=windows_exporter.exe -o windows_exporter-0.32.0.5-amd64.msi msi.yaml
-schema: go-msi/v1
+schema: msi-builder/v1
 
 vars:
   ARCH: x64

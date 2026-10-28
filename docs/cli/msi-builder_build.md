@@ -1,4 +1,4 @@
-# `go-msi build`
+# `msi-builder build`
 
 Build a package from a YAML file
 
@@ -12,15 +12,15 @@ Diagnostics go to stderr; on success one summary line goes to stdout.
 ## Usage
 
 ```text
-go-msi build [flags] msi.yaml
+msi-builder build [flags] msi.yaml
 ```
 
 ## Examples
 
 ```text
-  go-msi build -o hello.msi msi.yaml
-  go-msi build --var VERSION=1.2.3 --var ARCH=x64 msi.yaml
-  go-msi build --pfx codesign.pfx --password-env PFX_PASSWORD \
+  msi-builder build -o hello.msi msi.yaml
+  msi-builder build --var VERSION=1.2.3 --var ARCH=x64 msi.yaml
+  msi-builder build --pfx codesign.pfx --password-env PFX_PASSWORD \
     --timestamp-url http://timestamp.digicert.com -o hello.msi msi.yaml
 ```
 
@@ -46,4 +46,4 @@ go-msi build [flags] msi.yaml
 
 ## See also
 
-- [`go-msi`](go-msi.md): Build Windows Installer (MSI) packages from a YAML file
+- [`msi-builder`](msi-builder.md): Build Windows Installer (MSI) packages from a YAML file

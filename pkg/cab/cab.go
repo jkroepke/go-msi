@@ -21,8 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jkroepke/go-msi/internal/lzx"
-	"github.com/jkroepke/go-msi/internal/spool"
+	"github.com/jkroepke/msi-builder/internal/lzx"
+	"github.com/jkroepke/msi-builder/internal/spool"
 )
 
 // Compression selects the folder's compression type.

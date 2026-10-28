@@ -1,1 +1,1 @@
-go-msi run probe payload
+msi-builder run probe payload

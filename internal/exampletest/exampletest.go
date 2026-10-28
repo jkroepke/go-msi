@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jkroepke/go-msi/internal/testpe"
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/internal/testpe"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // BuildTime is the build time of every example package.
@@ -139,12 +139,12 @@ func Build(tb testing.TB, name string, vars map[string]string, inputs map[string
 }
 
 // CompareSnapshot compares got with the snapshot file, or rewrites the file
-// when GO_MSI_UPDATE_SNAPSHOTS is set. It reports the first line that
+// when MSI_BUILDER_UPDATE_SNAPSHOTS is set. It reports the first line that
 // differs and returns whether the snapshot matched.
 func CompareSnapshot(tb testing.TB, file, got string) bool {
 	tb.Helper()
 
-	if os.Getenv("GO_MSI_UPDATE_SNAPSHOTS") != "" {
+	if os.Getenv("MSI_BUILDER_UPDATE_SNAPSHOTS") != "" {
 		if err := os.MkdirAll(filepath.Dir(file), 0o750); err != nil {
 			tb.Fatal(err)
 		}
@@ -158,7 +158,7 @@ func CompareSnapshot(tb testing.TB, file, got string) bool {
 
 	data, err := os.ReadFile(file)
 	if err != nil {
-		tb.Errorf("%v; run the test with GO_MSI_UPDATE_SNAPSHOTS=1 to create it", err)
+		tb.Errorf("%v; run the test with MSI_BUILDER_UPDATE_SNAPSHOTS=1 to create it", err)
 
 		return false
 	}
@@ -181,7 +181,7 @@ func CompareSnapshot(tb testing.TB, file, got string) bool {
 		}
 
 		if wantLine != gotLine {
-			tb.Errorf("%s differs from line %d on; run the test with GO_MSI_UPDATE_SNAPSHOTS=1 and review the diff\nwant: %q\ngot:  %q",
+			tb.Errorf("%s differs from line %d on; run the test with MSI_BUILDER_UPDATE_SNAPSHOTS=1 and review the diff\nwant: %q\ngot:  %q",
 				file, i+1, wantLine, gotLine)
 
 			break

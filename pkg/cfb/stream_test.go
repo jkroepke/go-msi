@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/memtest"
-	"github.com/jkroepke/go-msi/pkg/cfb"
+	"github.com/jkroepke/msi-builder/internal/memtest"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
 )
 
 func bytesSource(name string, data []byte) cfb.Source {

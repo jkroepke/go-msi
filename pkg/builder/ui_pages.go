@@ -1,6 +1,6 @@
 package builder
 
-// The pages of the wizard. Texts are go-msi's own; the dialog keys follow
+// The pages of the wizard. Texts are msi-builder's own; the dialog keys follow
 // the names the specification uses for the standard flow (spec section
 // 10.3) so that ui.dialogs can anchor on them.
 

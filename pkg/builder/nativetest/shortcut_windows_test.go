@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/exampletest"
-	"github.com/jkroepke/go-msi/internal/testpe"
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/internal/exampletest"
+	"github.com/jkroepke/msi-builder/internal/testpe"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 func desktopInputs() map[string][]byte { return exampletest.Examples()["desktop"].Inputs }
@@ -114,7 +114,7 @@ func TestICEShortcuts(t *testing.T) {
 				}
 			}
 
-			cfg, err := config.Parse([]byte(`schema: go-msi/v1
+			cfg, err := config.Parse([]byte(`schema: msi-builder/v1
 product: { name: Acme App, manufacturer: Acme, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3303 }
 package: { platform: x64, scope: `+scope+` }
 icons: { app.ico: app.ico }

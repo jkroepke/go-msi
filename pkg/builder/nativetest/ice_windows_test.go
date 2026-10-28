@@ -8,18 +8,18 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/jkroepke/go-msi/internal/exampletest"
-	"github.com/jkroepke/go-msi/internal/ice"
-	"github.com/jkroepke/go-msi/internal/testpe"
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/config"
-	"github.com/jkroepke/go-msi/pkg/msidb"
+	"github.com/jkroepke/msi-builder/internal/exampletest"
+	"github.com/jkroepke/msi-builder/internal/ice"
+	"github.com/jkroepke/msi-builder/internal/testpe"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/msidb"
 )
 
-// iceCube returns the path of the full ICE suite. GO_MSI_ICE_CUB names it;
+// iceCube returns the path of the full ICE suite. MSI_BUILDER_ICE_CUB names it;
 // otherwise the MsiVal2 install location is tried. The file comes with the
 // Windows SDK and may not be redistributed, so the test skips without it
-// unless GO_MSI_ICE_REQUIRED is set (CI sets both).
+// unless MSI_BUILDER_ICE_REQUIRED is set (CI sets both).
 func iceCube(t *testing.T) string {
 	t.Helper()
 
@@ -27,7 +27,7 @@ func iceCube(t *testing.T) string {
 		t.Skip("ICE validation needs msi.dll time")
 	}
 
-	candidates := []string{os.Getenv("GO_MSI_ICE_CUB")}
+	candidates := []string{os.Getenv("MSI_BUILDER_ICE_CUB")}
 	if pf := os.Getenv("ProgramFiles(x86)"); pf != "" {
 		candidates = append(candidates, filepath.Join(pf, "MsiVal2", "darice.cub"))
 	}
@@ -42,11 +42,11 @@ func iceCube(t *testing.T) string {
 		}
 	}
 
-	if os.Getenv("GO_MSI_ICE_REQUIRED") != "" {
-		t.Fatal("GO_MSI_ICE_REQUIRED is set but no darice.cub was found; set GO_MSI_ICE_CUB")
+	if os.Getenv("MSI_BUILDER_ICE_REQUIRED") != "" {
+		t.Fatal("MSI_BUILDER_ICE_REQUIRED is set but no darice.cub was found; set MSI_BUILDER_ICE_CUB")
 	}
 
-	t.Skip("no darice.cub: install MsiVal2 from the Windows SDK or set GO_MSI_ICE_CUB")
+	t.Skip("no darice.cub: install MsiVal2 from the Windows SDK or set MSI_BUILDER_ICE_CUB")
 
 	return ""
 }

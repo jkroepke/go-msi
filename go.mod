@@ -1,4 +1,4 @@
-module github.com/jkroepke/go-msi
+module github.com/jkroepke/msi-builder
 
 go 1.27.3
 

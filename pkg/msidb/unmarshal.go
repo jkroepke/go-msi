@@ -7,9 +7,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/jkroepke/go-msi/internal/codepage"
-	"github.com/jkroepke/go-msi/pkg/cfb"
-	"github.com/jkroepke/go-msi/pkg/summary"
+	"github.com/jkroepke/msi-builder/internal/codepage"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
+	"github.com/jkroepke/msi-builder/pkg/summary"
 )
 
 type poolEntry struct {

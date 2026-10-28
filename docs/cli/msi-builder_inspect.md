@@ -1,4 +1,4 @@
-# `go-msi inspect`
+# `msi-builder inspect`
 
 Print the tables, streams and summary of a package
 
@@ -10,14 +10,14 @@ separated by tabs; the second line of a table holds the column types, with
 ## Usage
 
 ```text
-go-msi inspect [flags] package.msi
+msi-builder inspect [flags] package.msi
 ```
 
 ## Examples
 
 ```text
-  go-msi inspect hello.msi
-  go-msi inspect --table File hello.msi
+  msi-builder inspect hello.msi
+  msi-builder inspect --table File hello.msi
 ```
 
 ## Flags
@@ -29,4 +29,4 @@ go-msi inspect [flags] package.msi
 
 ## See also
 
-- [`go-msi`](go-msi.md): Build Windows Installer (MSI) packages from a YAML file
+- [`msi-builder`](msi-builder.md): Build Windows Installer (MSI) packages from a YAML file

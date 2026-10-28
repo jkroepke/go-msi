@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // vars collects repeated --var NAME=VALUE flags.
@@ -76,7 +76,7 @@ func newValidateCmd() *cobra.Command {
 configuration checks of a build. It reads no input files: checks that need
 them, such as PE versions, run only in build. Diagnostics go to stderr; the
 exit code is 1 when there is an error.`,
-		Example:           "  go-msi validate --var VERSION=1.2.3 msi.yaml",
+		Example:           "  msi-builder validate --var VERSION=1.2.3 msi.yaml",
 		Args:              exactlyOne("msi.yaml"),
 		ValidArgsFunction: fileArg("yaml", "yml"),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -123,9 +123,9 @@ compared with its sources unless --skip-verify is given, and it is signed
 when a key is given (see the signing flags and docs/signing.md).
 
 Diagnostics go to stderr; on success one summary line goes to stdout.`,
-		Example: `  go-msi build -o hello.msi msi.yaml
-  go-msi build --var VERSION=1.2.3 --var ARCH=x64 msi.yaml
-  go-msi build --pfx codesign.pfx --password-env PFX_PASSWORD \
+		Example: `  msi-builder build -o hello.msi msi.yaml
+  msi-builder build --var VERSION=1.2.3 --var ARCH=x64 msi.yaml
+  msi-builder build --pfx codesign.pfx --password-env PFX_PASSWORD \
     --timestamp-url http://timestamp.digicert.com -o hello.msi msi.yaml`,
 		Args:              exactlyOne("msi.yaml"),
 		ValidArgsFunction: fileArg("yaml", "yml"),
@@ -174,7 +174,7 @@ func (f *buildFlags) run(cmd *cobra.Command, path string) error {
 
 	res, err := builder.Build(cfg, builder.Options{
 		CFBVersion: f.cfbVersion,
-		ToolName:   "go-msi " + version,
+		ToolName:   "msi-builder " + version,
 		SkipVerify: f.skipVerify,
 		Output:     target,
 	})
@@ -224,7 +224,7 @@ func (f *buildFlags) output(cfg *config.Config) string {
 
 // tempPackage creates an empty temporary file next to out.
 func tempPackage(out string) (string, error) {
-	tmp, err := os.CreateTemp(filepath.Dir(out), ".go-msi-*.unsigned")
+	tmp, err := os.CreateTemp(filepath.Dir(out), ".msi-builder-*.unsigned")
 	if err != nil {
 		return "", fmt.Errorf("create a temporary file: %w", err)
 	}

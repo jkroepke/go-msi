@@ -1,4 +1,4 @@
-// Package config defines go-msi's YAML input format (schema go-msi/v1).
+// Package config defines msi-builder's YAML input format (schema msi-builder/v1).
 //
 // The format is specified in docs/design/yaml-schema.md. This package loads a
 // file, substitutes ${NAME} variables, applies defaults and validates
@@ -12,7 +12,11 @@ import (
 )
 
 // SchemaV1 is the only schema identifier this package accepts.
-const SchemaV1 = "go-msi/v1"
+const SchemaV1 = "msi-builder/v1"
+
+// legacySchemaV1 is SchemaV1 under the project's former name go-msi. It is
+// rejected with a hint, so that an old file fails with the fix in the error.
+const legacySchemaV1 = "go-msi/v1"
 
 // Config is a whole package description.
 type Config struct { //nolint:govet // field order is the YAML key order
@@ -454,7 +458,7 @@ type ExecProperty struct {
 	Arguments string `yaml:"arguments"`
 }
 
-// Run is a type 1 action on the custom action DLL go-msi embeds: the
+// Run is a type 1 action on the custom action DLL msi-builder embeds: the
 // command runs with a hidden window and its output goes to the log.
 type Run struct {
 	Command   string `yaml:"command"`

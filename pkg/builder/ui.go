@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // The wizard is pure table data (spec section 7): dialogs hold controls,

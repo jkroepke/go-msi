@@ -3,7 +3,7 @@ package codepage_test
 import (
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/codepage"
+	"github.com/jkroepke/msi-builder/internal/codepage"
 )
 
 func TestRoundTrip(t *testing.T) {

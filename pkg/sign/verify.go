@@ -12,7 +12,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/jkroepke/go-msi/pkg/cfb"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
 )
 
 // ErrNotSigned is returned by Verify for a package without a signature.

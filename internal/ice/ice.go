@@ -4,7 +4,7 @@
 // runs every action listed in the merged
 // _ICESequence table and collects the messages the actions post.
 //
-// It only exists for tests: go-msi never runs the packages it builds. Run
+// It only exists for tests: msi-builder never runs the packages it builds. Run
 // works on Windows only; elsewhere it returns ErrUnsupported.
 package ice
 

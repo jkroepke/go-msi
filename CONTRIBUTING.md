@@ -6,25 +6,25 @@ Contributions are welcome through GitHub pull requests.
 
 Small fixes and documentation improvements can go directly to a pull request.
 Before starting a large feature, breaking change, or substantial refactoring,
-[open an issue](https://github.com/jkroepke/go-msi/issues/new/choose)
+[open an issue](https://github.com/jkroepke/msi-builder/issues/new/choose)
 to discuss the proposal with the maintainer.
 
 Read these documents for an overview of the project and its requirements:
 
 - [YAML schema](docs/design/yaml-schema.md): the input format.
 - [MSI specification](docs/spec/MSISPEC.md) and its
-  [Windows test results](docs/spec/MSISPEC-RESULTS.md): the format go-msi writes.
+  [Windows test results](docs/spec/MSISPEC-RESULTS.md): the format msi-builder writes.
 
 Use the Go version specified in [`go.mod`](go.mod). Never update the Go version
 in `go.mod`.
 
 ## Project Rules
 
-- go-msi is pure Go. Never add cgo, and never add a dependency that needs it.
+- msi-builder is pure Go. Never add cgo, and never add a dependency that needs it.
   The binary must build with `CGO_ENABLED=0` for Linux, macOS and Windows.
-- go-msi only builds and signs MSI packages. It never runs them. MSIX is out
+- msi-builder only builds and signs MSI packages. It never runs them. MSIX is out
   of scope.
-- go-msi is a clean-room implementation. Write code from the specification in
+- msi-builder is a clean-room implementation. Write code from the specification in
   [`docs/spec`](docs/spec) and from Microsoft's documentation. Never copy or
   port code from other MSI tools, in particular from projects under the LGPL
   or other licenses incompatible with the [Apache License 2.0](LICENSE).
@@ -41,7 +41,7 @@ go test ./...
 ```
 
 After changing a command, flag or help text of the CLI, regenerate the
-[command-line reference](docs/cli/go-msi.md) with `go generate ./cmd/go-msi`;
+[command-line reference](docs/cli/msi-builder.md) with `go generate ./cmd/msi-builder`;
 `go test` fails while it is out of date.
 
 golangci-lint must be built with the Go version from `go.mod`. A release binary
@@ -77,6 +77,6 @@ as a concise description of the user-visible change and start it with `feat:`,
 ## Documentation
 
 Documentation lives in [`docs`](docs) and is published to the
-[wiki](https://github.com/jkroepke/go-msi/wiki) on every push to `main`.
+[wiki](https://github.com/jkroepke/msi-builder/wiki) on every push to `main`.
 The first line of each file is removed on publish, because the wiki shows the
 filename as the page title.

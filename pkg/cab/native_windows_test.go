@@ -20,7 +20,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/jkroepke/go-msi/pkg/cab"
+	"github.com/jkroepke/msi-builder/pkg/cab"
 )
 
 // These tests check the cabinets this package writes against Windows itself:
@@ -1012,7 +1012,7 @@ func keys(m map[string][]byte) []string {
 }
 
 // TestNativeLZXSystemBinaries compresses real x86-64 code, Windows' own
-// binaries, both ways: cabinet.dll must extract go-msi's LZX cabinet, and
+// binaries, both ways: cabinet.dll must extract msi-builder's LZX cabinet, and
 // cab.Read must extract makecab's. The log compares the sizes.
 func TestNativeLZXSystemBinaries(t *testing.T) { //nolint:paralleltest // the FDI callbacks share one package state
 	if testing.Short() {
@@ -1103,5 +1103,5 @@ func TestNativeLZXSystemBinaries(t *testing.T) { //nolint:paralleltest // the FD
 		}
 	}
 
-	t.Logf("%d files, %d bytes: go-msi LZX:21 %d bytes, makecab LZX:21 %d bytes", len(files), total, len(ours), len(theirs))
+	t.Logf("%d files, %d bytes: msi-builder LZX:21 %d bytes, makecab LZX:21 %d bytes", len(files), total, len(ours), len(theirs))
 }

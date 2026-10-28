@@ -7,7 +7,7 @@ import (
 	"image/color"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/artwork"
+	"github.com/jkroepke/msi-builder/internal/artwork"
 )
 
 func TestEncodeBMP(t *testing.T) {

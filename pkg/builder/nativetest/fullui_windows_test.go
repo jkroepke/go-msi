@@ -15,8 +15,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 var (
@@ -37,19 +37,19 @@ const (
 	driverTimeout       = fullUITimeout + 30*time.Second
 	foreignMsiexecWait  = 2 * time.Minute
 	fullUIBudget        = 8 * time.Minute
-	fullUIName          = "GoMsiFullUI"
+	fullUIName          = "MsiBuilderFullUI"
 	fullUIErrorText     = "Forced error for the full UI test."
 	installStateDefault = 5
 )
 
-const fullUIConfig = `schema: go-msi/v1
+const fullUIConfig = `schema: msi-builder/v1
 
 vars:
   FILEVERSION: auto
 
 product:
-  name: GoMsiFullUI
-  manufacturer: go-msi tests
+  name: MsiBuilderFullUI
+  manufacturer: msi-builder tests
   version: ${VERSION}
   language: 1033
   upgradeCode: 8f3c2a61-4b7e-4d2a-9c15-6e0b7a9d3f21
@@ -68,12 +68,12 @@ directories:
   - id: ProgramFiles64Folder
     children:
       - id: APPLICATIONFOLDER
-        name: GoMsiFullUI
+        name: MsiBuilderFullUI
         configurable: true
 
 features:
   - id: DefaultFeature
-    title: GoMsiFullUI
+    title: MsiBuilderFullUI
     level: 1
     directory: APPLICATIONFOLDER
     components: [Tool]
@@ -102,7 +102,7 @@ ui:
 // and on any unexpected error box. It writes every window it sees to -Out.
 const fullUIDriver = `param([int]$MsiPid, [string]$Out, [string]$ErrorText, [int]$Seconds = 110)
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
-Add-Type -Namespace GoMsi -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);'
+Add-Type -Namespace MsiBuilder -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);'
 $AE = [System.Windows.Automation.AutomationElement]
 $TS = [System.Windows.Automation.TreeScope]
 $All = [System.Windows.Automation.Condition]::TrueCondition
@@ -113,7 +113,7 @@ function Press($els, [string]$pattern) {
   $b = $els | Where-Object { ($_.Current.Name -replace '[&<>]', '').Trim() -match $pattern -and $_.Current.IsEnabled -and $_.Current.NativeWindowHandle } | Select-Object -First 1
   if (-not $b) { return $null }
   $name = $b.Current.Name
-  [GoMsi.U]::SendMessage([IntPtr]$b.Current.NativeWindowHandle, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+  [MsiBuilder.U]::SendMessage([IntPtr]$b.Current.NativeWindowHandle, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
   return $name
 }
 $seen = @{}

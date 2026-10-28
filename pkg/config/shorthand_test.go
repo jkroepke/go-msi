@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // short is the smallest package: no directories, features or upgrade, and a
 // component without id or directory.
-const short = `schema: go-msi/v1
+const short = `schema: msi-builder/v1
 product:
   name: Hello
   manufacturer: Example

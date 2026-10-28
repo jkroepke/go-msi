@@ -1,4 +1,4 @@
-# `go-msi sign`
+# `msi-builder sign`
 
 Add an Authenticode signature to a package
 
@@ -10,14 +10,14 @@ certificate chain and key (--cert and --key). See docs/signing.md.
 ## Usage
 
 ```text
-go-msi sign [flags] package.msi
+msi-builder sign [flags] package.msi
 ```
 
 ## Examples
 
 ```text
-  go-msi sign --pfx codesign.pfx --password-env PFX_PASSWORD hello.msi
-  go-msi sign --cert chain.pem --key key.pem --timestamp-url http://timestamp.digicert.com hello.msi
+  msi-builder sign --pfx codesign.pfx --password-env PFX_PASSWORD hello.msi
+  msi-builder sign --cert chain.pem --key key.pem --timestamp-url http://timestamp.digicert.com hello.msi
 ```
 
 ## Flags
@@ -38,4 +38,4 @@ go-msi sign [flags] package.msi
 
 ## See also
 
-- [`go-msi`](go-msi.md): Build Windows Installer (MSI) packages from a YAML file
+- [`msi-builder`](msi-builder.md): Build Windows Installer (MSI) packages from a YAML file

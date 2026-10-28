@@ -1,6 +1,6 @@
 # Signing
 
-go-msi signs packages with Authenticode without `signtool`, cgo or the Windows
+msi-builder signs packages with Authenticode without `signtool`, cgo or the Windows
 SDK. The format is described in [MSISPEC §12](spec/MSISPEC.md#12-digital-signatures),
 and the Windows results are SIG-01 to SIG-06 in
 [MSISPEC-RESULTS](spec/MSISPEC-RESULTS.md).
@@ -10,9 +10,9 @@ and the Windows results are SIG-01 to SIG-06 in
 Sign while building, or sign an existing package:
 
 ```shell
-go-msi build --pfx codesign.pfx --password-env PFX_PASSWORD -o hello.msi msi.yaml
-go-msi sign --cert chain.pem --key key.pem --timestamp-url http://timestamp.digicert.com hello.msi
-go-msi verify hello.msi
+msi-builder build --pfx codesign.pfx --password-env PFX_PASSWORD -o hello.msi msi.yaml
+msi-builder sign --cert chain.pem --key key.pem --timestamp-url http://timestamp.digicert.com hello.msi
+msi-builder verify hello.msi
 ```
 
 | Option | Meaning |
@@ -25,12 +25,12 @@ go-msi verify hello.msi
 | `--description TEXT` | program name in the UAC prompt; `build` uses the product name |
 | `--url URL` | "more information" link |
 
-`go-msi sign` replaces an existing signature and writes in place unless `--output`
-(`-o`) is given. `go-msi verify` checks the content digest, the signature and the
+`msi-builder sign` replaces an existing signature and writes in place unless `--output`
+(`-o`) is given. `msi-builder verify` checks the content digest, the signature and the
 timestamp token, and prints the signer. It does not check certificate trust
 or revocation; Windows does that at install time.
 
-## What go-msi writes
+## What msi-builder writes
 
 - A basic-mode signature: `\u0005DigitalSignature` only, never
   `\u0005MsiDigitalSignatureEx`. The signature covers the stream contents and
@@ -46,7 +46,7 @@ or revocation; Windows does that at install time.
   key give the same bytes.
 
 Packages with sub-storages (embedded transforms) cannot be signed, because
-go-msi does not write sub-storages. `go-msi verify` reads them.
+msi-builder does not write sub-storages. `msi-builder verify` reads them.
 
 ## Go API
 

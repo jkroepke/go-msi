@@ -27,6 +27,6 @@ indent_size = 2
 insert_final_newline = false
 
 # Table snapshots are tab-separated and keep their empty last cells.
-[cmd/go-msi/testdata/tables/*.txt]
+[cmd/msi-builder/testdata/tables/*.txt]
 indent_style = unset
 trim_trailing_whitespace = false

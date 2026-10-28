@@ -11,8 +11,8 @@ import (
 
 	"unicode"
 
-	"github.com/jkroepke/go-msi/internal/condition"
-	"github.com/jkroepke/go-msi/pkg/msidb"
+	"github.com/jkroepke/msi-builder/internal/condition"
+	"github.com/jkroepke/msi-builder/pkg/msidb"
 )
 
 // Limits checked by Validate. Section references are to docs/spec/MSISPEC.md;
@@ -694,11 +694,11 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 	case !profileFolders[top]:
 	case !userRegistryKeyPath(comp, perUser):
 		v.warnf(compPath+".directory", "a component in the user profile (%s) needs an HKCU registry value "+
-			"as key path (ICE38), and its folders need RemoveFolder rows (ICE64), which go-msi "+
+			"as key path (ICE38), and its folders need RemoveFolder rows (ICE64), which msi-builder "+
 			"does not write yet", top)
 	default:
 		v.warnf(compPath+".directory", "the folders of a component in the user profile (%s) need "+
-			"RemoveFolder rows (ICE64), which go-msi does not write yet", top)
+			"RemoveFolder rows (ICE64), which msi-builder does not write yet", top)
 	}
 }
 

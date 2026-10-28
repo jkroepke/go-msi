@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/testpe"
-	"github.com/jkroepke/go-msi/pkg/builder"
-	"github.com/jkroepke/go-msi/pkg/config"
-	"github.com/jkroepke/go-msi/pkg/msidb"
+	"github.com/jkroepke/msi-builder/internal/testpe"
+	"github.com/jkroepke/msi-builder/pkg/builder"
+	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/msidb"
 )
 
 // Shortcut table columns.
@@ -42,7 +42,7 @@ func shortcutConfig(t *testing.T, components string) *config.Config {
 		}
 	}
 
-	cfg, err := config.Parse([]byte(`schema: go-msi/v1
+	cfg, err := config.Parse([]byte(`schema: msi-builder/v1
 product: { name: Acme App, manufacturer: Acme, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
 package: { platform: x64 }
 icons: { app.ico: app.ico }
@@ -293,7 +293,7 @@ func TestShortcutNullEntry(t *testing.T) {
 	t.Parallel()
 
 	for _, files := range []string{"[{ source: app.exe, shortcuts: [~] }]", "[~]"} {
-		_, err := config.Parse([]byte(`schema: go-msi/v1
+		_, err := config.Parse([]byte(`schema: msi-builder/v1
 product: { name: A, manufacturer: B, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
 components:
   - files: `+files+"\n"), config.Options{})

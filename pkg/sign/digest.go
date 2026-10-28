@@ -10,7 +10,7 @@ import (
 	"slices"
 	"unicode/utf16"
 
-	"github.com/jkroepke/go-msi/pkg/cfb"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
 )
 
 // Names of the root streams that hold a signature (MSISPEC §12).

@@ -27,7 +27,7 @@ PAGES = {
     "signing.md": "Signing",
     "spec/MSISPEC.md": "MSI Specification",
     "spec/MSISPEC-RESULTS.md": "Windows Test Results",
-    "cli/go-msi.md": "Command Line",
+    "cli/msi-builder.md": "Command Line",
 }
 
 # Code is copied as it is. Links are inline links, with an optional title,
@@ -45,8 +45,8 @@ TOKEN = re.compile(
 def page_name(rel):
     if rel in PAGES:
         return PAGES[rel]
-    if rel.startswith("cli/go-msi_"):
-        return "Command " + rel[len("cli/go-msi_") : -len(".md")].replace("_", " ")
+    if rel.startswith("cli/msi-builder_"):
+        return "Command " + rel[len("cli/msi-builder_") : -len(".md")].replace("_", " ")
     return os.path.basename(rel)[: -len(".md")]
 
 
@@ -101,7 +101,7 @@ def rewrite(text, rel, docs, pages, assets, repo):
 
 def main():
     docs, wiki = sys.argv[1:3]
-    repo = os.environ.get("GITHUB_REPOSITORY", "jkroepke/go-msi")
+    repo = os.environ.get("GITHUB_REPOSITORY", "jkroepke/msi-builder")
     pages, assets = collect(docs)
 
     for entry in os.listdir(wiki):

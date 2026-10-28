@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jkroepke/go-msi/pkg/cfb"
-	"github.com/jkroepke/go-msi/pkg/summary"
+	"github.com/jkroepke/msi-builder/pkg/cfb"
+	"github.com/jkroepke/msi-builder/pkg/summary"
 )
 
 // Kind is a column's storage kind.

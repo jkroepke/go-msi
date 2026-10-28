@@ -541,14 +541,14 @@ func changes(before, after snapshot) []string {
 }
 
 // saveSnapshot writes a snapshot that differs from testdata into
-// GO_MSI_SNAPSHOT_DIR, which CI uploads, so that it can be committed
+// MSI_BUILDER_SNAPSHOT_DIR, which CI uploads, so that it can be committed
 // without an elevated Windows machine at hand.
 func saveSnapshot(t *testing.T, name, report string) {
 	t.Helper()
 
-	dir := os.Getenv("GO_MSI_SNAPSHOT_DIR")
+	dir := os.Getenv("MSI_BUILDER_SNAPSHOT_DIR")
 	if dir == "" {
-		t.Logf("new snapshot of %s (set GO_MSI_SNAPSHOT_DIR to save it as a file):\n%s", name, report)
+		t.Logf("new snapshot of %s (set MSI_BUILDER_SNAPSHOT_DIR to save it as a file):\n%s", name, report)
 
 		return
 	}
@@ -572,7 +572,7 @@ func snapshotReport(name, productCode string, install, uninstall []string) strin
 	var out strings.Builder
 
 	fmt.Fprintf(&out, "# What msiexec /i and then /x of examples/%s change on the machine.\n", name)
-	out.WriteString("# Written by TestMsiexecInstallsExamples with GO_MSI_UPDATE_SNAPSHOTS=1.\n")
+	out.WriteString("# Written by TestMsiexecInstallsExamples with MSI_BUILDER_UPDATE_SNAPSHOTS=1.\n")
 	out.WriteString("\n[install]\n")
 
 	for _, line := range install {

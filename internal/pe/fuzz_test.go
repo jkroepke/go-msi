@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/jkroepke/go-msi/internal/pe"
-	"github.com/jkroepke/go-msi/internal/testpe"
+	"github.com/jkroepke/msi-builder/internal/pe"
+	"github.com/jkroepke/msi-builder/internal/testpe"
 )
 
 // FuzzParse feeds malformed PE files to the parser.
