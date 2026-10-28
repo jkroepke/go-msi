@@ -10,9 +10,11 @@ CLANG=${CLANG:-clang}
 DLLTOOL=${DLLTOOL:-llvm-dlltool}
 
 # Only clang 18 reproduces the committed bytes; another major version
-# builds a working DLL that fails the CI comparison, so refuse it.
+# builds a working DLL that fails the CI comparison, so refuse it. Apple
+# clang numbers its releases differently and has no lld, so it is refused
+# whatever its number.
 want=18
-have=$("$CLANG" --version | sed -n 's/.*clang version \([0-9]*\).*/\1/p' | head -n 1)
+have=$("$CLANG" --version | sed -n '/^Apple /d; s/.*clang version \([0-9]*\).*/\1/p' | head -n 1)
 if [ "$have" != "$want" ]; then
   echo "build.sh: $CLANG is clang ${have:-?}, the committed DLLs need clang $want" >&2
   echo "build.sh: set CLANG=clang-$want DLLTOOL=llvm-dlltool-$want, or build in ubuntu:24.04 as ci.yaml does" >&2
