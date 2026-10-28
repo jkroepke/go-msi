@@ -171,7 +171,7 @@ static void wappendnum(WCHAR *dst, SIZE_T *pos, DWORD value)
 // not formatted as properties.
 static int logw(MSIHANDLE install, const WCHAR *text)
 {
-    static const WCHAR template[] = {'G', 'o', 'M', 's', 'i', 'R', 'u', 'n', ':', ' ', '[', '1', ']', 0};
+    static const WCHAR template[] = {'B', 'u', 'i', 'l', 'd', 'e', 'r', 'R', 'u', 'n', ':', ' ', '[', '1', ']', 0};
     MSIHANDLE rec = MsiCreateRecord(1);
     if (!rec) {
         return 0;
@@ -332,7 +332,7 @@ static const WCHAR msgDupToken[] = {'D', 'u', 'p', 'l', 'i', 'c', 'a', 't', 'e',
 static const WCHAR msgExit[] = {'e', 'x', 'i', 't', ' ', 'c', 'o', 'd', 'e', 0};
 static const WCHAR msgCancel[] = {'c', 'a', 'n', 'c', 'e', 'l', 'l', 'e', 'd', ' ', 'b', 'y', ' ', 't', 'h', 'e', ' ', 'u', 's', 'e', 'r', 0};
 static const WCHAR propData[] = {'C', 'u', 's', 't', 'o', 'm', 'A', 'c', 't', 'i', 'o', 'n', 'D', 'a', 't', 'a', 0};
-static const WCHAR propRun[] = {'G', 'o', 'M', 's', 'i', 'R', 'u', 'n', 0};
+static const WCHAR propRun[] = {'B', 'u', 'i', 'l', 'd', 'e', 'r', 'R', 'u', 'n', 0};
 
 // parse splits "<dir>|<command>" into dir (0 when empty) and command. `|`
 // cannot occur in a Windows path, so the first one ends the directory, which

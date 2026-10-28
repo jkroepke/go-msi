@@ -82,6 +82,14 @@ func TestBinaries(t *testing.T) {
 			if !bytes.Contains(data, []byte(cadll.Entry+"\x00")) {
 				t.Errorf("export %s not found", cadll.Entry)
 			}
+
+			// The log template and the immediate property are UTF-16 arrays
+			// in the C source, which a rename of the Go constants misses.
+			for _, want := range []string{cadll.Entry + ": [1]", cadll.DataProperty} {
+				if !bytes.Contains(data, utf16z(want)) {
+					t.Errorf("UTF-16 string %q not found", want)
+				}
+			}
 		})
 	}
 
@@ -111,6 +119,16 @@ func readFile(t *testing.T, name string) string {
 	}
 
 	return string(data)
+}
+
+// utf16z encodes an ASCII string as NUL-terminated UTF-16LE.
+func utf16z(s string) []byte {
+	out := make([]byte, 0, 2*len(s)+2)
+	for _, c := range []byte(s) {
+		out = append(out, c, 0)
+	}
+
+	return append(out, 0, 0)
 }
 
 func sha256Sum(data []byte) []byte {

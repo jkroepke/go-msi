@@ -28,7 +28,7 @@ const (
 )
 
 // hashRow is the MsiFileHash row of data (MD5 as four little-endian int32,
-// spec A.6), as the msi-builder builder writes it for every unversioned file.
+// spec A.6), as msi-builder writes it for every unversioned file.
 func hashRow(key string, data []byte) []string {
 	m := md5.Sum(data)
 	row := []string{key, "0"}
