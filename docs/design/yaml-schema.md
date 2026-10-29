@@ -771,8 +771,7 @@ files:
 
 The builder writes each extension a file type owns into Windows
 Installer's own tables: a `ProgId` row (the description), an `Extension`
-row per extension in the file's component and the first feature that
-installs it, and a `Verb` row per verb and extension (`text` is the menu
+row per extension in the file's component and its feature, and a `Verb` row per verb and extension (`text` is the menu
 text, `arguments` the arguments; the verbs are numbered in their order, so
 the first one is the default). The engine's RegisterExtensionInfo and
 RegisterProgIdInfo actions write `.<extension>` = progId, `<progId>` =
@@ -784,8 +783,12 @@ of the extension's component (not stated by Microsoft's table pages;
 unverified until REG-06), so the file must be its component's key path
 (`keyPath`, or the first file); anything else is an error. An `Extension`
 row names one feature and the engine registers it only when that feature
-installs (documented), so the component must be in one feature only;
-anything else is an error. msi-builder adds
+installs (documented), so the component must be in one feature only,
+without a `condition` (the engine registers with the feature, whatever the
+component's condition) and with a GUID (ICE19); anything else is an error.
+Verbs of such a type go into the `Verb` table: an `id` holds no space or
+comma (the shell reads the list of verbs split at them) and at most 32
+characters, `text`, `arguments` and `description` at most 255. msi-builder adds
 `Registry` rows in the file's component for what the tables do not hold:
 `<progId>\DefaultIcon` = `"[#file]",<iconIndex>` (the table's icon column
 needs the icon in the `Icon` table), the extension's `Content Type` (the

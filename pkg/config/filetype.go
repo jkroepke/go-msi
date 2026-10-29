@@ -9,8 +9,14 @@ import (
 // maxProgIDLength is the longest ProgID Microsoft documents for COM.
 const maxProgIDLength = 39
 
-// maxVerbLength is the width of the Verb table's Verb column (s32).
-const maxVerbLength = 32
+// Column widths of the ProgId and Verb tables in msi-builder's schema; a
+// longer string fails ICE03. They bind the file types that own an
+// extension, whose ProgID and verbs go into those tables.
+const (
+	maxVerbLength        = 32
+	maxVerbTextLength    = 255
+	maxDescriptionLength = 255
+)
 
 // DefaultVerb is the shell verb a file type gets when it lists none.
 const DefaultVerb = "open"
@@ -71,18 +77,44 @@ func (v *validator) fileTypes(cfg *Config) {
 				v.progID(typePath+".progId", fileType.ProgID, progIDs)
 
 				listed := make(map[string]bool)
+				native := false
 
 				for l, ext := range fileType.Extensions {
 					v.fileTypeExtension(fmt.Sprintf("%s.extensions[%d]", typePath, l), ext, extensions, listed)
+					native = native || ext != nil && !ext.OpenWithOnly
+				}
+
+				if native {
+					v.nativeFileType(typePath, comp, fileType)
 				}
 
 				verbs := make(map[string]bool)
 
 				for l, verb := range fileType.Verbs {
-					v.fileTypeVerb(fmt.Sprintf("%s.verbs[%d]", typePath, l), verb, verbs)
+					v.fileTypeVerb(fmt.Sprintf("%s.verbs[%d]", typePath, l), verb, verbs, native)
 				}
 			}
 		}
+	}
+}
+
+// nativeFileType checks a file type that owns an extension, which the
+// builder writes into the ProgId, Extension and Verb tables.
+// RegisterExtensionInfo registers an extension when the Extension row's
+// feature installs, whatever the component's condition (documented), and
+// ICE19 requires a ComponentId for a component an Extension row names.
+func (v *validator) nativeFileType(field string, comp *Component, fileType *FileType) {
+	if comp.Condition != "" {
+		v.errorf(field, "the engine registers an owned extension with its feature, whatever the component's condition, "+
+			"so component %s must not have a condition; mark the extensions openWithOnly or drop the condition", comp.ID)
+	}
+
+	if strings.EqualFold(comp.GUID, None) {
+		v.errorf(field, "an Extension row needs a component with a GUID (ICE19), so component %s must not use guid: none", comp.ID)
+	}
+
+	if len(fileType.Description) > maxDescriptionLength {
+		v.errorf(field+".description", "longer than %d characters, the width of the ProgId table's Description column", maxDescriptionLength)
 	}
 }
 
@@ -157,7 +189,11 @@ func (v *validator) fileTypeExtension(field string, ext *FileTypeExtension, defa
 	}
 }
 
-func (v *validator) fileTypeVerb(field string, verb *FileTypeVerb, seen map[string]bool) {
+// fileTypeVerb checks one verb of a file type. A verb of a file type that owns an extension goes into the Verb table:
+// the engine lists the verbs in the shell key's default value, which
+// separates them by spaces or commas (documented), and the columns have
+// widths.
+func (v *validator) fileTypeVerb(field string, verb *FileTypeVerb, seen map[string]bool, native bool) {
 	if verb == nil {
 		v.errorf(field, "empty entry")
 
@@ -174,8 +210,8 @@ func (v *validator) fileTypeVerb(field string, verb *FileTypeVerb, seen map[stri
 		return
 	}
 
-	if len(verb.ID) > maxVerbLength {
-		v.errorf(field+".id", "verb %q is longer than %d characters, the width of the Verb table's Verb column", verb.ID, maxVerbLength)
+	if native {
+		v.nativeVerb(field, verb)
 	}
 
 	if seen[strings.ToLower(verb.ID)] {
@@ -221,5 +257,24 @@ func classKeyProblem(name string) string {
 		return "must not start or end with a space"
 	default:
 		return ""
+	}
+}
+
+// nativeVerb checks a verb that goes into the Verb table.
+func (v *validator) nativeVerb(field string, verb *FileTypeVerb) {
+	if strings.ContainsAny(verb.ID, " ,") {
+		v.errorf(field+".id", "verb %q has a space or comma, which split the shell key's list of verbs", verb.ID)
+	}
+
+	if len(verb.ID) > maxVerbLength {
+		v.errorf(field+".id", "verb %q is longer than %d characters, the width of the Verb table's Verb column", verb.ID, maxVerbLength)
+	}
+
+	if len(verb.Text) > maxVerbTextLength {
+		v.errorf(field+".text", "longer than %d characters, the width of the Verb table's Command column", maxVerbTextLength)
+	}
+
+	if verb.Arguments != nil && len(*verb.Arguments) > maxVerbTextLength {
+		v.errorf(field+".arguments", "longer than %d characters, the width of the Verb table's Argument column", maxVerbTextLength)
 	}
 }

@@ -1557,7 +1557,7 @@
                         "properties": {
                           "id": {
                             "type": "string",
-                            "description": "Verb key, such as open or edit."
+                            "description": "Verb key, such as open or edit. For a file type that owns an extension: at most 32 characters, no space or comma."
                           },
                           "text": {
                             "type": "string",

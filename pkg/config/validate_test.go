@@ -422,8 +422,16 @@ func TestValidate(t *testing.T) {
 			sevError, "components[0].files[0].fileTypes[0].verbs[1].id", "listed twice",
 		},
 		"fileTypes verb too long": {
-			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, verbs: [{id: OpenWithMyApplicationInANewWindowX}]}]\n", 1),
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, extensions: [{extension: acme}], verbs: [{id: OpenWithMyApplicationInANewWindowX}]}]\n", 1),
 			sevError, "components[0].files[0].fileTypes[0].verbs[0].id", "longer than 32",
+		},
+		"fileTypes verb with a space": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, extensions: [{extension: acme}], verbs: [{id: open now}]}]\n", 1),
+			sevError, "components[0].files[0].fileTypes[0].verbs[0].id", "space or comma",
+		},
+		"fileTypes owned extension on a conditional component": {
+			base + strings.Replace(strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, extensions: [{extension: acme}]}]\n", 1), "    files:", "    condition: FOO\n    files:", 1),
+			sevError, "components[0].files[0].fileTypes[0]", "must not have a condition",
 		},
 		"registry value twice": {
 			base + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\App, name: a, value: x}, {root: HKLM, key: software\\app, name: A, value: y}]\n    files:", 1),
@@ -729,6 +737,10 @@ func TestValidate(t *testing.T) {
 		"guid none not permanent": {
 			base + strings.Replace(appComponent, "    files:", "    guid: none\n    files:", 1),
 			sevError, "components[0].guid", "never removed",
+		},
+		"fileTypes owned extension with guid none": {
+			base + strings.Replace(strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, extensions: [{extension: acme}]}]\n", 1), "    files:", "    guid: none\n    permanent: true\n    files:", 1),
+			sevError, "components[0].files[0].fileTypes[0]", "ICE19",
 		},
 		"32-bit folder in x64": {
 			strings.Replace(base, "ProgramFiles64Folder", "ProgramFilesFolder", 1) + appComponent,
