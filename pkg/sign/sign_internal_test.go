@@ -373,6 +373,111 @@ func TestVerifyDetectsTampering(t *testing.T) {
 	})
 }
 
+// TestVerifyChecksSignatureAlgorithm checks that Verify rejects a signer
+// whose digestEncryptionAlgorithm is unknown or does not fit the key and
+// digest, although the signature bytes still verify (REVIEW1 #12).
+func TestVerifyChecksSignatureAlgorithm(t *testing.T) {
+	t.Parallel()
+
+	keys := rsaKey(t)
+
+	signed, err := Sign(context.Background(), vectorPackage(t), Options{Signer: keys.signer, Certificates: keys.certs})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The SignerInfo's AlgorithmIdentifier is followed by the OCTET STRING
+	// of the signature; the certificate's by a BIT STRING.
+	signerAlgo := append(sequence(mustMarshal(oidRSAEncryption), mustMarshal(asn1Null)), asn1.TagOctetString)
+
+	for _, tc := range []struct {
+		name string
+		algo []byte
+		want string
+	}{
+		{"unknown", sequence(mustMarshal(asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 127}), mustMarshal(asn1Null)), "does not match"},
+		{"other digest", sequence(mustMarshal(oidSHA512WithRSA), mustMarshal(asn1Null)), "does not match"},
+		{"ECDSA", sequence(mustMarshal(oidECDSASHA256)), "does not match"},
+		{"parameters", sequence(mustMarshal(oidRSAEncryption), mustMarshal(true)), "has parameters"},
+		{"sha256WithRSAEncryption", sequence(mustMarshal(oidSHA256WithRSA), mustMarshal(asn1Null)), ""},
+		{"absent parameters", sequence(mustMarshal(oidRSAEncryption)), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			streams := cloneStreams(readFile(t, signed).Streams())
+
+			for i := range streams {
+				if streams[i].Name != StreamSignature {
+					continue
+				}
+
+				der := streams[i].Data
+				if bytes.Count(der, signerAlgo) != 1 {
+					t.Fatal("cannot find the signer's algorithm")
+				}
+
+				// Replacing a field of another length breaks the outer
+				// lengths; re-encode the SignedData instead.
+				streams[i].Data = replaceSignerAlgorithm(t, der, tc.algo)
+			}
+
+			out, err := cfb.Write(streams, cfb.Options{Version: 3, CLSID: cfb.CLSIDMSI})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = Verify(out)
+
+			switch {
+			case tc.want == "" && err != nil:
+				t.Errorf("Verify = %v", err)
+			case tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)):
+				t.Errorf("Verify = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// replaceSignerAlgorithm returns the ContentInfo der with the
+// digestEncryptionAlgorithm of its only SignerInfo replaced by algo.
+func replaceSignerAlgorithm(t *testing.T, der, algo []byte) []byte {
+	t.Helper()
+
+	var outer contentInfo
+	if err := unmarshalExact(der, &outer); err != nil {
+		t.Fatal(err)
+	}
+
+	var sdata struct { //nolint:govet // field order is the ASN.1 order
+		Version          int
+		DigestAlgorithms asn1.RawValue
+		ContentInfo      asn1.RawValue
+		Certificates     asn1.RawValue `asn1:"optional,tag:0"`
+		SignerInfos      asn1.RawValue
+	}
+
+	if _, err := asn1.Unmarshal(outer.Content.Bytes, &sdata); err != nil {
+		t.Fatal(err)
+	}
+
+	var info signerInfo
+	if _, err := asn1.Unmarshal(sdata.SignerInfos.Bytes, &info); err != nil {
+		t.Fatal(err)
+	}
+
+	var id pkix.AlgorithmIdentifier
+	if _, err := asn1.Unmarshal(algo, &id); err != nil {
+		t.Fatal(err)
+	}
+
+	info.DigestEncryptionAlgorithm = id
+	sdata.SignerInfos = asn1.RawValue{FullBytes: marshalSet(asn1.TagSet, asn1.ClassUniversal, [][]byte{mustMarshal(info)})}
+	outer.Content = asn1.RawValue{FullBytes: tlv(asn1.ClassContextSpecific, 0, true, mustMarshal(sdata))}
+
+	return mustMarshal(outer)
+}
+
 func cloneStreams(in []cfb.Stream) []cfb.Stream {
 	out := make([]cfb.Stream, len(in))
 	for i, s := range in {

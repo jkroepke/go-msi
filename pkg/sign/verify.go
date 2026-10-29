@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
 	"fmt"
@@ -152,11 +153,44 @@ func (sdata *parsedSignedData) verify() (*x509.Certificate, crypto.Hash, error) 
 		return nil, 0, err
 	}
 
+	if err := checkSignatureAlgorithm(sdata.signer.DigestEncryptionAlgorithm, cert.PublicKey, algo); err != nil {
+		return nil, 0, err
+	}
+
 	if err := checkSignature(cert.PublicKey, algo, sum, sdata.signer.EncryptedDigest); err != nil {
 		return nil, 0, err
 	}
 
 	return cert, algo, nil
+}
+
+// checkSignatureAlgorithm checks the SignerInfo's digestEncryptionAlgorithm
+// against the signer's key and digest: the bare key algorithm
+// (rsaEncryption, which Sign writes, or id-ecPublicKey) or the signature
+// algorithm of that key with the same digest, with absent or NULL
+// parameters. checkSignature picks the scheme from the key alone, so an
+// unknown identifier would otherwise pass.
+func checkSignatureAlgorithm(id pkix.AlgorithmIdentifier, key crypto.PublicKey, algo crypto.Hash) error {
+	var allowed []asn1.ObjectIdentifier
+
+	switch key.(type) {
+	case *rsa.PublicKey:
+		allowed = []asn1.ObjectIdentifier{oidRSAEncryption, rsaOID(algo)}
+	case *ecdsa.PublicKey:
+		allowed = []asn1.ObjectIdentifier{oidECPublicKey, ecdsaOID(algo)}
+	default:
+		return fmt.Errorf("unsupported key type %T", key)
+	}
+
+	if !slices.ContainsFunc(allowed, id.Algorithm.Equal) {
+		return fmt.Errorf("signature algorithm %v does not match the %T signer key and the %v digest", id.Algorithm, key, algo)
+	}
+
+	if params := id.Parameters.FullBytes; len(params) != 0 && !bytes.Equal(params, []byte{asn1.TagNull, 0}) {
+		return fmt.Errorf("signature algorithm %v has parameters", id.Algorithm)
+	}
+
+	return nil
 }
 
 // checkAttributes checks the contentType and messageDigest attributes.

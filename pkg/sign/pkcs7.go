@@ -19,6 +19,10 @@ var (
 	oidContentType     = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 3}        //nolint:gochecknoglobals // OID
 	oidMessageDigest   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 4}        //nolint:gochecknoglobals // OID
 	oidRSAEncryption   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 1}        //nolint:gochecknoglobals // OID
+	oidSHA1WithRSA     = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 5}        //nolint:gochecknoglobals // OID
+	oidSHA256WithRSA   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 11}       //nolint:gochecknoglobals // OID
+	oidSHA384WithRSA   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 12}       //nolint:gochecknoglobals // OID
+	oidSHA512WithRSA   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 13}       //nolint:gochecknoglobals // OID
 	oidSpcIndirectData = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 2, 1, 4}    //nolint:gochecknoglobals // OID
 	oidSpcSipInfo      = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 2, 1, 30}   //nolint:gochecknoglobals // OID
 	oidSpcOpusInfo     = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 2, 1, 12}   //nolint:gochecknoglobals // OID
@@ -33,6 +37,7 @@ var (
 	oidSHA384 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 2} //nolint:gochecknoglobals // OID
 	oidSHA512 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3} //nolint:gochecknoglobals // OID
 
+	oidECPublicKey = asn1.ObjectIdentifier{1, 2, 840, 10045, 2, 1}    //nolint:gochecknoglobals // OID
 	oidECDSASHA1   = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 1}    //nolint:gochecknoglobals // OID
 	oidECDSASHA256 = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 2} //nolint:gochecknoglobals // OID
 	oidECDSASHA384 = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 3} //nolint:gochecknoglobals // OID
@@ -80,6 +85,20 @@ func ecdsaOID(algo crypto.Hash) asn1.ObjectIdentifier {
 		return oidECDSASHA512
 	default:
 		return oidECDSASHA256
+	}
+}
+
+// rsaOID is the sha*WithRSAEncryption identifier of a digest.
+func rsaOID(algo crypto.Hash) asn1.ObjectIdentifier {
+	switch algo { //nolint:exhaustive // hashFromOID has rejected the rest
+	case crypto.SHA1:
+		return oidSHA1WithRSA
+	case crypto.SHA384:
+		return oidSHA384WithRSA
+	case crypto.SHA512:
+		return oidSHA512WithRSA
+	default:
+		return oidSHA256WithRSA
 	}
 }
 
