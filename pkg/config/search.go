@@ -348,7 +348,7 @@ func (v *validator) fileSearch(cfg *Config, field string, file *FileSearch) {
 func (v *validator) fileSearchBounds(field string, file *FileSearch) { //nolint:cyclop // a flat list of independent checks
 	if (file.MinVersion != "" || file.MaxVersion != "") && file.Under == nil && systemFolders.MatchString(file.Path) {
 		v.warnf(field, "the versions of Windows' own files are unreliable to a search: the engine reports shimmed "+
-			"versions on Windows 10 and later (reported), and SEARCH-05 found kernel32.dll with no version bound; "+
+			"versions on Windows 10 and later (reported), and no version-bounded search found kernel32.dll in SEARCH-05; "+
 			"test VersionNT or WindowsBuild in a condition instead")
 	}
 

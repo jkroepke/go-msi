@@ -179,6 +179,13 @@ go test ./... -shuffle=on -race
   test that asserts the observed behavior before the pull request merges.
   The runner does not let the Windows Firewall service stop (access denied),
   so firewall behavior with the service stopped cannot be probed there.
+  To probe table rows the builder does not write yet, build a package with
+  `builder.Build`, `msidb.Unmarshal` it, add rows (`schema.New` for a missing
+  table), replace `_Validation` with `schema.Validation` of the other tables
+  and `Marshal` it again; SEARCH-05 probed 70 locator rows in one install
+  that way (`docs/spec/msitest/results/SEARCH-05/probe`). A probe opened as a
+  pull request runs on every push too; keep the raw results in
+  `docs/spec/msitest/results` before deleting it.
 - Wizard changes need a full-UI run: `/qn` never shows a dialog, so dialog
   bugs (wrong event names, missing ErrorIcon) only appear with the full UI.
   `internal/builder/nativetest/fullui_windows_test.go` drives msiexec through
