@@ -1593,10 +1593,10 @@ language, else the first entry, which is the base language;
 `ProductLanguage=1031` or `TRANSFORMS=:1031` on the command line forces one
 (LANG-01, LANG-03, spec section 7.6). On the en-US CI runner, a full-UI
 install with `ProductLanguage=1031` showed the German wizard from the
-built-in translation, with the `de` entry's finish text (LANG-03). The wizard cannot offer a language
-choice, since the engine applies the transform before the first dialog;
-spec section 16, "Decisions not adopted", records that and the
-one-MSI-per-language alternative.
+built-in translation, with the `de` entry's finish text (LANG-03).
+The wizard cannot offer a language choice, since the engine applies the
+transform before the first dialog; spec section 16, "Decisions not
+adopted", records that and the one-MSI-per-language alternative.
 
 ### 4.13 `tables`
 
