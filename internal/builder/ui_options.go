@@ -50,7 +50,8 @@ func (w *wizard) installDirDialog(dir string) {
 // launch check box it shows only after a new installation, so a repair or
 // a removal does not repeat advice about the installed product.
 func (b *build) finishText(wiz *wizard) {
-	paragraph := b.cfg.UI.FinishText
+	// A YAML block scalar ends in a line break, which would only take space.
+	paragraph := strings.TrimSpace(b.cfg.UI.FinishText)
 	if paragraph == "" {
 		return
 	}

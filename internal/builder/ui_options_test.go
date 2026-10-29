@@ -180,12 +180,12 @@ func TestFinishText(t *testing.T) {
 	t.Parallel()
 
 	cfg := desktop(t)
-	cfg.UI.FinishText = "Open a new terminal to use [ProductName] & its tools."
+	cfg.UI.FinishText = "Open a new terminal to use [ProductName] & its tools.\n"
 	res := mustBuild(t, cfg)
 
 	// The paragraph sits below the standard text, over the background
 	// picture, and keeps "&" as it is.
-	if got := controlRow(t, res, "ExitDlg", "FinishText"); fmt.Sprint(got[2:10]) != "[Text 135 135 220 89 196611 <nil> "+cfg.UI.FinishText+"]" {
+	if got := controlRow(t, res, "ExitDlg", "FinishText"); fmt.Sprint(got[2:10]) != "[Text 135 135 220 89 196611 <nil> Open a new terminal to use [ProductName] & its tools.]" {
 		t.Errorf("finish text %v", got)
 	}
 
@@ -291,6 +291,7 @@ func TestWizardOptionErrors(t *testing.T) {
 			c.UI.Launch = nil
 			c.UI.FinishText = "x"
 		}, "a finish page text needs a wizard"},
+		{"blank finish text", func(c *config.Config) { c.UI.FinishText = " \n" }, "the finish page text is blank"},
 		{"not a program", func(c *config.Config) {
 			c.Components[0].Files = append(c.Components[0].Files, &config.File{Source: "LICENSE.txt", Name: "readme.txt"})
 			c.UI.Launch.File = "readme.txt"

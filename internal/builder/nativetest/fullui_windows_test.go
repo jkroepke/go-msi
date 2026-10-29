@@ -145,13 +145,7 @@ while ((Get-Date) -lt $deadline -and (Get-Process -Id $MsiPid -ErrorAction Silen
     try { $els = @($w.FindAll($TS::Descendants, $All)) } catch { continue }
     $names = @($els | ForEach-Object { $_.Current.Name } | Where-Object { $_ })
     $text = $names -join ' | '
-    if (-not $seen.ContainsKey($text)) {
-      $seen[$text] = 1
-      Note "WINDOW: $text"
-      # Off-screen elements, such as a control a ControlCondition hid.
-      $hidden = @($els | Where-Object { $_.Current.IsOffscreen -and $_.Current.Name } | ForEach-Object { $_.Current.Name })
-      if ($hidden) { Note ('HIDDEN: ' + ($hidden -join ' | ')) }
-    }
+    if (-not $seen.ContainsKey($text)) { $seen[$text] = 1; Note "WINDOW: $text" }
     if ($text -match 'need to be updated by this setup') {
       Note ('RMDIALOG: radio ' + (Press $els '^Close the applications'))
       Start-Sleep -Milliseconds 300
@@ -640,18 +634,14 @@ func TestFullUIFinishText(t *testing.T) { //nolint:paralleltest // msiexec runs 
 	t.Logf("UI-07 install:\n%s\nrepair:\n%s", install, repair)
 }
 
-// finishShows reports whether the finish page the driver saw shows s: on
-// its WINDOW line and not on the HIDDEN line after it.
+// finishShows reports whether the finish page the driver saw shows s. A
+// control hidden by a ControlCondition is not in the UI Automation tree
+// (UI-07), so the page's WINDOW line lists only the shown texts.
 func finishShows(seen, paragraph string) bool {
-	lines := strings.Split(seen, "\n")
-	for i, line := range lines {
-		if !strings.HasPrefix(line, "WINDOW: ") || !strings.Contains(line, "Completed the ") {
-			continue
+	for line := range strings.SplitSeq(seen, "\n") {
+		if strings.HasPrefix(line, "WINDOW: ") && strings.Contains(line, "Completed the ") {
+			return strings.Contains(line, paragraph)
 		}
-
-		hidden := i+1 < len(lines) && strings.HasPrefix(lines[i+1], "HIDDEN: ") && strings.Contains(lines[i+1], paragraph)
-
-		return strings.Contains(line, paragraph) && !hidden
 	}
 
 	return false
