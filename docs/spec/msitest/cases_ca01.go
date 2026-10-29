@@ -43,6 +43,7 @@ func currentSID() string {
 	return strings.TrimSpace(string(out))
 }
 
+// Rollback lines the engine logs when a registry undo is denied (CA-01).
 var (
 	rollback1403 = regexp.MustCompile(`Info 1403\.[^\r\n]*`)
 	denied1402   = regexp.MustCompile(`Note: 1: 1402 2: [^\r\n]* 3: 5`)

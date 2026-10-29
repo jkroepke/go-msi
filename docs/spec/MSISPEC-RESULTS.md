@@ -595,8 +595,8 @@ service has recovery set to restart after 60 s, three times.
 Run on 2026-10-29 on SERVER2025 (Windows Server 2025 10.0.26100, a domain
 controller) with the msitest harness at `c32c60f`; later commits added the
 1402/1403 counts to log.md, the fixed RESULT line and a
-`dual-fail-after-registerproduct` variant, which have not run yet. The case builds a one-file
-x64 package with an impersonated deferred EXE action (`cmd.exe /c exit 1`,
+`dual-fail-after-registerproduct` variant, which have not run yet. The case
+builds a one-file x64 package with an impersonated deferred EXE action (`cmd.exe /c exit 1`,
 type 1058) at the given sequence number and installs it with `/qn`.
 Variants: `ALLUSERS` unset with `INSTALLDIR` under Program Files (the old
 variants), `dual-*` with `ALLUSERS=2` and `MSIINSTALLPERUSER=1` (the shape
