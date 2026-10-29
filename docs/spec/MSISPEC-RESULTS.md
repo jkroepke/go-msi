@@ -484,7 +484,8 @@ and d did not test their files alone.
 - ICE30 reported only the file cases; the directory cases passed the suite.
   msi-builder no longer accepts hand-written short names and generates
   unique ones per folder for directories and files (section 11.3), so it
-  cannot produce these cases.
+  cannot produce these cases from different long names; a file and a
+  directory with the same long name are not checked (section 11.3).
 - Not run: an administrative image, a volume without long names, a duplicate
   shortcut short name, Windows Server 2016.
 

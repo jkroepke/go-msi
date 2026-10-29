@@ -255,3 +255,34 @@ components:
 		}
 	}
 }
+
+// TestFolderTwinsShareShortNameSet checks that files in two directory IDs
+// that name one folder draw from one short-name set: a file's generated
+// short name avoids a literal one in the other ID.
+func TestFolderTwinsShareShortNameSet(t *testing.T) {
+	t.Parallel()
+
+	tree := `        children:
+          - id: DATADIR
+            name: Data Files
+          - id: DATADIR2
+            name: Data Files
+components:
+  - directory: DATADIR2
+    files:
+      - { source: one.txt, id: One, name: Readme Long }
+`
+
+	first := mustBuild(t, shortNameConfig(t, tree))
+	generated, _, _ := strings.Cut(fmt.Sprint(cell(t, first.Database, "File", "FileName", func([]any) bool { return true })), "|")
+
+	second := mustBuild(t, shortNameConfig(t, tree+`  - directory: DATADIR
+    files:
+      - { source: two.txt, id: Two, name: `+generated+` }
+`))
+
+	name := fmt.Sprint(cell(t, second.Database, "File", "FileName", func(row []any) bool { return row[0] == "One" }))
+	if short, _, _ := strings.Cut(name, "|"); strings.EqualFold(short, generated) {
+		t.Errorf("File.FileName %s takes the short name %s of a file in the same folder", name, generated)
+	}
+}
