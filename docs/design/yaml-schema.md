@@ -1516,7 +1516,7 @@ rows. A transform cannot change the code page of a base that has one
 (MSIDB-12), so without `package.codepage` a package with `ui.languages`,
 or whose wizard shows a translation, gets the ANSI code page all its
 languages share (1252 for German and French), and 65001 when they need
-different ones or one of them has none (Hindi). msiexec picks the
+different ones or one of them has none (Hindi, Kazakh). msiexec picks the
 transform that matches the user's regional format
 (`GetUserDefaultLangID`): an exact LCID first, then the same primary
 language, else the first entry, which is the base language;

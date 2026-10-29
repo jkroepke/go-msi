@@ -23,7 +23,8 @@ type Language struct {
 }
 
 // locale is a language tag with its LCID and ANSI code page; 0 marks a
-// language that Windows writes only in Unicode.
+// language that no ANSI code page can write: Hindi, and Kazakh, whose
+// letters such as қ and ө are missing from code page 1251.
 type locale struct {
 	tag      string
 	lcid     int
@@ -40,7 +41,7 @@ var locales = []locale{ //nolint:gochecknoglobals // lookup table
 	{"es-MX", 2058, 1252}, {"et-EE", 1061, 1257}, {"fi-FI", 1035, 1252}, {"fr-FR", 1036, 1252},
 	{"fr-BE", 2060, 1252}, {"fr-CA", 3084, 1252}, {"fr-CH", 4108, 1252}, {"he-IL", 1037, 1255},
 	{"hi-IN", 1081, 0}, {"hr-HR", 1050, 1250}, {"hu-HU", 1038, 1250}, {"it-IT", 1040, 1252},
-	{"it-CH", 2064, 1252}, {"ja-JP", 1041, 932}, {"kk-KZ", 1087, 1251}, {"ko-KR", 1042, 949},
+	{"it-CH", 2064, 1252}, {"ja-JP", 1041, 932}, {"kk-KZ", 1087, 0}, {"ko-KR", 1042, 949},
 	{"lt-LT", 1063, 1257}, {"lv-LV", 1062, 1257}, {"nb-NO", 1044, 1252}, {"nl-NL", 1043, 1252},
 	{"nl-BE", 2067, 1252}, {"pl-PL", 1045, 1250}, {"pt-BR", 1046, 1252}, {"pt-PT", 2070, 1252},
 	{"ro-RO", 1048, 1250}, {"ru-RU", 1049, 1251}, {"sk-SK", 1051, 1250}, {"sl-SI", 1060, 1250},
