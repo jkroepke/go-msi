@@ -119,9 +119,10 @@ const tableBinary = "Binary"
 // cfbSignature starts every compound file, and so every .msi.
 const cfbSignature = "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"
 
-// checkEXEBinary warns when an exe action runs a binary that is no program.
-// The engine writes the stream to a temporary .exe and starts it, so a DLL
-// or another file fails only at install time.
+// checkEXEBinary rejects a binary that an exe action cannot start. The
+// engine writes the stream to a temporary .exe and starts it, so a DLL or
+// another file would fail only at install time, or be skipped silently
+// with return: ignore.
 func (b *build) checkEXEBinary(name string, data []byte) {
 	for i, custom := range b.cfg.CustomActions {
 		if custom.EXE == nil || custom.EXE.Binary != name {
@@ -132,14 +133,12 @@ func (b *build) checkEXEBinary(name string, data []byte) {
 		reader := bytes.NewReader(data)
 
 		switch {
-		case strings.HasPrefix(string(data), cfbSignature):
-			// An .msi needs msiexec, and a second msiexec cannot start
-			// while this install runs its execute sequence (1618).
-			b.warnf(cfgPath, "binary %s is a Windows Installer package, not a program; a nested install from a custom action fails with 1618", name)
+		case bytes.HasPrefix(data, []byte(cfbSignature)):
+			b.errorf(cfgPath, "binary %s is a Windows Installer package, not a program; the engine cannot start it", name)
 		case !pe.IsPE(reader):
-			b.warnf(cfgPath, "binary %s is not a Windows program (no PE header); the engine cannot start it", name)
+			b.errorf(cfgPath, "binary %s is not a Windows program (no PE header); the engine cannot start it", name)
 		case pe.IsDLL(reader):
-			b.warnf(cfgPath, "binary %s is a DLL; use a dll action to call it", name)
+			b.errorf(cfgPath, "binary %s is a DLL; use a dll action to call it", name)
 		}
 	}
 }

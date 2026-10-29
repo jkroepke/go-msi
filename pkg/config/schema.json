@@ -652,7 +652,7 @@
                 "$ref": "#/$defs/var"
               }
             ],
-            "description": "Required for exec, execProperty and run."
+            "description": "Required for exec, execProperty, exe and run."
           },
           "hideTarget": {
             "$ref": "#/$defs/bool"

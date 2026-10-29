@@ -74,8 +74,8 @@ closes each one.
 |---|---|---|
 | Executable with an empty `File.Version` (FILE-01) | On a major upgrade with early removal the new, unversioned file is disallowed against the old versioned one, then the old product is removed: the executable is **deleted** | `files[].version` defaults to `auto` (read from the PE version resource). A PE file without a version resource is a build error. `version: none` must be written explicitly and is only allowed for non-PE files, or with `allowUnversionedExecutable: true`, which also makes the validator warn about the upgrade. An empty string is never accepted. |
 | Corrupted cabinet data (MSZIP-01, CAB-04) | Wrong DEFLATE history, or a bit flip without a checksum, installs a corrupted file | Writer: every cabinet data block gets a checksum, and the builder re-extracts every cabinet after writing it and compares each file's SHA-256 with the source. Neither can be turned off, so the schema has no field for them. |
-| Script custom actions (CA-02) | Inline JScript/VBScript actions (types 37/38) report success whatever they return; a Binary script returning 5 ends the install with 0 and leaves files unregistered | There are no script custom actions. Actions run an executable (`exec`), a DLL (`dll`), set a property or directory, or fail with an error. |
-| EXE exit codes (CA-02) | Any non-zero exit fails the install unless the action ignores it | `customActions[].return` is required for `exec` actions (`check` or `ignore`), so the author decides. |
+| Script custom actions (CA-02) | Inline JScript/VBScript actions (types 37/38) report success whatever they return; a Binary script returning 5 ends the install with 0 and leaves files unregistered | There are no script custom actions. Actions run an executable (`exec`, `execProperty`, `exe`), a command through msi-builder's DLL (`run`), a DLL (`dll`), set a property or directory, or fail with an error. |
+| EXE exit codes (CA-02) | Any non-zero exit fails the install unless the action ignores it | `customActions[].return` is required for `exec`, `execProperty`, `exe` and `run` actions (`check` or `ignore`), so the author decides. |
 | Same ProductCode, new package (UPG-03) | Installing a rebuilt package over the installed one fails with 1638 | `product.productCode: auto` derives the code from the upgrade code, version, platform and a digest of every input. Changed content gives a new ProductCode (a major upgrade); unchanged content gives the same package byte for byte. Keys whose value means the same as a missing key (null, `""`, `[]`, `{}`) are left out of the digest, so a key a later version adds to the schema (as a pointer, string, list or mapping, or left out when empty) does not change the code of a configuration that does not use it; `false` and `0` stay in, since an explicit `secure: false` is not the default. The release that introduced this pruning derives a new code once for every configuration, unchanged ones included. A pinned ProductCode makes the validator warn. |
 | Quote in a firewall rule description (CA-04) | netsh drops the quote and stores the rest of the description | `firewall[].name` and `firewall[].description` must not contain a double quote. |
 | Versions that differ in the fourth field only (UPG-01) | Without an inclusive maximum both products stay installed side by side | `upgrade.allowSameVersion` defaults to `true` (maximum inclusive), so `0.32.0.5` replaces `0.32.0.4`. Four-field versions get a warning that Windows compares only three. |
@@ -1100,16 +1100,20 @@ otherwise, which covers Go programs, cmd.exe and PowerShell. Specification
 section 17.6 and case CA-03 (Appendix C) hold the Windows evidence.
 
 **`exe`.** The engine writes the program from the `Binary` table to a
-temporary file, runs it with the formatted `arguments` and deletes it. Unlike
-an `exec` of an installed file, it works before `InstallFiles` and after
-`RemoveFiles`, for example a prerequisite installer or a cleanup tool that is
-not part of the product. Like `exec`, it shows a console program's window
-and keeps none of its output, so pass the program's own silent and log
-switches. `return` is required, and any exit code but 0 fails the install
-unless it is `ignore`, including 3010 (CA-05). The program must not start
-`msiexec`: the engine allows one installation at a time, and a nested one
-fails with 1618 while this one runs its execute sequence. The builder warns
-when the binary is a Windows Installer package, a DLL or no Windows program.
+temporary file, runs it with `arguments` and deletes it (CA-05). Like `exec`,
+the arguments of a deferred action are formatted when the script is written,
+so no CustomActionData is needed. Unlike an `exec` of an installed file, it
+works before `InstallFiles` and after `RemoveFiles`, for example a
+prerequisite installer or a cleanup tool that is not part of the product.
+Like `exec`, it shows a console program's window and keeps none of its
+output, so pass the program's own silent and log switches. `return` is
+required, and any exit code but 0 fails the install unless it is `ignore`,
+including 3010 (CA-05). A program that installs a Windows Installer package
+itself is reported to fail with 1618 while this install runs its execute
+sequence, because the engine runs one installation at a time (section 8.11;
+not tested). The builder rejects a binary that is a Windows Installer
+package, a DLL or no Windows program. How long the engine keeps the
+temporary file of an `asyncNoWait` action is not tested.
 
 Options: `execute` (default `immediate`), `impersonate` (default `true`;
 `false` needs a deferred action), `return` (required for `exec`,
@@ -1169,7 +1173,7 @@ binaries:
 
 Keys are stream names, limited by the 62-character stream limit (section
 2.3). Icons are for `product.arp.icon` and shortcut `icon`s; binaries are
-for `dll` custom actions and for the UI's bitmaps.
+for `dll` and `exe` custom actions and for the UI's bitmaps.
 
 ### 4.11 `firewall` helper
 

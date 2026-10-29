@@ -1,7 +1,6 @@
 package builder_test
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,6 +73,25 @@ func TestEXEActions(t *testing.T) {
 	}
 }
 
+// TestEXEActionOptions checks the option bits on top of type 2.
+func TestEXEActionOptions(t *testing.T) {
+	t.Parallel()
+
+	cfg := exeConfig(t, testpe.Build(testpe.Options{}), `
+  - { id: Hidden, exe: { binary: Setup, arguments: --token }, execute: deferred, return: check, hideTarget: true,
+      schedule: [{ sequence: execute, after: InstallFiles }] }
+  - { id: Wait, exe: { binary: Setup }, return: asyncWait, once: firstSequence, schedule: [{ sequence: execute, after: CostFinalize }] }
+  - { id: NoWait, exe: { binary: Setup }, return: asyncNoWait, schedule: [{ sequence: execute, after: InstallFinalize }] }
+`)
+	res := mustBuild(t, cfg)
+
+	for name, want := range map[string]int{"Hidden": 2 | 0x400 | 0x2000, "Wait": 2 | 0x80 | 0x100, "NoWait": 2 | 0xC0} {
+		if got := cell(t, res.Database, "CustomAction", "Type", func(r []any) bool { return r[0] == name }); got != want {
+			t.Errorf("%s: Type %v, want %d", name, got, want)
+		}
+	}
+}
+
 func TestEXEActionValidation(t *testing.T) {
 	t.Parallel()
 
@@ -83,6 +101,7 @@ func TestEXEActionValidation(t *testing.T) {
 		{`{ id: X, exe: { binary: Other }, return: check, schedule: [{ sequence: execute, after: CostFinalize }] }`, "exe.binary", `binary "Other" is not defined`},
 		{`{ id: X, exe: { binary: Setup }, schedule: [{ sequence: execute, after: CostFinalize }] }`, ".return", "required"},
 		{`{ id: X, exe: { binary: Setup }, dll: { binary: Setup, entry: E }, return: check, schedule: [{ sequence: execute, after: CostFinalize }] }`, "customActions[0]", "exactly one of"},
+		{`{ id: X, exe: { binary: Setup }, impersonate: false, return: check, schedule: [{ sequence: execute, after: CostFinalize }] }`, ".impersonate", "needs a deferred"},
 	} {
 		_, err := builder.Build(exeConfig(t, exe, "  - "+tc.action+"\n"), builder.Options{BuildTime: buildTime})
 		if err == nil || !strings.Contains(err.Error(), tc.path) || !strings.Contains(err.Error(), tc.message) {
@@ -91,9 +110,9 @@ func TestEXEActionValidation(t *testing.T) {
 	}
 }
 
-// TestEXEActionBinaryWarnings checks the warnings for binaries the engine
+// TestEXEActionBinaryErrors checks the errors for binaries the engine
 // cannot start as a program.
-func TestEXEActionBinaryWarnings(t *testing.T) {
+func TestEXEActionBinaryErrors(t *testing.T) {
 	t.Parallel()
 
 	dll := testpe.Build(testpe.Options{})
@@ -105,17 +124,16 @@ func TestEXEActionBinaryWarnings(t *testing.T) {
 		data    []byte
 		message string
 	}{
-		"msi":  {append([]byte("\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"), make([]byte, 504)...), "1618"},
+		"msi":  {append([]byte("\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"), make([]byte, 504)...), "Windows Installer package"},
 		"text": {[]byte("echo hi"), "no PE header"},
 		"dll":  {dll, "is a DLL"},
 	} {
 		cfg := exeConfig(t, tc.data, `  - { id: X, exe: { binary: Setup }, return: check, schedule: [{ sequence: execute, after: CostFinalize }] }
 `)
 
-		res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
-		if err != nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "customActions[0].exe.binary") ||
-			!strings.Contains(fmt.Sprint(res.Diagnostics), tc.message) {
-			t.Errorf("%s: %v %s", name, err, res.Diagnostics)
+		_, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+		if err == nil || !strings.Contains(err.Error(), "customActions[0].exe.binary") || !strings.Contains(err.Error(), tc.message) {
+			t.Errorf("%s: %v", name, err)
 		}
 	}
 }

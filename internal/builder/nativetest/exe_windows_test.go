@@ -1,6 +1,7 @@
 package nativetest_test
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/jkroepke/msi-builder/internal/builder"
 	"github.com/jkroepke/msi-builder/internal/exampletest"
+	"github.com/jkroepke/msi-builder/internal/testpe"
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
@@ -49,10 +51,13 @@ const exeProbeConfig = `schema: msi-builder/v1
 product: { name: MsiBuilder EXE Probe, manufacturer: MsiBuilderTest, version: 1.0.0, upgradeCode: 4b8e2c6a-7d13-4f0e-9a52-c1e6b3d8f27a }
 package: { platform: x64 }
 binaries: { ExeProbe: probe.exe }
+properties:
+  MARKER: { secure: true }
+  EXITCODE: { secure: true }
 components:
   - files: [{ source: readme.txt }]
 customActions:
-  # Before InstallFiles: nothing of the product is on disk yet.
+  # Before InstallFiles, where an exec of an installed file cannot run.
   - id: ExeBeforeFiles
     exe: { binary: ExeProbe, arguments: '"[MARKER]" deferred-system 0' }
     execute: deferred
@@ -140,7 +145,7 @@ func readProbe(t *testing.T, marker string) map[string]probeLine {
 
 	lines := make(map[string]probeLine)
 
-	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(data)), "\n") {
 		parts := strings.Split(strings.TrimSpace(line), "|")
 		if len(parts) == 4 {
 			lines[parts[0]] = probeLine{parts[0], parts[1], parts[2], parts[3]}
@@ -191,12 +196,30 @@ func TestMsiexecEXEActions(t *testing.T) {
 	markerDir := filepath.Join(os.Getenv("ProgramData"), "MsiBuilderExeProbe")
 	marker := filepath.Join(markerDir, "marker.txt")
 
+	uninstall := func() {
+		_ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn", "/norestart").Run()
+	}
+
+	// A product left by an aborted run would turn the install into a
+	// maintenance run that skips every action.
+	uninstall()
+
 	_ = os.RemoveAll(markerDir)
 
 	t.Cleanup(func() {
-		_ = exec.Command("msiexec", "/x", path, "/qn", "/norestart").Run()
+		uninstall()
 		_ = os.RemoveAll(markerDir)
 	})
+
+	gone := func(what string, line probeLine) {
+		t.Helper()
+
+		if line.self == "" {
+			t.Errorf("%s: the probe did not report its path", what)
+		} else if _, err := os.Stat(line.self); err == nil {
+			t.Errorf("%s: the engine left %s behind", what, line.self)
+		}
+	}
 
 	installLog := filepath.Join(dir, "install.log")
 	if code := msiexecCode(t, installLog, "/i", path, "MARKER="+marker); code != 0 {
@@ -218,9 +241,7 @@ func TestMsiexecEXEActions(t *testing.T) {
 			t.Errorf("%s ran as %s", tag, line.user)
 		}
 
-		if _, err := os.Stat(line.self); err == nil {
-			t.Errorf("%s: the engine left %s behind", tag, line.self)
-		}
+		gone(tag, line)
 	}
 
 	uninstallLog := filepath.Join(dir, "uninstall.log")
@@ -230,8 +251,8 @@ func TestMsiexecEXEActions(t *testing.T) {
 
 	if line, ok := readProbe(t, marker)["uninstall"]; !ok {
 		t.Error("the action after RemoveFiles did not run on uninstall")
-	} else if _, err := os.Stat(line.self); err == nil {
-		t.Errorf("uninstall: the engine left %s behind", line.self)
+	} else {
+		gone("uninstall", line)
 	}
 
 	for _, tc := range []struct {
@@ -246,14 +267,60 @@ func TestMsiexecEXEActions(t *testing.T) {
 			t.Errorf("an exe action exiting with %s: msiexec returned %d, want %d\n%s", tc.exit, code, tc.want, readLog(log))
 		}
 
-		for _, line := range strings.Split(readLog(log), "\n") {
+		if line, ok := readProbe(t, marker)["exit-"+tc.exit]; !ok {
+			t.Errorf("the action exiting with %s did not run", tc.exit)
+		} else {
+			gone("exit-"+tc.exit, line)
+		}
+
+		for line := range strings.SplitSeq(readLog(log), "\n") {
 			if strings.Contains(line, "ExeFails") || strings.Contains(line, "ExeReboot") {
 				t.Logf("log: %s", strings.TrimSpace(line))
 			}
+		}
+
+		// A product that stayed would make the next run a maintenance
+		// run.
+		if code == 0 || code == 3010 {
+			uninstall()
 		}
 	}
 
 	if t.Failed() {
 		t.Logf("install log:\n%s", readLog(installLog))
 	}
+}
+
+// TestICEEXEActions runs the ICE suite (ICE68, ICE77 among others) on the
+// CA-05 package.
+//
+//nolint:paralleltest // msi.dll's external UI handler is process-wide
+func TestICEEXEActions(t *testing.T) {
+	cub := iceCube(t)
+	dir := t.TempDir()
+
+	for name, data := range map[string][]byte{"probe.exe": testpe.Build(testpe.Options{}), "readme.txt": []byte("probe")} {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg, err := config.Parse([]byte(exeProbeConfig), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.BaseDir = dir
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: exampletest.BuildTime})
+	if err != nil {
+		t.Fatalf("build: %v\n%s", err, res.Diagnostics)
+	}
+
+	path := filepath.Join(dir, "exe-probe.msi")
+	if err := os.WriteFile(path, res.Package, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	requireCleanICE(t, path, cub)
 }
