@@ -100,6 +100,9 @@ type File struct {
 // build holds the state of one build.
 type build struct { //nolint:govet // grouped by build step
 	secure map[string]bool
+	// lastScopeAction is the last UI action the scope page added; the
+	// next one follows it.
+	lastScopeAction string
 	// runDLL is set once the custom action DLL of run actions is in the
 	// Binary table.
 	runDLL     bool

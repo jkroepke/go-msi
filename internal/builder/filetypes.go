@@ -12,7 +12,8 @@ import (
 // file's component, the way non-advertised ProgId, Extension and Verb
 // elements are written (specification section 10.2): HKCR, which the engine
 // maps to HKLM\Software\Classes per machine and HKCU\Software\Classes per
-// user. A per-user package names HKCU\Software\Classes itself (ICE105).
+// user. A per-user package names HKCU\Software\Classes itself (ICE105); a
+// dual one keeps HKCR, which follows the context it installs in (INST-02).
 func (b *build) fileTypes() error {
 	root, prefix := registryRoots["HKCR"], ""
 	if b.cfg.Package.Scope == config.ScopePerUser {

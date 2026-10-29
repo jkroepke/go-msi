@@ -107,6 +107,12 @@ go test ./... -shuffle=on -race
   cyclomatic complexity 10 (`cyclop`), unwrapped errors from other packages
   (`wrapcheck`), blank-line rules (`wsl_v5`), missing `t.Parallel()`
   (`paralleltest`) and method order (`funcorder`).
+- The `_windows_test.go` files (nativetest) are only linted with
+  `GOOS=windows`. From Linux, build the linter once for the host
+  (`GOBIN=<dir> go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0`)
+  and run `GOOS=windows <dir>/golangci-lint run ./internal/builder/...`;
+  `go run` with `GOOS=windows` would build a Windows binary. Existing files
+  still have findings there, so check the files you changed.
 - Tests add no test-only module dependencies. Test vectors from the spec appendix
   (stream names, compound files, summary stream, cabinets) are golden hashes:
   a writer change that alters them is a bug unless the spec changed.
@@ -242,6 +248,14 @@ go test ./... -shuffle=on -race
   In formatted text any `[name]` is a property reference, so a translation
   never adds brackets (Japanese uses 「」). A language whose letters no
   ANSI code page holds gets code page 0 in `locales` (Hindi, Kazakh).
+- A dual-scope package (`perUserOrMachine`, `perMachineOrUser`) must follow
+  ICE105 in both contexts. The client resolves folder properties for the
+  context the package opened in, and a public folder it passes to the server
+  wins over the server's own resolution, so a UI that switches the context
+  must set every public folder under Program Files or Common Files itself
+  (`internal/builder/ui_scope.go`, INST-02). The other context's paths come
+  from `[LocalAppDataFolder]Programs\` and the `ProgramFiles` environment
+  variables, since a client only has its own context's folder properties.
 - `cmd/msi-builder` uses `spf13/cobra` (with `spf13/pflag`) and nothing else
   outside the standard library; never import `cobra/doc`, which pulls in a
   man-page renderer. Add no new module dependencies elsewhere without

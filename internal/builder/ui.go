@@ -319,6 +319,8 @@ func (b *build) ui() error {
 		wiz.flow = slices.Insert(wiz.flow, 1, dlgLicense)
 	}
 
+	b.installScope(wiz)
+
 	if b.cfg.UI.InstallDirPage {
 		wiz.installDirDialog(b.cfg.InstallDir.ID)
 		wiz.flow = slices.Insert(wiz.flow, wiz.shown(1, 1), dlgInstallDir)

@@ -29,6 +29,12 @@ InstallDirText: "คลิก ถัดไป เพื่อติดตั้�
 InstallDirLabel: "ติดตั้ง [ProductName] ไปที่:"
 InstallDirChange: "เปลี่ยน(&C)..."
 
+InstallScopeTitle: "ขอบเขตการติดตั้ง"
+InstallScopeText: "เลือกผู้ที่สามารถใช้ [ProductName] บนคอมพิวเตอร์เครื่องนี้"
+InstallScopeUser: "ติดตั้งสำหรับฉันเท่านั้น ([LogonUser])(&M)"
+InstallScopeMachine: "ติดตั้งสำหรับผู้ใช้ทุกคนของคอมพิวเตอร์นี้(&A)"
+InstallScopeHint: "การติดตั้งสำหรับผู้ใช้ทุกคนต้องใช้สิทธิ์ผู้ดูแลระบบ การติดตั้งสำหรับคุณเท่านั้นไม่ต้องใช้ และมีเพียงคุณที่จะใช้ [ProductName] ได้"
+
 CustomizeTitle: "การติดตั้งแบบกำหนดเอง"
 CustomizeText: "เลือกวิธีการติดตั้งคุณลักษณะ"
 CustomizeHint: "คลิกไอคอนในแผนผังด้านล่างเพื่อเปลี่ยนวิธีการติดตั้งคุณลักษณะ"

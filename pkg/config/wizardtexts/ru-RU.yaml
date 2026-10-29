@@ -29,6 +29,12 @@ InstallDirText: "Нажмите «Далее», чтобы установить 
 InstallDirLabel: "Установить [ProductName] в:"
 InstallDirChange: "&Изменить..."
 
+InstallScopeTitle: "Область установки"
+InstallScopeText: "Выберите, кто сможет использовать [ProductName] на этом компьютере."
+InstallScopeUser: "Установить только для &меня ([LogonUser])"
+InstallScopeMachine: "Установить для &всех пользователей компьютера"
+InstallScopeHint: "Установка для всех пользователей требует прав администратора. Установка только для вас их не требует, и использовать [ProductName] сможете только вы."
+
 CustomizeTitle: "Выборочная установка"
 CustomizeText: "Выберите способ установки компонентов."
 CustomizeHint: "Щёлкните значки в дереве ниже, чтобы изменить способ установки компонентов."

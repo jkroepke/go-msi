@@ -103,9 +103,9 @@ func (v *validator) shortcut(cfg *Config, scPath string, shortcut *Shortcut, kno
 
 	if known.dirs[shortcut.Directory] == nil {
 		v.errorf(scPath+".directory", "directory %q is not defined", shortcut.Directory)
-	} else if top := known.topFolder(shortcut.Directory); cfg.Package.Scope == ScopePerUser && perMachineFolders[top] {
+	} else if top := known.topFolder(shortcut.Directory); v.forbiddenFolder(top) {
 		// The shortcuts' component lives in this folder.
-		v.errorf(scPath+".directory", "a per-user package cannot install under %s (ICE105)", top)
+		v.errorf(scPath+".directory", "%s cannot install under %s (ICE105)", v.perUserPackage(), top)
 	}
 
 	if known.dirs[shortcut.WorkingDirectory] == nil {

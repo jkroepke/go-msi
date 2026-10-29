@@ -124,7 +124,7 @@
           "anyOf": [
             {
               "type": "string",
-              "pattern": "^([Pp][Ee][Rr][Mm][Aa][Cc][Hh][Ii][Nn][Ee]|[Pp][Ee][Rr][Uu][Ss][Ee][Rr])$"
+              "pattern": "^([Pp][Ee][Rr][Mm][Aa][Cc][Hh][Ii][Nn][Ee]|[Pp][Ee][Rr][Uu][Ss][Ee][Rr]|[Pp][Ee][Rr][Uu][Ss][Ee][Rr][Oo][Rr][Mm][Aa][Cc][Hh][Ii][Nn][Ee]|[Pp][Ee][Rr][Mm][Aa][Cc][Hh][Ii][Nn][Ee][Oo][Rr][Uu][Ss][Ee][Rr])$"
             },
             {
               "$ref": "#/$defs/var"
@@ -2338,6 +2338,11 @@
           "InstallDirLabel",
           "InstallDirText",
           "InstallDirTitle",
+          "InstallScopeHint",
+          "InstallScopeMachine",
+          "InstallScopeText",
+          "InstallScopeTitle",
+          "InstallScopeUser",
           "KB",
           "Launch",
           "LicenseAccept",

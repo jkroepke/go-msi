@@ -94,6 +94,10 @@ func TestValidateAccepted(t *testing.T) {
 			"properties: {P: {value: x, search: {registry: {root: HKLM, key: Software\\X, name: V, bitness: 32, type: directory}}}}\n",
 		"remove registry": base + strings.Replace(appComponent, "    files:",
 			"    removeRegistry: [{root: HKCU, key: Software\\Classes\\old}, {root: HKMU, key: Software\\X, name: Legacy}]\n    files:", 1),
+		// Program Files and HKCR follow the context of a dual package.
+		"dual scope": pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:",
+			"    registry: [{root: HKCR, key: .app, value: App.File}, {root: HKMU, key: Software\\X, name: N, value: v}]\n    files:", 1),
+		"dual scope machine first": pkg(`{platform: x64, scope: PerMachineOrUser}`) + appComponent,
 	} {
 		if ds := validate(t, doc); len(ds) != 0 {
 			t.Errorf("%s: unexpected diagnostics: %v", name, ds)
@@ -739,6 +743,30 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{id: A, root: HKLM, key: Software\\X}]\n    files:", 1) +
 				"  - id: Other\n    directory: INSTALLDIR\n    removeRegistry: [{id: A, root: HKLM, key: Software\\Y}]\n",
 			sevError, "components[1].removeRegistry[0].id", "defined twice",
+		},
+		"dual scope service": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + strings.Replace(appComponent, "    files:", "    services: [{name: svc}]\n    files:", 1),
+			sevError, "components[0].services[0]", "a perMachineOrUser package cannot install services (ICE105)",
+		},
+		"dual scope HKLM": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\X, name: N, value: v}]\n    files:", 1),
+			sevError, "components[0].registry[0].root", "ICE105",
+		},
+		"dual scope system folder": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + "  - id: Data\n    directory: CommonAppDataFolder/App\n    createFolder: true\n",
+			sevError, "components[1].directory", "cannot install under CommonAppDataFolder (ICE105)",
+		},
+		"dual scope installer 4.5": {
+			pkg(`{platform: x64, scope: perUserOrMachine, installerVersion: "4.5"}`) + appComponent,
+			sevError, "package.installerVersion", "MSIINSTALLPERUSER",
+		},
+		"dual scope machine variable": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:", "    environment: [{name: FOO, value: a}]\n    files:", 1),
+			sevError, "components[0].environment[0].scope", "machine variables",
+		},
+		"per-user HKCR": {
+			pkg(`{platform: x64, scope: perUser}`) + strings.Replace(appComponent, "    files:", "    registry: [{root: HKCR, key: .app, value: v}]\n    files:", 1),
+			sevError, "components[0].registry[0].root", "a per-user package cannot change HKCR",
 		},
 		"remove registry per user": {
 			pkg(`{platform: x64, scope: perUser}`) + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X}]\n    files:", 1),

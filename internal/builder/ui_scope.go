@@ -1,0 +1,210 @@
+package builder
+
+import (
+	"slices"
+	"strings"
+
+	"github.com/jkroepke/msi-builder/pkg/config"
+)
+
+const (
+	dlgInstallScope = "InstallScopeDlg"
+	ctlScope        = "Scope"
+	ctlInstallAdmin = "InstallElevated"
+
+	// propScope is the scope page's choice. It stays private: the command
+	// line chooses with MSIINSTALLPERUSER.
+	propScope    = "InstallScope"
+	scopeUser    = "perUser"
+	scopeMachine = "perMachine"
+	condMachine  = propScope + `="` + scopeMachine + `"`
+
+	// ctlShield is the PushButton attribute that draws the UAC shield when
+	// the installation is not yet elevated.
+	ctlShield = 0x800000
+)
+
+// installScope adds the scope page of a dual package: a choice between the
+// current user and all users. Next sets ALLUSERS and MSIINSTALLPERUSER as
+// Microsoft's single package authoring describes (spec section 8.2,
+// INST-02); the ready page shows Install with the UAC shield for all users.
+func (b *build) installScope(wiz *wizard) {
+	scope := b.cfg.Package.Scope
+	if !scope.Dual() {
+		return
+	}
+
+	initial := scopeUser
+	if scope == config.ScopePerMachineOrUser {
+		initial = scopeMachine
+	}
+
+	b.properties[propScope] = initial
+
+	// The engine fixes the client's context, and with it the folders, when
+	// the package opens: ALLUSERS is then 1 per machine and unset per user
+	// (INST-02). The page starts on that context, so a command-line
+	// MSIINSTALLPERUSER shows as the selected option.
+	b.uiAction("SetInstallScopeMachine", propScope, scopeMachine, "ALLUSERS=1")
+	b.uiAction("SetInstallScopeUser", propScope, scopeUser, "NOT ALLUSERS")
+
+	page := wiz.add(&uiDialog{name: dlgInstallScope, attrs: dlgPage, first: ctlScope})
+	page.innerHeader(wiz.text("InstallScopeTitle"), wiz.text("InstallScopeText"))
+
+	width := dlgWidth - 2*margin - 10
+	page.control(&uiControl{
+		name: ctlScope, typ: typRadioGroup, property: propScope, ring: true,
+		x: margin + 5, y: 60, w: width, h: 2 * radioStep * 2, attrs: ctlActive,
+	})
+	page.control(text("ScopeHint", margin+5, 130, width, 30, wiz.text("InstallScopeHint")))
+	page.navigation()
+
+	wiz.radios = append(wiz.radios,
+		uiRadio{property: propScope, value: scopeUser, text: wiz.text("InstallScopeUser"), y: 0, w: width, h: radioStep},
+		uiRadio{property: propScope, value: scopeMachine, text: wiz.text("InstallScopeMachine"), y: 2 * radioStep, w: width, h: radioStep},
+	)
+
+	next := page.find(ctlNext).
+		on("[ALLUSERS]", "2", condAlways).
+		on("[MSIINSTALLPERUSER]", "1", "NOT "+condMachine).
+		on("[MSIINSTALLPERUSER]", "{}", condMachine)
+
+	b.scopeFolders(next)
+
+	// Two Install buttons in one place: the shield one for all users.
+	ready := wiz.byName[dlgVerifyReady]
+	install := ready.find(ctlInstall)
+	install.when("Hide", condMachine)
+	install.when("Show", "NOT "+condMachine)
+	install.when("Default", "NOT "+condMachine)
+
+	elevated := button(ctlInstallAdmin, nextX, buttonY, wiz.text("Install"))
+	elevated.attrs |= ctlShield
+	elevated.on(evEndDialog, endReturn, condAlways)
+	elevated.when("Hide", "NOT "+condMachine)
+	elevated.when("Show", condMachine)
+	elevated.when("Default", condMachine)
+
+	at := slices.Index(ready.controls, install)
+	ready.controls = slices.Insert(ready.controls, at+1, elevated)
+
+	wiz.flow = slices.Insert(wiz.flow, wiz.shown(1, 1), dlgInstallScope)
+}
+
+// Where a folder that follows the context lies in each context. A client
+// in one context has only that context's folder properties, so the other
+// context's folder comes from the environment (per machine) or from
+// LocalAppDataFolder (per user, Microsoft's single package authoring).
+var scopeFolders = map[string]struct{ user, machine, machine32 string }{ //nolint:gochecknoglobals // lookup table
+	"ProgramFiles64Folder": {`[LocalAppDataFolder]Programs\`, `[%ProgramW6432]\`, ""},
+	"CommonFiles64Folder":  {`[LocalAppDataFolder]Programs\Common\`, `[%CommonProgramW6432]\`, ""},
+	"ProgramFilesFolder":   {`[LocalAppDataFolder]Programs\`, `[%ProgramFiles]\`, `[%ProgramFiles(x86)]\`},
+	"CommonFilesFolder":    {`[LocalAppDataFolder]Programs\Common\`, `[%CommonProgramFiles]\`, `[%CommonProgramFiles(x86)]\`},
+}
+
+// scopeFolders keeps the public folders under Program Files and Common
+// Files in the context the scope page chose. The client resolves them for
+// the context the package opened in and passes them to the server, which
+// takes a set directory property as it is, so a switch would install per
+// machine into the user's profile or per user into Program Files
+// (INST-02). Next sets each such folder to its path in the chosen context
+// unless it holds another path, typed on the command line or remembered.
+func (b *build) scopeFolders(next *uiControl) {
+	for _, dir := range b.scopeDirs() {
+		top, rel := b.dirPath(dir)
+		folder := scopeFolders[top]
+
+		user, machine := scopeProperty("InstallScopeUser_", dir.id), scopeProperty("InstallScopeMachine_", dir.id)
+		b.uiAction("Set"+user, user, folder.user+rel, "")
+		b.uiAction("Set"+machine, machine, folder.machine+rel, "")
+
+		if folder.machine32 != "" {
+			b.uiAction("Set"+machine+"_WOW", machine, folder.machine32+rel, "VersionNT64")
+		}
+
+		if dir.id == b.cfg.InstallDir.ID && b.cfg.InstallDir.Remember {
+			b.uiAction("Set"+user+"_Remembered", user, "["+rememberedUser(dir.id)+"]", rememberedUser(dir.id))
+			b.uiAction("Set"+machine+"_Remembered", machine, "["+rememberedMachine(dir.id)+"]", rememberedMachine(dir.id))
+		}
+
+		unchanged := "(" + dir.id + " ~= " + user + " OR " + dir.id + " ~= " + machine + ")"
+		next.on("["+dir.id+"]", "["+user+"]", "NOT "+condMachine+" AND "+unchanged)
+		next.on("["+dir.id+"]", "["+machine+"]", condMachine+" AND "+unchanged)
+	}
+}
+
+// scopeProperty names a private property that holds a folder of dir; an id
+// too long for the prefix gets a generated name.
+func scopeProperty(prefix, dir string) string {
+	if len(prefix+dir) > config.MaxIdentifierLength {
+		return generatedID(prefix, dir)
+	}
+
+	return prefix + dir
+}
+
+// scopeDirs returns the public directories below a folder that follows the
+// context, in key order.
+func (b *build) scopeDirs() []*dirInfo {
+	var dirs []*dirInfo
+
+	for _, dir := range b.dirs {
+		if dir.standard || !config.IsPublicProperty(dir.id) {
+			continue
+		}
+
+		if top, _ := b.dirPath(dir); scopeFolders[top].user != "" {
+			dirs = append(dirs, dir)
+		}
+	}
+
+	slices.SortFunc(dirs, func(a, b *dirInfo) int { return strings.Compare(a.id, b.id) })
+
+	return dirs
+}
+
+// dirPath returns the standard folder above dir and the path below it,
+// ending in a backslash.
+func (b *build) dirPath(dir *dirInfo) (string, string) {
+	var names []string
+
+	for dir != nil && !dir.standard {
+		if dir.long != "." {
+			names = append(names, dir.long)
+		}
+
+		dir = b.dirs[dir.parent]
+	}
+
+	if dir == nil {
+		return "", ""
+	}
+
+	slices.Reverse(names)
+
+	if len(names) == 0 {
+		return dir.id, ""
+	}
+
+	return dir.id, strings.Join(names, `\`) + `\`
+}
+
+// uiAction sets property to value in the UI sequence after CostFinalize,
+// where the folder properties are known and before the first page. The
+// actions run in the order they are added. A name too long for the
+// CustomAction table gets a generated one.
+func (b *build) uiAction(name, property, value, cond string) {
+	if len(name) > config.MaxIdentifierLength {
+		name = generatedID("SetScope", name)
+	}
+
+	b.addAction(&actionInfo{name: name, typ: caSetProperty, source: property, target: value})
+
+	after := actCostFinalize
+	if b.lastScopeAction != "" {
+		after = b.lastScopeAction
+	}
+
+	b.schedule(seqInstallUI, name, cond, "", after, 0)
+	b.lastScopeAction = name
+}
