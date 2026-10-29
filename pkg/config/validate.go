@@ -2097,7 +2097,11 @@ func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independ
 		}
 
 		v.required(dialogPath+".title", dialog.Title)
-		v.required(dialogPath+".after", dialog.After)
+		v.oneOf(dialogPath+".flow", dialog.Flow, "", FlowInstall, FlowRemove)
+
+		if !dialog.Removal() {
+			v.required(dialogPath+".after", dialog.After)
+		}
 
 		if len(dialog.Fields) == 0 {
 			v.errorf(dialogPath+".fields", "at least one field")
@@ -2118,6 +2122,32 @@ func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independ
 	}
 
 	v.choiceProperties(cfg)
+	v.removeDialogs(cfg)
+}
+
+// removeDialogs warns when a remove dialog cannot be reached:
+// ARPNOREMOVE disables Remove in the maintenance menu, and without Change
+// in Add or Remove Programs only running the package again opens the menu
+// (spec section 7.7).
+func (v *validator) removeDialogs(cfg *Config) {
+	arp := cfg.Product.ARP
+	if !arp.NoModify && !arp.NoRemove {
+		return
+	}
+
+	reason := "product.arp.noModify hides Change in Add or Remove Programs, which is expected to open the maintenance menu; " +
+		"without Change this page shows only when the package runs again"
+	if arp.NoRemove {
+		reason = "product.arp.noRemove disables Remove in the maintenance menu, so no one can reach this page"
+	}
+
+	for i, dialog := range cfg.UI.Dialogs {
+		if dialog != nil && dialog.Removal() {
+			v.warnf(fmt.Sprintf("ui.dialogs[%d].flow", i), "%s", reason)
+
+			return
+		}
+	}
 }
 
 // launchProperty is the property of the ui.launch check box.

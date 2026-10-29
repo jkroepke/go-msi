@@ -194,6 +194,9 @@ type wizard struct {
 	// flow is the install path through the pages, from the welcome page
 	// to the ready page; added dialogs are inserted into it.
 	flow []string
+	// removal is the path from the maintenance menu to the page that
+	// confirms the removal, with the remove dialogs in between.
+	removal []string
 }
 
 // text returns the wizard text for a ui.strings key.
@@ -309,10 +312,14 @@ func (b *build) ui() error {
 	} else {
 		wiz.flow = []string{dlgWelcome, dlgVerifyReady}
 
-		if _, set := b.properties["ARPNOMODIFY"]; !set {
+		// Change in Add or Remove Programs is expected to open the
+		// maintenance menu with the remove dialogs (spec section 7.7).
+		if _, set := b.properties["ARPNOMODIFY"]; !set && !b.removeDialogs() {
 			b.properties["ARPNOMODIFY"] = "1"
 		}
 	}
+
+	wiz.removal = []string{dlgMaintType, dlgVerifyRemove}
 
 	if license := b.license(); license != "" {
 		wiz.licenseDialog(license)
@@ -331,6 +338,7 @@ func (b *build) ui() error {
 
 	b.addedDialogs(wiz)
 	wiz.link()
+	wiz.linkRemoval()
 
 	banner, background, errorIcon := b.themePictures()
 
@@ -360,9 +368,19 @@ func (b *build) addedDialogs(wiz *wizard) {
 			continue
 		}
 
-		index := slices.Index(wiz.flow, cfg.After)
-		if index < 0 || cfg.After == dlgVerifyReady {
-			b.errorf(path+".after", "%s is not a wizard page that can be followed; use %s", cfg.After, strings.Join(wiz.flow[:len(wiz.flow)-1], ", "))
+		flow, after := &wiz.flow, cfg.After
+		if cfg.Removal() {
+			flow = &wiz.removal
+
+			if after == "" {
+				after = dlgMaintType
+			}
+		}
+
+		index := slices.Index(*flow, after)
+		if index < 0 || index == len(*flow)-1 {
+			b.errorf(path+".after", "%s is not a wizard page that can be followed in the %s flow; use %s",
+				after, flowName(cfg), strings.Join((*flow)[:len(*flow)-1], ", "))
 
 			continue
 		}
@@ -379,8 +397,28 @@ func (b *build) addedDialogs(wiz *wizard) {
 		}
 
 		wiz.add(b.formDialog(wiz, cfg))
-		wiz.flow = slices.Insert(wiz.flow, index+1, cfg.ID)
+		*flow = slices.Insert(*flow, index+1, cfg.ID)
 	}
+}
+
+// flowName is the flow of an added dialog as ui.dialogs[].flow spells it.
+func flowName(cfg *config.Dialog) string {
+	if cfg.Removal() {
+		return config.FlowRemove
+	}
+
+	return config.FlowInstall
+}
+
+// removeDialogs reports whether ui.dialogs has a dialog in the remove flow.
+func (b *build) removeDialogs() bool {
+	for _, dialog := range b.cfg.UI.Dialogs {
+		if dialog.Removal() {
+			return true
+		}
+	}
+
+	return false
 }
 
 // fieldHeight is the height a field takes on a form dialog, without the gap
@@ -576,6 +614,27 @@ func (w *wizard) link() {
 
 	if change := w.byName[dlgMaintType].find("Change"); change != nil {
 		change.on(evNewDialog, w.flow[entry], condAlways)
+	}
+}
+
+// linkRemoval wires Remove in the maintenance menu, Next and Back along the
+// remove flow. Only an installed product reaches it, so no step depends on
+// Installed.
+func (w *wizard) linkRemoval() {
+	for i, name := range w.removal {
+		page := w.byName[name]
+
+		if i == 0 {
+			page.find(ctlRemove).on(evNewDialog, w.removal[1], condAlways)
+
+			continue
+		}
+
+		page.find(ctlBack).on(evNewDialog, w.removal[i-1], condAlways)
+
+		if i+1 < len(w.removal) {
+			page.find(ctlNext).on(evNewDialog, w.removal[i+1], condAlways)
+		}
 	}
 }
 

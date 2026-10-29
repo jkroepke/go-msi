@@ -55,7 +55,7 @@ func (w *wizard) verifyPages() {
 	remove := w.add(&uiDialog{name: dlgVerifyRemove, attrs: dlgPage, first: ctlRemove})
 	remove.innerHeader(w.text("ReadyRemoveTitle"), w.text("ReadyRemoveText"))
 	remove.control(strip())
-	remove.control(button(ctlBack, backX, buttonY, w.text("Back"))).on(evNewDialog, dlgMaintType, condAlways)
+	remove.control(button(ctlBack, backX, buttonY, w.text("Back")))
 	remove.control(button(ctlRemove, nextX, buttonY, w.text("Remove"))).
 		on("Remove", "ALL", condAlways).
 		on(evEndDialog, endReturn, condAlways)
@@ -101,7 +101,6 @@ func (w *wizard) maintenancePages(tree bool) {
 	menu.control(&uiControl{
 		name: ctlRemove, typ: typPushButton, x: 40, y: top, w: 80, h: buttonH, attrs: ctlActive, text: w.text("MaintenanceRemove"), ring: true,
 	}).
-		on(evNewDialog, dlgVerifyRemove, condAlways).
 		when("Disable", "ARPNOREMOVE")
 	menu.control(text("RemoveText", 130, top+2, 220, 20, w.text("MaintenanceRemoveText")))
 
