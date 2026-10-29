@@ -32,9 +32,10 @@ The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
   `shell32.dll` with `LoadLibraryExW(..., LOAD_LIBRARY_SEARCH_SYSTEM32)` and
   `GetProcAddress` at runtime instead of importing it, so the import table
   stays kernel32, advapi32 and msi (`cadll_test.go` checks that), and it
-  always returns success. Its log line names the session it ran in, since
-  the notification presumably reaches only the shell of that session (not
-  documented; REG-05 records the session).
+  always returns success. Its log line names the session it ran in. On
+  SERVER2025 it ran in the msiexec client's session and a listener there
+  received the notification (REG-05; `docs/spec/msitest/reg05` is the
+  probe, run it elevated in a session with Explorer).
 - The DLL starts the child with `CreateProcessAsUserW` and the thread's
   impersonation token when there is one, else `CreateProcessW`:
   `CreateProcessW` ignores an impersonation token. CA-03 showed no thread

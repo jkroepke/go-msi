@@ -820,7 +820,9 @@ actions (section 4.9) and calls its `BuilderAssocChanged` entry right after
 `afterInstallFinalize`), on install, repair and removal: it calls
 `SHChangeNotify(SHCNE_ASSOCCHANGED)`, which Microsoft asks for after a
 change to file associations, because the shell may otherwise not pick the
-change up before a restart. A failure there is logged and ignored (REG-05).
+change up before a restart. A failure there is logged and ignored. On
+SERVER2025 a window listening for that notification received it on
+install and on uninstall; plain registry entries send none (REG-05).
 
 **Component shortcuts.** A component can list `shortcuts` of its own, for
 shortcuts that do not point at a file listed with them. Each names exactly
