@@ -722,10 +722,11 @@ rows left the same registry behind (specification section 10.2). Those
 tables only register advertised associations, which are out of scope for
 good (section 6). msi-builder also writes an empty `<progId>` value in
 `.<extension>\OpenWithProgids`, which Microsoft asks of every program that
-takes over an extension and which lists the program under Open with. The
-root is HKCR, which the engine writes to `HKLM\Software\Classes` per
-machine; a per-user package names `HKCU\Software\Classes` itself, because
-HKCR fails ICE105.
+takes over an extension and which lists the program under Open with
+(specification section 10.2; the empty value is unverified until REG-04
+runs). The root is HKCR, which the engine writes to `HKLM\Software\Classes`
+per machine; a per-user package names `HKCU\Software\Classes` itself,
+because HKCR fails ICE105.
 
 `arguments` is formatted text, so `[INSTALLDIR]` works there;
 `description`, `text` and `contentType` are written literally. A ProgID may
@@ -737,11 +738,11 @@ Windows or other programs own (`txt`, `xml`, `pdf`, …) gets a warning: it
 would be left without a handler. For such an extension, `openWithOnly: true`
 writes only the `OpenWithProgids` entry: the program shows up under Open
 with and the extension keeps its default program and content type
-(`contentType` is then an error). Uninstalling removes only that entry, and
-other programs' entries stay. Any number of ProgIDs may list an extension
-with `openWithOnly`; the default may be registered once. Explorer's "Open
-with" choice of the user (`UserChoice`) still wins over the package's
-default.
+(`contentType` is then an error). Uninstalling is expected to remove only
+that entry and keep other programs' entries (unverified, REG-04). Any
+number of ProgIDs may list an extension with `openWithOnly`; the default
+may be registered once. Explorer's "Open with" choice of the user
+(`UserChoice`) still wins over the package's default.
 
 **Permissions.** A file, registry value, service or the component's folder
 can carry a `permissions` block (`folderPermissions` on the component, which

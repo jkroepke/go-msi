@@ -142,6 +142,7 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 		`MsiBuilderTest.Document\shell\open`:          "&Open",
 		`MsiBuilderTest.Document\shell\open\command`:  `"` + exe + `" "%1"`,
 		`MsiBuilderTest.Document\shell\print\command`: `"` + exe + `" /p "%1"`,
+		`MsiBuilderTest.Other\shell\open\command`:     `"` + exe + `" "%1"`,
 	} {
 		if got := regDefault(t, classes+key); !strings.EqualFold(got, want) {
 			t.Errorf("%s = %q, want %q", key, got, want)
