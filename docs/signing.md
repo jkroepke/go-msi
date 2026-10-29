@@ -45,8 +45,12 @@ or revocation; Windows does that at install time.
 - RSA signatures without a timestamp are deterministic: the same package and
   key give the same bytes.
 
-Packages with sub-storages (embedded transforms) cannot be signed, because
-msi-builder does not write sub-storages. `msi-builder verify` reads them.
+Packages with storages directly under the root, such as the embedded
+language transforms of a multi-language package (`ui.languages`), are
+signed like any other: the signature covers each storage's streams and CLSID,
+and streams named like the signature streams inside a storage are left out.
+A storage inside a storage is refused rather than dropped, since msi-builder
+does not write deeper trees. `msi-builder verify` reads both.
 
 ## Go API
 
