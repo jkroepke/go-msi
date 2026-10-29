@@ -1223,12 +1223,14 @@ scheduleReboot:
 
 The builder schedules the `ScheduleReboot` standard action after
 `InstallFinalize` with that condition; `scheduleReboot: {}` asks every time
-the execute sequence runs, uninstall and repair included. The engine then
-asks the user to restart at the end, or, with `/norestart`,
-`REBOOT=ReallySuppress` or a quiet install, does not restart and returns
-3010 (ERROR_SUCCESS_REBOOT_REQUIRED), which deployment tools treat as
-success (`TestMsiexecScheduleReboot`). Actions can use `ScheduleReboot` as an
-anchor. `ForceReboot`, which restarts in the middle of the installation and
+the execute sequence runs, uninstall and repair included. With a UI the
+engine asks the user to restart at the end. With `/norestart` or
+`REBOOT=ReallySuppress` it does not restart and returns 3010
+(ERROR_SUCCESS_REBOOT_REQUIRED), which deployment tools treat as success
+(`TestMsiexecScheduleReboot`). A quiet install (`/qn`) without one of them
+may restart the machine without asking, so unattended deployments pass
+`/norestart`. When `scheduleReboot` is set, execute-sequence actions can use
+`ScheduleReboot` as an anchor. `ForceReboot`, which restarts in the middle of the installation and
 resumes it afterwards, is not offered: a simple package has nothing that
 needs it.
 

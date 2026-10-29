@@ -590,8 +590,9 @@ type Placement struct { //nolint:govet // field order is the YAML key order
 }
 
 // ScheduleReboot asks for a restart at the end of the installation: the
-// ScheduleReboot action after InstallFinalize. msiexec then returns 3010, and
-// restarts only when the user agrees or the UI level allows it.
+// ScheduleReboot action after InstallFinalize. With /norestart or
+// REBOOT=ReallySuppress msiexec returns 3010 instead of restarting; a quiet
+// install without them may restart without asking.
 type ScheduleReboot struct {
 	// When is install, upgrade, uninstall or maintenance, as in a schedule.
 	When      string `yaml:"when"`
