@@ -491,7 +491,7 @@ func (b *build) useRunDLL() bool {
 	}
 
 	if b.cfg.Binaries[cadll.Key] != "" {
-		b.errorf("binaries."+cadll.Key, "the key %s is reserved for the custom action DLL of run actions and file types", cadll.Key)
+		b.errorf("binaries."+cadll.Key, "the key %s is reserved for the custom action DLL of run actions", cadll.Key)
 	}
 
 	dll, err := cadll.Binary(string(b.cfg.Package.Platform))

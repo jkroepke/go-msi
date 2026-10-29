@@ -3,7 +3,8 @@
 # Starts a listener window registered for SHCNE_ASSOCCHANGED in this session,
 # checks it with an SHChangeNotify call from this process, then installs and
 # uninstalls three packages and records which steps produced a notification:
-#   probe    msi-builder fileTypes (BuilderAssocChanged action)
+#   probe    msi-builder fileTypes (BuilderAssocChanged action; build it
+#            from ba5362f, see probe.yaml: newer builds have no action)
 #   baseline msi-builder plain HKCR registry entries, no action
 #   native   ProgId/Extension/Verb tables (WiX 5, black box), no action
 #
