@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -590,6 +591,8 @@ type dirTree struct {
 	origin string
 	// installOrigin is the YAML path of the install dir's name.
 	installOrigin string
+	// installDefaulted is set when the file sets no installDir.
+	installDefaulted bool
 }
 
 func newDirTree(cfg *Config) *dirTree {
@@ -620,16 +623,24 @@ func (t *dirTree) installDir() {
 
 	install := &t.cfg.InstallDir
 	perUser := t.cfg.Package.Scope == ScopePerUser
+	t.installDefaulted = *install == InstallDir{}
 
 	if install.ID == "" {
 		install.ID = DefaultInstallDirID
 	}
 
-	if install.Parent == "" {
+	// A per-user install dir goes below LocalAppDataFolder\Programs, the
+	// per-user Program Files, also when installDir names it.
+	defaultParent := install.Parent == ""
+	if defaultParent {
 		install.Parent = defaultInstallParent(t.cfg.Package.Platform, perUser)
 	}
 
 	t.installOrigin = "installDir.name"
+
+	if names := splitPath(install.Name); defaultParent && perUser && len(names) > 0 && !strings.EqualFold(names[0], "Programs") {
+		install.Name = "Programs/" + install.Name
+	}
 
 	if install.Name == "" {
 		t.installOrigin = productNamePath
@@ -670,10 +681,30 @@ func (t *dirTree) ensureInstallDir() *Directory {
 		parent = t.child(parent, name, "")
 	}
 
+	if t.installDefaulted {
+		t.cfg.InstallDir.besides = strings.Join(t.publicIDs(), ", ")
+	}
+
 	dir := t.child(parent, names[len(names)-1], install.ID)
 	dir.Configurable = true
 
 	return dir
+}
+
+// publicIDs returns the upper-case ids of the directories in the tree
+// other than standard folders such as TARGETDIR.
+func (t *dirTree) publicIDs() []string {
+	var ids []string
+
+	for id := range t.byID {
+		if IsPublicProperty(id) && !standardFolders[id] {
+			ids = append(ids, id)
+		}
+	}
+
+	slices.Sort(ids)
+
+	return ids
 }
 
 // installNames returns the folders of the install dir's path. A name taken

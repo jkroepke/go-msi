@@ -394,6 +394,14 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, verbs: [{id: open}, {id: Open}]}]\n", 1),
 			sevError, "components[0].files[0].fileTypes[0].verbs[1].id", "listed twice",
 		},
+		"registry value twice": {
+			base + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\App, name: a, value: x}, {root: HKLM, key: software\\app, name: A, value: y}]\n    files:", 1),
+			sevError, "components[0].registry[1]", "already writes this registry value",
+		},
+		"default install dir beside a tree": {
+			strings.ReplaceAll(base, "INSTALLDIR", "APPLICATIONFOLDER") + "components:\n  - files: [{ source: app.exe }]\n",
+			sevWarning, "installDir", "next to APPLICATIONFOLDER",
+		},
 		"scheduleReboot bad when": {
 			base + appComponent + "scheduleReboot: { when: always }\n",
 			sevError, "scheduleReboot.when", "always",

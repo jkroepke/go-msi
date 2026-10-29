@@ -3,6 +3,7 @@ package builder
 import (
 	"cmp"
 	"fmt"
+	"iter"
 	"maps"
 	"slices"
 	"strings"
@@ -152,6 +153,7 @@ func (b *build) removeShortcutFolders(carrier, dirID string, removed map[string]
 		}
 
 		removed[dir.id] = true
+		b.removedFolders[dir.id] = true
 		b.table("RemoveFile").Add(generatedID("rmf", "Shortcuts", carrier, dir.id), carrier, nil, dir.id, removeOnUninstall)
 	}
 }
@@ -168,9 +170,20 @@ var removeModes = map[string]int{ //nolint:gochecknoglobals // lookup table
 // the engine removes once it is empty (ICE64).
 func (b *build) removeFiles() error {
 	for _, comp := range b.cfg.Components {
-		for _, entry := range comp.RemoveFiles {
+		for dir := range b.profileFolders(comp.Directory) {
+			b.removedFolders[dir.id] = true
+		}
+	}
+
+	for i, comp := range b.cfg.Components {
+		for j, entry := range comp.RemoveFiles {
 			dirID := cmp.Or(entry.Directory, comp.Directory)
 			b.dirs[dirID].used = true
+
+			if entry.Name == "" && entry.On != config.RemoveOnInstall && b.removedFolders[dirID] {
+				b.warnf(fmt.Sprintf("%s.removeFiles[%d]", comp.Path(i), j),
+					"the builder already removes this folder on uninstall, for a shortcut or a component in the user profile; this entry adds a second row")
+			}
 
 			key := cmp.Or(entry.ID, generatedID("rmf", "RemoveFile", comp.ID, dirID, strings.ToLower(entry.Name), entry.On))
 
@@ -182,16 +195,28 @@ func (b *build) removeFiles() error {
 			b.table("RemoveFile").Add(key, comp.ID, name, dirID, removeModes[entry.On])
 		}
 
-		if !config.IsProfileFolder(b.topFolder(comp.Directory)) {
-			continue
-		}
-
-		for dir := b.dirs[comp.Directory]; dir != nil && !dir.standard; dir = b.dirs[dir.parent] {
+		for dir := range b.profileFolders(comp.Directory) {
 			b.table("RemoveFile").Add(generatedID("rmf", "Folder", comp.ID, dir.id), comp.ID, nil, dir.id, removeOnUninstall)
 		}
 	}
 
 	return nil
+}
+
+// profileFolders yields the folders between a directory in the user
+// profile and the standard folder above it; nothing outside the profile.
+func (b *build) profileFolders(dirID string) iter.Seq[*dirInfo] {
+	return func(yield func(*dirInfo) bool) {
+		if !config.IsProfileFolder(b.topFolder(dirID)) {
+			return
+		}
+
+		for dir := b.dirs[dirID]; dir != nil && !dir.standard; dir = b.dirs[dir.parent] {
+			if !yield(dir) {
+				return
+			}
+		}
+	}
 }
 
 // removeFileName returns the FileName of a RemoveFile row: that of a

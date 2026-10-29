@@ -2,6 +2,7 @@ package builder_test
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -79,5 +80,33 @@ func TestRemoveFiles(t *testing.T) {
 	// The empty entry, plus Acme and Tools below ProgramMenuFolder.
 	if folders != 3 {
 		t.Errorf("%d folder rows, want 3: %v", folders, byName)
+	}
+}
+
+// TestRemoveFilesDuplicateFolder warns about a hand-written folder entry for
+// a folder that a generated row already removes (round 4: renderdoc,
+// rakudo), and not about one that removes the folder on install.
+func TestRemoveFilesDuplicateFolder(t *testing.T) {
+	t.Parallel()
+
+	cfg := shortcutConfig(t, `
+  - files:
+      - source: app.exe
+        shortcuts: [{ directory: ProgramMenuFolder/Acme }]
+  - directory: ProgramMenuFolder/Acme
+    registry: [{ root: HKCU, key: Software\Acme, name: menu, type: dword, value: 1 }]
+    removeFiles: [{}, { on: install }]
+`)
+
+	var warned []string
+
+	for _, d := range mustBuild(t, cfg).Diagnostics {
+		if strings.Contains(d.Message, "already removes this folder") {
+			warned = append(warned, d.Path)
+		}
+	}
+
+	if want := []string{"components[1].removeFiles[0]"}; !slices.Equal(warned, want) {
+		t.Errorf("warnings at %v, want %v", warned, want)
 	}
 }

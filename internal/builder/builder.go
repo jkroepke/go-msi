@@ -113,6 +113,9 @@ type build struct { //nolint:govet // grouped by build step
 	// shortcutCarrier maps a component to the generated component that
 	// holds the shortcuts to its files.
 	shortcutCarrier map[string]string
+	// removedFolders are the folders that generated RemoveFile rows remove
+	// on uninstall.
+	removedFolders map[string]bool
 	// shortNames are the short names taken per folder (canonical path),
 	// shared by the directories and files in it and by every directory key
 	// that names it (section 11.3).
@@ -256,6 +259,7 @@ func newBuild(cfg *config.Config, opts Options, diags config.Diagnostics) *build
 		secure:          make(map[string]bool),
 		hidden:          make(map[string]bool),
 		shortcutCarrier: make(map[string]string),
+		removedFolders:  make(map[string]bool),
 		shortNames:      make(map[string]map[string]bool),
 		shortcutNames:   make(map[string]map[string]bool),
 		schedules:       make(map[string][]sequence.Action),

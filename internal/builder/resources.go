@@ -22,7 +22,24 @@ func (b *build) registryID(info *componentInfo, r *config.RegistryValue) string 
 		return r.ID
 	}
 
-	return generatedID("reg", "Registry", info.cfg.ID, r.Root, strings.ToLower(r.Key), strings.ToLower(r.Name))
+	// A key row's Name column is * or +, so it must not share the id of the
+	// key's default value.
+	name := strings.ToLower(r.Name)
+	if r.Type == regTypeKey {
+		name = registryKeyName(r)
+	}
+
+	return generatedID("reg", "Registry", info.cfg.ID, r.Root, strings.ToLower(r.Key), name)
+}
+
+// registryKeyName is the Name column of a type key row: * also deletes the
+// key on uninstall, + only creates it.
+func registryKeyName(r *config.RegistryValue) string {
+	if r.RemoveOnUninstall {
+		return "*"
+	}
+
+	return "+"
 }
 
 // registryValue encodes a typed value the way the Registry table expects
@@ -75,12 +92,9 @@ func (b *build) writeRegistry(info *componentInfo) {
 	for _, reg := range comp.Registry {
 		var name any
 
-		switch {
-		case reg.Type == "key" && reg.RemoveOnUninstall:
-			name = "*"
-		case reg.Type == "key":
-			name = "+"
-		default:
+		if reg.Type == regTypeKey {
+			name = registryKeyName(reg)
+		} else {
 			name = nullable(reg.Name)
 		}
 

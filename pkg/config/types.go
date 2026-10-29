@@ -149,6 +149,10 @@ type InstallDir struct {
 
 	// expanded is set by the first expandShorthands.
 	expanded bool
+	// besides lists, comma separated, the upper-case directory ids of a
+	// tree that the default install dir was added next to, for the
+	// validator to warn about.
+	besides string
 }
 
 // Directory is a node of the install tree.
@@ -588,6 +592,10 @@ type Placement struct { //nolint:govet // field order is the YAML key order
 	// is ANDed with Condition (see Placement.FullCondition).
 	When string `yaml:"when"`
 }
+
+// RegistryTypeKey is the registry type of an entry that creates a key
+// without a value.
+const RegistryTypeKey = "key"
 
 // ScheduleReboot asks for a restart at the end of the installation: the
 // ScheduleReboot action after InstallFinalize. With /norestart or

@@ -432,6 +432,11 @@ func (v *validator) directories(cfg *Config, known *refs) { //nolint:cyclop,goco
 		}
 	}
 
+	if besides := cfg.InstallDir.besides; besides != "" {
+		v.warnf("installDir", "the default install dir %s is added next to %s from directories; components without a directory go to %s. "+
+			"Set installDir.id to use a directory of the tree, or set installDir to keep this", cfg.InstallDir.ID, besides, cfg.InstallDir.ID)
+	}
+
 	v.rememberComponent(cfg, known)
 
 	if cfg.Product.ARP.InstallLocation != "" && known.dirs[cfg.Product.ARP.InstallLocation] == nil {
@@ -1098,8 +1103,21 @@ func (v *validator) fileVersion(filePath string, file *File, comp *Component) {
 }
 
 func (v *validator) componentRegistry(p string, c *Component, ids map[string]bool, perUser bool) { //nolint:cyclop,gocognit // a flat list of independent checks
+	seen := make(map[[4]string]bool)
+
 	for j, value := range c.Registry {
 		valuePath := fmt.Sprintf("%s.registry[%d]", p, j)
+
+		// A key row and the key's default value are different rows; two
+		// writes of one value would get the same generated id.
+		if value.ID == "" {
+			key := [4]string{value.Root, strings.ToLower(value.Key), strings.ToLower(value.Name), strconv.FormatBool(value.Type == RegistryTypeKey)}
+			if seen[key] {
+				v.errorf(valuePath, "this component already writes this registry value; set id on one of them if both are meant")
+			}
+
+			seen[key] = true
+		}
 
 		if value.ID != "" {
 			if !IsIdentifier(value.ID) {
@@ -1118,7 +1136,7 @@ func (v *validator) componentRegistry(p string, c *Component, ids map[string]boo
 		v.oneOf(valuePath+".type", value.Type, "string", "expandString", "multiString", "dword", "binary", "key")
 
 		switch value.Type {
-		case "key":
+		case RegistryTypeKey:
 			if len(value.Value) > 0 || value.Name != "" {
 				v.errorf(valuePath, "type key takes neither name nor value")
 			}
@@ -1144,7 +1162,7 @@ func (v *validator) componentRegistry(p string, c *Component, ids map[string]boo
 			v.errorf(valuePath, "append and prepend are exclusive")
 		}
 
-		if value.RemoveOnUninstall && value.Type != "key" {
+		if value.RemoveOnUninstall && value.Type != RegistryTypeKey {
 			v.errorf(valuePath+".removeOnUninstall", "only for type key; values are always removed with their component")
 		}
 	}
