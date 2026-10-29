@@ -60,17 +60,10 @@ func fileSignatureHash(t *testing.T, path string) ([]byte, error) {
 func signatureInformation(t *testing.T, path string, hash []byte, size *uint32) uintptr {
 	t.Helper()
 
-	var (
-		cert uintptr
-		buf  uintptr
-	)
-
-	if len(hash) > 0 {
-		buf = uintptr(unsafe.Pointer(&hash[0]))
-	}
+	var cert uintptr
 
 	hresult, _, _ := pMsiGetFileSignatureInformationW.Call(uintptr(unsafe.Pointer(wstr(t, path))), 0,
-		uintptr(unsafe.Pointer(&cert)), buf, uintptr(unsafe.Pointer(size)))
+		uintptr(unsafe.Pointer(&cert)), uintptr(unsafe.Pointer(unsafe.SliceData(hash))), uintptr(unsafe.Pointer(size)))
 	if cert != 0 {
 		_, _, _ = pCertFreeCertificateContext.Call(cert)
 	}
@@ -185,9 +178,14 @@ func TestCabinetSignatureFormat(t *testing.T) {
 			skipped := bytes.Clone(signed)
 			skipped[tc.off] ^= 1
 
+			want := uint32(trustBadDigest)
+			if tc.valid {
+				want = pki.wantValid()
+			}
+
 			got := winVerifyTrust(t, writeTemp(t, "skipped.cab", skipped))
-			if (got == pki.wantValid()) != tc.valid {
-				t.Errorf("%v: WinVerifyTrust of a changed byte at %#x = %#x", algo, tc.off, got)
+			if got != want {
+				t.Errorf("%v: WinVerifyTrust of a changed byte at %#x = %#x, want %#x", algo, tc.off, got, want)
 			}
 
 			t.Logf("SIG-08: %v: WinVerifyTrust with byte %#x changed = %#x", algo, tc.off, got)
@@ -197,8 +195,8 @@ func TestCabinetSignatureFormat(t *testing.T) {
 		changed[len(reserved)-1] ^= 1
 
 		got := winVerifyTrust(t, writeTemp(t, "tampered.cab", changed))
-		if got == trustOK {
-			t.Errorf("%v: WinVerifyTrust accepted a changed cabinet", algo)
+		if got != trustBadDigest {
+			t.Errorf("%v: WinVerifyTrust of a changed cabinet = %#x, want %#x", algo, got, uint32(trustBadDigest))
 		}
 
 		t.Logf("SIG-08: %v: WinVerifyTrust of a changed data byte = %#x", algo, got)
@@ -234,11 +232,24 @@ func TestCabinetSignatureFormat(t *testing.T) {
 	t.Logf("SIG-08: signtool cabinet: flags % x, reserve fields and signature header % x, %d bytes for a %d-byte cabinet",
 		data[0x1E:0x20], data[36:min(len(data), 60)], len(data), len(plain))
 
-	// The indirect data signtool writes for a cabinet.
-	for _, oid := range [][]byte{{0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x01, 0x19}, {0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x01, 0x1C}} {
-		if at := bytes.Index(data, oid); at >= 0 {
-			t.Logf("SIG-08: signtool indirect data from the type OID: % x", data[max(0, at-6):min(len(data), at+90)])
-		}
+	// signtool inserts the same 24 bytes msi-builder reserves.
+	order := binary.LittleEndian
+	if len(data) < 60 || order.Uint16(data[0x1E:])&0x4 == 0 || order.Uint32(data[36:]) != 20 ||
+		order.Uint32(data[40:]) != 0x00100000 || int(order.Uint32(data[8:])) != len(plain)+cab.SignatureReserve ||
+		len(data) != len(plain)+cab.SignatureReserve+int(order.Uint32(data[48:])) {
+		t.Errorf("signtool's cabinet layout differs from the reserve msi-builder writes")
+	}
+
+	// The indirect data signtool writes for a cabinet: SpcLink with a page
+	// hash.
+	spcLink := []byte{0x06, 0x0A, 0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x01, 0x1C}
+	pageHash := []byte{0x06, 0x0A, 0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x05, 0x01}
+
+	at := bytes.Index(data, spcLink)
+	if at < 0 || !bytes.Contains(data, pageHash) {
+		t.Error("signtool's cabinet signature has no SpcLink indirect data with a page hash")
+	} else {
+		t.Logf("SIG-08: signtool indirect data from the type OID: % x", data[max(0, at-4):min(len(data), at+88)])
 	}
 
 	sig, err := sign.VerifyCabinet(bytes.NewReader(data))
@@ -331,6 +342,9 @@ func checkInstall(t *testing.T, path string, files []probeFile, label string, wa
 	dir := filepath.Join(os.Getenv("ProgramFiles"), "Cabinet Probe")
 
 	code := msiexecCode(t, log, "/i", path)
+	if !strings.Contains(readLog(log), "Validating digital signature of file") {
+		t.Errorf("%s: msiexec did not log a cabinet signature check", label)
+	}
 	if code != 0 {
 		t.Logf("SIG-09: %s: refused, msiexec exit %d\n%s", label, code, logLines(log))
 
@@ -466,7 +480,11 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				_ = checkInstall(t, pkg.path, files, pkg.label+": "+tc.label, pkg.want[i+1])
+				same := checkInstall(t, pkg.path, files, pkg.label+": "+tc.label, pkg.want[i+1])
+				if pkg.want[i+1] && same {
+					// Only the cabinet of another build installs, with its files.
+					t.Errorf("%s: %s installed the package's own files", pkg.label, tc.label)
+				}
 
 				if err := os.WriteFile(second, original, 0o600); err != nil {
 					t.Fatal(err)

@@ -191,3 +191,16 @@ func TestSignCabinetTimestamp(t *testing.T) {
 		t.Errorf("Timestamp = %v, want %v", sig.Timestamp, authority.time)
 	}
 }
+
+func TestOptionsCheckHash(t *testing.T) {
+	t.Parallel()
+
+	keys := rsaKey(t)
+	if err := (&Options{Signer: keys.signer, Certificates: keys.certs, Hash: crypto.MD5}).Check(); err == nil {
+		t.Error("Check accepted MD5")
+	}
+
+	if err := (&Options{Signer: keys.signer, Certificates: keys.certs}).Check(); err != nil {
+		t.Errorf("Check of the default options = %v", err)
+	}
+}

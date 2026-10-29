@@ -35,7 +35,8 @@ type Options struct {
 	// the tables protect the cabinets only as far as the package is
 	// protected. Nil, or embedded cabinets, which the package signature
 	// covers, leave the cabinets unsigned. A timestamp request is bounded
-	// by the HTTP client's timeout; the build cannot cancel it.
+	// by the HTTP client's timeout; the build cannot cancel it. An ECDSA key
+	// makes the package differ per build, since its signature values are.
 	SignCabinets *sign.Options
 	ToolName     string
 	// Output is the path the package is written to. The cabinet and the

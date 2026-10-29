@@ -250,6 +250,8 @@ Silent-failure cases a producer has to guard against itself:
 | SIG-05 | Partly confirmed | A changed root CLSID gives `0x800B0003` (TRUST_E_SUBJECT_FORM_UNKNOWN): the MSI SIP no longer claims the file. Nested storages not covered (go-msi writes none) |
 | SIG-06 | Confirmed | RSA with SHA-1/256/384/512, ECDSA P-256/SHA-256 and P-384/SHA-384, and an RFC 3161 timestamp all pass WinVerifyTrust on Server 2025. Not run on Server 2016 |
 | SIG-07 | Not run | msi-rs regression case; test a candidate writer |
+| SIG-08 | Confirmed | [Signed external cabinets](#signed-external-cabinets-sig-08-sig-09): WinVerifyTrust, `Get-AuthenticodeSignature` and `signtool` accept msi-builder cabinet signatures; `MsiGetFileSignatureInformation` reports the signature value |
+| SIG-09 | Confirmed | [Signed external cabinets](#signed-external-cabinets-sig-08-sig-09): msiexec refuses changed, swapped, re-signed and unsigned cabinets when Hash is the signature value; trust is not checked |
 | INT-01…03 | Not run | WiX 5.0.2 is on the machine and wixl 0.106 runs in a container since ENV-02 (2026-10-29); ENV-02 covers only one-file packages; INT-02 and INT-03 also need msitools' `msibuild` and `msiinfo`, which `build-wixl.sh` does not install |
 
 ## WiX and msitools one-file packages (ENV-02)
@@ -752,7 +754,7 @@ Run on 2026-10-29 by the `windows-latest` CI runner (Windows Server 2025
 Datacenter 10.0.26100, image windows-2025-vs2026 20261021.278.1), elevated,
 for msi-builder PR #103 (workflow runs 40892925093, commit 2cbd01f,
 40895190291, commit b947afb, and 40900782153, commit aa54bd3): `TestCabinetSignatureFormat` and
-`TestMsiexecChecksSignedCabinets` in
+`TestMsiexecChecksSignedCabinets` and `TestICESignedCabinets` in
 `internal/builder/nativetest/cabsign_windows_test.go`, with a test CA added
 to the machine's root store and an RSA-2048 leaf.
 

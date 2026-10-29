@@ -10,6 +10,11 @@
 //
 // Verify checks the digests and the cryptographic signature. It does not
 // build or trust a certificate chain; that is Windows' job.
+//
+// SignCabinet, VerifyCabinet and CabinetDigest do the same for a cabinet
+// written with a signature reserve (§12, "Signed external cabinets"): the
+// PKCS #7 follows the cabinet data. The signer's signature value,
+// Signature.Value, is what MsiDigitalSignature.Hash holds.
 package sign
 
 import (
@@ -58,11 +63,16 @@ type Options struct {
 }
 
 // Check reports whether the options can sign: a signer, its certificate,
-// and a key the format supports. Sign and SignCabinet check the same, so a
-// caller can find a bad key before it does the work that comes first.
+// a key the format supports and a supported digest. Sign and SignCabinet
+// check the same, so a caller can find bad options before it does the work
+// that comes first.
 func (o *Options) Check() error {
 	if o.Signer == nil || len(o.Certificates) == 0 {
 		return errors.New("sign: a signer and its certificate are required")
+	}
+
+	if _, err := digestAlgorithm(o.hash()); err != nil {
+		return err
 	}
 
 	return checkKey(o.Signer, o.Certificates[0])

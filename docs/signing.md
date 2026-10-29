@@ -66,6 +66,10 @@ anyone from replacing the tables along with the cabinets.
 - Windows Server 2025 installs cabinets signed with RSA (SHA-1, SHA-256,
   SHA-384), ECDSA P-256 and with a timestamp (SIG-09). Older Windows
   versions are not yet confirmed for cabinets.
+- Each cabinet's signature value is in the package, so an ECDSA key (whose
+  signatures are randomized) gives a different package and automatic
+  PackageCode on every build. RSA without a timestamp keeps both
+  reproducible; a timestamp changes only the cabinets.
 - Size limits (`builder.Options.CabinetSize`, 2 GiB) count the cabinet
   without its signature, which adds a few kilobytes to each file.
 - `msi-builder verify` checks the package signature only; it does not yet
