@@ -424,21 +424,8 @@ func (b *build) customActions() error { //nolint:cyclop // one pass over the for
 // through the BuilderRun property for immediate ones. It returns the name of
 // the type-51 action, which the caller schedules right before the action.
 func (b *build) runAction(custom *config.CustomAction, action *actionInfo) string {
-	if b.cfg.Binaries[cadll.Key] != "" {
-		b.errorf("binaries."+cadll.Key, "the key %s is reserved for the custom action DLL of run actions", cadll.Key)
-	}
-
-	if !b.runDLL {
-		b.runDLL = true
-
-		dll, err := cadll.Binary(string(b.cfg.Package.Platform))
-		if err != nil {
-			b.errorf("package.platform", "%v", err)
-
-			return ""
-		}
-
-		b.table("Binary").Add(cadll.Key, dll)
+	if !b.useRunDLL() {
+		return ""
 	}
 
 	directory := ""
@@ -467,6 +454,30 @@ func (b *build) runAction(custom *config.CustomAction, action *actionInfo) strin
 	action.typ, action.source, action.target = caDLL, cadll.Key, cadll.Entry
 
 	return setter.name
+}
+
+// useRunDLL adds the custom action DLL (internal/cadll) to the Binary table
+// once and reports whether it is there.
+func (b *build) useRunDLL() bool {
+	if b.runDLL {
+		return true
+	}
+
+	if b.cfg.Binaries[cadll.Key] != "" {
+		b.errorf("binaries."+cadll.Key, "the key %s is reserved for the custom action DLL of run actions and file types", cadll.Key)
+	}
+
+	dll, err := cadll.Binary(string(b.cfg.Package.Platform))
+	if err != nil {
+		b.errorf("package.platform", "%v", err)
+
+		return false
+	}
+
+	b.table("Binary").Add(cadll.Key, dll)
+	b.runDLL = true
+
+	return true
 }
 
 // firewall writes the netsh actions of the firewall helper (section 17.3,

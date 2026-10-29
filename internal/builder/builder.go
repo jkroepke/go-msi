@@ -129,6 +129,12 @@ type build struct { //nolint:govet // grouped by build step
 	// guids maps each ComponentId to the component that has it, to report
 	// duplicates (ICE08).
 	guids map[any]string
+	// fileTypeCarrier maps a component to the generated permanent
+	// components that hold the extension defaults of its file types.
+	fileTypeCarrier map[string][]string
+	// assocChange is set when the package registers file types and so
+	// notifies the shell (scheduleAssocChanged).
+	assocChange bool
 	// shortNames are the short names taken per folder (canonical path),
 	// shared by the directories and files in it and by every directory key
 	// that names it (section 11.3).
@@ -290,6 +296,7 @@ func newBuild(cfg *config.Config, opts Options, diags config.Diagnostics) *build
 		secure:          make(map[string]bool),
 		hidden:          make(map[string]bool),
 		shortcutCarrier: make(map[string]string),
+		fileTypeCarrier: make(map[string][]string),
 		shortNames:      make(map[string]map[string]bool),
 		shortcutNames:   make(map[string]map[string]bool),
 		schedules:       make(map[string][]sequence.Action),
@@ -350,6 +357,7 @@ func (b *build) writeTables() error {
 		b.searchProperties,
 		b.customActions,
 		b.firewall,
+		b.scheduleAssocChanged,
 		b.permissions,
 		b.streams,
 		b.customTables,

@@ -221,6 +221,7 @@ Silent-failure cases a producer has to guard against itself:
 | REG-02 | Confirmed | [log](msitest/results/REG-02/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40863315162: install deletes whole keys (with subkeys) and single values in the component's view only, HKMU as HKLM; a `/fomus` repair deletes them again; uninstall leaves them and removes only the package's own values |
 | REG-03 | Confirmed | [log](msitest/results/REG-03/powershell/log.md); SERVER2025, 2026-10-29: hand-made keys under `EventLog\Application` are sources with and without `CustomSource`, which changes nothing; `New-EventLog` writes only `EventMessageFile`; [details](#event-log-sources-reg-03) |
 | REG-04 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40906307375 (PR #113, `TestMsiexecFileTypes`): a `Registry` row with a `Name` and a Null `Value` writes an empty `REG_SZ` of that name in `HKLM\SOFTWARE\Classes\.ext\OpenWithProgids`; uninstall removes it and the key the package created, and leaves another program's value in the same key |
+| REG-05 | Not run | Needs the Windows CI run of `TestMsiexecFileTypes` |
 | ENVVAR-01 | Contradicted | [log](msitest/results/ENVVAR-01/environment/log.md); finding 4; segment removal on uninstall confirmed |
 | PROP-01 | Not run | Needs a non-administrator elevated install |
 | SEARCH-01 | Not run | Interactive full UI |

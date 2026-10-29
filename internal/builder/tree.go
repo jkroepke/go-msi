@@ -852,16 +852,27 @@ func (b *build) features() error {
 
 		tbl.Add(feature.ID, parentID, nullable(feature.Title), nullable(feature.Description), disp, *feature.Level, nullable(feature.Directory), attrs)
 
-		for _, c := range feature.Components {
-			featureComps.Add(feature.ID, c.ID)
-
-			if carrier, ok := b.shortcutCarrier[c.ID]; ok && carrier != c.ID {
-				featureComps.Add(feature.ID, carrier)
+		for _, component := range feature.Components {
+			for _, id := range b.featureComponents(component.ID) {
+				featureComps.Add(feature.ID, id)
 			}
 		}
 	})
 
 	return nil
+}
+
+// featureComponents lists a configured component with the components the
+// builder split off it (shortcut and file type carriers), which belong to
+// the same feature.
+func (b *build) featureComponents(compID string) []string {
+	ids := []string{compID}
+
+	if carrier, ok := b.shortcutCarrier[compID]; ok && carrier != compID {
+		ids = append(ids, carrier)
+	}
+
+	return append(ids, b.fileTypeCarrier[compID]...)
 }
 
 // uniqueGUID records the ComponentId of a component and reports one that
