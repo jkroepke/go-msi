@@ -49,6 +49,6 @@ this commit only checked the `MsiExec.exe` prefix). The keep run of UI-08
 ran `msiexec` with those arguments and reached the remove page. During
 `/x` the driver, which polls every 500 ms, saw only the confirmation box,
 the verbose log has no `Dialog created` line (the excerpt filter included
-it), and the server ran at `UILevel` 3 (basic). About 50 `Note: 1: 2205`
+it), and the server ran at `UILevel` 3 (basic). The 74 `Note: 1: 2205`
 lines (missing optional tables) are left out of the excerpt. Which command the
 Change and Uninstall buttons of Add or Remove Programs run was not tested.

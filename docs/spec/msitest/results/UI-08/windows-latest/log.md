@@ -24,9 +24,9 @@ passed, so its assertions held:
   same package and logged three warnings outside the remove dialog:
 
   ```text
-  ICE03 warning: String overflow (greater than length permitted in column); Table: RadioButton, Column: Text, Key(s): RMOPTION.2
-  ICE45 warning: Row 'ErrorDlg.ErrorIcon' in table 'Control' has bits set in the 'Attributes' column that are reserved.
-  ICE61 warning: This product should remove only older versions of itself. The Maximum version is not less than the current product. (1.0.0 1.0.0)
+  ICE03 warning: String overflow (greater than length permitted in column); Table: RadioButton, Column: Text, Key(s): RMOPTION.2 [RadioButton.Text RMOPTION/2]
+  ICE45 warning: Row 'ErrorDlg.ErrorIcon' in table 'Control' has bits set in the 'Attributes' column that are reserved. They should be 0 to ensure compatibility with future installer versions. [Control.Attributes ErrorDlg/ErrorIcon]
+  ICE61 warning: This product should remove only older versions of itself. The Maximum version is not less than the current product. (1.0.0 1.0.0) [Upgrade.Attributes {2D7C1B94-6E3A-4F05-8B21-9A4C3E7F0D58}//1.0.0//513]
   ```
 
 The driver's view of both runs and the excerpt of the delete run's log:
