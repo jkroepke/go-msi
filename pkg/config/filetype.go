@@ -16,8 +16,9 @@ const DefaultVerb = "open"
 const DefaultVerbArguments = `"%1"`
 
 // systemExtensions are extensions that Windows or common programs already
-// own. Uninstalling a package that registers one deletes the default value
-// of its key and leaves the extension without a handler.
+// own. A package that registers one takes it over from them; uninstalling
+// leaves the default naming the removed ProgID, which Windows ignores
+// (documented).
 var systemExtensions = map[string]bool{ //nolint:gochecknoglobals // lookup table
 	"bat": true, "bmp": true, "cer": true, "cmd": true, "crt": true, "csv": true, "dll": true,
 	"exe": true, "gif": true, "htm": true, "html": true, "inf": true, "ini": true, "jpeg": true,
@@ -148,8 +149,8 @@ func (v *validator) fileTypeExtension(field string, ext *FileTypeExtension, defa
 	defaults[lower] = field
 
 	if systemExtensions[lower] {
-		v.warnf(field+".extension", ".%s belongs to Windows or other programs: uninstalling deletes its default value and "+
-			"leaves .%s without a handler; openWithOnly adds the program to its Open with menu instead", name, name)
+		v.warnf(field+".extension", ".%s belongs to Windows or other programs: installing takes it over as its default program; "+
+			"openWithOnly adds the program to its Open with menu instead", name)
 	}
 }
 

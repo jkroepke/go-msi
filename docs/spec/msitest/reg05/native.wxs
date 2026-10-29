@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- REG-05 native: the file type in the ProgId, Extension and Verb tables
+     (Advertise="yes" puts it there), built with WiX 5 as a black box:
+     wix build -arch x64 -o native.msi native.wxs. No custom actions. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Reg05Native" Manufacturer="MsiSpecProbe" Version="1.0.0" Language="1033"
+           UpgradeCode="{5C0E8B47-2A19-4F6D-8E3B-91D7A4C6F208}"
+           Scope="perMachine" InstallerVersion="500" Compressed="yes">
+    <Media Id="1" Cabinet="payload.cab" EmbedCab="yes" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Reg05Native">
+        <Component Id="Main" Guid="{A3E7C2D9-6B48-4F1A-9C05-E2B8D7416F93}" Bitness="always64">
+          <File Id="hello.exe" Name="hello.exe" Source="hello.exe" KeyPath="yes" />
+          <ProgId Id="MsiSpecReg05.Native" Description="REG-05 native" Advertise="yes">
+            <Extension Id="reg05n" ContentType="application/x-reg05n">
+              <Verb Id="open" Command="Open" Argument="&quot;%1&quot;" />
+            </Extension>
+          </ProgId>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Level="1">
+      <ComponentRef Id="Main" />
+    </Feature>
+  </Package>
+</Wix>

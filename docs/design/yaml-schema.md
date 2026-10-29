@@ -778,9 +778,11 @@ progId and its `Content Type`. These are the rows WiX writes for
 non-advertised `ProgId`, `Extension` and `Verb` elements: the five real WiX
 packages with file associations that were checked have no `ProgId`,
 `Extension` or `Verb` table at all, and the msi-builder ports with the same
-rows left the same registry behind (specification section 10.2). Those
-tables only register advertised associations, which are out of scope for
-good (section 6). msi-builder also writes an empty `<progId>` value in
+rows left the same registry behind (specification section 10.2). Microsoft
+documents those tables for normal installs too (`RegisterExtensionInfo`
+registers the extensions of features set to be installed; documented, and
+REG-05 observed it); msi-builder uses `Registry` rows like those packages
+do. msi-builder also writes an empty `<progId>` value in
 `.<extension>\OpenWithProgids`, which Microsoft asks of every program that
 takes over an extension and which lists the program under Open with
 (specification section 10.2, REG-04). The root is HKCR, which the engine
@@ -791,17 +793,39 @@ writes to `HKLM\Software\Classes` per machine; a per-user package names
 `description`, `text` and `contentType` are written literally. A ProgID may
 be registered once per package, must not start with a dot and must not be
 `*`, `+` or `-`. A ProgID that is not COM-style (at most 39 letters, digits
-and periods, not starting with a digit) gets a warning. Uninstalling removes
-the default value of `.<extension>`, so registering an extension that
-Windows or other programs own (`txt`, `xml`, `pdf`, …) gets a warning: it
-would be left without a handler. For such an extension, `openWithOnly: true`
-writes only the `OpenWithProgids` entry: the program shows up under Open
-with and the extension keeps its default program and content type
-(`contentType` is then an error). Uninstalling removes only that entry and
-keeps other programs' entries (REG-04). Any number of ProgIDs may list an
-extension with `openWithOnly`; the default may be registered once.
-Explorer's "Open with" choice of the user (`UserChoice`) still wins over the
-package's default.
+and periods, not starting with a digit) gets a warning.
+
+The default value of `.<extension>` goes into a permanent component of its
+own, one per extension, beside the file's component and in its features, so
+uninstalling leaves it in place, as Microsoft asks: another program may have
+taken the extension over since, and Windows ignores a default that names a
+ProgID nobody registers any more (documented; REG-05 checks what stays, not
+what Explorer then shows). Its `Content Type` stays with it, which is
+msi-builder's choice rather than Microsoft's: the value describes the
+extension, not the program, and keeps the content type mapped to the
+extension after uninstalling. The ProgID itself, its verbs and the
+`OpenWithProgids` entries are removed. A repair presumably writes the
+default again and so takes the extension back from a program that took it
+over (not tested). Registering an extension that Windows or other programs
+own (`txt`, `xml`, `pdf`, …) gets a warning, because the package takes it
+over from them. For such an extension, `openWithOnly: true` writes only the
+`OpenWithProgids` entry: the program shows up under Open with and the
+extension keeps its default program and content type (`contentType` is then
+an error). Uninstalling removes only that entry and keeps other programs'
+entries (REG-04). Any number of ProgIDs may list an extension with
+`openWithOnly`; the default may be registered once. Explorer's "Open with"
+choice of the user (`UserChoice`) still wins over the package's default.
+
+A package with file types also carries the custom action DLL of `run`
+actions (section 4.9) and calls its `BuilderAssocChanged` entry right after
+`InstallFinalize` (after `RemoveExistingProducts` when `removeOld` is
+`afterInstallFinalize`), on install, repair and removal: it calls
+`SHChangeNotify(SHCNE_ASSOCCHANGED)`, which Microsoft asks for after a
+change to file associations, because the shell may otherwise not pick the
+change up before a restart (documented, unverified). A failure there is
+logged and ignored. On SERVER2025 a window listening for that
+notification received it on install and on uninstall; plain registry
+entries send none (REG-05).
 
 **Component shortcuts.** A component can list `shortcuts` of its own, for
 shortcuts that do not point at a file listed with them. Each names exactly
@@ -1187,15 +1211,16 @@ properties:
 | `value` | none | Written to the Property table; an empty value writes no row. With `search` it is set by an action after `AppSearch` instead (see below) |
 | `secure` | `true` for public names | Listed in `SecureCustomProperties` |
 | `hidden` | `false` | Listed in `MsiHiddenProperties` |
-| `search` | none | Fills the property from the registry; see below |
+| `search` | none | Fills the property from the registry, a folder, a file or an installed component; one search or a list, see below |
 
 Public names have no lower-case letter. `secure: true` on a private name is
 an error. The request properties (`ADDLOCAL`, `REMOVE`, `REINSTALL`, …) and
 the properties the builder owns (`ProductCode`, `ProductVersion`, `ALLUSERS`,
 `SecureCustomProperties`, …) cannot be set here (ICE87).
 
-**Search.** `search` fills a property from the registry of the target
-machine before the install:
+**Search.** `search` fills a property from the target machine before the
+install. It is one search or a list of them; each search has exactly one of
+`registry`, `directory`, `file` or `component`:
 
 ```yaml
 properties:
@@ -1208,16 +1233,33 @@ properties:
         bitness: 64                    # 32 | 64; default: the package's
         type: value                    # value (default) | directory
   DATA_DIR:
-    value: C:\Data                     # used when the search finds nothing
+    value: C:\Data                     # used when no search finds anything
     search:
       registry: { root: HKLM, key: SOFTWARE\Example, name: DataDir, type: directory }
+  TOOL_EXE:
+    search:                            # the first search that finds something wins
+      - file:
+          name: tool.exe
+          under: { registry: { root: HKLM, key: SOFTWARE\Example, name: Home } }
+          path: bin                    # relative to the folder under finds
+          minVersion: 2.0              # 2.0 or later, in any language
+      - file:
+          name: tool.exe
+          path: '[ProgramFiles64Folder]Example'
+          depth: 2                     # also two levels of subfolders below
+  LEGACY_DIR:
+    search:
+      directory: { path: '[ProgramFilesFolder]Example Legacy' }
+  OTHER_APP_DIR:
+    search:
+      component: { guid: 6A0D3C2E-5B1F-4E7A-9C3D-2F8E1B4A7C60 }
 ```
 
-`value` returns the registry data the way the engine formats it: a
-`REG_SZ` as it is (brackets stay literal), a `REG_DWORD` as `#` and the
-number, a `REG_EXPAND_SZ` already expanded (observed, SEARCH-04; Microsoft
-documents a `#%` prefix that the engine does not add). Conditions compare
-such a value as a string: `NETFX_RELEASE >= 394802` is false and
+`registry` with `type: value` returns the registry data the way the engine
+formats it: a `REG_SZ` as it is (brackets stay literal), a `REG_DWORD` as
+`#` and the number, a `REG_EXPAND_SZ` already expanded (observed, SEARCH-04;
+Microsoft documents a `#%` prefix that the engine does not add). Conditions
+compare such a value as a string: `NETFX_RELEASE >= 394802` is false and
 `NETFX_RELEASE >= "#394802"` only works while both numbers have the same
 number of digits (SEARCH-04). Do not search a `REG_MULTI_SZ` value: the
 property starts and ends with a NUL, which is reported to break the full UI
@@ -1225,19 +1267,62 @@ property starts and ends with a NUL, which is reported to break the full UI
 with a trailing backslash, and nothing when it names a file or a missing
 folder (SEARCH-04).
 
-The precedence is: a value from the command line, then the search result,
-then `value`. The builder writes an `AppSearch` row into `<NAME>_FOUND`
-(public, so ICE52 stays quiet) and two immediate type-51 actions after
-`AppSearch` in both sequences: `SearchApply_<NAME>` copies the result when
-the property is still empty, and `SearchDefault_<NAME>` sets `value` when it
-is still empty after that. A search straight into the property would
-override a command-line value (SEARCH-03). `value` therefore has no
+| Search | Key | Notes |
+|---|---|---|
+| `directory` | `path` | A full path (a drive, a share or a property in brackets such as `[ProgramFiles64Folder]`), or with `under` a path relative to the folder that search finds. Returns the folder with a trailing backslash, and nothing for a file or a missing folder |
+| | `under` | A search that finds a folder: `registry` (its `type` defaults to `directory` there, `value` is an error), `directory` or `component`. Up to eight searches in one chain |
+| | `depth` | Default 0. How many folders may lie between the path's parent and its last folder: `C:\a\b` with depth 2 also finds `C:\a\x\y\b` |
+| `file` | `name` | The filename, without a folder. The result is the folder plus `name` as written here, in this case, not the case on disk. A name that is no valid 8.3 name is written with a generated short name (`short\|long`); the long name is the one matched and returned (SEARCH-05) |
+| | `path`, `under` | The folder to look in, as for `directory` |
+| | `depth` | Default 0. How many levels of subfolders below the folder are searched as well |
+| | `minVersion`, `maxVersion` | Inclusive bounds, one to four fields. A `minVersion` rules out files without a version (SEARCH-05) |
+| | `minSize`, `maxSize` | Inclusive bounds in bytes, up to 2147483647 |
+| | `minDate`, `maxDate` | Inclusive bounds on the modification date, `YYYY-MM-DD` from 1980-01-01 to 2043-12-31: `minDate` starts at 00:00:00 and `maxDate` ends at 23:59:58, since the engine compares the time of day too (SEARCH-05). Whether it compares local time or UTC is not tested |
+| | `languages` | Language IDs the file's version resource must list; compared only when the file's version equals `minVersion` |
+| `component` | `guid` | The component code of an installed component, of this or another product. Returns the folder of its key file |
+
+The engine finds a file whose version equals `MinVersion` only when
+`Languages` lists the file's languages, even for a language-neutral file
+(observed, SEARCH-05). Without `languages` the builder therefore writes
+`minVersion` lowered by one in its last field (`2.0` becomes
+`1.65535.65535.65535`), so `minVersion` means "this version or later" for
+every file; the one difference is a file of exactly that lower version
+without any language, which is found too. With `languages` the bound is
+written as given. Versions of Windows' own files are unreliable to a search
+(reported shims on Windows 10 and later; no version-bounded search of
+`kernel32.dll` found it in SEARCH-05, for reasons not yet known), so the builder warns about version bounds in
+`[SystemFolder]`, `[System64Folder]`, `[WindowsFolder]` and `C:\Windows`;
+test `VersionNT` or `WindowsBuild` instead. A path that names a folder of the
+package itself (`[INSTALLDIR]`) gets a warning: `AppSearch` runs before
+`CostFinalize` resolves those folders. A path that names a searched
+property is an error, since its result is set only after `AppSearch`; use
+`under` instead. A path that starts with another property that is not a
+standard folder gets a warning: if that property is empty, the path is
+relative and the engine searches every fixed drive. The standard folder
+properties are set before `AppSearch` (`[WindowsFolder]` and
+`[ProgramFiles64Folder]` work, SEARCH-05). A component search finds components
+whose key path is a file; a component with a registry or folder key path
+was not tested.
+
+The precedence is: a value from the command line, then the first search
+that finds something, then `value`. Search *n* fills `<NAME>_FOUND`
+(`<NAME>_FOUND2`, `<NAME>_FOUND3`, … for the later ones; public, so ICE52
+stays quiet) through an `AppSearch` row, and immediate type-51 actions after
+`AppSearch` in both sequences copy the results in order: `SearchApply_<NAME>`
+(`SearchApply2_<NAME>`, …) copies its result when the property is still
+empty, and `SearchDefault_<NAME>` sets `value` when it is still empty after
+all of them. A search straight into the property would override a
+command-line value (SEARCH-03), and several `AppSearch` rows for one
+property leave the result of the last row that finds something, in an order
+the package does not control (SEARCH-05). `value` therefore has no
 `Property` row; it is written as a literal, with `[`, `]`, `{` and `}`
-escaped. A searched property must be public and secure, because after a
-UI sequence the engine does not run `AppSearch` again in the execute
-sequence (Microsoft documents this; not tested) and only secure properties
-reach it. `<NAME>_FOUND` cannot be defined in `properties`, and
-`installDir.remember` already searches the install dir.
+escaped. A searched property must be public and secure, because after a UI
+sequence the engine does not run `AppSearch` again in the execute sequence
+(Microsoft documents this; not tested) and only secure properties reach it.
+The `<NAME>_FOUND` properties cannot be defined in `properties`, and
+`installDir.remember` already searches the install dir. Searches of `.ini`
+files (`IniLocator`) and of all fixed drives are not offered; the
+specification's "Decisions not adopted" says why.
 
 ### 4.8 `launchConditions`
 
@@ -1306,7 +1391,8 @@ through the `BuilderRun` property to immediate ones. `hideTarget` hides the
 command in both places. `return` is required (`check` or `ignore`;
 `asyncWait` is allowed, `asyncNoWait` is not). Impersonation follows
 `impersonate`: the DLL starts the process with the impersonated user's
-token when there is one. The key `BuilderRun` is reserved in `binaries`.
+token when there is one. The key `BuilderRun` is reserved in `binaries`,
+and in a package with file types the action ID `BuilderAssocChanged` too.
 Output is decoded as UTF-8 when it is valid UTF-8 and in the OEM code page
 otherwise, which covers Go programs, cmd.exe and PowerShell. Specification
 section 17.6 and case CA-03 (Appendix C) hold the Windows evidence.

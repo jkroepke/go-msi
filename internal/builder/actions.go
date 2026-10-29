@@ -264,6 +264,33 @@ func (b *build) scheduled(table, name string) bool {
 	return false
 }
 
+// anchoredTo counts the actions of a table that are scheduled relative to
+// name, directly or through other relative actions.
+func (b *build) anchoredTo(table, name string) int {
+	anchors := make(map[string]string, len(b.schedules[table]))
+	for _, a := range b.schedules[table] {
+		anchors[a.Name] = a.Before + a.After
+	}
+
+	count := 0
+
+	for _, a := range b.schedules[table] {
+		seen := make(map[string]bool)
+
+		for anchor := anchors[a.Name]; anchor != "" && !seen[anchor]; anchor = anchors[anchor] {
+			seen[anchor] = true
+
+			if anchor == name {
+				count++
+
+				break
+			}
+		}
+	}
+
+	return count
+}
+
 // standardAt adds a standard action at its default number for the table
 // unless it is already scheduled there. It panics on an action without a
 // default in that table, which is a builder bug.
@@ -424,21 +451,8 @@ func (b *build) customActions() error { //nolint:cyclop // one pass over the for
 // through the BuilderRun property for immediate ones. It returns the name of
 // the type-51 action, which the caller schedules right before the action.
 func (b *build) runAction(custom *config.CustomAction, action *actionInfo) string {
-	if b.cfg.Binaries[cadll.Key] != "" {
-		b.errorf("binaries."+cadll.Key, "the key %s is reserved for the custom action DLL of run actions", cadll.Key)
-	}
-
-	if !b.runDLL {
-		b.runDLL = true
-
-		dll, err := cadll.Binary(string(b.cfg.Package.Platform))
-		if err != nil {
-			b.errorf("package.platform", "%v", err)
-
-			return ""
-		}
-
-		b.table("Binary").Add(cadll.Key, dll)
+	if !b.useRunDLL() {
+		return ""
 	}
 
 	directory := ""
@@ -467,6 +481,30 @@ func (b *build) runAction(custom *config.CustomAction, action *actionInfo) strin
 	action.typ, action.source, action.target = caDLL, cadll.Key, cadll.Entry
 
 	return setter.name
+}
+
+// useRunDLL adds the custom action DLL (internal/cadll) to the Binary table
+// once and reports whether it is there.
+func (b *build) useRunDLL() bool {
+	if b.runDLL {
+		return true
+	}
+
+	if b.cfg.Binaries[cadll.Key] != "" {
+		b.errorf("binaries."+cadll.Key, "the key %s is reserved for the custom action DLL of run actions and file types", cadll.Key)
+	}
+
+	dll, err := cadll.Binary(string(b.cfg.Package.Platform))
+	if err != nil {
+		b.errorf("package.platform", "%v", err)
+
+		return false
+	}
+
+	b.table("Binary").Add(cadll.Key, dll)
+	b.runDLL = true
+
+	return true
 }
 
 // firewall writes the netsh actions of the firewall helper (section 17.3,
@@ -600,8 +638,17 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 	}
 
 	if b.hasRows("LaunchCondition") {
-		b.standardAt(seqInstallExecute, "LaunchConditions")
-		b.standardAt(seqInstallUI, "LaunchConditions")
+		for _, table := range []string{seqInstallExecute, seqInstallUI} {
+			// After AppSearch and the actions that apply its results when
+			// they do not fit between 50 and 100, so that the gap does not
+			// limit how many properties a package can search.
+			if b.scheduled(table, "AppSearch") && !b.scheduled(table, "LaunchConditions") &&
+				standardActions["AppSearch"].number(table)+b.anchoredTo(table, "AppSearch") >= standardActions["LaunchConditions"].number(table) {
+				b.schedule(table, "LaunchConditions", standardActions["LaunchConditions"].condition, "", "AppSearch", 0)
+			}
+
+			b.standardAt(table, "LaunchConditions")
+		}
 	}
 
 	for _, tbl := range slices.Sorted(maps.Keys(tableActions)) {

@@ -312,17 +312,17 @@ func (b *build) rememberSearch(property, signature, action string, root, typ int
 	}
 }
 
-// searchProperties writes the AppSearch and RegLocator rows of the
-// properties with a search. The search fills a property of its own, and
-// type-51 actions copy it, or the default value, into the property only when
-// it is still empty, so that a command-line value wins (SEARCH-03 showed
-// that a search straight into the property overrides one). Both run in the
-// UI and the execute sequence; after a UI sequence the engine skips
+// searchProperties writes the AppSearch and locator rows of the properties
+// with a search. Each search fills a property of its own, and type-51
+// actions copy the first result, or the default value, into the property
+// only when it is still empty, so that a command-line value wins (SEARCH-03
+// showed that a search straight into the property overrides one). Both run
+// in the UI and the execute sequence; after a UI sequence the engine skips
 // AppSearch in the execute sequence (reported), so the property must be
 // secure to arrive there.
 func (b *build) searchProperties() error {
 	for _, name := range b.cfg.Properties.Names() {
-		if prop := b.cfg.Properties[name]; prop.Search != nil && prop.Search.Registry != nil {
+		if prop := b.cfg.Properties[name]; len(prop.Search) > 0 {
 			b.searchProperty(name, prop)
 		}
 	}
@@ -330,47 +330,150 @@ func (b *build) searchProperties() error {
 	return nil
 }
 
-// searchProperty writes the search of one property.
+// searchProperty writes the searches of one property.
 func (b *build) searchProperty(name string, prop *config.Property) {
-	reg := prop.Search.Registry
-	signature := searchName("Search_", name)
-	found := config.SearchFoundProperty(name)
-
-	typ := regLocatorRaw
-	if reg.Type == config.SearchDirectory {
-		typ = regLocatorDirectory
-	}
-
-	if reg.Bitness == "64" || reg.Bitness == "" && b.is64 {
-		typ |= regLocator64Bit
-	}
-
-	if prop.Hidden {
-		b.hidden[found] = true
-	}
-
 	// AppSearch fails with 2228 without a Signature table (SEARCH-03).
 	b.table("Signature")
-	b.table("AppSearch").Add(found, signature)
-	b.table("RegLocator").Add(signature, registryRoots[reg.Root], reg.Key, nullable(reg.Name), typ)
 
-	apply := searchName("SearchApply_", name)
-	b.addAction(&actionInfo{name: apply, typ: caSetProperty, source: name, target: "[" + found + "]"})
+	var previous string
 
-	var fallback string
-	if prop.Value != "" {
-		fallback = searchName("SearchDefault_", name)
-		b.addAction(&actionInfo{name: fallback, typ: caSetProperty, source: name, target: escapeFormatted(prop.Value)})
+	for i, search := range prop.Search {
+		suffix := ""
+		if i > 0 {
+			suffix = strconv.Itoa(i + 1)
+		}
+
+		signature := searchName("Search"+suffix+"_", name)
+		found := config.SearchFoundProperty(name, i)
+
+		if prop.Hidden {
+			b.hidden[found] = true
+		}
+
+		b.locate(signature, search, false)
+		b.table("AppSearch").Add(found, signature)
+
+		apply := searchName("SearchApply"+suffix+"_", name)
+		b.addAction(&actionInfo{name: apply, typ: caSetProperty, source: name, target: "[" + found + "]"})
+
+		after := previous
+		if after == "" {
+			after = "AppSearch"
+		}
+
+		for _, seq := range []string{seqInstallExecute, seqInstallUI} {
+			b.standardAt(seq, "AppSearch")
+			b.schedule(seq, apply, found+" AND NOT "+name, "", after, 0)
+		}
+
+		previous = apply
 	}
 
-	for _, seq := range []string{seqInstallExecute, seqInstallUI} {
-		b.standardAt(seq, "AppSearch")
-		b.schedule(seq, apply, found+" AND NOT "+name, "", "AppSearch", 0)
+	if prop.Value != "" {
+		fallback := searchName("SearchDefault_", name)
+		b.addAction(&actionInfo{name: fallback, typ: caSetProperty, source: name, target: escapeFormatted(prop.Value)})
 
-		if fallback != "" {
-			b.schedule(seq, fallback, "NOT "+name, "", apply, 0)
+		for _, seq := range []string{seqInstallExecute, seqInstallUI} {
+			b.schedule(seq, fallback, "NOT "+name, "", previous, 0)
 		}
 	}
+}
+
+// Locator types (RegLocator.Type, CompLocator.Type).
+const (
+	locatorFile = 1
+)
+
+// locate writes the locator rows of one search under signature. A folder
+// search (under another search) never has a Signature row, so the engine
+// returns the folder.
+func (b *build) locate(signature string, search *config.Search, folder bool) {
+	switch {
+	case search.Registry != nil:
+		reg := search.Registry
+
+		typ := regLocatorRaw
+		if folder || reg.Type == config.SearchDirectory {
+			typ = regLocatorDirectory
+		}
+
+		if reg.Bitness == "64" || reg.Bitness == "" && b.is64 {
+			typ |= regLocator64Bit
+		}
+
+		b.table("RegLocator").Add(signature, registryRoots[reg.Root], reg.Key, nullable(reg.Name), typ)
+	case search.Directory != nil:
+		dir := search.Directory
+		b.table("DrLocator").Add(signature, b.locateParent(signature, dir.Under), nullable(dir.Path), optionalDepth(dir.Depth))
+	case search.File != nil:
+		b.fileSignature(signature, search.File)
+		b.table("DrLocator").Add(signature, b.locateParent(signature, search.File.Under), nullable(search.File.Path), optionalDepth(search.File.Depth))
+	case search.Component != nil:
+		guid, _ := config.NormalizeGUID(search.Component.GUID)
+		b.table("CompLocator").Add(signature, guid, locatorFile)
+	}
+}
+
+// locateParent writes the folder search a DrLocator row is relative to and
+// returns its signature, or nil.
+func (b *build) locateParent(signature string, under *config.Search) any {
+	if under == nil {
+		return nil
+	}
+
+	parent := searchName("In_", signature)
+	b.locate(parent, under, true)
+
+	return parent
+}
+
+// fileSignature writes the Signature row of a file search.
+func (b *build) fileSignature(signature string, file *config.FileSearch) {
+	var minDate, maxDate any
+
+	if file.MinDate != "" {
+		minDate, _ = config.SearchDate(file.MinDate, false)
+	}
+
+	if file.MaxDate != "" {
+		maxDate, _ = config.SearchDate(file.MaxDate, true)
+	}
+
+	langs := make([]string, 0, len(file.Languages))
+	for _, lang := range file.Languages {
+		langs = append(langs, strconv.Itoa(lang))
+	}
+
+	minVersion := file.MinVersion
+	if minVersion != "" {
+		minVersion = config.SearchMinVersion(minVersion, file.Languages)
+	}
+
+	// Signature.FileName is a Filename column: a name that is no valid
+	// short name is written as a generated short|long pair (ICE03).
+	name := filename(signature, file.Name, false, make(map[string]bool), config.ValidShortName)
+
+	b.table("Signature").Add(signature, name, nullable(minVersion), nullable(file.MaxVersion),
+		optionalSize(file.MinSize), optionalSize(file.MaxSize), minDate, maxDate, nullable(strings.Join(langs, ",")))
+}
+
+// optionalDepth is a DrLocator.Depth cell: null for 0, which the engine
+// reads as 0 (SEARCH-05).
+func optionalDepth(depth int) any {
+	if depth == 0 {
+		return nil
+	}
+
+	return depth
+}
+
+// optionalSize is a nullable DoubleInteger cell.
+func optionalSize(size *int64) any {
+	if size == nil {
+		return nil
+	}
+
+	return int(*size)
 }
 
 // searchName joins a prefix and a property name into an identifier of at
