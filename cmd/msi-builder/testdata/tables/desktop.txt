@@ -6,7 +6,7 @@ summary  4: Example
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install Example Viewer.
 summary  7: x64;1033
-summary  9: {8E1C55E0-B493-5600-AAF1-A79861314546}
+summary  9: {EEE8EA94-7397-52CB-8ED5-A999250E0940}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500

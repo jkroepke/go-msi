@@ -70,6 +70,12 @@ func buildRemoveFiles(t *testing.T) string {
 	return path
 }
 
+func exists(path string) bool {
+	_, err := os.Stat(path)
+
+	return err == nil
+}
+
 func writeFile(t *testing.T, path string) {
 	t.Helper()
 
