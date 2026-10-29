@@ -418,7 +418,7 @@ func (v *validator) directories(cfg *Config, known *refs) { //nolint:cyclop,goco
 				v.errorf(dirPath+".id", "a configurable directory needs an upper-case id")
 			}
 
-			v.contextDirectory(cfg, dirPath, dir.ID, top, known)
+			v.contextDirectory(cfg, dirPath, dir, top, known)
 
 			walk(dir.Children, dirPath+".children", false)
 		}
@@ -454,15 +454,21 @@ func (v *validator) builderProperty(name string) bool {
 // shell folder that follows the context: the scope page moves only Program
 // Files and Common Files folders, and the client resolved this one for the
 // context the package opened in.
-func (v *validator) contextDirectory(cfg *Config, dirPath, dirID string, top bool, known *refs) {
-	folder := known.topFolder(dirID)
-	if top || !v.scope.Dual() || !IsPublicProperty(dirID) || !contextShellFolders[folder] {
+func (v *validator) contextDirectory(cfg *Config, dirPath string, dir *Directory, top bool, known *refs) {
+	folder := known.topFolder(dir.ID)
+	if top || !v.scope.Dual() || !IsPublicProperty(dir.ID) || !contextShellFolders[folder] {
 		return
 	}
 
-	if dirID == cfg.InstallDir.ID {
-		v.errorf("installDir.parent", "the install folder of a %s package must be under Program Files, which the scope "+
-			"page moves to the chosen context, not under %s", v.scope, folder)
+	if dir.ID == cfg.InstallDir.ID {
+		// installDir generated the directory, or directories defines it.
+		at := dirPath + ".id"
+		if dir.origin != "" {
+			at = "installDir.parent"
+		}
+
+		v.errorf(at, "the install folder of a %s package must be under Program Files, which the scope page moves "+
+			"to the chosen context, not under %s", v.scope, folder)
 
 		return
 	}

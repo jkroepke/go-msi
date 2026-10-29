@@ -791,6 +791,10 @@ components:
 `,
 			sevError, "installDir.parent", "must be under Program Files",
 		},
+		"dual scope install dir defined on desktop": {
+			strings.Replace(pkg(`{platform: x64, scope: perUserOrMachine}`), "id: ProgramFiles64Folder", "id: DesktopFolder", 1) + appComponent,
+			sevError, "directories[0].children[0].id", "must be under Program Files",
+		},
 		"dual scope BuilderInstallScope": {
 			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + "properties:\n  BuilderInstallScope: {value: perMachine}\n",
 			sevError, "properties.BuilderInstallScope", "set by the builder",
