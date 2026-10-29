@@ -651,3 +651,31 @@ func TestFolderOnDiskNamesTheFolder(t *testing.T) {
 		}
 	}
 }
+
+func TestFolderChecksMovedComponents(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Parse([]byte(folderHeader+"components: [{ files: [{ source: dist/conf/ }] }]\n"), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.FS = sampleFS()
+
+	if diags := cfg.ExpandFolders(); diags.Err() != nil {
+		t.Fatal(diags)
+	}
+
+	// A generated component that Go code moves to a 32-bit folder is
+	// checked like any other.
+	cfg.Directories = append(cfg.Directories, &config.Directory{ID: "ProgramFilesFolder", Children: []*config.Directory{{ID: "OLD", Name: "Old"}}})
+	cfg.Components[0].Directory = "OLD"
+
+	for _, d := range config.Validate(cfg) {
+		if strings.Contains(d.Message, "ICE80") {
+			return
+		}
+	}
+
+	t.Error("no ICE80 warning for a generated component moved to ProgramFilesFolder")
+}

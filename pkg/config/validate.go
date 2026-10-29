@@ -656,7 +656,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 
 		v.oneOf(p+".bitness", comp.Bitness, Auto, "32", "64")
 
-		if !comp.fromFolder {
+		if !preserveReported(comp) {
 			v.preserve(cfg, p, comp)
 		}
 
@@ -723,7 +723,7 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 
 	// The component of a folder source reports these once, not once per
 	// file.
-	if comp.fromFolder {
+	if directoryReported(known, comp) {
 		return
 	}
 

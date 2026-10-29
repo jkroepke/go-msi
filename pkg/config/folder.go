@@ -38,19 +38,36 @@ func folderComponent(comp *Component) bool {
 // isFolderComponentID reports whether id names a component with a folder
 // source, before or after ExpandFolders replaced it.
 func isFolderComponentID(cfg *Config, compID string) bool {
+	// A component defined under the id, for example by a Go caller after
+	// the expansion, wins.
+	for _, comp := range cfg.Components {
+		if comp != nil && comp.ID == compID {
+			return folderComponent(comp)
+		}
+	}
+
 	for _, folder := range cfg.folders {
 		if folder.comp.ID == compID {
 			return true
 		}
 	}
 
-	for _, comp := range cfg.Components {
-		if comp != nil && comp.ID == compID && folderComponent(comp) {
-			return true
-		}
-	}
-
 	return false
+}
+
+// directoryReported reports whether the folder component that comp was
+// generated from already reports the checks of comp's directory: comp is
+// still below the same standard folder with the same bitness.
+func directoryReported(known *refs, comp *Component) bool {
+	return comp.folder != nil && comp.Bitness == comp.folder.Bitness &&
+		known.topFolder(comp.Directory) == known.topFolder(comp.folder.Directory)
+}
+
+// preserveReported reports whether the folder component that comp was
+// generated from already reports the preserve and removeOld checks.
+func preserveReported(comp *Component) bool {
+	return comp.folder != nil && len(comp.Services) == 0 && comp.Preserve == comp.folder.Preserve &&
+		comp.NeverOverwrite == comp.folder.NeverOverwrite && comp.Permanent == comp.folder.Permanent
 }
 
 // ExpandFolders replaces every component whose file is a folder source
@@ -201,7 +218,7 @@ func (c *Config) expandFolder(comp *Component, compPath string) ([]*Component, e
 		// Diagnostics of a generated component name the folder's
 		// component and the path below its source.
 		generated.origin = fmt.Sprintf("%s{%s}", compPath, rel)
-		generated.fromFolder = true
+		generated.folder = comp
 		copyFolderSettings(generated, comp)
 	}
 

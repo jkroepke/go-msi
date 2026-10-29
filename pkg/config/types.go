@@ -234,8 +234,9 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	firewallFeature string
 	// carrierOf is that feature.
 	carrierOf *Feature
-	// fromFolder marks a component that a folder source added.
-	fromFolder bool
+	// folder is the component with a folder source that this one was
+	// generated from.
+	folder *Component
 }
 
 // FirewallFeature returns the feature whose firewall rules the component
