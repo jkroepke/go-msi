@@ -15,6 +15,7 @@ import (
 // Custom action type words (section 9.4).
 const (
 	caDLL          = 1
+	caEXE          = 2
 	caError        = 19
 	caExec         = 34
 	caSetDirectory = 35
@@ -331,6 +332,8 @@ func (b *build) customActions() error { //nolint:cyclop // one pass over the for
 			action.typ, action.source, action.target = caExecProperty, custom.ExecProperty.Property, nullable(custom.ExecProperty.Arguments)
 		case custom.DLL != nil:
 			action.typ, action.source, action.target = caDLL, custom.DLL.Binary, custom.DLL.Entry
+		case custom.EXE != nil:
+			action.typ, action.source, action.target = caEXE, custom.EXE.Binary, nullable(custom.EXE.Arguments)
 		case custom.Run != nil:
 			setter = b.runAction(custom, action)
 		}

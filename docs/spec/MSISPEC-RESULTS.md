@@ -233,6 +233,7 @@ Silent-failure cases a producer has to guard against itself:
 | CA-02 | Confirmed | EXE exit 1 fails unless Continue; [type-6 return 5](msitest/results/CA-02/vbs-binary-return-5-immediate/log.md) ends with 0 and skips the rest; [deferred](msitest/results/CA-02/vbs-binary-return-5-deferred/log.md) leaves files unregistered |
 | CA-03 | Confirmed | GitHub `windows-latest` (x64) and `windows-11-arm` runners, 2026-10-28, `TestMsiexecRunActions`: every stdout and stderr line of the seven run actions is in the verbose log as `GoMsiRun:`, `whoami` shows LocalSystem versus the user, brackets stay literal, OEM and UTF-8 output decode, exit 3 with `Continue` returns 1, exit 7 fails with 1603 and runs the rollback action with the hidden command absent; Arm64 package native and x64 package under emulation on Arm; repeated on SERVER2025 with the same result; [details](#embedded-custom-action-dll-ca-03) |
 | CA-04 | Confirmed | GitHub `windows-latest` runner, 2026-10-28, CI run 40787803798: netsh rejects `any` or `*` combined with other `remoteip=` entries (exit 1), accepts `ANY` and `*` alone and accepts `localsubnet,10.0.0.1`; quotes inside a quoted description are dropped; [details](#firewall-arguments-ca-04) |
+| CA-05 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40893135210 (PR #106): the engine copies the `Binary` program to `C:\Windows\Installer\MSIxxxx.tmp`, runs it in `C:\Windows\system32` and deletes it; deferred no-impersonate runs as LocalSystem, the rest as the user; exit 7 and exit 3010 are both error 1722 and msiexec 1603; [details](#exe-actions-ca-05) |
 | SHORTCUT-01 | Confirmed | [hkcu-folder](msitest/results/SHORTCUT-01/hkcu-folder/log.md), [file-component](msitest/results/SHORTCUT-01/file-component/log.md), [file-component-folder](msitest/results/SHORTCUT-01/file-component-folder/log.md), [advertised](msitest/results/SHORTCUT-01/advertised/log.md), [per-user](msitest/results/SHORTCUT-01/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-shortcut-01) |
 | SHORTCUT-02 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40882369236 (PR #98): the engine converts `PropVariantValue` to the property's type and formats it; a CLSID needs braces; an unknown name or a bad value is warning 1946 and the install goes on; [details](#shortcut-properties-shortcut-02) |
 | UI-01 | Confirmed | Wizard rendering on Windows Server 2025, go-msi packages driven by hand and by window messages, with PrintWindow and screen captures (2026-10-26); [details](#wizard-rendering-ui-01) |
@@ -631,6 +632,37 @@ removed from the pull request afterwards; its output is in
 - Not run: `*` after an address (`10.0.0.1,*`), other spellings of `any`
   in a list, SERVER2025 (Remote Control did not start) and Windows Server
   2016.
+
+## EXE actions (CA-05)
+
+Run on 2026-10-29 in CI run 40893135210 of PR #106 (commit 48dd6df),
+`Build & Test (windows-latest)` job (Windows Server 2025 x64, elevated
+`runneradmin`), by `TestMsiexecEXEActions` in
+`internal/builder/nativetest/exe_windows_test.go`. The probe is a Go program
+stored in the `Binary` table; each run appends its tag, its own path, its
+user SID and its working folder to a marker file.
+
+| Action | Type (as built) | Ran as | Program path | Working folder |
+| --- | --- | --- | --- | --- |
+| deferred, no impersonation, before `InstallFiles` | 3074 (2 + 0x400 + 0x800) | `S-1-5-18` (LocalSystem) | `C:\Windows\Installer\MSIF0AA.tmp` | `C:\Windows\system32` |
+| deferred, impersonated, after `InstallFiles` | 1026 | `runneradmin` (`…-500`) | `C:\Windows\Installer\MSIF128.tmp` | `C:\Windows\system32` |
+| deferred, no impersonation, exit 5, Continue | 3138 | `S-1-5-18` | `C:\Windows\Installer\MSIF1D5.tmp` | `C:\Windows\system32` |
+| immediate, after `CostFinalize` | 2 | `runneradmin` | `C:\Windows\Installer\MSIEF6F.tmp` | `C:\Windows\system32` |
+| deferred, no impersonation, after `RemoveFiles` on uninstall | 3074 | `S-1-5-18` | under `C:\Windows\Installer` (path not logged) | `C:\Windows\system32` |
+
+- Every temporary copy was gone after the install or uninstall finished.
+- The verbose log schedules the action as `CustomActionSchedule(Action=ExeFails,ActionType=3074,Source=BinaryData,Target=<formatted arguments>)`.
+- Exit 7 without Continue: `Note: 1: 1722 2: ExeFails 3: C:\Windows\Installer\MSIF9BC.tmp 4: <arguments>`,
+  "CustomAction ExeFails returned actual error code 7", error 1722 ("A
+  program run as part of the setup did not finish as expected") and msiexec
+  returned 1603.
+- Exit 3010 without Continue is handled the same way: error 1722 and msiexec
+  1603. The engine does not read 3010 from a type-2 program as "reboot
+  required", so a program that returns it needs `return: ignore` and its own
+  reboot handling (for example a `ScheduleReboot` action).
+- Not covered: whether the engine waits for the program before deleting the
+  copy under `asyncNoWait`, and the 1618 failure of a program that starts
+  `msiexec` itself (section 8.11, reported, not tested).
 
 ## Event log sources (REG-03)
 

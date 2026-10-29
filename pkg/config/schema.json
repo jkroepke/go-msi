@@ -600,6 +600,24 @@
             ],
             "additionalProperties": false
           },
+          "exe": {
+            "type": "object",
+            "description": "Type 2: the engine writes the binary to a temporary file, runs it and deletes it.",
+            "properties": {
+              "binary": {
+                "type": "string",
+                "description": "A binaries key holding a Windows program."
+              },
+              "arguments": {
+                "type": "string",
+                "description": "Command-line arguments, formatted text."
+              }
+            },
+            "required": [
+              "binary"
+            ],
+            "additionalProperties": false
+          },
           "execute": {
             "anyOf": [
               {
@@ -634,7 +652,7 @@
                 "$ref": "#/$defs/var"
               }
             ],
-            "description": "Required for exec, execProperty and run."
+            "description": "Required for exec, execProperty, exe and run."
           },
           "hideTarget": {
             "$ref": "#/$defs/bool"
@@ -757,6 +775,11 @@
           },
           {
             "required": [
+              "exe"
+            ]
+          },
+          {
+            "required": [
               "run"
             ]
           }
@@ -778,6 +801,11 @@
                 {
                   "required": [
                     "run"
+                  ]
+                },
+                {
+                  "required": [
+                    "exe"
                   ]
                 }
               ]
