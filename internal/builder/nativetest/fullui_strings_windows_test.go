@@ -45,7 +45,9 @@ const russianStrings = `  strings:
 // translated, clicking through by the translated button names (UI-06): a
 // German wizard in code page 1252 with product language 1031, and a
 // Russian and Japanese one in a UTF-8 database, both on an English system.
-func TestFullUIStrings(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
+//
+//nolint:paralleltest // msiexec runs one installation at a time
+func TestFullUIStrings(t *testing.T) {
 	requireFullUI(t)
 
 	for _, tc := range []struct {

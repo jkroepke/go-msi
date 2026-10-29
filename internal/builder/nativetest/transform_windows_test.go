@@ -120,7 +120,9 @@ func productInfo(code, prop string) string {
 // Cyrillic and Japanese text, in 65001. msi.dll set bit 15 of the refcount
 // of a non-ASCII string in a 65001 transform (MSIDB-12); MarshalTransform
 // does not, which the 65001 case checks.
-func TestTransformApplyLANG02(t *testing.T) { //nolint:paralleltest // msi.dll calls
+//
+//nolint:paralleltest // msi.dll calls
+func TestTransformApplyLANG02(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		codepage int
