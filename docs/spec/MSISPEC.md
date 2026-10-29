@@ -129,7 +129,7 @@ A sector holds 4 entries in v3 and 32 in v4. Entry 0 is the root: `Root Entry` (
 
 - Names are 1–31 UTF-16 units as stored, without `/ \ : !` or U+0000. Siblings MUST be unique ignoring case.
 - `Compare`: the shorter name is smaller; at equal length, compare `Upper(unit)` as unsigned u16. `Upper` is Unicode 5.0 simple uppercase plus Vista overrides (chapter 01 §9.2).
-- A writer with ASCII-only `Upper` MUST reject names with other cased units. MSI names (ASCII, U+3800–U+4840, U+0005) never need more.
+- A writer with ASCII-only `Upper` MUST reject names with other cased units, in the whole BMP outside the surrogates: fullwidth letters (U+FF21–U+FF5A) are cased too. Surrogate units are never upper-cased, so supplementary characters are allowed. MSI names (ASCII, U+3800–U+4840, U+0005) never need more.
 - Root CLSID for `.msi`, `.msm` and `.pcp`: `{000C1084-0000-0000-C000-000000000046}`, stored `84 10 0C 00 00 00 00 00 C0 00 00 00 00 00 00 46`. `.mst` uses `{000C1082-…}` and `.msp` `{000C1086-…}`. Sub-storages carry their content's CLSID.
 
 Writer tree strategy (SHOULD; a valid red-black tree that reproduces the test vector):
@@ -143,15 +143,39 @@ All-black trees are also valid. SIDs: root 0, then depth-first pre-order with ch
 1. Validate names and limits. Assign SIDs; use `D = ceil(E / (SS/128))` directory sectors for E entries.
 2. Build the trees. A size-0 stream gets no sectors (start ENDOFCHAIN); under 4096 bytes is small; the rest is large.
 3. Pack small streams in SID order into `ceil(size/64)` mini sectors each. `M = ceil(nMini / (SS/4))`, `S = ceil(nMini × 64 / SS)`, `L = Σ ceil(size / SS)` over large streams.
-4. From F = X = 0, repeat to a fixed point: `T = F + X + D + M + S + L` (+1 for a v4 range-lock sector), `F = ceil(T / (SS/4))`, `X = F ≤ 109 ? 0 : ceil((F − 109) / (SS/4 − 1))`.
+4. From F = X = 0, repeat to a fixed point: `T = F + X + D + M + S + L` (a v4 writer above 0x7FFFFF00 bytes would add 1 for the range-lock sector; this writer stops below that size, so it never does), `F = ceil(T / (SS/4))`, `X = F ≤ 109 ? 0 : ceil((F − 109) / (SS/4 − 1))`.
 5. Order sectors: FAT, DIFAT, directory, MiniFAT, mini stream, then large streams contiguously in SID order. Zero-pad every sector and zero all timestamps and state bits; the file is `(T + 1) × SS` bytes.
 
-- Writers SHOULD write v3 and MUST fail above 0x7FFFFE00 bytes. A v4 file above 0x7FFFFF00 bytes MUST reserve sector 0x7FFFE as an ENDOFCHAIN range-lock sector.
+- The writer emits v4 by default, like the native engine (CFB-01), and v3 on request. It MUST fail above 0x7FFFFE00 bytes. A v4 file above 0x7FFFFF00 bytes MUST reserve sector 0x7FFFE as an ENDOFCHAIN range-lock sector.
 - Readers MUST accept both versions; two large packages written by the native engine were v4 (observed). They MUST reject a bad signature, byte order, or (major, shift) other than (3, 9) and (4, 12).
 - Readers SHOULD look names up in a map from a full in-order walk, not by tree search. They ignore colours, keep visited sets, and never allocate from unchecked sizes.
 - Readers MUST accept a file whose last sector is cut short, as long as every stream byte lies inside the file: a 13 MB v4 package from another build tool ended 204 bytes into its last sector, the tail of `_StringData` (observed). A stream whose bytes reach past the end of the file is an error, never zero-filled. FAT, DIFAT, MiniFAT and directory sectors stay whole.
 - Readers MUST treat a size-0 stream as empty whatever its starting sector, without following a chain. Other writers emit 0-byte `_StringData` and `_Tables` streams with a mini-stream start sector, and one CFB library has failed to open them (reported).
 - Every directory entry the walk finds MUST be readable by name. One reader dropped embedded cabinets of current Windows SDK packages because it opened streams by index (reported).
+
+### MS-CFB coverage
+
+Audit of `pkg/cfb` against [MS-CFB] v20261026 (sections 2.1–2.9 and 4), 2026-10-29. `TestConformance` (`pkg/cfb/conformance_test.go`) checks every writer-side MUST and SHOULD below on v3 and v4 output with up to 69 streams, both colour strategies and a file with DIFAT sectors, independently of the reader. `TestConformanceCatchesFaults` checks that it detects each kind of fault without panicking on the broken file.
+
+| MS-CFB rule | Status | Notes |
+|---|---|---|
+| 2.1 Sector numbers, ENDOFCHAIN/FREESECT/FATSECT/DIFSECT, no shared or cyclic chains, chain length matches size | Supported | Writer lays out disjoint contiguous chains. Reader rejects values ≥ 0xFFFFFFFA, cycles and chains shorter than the size |
+| 2.2 Header: signature, zero CLSID, minor 0x3E, byte order, (3, 9) / (4, 12), mini shift 6, reserved, v3 directory count 0, transaction 0, cutoff 4096, v4 padding | Supported | Reader rejects a bad signature, byte order, version/shift pair, mini shift and (since this audit) a mini stream cutoff other than 4096, which would otherwise be read as 4096 and serve the wrong bytes. Header CLSID, minor version, reserved bytes, transaction signature, the v3 directory sector count and the v4 header padding are ignored on read |
+| 2.3 FAT covering every sector, FATSECT/DIFSECT markers, FREESECT past end of file | Supported | |
+| 2.4 MiniFAT and mini stream, ENDOFCHAIN when absent, FREESECT past the used mini sectors | Supported | |
+| 2.5 DIFAT in header and sectors, FREESECT padding, ENDOFCHAIN link | Supported | `TestManyFATSectors`, `TestConformanceDIFAT` |
+| 2.6.1 Entry fields: name ≤ 31 units + NUL, even name length ≤ 64, forbidden `/ \ : !`, object type, colour, NOSTREAM links, zero CLSID/state/times on streams, v3 size ≤ 2 GB | Supported | Reader rejects (since this audit) a tree entry whose name length is odd, empty or above 64, or whose object type is not storage or stream. It masks the upper 32 size bits in v3 as MS-CFB recommends |
+| 2.6.1 Storage CLSID, state bits, creation and modified times | Not needed | MSI streams carry none; the root CLSID is written (CFB-02). Times stay zero for determinism; MS-CFB allows zero. The reader exposes them raw for the signature pre-hash (chapter 12) |
+| 2.6.2 Root entry name, type 5, black, zero creation time, mini stream start/size | Supported | |
+| 2.6.3 Unused entries zero with NOSTREAM links | Supported | |
+| 2.6.4 Red-black tree: black top, no red-red, sorted by length then upper-cased units, unique names | Supported | Default trees also have equal black heights. `AllBlack` trees do not, which MS-CFB explicitly allows. Readers ignore colours (CFB-04) and look names up in a map |
+| 2.6.4 Unicode 5.0 simple case folding with the Vista exceptions | Not needed | ASCII folding only; the writer rejects every other cased BMP unit instead (above). MSI names never need it |
+| Storage objects (type 1), nested storages | Not needed (read only) | Writer emits root streams only. Reader walks storages and loads their streams; `msidb` ignores them and `pkg/sign` refuses packages that have them instead of dropping them. Embedded transforms and nested installs (`Storages` table) would need them; they are outside the target packages (CFB-08, CFB-09 not run) |
+| 2.7 Zero-filled tail of the last sector | Supported | Also for mini sectors and the mini stream's last sector (4.3) |
+| 2.7 Short last sector of the file | Supported (reader) | Not allowed by 2.3, but written by other tools (observed, above) |
+| 2.8 Range lock sector | Not needed | The writer stops at 0x7FFFFE00 bytes, below the range lock offset 0x7FFFFF00, so no sector is ever needed. Packages above 2 GB are unverified (CFB-07) |
+| 2.9 Minimum three sectors, v3 ≤ 2 GB, v4 up to 16 TB | Supported up to 2 GB | Writer output is at least header, FAT and directory. v4 files above 2 GB are not written (2.8) |
+| 1.5 Transactions, 4.1 full validation | Not needed | Packages are written once. The reader validates what it reads lazily, per 4.1, plus cycles, bounds and sizes against the file length |
 
 Test vector (chapter 01 §15): `.msi` root, `Small` (`0123456789` × 10) and `Large` (5000 bytes, byte i = i mod 256). `Small` is the black top node; `Large` is its red left child. v3: 7680 bytes, SHA-256 `37d8668bf78bc6da2c9b3c6fa3da9c0ffb6824baee21bf13ff9b02dd74e08aed`. v4: 28672 bytes, SHA-256 `acb3c3db476f1d8aebfac49e89b86895756faa24288228a61f617d3c4d54956a`.
 

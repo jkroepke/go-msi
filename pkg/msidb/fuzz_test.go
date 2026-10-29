@@ -112,6 +112,7 @@ func TestCheckStreamNameMessage(t *testing.T) {
 	for name, want := range map[string]string{
 		"a!b.cab": `msidb: stream name "a!b.cab" contains '!'`,
 		"T.Grüße": `msidb: stream name "T.Grüße" contains the cased character 'ü'`,
+		"T.ｗide":  `msidb: stream name "T.ｗide" contains the cased character 'ｗ'`,
 		"T.ok":    "",
 	} {
 		err := msidb.CheckStreamName(name)

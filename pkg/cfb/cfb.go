@@ -117,17 +117,27 @@ func EncodeName(name string) ([]uint16, error) {
 			return nil, fmt.Errorf("cfb: name %q contains %q", name, rune(unit))
 		}
 
-		if unit > 0x7F && unit < 0xD800 {
-			r := rune(unit)
-			if unicode.ToUpper(r) != r || unicode.ToLower(r) != r {
-				// Compare only knows the ASCII case folding; MSI names never
-				// need more.
-				return nil, fmt.Errorf("cfb: name %q contains the cased character %q", name, r)
-			}
+		if cased(unit) {
+			// Compare only knows the ASCII case folding; MSI names never
+			// need more.
+			return nil, fmt.Errorf("cfb: name %q contains the cased character %q", name, rune(unit))
 		}
 	}
 
 	return units, nil
+}
+
+// cased reports whether Windows upper-cases a unit differently from Compare:
+// a non-ASCII BMP character with a case mapping, such as U+00E9 or the
+// fullwidth U+FF41. Surrogate units are never upper-cased (MS-CFB 2.6.4).
+func cased(unit uint16) bool {
+	if unit <= 0x7F || (unit >= 0xD800 && unit <= 0xDFFF) {
+		return false
+	}
+
+	r := rune(unit)
+
+	return unicode.ToUpper(r) != r || unicode.ToLower(r) != r
 }
 
 func upper(u uint16) uint16 {

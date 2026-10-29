@@ -94,6 +94,11 @@ go test ./... -shuffle=on -race
 - Tests add no test-only module dependencies. Test vectors from the spec appendix
   (stream names, compound files, summary stream, cabinets) are golden hashes:
   a writer change that alters them is a bug unless the spec changed.
+- `TestConformance` (`pkg/cfb/conformance_test.go`) is an independent
+  [MS-CFB] checker for the writer's output (header, FAT/DIFAT/MiniFAT,
+  sector ownership, directory entries, red-black trees, zero padding). Run a
+  new writer layout through it; the coverage table in `MSISPEC.md` section 2
+  lists which rules are supported and which are not needed, with reasons.
 - Snapshots: `TestExampleTables` (`cmd/msi-builder/testdata/tables`) holds the
   tables of every example, and `TestMsiexecInstallsExamples`
   (`pkg/builder/nativetest/testdata/install`) holds the entries that
