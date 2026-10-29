@@ -19,7 +19,7 @@ Installer (MSI) package. Write down what to install, run one command, ship the
 msi.yaml + your files  ──▶  msi-builder build  ──▶  app.msi
 ```
 
-msi-builder is a single Go binary without cgo, so the same command builds the
+msi-builder is a single, self-contained binary, so the same command builds the
 package on Linux, macOS and Windows: on your laptop, in a container or in
 a CI job next to the rest of your release.
 
@@ -151,16 +151,15 @@ PowerShell; `msi-builder completion <shell> --help` shows how to load it.
 
 ## Documentation
 
-- [Getting Started](docs/Getting%20Started.md)
-- [Command-line reference](docs/cli/msi-builder.md)
-- [YAML schema](docs/design/yaml-schema.md)
-- [Signing](docs/signing.md)
-- [Go API](docs/go-api.md)
-- [MSI specification](docs/spec/MSISPEC.md) and its
-  [Windows test results](docs/spec/MSISPEC-RESULTS.md)
+The documentation lives in the [wiki](https://github.com/jkroepke/msi-builder/wiki):
 
-The documentation is also published in the
-[wiki](https://github.com/jkroepke/msi-builder/wiki).
+- [Getting Started](https://github.com/jkroepke/msi-builder/wiki/Getting-Started)
+- [Command-line reference](https://github.com/jkroepke/msi-builder/wiki/Command-Line)
+- [YAML schema](https://github.com/jkroepke/msi-builder/wiki/YAML-Schema)
+- [Signing](https://github.com/jkroepke/msi-builder/wiki/Signing)
+- [Go API](https://github.com/jkroepke/msi-builder/wiki/Go-API)
+- [MSI specification](https://github.com/jkroepke/msi-builder/wiki/MSI-Specification) and its
+  [Windows test results](https://github.com/jkroepke/msi-builder/wiki/Windows-Test-Results)
 
 ## Contributing
 

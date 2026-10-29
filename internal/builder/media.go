@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/jkroepke/msi-builder/internal/msidb"
 	"github.com/jkroepke/msi-builder/internal/spool"
 	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/sign"
 )
 
 // maxEmbedded is the most the embedded cabinets may add up to: a package
@@ -22,6 +24,10 @@ const maxEmbedded = 0x7FFFFE00
 // maxDiskID is the largest Media.DiskId, an i2 column.
 const maxDiskID = 32767
 
+// cabinetSigner is the MsiDigitalCertificate row of the certificate that
+// signs the external cabinets.
+const cabinetSigner = "CabinetSigner"
+
 // cabinetInfo is one cabinet: a run of payload files in sequence order with
 // a Media row of its own (section 5).
 type cabinetInfo struct {
@@ -29,20 +35,30 @@ type cabinetInfo struct {
 	target spool.Target
 	name   string
 	files  []*fileInfo
-	size   int64
+	// signature is the signer's signature value, MsiDigitalSignature.Hash,
+	// once the cabinet is signed.
+	signature []byte
+	size      int64
 }
 
 // cabOptions are the cabinet writer options of package.compression.
 func (b *build) cabOptions() cab.Options {
+	opts := cab.Options{Compression: cab.MSZIP, SignatureReserve: b.signsCabinets()}
+
 	if window, ok := config.LZXWindow(b.cfg.Package.Compression); ok {
-		return cab.Options{Compression: cab.LZX, Window: window}
+		opts.Compression, opts.Window = cab.LZX, window
+	} else if b.cfg.Package.Compression == "none" {
+		opts.Compression = cab.None
 	}
 
-	if b.cfg.Package.Compression == "none" {
-		return cab.Options{Compression: cab.None}
-	}
+	return opts
+}
 
-	return cab.Options{Compression: cab.MSZIP}
+// signsCabinets reports whether the cabinets get signatures of their own:
+// only external ones do, since Windows Installer checks no other
+// (section 12).
+func (b *build) signsCabinets() bool {
+	return b.opts.SignCabinets != nil && !b.cfg.Package.CabinetsEmbedded()
 }
 
 // splitCabinets puts the payload files, in sequence order, into as few
@@ -98,9 +114,12 @@ func (b *build) splitCabinets() {
 }
 
 // fits reports whether files entries with nameBytes of names and folderBytes
-// of data fit one cabinet of at most limit bytes.
+// of data fit one cabinet of at most limit bytes, counting the signature
+// reserve whether or not the cabinet is signed. A signature follows
+// cbCabinet and is not counted.
 func fits(files int, nameBytes, folderBytes int64, comp cab.Compression, limit int64) bool {
-	return files <= cab.MaxFiles && folderBytes <= cab.MaxFolder && cab.Bound(files, nameBytes, folderBytes, comp) <= limit
+	return files <= cab.MaxFiles && folderBytes <= cab.MaxFolder &&
+		cab.Bound(files, nameBytes, folderBytes, comp)+cab.SignatureReserve <= limit
 }
 
 // cabinetName is the name of the number-th cabinet: package.cabinet for the
@@ -135,6 +154,44 @@ func (b *build) writeMedia() {
 	for i, cabinet := range b.cabinets {
 		media.Add(i+1, cabinet.files[len(cabinet.files)-1].Sequence, nil, prefix+cabinet.name, nil, nil)
 	}
+}
+
+// writeSignatures adds the MsiDigitalCertificate row of the signing
+// certificate and an MsiDigitalSignature row per external cabinet when the
+// cabinets are signed. Each Hash is filled in once its cabinet is signed.
+func (b *build) writeSignatures() {
+	if !b.signsCabinets() || len(b.cabinets) == 0 {
+		return
+	}
+
+	b.table("MsiDigitalCertificate").Add(cabinetSigner, b.opts.SignCabinets.Certificates[0].Raw)
+
+	signatures := b.table("MsiDigitalSignature")
+
+	for i := range b.cabinets {
+		signatures.Add("Media", strconv.Itoa(i+1), cabinetSigner, nil)
+	}
+}
+
+// signCabinet signs the external cabinet in its spool and records the
+// signature value as the Hash of its MsiDigitalSignature row, the index-th.
+func (b *build) signCabinet(cabinet *cabinetInfo, index int) error {
+	// The build has no context; a timestamp request is bounded by the
+	// HTTP client's timeout.
+	signature, err := sign.SignCabinet(context.Background(), cabinet.target, *b.opts.SignCabinets)
+	if err != nil {
+		return fmt.Errorf("cabinet %s: %w", cabinet.name, err)
+	}
+
+	size, err := spool.Size(cabinet.target)
+	if err != nil {
+		return fmt.Errorf("cabinet %s: %w", cabinet.name, err)
+	}
+
+	cabinet.signature, cabinet.size = signature, size
+	b.tables["MsiDigitalSignature"].Rows[index][3] = signature
+
+	return nil
 }
 
 // writeCabinet packs the files of cabinet into target, streaming each file

@@ -214,6 +214,7 @@ var tableActions = map[string][]string{ //nolint:gochecknoglobals // lookup tabl
 	"ServiceControl":   {actInstallServices, actStartServices, actStopServices, actDeleteServices},
 	"MsiServiceConfig": {"MsiConfigureServices"},
 	"Shortcut":         {"CreateShortcuts", "RemoveShortcuts"},
+	"IniFile":          {"WriteIniValues", "RemoveIniValues"},
 }
 
 // addAction registers a custom action. The CustomAction row is written by
