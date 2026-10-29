@@ -148,11 +148,7 @@ func Attach(pkg, signature []byte) ([]byte, *Signature, error) {
 // Sign returns pkg with a fresh basic-mode signature, replacing any
 // existing one.
 func Sign(ctx context.Context, pkg []byte, opts Options) ([]byte, error) {
-	if opts.Signer == nil || len(opts.Certificates) == 0 {
-		return nil, errors.New("sign: a signer and its certificate are required")
-	}
-
-	if err := checkKey(opts.Signer, opts.Certificates[0]); err != nil {
+	if err := opts.check(); err != nil {
 		return nil, err
 	}
 
@@ -161,7 +157,12 @@ func Sign(ctx context.Context, pkg []byte, opts Options) ([]byte, error) {
 		return nil, err
 	}
 
-	p7, err := buildSignature(ctx, digest, &opts)
+	content, err := indirectData(opts.hash(), digest)
+	if err != nil {
+		return nil, err
+	}
+
+	p7, err := buildSignature(ctx, content, &opts)
 	if err != nil {
 		return nil, err
 	}
@@ -169,6 +170,15 @@ func Sign(ctx context.Context, pkg []byte, opts Options) ([]byte, error) {
 	out, _, err := Attach(pkg, p7)
 
 	return out, err
+}
+
+// check refuses options without a usable key and certificate.
+func (o *Options) check() error {
+	if o.Signer == nil || len(o.Certificates) == 0 {
+		return errors.New("sign: a signer and its certificate are required")
+	}
+
+	return checkKey(o.Signer, o.Certificates[0])
 }
 
 // checkKey makes sure the key belongs to the certificate and is one the
@@ -194,16 +204,12 @@ func checkKey(signer crypto.Signer, cert *x509.Certificate) error {
 	return nil
 }
 
-// buildSignature returns the DER ContentInfo for the digest.
-func buildSignature(ctx context.Context, digest []byte, opts *Options) ([]byte, error) {
+// buildSignature returns the DER ContentInfo that signs content, a DER
+// SpcIndirectDataContent.
+func buildSignature(ctx context.Context, content []byte, opts *Options) ([]byte, error) {
 	algo := opts.hash()
 
 	alg, err := digestAlgorithm(algo)
-	if err != nil {
-		return nil, err
-	}
-
-	content, err := indirectData(algo, digest)
 	if err != nil {
 		return nil, err
 	}

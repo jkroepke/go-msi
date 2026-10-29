@@ -261,18 +261,9 @@ func Verify(pkg []byte) (*Signature, error) {
 // parseIndirectData returns the digest algorithm and the content digest D
 // an Authenticode signature of an MSI carries.
 func parseIndirectData(sdata *parsedSignedData) (crypto.Hash, []byte, error) {
-	if !sdata.contentType.Equal(oidSpcIndirectData) {
-		return 0, nil, fmt.Errorf("sign: signed content %v is not SpcIndirectDataContent", sdata.contentType)
-	}
-
-	var indirect spcIndirectDataContent
-
-	if err := unmarshalExact(sdata.contentDER, &indirect); err != nil {
-		return 0, nil, fmt.Errorf("sign: malformed SpcIndirectDataContent: %w", err)
-	}
-
-	if !indirect.Data.Type.Equal(oidSpcSipInfo) {
-		return 0, nil, fmt.Errorf("sign: indirect data %v is not SpcSipInfo", indirect.Data.Type)
+	indirect, err := parseIndirect(sdata, oidSpcSipInfo)
+	if err != nil {
+		return 0, nil, err
 	}
 
 	var sip spcSipInfo
@@ -287,6 +278,26 @@ func parseIndirectData(sdata *parsedSignedData) (crypto.Hash, []byte, error) {
 	}
 
 	return algo, indirect.MessageDigest.Digest, nil
+}
+
+// parseIndirect decodes the SpcIndirectDataContent of sdata and checks that
+// its data has the type kind.
+func parseIndirect(sdata *parsedSignedData, kind asn1.ObjectIdentifier) (*spcIndirectDataContent, error) {
+	if !sdata.contentType.Equal(oidSpcIndirectData) {
+		return nil, fmt.Errorf("sign: signed content %v is not SpcIndirectDataContent", sdata.contentType)
+	}
+
+	var indirect spcIndirectDataContent
+
+	if err := unmarshalExact(sdata.contentDER, &indirect); err != nil {
+		return nil, fmt.Errorf("sign: malformed SpcIndirectDataContent: %w", err)
+	}
+
+	if !indirect.Data.Type.Equal(kind) {
+		return nil, fmt.Errorf("sign: indirect data %v, want %v", indirect.Data.Type, kind)
+	}
+
+	return &indirect, nil
 }
 
 // checkContent recomputes the pre-hash, when the package has one, and the

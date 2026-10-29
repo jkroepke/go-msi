@@ -2,18 +2,27 @@ package builder_test
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jkroepke/msi-builder/internal/builder"
 	"github.com/jkroepke/msi-builder/internal/cab"
 	"github.com/jkroepke/msi-builder/internal/msidb"
 	"github.com/jkroepke/msi-builder/internal/testpe"
 	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/sign"
 )
 
 // splitConfig is the minimal example with three more payload files of
@@ -257,5 +266,123 @@ func TestExternalCabinetNames(t *testing.T) {
 		if !slices.ContainsFunc(config.Validate(cfg), func(d config.Diagnostic) bool { return d.Path == "package.cabinet" }) {
 			t.Errorf("cabinet %q passed validation", name)
 		}
+	}
+}
+
+// testSigner is a throwaway code-signing key and certificate.
+func testSigner(t *testing.T) *sign.Options {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "msi-builder cabinet test"},
+		NotBefore:    buildTime.Add(-time.Hour),
+		NotAfter:     buildTime.Add(24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning},
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, key.Public(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return &sign.Options{Signer: key, Certificates: []*x509.Certificate{cert}}
+}
+
+// TestSignedExternalCabinets signs each external cabinet and lists the
+// certificate and each cabinet's digest in the signature tables.
+func TestSignedExternalCabinets(t *testing.T) {
+	t.Parallel()
+
+	signer := testSigner(t)
+	cfg := splitConfig(t)
+	cfg.Package.EmbedCabinets = new(false)
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime, CabinetSize: 100000, SignCabinets: signer})
+	if err != nil {
+		t.Fatalf("build: %v\n%s", err, res.Diagnostics)
+	}
+
+	database, err := msidb.Unmarshal(res.Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	certData := cell(t, database, "MsiDigitalCertificate", "CertData", func([]any) bool { return true })
+	if !bytes.Equal(certData.([]byte), signer.Certificates[0].Raw) { //nolint:forcetypeassert // a v0 column
+		t.Error("MsiDigitalCertificate.CertData is not the signing certificate")
+	}
+
+	signatures := rows(t, database, "MsiDigitalSignature")
+	if len(res.Cabinets) != 2 || len(signatures) != len(res.Cabinets) {
+		t.Fatalf("%d cabinets, %d MsiDigitalSignature rows", len(res.Cabinets), len(signatures))
+	}
+
+	for i, cabinet := range res.Cabinets {
+		sig, err := sign.VerifyCabinet(bytes.NewReader(cabinet.Data))
+		if err != nil {
+			t.Fatalf("cabinet %s: %v", cabinet.Name, err)
+		}
+
+		row := signatures[i]
+		if row[0] != "Media" || row[1] != strconv.Itoa(i+1) || row[2] != "CabinetSigner" || !bytes.Equal(row[3].([]byte), sig.Digest) { //nolint:forcetypeassert // a V0 column
+			t.Errorf("MsiDigitalSignature row %v, want the digest of %s", row[:3], cabinet.Name)
+		}
+
+		if int64(len(cabinet.Data)) != cabinet.Size {
+			t.Errorf("cabinet %s: %d bytes, size %d", cabinet.Name, len(cabinet.Data), cabinet.Size)
+		}
+
+		if _, err := cab.Read(cabinet.Data); err != nil {
+			t.Errorf("cabinet %s: %v", cabinet.Name, err)
+		}
+	}
+
+	// A build to a file signs the spools that move beside the package.
+	out := filepath.Join(t.TempDir(), "hello.msi")
+
+	onDisk, err := builder.Build(cfg, builder.Options{BuildTime: buildTime, CabinetSize: 100000, SignCabinets: signer, Output: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, cabinet := range onDisk.Cabinets {
+		file, err := os.Open(cabinet.Path)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = sign.VerifyCabinet(file)
+		_ = file.Close()
+
+		if err != nil {
+			t.Errorf("cabinet %s: %v", cabinet.Path, err)
+		}
+	}
+
+	// Embedded cabinets are covered by the package signature only.
+	embedded, err := builder.Build(splitConfig(t), builder.Options{BuildTime: buildTime, SignCabinets: signer})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	database, err = msidb.Unmarshal(embedded.Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if database.Table("MsiDigitalSignature") != nil || database.Table("MsiDigitalCertificate") != nil {
+		t.Error("an embedded build has signature tables")
 	}
 }

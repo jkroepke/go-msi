@@ -21,6 +21,7 @@ import (
 	"github.com/jkroepke/msi-builder/internal/spool"
 	"github.com/jkroepke/msi-builder/internal/summary"
 	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/sign"
 )
 
 // placeholderCode stands in for an automatic package code while the
@@ -482,7 +483,7 @@ func (b *build) writeCabinets(database *msidb.Database, output string) (func(), 
 		return closeAll, err
 	}
 
-	for _, cabinet := range b.cabinets {
+	for i, cabinet := range b.cabinets {
 		target, closeSpool, err := b.newTarget("cabinet", output)
 		if err != nil {
 			return closeAll, err
@@ -492,6 +493,12 @@ func (b *build) writeCabinets(database *msidb.Database, output string) (func(), 
 
 		if err := b.writeCabinet(target, cabinet); err != nil {
 			return closeAll, err
+		}
+
+		if b.signsCabinets() {
+			if err := b.signCabinet(cabinet, i); err != nil {
+				return closeAll, err
+			}
 		}
 
 		if !b.cfg.Package.CabinetsEmbedded() {
@@ -626,6 +633,17 @@ func (b *build) verifyCabinet(file *cfb.File, cabinet *cabinetInfo) error {
 
 	if index != len(cabinet.files) {
 		return fmt.Errorf("holds %d files, want %d", index, len(cabinet.files))
+	}
+
+	if b.signsCabinets() {
+		sig, err := sign.VerifyCabinet(cabinet.target)
+		if err != nil {
+			return err //nolint:wrapcheck // the caller names the cabinet
+		}
+
+		if !bytes.Equal(sig.Digest, cabinet.digest) {
+			return errors.New("the signature covers another digest than MsiDigitalSignature.Hash")
+		}
 	}
 
 	return nil

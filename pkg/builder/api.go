@@ -13,12 +13,22 @@ import (
 
 	"github.com/jkroepke/msi-builder/internal/builder"
 	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/sign"
 )
 
 // Options control a build.
 type Options struct {
 	BuildTime time.Time
-	ToolName  string
+	// SignCabinets signs each cabinet written beside the package
+	// (package.embedCabinets false) with Authenticode and lists the
+	// signing certificate and each cabinet's digest in the
+	// MsiDigitalCertificate and MsiDigitalSignature tables, so that Windows
+	// Installer refuses a cabinet that was changed or swapped. The package
+	// itself is not signed: sign it with sign.Sign after the build. Nil,
+	// or embedded cabinets, which the package signature covers, leave the
+	// cabinets unsigned.
+	SignCabinets *sign.Options
+	ToolName     string
 	// Output is the path the package is written to. The cabinet and the
 	// package are written to temporary files beside it and the payload
 	// files stream through, so the build needs memory for the tables only,
