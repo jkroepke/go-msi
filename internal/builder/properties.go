@@ -400,7 +400,11 @@ func (b *build) fileSignature(signature string, file *config.FileSearch) {
 		minVersion = config.SearchMinVersion(minVersion, file.Languages)
 	}
 
-	b.table("Signature").Add(signature, file.Name, nullable(minVersion), nullable(file.MaxVersion),
+	// Signature.FileName is a Filename column: a name that is no valid
+	// short name is written as a generated short|long pair (ICE03).
+	name := filename(signature, file.Name, false, make(map[string]bool), config.ValidShortName)
+
+	b.table("Signature").Add(signature, name, nullable(minVersion), nullable(file.MaxVersion),
 		optionalSize(file.MinSize), optionalSize(file.MaxSize), minDate, maxDate, nullable(strings.Join(langs, ",")))
 }
 

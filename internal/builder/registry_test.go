@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/jkroepke/msi-builder/internal/msidb"
@@ -173,6 +174,26 @@ properties:
 		if r[0] == "OLDDIR" {
 			t.Errorf("OLDDIR has a Property row %v; its default comes from the action", r)
 		}
+	}
+}
+
+// TestFileSearchLongName checks that a file search for a name that is no
+// valid short name writes a short|long pair (ICE03).
+func TestFileSearchLongName(t *testing.T) {
+	t.Parallel()
+
+	database := buildYAML(t, `schema: msi-builder/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+components:
+  - files: [{ source: hello.exe }]
+properties:
+  NOTES: { search: { file: { name: release notes.txt, path: 'C:\Example' } } }
+`)
+
+	name := fmt.Sprint(rows(t, database, "Signature")[0][1])
+	if short, long, ok := strings.Cut(name, "|"); !ok || long != "release notes.txt" || !config.ValidShortName(short) {
+		t.Errorf("Signature.FileName = %q, want a short|long pair", name)
 	}
 }
 
