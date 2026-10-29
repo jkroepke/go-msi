@@ -41,14 +41,39 @@ func currentSID() string {
 	return strings.TrimSpace(string(out))
 }
 
+// elevated reports whether the process token has the high mandatory level.
+func elevated() bool {
+	out, _ := exec.Command("whoami.exe", "/groups").Output()
+	return strings.Contains(string(out), "S-1-16-12288")
+}
+
 func caseCA01() {
 	sid := currentSID()
-	for _, v := range []struct{ name, seq string }{
-		{"fail-after-publishproduct", "6450"},
-		{"fail-after-installfiles", "4001"},
-	} {
-		c := newCase("CA-01", v.name)
+	admin := elevated()
+	variants := []struct {
+		name, seq string
+		dual      bool
+	}{
+		{"fail-after-publishproduct", "6450", false},
+		{"fail-after-installfiles", "4001", false},
+		// The shape of WiX issue 8574: ALLUSERS=2 with MSIINSTALLPERUSER=1.
+		{"dual-fail-after-publishproduct", "6450", true},
+	}
+	for _, v := range variants {
+		name := v.name
+		if !admin {
+			name += "-nonadmin"
+		}
+		c := newCase("CA-01", name)
+		c.logf("user SID %s, elevated=%v", sid, admin)
 		p := &pkg{Name: "run13", Is64: true, PerUser: true}
+		if v.dual {
+			p.ExtraProps = [][]string{{"ALLUSERS", "2"}, {"MSIINSTALLPERUSER", "1"}}
+		}
+		if v.dual || !admin {
+			// Word Count bit 3: no elevation needed, as a per-user package declares it.
+			p.WordCount = 10
+		}
 		// Deferred (1024), impersonated EXE action in INSTALLDIR that exits 1.
 		p.Extra = map[string][][]string{"CustomAction": {{"FailDeferred", "1058", "INSTALLDIR", `"[System64Folder]cmd.exe" /c exit 1`, ""}}}
 		p.ExtraSequence = [][]string{{"FailDeferred", "NOT REMOVE", v.seq}}
@@ -72,11 +97,13 @@ func caseCA01() {
 		u := runMsiexec(c, "uninstall.log", "/x", p.ProductCode)
 		c.logf("uninstall by ProductCode exit %d; state after %d", u.Exit, productState(p.ProductCode))
 		left := !strings.Contains(regQuery(hku), "ERROR") || !strings.Contains(regQuery(ud), "ERROR")
-		c.logf("RESULT %s: install %d, registration left after failed install=%v", v.name, r.Exit, !strings.Contains(pub, "ERROR"))
+		c.logf("RESULT %s: install %d, registration left after failed install=%v", name, r.Exit, !strings.Contains(pub, "ERROR"))
 		if left {
 			c.logf("  cleanup: deleting leftover registration keys")
 			for _, k := range []string{hku, ud} {
-				exec.Command("reg.exe", "delete", k, "/f").Run()
+				if err := exec.Command("reg.exe", "delete", k, "/f").Run(); err != nil {
+					c.logf("  reg delete %s: %v", k, err)
+				}
 			}
 			c.logf("  after cleanup state %d", productState(p.ProductCode))
 		}
