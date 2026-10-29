@@ -181,7 +181,8 @@ components:
 The rights apply to the subfolders and files too. Files and services take
 `grant` in their `permissions` block. The account can also be a property,
 `account: '[SERVICE_ACCOUNT]'`; a property set on the command line is not
-remembered, so pass it again to a repair. To replace the permissions
+remembered, so a repair skips a grant whose account is empty, and an
+upgrade needs it again. To replace the permissions
 instead of adding to them, write an SDDL string in `sddl`.
 
 ### Add the program to PATH

@@ -176,6 +176,12 @@ enum {
     REG_DWORD = 4,
     MSICONDITION_TRUE = 1,
     MSICONDITION_NONE = 2,
+
+    // SID_NAME_USE
+    SidTypeDomain = 3,
+    SidTypeDeletedAccount = 6,
+    SidTypeInvalid = 7,
+    SidTypeUnknown = 8,
 };
 
 // The compiler may lower struct copies and zeroing to these.
@@ -562,7 +568,8 @@ done:
 // keeps every other ACE, the inherited ones included. Before it changes an
 // object it records the rights it adds, which the account did not have, in
 // HKCU\Software\msi-builder\GrantRollback\<ProductCode> under the entry's
-// number (as LocalSystem, HKCU is the LocalSystem hive). The rollback takes
+// number (HKCU of the account the action runs as: LocalSystem's hive in a
+// per-machine install). The rollback takes
 // exactly those rights away again and the commit deletes the record, so rights
 // that were there before the install survive a rollback. Log lines read
 // `BuilderGrant: ...`.
@@ -575,6 +582,9 @@ static const WCHAR propCommit[] = u"BuilderGrantCommit";
 static const WCHAR rollbackKey[] = u"Software\\msi-builder\\GrantRollback\\";
 static const WCHAR msgGrantData[] = u"malformed grant data";
 static const WCHAR msgNoAccount[] = u"no account to grant rights to";
+static const WCHAR msgSkipEmpty[] = u"the account is empty in a maintenance install; skipped";
+static const WCHAR propInstalled[] = u"Installed";
+static const WCHAR msgAccountType[] = u"the account names a domain, a deleted account or nothing";
 static const WCHAR msgBadAccount[] = u"the account contains | or a control character";
 static const WCHAR msgBadObject[] = u"the object contains a control character";
 static const WCHAR msgFormat[] = u"cannot format";
@@ -708,6 +718,15 @@ static WCHAR *field(WCHAR *s, WCHAR sep)
     return s + 1;
 }
 
+// maintenance reports whether the product is installed already: a repair, a
+// reinstall, a patch or a feature change.
+static int maintenance(MSIHANDLE install)
+{
+    WCHAR *installed = property(install, propInstalled);
+    HeapFree(GetProcessHeap(), 0, installed);
+    return installed != 0;
+}
+
 // scheduleEntry formats one line of BuilderGrants and appends it to out. It
 // returns 0 when the install has to fail.
 static int scheduleEntry(MSIHANDLE install, WCHAR *line, wbuf *out)
@@ -736,7 +755,14 @@ static int scheduleEntry(MSIHANDLE install, WCHAR *line, wbuf *out)
         logft(install, tmplGrant, msgFormat, acct ? object : account, 0);
     } else {
         WCHAR *name = trim(acct);
-        if (!*name) {
+        if (!*name && maintenance(install)) {
+            // A property set on the command line of the first install is
+            // not remembered: a repair from Apps & Features, a patch or a
+            // self-repair cannot pass it again, and the rights it granted
+            // are there already.
+            logft(install, tmplGrant, msgSkipEmpty, obj, 0);
+            ok = 1;
+        } else if (!*name) {
             logft(install, tmplGrant, msgNoAccount, obj, 0);
         } else if (hasControl(name, 1)) {
             logft(install, tmplGrant, msgBadAccount, name, 0);
@@ -874,6 +900,10 @@ static void *resolveSid(MSIHANDLE install, const WCHAR *account)
         logft(install, tmplGrant, msgSid, account, GetLastError());
         HeapFree(heap, 0, sid);
         sid = 0;
+    } else if (use == SidTypeDomain || use == SidTypeDeletedAccount || use == SidTypeInvalid || use == SidTypeUnknown) {
+        logft(install, tmplGrant, msgAccountType, account, 0);
+        HeapFree(heap, 0, sid);
+        sid = 0;
     }
 done:
     HeapFree(heap, 0, domain);
@@ -957,9 +987,10 @@ static int rebuild(ACL *dacl, void *sid, DWORD mask, DWORD flags, int grant, ACL
 }
 
 // applyEntry grants (or, on rollback, revokes) the rights of one entry. On a
-// grant, record is called with the rights it is about to add before the
-// object changes. It returns 0 on an error.
-static int applyEntry(MSIHANDLE install, WCHAR *entry, int grant, HANDLE key, const WCHAR *valueName)
+// grant, the rights it is about to add are recorded under valueName in key
+// (keyErr is why key is 0) before the object changes. It returns 0 on an
+// error.
+static int applyEntry(MSIHANDLE install, WCHAR *entry, int grant, HANDLE key, long keyErr, const WCHAR *valueName)
 {
     HANDLE heap = GetProcessHeap();
     DWORD mask = 0, flags = 0;
@@ -1015,9 +1046,12 @@ static int applyEntry(MSIHANDLE install, WCHAR *entry, int grant, HANDLE key, co
         ok = 1;
         goto done;
     }
-    if (grant && (!key || RegSetValueExW(key, valueName, 0, REG_DWORD, (const BYTE *)&changed, sizeof changed))) {
-        logft(install, tmplGrant, msgRecord, object, 0);
-        goto done;
+    if (grant) {
+        long regErr = key ? RegSetValueExW(key, valueName, 0, REG_DWORD, (const BYTE *)&changed, sizeof changed) : keyErr;
+        if (regErr) {
+            logft(install, tmplGrant, msgRecord, object, (DWORD)regErr);
+            goto done;
+        }
     }
     // A file or folder keeps its protection state: a protected DACL stays
     // protected, and an unprotected one keeps inheriting from its parent.
@@ -1065,11 +1099,14 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
         return op == '+' ? ERROR_INSTALL_FAILURE : ERROR_SUCCESS;
     }
     HANDLE key = 0;
+    long keyErr = 0;
     UINT result = ERROR_SUCCESS;
     if (op == '+') {
-        // A record left by an install that never reached its commit is stale.
+        // A record left by an install that never reached its commit (or
+        // ran with rollback disabled, which skips commit actions too) is
+        // stale.
         RegDeleteTreeW(HKCU_, path.s);
-        if (entries && RegCreateKeyExW(HKCU_, path.s, 0, 0, 0, KEY_QUERY_VALUE | KEY_SET_VALUE, 0, &key, 0)) {
+        if (entries && (keyErr = RegCreateKeyExW(HKCU_, path.s, 0, 0, 0, KEY_QUERY_VALUE | KEY_SET_VALUE, 0, &key, 0)) != 0) {
             key = 0;
         }
     } else if (op == '-' && RegOpenKeyExW(HKCU_, path.s, 0, KEY_QUERY_VALUE, &key)) {
@@ -1082,7 +1119,7 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
         SIZE_T pos = 0;
         wappendnum(name, &pos, index);
         // A rollback undoes every entry it can and never fails.
-        if (!applyEntry(install, entry, op == '+', key, name) && op == '+') {
+        if (!applyEntry(install, entry, op == '+', key, keyErr, name) && op == '+') {
             result = ERROR_INSTALL_FAILURE;
             break;
         }

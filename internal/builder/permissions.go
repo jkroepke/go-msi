@@ -102,7 +102,7 @@ func (b *build) grant(component, object string, kind byte, flags uint32, perm *c
 // the block's condition), and adds the actions on the embedded DLL that
 // apply them (specification section 17.7): BuilderGrantSchedule evaluates the
 // conditions and formats accounts and objects, then the deferred
-// BuilderGrantExec grants as the installer (not impersonated), its rollback
+// BuilderGrantExec grants without impersonation (as LocalSystem in a per-machine install), its rollback
 // takes away what it added and the commit action drops the record of that.
 // They run after the objects exist and before StartServices. Nothing runs
 // on removal: the objects the package created go with it.
@@ -111,10 +111,12 @@ func (b *build) grantActions() {
 		return
 	}
 
-	if _, ok := b.cfg.Properties[cadll.GrantProperty]; ok {
-		b.errorf("properties."+cadll.GrantProperty, "the property %s is reserved for permission grants", cadll.GrantProperty)
+	for _, name := range []string{cadll.GrantProperty, cadll.GrantExec, cadll.GrantRollback, cadll.GrantCommit} {
+		if _, ok := b.cfg.Properties[name]; ok {
+			b.errorf("properties."+name, "the property %s is reserved for permission grants", name)
 
-		return
+			return
+		}
 	}
 
 	lines := make([]string, 0, len(b.grants))

@@ -134,6 +134,10 @@ func TestPermissionGrants(t *testing.T) {
 	res := mustBuild(t, cfg)
 	database := res.Database
 
+	if !strings.Contains(fmt.Sprint(res.Diagnostics), "can be pointed at any folder") {
+		t.Errorf("no warning for an inheriting grant on %s: %s", comp.Directory, res.Diagnostics)
+	}
+
 	if locks := rows(t, database, "MsiLockPermissionsEx"); len(locks) != 1 {
 		t.Errorf("MsiLockPermissionsEx rows %v, want the folder SDDL only", locks)
 	}
@@ -241,4 +245,17 @@ func TestPermissionGrantErrors(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("reserved property", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
+		cfg.Components[0].Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "NS", Rights: config.StringList{"read"}}}}
+		cfg.Properties = config.Properties{"BuilderGrantExec": {Value: "x"}}
+
+		res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+		if err == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "reserved for permission grants") {
+			t.Errorf("err %v, diagnostics %s", err, res.Diagnostics)
+		}
+	})
 }

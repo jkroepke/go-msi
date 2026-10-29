@@ -121,7 +121,8 @@ func TestMsiexecSDDLWithoutProtection(t *testing.T) {
 	key := objectSDDL(t, `HKLM:\SOFTWARE\MsiBuilderTest\Sec02`)
 	t.Logf("SEC-02: after install, registry key: %s", key)
 
-	if strings.Contains(key, "D:P") || !strings.Contains(key, "(A;CIID;KR;;;NS)") || strings.Contains(key, ";;;BU)") {
+	if strings.Contains(key, "D:P") || strings.Count(key, "(") != 3 ||
+		!strings.Contains(key, "(A;CIID;KA;;;SY)") || !strings.Contains(key, "(A;CIID;KA;;;BA)") || !strings.Contains(key, "(A;CIID;KR;;;NS)") {
 		t.Errorf("registry key: %s, want the authored ACEs, marked inherited, and no others", key)
 	}
 
@@ -154,7 +155,9 @@ components:
     directory: CommonAppDataFolder/MsiBuilderGrant/existing
     createFolder: true
     folderPermissions:
-      grant: [{ account: 'NT AUTHORITY\LocalService', rights: full }]
+      grant:
+        - { account: 'NT AUTHORITY\LocalService', rights: full }
+        - { account: S-1-5-32-546, rights: readExecute }
 customActions:
   - id: FailNow
     run: { command: '"[System64Folder]cmd.exe" /c exit 1' }
@@ -208,7 +211,9 @@ func TestMsiexecGrants(t *testing.T) {
 	before := objectSDDL(t, existing)
 	t.Logf("SEC-02: existing folder before: %s", before)
 
-	account := `SVC_ACCOUNT=NT AUTHORITY\NETWORK SERVICE`
+	// A name without spaces, which LookupAccountNameW resolves (on an
+	// English system), keeps msiexec's command line simple.
+	account := `SVC_ACCOUNT=BUILTIN\Guests`
 
 	// Rollback: the grants ran, then FailNow failed the install.
 	if code := msiexecCode(t, filepath.Join(dir, "rollback.log"), "/i", path, account, "FAILNOW=1"); code != 1603 {
@@ -226,6 +231,8 @@ func TestMsiexecGrants(t *testing.T) {
 		t.Errorf("existing folder after rollback:\n%s\nwant\n%s", got, before)
 	}
 
+	requireNoGrantRecord(t, "after the rollback")
+
 	// An empty account fails the install.
 	if code := msiexecCode(t, filepath.Join(dir, "empty.log"), "/i", path); code != 1603 {
 		t.Errorf("install without SVC_ACCOUNT returned %d, want 1603", code)
@@ -237,6 +244,8 @@ func TestMsiexecGrants(t *testing.T) {
 
 	msiexecQuiet(t, filepath.Join(dir, "install.log"), "/i", path, account)
 
+	requireNoGrantRecord(t, "after the install")
+
 	installed := map[string]string{}
 	for name, object := range map[string]string{"file": app, "data folder": data, "existing folder": existing} {
 		installed[name] = objectSDDL(t, object)
@@ -247,9 +256,9 @@ func TestMsiexecGrants(t *testing.T) {
 	t.Logf("SEC-02: grant, service: %s", installed["service"])
 
 	for name, want := range map[string][]string{
-		"file":            {"(A;;0x1200a9;;;NS)", ";ID;"},
-		"data folder":     {"(A;OICI;0x1301bf;;;NS)", ";ID;"},
-		"existing folder": {"(A;OICI;FA;;;LS)", ";;;BG)", ";ID;"},
+		"file":            {"(A;;0x1200a9;;;BG)", ";ID;"},
+		"data folder":     {"(A;OICI;0x1301bf;;;BG)", ";ID;"},
+		"existing folder": {"(A;OICI;FA;;;LS)", "(A;OICI;0x1200a9;;;BG)", ";ID;"},
 		"service":         {"(A;;RPWP;;;BU)"},
 	} {
 		for _, part := range want {
@@ -292,6 +301,22 @@ func TestMsiexecGrants(t *testing.T) {
 	// Uninstalling leaves the ACE on the folder that outlives the package.
 	if got := objectSDDL(t, existing); got != installed["existing folder"] {
 		t.Errorf("existing folder after uninstall:\n%s\nwant\n%s", got, installed["existing folder"])
+	}
+}
+
+// requireNoGrantRecord fails when a product's rollback record of grants
+// is still in LocalSystem's hive, where the deferred action, which runs as
+// LocalSystem, keeps it until the commit or rollback action deletes it.
+func requireNoGrantRecord(t *testing.T, when string) {
+	t.Helper()
+
+	out, err := exec.CommandContext(t.Context(), "reg", "query", `HKU\S-1-5-18\Software\msi-builder\GrantRollback`).CombinedOutput()
+	if err != nil {
+		return // no record of any product
+	}
+
+	if strings.Contains(string(out), "GrantRollback\\{") {
+		t.Errorf("%s, a grant record is left:\n%s", when, out)
 	}
 }
 

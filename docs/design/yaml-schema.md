@@ -968,9 +968,19 @@ folderPermissions:
   local account, or another name for `LookupAccountNameW`, such as
   `CONTOSO\svc`. Windows localizes the names of built-in accounts and
   groups (`BUILTIN\Users`, `NT AUTHORITY\NETWORK SERVICE`), so use their
-  SIDs or aliases. Spaces around a formatted account are dropped; an
-  account that is empty, contains `|` or a control character, or cannot be
-  resolved fails the installation.
+  SIDs or aliases; a two-letter name is always read as an alias. Spaces
+  around a formatted account are dropped. An account that contains `|` or
+  a control character, cannot be resolved or names a domain fails the
+  installation, and so does an empty one on a first install; in a
+  maintenance install (a repair, a patch, a feature change) an empty
+  account skips the grant, because a property set on the first install's
+  command line is not remembered and the rights are there already. A major
+  upgrade is a first install of the new product and needs the account
+  again, so remember it in a registry value and a search when it is not
+  passed every time.
+- An inheriting grant on a folder that a property, an action or a dialog
+  can move, such as `INSTALLDIR`, gets a warning: `INSTALLDIR=C:\Windows`
+  would grant on that whole tree.
 - `rights` for files and folders: `full`, `modify`, `readExecute`, `read`
   and `write` (the simple rights Explorer shows); for services: `full`
   (`SERVICE_ALL_ACCESS`), `read` (`SERVICE_GENERIC_READ`), `start`, `stop`
@@ -989,8 +999,8 @@ property `BuilderGrants`. Four actions on the embedded custom action DLL
 apply them, after `InstallFiles` (after `InstallServices` when the package
 has services) and before `StartServices`, so a service can use its folder
 when it starts: `BuilderGrantSchedule` evaluates the conditions and formats
-accounts and objects, the deferred `BuilderGrantExec` grants as LocalSystem
-and records the rights it added, `BuilderGrantRollback` takes exactly those
+accounts and objects, the deferred `BuilderGrantExec` grants without
+impersonation (as LocalSystem in a per-machine install) and records the rights it added, `BuilderGrantRollback` takes exactly those
 away again, so rights an object had before a failed install or repair stay,
 and `BuilderGrantCommit` drops the record. A repair grants again and finds
 the rights there. Uninstalling does not take them away: the objects the

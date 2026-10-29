@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/jkroepke/msi-builder/internal/rights"
@@ -54,5 +55,23 @@ func (v *validator) grant(path string, grant *Grant, kind string) {
 
 	if grant.Inherit != nil && kind != permFolder {
 		v.errorf(path+".inherit", "inherit applies to folders only")
+	}
+}
+
+// movableGrants warns about an inheriting folder grant on a folder that a
+// property, an action or a dialog can point elsewhere at install time
+// (INSTALLDIR=C:\Windows): the grant would reach the whole tree there, and
+// a folder that existed before keeps the ACE after removal.
+func (v *validator) movableGrants(cfg *Config, known *refs, compPath string, comp *Component) {
+	perm := comp.FolderPermissions
+	if perm == nil || known.dirs[comp.Directory] == nil {
+		return
+	}
+
+	inherits := slices.ContainsFunc(perm.Grant, func(g *Grant) bool { return g != nil && (g.Inherit == nil || *g.Inherit) })
+	if movable := movableAncestor(cfg, known, comp.Directory); inherits && movable != "" {
+		v.warnf(compPath+".folderPermissions.grant", "%s can be pointed at any folder at install time (a public id, configurable, or set "+
+			"by an action, a property or a dialog field), and an inheriting grant then reaches every file below that folder and stays "+
+			"after removal; grant on a folder with private ids below a fixed standard folder, or set inherit: false", movable)
 	}
 }

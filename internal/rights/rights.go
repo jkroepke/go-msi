@@ -33,9 +33,9 @@ var (
 )
 
 // unusable are the bits that are not rights of the object: GENERIC_*, which
-// an explicit ACE on an existing object keeps unmapped, MAXIMUM_ALLOWED and
-// ACCESS_SYSTEM_SECURITY.
-const unusable = 0xF3000000
+// an explicit ACE on an existing object keeps unmapped, MAXIMUM_ALLOWED,
+// ACCESS_SYSTEM_SECURITY and the reserved bits 0x0C000000 and 0x00E00000.
+const unusable = 0xFFE00000
 
 // Mask returns the access mask of rights for a file or folder, or for a
 // service. A right is a name of its kind or a hexadecimal mask (0x...).
@@ -55,7 +55,7 @@ func Mask(rights []string, service bool) (uint32, error) {
 			}
 
 			if value&unusable != 0 {
-				return 0, fmt.Errorf("right %q has generic, MAXIMUM_ALLOWED or ACCESS_SYSTEM_SECURITY bits (0x%X), which grant nothing in an explicit ACE; "+
+				return 0, fmt.Errorf("right %q has generic, reserved, MAXIMUM_ALLOWED or ACCESS_SYSTEM_SECURITY bits (0x%X), which grant nothing in an explicit ACE; "+
 					"use the object's own rights", right, value&unusable)
 			}
 
