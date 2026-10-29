@@ -312,8 +312,8 @@ func (b *build) ui() error {
 	} else {
 		wiz.flow = []string{dlgWelcome, dlgVerifyReady}
 
-		// Change in Add or Remove Programs opens the maintenance menu with
-		// the remove dialogs; Uninstall is expected to skip it (UI-09).
+		// Change in Add or Remove Programs is expected to open the
+		// maintenance menu with the remove dialogs (spec section 7.7).
 		if _, set := b.properties["ARPNOMODIFY"]; !set && !b.removeDialogs() {
 			b.properties["ARPNOMODIFY"] = "1"
 		}

@@ -60,9 +60,9 @@ ui:
 `
 
 // TestFullUIRemoveDialog removes the product three times through the full
-// UI, reinstalling it quietly in between: the maintenance menu with the
-// remove dialog's box left clear keeps the purged folder, msiexec /x shows
-// no wizard page and keeps it too, and the menu with the box checked
+// UI, reinstalling it quietly in between: the ARP entry's ModifyPath command
+// with the remove dialog's box left clear keeps the purged folder, msiexec
+// /x shows neither the maintenance menu nor the page and keeps it too, and the menu with the box checked
 // deletes it, because the secure property reaches the deferred purge on
 // the server (UI-08). It also records what Add or Remove Programs is given
 // for a package whose ARPNOMODIFY stays unset (UI-09).
@@ -104,11 +104,16 @@ func TestFullUIRemoveDialog(t *testing.T) { //nolint:paralleltest // msiexec run
 		t.Errorf("the ARP entry has NoModify:\n%s", arp)
 	}
 
+	// Change in Add or Remove Programs runs ModifyPath (unverified).
+	if !strings.Contains(arp, "/I"+res.ProductCode) {
+		t.Errorf("the ARP entry has no ModifyPath MsiExec.exe /I%s:\n%s", res.ProductCode, arp)
+	}
+
 	t.Logf("UI-09 ARP entry:\n%s", arp)
 
-	// The maintenance menu, the box left clear.
+	// The ModifyPath command, the box left clear.
 	keepLog := filepath.Join(dir, "keep.log")
-	code, keep := fullUIDriven(t, dir, "", removeUIAdvance, "/i", pkg, "/l*v", keepLog)
+	code, keep := fullUIDriven(t, dir, "", removeUIAdvance, "/i"+res.ProductCode, "/l*v", keepLog)
 
 	if code != 0 {
 		t.Errorf("remove keeping the configuration: exit %d, want 0", code)
@@ -140,9 +145,8 @@ func TestFullUIRemoveDialog(t *testing.T) { //nolint:paralleltest // msiexec run
 		t.Errorf("msiexec /x: exit %d, want 0", code)
 	}
 
-	// Every wizard page shows the banner or the side-panel bitmap.
-	if strings.Contains(removeX, "BannerBmp") || strings.Contains(removeX, "DialogBmp") {
-		t.Error("msiexec /x showed a wizard page")
+	if strings.Contains(removeX, "Remove options") || strings.Contains(removeX, "Change, repair, or remove installation") {
+		t.Error("msiexec /x showed the maintenance menu or the remove page")
 	}
 
 	if productInstalled(t, res.ProductCode) {
@@ -182,4 +186,14 @@ func TestFullUIRemoveDialog(t *testing.T) { //nolint:paralleltest // msiexec run
 
 	t.Logf("UI-08 keep:\n%s\ndelete:\n%s\nlog excerpt:\n%s", keep, remove, excerpt(text, "DELETE_CONFIGURATION", "Purge_", "Error 28"))
 	t.Logf("UI-09 msiexec /x:\n%s\nlog excerpt:\n%s", removeX, excerpt(readLog(xLog), "UILevel", "Dialog created", "Note: 1: 2205"))
+}
+
+// TestICEFullUIRemove runs the ICE suite on the package with a remove
+// dialog.
+//
+//nolint:paralleltest // msi.dll's external UI handler is process-wide
+func TestICEFullUIRemove(t *testing.T) {
+	cub := iceCube(t)
+	pkg, _ := buildFullUIFrom(t, t.TempDir(), removeUIConfig, "1.0.0", "auto")
+	requireCleanICE(t, pkg, cub)
 }

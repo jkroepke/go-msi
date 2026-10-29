@@ -2122,7 +2122,7 @@ func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independ
 // removeDialogs warns when a remove dialog cannot be reached:
 // ARPNOREMOVE disables Remove in the maintenance menu, and without Change
 // in Add or Remove Programs only running the package again opens the menu
-// (Uninstall is expected to skip the wizard, UI-09).
+// (spec section 7.7).
 func (v *validator) removeDialogs(cfg *Config) {
 	arp := cfg.Product.ARP
 	if !arp.NoModify && !arp.NoRemove {

@@ -354,10 +354,10 @@ components:
 
 A `flow: remove` dialog adds a page to the wizard's remove path, after
 Remove in the maintenance menu, for example a checkbox that the purge above
-reads. Users reach it through Change in Add or Remove Programs or by running
-the package again. `msiexec /x` and Uninstall are expected to remove the
-product without the wizard (not yet verified on Windows), so the property
-also works on the command line:
+reads. Users reach it by running the package again or, expected but not yet
+verified on Windows, through Change in Add or Remove Programs. `msiexec /x`
+and Uninstall are expected to remove the product without the maintenance
+pages, so the property also works on the command line:
 `msiexec /x hello.msi DELETE_CONFIGURATION=1`.
 
 ```yaml
