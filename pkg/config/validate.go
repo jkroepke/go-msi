@@ -59,7 +59,7 @@ func plainFileName(name string) bool {
 func Validate(cfg *Config) Diagnostics {
 	ApplyDefaults(cfg)
 
-	checker := &validator{}
+	checker := &validator{scope: cfg.Package.Scope}
 	known := newRefs(cfg)
 
 	checker.product(cfg)
@@ -649,7 +649,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 	regIDs := make(map[string]bool)
 	removeIDs := make(map[string]bool)
 	removeFileIDs := make(map[string]bool)
-	perUser := cfg.Package.Scope == ScopePerUser
+	perUser := cfg.Package.Scope.MayBePerUser()
 
 	for i, comp := range cfg.Components {
 		p := comp.Path(i) //nolint:varnamelen // the YAML path, named p throughout this file
@@ -737,7 +737,7 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 		return
 	}
 
-	perUser := cfg.Package.Scope == ScopePerUser
+	perUser := cfg.Package.Scope.MayBePerUser()
 	top := known.topFolder(comp.Directory)
 
 	// The component of a folder source reports these once, not once per
@@ -751,8 +751,8 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 			"use its 64-bit counterpart, or bitness: 32 for 32-bit files", top)
 	}
 
-	if perUser && perMachineFolders[top] {
-		v.errorf(compPath+".directory", "a per-user package cannot install under %s (ICE105)", top)
+	if v.forbiddenFolder(top) {
+		v.errorf(compPath+".directory", "%s cannot install under %s (ICE105)", v.perUserPackage(), top)
 	}
 
 	switch {
@@ -1152,8 +1152,10 @@ func (v *validator) componentRegistry(p string, c *Component, ids map[string]boo
 func (v *validator) registryLocation(entryPath, root, key string, perUser bool) {
 	v.oneOf(entryPath+".root", root, "HKLM", "HKCU", "HKCR", "HKU", "HKMU")
 
-	if perUser && (root == "HKLM" || root == "HKCR") {
-		v.errorf(entryPath+".root", "a per-user package cannot change %s (ICE105)", root)
+	// A dual package's HKCR rows follow the context like HKMU ones
+	// (Registry.Root 0, spec section 8.2); a per-user package has none.
+	if perUser && (root == "HKLM" || root == "HKCR" && !v.scope.Dual()) {
+		v.errorf(entryPath+".root", "%s cannot change %s (ICE105)", v.perUserPackage(), root)
 	}
 
 	v.required(entryPath+".key", key)
@@ -1281,7 +1283,7 @@ func (v *validator) registryScalar(fieldPath, typ, val string) { //nolint:cyclop
 
 func (v *validator) service(svcPath string, svc *Service, keyFile *File, perUser bool) {
 	if perUser {
-		v.errorf(svcPath, "a per-user package cannot install services (ICE105)")
+		v.errorf(svcPath, "%s cannot install services (ICE105)", v.perUserPackage())
 	}
 
 	if keyFile == nil {
@@ -1391,7 +1393,7 @@ func (v *validator) environment(envPath string, env *Environment, perUser bool) 
 	v.oneOf(envPath+".scope", env.Scope, "machine", "user")
 
 	if env.Scope == "machine" && perUser {
-		v.errorf(envPath+".scope", "a per-user package cannot change machine variables")
+		v.errorf(envPath+".scope", "%s cannot change machine variables", v.perUserPackage())
 	}
 
 	if env.Action != "remove" && env.Value == "" {
@@ -1653,8 +1655,8 @@ func (v *validator) actionRun(cfg *Config, actionPath string, action *CustomActi
 		v.errorf(actionPath+".impersonate", "impersonate: false needs a deferred, rollback or commit action")
 	}
 
-	if !*action.Impersonate && cfg.Package.Scope == ScopePerUser {
-		v.errorf(actionPath+".impersonate", "a per-user package cannot run actions without impersonation (ICE105)")
+	if !*action.Impersonate && cfg.Package.Scope.MayBePerUser() {
+		v.errorf(actionPath+".impersonate", "%s cannot run actions without impersonation (ICE105)", v.perUserPackage())
 	}
 
 	if isExec && action.Return == "" {
@@ -1828,8 +1830,8 @@ func (v *validator) firewall(cfg *Config, known *refs) { //nolint:cyclop // a fl
 			v.oneOf(fmt.Sprintf("%s.profiles[%d]", p, j), prof, "all", "domain", "private", "public")
 		}
 
-		if cfg.Package.Scope == ScopePerUser {
-			v.errorf(p, "firewall rules need a per-machine package")
+		if cfg.Package.Scope.MayBePerUser() {
+			v.errorf(p, "firewall rules need a perMachine package")
 		}
 	}
 }

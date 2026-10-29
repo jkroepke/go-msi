@@ -23,8 +23,17 @@ func (b *build) writeProperties() error { //nolint:cyclop // one pass over the f
 	b.properties["Manufacturer"] = product.Manufacturer
 	b.properties["UpgradeCode"] = b.upgradeCode
 
-	if b.cfg.Package.Scope == config.ScopePerMachine {
+	// A dual package starts in the context its scope names first; the
+	// user switches it with MSIINSTALLPERUSER (spec section 8.2, INST-02).
+	switch b.cfg.Package.Scope {
+	case config.ScopePerMachine:
 		b.properties["ALLUSERS"] = "1"
+	case config.ScopePerUserOrMachine:
+		b.properties["ALLUSERS"] = "2"
+		b.properties["MSIINSTALLPERUSER"] = "1"
+	case config.ScopePerMachineOrUser:
+		b.properties["ALLUSERS"] = "2"
+	case config.ScopePerUser:
 	}
 
 	arp := product.ARP

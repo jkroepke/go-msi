@@ -40,6 +40,14 @@ var perMachineFolders = set( //nolint:gochecknoglobals // lookup table
 	"System64Folder", "SystemFolder", "WindowsFolder", "FontsFolder",
 )
 
+// ice105Folders are the Directory keys ICE105 rejects. A dual package may
+// use the Program Files and Common Files folders, which follow the install
+// context (spec section 8.2).
+var ice105Folders = set( //nolint:gochecknoglobals // lookup table
+	"AdminToolsFolder", "CommonAppDataFolder", "FontsFolder", "System16Folder",
+	"System64Folder", "SystemFolder", "TempFolder", "WindowsFolder", "WindowsVolume",
+)
+
 // standardActions may not be used as custom action ids (ICE93) and are valid
 // placement anchors.
 var standardActions = set( //nolint:gochecknoglobals // lookup table
