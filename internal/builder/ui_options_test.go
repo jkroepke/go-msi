@@ -176,6 +176,37 @@ func TestLaunchCheckBox(t *testing.T) {
 	}
 }
 
+func TestFinishText(t *testing.T) {
+	t.Parallel()
+
+	cfg := desktop(t)
+	cfg.UI.FinishText = "Open a new terminal to use [ProductName] & its tools."
+	res := mustBuild(t, cfg)
+
+	// The paragraph sits below the standard text, over the background
+	// picture, and keeps "&" as it is.
+	if got := controlRow(t, res, "ExitDlg", "FinishText"); fmt.Sprint(got[2:10]) != "[Text 135 135 220 89 196611 <nil> "+cfg.UI.FinishText+"]" {
+		t.Errorf("finish text %v", got)
+	}
+
+	if got := controlRow(t, res, "ExitDlg", "Description"); got[6] != 40 {
+		t.Errorf("description %v", got)
+	}
+
+	if got := cell(t, res.Database, "ControlCondition", "Condition", func(r []any) bool {
+		return r[0] == "ExitDlg" && r[1] == "FinishText" && r[2] == "Hide"
+	}); got != `Installed OR ACTION = "ADMIN"` {
+		t.Errorf("Hide condition %v", got)
+	}
+
+	// The other end pages keep their layout.
+	if got := controlRow(t, res, "UserExitDlg", "Description"); got[6] != 80 {
+		t.Errorf("UserExitDlg description %v", got)
+	}
+
+	checkRings(t, res)
+}
+
 func TestLaunchLongCommandLine(t *testing.T) {
 	t.Parallel()
 
@@ -253,6 +284,13 @@ func TestWizardOptionErrors(t *testing.T) {
 		{"unknown file", func(c *config.Config) { c.UI.Launch.File = "missing.exe" }, `file "missing.exe" is not defined`},
 		{"no wizard", func(c *config.Config) { c.UI.Wizard = "none"; c.UI.License = "" }, "an install folder page needs a wizard"},
 		{"launch without wizard", func(c *config.Config) { c.UI.Wizard = "none"; c.UI.License = ""; c.UI.InstallDirPage = false }, "a launch check box needs a wizard"},
+		{"finish text without wizard", func(c *config.Config) {
+			c.UI.Wizard = "none"
+			c.UI.License = ""
+			c.UI.InstallDirPage = false
+			c.UI.Launch = nil
+			c.UI.FinishText = "x"
+		}, "a finish page text needs a wizard"},
 		{"not a program", func(c *config.Config) {
 			c.Components[0].Files = append(c.Components[0].Files, &config.File{Source: "LICENSE.txt", Name: "readme.txt"})
 			c.UI.Launch.File = "readme.txt"

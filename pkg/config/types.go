@@ -539,9 +539,12 @@ type UI struct {
 	License string `yaml:"license"`
 	// Launch adds a check box to the finish page that starts an installed
 	// program when the user clicks Finish.
-	Launch  *Launch   `yaml:"launch"`
-	Theme   Theme     `yaml:"theme"`
-	Dialogs []*Dialog `yaml:"dialogs"`
+	Launch *Launch `yaml:"launch"`
+	// FinishText is a formatted paragraph shown on the finish page below
+	// its standard text, only after a new installation.
+	FinishText string    `yaml:"finishText"`
+	Theme      Theme     `yaml:"theme"`
+	Dialogs    []*Dialog `yaml:"dialogs"`
 	// InstallDirPage adds a page after the welcome and license pages that
 	// shows the install folder and lets the user change it.
 	InstallDirPage bool `yaml:"installDirPage"`

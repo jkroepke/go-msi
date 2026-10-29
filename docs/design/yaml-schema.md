@@ -1192,7 +1192,25 @@ cannot start a document or a library.
 When `launch` is set, the custom action name and the property
 `LaunchOnFinish` are reserved.
 
-#### Theme
+#### Finish page text
+
+```yaml
+ui:
+  wizard: minimal
+  finishText: Open a new command prompt to use [ProductName].
+```
+
+`finishText` adds a paragraph (`FinishText`) to the finish page (`ExitDlg`)
+below its standard text, for advice the user needs right after the
+installation, such as opening a new shell to pick up a changed `PATH`. It is
+formatted, so `[Property]` references resolve, and `&` is shown as it is. The
+standard text keeps the first 40 dialog units below the title and the
+paragraph gets the rest of the page above the bottom strip, 220×89 units, about
+nine lines. The paragraph is shown only after a new installation or a major
+upgrade (it is hidden by `Installed OR ACTION = "ADMIN"`), since a repair or a
+removal ends on the same page. The page where the setup was cancelled or
+failed keeps its text. Silent installs never show the finish page.
+
 
 ```yaml
 ui:

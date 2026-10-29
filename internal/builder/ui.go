@@ -66,6 +66,8 @@ const (
 	sideTextX    = 135
 	sideTextW    = 220
 	stripY       = 234
+	descriptionY = 90
+	finishTextY  = 135
 	buttonY      = 243
 	buttonW      = 56
 	buttonH      = 17
@@ -313,6 +315,7 @@ func (b *build) ui() error {
 		wiz.flow = slices.Insert(wiz.flow, wiz.shown(1, 1), dlgInstallDir)
 	}
 
+	b.finishText(wiz)
 	b.launch(wiz)
 
 	b.addedDialogs(wiz)
@@ -509,7 +512,7 @@ func (d *uiDialog) innerHeader(title, description string) {
 func (d *uiDialog) sideHeader(title, description string) {
 	d.control(bitmap("Background", 0, 0, dlgWidth, stripY, binDialog))
 	d.control(overlay("Title", sideTextX, 20, sideTextW, 60, styled(styleBig, title)))
-	d.control(overlay("Description", sideTextX, 90, sideTextW, 80, description))
+	d.control(overlay("Description", sideTextX, descriptionY, sideTextW, 80, description))
 }
 
 // navigation adds the bottom line with Back, Next and Cancel; Next and

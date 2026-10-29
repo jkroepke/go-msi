@@ -116,9 +116,9 @@ ui:
 `
 
 // fullUIDriver answers the wizard through UIAutomation: the -Choose radio
-// button once, Next, Install and Finish, "Close the applications" and OK on MsiRMFilesInUse, OK on ErrorDlg
+// button once, the -Buttons (Next, Install and Finish), "Close the applications" and OK on MsiRMFilesInUse, OK on ErrorDlg
 // and on any unexpected error box. It writes every window it sees to -Out.
-const fullUIDriver = `param([int]$MsiPid, [string]$Out, [string]$ErrorText, [string]$Choose = '', [int]$Seconds = 110)
+const fullUIDriver = `param([int]$MsiPid, [string]$Out, [string]$ErrorText, [string]$Choose = '', [string]$Buttons = '^(Next|Install|Finish)$', [int]$Seconds = 110)
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type -Namespace MsiBuilder -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);'
 $AE = [System.Windows.Automation.AutomationElement]
@@ -145,7 +145,13 @@ while ((Get-Date) -lt $deadline -and (Get-Process -Id $MsiPid -ErrorAction Silen
     try { $els = @($w.FindAll($TS::Descendants, $All)) } catch { continue }
     $names = @($els | ForEach-Object { $_.Current.Name } | Where-Object { $_ })
     $text = $names -join ' | '
-    if (-not $seen.ContainsKey($text)) { $seen[$text] = 1; Note "WINDOW: $text" }
+    if (-not $seen.ContainsKey($text)) {
+      $seen[$text] = 1
+      Note "WINDOW: $text"
+      # Controls hidden by a ControlCondition are still in the tree.
+      $hidden = @($els | Where-Object { $_.Current.IsOffscreen -and $_.Current.Name } | ForEach-Object { $_.Current.Name })
+      if ($hidden) { Note ('HIDDEN: ' + ($hidden -join ' | ')) }
+    }
     if ($text -match 'need to be updated by this setup') {
       Note ('RMDIALOG: radio ' + (Press $els '^Close the applications'))
       Start-Sleep -Milliseconds 300
@@ -164,7 +170,7 @@ while ((Get-Date) -lt $deadline -and (Get-Process -Id $MsiPid -ErrorAction Silen
         $c = Press $els $Choose
         if ($c) { $chosen = $true; Note "CHOSE: $c"; Start-Sleep -Milliseconds 300 }
       }
-      $n = Press $els '^(Next|Install|Finish)$'
+      $n = Press $els $Buttons
       if ($n) { Note "PRESSED: $n"; Start-Sleep 1 }
     }
   }
@@ -267,7 +273,14 @@ func waitForMsiexec(t *testing.T) {
 func buildFullUI(t *testing.T, dir, version, fileVersion string) (string, *builder.Result) {
 	t.Helper()
 
-	if err := os.WriteFile(filepath.Join(dir, "msi.yaml"), []byte(fullUIConfig), 0o600); err != nil {
+	return buildFullUIFrom(t, dir, fullUIConfig, version, fileVersion)
+}
+
+// buildFullUIFrom is buildFullUI with another configuration.
+func buildFullUIFrom(t *testing.T, dir, yaml, version, fileVersion string) (string, *builder.Result) {
+	t.Helper()
+
+	if err := os.WriteFile(filepath.Join(dir, "msi.yaml"), []byte(yaml), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -356,6 +369,14 @@ func fullUI(t *testing.T, dir string, args ...string) (int, string) {
 func fullUIChoosing(t *testing.T, dir, choose string, args ...string) (int, string) {
 	t.Helper()
 
+	return fullUIDriven(t, dir, choose, "", args...)
+}
+
+// fullUIDriven is fullUIChoosing with the driver pressing the buttons whose
+// names match buttons instead of Next, Install and Finish.
+func fullUIDriven(t *testing.T, dir, choose, buttons string, args ...string) (int, string) {
+	t.Helper()
+
 	driver := filepath.Join(dir, "driver.ps1")
 	if err := os.WriteFile(driver, []byte(fullUIDriver), 0o600); err != nil {
 		t.Fatal(err)
@@ -376,6 +397,10 @@ func fullUIChoosing(t *testing.T, dir, choose string, args ...string) (int, stri
 		}
 		if choose != "" {
 			args = append(args, "-Choose", choose)
+		}
+
+		if buttons != "" {
+			args = append(args, "-Buttons", buttons)
 		}
 
 		drv = exec.CommandContext(ctx, "powershell", args...)
@@ -563,6 +588,69 @@ func TestFullUIChoice(t *testing.T) { //nolint:paralleltest // msiexec runs one 
 	}
 
 	t.Logf("UI-05 UI:\n%s\nlog excerpt:\n%s", seen, excerpt(text, "LOG_LEVEL", "Error 28"))
+}
+
+// TestFullUIFinishText installs with the full UI, where the finish page
+// shows ui.finishText, then repairs through the maintenance menu, where the
+// finish page hides it.
+func TestFullUIFinishText(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
+	requireFullUI(t)
+	waitForMsiexec(t)
+
+	const finishText = "Open a new command prompt to use [ProductName] & its tools."
+
+	want := strings.ReplaceAll(finishText, "[ProductName]", fullUIName)
+	yaml := strings.Replace(fullUIConfig, "  wizard: featureTree\n", "  wizard: featureTree\n  finishText: "+finishText+"\n", 1)
+
+	dir := t.TempDir()
+	pkg, _ := buildFullUIFrom(t, dir, yaml, "1.0.0", "auto")
+
+	cleanupFullUI(t, pkg)
+
+	code, install := fullUI(t, dir, "/i", pkg)
+	if code != 0 {
+		t.Fatalf("full UI install: exit %d, want 0\nUI:\n%s", code, install)
+	}
+
+	if !finishShows(install, want) {
+		t.Errorf("the finish page of the installation does not show %q", want)
+	}
+
+	code, repair := fullUIDriven(t, dir, "", "^(Next|Repair|Finish)$", "/i", pkg)
+	if code != 0 {
+		t.Fatalf("full UI repair: exit %d, want 0\nUI:\n%s", code, repair)
+	}
+
+	if !strings.Contains(repair, "PRESSED: Repair") || !strings.Contains(repair, "Completed the "+fullUIName) {
+		t.Errorf("the driver did not repair through the maintenance menu")
+	}
+
+	if finishShows(repair, want) {
+		t.Errorf("the finish page of the repair shows %q", want)
+	}
+
+	if strings.Contains(install+repair, "UNEXPECTED:") {
+		t.Error("the engine showed an unexpected error box")
+	}
+
+	t.Logf("UI-07 install:\n%s\nrepair:\n%s", install, repair)
+}
+
+// finishShows reports whether the finish page the driver saw shows s: on
+// its WINDOW line and not on the HIDDEN line after it.
+func finishShows(seen, s string) bool {
+	lines := strings.Split(seen, "\n")
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "WINDOW: ") || !strings.Contains(line, "Completed the ") {
+			continue
+		}
+
+		hidden := i+1 < len(lines) && strings.HasPrefix(lines[i+1], "HIDDEN: ") && strings.Contains(lines[i+1], s)
+
+		return strings.Contains(line, s) && !hidden
+	}
+
+	return false
 }
 
 // TestICEFullUI runs the ICE suite on the full-UI package, including ICE34

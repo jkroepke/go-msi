@@ -1812,7 +1812,8 @@ func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independ
 // launchProperty is the property of the ui.launch check box.
 const launchProperty = "LaunchOnFinish"
 
-// wizardOptions checks the install folder page and the launch check box.
+// wizardOptions checks the install folder page, the finish page text and
+// the launch check box.
 func (v *validator) wizardOptions(cfg *Config, ids *refs) {
 	none := cfg.UI.Wizard == None
 
@@ -1824,6 +1825,10 @@ func (v *validator) wizardOptions(cfg *Config, ids *refs) {
 		if dir := ids.dirs[cfg.InstallDir.ID]; dir == nil || !dir.Configurable {
 			v.errorf("ui.installDirPage", "an install folder page needs installDir.id to name a configurable directory")
 		}
+	}
+
+	if none && cfg.UI.FinishText != "" {
+		v.errorf("ui.finishText", "a finish page text needs a wizard")
 	}
 
 	launch := cfg.UI.Launch
