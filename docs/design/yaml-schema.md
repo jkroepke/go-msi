@@ -561,7 +561,7 @@ service must have the service executable as key file.
 |---|---|---|
 | `source` | required | Path relative to the YAML file; `\` counts as `/` on every OS |
 | `name` | base name of `source` | The long name; the short name is generated |
-| `id` | the name, if it is a legal identifier and unique, else generated | File key |
+| `id` | the name, with every character other than letters, digits, `_` and `.` replaced by `_` and a `_` before a leading digit (`fleetspeak-client.exe` becomes `fleetspeak_client.exe`) | File key, used in `[#id]` references; two files that end up with one key need an explicit `id` |
 | `version` | `auto` | `auto`, a four-field version, the ID of another file (companion), or `none`; never empty (section 2.2) |
 | `language` | `auto` | From the PE resource; `none` for fonts |
 | `allowUnversionedExecutable` | `false` | Required to build a PE file with `version: none` or without a version resource |

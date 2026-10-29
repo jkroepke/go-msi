@@ -129,13 +129,20 @@ func fileName(f *File) string {
 	return path.Base(strings.ReplaceAll(f.Source, `\`, "/"))
 }
 
-// fileID returns the File key: the explicit id, else the long name.
+// fileID returns the File key: the explicit id, else the long name, with
+// every character that an identifier cannot hold replaced by "_" (so
+// "fleetspeak-client.exe" becomes "fleetspeak_client.exe").
 func fileID(f *File) string {
 	if f.ID != "" {
 		return f.ID
 	}
 
-	return fileName(f)
+	name := fileName(f)
+	if IsIdentifier(name) && len(name) <= MaxIdentifierLength {
+		return name
+	}
+
+	return identifier(name)
 }
 
 // topFolder returns the standard folder at the root of a directory's chain.
