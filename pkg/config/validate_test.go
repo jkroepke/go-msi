@@ -370,7 +370,7 @@ func TestValidate(t *testing.T) {
 			sevError, "components[0].removeFiles[0].name", "short name part",
 		},
 		"removeFiles pattern too long": {
-			base + strings.Replace(appComponent, "    files:", "    removeFiles: [{name: \"" + strings.Repeat("a", 243) + "\"}]\n    files:", 1),
+			base + strings.Replace(appComponent, "    files:", "    removeFiles: [{name: \""+strings.Repeat("a", 243)+"\"}]\n    files:", 1),
 			sevError, "components[0].removeFiles[0].name", "longer than 242",
 		},
 		"removeFiles twice": {

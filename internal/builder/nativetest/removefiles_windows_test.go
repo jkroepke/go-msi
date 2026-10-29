@@ -113,6 +113,12 @@ func TestMsiexecRemovesFiles(t *testing.T) { //nolint:paralleltest // msiexec ru
 	cleanup()
 	t.Cleanup(cleanup)
 
+	// MENUDIR exists before the install, so the engine did not create it
+	// and only the generated RemoveFile row can remove it.
+	if err := os.MkdirAll(menu, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
 	writeFile(t, filepath.Join(install, "stale-config.txt"))
 	writeFile(t, filepath.Join(install, "keep.txt"))
 
@@ -152,7 +158,7 @@ func TestMsiexecRemovesFiles(t *testing.T) { //nolint:paralleltest // msiexec ru
 	}
 
 	// RemoveFolders removes Tools, the CreateFolder of Menu; the generated
-	// RemoveFile row removes the folder above it.
+	// RemoveFile row removes the pre-created folder above it.
 	if exists(menu) {
 		t.Error("the Start menu folder is still there after the uninstall")
 	}
