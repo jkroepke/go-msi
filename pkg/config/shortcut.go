@@ -201,9 +201,9 @@ func (v *validator) targetLength(field, target, what string) {
 	}
 }
 
-// folderTarget checks the folder of a folder shortcut. A folder no
-// component installs to gets a CreateFolder row, so that the shortcut does
-// not point at nothing.
+// folderTarget checks the folder of a folder shortcut. A folder that is not
+// a standard folder gets a CreateFolder row, so that the shortcut does not
+// point at nothing.
 func (v *validator) folderTarget(cfg *Config, scPath string, shortcut *Shortcut, known *refs) {
 	field := scPath + ".folder"
 	if known.dirs[shortcut.Folder] == nil {

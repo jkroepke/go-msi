@@ -417,3 +417,21 @@ func TestShortcutsOnlyComponentKeyPath(t *testing.T) {
 		t.Errorf("key path values %v", values)
 	}
 }
+
+// A component of shortcuts only may not share its pinned guid with another
+// component (ICE08).
+func TestShortcutsOnlyComponentDuplicateGUID(t *testing.T) {
+	t.Parallel()
+
+	cfg := shortcutConfig(t, `
+  - id: Main
+    guid: 11111111-2222-3333-4444-555555555555
+    files: [{ source: app.exe }]
+  - id: Links
+    guid: "{11111111-2222-3333-4444-555555555555}"
+    shortcuts: [{ name: Docs, url: "https://a" }]
+`)
+	if _, err := builder.Build(cfg, builder.Options{BuildTime: buildTime}); err == nil || !strings.Contains(err.Error(), "component Links has the same ComponentId") {
+		t.Errorf("a shared guid: %v", err)
+	}
+}

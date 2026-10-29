@@ -245,6 +245,8 @@ func (b *build) shortcutComponent(info *componentInfo, dirID string) string {
 
 			guid = pinned
 		}
+
+		b.uniqueGUID(info.cfg.Path(info.index), comp.ID, guid)
 	}
 
 	b.table("Component").Add(carrier, guid, dirID, attributes, nullable(comp.Condition), registry)

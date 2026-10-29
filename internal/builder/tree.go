@@ -641,7 +641,7 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 	}
 
 	// Components in config order; rows are sorted by msidb anyway.
-	guids := make(map[any]string, len(b.cfg.Components))
+	b.guids = make(map[any]string, len(b.cfg.Components))
 
 	for _, comp := range b.cfg.Components {
 		info := b.components[comp.ID]
@@ -663,13 +663,7 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 		// Two components with one ComponentId break the component rules
 		// (ICE08), for example two conditional variants of one file with the
 		// same automatic GUID.
-		if info.guid != nil {
-			if other, dup := guids[info.guid]; dup {
-				b.errorf(path+".guid", "component %s has the same ComponentId %v as %s; set guid on one of them", comp.ID, info.guid, other)
-			} else {
-				guids[info.guid] = comp.ID
-			}
-		}
+		b.uniqueGUID(path, comp.ID, info.guid)
 
 		b.table("Component").Add(comp.ID, info.guid, comp.Directory, info.attributes, nullable(comp.Condition), info.keyPath)
 
@@ -867,4 +861,20 @@ func (b *build) features() error {
 	})
 
 	return nil
+}
+
+// uniqueGUID records the ComponentId of a component and reports one that
+// another component already has.
+func (b *build) uniqueGUID(path, compID string, guid any) {
+	if guid == nil {
+		return
+	}
+
+	if other, dup := b.guids[guid]; dup {
+		b.errorf(path+".guid", "component %s has the same ComponentId %v as %s; set guid on one of them", compID, guid, other)
+
+		return
+	}
+
+	b.guids[guid] = compID
 }

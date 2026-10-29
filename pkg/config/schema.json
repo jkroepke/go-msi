@@ -2400,7 +2400,7 @@
         },
         "folder": {
           "type": "string",
-          "description": "Component shortcuts only: a directory id, standard folder or folder path the shortcut opens. A folder no component installs to is created."
+          "description": "Component shortcuts only: a directory id, standard folder or folder path the shortcut opens. A folder that is not a standard folder gets a CreateFolder row."
         },
         "program": {
           "type": "string",

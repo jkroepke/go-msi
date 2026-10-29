@@ -113,6 +113,9 @@ type build struct { //nolint:govet // grouped by build step
 	// shortcutCarrier maps a component to the generated component that
 	// holds the shortcuts to its files.
 	shortcutCarrier map[string]string
+	// guids maps each ComponentId to the component that has it, to report
+	// duplicates (ICE08).
+	guids map[any]string
 	// shortNames are the short names taken per folder (canonical path),
 	// shared by the directories and files in it and by every directory key
 	// that names it (section 11.3).
