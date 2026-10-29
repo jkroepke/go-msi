@@ -269,9 +269,10 @@ Pipeline, each step a file of its own:
 3. **Directories**: `TARGETDIR`/`SourceDir`, the standard folders, the tree,
    short names from the §11.3 hash, `DefaultDir` values. The configuration
    gives long names only; every short name is generated. Directories and
-   files in one directory share one set of short names; long names that are
-   valid short names are taken before any is generated (FILE-07), once the
-   files are read.
+   files in one folder share one set of short names, also when several
+   directory ids name that folder; long names that are valid short names
+   are taken before any is generated, once the files are read. Duplicates
+   would break `SHORTFILENAMES=1` installs (FILE-07).
 4. **Components, features, files, media**: attributes (64-bit bit 256,
    permanent, transitive, …), key paths, `CreateFolder` rows, file sequence
    order (canonical directory, name, key), one `Media` row and one embedded

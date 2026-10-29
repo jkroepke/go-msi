@@ -111,15 +111,27 @@ func filename(parentKey, long string, directory bool, taken map[string]bool, val
 	return shortName(parentKey, long, directory, taken) + "|" + long
 }
 
-// taken returns the short names taken in the directory dirKey. The
-// directories and files in one directory share it: section 11.3 makes a
-// short name unique among the names in its directory.
+// taken returns the short names taken in the folder of the directory
+// dirKey. The directories and files in one folder share it, also when
+// several directory keys name that folder: section 11.3 makes a short name
+// unique among the names in its directory.
 func (b *build) taken(dirKey string) map[string]bool {
-	if b.shortNames[dirKey] == nil {
-		b.shortNames[dirKey] = make(map[string]bool)
+	folder := b.folderKey(dirKey)
+	if b.shortNames[folder] == nil {
+		b.shortNames[folder] = make(map[string]bool)
 	}
 
-	return b.shortNames[dirKey]
+	return b.shortNames[folder]
+}
+
+// folderKey returns the canonical path of the directory dirKey, which is the
+// same for every key that names one folder, or dirKey if it is unknown.
+func (b *build) folderKey(dirKey string) string {
+	if dir := b.dirs[dirKey]; dir != nil && dir.canonical != "" {
+		return dir.canonical
+	}
+
+	return dirKey
 }
 
 // configuredFileName returns the configured name of a file, or its long name.

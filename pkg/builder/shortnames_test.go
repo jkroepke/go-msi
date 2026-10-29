@@ -219,22 +219,25 @@ components:
 	}
 }
 
-// TestSameNamedDirectoriesShareShortName checks that two directory ids with
-// one long name under one parent, which install to one folder, get one short
-// name, so that SHORTFILENAMES=1 does not split them.
+// TestSameNamedDirectoriesShareShortName checks that directory ids that
+// name one folder, also below such twins, get one short name.
 func TestSameNamedDirectoriesShareShortName(t *testing.T) {
 	t.Parallel()
 
 	res := mustBuild(t, shortNameConfig(t, `        children:
           - id: DATADIR
             name: Data Files
+            children:
+              - { id: SUBA, name: Sub Folder Long }
           - id: DATADIR2
             name: data files
+            children:
+              - { id: SUBB, name: sub folder long }
 components:
-  - directory: DATADIR
+  - directory: SUBA
     files:
       - { source: one.txt }
-  - directory: DATADIR2
+  - directory: SUBB
     files:
       - { source: two.txt }
 `))
@@ -246,7 +249,9 @@ components:
 		return strings.ToLower(s)
 	}
 
-	if short("DATADIR") != short("DATADIR2") {
-		t.Errorf("DATADIR short name %s, DATADIR2 %s, want one", short("DATADIR"), short("DATADIR2"))
+	for _, pair := range [][2]string{{"DATADIR", "DATADIR2"}, {"SUBA", "SUBB"}} {
+		if short(pair[0]) != short(pair[1]) {
+			t.Errorf("%s short name %s, %s %s, want one", pair[0], short(pair[0]), pair[1], short(pair[1]))
+		}
 	}
 }

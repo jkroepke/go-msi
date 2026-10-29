@@ -367,12 +367,14 @@ directories:
 - `name` is the long name. The builder generates the 8.3 short name the
   format needs from a hash of the parent key and the long name
   (specification section 11.3), unique among the directories and files of
-  its parent; a long name that is itself a valid short name is used as is.
+  its folder; a long name that is itself a valid short name is used as is.
   A hand-written `short|long` name is an error: short names matter only
   with `SHORTFILENAMES=1`, on a volume without long names and in `[!file]`
   references (specification sections 8.3 and 8.9; reported, the last two
-  not tested), and generating them keeps them unique. Directories with the
-  same long name under one parent get the same short name.
+  not tested), and generating them keeps them unique. Directory ids that
+  name one folder (the same long names from the same root) get the same
+  short name; with two, `SHORTFILENAMES=1` would presumably split the
+  folder (inferred, not tested).
 - File and directory names must be valid on Windows: no `\/:*?"<>|` or
   control characters, no trailing dot or space, and no device name such as
   `CON`, `CONIN$`, `nul.txt` or `COM1`.

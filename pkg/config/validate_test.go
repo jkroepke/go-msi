@@ -454,6 +454,10 @@ func TestValidate(t *testing.T) {
 			pkg("{platform: x64, longFileNames: false}") + strings.Replace(appComponent, "source: app.exe", "{source: app.exe, name: Application.exe}", 1),
 			sevError, "components[0].files[0].name", "valid 8.3 name",
 		},
+		"short-name package with a long source name": {
+			pkg("{platform: x64, longFileNames: false}") + strings.Replace(appComponent, "source: app.exe", "source: Application.exe", 1),
+			sevError, "components[0].files[0].source", "valid 8.3 name",
+		},
 		"short|long file name": {
 			base + strings.Replace(appComponent, "source: app.exe", "{source: app.exe, name: 'APP.EXE|Application.exe'}", 1),
 			sevError, "components[0].files[0].name", "short names are generated",
