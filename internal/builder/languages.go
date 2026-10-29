@@ -52,10 +52,8 @@ func (b *build) languageTransforms(base *msidb.Database) error {
 	for _, lcid := range b.languageIDs() {
 		path := "ui.languages." + keys[lcid]
 
-		variant, err := b.languageBuild(lcid, b.cfg.UI.Languages[keys[lcid]])
-		if err != nil {
-			b.errorf(path, "%v", err)
-
+		variant, ok := b.languageBuild(lcid, path, b.cfg.UI.Languages[keys[lcid]])
+		if !ok {
 			continue
 		}
 
@@ -72,10 +70,21 @@ func (b *build) languageTransforms(base *msidb.Database) error {
 	return b.diags.Err() //nolint:wrapcheck // the diagnostics carry their own paths
 }
 
+// entryPaths map the configuration paths that a ui.languages entry
+// replaces to the entry's own keys, so a diagnostic of the language build
+// names the entry's field.
+var entryPaths = []struct{ from, to string }{ //nolint:gochecknoglobals // lookup table
+	{"ui.strings", ".strings"},
+	{"ui.finishText", ".finishText"},
+	{"ui.license", ".license"},
+}
+
 // languageBuild builds the tables of the package in language lcid: the
 // configuration with the entry's finish text and license, the base build's
-// product code and its payload files.
-func (b *build) languageBuild(lcid int, entry *config.Language) (*msidb.Database, error) {
+// product code and its payload files. It adds the diagnostics that the
+// base build did not report, under the entry's path, and reports whether
+// the build succeeded.
+func (b *build) languageBuild(lcid int, path string, entry *config.Language) (*msidb.Database, bool) {
 	cfg := *b.cfg
 	cfg.Product.ProductCode = b.productCode
 
@@ -94,20 +103,40 @@ func (b *build) languageBuild(lcid int, entry *config.Language) (*msidb.Database
 	variant.fileCache = b.fileCache
 
 	err := variant.writeTables()
+
+	var database *msidb.Database
 	if err == nil {
-		var database *msidb.Database
-
 		database, err = variant.assemble()
-		if err == nil {
-			return database, nil
+	}
+
+	b.addLanguageDiagnostics(path, variant.diags)
+
+	if err != nil && variant.diags.Err() == nil {
+		b.errorf(path, "language %d: %v", lcid, err)
+	}
+
+	return database, err == nil
+}
+
+// addLanguageDiagnostics adds the diagnostics of the build of the
+// ui.languages entry at path that the base build did not report, with the
+// paths of the fields the entry replaces moved under the entry.
+func (b *build) addLanguageDiagnostics(path string, diags config.Diagnostics) {
+	for _, diag := range diags {
+		if slices.Contains(b.diags, diag) {
+			continue
 		}
-	}
 
-	if diagErr := variant.diags.Err(); diagErr != nil {
-		return nil, diagErr //nolint:wrapcheck // the diagnostics carry their own paths
-	}
+		for _, p := range entryPaths {
+			if rest, ok := strings.CutPrefix(diag.Path, p.from); ok {
+				diag.Path = path + p.to + rest
 
-	return nil, fmt.Errorf("language %d: %w", lcid, err)
+				break
+			}
+		}
+
+		b.diags = append(b.diags, diag)
+	}
 }
 
 // transformSummary is the summary information of the transform to lcid,

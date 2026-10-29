@@ -56,9 +56,25 @@ func primaryLanguage(lcid int) int {
 // englishPrimary is the primary language of the built-in texts.
 const englishPrimary = 0x09
 
+// scriptFallbacks name the translation of a locale whose primary language
+// is shared by several scripts or languages, where the lowest LCID with
+// that primary language would pick the wrong one: primary 0x1A holds
+// Croatian, Serbian and Bosnian, and 0x04 Simplified and Traditional
+// Chinese.
+var scriptFallbacks = map[int]int{ //nolint:gochecknoglobals // lookup table
+	0x241A: 0x081A, // sr-Latn-RS: sr-Latn-CS
+	0x2C1A: 0x081A, // sr-Latn-ME: sr-Latn-CS
+	0x0C1A: 0x081A, // sr-Cyrl-CS: sr-Latn-CS, the only Serbian texts
+	0x281A: 0x081A, // sr-Cyrl-RS: sr-Latn-CS
+	0x301A: 0x081A, // sr-Cyrl-ME: sr-Latn-CS
+	0x1004: 0x0804, // zh-SG: zh-CN, both Simplified
+	0x1404: 0x0C04, // zh-MO: zh-HK, both Traditional
+}
+
 // Translation returns the built-in wizard texts for an LCID: its own
-// translation, else the one of the lowest LCID with the same primary
-// language (de-DE for de-AT), else nil. English returns the built-in texts.
+// translation, else the one scriptFallbacks names, else the one of the
+// lowest LCID with the same primary language (de-DE for de-AT), else nil.
+// English returns the built-in texts.
 func Translation(lcid int) map[string]string {
 	if primaryLanguage(lcid) == englishPrimary {
 		return UIStrings()
@@ -66,6 +82,10 @@ func Translation(lcid int) map[string]string {
 
 	all := catalogs()
 	if texts, ok := all[lcid]; ok {
+		return maps.Clone(texts)
+	}
+
+	if texts, ok := all[scriptFallbacks[lcid]]; ok {
 		return maps.Clone(texts)
 	}
 

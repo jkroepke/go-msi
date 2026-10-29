@@ -34,7 +34,7 @@ CustomizeText: "Izberite način namestitve funkcij."
 CustomizeHint: "Kliknite ikone v spodnjem drevesu, da spremenite način namestitve funkcij."
 CustomizeLocation: "Mesto:"
 CustomizeBrowse: "P&rebrskaj ..."
-CustomizeReset: "Po&nastavi"
+CustomizeReset: "P&onastavi"
 CustomizeDiskUsage: "&Poraba diska"
 
 DiskCostTitle: "Potreben prostor na disku"
@@ -43,7 +43,7 @@ DiskCostHint: "Na označenih nosilcih ni dovolj prostora za izbrane funkcije. La
 
 BrowseTitle: "Sprememba ciljne mape"
 BrowseText: "Poiščite ciljno mapo."
-BrowseLookIn: "&Išči v:"
+BrowseLookIn: "I&šči v:"
 BrowseUp: "&Gor"
 BrowseNewFolder: "&Nova"
 BrowseFolderName: "&Ime mape:"
@@ -78,7 +78,7 @@ FatalErrorTitle: "Čarovnik za namestitev programa [ProductName] se je predčasn
 FatalErrorText: "Namestitev programa [ProductName] se je zaradi napake predčasno končala. Sistem ni bil spremenjen. Če želite program namestiti pozneje, znova zaženite čarovnika za namestitev. Kliknite Dokončaj za izhod iz čarovnika za namestitev."
 ResumeTitle: "Nadaljevanje čarovnika za namestitev programa [ProductName]"
 ResumeText: "Čarovnik za namestitev bo dokončal namestitev programa [ProductName] v računalnik. Kliknite Namesti za nadaljevanje ali Prekliči za izhod iz čarovnika za namestitev."
-Launch: "&Zaženi [ProductName]"
+Launch: "Z&aženi [ProductName]"
 
 CancelText: "Ali res želite preklicati namestitev programa [ProductName]?"
 WaitCostingText: "Počakajte, da namestitveni program ugotovi potreben prostor na disku."

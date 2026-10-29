@@ -84,6 +84,12 @@ func TestTranslationFallback(t *testing.T) {
 		t.Errorf("en-GB Next = %q, want the built-in English text", got)
 	}
 
+	for lcid, want := range map[int]int{9242: 2074, 4100: 2052, 3098: 2074, 5146: 1050} {
+		if !maps.Equal(Translation(lcid), Translation(want)) {
+			t.Errorf("%d: not the texts of %d", lcid, want)
+		}
+	}
+
 	if Translation(0x7F) != nil {
 		t.Error("an LCID without a translation returned one")
 	}
@@ -97,7 +103,7 @@ func TestWizardTexts(t *testing.T) {
 		UI: UI{
 			Strings: map[string]string{"WelcomeTitle": "Hello", "ExitText": "Bye"},
 			Languages: map[string]*Language{
-				"de": {Strings: map[string]string{"ExitText": "Tschüss"}},
+				"de":   {Strings: map[string]string{"ExitText": "Tschüss"}},
 				"1087": nil,
 			},
 		},

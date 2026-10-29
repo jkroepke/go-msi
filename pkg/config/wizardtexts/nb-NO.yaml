@@ -34,7 +34,7 @@ CustomizeText: "Velg hvordan funksjonene skal installeres."
 CustomizeHint: "Klikk på ikonene i treet nedenfor for å endre hvordan funksjonene installeres."
 CustomizeLocation: "Plassering:"
 CustomizeBrowse: "&Bla gjennom..."
-CustomizeReset: "&Tilbakestill"
+CustomizeReset: "T&ilbakestill"
 CustomizeDiskUsage: "&Diskbruk"
 
 DiskCostTitle: "Nødvendig diskplass"
@@ -44,7 +44,7 @@ DiskCostHint: "De uthevede volumene har ikke nok ledig diskplass til de valgte f
 BrowseTitle: "Endre målmappe"
 BrowseText: "Bla til målmappen."
 BrowseLookIn: "&Søk i:"
-BrowseUp: "&Opp"
+BrowseUp: "O&pp"
 BrowseNewFolder: "&Ny"
 BrowseFolderName: "&Mappenavn:"
 

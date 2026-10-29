@@ -2,8 +2,10 @@ package builder_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/jkroepke/msi-builder/internal/builder"
 	"github.com/jkroepke/msi-builder/internal/cfb"
 	"github.com/jkroepke/msi-builder/internal/msidb"
 	"github.com/jkroepke/msi-builder/internal/summary"
@@ -90,5 +92,23 @@ func TestLanguageTransformsInPackage(t *testing.T) {
 
 	if !slices.ContainsFunc(file.Entries, func(e *cfb.Entry) bool { return e.Name == "1036" }) {
 		t.Error("the package has no storage 1036")
+	}
+}
+
+func TestLanguageBuildDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	cfg := desktop(t)
+	cfg.UI.Languages = map[string]*config.Language{"fr": {License: "missing.txt"}}
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err == nil {
+		t.Fatal("a missing license of a language built")
+	}
+
+	if !slices.ContainsFunc(res.Diagnostics, func(d config.Diagnostic) bool {
+		return d.Severity == config.SeverityError && strings.HasPrefix(d.Path, "ui.languages.fr.license")
+	}) {
+		t.Errorf("no error under ui.languages.fr.license:\n%s", res.Diagnostics)
 	}
 }

@@ -21,7 +21,7 @@ WelcomeText: "O Assistente de Configuração vai instalar o [ProductName] no com
 
 LicenseTitle: "Contrato de Licença do Utilizador Final"
 LicenseText: "Leia atentamente o seguinte contrato de licença."
-LicenseAccept: "&Aceito os termos do Contrato de Licença"
+LicenseAccept: "Aceito &os termos do Contrato de Licença"
 LicensePrint: "Im&primir"
 
 InstallDirTitle: "Pasta de destino"
@@ -34,7 +34,7 @@ CustomizeText: "Selecione o modo como pretende instalar as funcionalidades."
 CustomizeHint: "Clique nos ícones da árvore abaixo para alterar o modo como as funcionalidades serão instaladas."
 CustomizeLocation: "Localização:"
 CustomizeBrowse: "P&rocurar..."
-CustomizeReset: "Repo&r"
+CustomizeReset: "R&epor"
 CustomizeDiskUsage: "&Utilização do disco"
 
 DiskCostTitle: "Espaço em disco necessário"
@@ -46,7 +46,7 @@ BrowseText: "Navegue até à pasta de destino."
 BrowseLookIn: "&Procurar em:"
 BrowseUp: "A&cima"
 BrowseNewFolder: "&Nova"
-BrowseFolderName: "Nome da &pasta:"
+BrowseFolderName: "Nome &da pasta:"
 
 ReadyInstallTitle: "Pronto para instalar o [ProductName]"
 ReadyInstallText: "Clique em Instalar para iniciar a instalação. Clique em Anterior para rever ou alterar as definições. Clique em Cancelar para sair do assistente."

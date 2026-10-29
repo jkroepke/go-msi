@@ -1447,10 +1447,10 @@ page read (`MenuLocal`, `SelLocalLocal`, `VolumeCostSize`, `KB`, ...).
 Texts other than those `UIText` rows are formatted, so `[ProductName]`
 works and any other `[name]` is read as a property; `UIText` is documented
 as plain text (unverified). On buttons, checkboxes (`LicenseAccept`), the
-Restart Manager radio buttons (`RMUseRM`, `RMDontUseRM`) and the browse
-labels (`BrowseLookIn`, `BrowseFolderName`) `&` marks the access key, as in
-the English text, and `&&` writes a literal `&`; the other labels and page
-texts show `&` as it is. Quote a value that starts with `&`, `<`, `[` or
+Restart Manager radio buttons (`RMUseRM`, `RMDontUseRM`, which have none in
+English) and the browse labels (`BrowseLookIn`, `BrowseFolderName`) `&`
+marks the access key, and `&&` writes a literal `&`; the other labels and
+page texts show `&` as it is. Quote a value that starts with `&`, `<`, `[` or
 `{`: unquoted, YAML reads `&Weiter >` as an anchor and the value as empty.
 An unknown key, an empty text and `strings` without a wizard are errors; a
 text longer than its column (`DialogTitle` 128, `RMUseRM` and `RMDontUseRM`
@@ -1505,8 +1505,12 @@ They have not been reviewed by native speakers yet. Arabic and Hebrew get
 their texts, but the wizard keeps its left-to-right layout. The base
 language uses its translation too: `product.language: 1031` with a wizard
 shows the German texts. `pkg/config/wizardtexts/*.yaml` holds them, one
-file per tag, and a test keeps their keys, placeholders, access keys and
-column widths in step with the English texts.
+file per tag. A test keeps their keys, placeholders, access keys and
+column widths in step with the English texts, and another builds both
+wizards in every translation and checks that no two controls of a dialog
+share an access key. A locale without its own file whose primary language
+covers several scripts takes the matching one: `sr-Latn-RS` the
+`sr-Latn-CS` texts, `zh-SG` the `zh-CN` ones.
 
 Each entry becomes a transform storage named by its LCID. The Template
 lists the base language and then the entries in LCID order. The builder

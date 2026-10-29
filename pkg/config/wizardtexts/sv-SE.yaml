@@ -78,7 +78,7 @@ FatalErrorTitle: "Installationsguiden för [ProductName] avslutades i förtid"
 FatalErrorText: "Installationen av [ProductName] avslutades i förtid på grund av ett fel. Systemet har inte ändrats. Om du vill installera programmet senare kör du installationsguiden igen. Klicka på Slutför för att avsluta installationsguiden."
 ResumeTitle: "Installationsguiden för [ProductName] återupptas"
 ResumeText: "Installationsguiden slutför installationen av [ProductName] på datorn. Klicka på Installera för att fortsätta eller på Avbryt för att avsluta installationsguiden."
-Launch: "&Starta [ProductName]"
+Launch: "S&tarta [ProductName]"
 
 CancelText: "Vill du verkligen avbryta installationen av [ProductName]?"
 WaitCostingText: "Vänta medan installationsprogrammet beräknar hur mycket diskutrymme som krävs."

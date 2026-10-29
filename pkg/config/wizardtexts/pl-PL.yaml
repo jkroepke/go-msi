@@ -13,7 +13,7 @@ No: "&Nie"
 Abort: "&Przerwij"
 Retry: "Ponó&w"
 Ignore: "&Ignoruj"
-Exit: "&Wyjdź"
+Exit: "W&yjdź"
 Return: "&Powrót"
 
 WelcomeTitle: "Kreator instalacji programu [ProductName] — witamy"
@@ -22,7 +22,7 @@ WelcomeText: "Kreator instalacji zainstaluje program [ProductName] na tym komput
 LicenseTitle: "Umowa licencyjna użytkownika końcowego"
 LicenseText: "Przeczytaj uważnie poniższą umowę licencyjną."
 LicenseAccept: "&Akceptuję warunki umowy licencyjnej"
-LicensePrint: "&Drukuj"
+LicensePrint: "D&rukuj"
 
 InstallDirTitle: "Folder docelowy"
 InstallDirText: "Kliknij przycisk Dalej, aby zainstalować w folderze domyślnym, lub przycisk Zmień, aby wybrać inny folder."

@@ -13,7 +13,7 @@ No: "&Não"
 Abort: "&Anular"
 Retry: "&Tentar novamente"
 Ignore: "&Ignorar"
-Exit: "Sa&ir"
+Exit: "&Sair"
 Return: "&Retornar"
 
 WelcomeTitle: "Bem-vindo ao Assistente de Instalação do [ProductName]"
@@ -21,7 +21,7 @@ WelcomeText: "O Assistente de Instalação instalará o [ProductName] no computa
 
 LicenseTitle: "Contrato de Licença do Usuário Final"
 LicenseText: "Leia atentamente o contrato de licença a seguir."
-LicenseAccept: "&Aceito os termos do Contrato de Licença"
+LicenseAccept: "Aceito &os termos do Contrato de Licença"
 LicensePrint: "Im&primir"
 
 InstallDirTitle: "Pasta de destino"
@@ -45,7 +45,7 @@ BrowseTitle: "Alterar a pasta de destino"
 BrowseText: "Navegue até a pasta de destino."
 BrowseLookIn: "&Examinar:"
 BrowseUp: "A&cima"
-BrowseNewFolder: "&Nova"
+BrowseNewFolder: "No&va"
 BrowseFolderName: "&Nome da pasta:"
 
 ReadyInstallTitle: "Pronto para instalar o [ProductName]"
