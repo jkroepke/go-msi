@@ -271,7 +271,7 @@ Pipeline, each step a file of its own:
    files in one directory share one set of short names; the literal ones
    (`short|long` parts and long names that are valid short names) are taken
    before any is generated, and two different names with one literal short
-   name are an error (FILE-07).
+   name are an error (FILE-07); that check runs once the files are read.
 4. **Components, features, files, media**: attributes (64-bit bit 256,
    permanent, transitive, …), key paths, `CreateFolder` rows, file sequence
    order (canonical directory, name, key), one `Media` row and one embedded

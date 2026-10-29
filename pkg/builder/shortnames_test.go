@@ -155,8 +155,8 @@ func TestGeneratedShortNameAvoidsLiteralName(t *testing.T) {
 	}
 }
 
-// TestShortcutKeepsItsOwnShortNames checks that the short-name check leaves
-// shortcuts out: a shortcut is written as name.lnk, so its literal short
+// TestShortcutKeepsItsOwnShortNames guards against adding shortcuts to the
+// short-name check: a shortcut is written as name.lnk, so its literal short
 // name may equal a folder's.
 func TestShortcutKeepsItsOwnShortNames(t *testing.T) {
 	t.Parallel()
@@ -177,9 +177,9 @@ components:
 	}
 }
 
-// TestShortNamesAcrossKinds checks that a generated file name avoids a
-// directory's literal short name, and that two sibling directories with the
-// same name are no short-name conflict.
+// TestShortNamesAcrossKinds checks that a file's generated short name
+// avoids a directory's literal one, and the other way round, and that two
+// sibling directories with the same name are no short-name conflict.
 func TestShortNamesAcrossKinds(t *testing.T) {
 	t.Parallel()
 
@@ -208,5 +208,34 @@ components:
 	name := fmt.Sprint(cell(t, second.Database, "File", "FileName", func(row []any) bool { return row[0] == "One" }))
 	if short, _, _ := strings.Cut(name, "|"); strings.EqualFold(short, generated) {
 		t.Errorf("File.FileName %s takes the directory's short name %s", name, generated)
+	}
+
+	dirOnly := mustBuild(t, shortNameConfig(t, `        children:
+          - id: DATADIR
+            name: Data Files
+components:
+  - directory: DATADIR
+    files:
+      - { source: two.txt }
+`))
+
+	isDataDir := func(row []any) bool { return row[0] == "DATADIR" }
+	dirShort, _, _ := strings.Cut(fmt.Sprint(cell(t, dirOnly.Database, "Directory", "DefaultDir", isDataDir)), "|")
+
+	withFile := mustBuild(t, shortNameConfig(t, `        children:
+          - id: DATADIR
+            name: Data Files
+components:
+  - directory: DATADIR
+    files:
+      - { source: two.txt }
+  - directory: APPDIR
+    files:
+      - { source: one.txt, id: One, name: `+dirShort+` }
+`))
+
+	defaultDir := fmt.Sprint(cell(t, withFile.Database, "Directory", "DefaultDir", isDataDir))
+	if short, _, _ := strings.Cut(defaultDir, "|"); strings.EqualFold(short, dirShort) {
+		t.Errorf("Directory.DefaultDir %s takes the file's short name %s", defaultDir, dirShort)
 	}
 }

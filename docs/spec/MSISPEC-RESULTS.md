@@ -468,6 +468,9 @@ removed it, and repeated the install with `SHORTFILENAMES=1`. The probe was
 removed from the pull request afterwards; its output is in
 [`msitest/results/FILE-07/probe/log.md`](msitest/results/FILE-07/probe/log.md).
 
+Every package also had the two sibling directories of case c, so cases a, b
+and d did not test their files alone.
+
 | Case | ICE | Install | `SHORTFILENAMES=1` |
 | --- | --- | --- | --- |
 | a: `PROG~1.TXT\|Program One.txt` and `PROG~1.TXT\|Program Two.txt`, one component | ICE30 error for each file | Both long names; Windows gives them its own short names `PROGRA~1.TXT` and `PROGRA~2.TXT` | One `PROG~1.TXT` holding the second file ("Overwrite … hash doesn't match"); after the uninstall the folder is still there |

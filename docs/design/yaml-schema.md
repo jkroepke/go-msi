@@ -366,8 +366,8 @@ directories:
   `TARGETDIR`. The builder adds `TARGETDIR` with `SourceDir` itself.
 - `name` may be `short|long`. Without a short part the builder generates one
   from a hash of the parent key and the long name (specification section 11.3).
-  A short name, given or generated, is unique among the directories and
-  files of its parent: two different names with the same short name, given
+  A short name, given or generated, is unique among the differently named
+  directories and files of its parent: two different names with the same short name, given
   as `short|long` or as a long name that is itself a valid short name, are
   an error.
 - File and directory names must be valid on Windows: no `\/:*?"<>|` or
