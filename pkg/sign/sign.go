@@ -10,6 +10,11 @@
 //
 // Verify checks the digests and the cryptographic signature. It does not
 // build or trust a certificate chain; that is Windows' job.
+//
+// SignCabinet, VerifyCabinet and CabinetDigest do the same for a cabinet
+// written with a signature reserve (§12, "Signed external cabinets"): the
+// PKCS #7 follows the cabinet data. The signer's signature value,
+// Signature.Value, is what MsiDigitalSignature.Hash holds.
 package sign
 
 import (
@@ -56,6 +61,22 @@ type Options struct {
 	// Hash is SHA-256 when zero. SHA-1 is legacy; SHA-384 and SHA-512
 	// need a recent Windows.
 	Hash crypto.Hash
+}
+
+// Check reports whether the options can sign: a signer, its certificate,
+// a key the format supports and a supported digest. Sign and SignCabinet
+// check the same, so a caller can find bad options before it does the work
+// that comes first.
+func (o *Options) Check() error {
+	if o.Signer == nil || len(o.Certificates) == 0 {
+		return errors.New("sign: a signer and its certificate are required")
+	}
+
+	if _, err := digestAlgorithm(o.hash()); err != nil {
+		return err
+	}
+
+	return checkKey(o.Signer, o.Certificates[0])
 }
 
 func (o *Options) hash() crypto.Hash {
@@ -229,11 +250,7 @@ func Attach(pkg, signature []byte) ([]byte, *Signature, error) {
 // Sign returns pkg with a fresh basic-mode signature, replacing any
 // existing one.
 func Sign(ctx context.Context, pkg []byte, opts Options) ([]byte, error) {
-	if opts.Signer == nil || len(opts.Certificates) == 0 {
-		return nil, errors.New("sign: a signer and its certificate are required")
-	}
-
-	if err := checkKey(opts.Signer, opts.Certificates[0]); err != nil {
+	if err := opts.Check(); err != nil {
 		return nil, err
 	}
 
@@ -242,7 +259,12 @@ func Sign(ctx context.Context, pkg []byte, opts Options) ([]byte, error) {
 		return nil, err
 	}
 
-	p7, err := buildSignature(ctx, digest, &opts)
+	content, err := indirectData(opts.hash(), digest)
+	if err != nil {
+		return nil, err
+	}
+
+	p7, err := buildSignature(ctx, content, &opts)
 	if err != nil {
 		return nil, err
 	}
@@ -275,16 +297,12 @@ func checkKey(signer crypto.Signer, cert *x509.Certificate) error {
 	return nil
 }
 
-// buildSignature returns the DER ContentInfo for the digest.
-func buildSignature(ctx context.Context, digest []byte, opts *Options) ([]byte, error) {
+// buildSignature returns the DER ContentInfo that signs content, a DER
+// SpcIndirectDataContent.
+func buildSignature(ctx context.Context, content []byte, opts *Options) ([]byte, error) {
 	algo := opts.hash()
 
 	alg, err := digestAlgorithm(algo)
-	if err != nil {
-		return nil, err
-	}
-
-	content, err := indirectData(algo, digest)
 	if err != nil {
 		return nil, err
 	}

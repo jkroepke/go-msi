@@ -230,7 +230,7 @@ them braced and upper case.
 | `codepage` | int | `1252` | Database code page, section 2.3 |
 | `compression` | enum | `lzx` | `lzx` (LZX with a 2 MB window), `lzx:15` … `lzx:21` (a window of 2^N bytes), `mszip` or `none` (stored blocks) |
 | `cabinet` | string | `<name>.cab` | Name of the first cabinet; further cabinets insert their number before the extension (`Hello2.cab`, `Hello3.cab`). Embedded, it is a stream name of at most 62 characters (fewer outside `0-9A-Za-z._`). ICE03 wants an identifier (letters, digits, `_` and `.`, not starting with a digit), so the default keeps only those characters of `<name>`, and an explicit name that is no identifier warns. The default is `product.cab` when that is no identifier, cannot be a stream name or `<name>` has non-ASCII characters. Beside the package (`embedCabinets: false`) it is a plain filename and need not be a stream name |
-| `embedCabinets` | bool | `true` | `false` writes the cabinets as files beside the `.msi` (`Media.Cabinet` without `#`), which the package needs at install time. A package cannot exceed 2 GB, so a payload whose cabinets add up to more needs `false`; an embedded build above that fails with an error that says so. The payload is split into cabinets at file boundaries either way: a cabinet holds at most 65535 files and 2 GiB, counted with every block at the largest size its compression allows, so with LZX one cabinet takes about 1.8 GB of files whatever they compress to. A single file is at most 2 GiB − 32 KiB (section 5, CAB-10) |
+| `embedCabinets` | bool | `true` | `false` writes the cabinets as files beside the `.msi` (`Media.Cabinet` without `#`), which the package needs at install time. A package cannot exceed 2 GB, so a payload whose cabinets add up to more needs `false`; an embedded build above that fails with an error that says so. The payload is split into cabinets at file boundaries either way: a cabinet holds at most 65535 files and 2 GiB, counted with every block at the largest size its compression allows, so with LZX one cabinet takes about 1.8 GB of files whatever they compress to. A single file is at most 2 GiB − 32 KiB (section 5, CAB-10). A build with signing options signs the external cabinets too, and the package lists them in `MsiDigitalSignature`, so Windows Installer installs only from those exact cabinets (section 12, SIG-09) |
 | `longFileNames` | bool | `true` | `false` sets Word Count bit 1 (short source paths). Each listed filename must itself be a valid 8.3 name, and a folder source is refused; directories and shortcuts get a generated `short\|long` when their name is not a valid 8.3 name. Installed folders still get the long names unless `SHORTFILENAMES=1` is set (FILE-06) |
 | `summary` | map | | `title` (`Installation Database`), `keywords` (`Installer`), `author` (manufacturer) |
 
@@ -702,6 +702,8 @@ files:
         extensions:
           - extension: exdoc                     # without the dot
             contentType: application/x-exdoc     # optional Content Type value
+          - extension: txt                       # only add the type to Open with
+            openWithOnly: true
         verbs:                                   # default: one open verb
           - id: open
             text: '&Open'                        # menu text; empty: the shell's text for the id
@@ -719,20 +721,119 @@ packages with file associations that were checked have no `ProgId`,
 `Extension` or `Verb` table at all, and the msi-builder ports with the same
 rows left the same registry behind (specification section 10.2). Those
 tables only register advertised associations, which are out of scope for
-good (section 6). The root is HKCR, which the engine writes to
-`HKLM\Software\Classes` per machine; a per-user package names
+good (section 6). msi-builder also writes an empty `<progId>` value in
+`.<extension>\OpenWithProgids`, which Microsoft asks of every program that
+takes over an extension and which lists the program under Open with
+(specification section 10.2, REG-04). The root is HKCR, which the engine
+writes to `HKLM\Software\Classes` per machine; a per-user package names
 `HKCU\Software\Classes` itself, because HKCR fails ICE105.
 
 `arguments` is formatted text, so `[INSTALLDIR]` works there;
-`description`, `text` and `contentType` are written literally. A ProgID and
-an extension may be registered once per package, and a ProgID must not start
-with a dot. A ProgID
-that is not COM-style (at most 39 letters, digits and periods, not starting
-with a digit) gets a warning. Uninstalling removes the default value of
-`.<extension>`, so registering an extension that Windows or other programs
-own (`txt`, `xml`, `pdf`, …) gets a warning: it would be left without a
-handler. Explorer's "Open with" choice of the user (`UserChoice`) still
-wins over the package's default.
+`description`, `text` and `contentType` are written literally. A ProgID may
+be registered once per package, must not start with a dot and must not be
+`*`, `+` or `-`. A ProgID that is not COM-style (at most 39 letters, digits
+and periods, not starting with a digit) gets a warning. Uninstalling removes
+the default value of `.<extension>`, so registering an extension that
+Windows or other programs own (`txt`, `xml`, `pdf`, …) gets a warning: it
+would be left without a handler. For such an extension, `openWithOnly: true`
+writes only the `OpenWithProgids` entry: the program shows up under Open
+with and the extension keeps its default program and content type
+(`contentType` is then an error). Uninstalling removes only that entry and
+keeps other programs' entries (REG-04). Any number of ProgIDs may list an
+extension with `openWithOnly`; the default may be registered once.
+Explorer's "Open with" choice of the user (`UserChoice`) still wins over the
+package's default.
+
+**Component shortcuts.** A component can list `shortcuts` of its own, for
+shortcuts that do not point at a file listed with them. Each names exactly
+one target:
+
+```yaml
+components:
+  - id: Viewer
+    files: [{ source: viewer.exe }]
+  - id: StartMenu
+    shortcuts:
+      - name: Configuration
+        directory: ProgramMenuFolder/Example
+        folder: INSTALLDIR/config                # opens a folder
+      - name: Documentation
+        directory: ProgramMenuFolder/Example
+        url: https://example.com/docs            # a .url file
+        iconFile: viewer.exe                     # a packaged file; iconIndex picks the icon
+      - name: Uninstall Example
+        directory: ProgramMenuFolder/Example
+        program: "[SystemFolder]msiexec.exe"     # a program outside the package
+        arguments: /x [ProductCode]
+features:
+  - id: Main
+    components: [Viewer, StartMenu]
+  - id: DesktopShortcut
+    title: Desktop shortcut
+    default: off
+    components:
+      - shortcuts:
+          - { directory: DesktopFolder, file: viewer.exe }   # a file of any component
+```
+
+They take the keys of a file's shortcuts, with these differences:
+
+- `file` is the ID or name of a packaged file in any component. The
+  shortcut starts in that file's folder unless `workingDirectory` says
+  otherwise. It is installed with the features of the component that lists
+  it, not those of the file, which is how a shortcut gets a feature of its
+  own. When a feature of that component does not also install the file,
+  the target is the file's folder and long name, `[INSTALLDIR]viewer.exe`,
+  instead of `[#id]`: ICE69 reports a `[#id]` into another feature's
+  component as an error, and the shortcut then points at a file that may be
+  absent (SHORTCUT-04). A file that a folder source adds has a generated
+  ID and cannot be named, so list it on a component of its own and exclude
+  it from the folder.
+- `folder` is resolved like `directory`. A folder that is not a standard
+  folder gets a `CreateFolder` row, even when a component names it, since
+  that component may have no files, a condition or another feature; so the
+  folder exists while the shortcut does and is removed with it when empty; below a profile folder it also gets `RemoveFile` rows (ICE64). A
+  folder shortcut has no `arguments` or `workingDirectory`.
+- `program` is the formatted path of a program outside the package, such
+  as `[SystemFolder]msiexec.exe` or `[System64Folder]cmd.exe`;
+  `SystemFolder` is `SysWOW64` on 64-bit Windows, also in an x64 package
+  (SHORTCUT-04). It must start with a property reference: a
+  `Shortcut.Target` without one is a feature key, which makes the row an advertised shortcut (section 6). The path
+  holds no quotes; arguments go in `arguments`. It has no working directory
+  unless one is set.
+- `url` makes an internet shortcut: `Name.url` with `URL=` in its
+  `[InternetShortcut]` section, written by `IniFile` rows instead of a
+  `Shortcut` row, plus a `RemoveFile` row that deletes the file at
+  uninstall, also after the shell added sections to it. The address is
+  formatted text (`[ProductVersion]` works, `[\[]` is a literal bracket),
+  starts with a scheme and holds printable ASCII only, so percent-encode
+  other characters. A `.url` folder that is not a standard folder gets a
+  `CreateFolder` row. `arguments`,
+  `description`, `workingDirectory`, `icon`, `show` and `properties` do
+  not apply to it. Its icon is `iconFile`, the ID or name of a packaged
+  `.ico`, `.exe` or `.dll`, written as `IconFile=[#id]` (or the folder and
+  name form of `file`, by the same feature rule) with
+  `IconIndex=` from `iconIndex` (default 0); an `icons` entry cannot be
+  used, because the engine writes those only for `Shortcut` rows. Without
+  `iconFile` the shell shows the browser's icon. Its name must not be that
+  of a packaged file in the folder.
+
+The targets of `file`, `folder` and `program` fill the 72 characters of
+`Shortcut.Target` as `[#id]` (or `[DIRECTORY]name`), `[DIRECTORY]` and the
+path; a longer target is an error at build time, and a shorter `id` on the
+file or its directory fixes it. A `.lnk` and a `.url` of one name are two
+files and may share a folder. Component shortcuts go into the same
+generated component as the shortcuts of the component's files, so they
+need no file, registry value or key path of their own. A component that
+lists nothing but shortcuts is that generated component itself: it gets no
+row of its own in its `directory`, so it raises no ICE38 in a per-user
+package, and without an `id` it is named after its first shortcut (or the
+product, when that shortcut has no `name`)
+(`Docs_Shortcuts`), so that its ComponentId does not depend on the order of
+the components. Its `guid`, `condition`, `permanent` and `transitive`
+apply to that component; its `directory` is not used. A component with a
+folder source cannot list them.
+SHORTCUT-03 and SHORTCUT-04 installed every kind on Windows.
 
 **Permissions.** A file, registry value, service or the component's folder
 can carry a `permissions` block (`folderPermissions` on the component, which

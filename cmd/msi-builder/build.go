@@ -177,21 +177,17 @@ func (f *buildFlags) run(cmd *cobra.Command, path string) error {
 		defer cleanup()
 	}
 
-	res, err := builder.Build(cfg, builder.Options{
-		CFBVersion: f.cfbVersion,
-		ToolName:   "msi-builder " + version,
-		SkipVerify: f.skipVerify,
-		Output:     target,
-	})
+	opts, err := f.builderOptions(cfg, target)
+	if err != nil {
+		return err
+	}
+
+	res, err := builder.Build(cfg, opts)
 
 	printDiagnostics(cmd.ErrOrStderr(), res.Diagnostics)
 
 	if err != nil {
-		if res.Diagnostics.Err() != nil {
-			return errors.New("build failed")
-		}
-
-		return fmt.Errorf("build failed: %w", err)
+		return buildFailed(res, err)
 	}
 
 	if f.signing.enabled() {
@@ -205,6 +201,34 @@ func (f *buildFlags) run(cmd *cobra.Command, path string) error {
 	}
 
 	return nil
+}
+
+// buildFailed is the error of a failed build: the diagnostics are already
+// printed.
+func buildFailed(res *builder.Result, err error) error {
+	if res.Diagnostics.Err() != nil {
+		return errors.New("build failed")
+	}
+
+	return fmt.Errorf("build failed: %w", err)
+}
+
+// builderOptions are the build options for a package written to target.
+// Cabinets beside the package are signed as they are written, so that the
+// package can list their digests.
+func (f *buildFlags) builderOptions(cfg *config.Config, target string) (builder.Options, error) {
+	signCabinets, err := f.signing.cabinetOptions(cfg)
+	if err != nil {
+		return builder.Options{}, err
+	}
+
+	return builder.Options{
+		CFBVersion:   f.cfbVersion,
+		ToolName:     "msi-builder " + version,
+		SkipVerify:   f.skipVerify,
+		Output:       target,
+		SignCabinets: signCabinets,
+	}, nil
 }
 
 // printResult reports the package at out and the cabinets beside it.

@@ -743,8 +743,8 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 	top := known.topFolder(comp.Directory)
 
 	// The component of a folder source reports these once, not once per
-	// file.
-	if directoryReported(known, comp) {
+	// file, and a component of shortcuts only installs nothing there.
+	if directoryReported(known, comp) || shortcutsOnly(comp) {
 		return
 	}
 
