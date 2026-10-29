@@ -433,10 +433,12 @@ services (the key path is the executable), one with `neverOverwrite`,
 and HKMU or HKCR outside a `perUser` package), which an HKCU key path
 would mix with per-user data (ICE57). With `upgrade.removeOld`
 `afterInstallExecute` or `afterInstallFinalize` (also set by `preserve`)
-no component gets the value: an upgrade from a file key path to the HKCU
-value with that removal lost the component's files (INST-04). Turning the
-late removal on in a later version (or adding `preserve`, which does)
-changes those key paths back; that upgrade kept the files (INST-04). Event log sources count as per-machine registry
+the value is written but not made the key path: an upgrade from a file key
+path to the HKCU value with that removal lost the component's files
+(INST-04). Turning the late removal on in a later version (or adding
+`preserve`, which does) changes those key paths back; that upgrade kept
+the files, and since the new version writes the same values, its
+uninstall removes them too (INST-04). Event log sources count as per-machine registry
 values, and so do machine environment variables, HKLM and HKU
 `removeRegistry` entries, and file types and HKMU or HKCR removals outside
 a `perUser` package. A firewall carrier in the profile

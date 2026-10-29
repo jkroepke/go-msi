@@ -2,6 +2,7 @@ package builder_test
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -242,7 +243,7 @@ func TestProfileKeyPathFolderPermissions(t *testing.T) {
 
 // With a late removeOld the components keep their key paths: an upgrade
 // that changed the key path with the same ComponentId lost the files
-// (INST-04).
+// (INST-04). They still write the HKCU value.
 func TestProfileKeyPathLateRemoval(t *testing.T) {
 	t.Parallel()
 
@@ -258,6 +259,12 @@ func TestProfileKeyPathLateRemoval(t *testing.T) {
 
 		if (comp[5] == "app.exe") != kept || warned != kept {
 			t.Errorf("%s: key path %v, warning %v, want kept = %v", removeOld, comp[5], warned, kept)
+		}
+
+		// The value is written either way, so the package owns the values
+		// an earlier version with HKCU key paths wrote.
+		if !slices.ContainsFunc(rows(t, res.Database, "Registry"), func(r []any) bool { return r[5] == "App" && fmt.Sprint(r[1]) == "1" }) {
+			t.Errorf("%s: no HKCU value for App", removeOld)
 		}
 	}
 }

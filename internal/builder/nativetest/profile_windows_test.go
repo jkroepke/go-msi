@@ -149,19 +149,21 @@ func TestMsiexecProfileKeyPath(t *testing.T) { //nolint:paralleltest // msiexec 
 	// the same ComponentIds lost the files (CI runs 40966711286 and
 	// 40967057615), so the builder keeps the file key paths there. The last
 	// case goes the other way: from the HKCU key paths of an early-removal
-	// version to the file key paths a late removal keeps.
+	// version to the file key paths a late removal keeps. Its uninstall left
+	// version 1's values behind (CI run 40974297757) until version 2 wrote
+	// the same values as its own rows.
 	early, late := "upgrade: { removeOld: afterInstallInitialize }\n", "upgrade: { removeOld: afterInstallExecute }\n"
 
 	for _, tc := range []struct {
 		name, oldUpgrade, newUpgrade string
-		oldPinned, generated         bool
+		oldPinned                    bool
 	}{
-		{"file to HKCU, early removal", early, early, true, true},
-		{"file to file, late removal", late, late, true, false},
-		{"HKCU to file, late removal", early, late, false, false},
+		{"file to HKCU, early removal", early, early, true},
+		{"file to file, late removal", late, late, true},
+		{"HKCU to file, late removal", early, late, false},
 	} {
 		t.Run("perUser upgrade and repair "+tc.name, func(t *testing.T) {
-			profileUpgrade(t, tc.oldUpgrade, tc.newUpgrade, tc.oldPinned, tc.generated)
+			profileUpgrade(t, tc.oldUpgrade, tc.newUpgrade, tc.oldPinned)
 		})
 	}
 
@@ -207,10 +209,11 @@ func TestMsiexecProfileKeyPath(t *testing.T) { //nolint:paralleltest // msiexec 
 
 // profileUpgrade installs version 1 of the per-user package, with file key
 // paths when oldPinned is set, upgrades it to version 2 as the builder
-// makes it by default, with HKCU key paths when generated is set, deletes
-// the files, repairs and uninstalls it. A full repair restores missing
-// files whatever the key path is.
-func profileUpgrade(t *testing.T, oldUpgrade, newUpgrade string, oldPinned, generated bool) {
+// makes it by default, which writes the HKCU values also when a late
+// removal keeps the file key paths, deletes the files, repairs and
+// uninstalls it. A full repair restores missing files whatever the key
+// path is.
+func profileUpgrade(t *testing.T, oldUpgrade, newUpgrade string, oldPinned bool) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -224,17 +227,12 @@ func profileUpgrade(t *testing.T, oldUpgrade, newUpgrade string, oldPinned, gene
 		_, _ = runMsiexec([]string{"/x", old, "/qn"}, nil)
 	})
 
-	want := 0
-	if generated {
-		want = 2
-	}
-
 	wantOld := 2
 	if oldPinned {
 		wantOld = 0
 	}
 
-	if len(values) != want || len(oldValues) != wantOld {
+	if len(values) != 2 || len(oldValues) != wantOld {
 		t.Fatalf("generated values %v, old %v", values, oldValues)
 	}
 
@@ -257,8 +255,8 @@ func profileUpgrade(t *testing.T, oldUpgrade, newUpgrade string, oldPinned, gene
 	msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
 	checkProfile(t, "after the uninstall", "perUser", values, false)
 
-	// No package removes the old version's values when the new one has none
-	// of its own; the uninstall must still leave none behind.
+	// Version 2 owns the same values, so its uninstall removes version 1's
+	// too.
 	for comp, name := range oldValues {
 		if regHas(t, "64", profileKey, name) {
 			t.Errorf("after the uninstall: the HKCU value %s of %s from version 1 is still there", name, comp)

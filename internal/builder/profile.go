@@ -14,28 +14,44 @@ import (
 // machine (INST-04). It runs after componentGUID, so the ComponentId
 // still follows the key file, registry value or folder the component had
 // before, and a package keeps its component codes.
+//
+// With a late removeOld the value is written but the key file stays the
+// key path: an upgrade that moved the key path to the value lost the
+// files, and one that moved it back left the old version's values behind
+// unless the new version owns them too (INST-04).
 func (b *build) profileKeyPath(info *componentInfo) {
 	comp := info.cfg
-	if !b.needsProfileKeyPath(comp) {
+	if !b.profileCandidate(comp) {
 		return
 	}
 
 	registry := generatedID("reg", "ProfileKeyPath", b.upgradeCode, comp.ID)
 	valueName := generatedID("cmp", "ProfileKeyPath", b.upgradeCode, comp.ID)
 
+	b.table("Registry").Add(registry, registryRoots[rootHKCU], `Software\[Manufacturer]\[ProductName]`, valueName, "#1", comp.ID)
+
+	if b.lateRemoval() {
+		return
+	}
+
 	info.keyPath = registry
 	info.attributes |= compRegistryKeyPath
-
-	b.table("Registry").Add(registry, registryRoots[rootHKCU], `Software\[Manufacturer]\[ProductName]`, valueName, "#1", comp.ID)
 }
 
-// needsProfileKeyPath reports whether a component below a profile folder
+// needsProfileKeyPath reports whether the builder makes the HKCU value the
+// key path of a component: a profileCandidate in a package without a late
+// removeOld.
+func (b *build) needsProfileKeyPath(comp *config.Component) bool {
+	return b.profileCandidate(comp) && !b.lateRemoval()
+}
+
+// profileCandidate reports whether a component below a profile folder
 // leaves its key path to the builder and would not get an HKCU value
 // anyway (keepsKeyPath lists the exceptions). An HKMU value counts as HKCU
 // only in a per-user package: a dual package installed per machine writes
 // it to HKLM. The validator makes the same decision and warns about the
 // components this leaves out.
-func (b *build) needsProfileKeyPath(comp *config.Component) bool {
+func (b *build) profileCandidate(comp *config.Component) bool {
 	if b.keepsKeyPath(comp) || shortcutsOnly(comp) || !config.IsProfileFolder(b.topFolder(comp.Directory)) {
 		return false
 	}
@@ -54,12 +70,10 @@ func (b *build) needsProfileKeyPath(comp *config.Component) bool {
 // firewall carrier's is generated), services, which need their
 // executable, neverOverwrite (also set by preserve) and sharedDllRefCount,
 // which test the key path (reported), per-machine registry values, which
-// an HKCU key path would mix with per-user data (ICE57), and a late
-// removeOld, with which an upgrade that changed the key path lost the
-// files (INST-04).
+// an HKCU key path would mix with per-user data (ICE57).
 func (b *build) keepsKeyPath(comp *config.Component) bool {
 	explicit := comp.KeyPath != "" && comp.FirewallFeature() == ""
-	if explicit || len(comp.Services) > 0 || comp.NeverOverwrite || comp.SharedDLLRefCount || b.lateRemoval() {
+	if explicit || len(comp.Services) > 0 || comp.NeverOverwrite || comp.SharedDLLRefCount {
 		return true
 	}
 
@@ -86,12 +100,13 @@ func (b *build) machineRegistry(comp *config.Component) bool {
 }
 
 // hashProfileKeyPaths adds a marker to the ProductCode digest when a
-// component gets an HKCU key path. A package built before msi-builder
+// component gets an HKCU value (as its key path unless a late removeOld
+// keeps the key file). A package built before msi-builder
 // wrote these key paths (INST-04) differs from one built after, so the
 // rebuild needs another code, or installing it over the old one fails
 // with 1638.
 func (b *build) hashProfileKeyPaths(hasher io.Writer) {
-	if slices.ContainsFunc(b.cfg.Components, b.needsProfileKeyPath) {
+	if slices.ContainsFunc(b.cfg.Components, b.profileCandidate) {
 		_, _ = hasher.Write([]byte("keypath:profile-hkcu"))
 	}
 }
