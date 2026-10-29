@@ -991,7 +991,8 @@ folderPermissions:
   installation, and so does an empty one on a first install. An account
   from a property is remembered per product, so a maintenance install (a
   repair from Apps & Features, a self-repair, a feature added later, a
-  patch) without the property grants to the account of the first install;
+  patch) whose properties in the account are all empty grants to the
+  account of the last successful install;
   only an account that was never remembered is skipped there, with a log
   line. Removing the product forgets it. A major upgrade is a first
   install of the new product and needs the account again.

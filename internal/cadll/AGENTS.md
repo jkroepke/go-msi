@@ -52,7 +52,7 @@ The custom action DLL of `run` actions and permission grants. Read the root
 - Permission grants (spec 17.7) use the exports `BuilderGrantSchedule`
   (immediate) and `BuilderGrant` (the deferred `BuilderGrantExec`, its
   rollback and the commit action, told apart by the first character of
-  `CustomActionData`: `+`, `-`, `c`, and `x` on removal). The schedule action reads the
+  `CustomActionData`: `+`, `-`, `c`, and `x` for the commit of a removal). The schedule action reads the
   `BuilderGrants` property, evaluates each line's condition, formats account
   and object separately and rejects `|` and control characters in what a
   property could inject. The deferred action records the rights it adds in
@@ -60,8 +60,9 @@ The custom action DLL of `run` actions and permission grants. Read the root
   hive) before it writes the DACL, so the rollback takes away only those;
   never make the rollback revoke the authored mask, which strips rights an
   object had before a failed repair or upgrade. An account from a property
-  is remembered (`a` lines, `HKLM\SOFTWARE\msi-builder\GrantAccounts\<ProductCode>`,
-  value named after the template), because `msiexec /fa` and Apps & Features
+  is remembered by the commit action (`a` lines,
+  `HKLM\SOFTWARE\msi-builder\GrantAccounts\<ProductCode>`, value named
+  after the template), because `msiexec /fa` and Apps & Features
   repairs run without the first install's command line properties (observed
   on the CI runner, SEC-02). Wide strings in this part
   are `u"..."` literals, which clang types as `unsigned short` arrays.

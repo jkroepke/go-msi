@@ -118,7 +118,6 @@ long WINAPI RegOpenKeyExW(HANDLE, const WCHAR *, DWORD, DWORD, HANDLE *);
 long WINAPI RegSetValueExW(HANDLE, const WCHAR *, DWORD, DWORD, const BYTE *, DWORD);
 long WINAPI RegQueryValueExW(HANDLE, const WCHAR *, DWORD *, DWORD *, BYTE *, DWORD *);
 long WINAPI RegDeleteTreeW(HANDLE, const WCHAR *);
-long WINAPI RegDeleteValueW(HANDLE, const WCHAR *);
 long WINAPI RegCloseKey(HANDLE);
 
 // msi.dll
@@ -577,13 +576,14 @@ done:
 // that were there before the install survive a rollback.
 //
 // An account that comes from a property, such as [SVC_ACCOUNT], is
-// remembered: an `a` entry stores the account under its template in
-// HKLM\SOFTWARE\msi-builder\GrantAccounts\<ProductCode>, and a maintenance
-// install (a repair from Apps & Features, a self-repair, a feature added
-// later, a patch), whose command line does not have the property, grants to
-// the remembered account. Only an account that was never remembered is
-// skipped there. The removal of the product (`x`) deletes the key. Log lines
-// read `BuilderGrant: ...`.
+// remembered: the commit action stores the account of an `a` entry under its
+// template in HKLM\SOFTWARE\msi-builder\GrantAccounts\<ProductCode>, and a
+// maintenance install (a repair from Apps & Features, a self-repair, a
+// feature added later, a patch), whose command line does not have the
+// property, grants to the remembered account when every property in the
+// template is empty. Only an account that was never remembered is skipped
+// there. The commit action of the removal of the product (`x`) deletes the
+// key. Log lines read `BuilderGrant: ...`.
 
 static const WCHAR propGrants[] = u"BuilderGrants";
 static const WCHAR propProductCode[] = u"ProductCode";
@@ -773,6 +773,29 @@ static WCHAR *remembered(const WCHAR *product, const WCHAR *template)
     return value;
 }
 
+// literal returns the template without its [...] references, which is what
+// it formats to when every property in it is empty.
+static WCHAR *literal(const WCHAR *template)
+{
+    WCHAR *out = HeapAlloc(GetProcessHeap(), 0, (wlen(template) + 1) * sizeof(WCHAR));
+    if (!out) {
+        return 0;
+    }
+    SIZE_T n = 0;
+    int depth = 0;
+    for (; *template; template++) {
+        if (*template == '[') {
+            depth++;
+        } else if (*template == ']' && depth) {
+            depth--;
+        } else if (!depth) {
+            out[n++] = *template;
+        }
+    }
+    out[n] = 0;
+    return out;
+}
+
 static int hasBracket(const WCHAR *s)
 {
     for (; *s; s++) {
@@ -810,8 +833,13 @@ static int scheduleEntry(MSIHANDLE install, const WCHAR *product, WCHAR *line, w
     if (!acct || !obj) {
         logft(install, tmplGrant, msgFormat, acct ? object : account, 0);
     } else {
-        WCHAR *name = trim(acct);
+        WCHAR *name = trim(acct), *lit = hasBracket(account) ? literal(account) : 0;
         int again = maintenance(install);
+        // `.\[SVC_USER]` with an empty property is as unset as `[SVC_USER]`.
+        if (*name && lit && wieq(name, trim(lit))) {
+            *name = 0;
+        }
+        HeapFree(GetProcessHeap(), 0, lit);
         if (!*name && again && (kept = remembered(product, account)) != 0 && *trim(kept)) {
             // A property set on the command line of the first install is
             // not there in a repair from Apps & Features, a self-repair or
@@ -859,9 +887,10 @@ __declspec(dllexport) UINT WINAPI BuilderGrantSchedule(MSIHANDLE install)
         goto done;
     }
     if (MsiEvaluateConditionW(install, condRemoveAll) == MSICONDITION_TRUE) {
-        // The removal only forgets the remembered accounts.
+        // The removal only forgets the remembered accounts, in the commit
+        // action, so a failed removal keeps them.
         out.s[0] = 'x';
-        result = MsiSetPropertyW(install, propExec, out.s) == ERROR_SUCCESS ? ERROR_SUCCESS : ERROR_INSTALL_FAILURE;
+        result = MsiSetPropertyW(install, propCommit, out.s) == ERROR_SUCCESS ? ERROR_SUCCESS : ERROR_INSTALL_FAILURE;
         goto done;
     }
     for (WCHAR *line = list; line && *line;) {
@@ -1153,11 +1182,11 @@ done:
     return ok;
 }
 
-// rememberEntry stores the account of an `a` entry under its template, and
-// records in the rollback record whether the template is new; a rollback
-// removes a new one again. It never fails the install: without it, only a
+// rememberEntry stores the account of an `a` entry under its template. The
+// commit action does it, so a failed install or repair leaves the account
+// that was remembered before. It never fails: without it, only a
 // maintenance install without the property skips the grant.
-static void rememberEntry(MSIHANDLE install, WCHAR *entry, int grant, HANDLE record, const WCHAR *valueName, const WCHAR *product)
+static void rememberEntry(MSIHANDLE install, WCHAR *entry, const WCHAR *product)
 {
     HANDLE heap = GetProcessHeap(), key = 0;
     WCHAR *account = entry + 2, *template = field(account, '|');
@@ -1170,22 +1199,8 @@ static void rememberEntry(MSIHANDLE install, WCHAR *entry, int grant, HANDLE rec
         logft(install, tmplGrant, msgNoMemory, 0, 0);
         return;
     }
-    if (!grant) {
-        DWORD added = 0, size = sizeof added, kind = 0;
-        if (record && !RegQueryValueExW(record, valueName, 0, &kind, (BYTE *)&added, &size) && kind == REG_DWORD && added &&
-            !RegOpenKeyExW(HKLM_, path.s, 0, KEY_SET_VALUE, &key)) {
-            RegDeleteValueW(key, template);
-            RegCloseKey(key);
-        }
-        HeapFree(heap, 0, path.s);
-        return;
-    }
-    long err = RegCreateKeyExW(HKLM_, path.s, 0, 0, 0, KEY_QUERY_VALUE | KEY_SET_VALUE, 0, &key, 0);
+    long err = RegCreateKeyExW(HKLM_, path.s, 0, 0, 0, KEY_SET_VALUE, 0, &key, 0);
     if (!err) {
-        DWORD kind = 0, size = 0, added = RegQueryValueExW(key, template, 0, &kind, 0, &size) != 0;
-        if (added && record) {
-            RegSetValueExW(record, valueName, 0, REG_DWORD, (const BYTE *)&added, sizeof added);
-        }
         err = RegSetValueExW(key, template, 0, REG_SZ, (const BYTE *)account, (DWORD)((wlen(account) + 1) * sizeof(WCHAR)));
         RegCloseKey(key);
     }
@@ -1234,15 +1249,19 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
         key = 0;
     }
     DWORD index = 0;
-    for (WCHAR *entry = entries; op != 'c' && entry && *entry; index++) {
+    for (WCHAR *entry = entries; entry && *entry; index++) {
         WCHAR *next = field(entry, '\n');
         WCHAR name[12];
         SIZE_T pos = 0;
+        int remember = entry[0] == 'a' && entry[1] == '|';
         wappendnum(name, &pos, index);
-        // A rollback undoes every entry it can and never fails.
-        if (entry[0] == 'a' && entry[1] == '|') {
-            rememberEntry(install, entry, op == '+', key, name, data + 1);
-        } else if (!applyEntry(install, entry, op == '+', key, keyErr, name) && op == '+') {
+        // The commit remembers the accounts; a rollback undoes every grant
+        // it can and never fails.
+        if (op == 'c') {
+            if (remember) {
+                rememberEntry(install, entry, data + 1);
+            }
+        } else if (!remember && !applyEntry(install, entry, op == '+', key, keyErr, name) && op == '+') {
             result = ERROR_INSTALL_FAILURE;
             break;
         }

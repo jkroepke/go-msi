@@ -306,6 +306,10 @@ func TestMsiexecGrants(t *testing.T) {
 
 	if log := readLog(filepath.Join(dir, "repair.log")); !strings.Contains(log, "granting to the remembered account") || !strings.Contains(log, `MsiBuilderGrant\data: already granted`) {
 		t.Errorf("repair: no grant to the remembered account\n%s", grepLog(log, "BuilderGrant"))
+	} else {
+		// "granted" means the replaced file came with a fresh DACL,
+		// "already granted" that it kept its ACE.
+		t.Logf("SEC-02: /fa repair, app.exe:\n%s", grepLog(grepLog(log, "BuilderGrant"), `MsiBuilderGrant\app.exe`))
 	}
 
 	for name, object := range objects {
