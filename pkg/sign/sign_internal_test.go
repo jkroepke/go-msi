@@ -26,7 +26,7 @@ import (
 
 	"software.sslmate.com/src/go-pkcs12"
 
-	"github.com/jkroepke/msi-builder/pkg/cfb"
+	"github.com/jkroepke/msi-builder/internal/cfb"
 )
 
 // vectorStreams is the chapter 01 compound-file vector.

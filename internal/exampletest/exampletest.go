@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jkroepke/msi-builder/internal/builder"
 	"github.com/jkroepke/msi-builder/internal/testpe"
-	"github.com/jkroepke/msi-builder/pkg/builder"
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 

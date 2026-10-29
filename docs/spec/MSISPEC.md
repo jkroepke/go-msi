@@ -155,7 +155,7 @@ All-black trees are also valid. SIDs: root 0, then depth-first pre-order with ch
 
 ### MS-CFB coverage
 
-Audit of `pkg/cfb` against [MS-CFB] v20261026 (sections 2.1–2.9 and 4), 2026-10-29. `TestConformance` (`pkg/cfb/conformance_test.go`) checks every writer-side MUST and SHOULD below on v3 and v4 output with up to 69 streams, both colour strategies and a file with DIFAT sectors, independently of the reader. `TestConformanceCatchesFaults` checks that it detects each kind of fault without panicking on the broken file.
+Audit of `internal/cfb` against [MS-CFB] v20261026 (sections 2.1–2.9 and 4), 2026-10-29. `TestConformance` (`internal/cfb/conformance_test.go`) checks every writer-side MUST and SHOULD below on v3 and v4 output with up to 69 streams, both colour strategies and a file with DIFAT sectors, independently of the reader. `TestConformanceCatchesFaults` checks that it detects each kind of fault without panicking on the broken file.
 
 | MS-CFB rule | Status | Notes |
 |---|---|---|
@@ -405,7 +405,7 @@ Rejected options for the LZX writer (independent segments, a search beyond 512 K
 
 The reader follows the same rules and also reads uncompressed blocks: after the block header, 1 to 16 padding bits (16 when the stream is already aligned), R0, R1 and R2 as little-endian u32, the bytes, and a pad byte when the block size is odd.
 
-Measured on Windows Server 2025 with makecab.exe 5.00 (2026-10-25, LZX:21 against MSZIP; the log is not yet under `msitest/results`): windows_exporter 0.32.0 (33.4 MB) 13.27 MB against 15.39 MB, Grafana Alloy 1.21.2 (414.6 MB) 75.28 MB against 106.86 MB; expand.exe was not slower on LZX. msi-builder's writer gave 13.47 MB and 78.74 MB for the same files, measured on Linux; cabinet.dll (FDI and expand.exe) extracts msi-builder's LZX cabinets byte for byte on Windows Server 2025: every window from 15 to 21, forced verbatim, aligned offset and uncompressed blocks, the uncompressed fallback, E8 translation with the folder length as translation size, matches 512 KiB back, history slides and system DLLs; msi-builder's reader reads makecab's LZX:15 and LZX:21 cabinets (`pkg/cab/native_windows_test.go`, Windows CI, 2026-10-26). The native tests run on Windows Server 2025 only; whether Windows Server 2016 installs LZX:21 cabinets is unverified, since no 2016 machine is available for testing.
+Measured on Windows Server 2025 with makecab.exe 5.00 (2026-10-25, LZX:21 against MSZIP; the log is not yet under `msitest/results`): windows_exporter 0.32.0 (33.4 MB) 13.27 MB against 15.39 MB, Grafana Alloy 1.21.2 (414.6 MB) 75.28 MB against 106.86 MB; expand.exe was not slower on LZX. msi-builder's writer gave 13.47 MB and 78.74 MB for the same files, measured on Linux; cabinet.dll (FDI and expand.exe) extracts msi-builder's LZX cabinets byte for byte on Windows Server 2025: every window from 15 to 21, forced verbatim, aligned offset and uncompressed blocks, the uncompressed fallback, E8 translation with the folder length as translation size, matches 512 KiB back, history slides and system DLLs; msi-builder's reader reads makecab's LZX:15 and LZX:21 cabinets (`internal/cab/native_windows_test.go`, Windows CI, 2026-10-26). The native tests run on Windows Server 2025 only; whether Windows Server 2016 installs LZX:21 cabinets is unverified, since no 2016 machine is available for testing.
 
 ### Windows Installer usage
 
@@ -437,7 +437,7 @@ How the engine picks and opens media (reported):
 - Stored cabinet (chapter 04 §16.2): `fil_a` (`Hello, cabinet!\r\n`), `fil_b` (`MSI\r\n`), setID 0x1234, 2024-06-15 13:45:30, attribs 0x20/0x21. 118 bytes, SHA-256 `81e6018c16afa762ca19768c9c3ce0eed5aa44b5ef26ea555da92a248bbe4ace`.
 - MSZIP cabinet (§16.3): `fil_readme` (28 bytes) and `fil_data` (70000) give blocks of 32768, 32768 and 4492. Go 1.27.3 level 9: 3310 bytes, SHA-256 `d325dfc5a0f4310ee08bf54d8d7dfb98e4586cc601240574d8baf7be10f22cec`. Random data takes the stored fallback (`cbData` 32775).
 
-Observed with `cabinet.dll` FDI and `expand.exe` on Windows Server 2025 (`pkg/cab/native_windows_test.go`, run by CI on every change):
+Observed with `cabinet.dll` FDI and `expand.exe` on Windows Server 2025 (`internal/cab/native_windows_test.go`, run by CI on every change):
 
 - FDI extracts the cabinets written by the rules above byte for byte and reports the written names, sizes, dates and attributes: stored and MSZIP folders, Go's DEFLATE streams with their empty final block, an empty folder (`cCFData = 0`) holding only empty files, empty files between and after other files, files ending on and crossing the 32 KiB block boundary, the stored fallback (`cbData` 32775), 2000 files, a 255-byte `szName`, a UTF-8 name with attribute 0x80, and the clamped dates 0x0021/0x0000 and 0xFF9F/0xBF7D.
 - FDI verifies `csum`: a flipped payload byte fails the extraction. Checksums of blocks with 1, 2 and 3 trailing bytes match the big-endian tail rule above.
@@ -1110,7 +1110,7 @@ Full detail: chapter 09 §9.2–§9.19.
 
 **Unverified (chapter 09):**
 
-- Primary feature when none is marked; child kinds in automatic key-path selection; file key for non-identifier names.
+- Primary feature when none is marked; child kinds in automatic key-path selection; the file key other toolchains derive for non-identifier names (msi-builder's rule is below).
 - Default code page without localization; x86 `InstallerVersion` default; `Arm`/`Arm64` tokens; PID 3/5 defaults in 3.11.
 - Feature `expand` numbering and nested order; type 307 for "first"; the SetDirectory anchor.
 - MajorUpgrade downgrade-row attributes, `LaunchCondition` blocking and `Disallow` bits (a producer policy rather than a file-format rule).
@@ -1156,7 +1156,7 @@ Reproducible mode (for example `SOURCE_DATE_EPOCH` set):
 Prefixes: `reg` Registry, `rrg` RemoveRegistry, `cmp` Component, `fil` File, `dir` Directory, `rmf` RemoveFile, `ini` IniFile, `rif` RemoveIniFile, `env` Environment, `sc` ServiceControl, `svi` ServiceInstall, `scp` MsiShortcutProperty, `dup` DuplicateFile, `mvf` MoveFile, `lpe` MsiLockPermissionsEx, `sig` Signature, `id` other.
 
 - Observed v3: `reg`, `scp`, `fil`, `cmp`, `dir` + 32 upper-case hex. Observed v5: `reg`, `scp`, `fls`, `d` + 27 characters from `[A-Za-z0-9._]`. Hashes are not expected to match.
-- A file key defaults to the filename if it is a legal identifier unique in the package. A component key defaults to its key-path resource's key.
+- A file key defaults to the filename if it is a legal identifier of at most 72 characters. msi-builder makes any other filename into one: characters outside `[A-Za-z0-9_.]` become `_`, a leading digit or `.` gets a `_` prefix, and a key over 60 characters is cut and ends in `_` plus eight hex digits of the SHA-256 of the replaced name. This is a producer convention: the engine only needs a unique identifier. A component key defaults to its key-path resource's key.
 - Harvesting uses the identity `"cmp|"`, `"fil|"` or `"dir|"` + path below the harvest root (forward slashes, lower case). It makes one component per file, ordered by name.
 - Normalize harvest paths first: drop empty, `.` and trailing-slash segments. A harvester that kept them emitted directories with an empty name, which broke the build (reported). Identities never use random numbers, so a rebuild gives the same keys (reported).
 - A file without an explicit key whose default key collides with another file's (the same name in two directories) is an error naming both sources, never a silent drop. One reported producer that lost such File rows wrote components with empty key paths and still exited 0 (reported).
@@ -1572,7 +1572,7 @@ The GNOME msitools commits whose message mentions a fix were reviewed on 2026-10
 
 | msitools fix (commit subject, abridged) | msi-builder |
 | --- | --- |
-| Long string table load and save format (#60) | Already covered: section 3 gives the long-entry layout; `pkg/msidb` has a test for it. |
+| Long string table load and save format (#60) | Already covered: section 3 gives the long-entry layout; `internal/msidb` has a test for it. |
 | Save table rows sorted by their primary key (#99); don't corrupt a table with temporary rows | Already covered: section 3 requires sorted rows and msi-builder sorts every table; it never writes temporary rows or edits existing packages. |
 | Open 0-byte streams; allocate decoded stream names; reject zero-length properties; fix string table loading | Reader robustness. Already covered by the rules for untrusted input (`AGENTS.md`) and the `cfb`, `msidb` and `summary` fuzz tests. |
 | Inverted `Environment/@Permanent` | Already covered: removal is a separate field (`removeOnUninstall`), and the `-` prefix is written explicitly whenever removal is wanted, never left to `*` (section 11.9, ENVVAR-01). |
@@ -1735,7 +1735,7 @@ Both recipes use EXE custom actions on `sc.exe` and `netsh.exe`, so a package ne
 - On install and repair, delete every rule by name and direction first, then add each rule; a rollback action deletes what was added. Delete all rules before adding any, so a TCP and a UDP rule with one name survive.
 - On removal, delete by name and direction only, because a port or address taken from a property may differ at maintenance time; a rollback action adds the rule back. Deleting never fails the install (Continue, 64).
 - Rules name a program (`program="[#File]"`) or a port and protocol (TCP by default), with remote addresses or a scope and a profile (all by default).
-- msi-builder passes `remoteip=` unquoted, so the list has no spaces. `ANY` and `*` alone mean any address (stored as `Any`, CA-04), and so does `any` alone: the `windows_exporter` example leaves `REMOTE_ADDR` empty, so its rule is added with the fallback `remoteip=any`, and the install snapshot (`pkg/builder/nativetest/testdata/install`) records the rule without remote addresses; a list that combines `any` or `*` with another entry fails with "A specified IP address or address keyword is not valid." and exit code 1, so the add action fails the install. `localsubnet,10.0.0.1` and `LocalSubnet,dns` are accepted and stored as `LocalSubnet,10.0.0.1/32` and `LocalSubnet,DNS` (observed, CA-04). Other spellings of `any` in a list, `*` after an address, and the keywords `dhcp`, `wins` and `defaultgateway` in a list are not tested.
+- msi-builder passes `remoteip=` unquoted, so the list has no spaces. `ANY` and `*` alone mean any address (stored as `Any`, CA-04), and so does `any` alone: the `windows_exporter` example leaves `REMOTE_ADDR` empty, so its rule is added with the fallback `remoteip=any`, and the install snapshot (`internal/builder/nativetest/testdata/install`) records the rule without remote addresses; a list that combines `any` or `*` with another entry fails with "A specified IP address or address keyword is not valid." and exit code 1, so the add action fails the install. `localsubnet,10.0.0.1` and `LocalSubnet,dns` are accepted and stored as `LocalSubnet,10.0.0.1/32` and `LocalSubnet,DNS` (observed, CA-04). Other spellings of `any` in a list, `*` after an address, and the keywords `dhcp`, `wins` and `defaultgateway` in a list are not tested.
 - A double quote inside a quoted `description="…"` is dropped without an error: `description="say "hi" now"` is stored as `say hi now` (observed, CA-04). Reject quotes in the name and the description instead of letting them vanish.
 - Unverified: removing only the feature (`REMOVE=<Feature>`) when the port came from a property.
 
@@ -2083,25 +2083,25 @@ A case ID is `<PREFIX>-<NN>`: the prefix names the msi-builder package or instal
 | Prefix | Area | msi-builder code |
 | --- | --- | --- |
 | `ENV` | Test machine inventory and control packages | — |
-| `CFB` | Compound File Binary container | `pkg/cfb` |
-| `MSIDB` | Database: string pool, catalogs, tables, streams, code pages | `pkg/msidb` |
-| `SUM` | Summary information stream | `pkg/summary` |
-| `CAB` | Cabinet format, media and cabinet layout | `pkg/cab` |
-| `MSZIP` | MSZIP compressed cabinet blocks | `pkg/cab` |
+| `CFB` | Compound File Binary container | `internal/cfb` |
+| `MSIDB` | Database: string pool, catalogs, tables, streams, code pages | `internal/msidb` |
+| `SUM` | Summary information stream | `internal/summary` |
+| `CAB` | Cabinet format, media and cabinet layout | `internal/cab` |
+| `MSZIP` | MSZIP compressed cabinet blocks | `internal/cab` |
 | `LZX` | LZX compressed cabinet blocks | `internal/lzx` |
-| `BUILD` | Build failures and reproducible output | `pkg/builder` |
-| `INST` | Install, uninstall and installation context | `pkg/builder` |
-| `FILE` | File overwrite rules, file hashes, file removal and short names | `pkg/builder` |
-| `REG` | Registry values and 64-bit components | `pkg/builder` |
-| `ENVVAR` | `Environment` table | `pkg/builder` |
-| `PROP` | Properties and their visibility | `pkg/builder` |
-| `SEARCH` | `AppSearch` and its locator tables | `pkg/builder` |
-| `UPG` | Upgrades, downgrades and related products | `pkg/builder` |
-| `SVC` | Services and their configuration | `pkg/builder` |
-| `CA` | Custom actions and their failures | `pkg/builder` |
-| `SHORTCUT` | Shortcuts | `pkg/builder` |
-| `UI` | Setup wizard and dialogs | `pkg/builder` |
-| `SEC` | `MsiLockPermissionsEx` permissions | `pkg/builder`, `pkg/config` |
+| `BUILD` | Build failures and reproducible output | `internal/builder` |
+| `INST` | Install, uninstall and installation context | `internal/builder` |
+| `FILE` | File overwrite rules, file hashes, file removal and short names | `internal/builder` |
+| `REG` | Registry values and 64-bit components | `internal/builder` |
+| `ENVVAR` | `Environment` table | `internal/builder` |
+| `PROP` | Properties and their visibility | `internal/builder` |
+| `SEARCH` | `AppSearch` and its locator tables | `internal/builder` |
+| `UPG` | Upgrades, downgrades and related products | `internal/builder` |
+| `SVC` | Services and their configuration | `internal/builder` |
+| `CA` | Custom actions and their failures | `internal/builder` |
+| `SHORTCUT` | Shortcuts | `internal/builder` |
+| `UI` | Setup wizard and dialogs | `internal/builder` |
+| `SEC` | `MsiLockPermissionsEx` permissions | `internal/builder`, `pkg/config` |
 | `VAL` | ICE validation | `internal/ice` |
 | `SIG` | Authenticode signatures | `pkg/sign` |
 | `INT` | Other MSI toolchains | — |

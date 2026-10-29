@@ -6,6 +6,10 @@ and `builder.Build` validates it the same way, so every rule of the
 [YAML schema](design/yaml-schema.md) also applies to a config that Go code
 builds.
 
+The importable packages are `github.com/jkroepke/msi-builder/pkg/config` (the
+schema), `pkg/builder` (`Build`) and `pkg/sign` ([signing](signing.md)). The
+database, compound file, cabinet and summary stream code is internal.
+
 ```go
 cfg := &config.Config{
 	Schema:  config.SchemaV1,

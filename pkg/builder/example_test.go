@@ -41,6 +41,6 @@ func ExampleBuild() {
 		return
 	}
 
-	fmt.Println(len(res.Database.Table("File").Rows), "files")
+	fmt.Println(len(res.Files), "files")
 	// Output: 3 files
 }

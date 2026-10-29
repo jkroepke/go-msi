@@ -4,7 +4,8 @@ package config
 // of the source path.
 func FileLongName(f *File) string { return fileName(f) }
 
-// FileKey returns the File table key: the explicit id, else the long name.
+// FileKey returns the File table key: the explicit id, else the long name
+// made into an identifier (see fileID).
 func FileKey(f *File) string { return fileID(f) }
 
 // IsStandardFolder reports whether id is a standard folder property such as

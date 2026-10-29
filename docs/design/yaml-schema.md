@@ -425,7 +425,7 @@ features:
 - `level: 0` disables a feature; `ADDLOCAL=ALL` cannot turn it on.
 - Every component is in at least one feature (ICE21). A component used by
   two features is defined once in `components` and named by ID in both.
-- `allowAdvertise` defaults to `false`; advertised installs are not in schema v1 (section 6).
+- `allowAdvertise` defaults to `false`; advertised installs are not supported (section 6).
 
 ### 4.6 `components`
 
@@ -563,8 +563,8 @@ service must have the service executable as key file.
 |---|---|---|
 | `source` | required | Path relative to the YAML file; `\` counts as `/` on every OS |
 | `name` | base name of `source` | The long name; the short name is generated |
-| `id` | the name, if it is a legal identifier and unique, else generated | File key |
-| `version` | `auto` | `auto`, a four-field version, the ID of another file (companion), or `none`; never empty (section 2.2) |
+| `id` | the name, made into an identifier (see below) | File key, used in `[#id]` references |
+| `version` | `auto` | `auto`, a four-field version, the ID of another file (companion) or its name when it has no `id`, or `none`; never empty (section 2.2) |
 | `language` | `auto` | From the PE resource; `none` for fonts |
 | `allowUnversionedExecutable` | `false` | Required to build a PE file with `version: none` or without a version resource |
 | `vital` | `true` | |
@@ -572,6 +572,17 @@ service must have the service executable as key file.
 | `readOnly`, `hidden`, `system` | `false` | |
 
 Unversioned files get an `MsiFileHash` row automatically.
+
+Without `id`, a name that is an identifier of at most 72 characters is the
+file key as it is. Any other name is made into one: every character other
+than letters, digits, `_` and `.` becomes `_`, a name that starts with a
+digit or `.` gets a leading `_`, and a result longer than 60 characters is
+cut and ends in `_` and eight hex digits of the SHA-256 of the replaced
+name. So `fleetspeak-client.exe` is keyed `fleetspeak_client.exe`, which is
+the name to use in `[#fleetspeak_client.exe]`. Give long names an explicit
+`id`, which is also easier to reference. `version` (a companion) and
+`ui.launch.file` also accept the long name of a file without `id`. Two files
+that end up with one key are an error that asks for an `id` on one of them.
 
 Two files must not resolve to the same target path, even through two
 directory IDs for one folder, and a file must not have the path of a
@@ -1326,10 +1337,10 @@ the generated tables, and the cabinet round trip.
 
 ## 6. Not in version 1
 
-Multiple languages in one package, advertised installs and advertised
-shortcuts, and script custom actions. A future `schema: msi-builder/v2` can
-add them without changing the meaning of a v1 file.
+Multiple languages in one package. A future `schema: msi-builder/v2` can add
+it without changing the meaning of a v1 file.
 
-Patches, transforms, merge modules and bundles are out of scope for good
+Advertised installs, advertised shortcuts, script custom actions, patches,
+transforms, merge modules and bundles are out of scope for good
 (see [Out of scope](../../README.md#out-of-scope) and
 [architecture.md](architecture.md)).

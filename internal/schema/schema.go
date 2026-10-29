@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jkroepke/msi-builder/pkg/msidb"
+	"github.com/jkroepke/msi-builder/internal/msidb"
 )
 
 // ColumnDef is a column with its _Validation row.

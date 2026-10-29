@@ -99,12 +99,10 @@ agent with a service. These are not supported:
   embedded language transforms. Not in schema v1.
 - **Spanned cabinets.** Every cabinet holds one folder; cabinets are LZX
   (the default), MSZIP or stored.
-- **Script custom actions** (VBScript, JScript). Use an executable or DLL
-  action instead. Not in schema v1.
+- **Script custom actions** (VBScript, JScript).
 - **Editing existing packages and WiX XML input.** `msi-builder inspect` only
   reads packages to help debugging.
-- **Advertised installs and advertised shortcuts.** Not in schema v1;
-  shortcuts are ordinary `.lnk` files.
+- **Advertised installs and advertised shortcuts.**
 - **Hand-built dialogs.** The UI is a built-in wizard plus optional form
   pages that ask for properties; there is no free control layout.
 

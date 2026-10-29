@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jkroepke/msi-builder/pkg/cfb"
-	"github.com/jkroepke/msi-builder/pkg/msidb"
+	"github.com/jkroepke/msi-builder/internal/cfb"
+	"github.com/jkroepke/msi-builder/internal/msidb"
 )
 
 func newInspectCmd() *cobra.Command {
