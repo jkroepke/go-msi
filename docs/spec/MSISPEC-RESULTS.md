@@ -568,10 +568,11 @@ service has recovery set to restart after 60 s, three times.
 | msi-builder `2e527f8` | event 163 `Wait=1` | 1603 | 248.9 s | Error 1920 at StartServices, rolled back |
 
 - With split rows, the System log shows one start and crash (7045, 7036
-  running, 7031, 7024, 7036 stopped) and the install completes; recovery then
-  restarts the service on its own schedule. Uninstall of that package exited
-  0, and `sc query` no longer found the service. A default install of the `3d7acd4` package
-  started the service and answered `/health` with 200.
+  running, 7031, 7024, 7036 stopped) and the install completes. The 7031
+  entry announces a recovery restart in 60 s; the restart itself was not
+  recorded. Uninstall of that package exited 0, and `sc query` no longer
+  found the service. A default install of the `3d7acd4` package started the
+  service and answered `/health` with 200.
 - With one `Wait=1` row, StartServices began at 13:04:56.7 and logged 1920 at
   13:09:03.8, about 247 s later. In that time the System log shows 18 × 7031
   and 18 × 7024, a start-and-crash cycle every 12–24 s. Recovery allows only
