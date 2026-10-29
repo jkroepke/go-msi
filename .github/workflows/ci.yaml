@@ -382,9 +382,9 @@ jobs:
   # workflow_dispatch does, so dispatch CI on the new tag like tag.yaml.
   #
   # Runs only while the repository variable RELEASE_ENABLED is 'true'
-  # (Settings > Secrets and variables > Actions > Variables). Unset or any
-  # other value pauses automatic releases. The Create Tag workflow still
-  # publishes a release by hand.
+  # (Settings > Secrets and variables > Actions > Variables; the comparison
+  # ignores case). Unset pauses automatic releases. The Create Tag workflow
+  # still publishes a release by hand.
   release:
     if: vars.RELEASE_ENABLED == 'true' && github.repository_owner == 'jkroepke' && github.ref_name == 'main'
     name: Release
