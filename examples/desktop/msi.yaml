@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
 # A desktop program with a license, a page to pick the install folder, a
-# check box on the finish page that starts the program, and shortcuts in the
-# Start menu and on the desktop.
+# note and a check box on the finish page that starts the program, and
+# shortcuts in the Start menu and on the desktop.
 #
 #   msi-builder build --var VERSION=2.0.0 -o example-viewer.msi msi.yaml
 #
@@ -45,5 +45,7 @@ ui:
   wizard: minimal
   license: LICENSE.txt
   installDirPage: true
+  # A paragraph on the finish page after a new installation.
+  finishText: Start [ProductName] from the Start menu or the desktop shortcut.
   launch:
     file: viewer.exe

@@ -53,6 +53,27 @@ func IsPE(r io.ReaderAt) bool {
 	return err == nil
 }
 
+// imageFileDLL is the COFF characteristics flag of a DLL.
+const imageFileDLL = 0x2000
+
+// IsDLL reports whether data is a PE image whose COFF header marks it as a
+// DLL.
+func IsDLL(rdr io.ReaderAt) bool {
+	off, err := peOffset(rdr)
+	if err != nil {
+		return false
+	}
+
+	// Signature (4) + Machine, NumberOfSections, TimeDateStamp,
+	// PointerToSymbolTable, NumberOfSymbols, SizeOfOptionalHeader (18).
+	var chars [2]byte
+	if _, err := rdr.ReadAt(chars[:], off+4+18); err != nil {
+		return false
+	}
+
+	return binary.LittleEndian.Uint16(chars[:])&imageFileDLL != 0
+}
+
 func peOffset(rdr io.ReaderAt) (int64, error) {
 	var head [0x40]byte
 	if _, err := rdr.ReadAt(head[:], 0); err != nil {

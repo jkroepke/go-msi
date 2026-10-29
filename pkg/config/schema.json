@@ -170,6 +170,10 @@
           "type": "string",
           "maxLength": 62
         },
+        "embedCabinets": {
+          "$ref": "#/$defs/bool",
+          "default": true
+        },
         "longFileNames": {
           "$ref": "#/$defs/bool",
           "default": true
@@ -596,6 +600,24 @@
             ],
             "additionalProperties": false
           },
+          "exe": {
+            "type": "object",
+            "description": "Type 2: the engine writes the binary to a temporary file, runs it and deletes it.",
+            "properties": {
+              "binary": {
+                "type": "string",
+                "description": "A binaries key holding a Windows program."
+              },
+              "arguments": {
+                "type": "string",
+                "description": "Command-line arguments, formatted text."
+              }
+            },
+            "required": [
+              "binary"
+            ],
+            "additionalProperties": false
+          },
           "execute": {
             "anyOf": [
               {
@@ -630,7 +652,7 @@
                 "$ref": "#/$defs/var"
               }
             ],
-            "description": "Required for exec, execProperty and run."
+            "description": "Required for exec, execProperty, exe and run."
           },
           "hideTarget": {
             "$ref": "#/$defs/bool"
@@ -753,6 +775,11 @@
           },
           {
             "required": [
+              "exe"
+            ]
+          },
+          {
+            "required": [
               "run"
             ]
           }
@@ -774,6 +801,11 @@
                 {
                   "required": [
                     "run"
+                  ]
+                },
+                {
+                  "required": [
+                    "exe"
                   ]
                 }
               ]
@@ -846,6 +878,10 @@
         "installDirPage": {
           "type": "boolean",
           "description": "Adds a page after the welcome and license pages that shows the install folder (installDir) and lets the user change it."
+        },
+        "finishText": {
+          "type": "string",
+          "description": "Formatted paragraph shown on the finish page below its standard text; hidden by the condition Installed OR ACTION = \"ADMIN\"."
         },
         "launch": {
           "type": "object",
@@ -1418,7 +1454,7 @@
             "properties": {
               "source": {
                 "type": "string",
-                "description": "Path relative to the YAML file."
+                "description": "Path relative to the YAML file, or absolute. A source that ends in / (or \\) is a folder: the component becomes one component per file below it, with subfolders as directories below the component's directory (see the YAML schema doc)."
               },
               "name": {
                 "type": "string",
@@ -1519,10 +1555,33 @@
                         "minimized"
                       ],
                       "default": "normal"
+                    },
+                    "properties": {
+                      "type": "object",
+                      "description": "Shell properties of the .lnk by canonical name, such as System.AppUserModel.ID; the values are formatted text.",
+                      "propertyNames": {
+                        "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$"
+                      },
+                      "additionalProperties": {
+                        "type": [
+                          "string",
+                          "number",
+                          "boolean"
+                        ],
+                        "minLength": 1
+                      }
                     }
                   },
                   "additionalProperties": false
                 }
+              },
+              "include": {
+                "$ref": "#/$defs/stringList",
+                "description": "Folder sources only: doublestar glob patterns of the files to add, default all. A pattern without / matches a name in any folder; ** matches any number of folders; a trailing / matches folders only. Case is ignored."
+              },
+              "exclude": {
+                "$ref": "#/$defs/stringList",
+                "description": "Folder sources only: glob patterns of files and folders to leave out, like include; exclude wins."
               }
             },
             "required": [
@@ -1656,6 +1715,35 @@
               "root",
               "key"
             ],
+            "additionalProperties": false
+          }
+        },
+        "removeFiles": {
+          "type": "array",
+          "description": "Files or empty folders deleted when the component is installed or removed (RemoveFile rows). A pattern matches the files of one folder only; uninstall rows also run on the uninstall half of a major upgrade.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/identifier"
+              },
+              "name": {
+                "type": "string",
+                "description": "A filename that may hold * and ?. Leave it out to remove the folder itself when it is empty."
+              },
+              "directory": {
+                "type": "string",
+                "description": "A directory ID, default the component's directory."
+              },
+              "on": {
+                "enum": [
+                  "install",
+                  "uninstall",
+                  "both"
+                ],
+                "default": "uninstall"
+              }
+            },
             "additionalProperties": false
           }
         },
@@ -1837,7 +1925,7 @@
                   },
                   "restartDelay": {
                     "type": "string",
-                    "description": "A Go duration such as 60s or 1m.",
+                    "description": "A Go duration such as 60s or 1m; 0s restarts at once.",
                     "default": "1m"
                   }
                 },

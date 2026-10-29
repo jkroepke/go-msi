@@ -68,7 +68,7 @@ func TestWindowsExporterExample(t *testing.T) {
 	}
 
 	svc := cfg.Components[0].Services[0]
-	if !*svc.Control.DeleteOnUninstall || svc.Recovery.RestartDelay != config.Duration(config.DefaultRestartDelay) {
+	if !*svc.Control.DeleteOnUninstall || *svc.Recovery.RestartDelay != config.Duration(config.DefaultRestartDelay) {
 		t.Errorf("service defaults: %+v", svc)
 	}
 

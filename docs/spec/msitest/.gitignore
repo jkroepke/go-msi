@@ -2,4 +2,4 @@
 results/**/*
 !results/**/
 !results/**/log.md
-
+env02/*.msi

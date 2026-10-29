@@ -20,7 +20,13 @@ versioning after 1.0.
 
 - [`pkg/config`](pkg/config): the YAML schema (`docs/design/yaml-schema.md`,
   `pkg/config/schema.json`), parsing and validation. The builder consumes a
-  validated `*config.Config` and never reads YAML.
+  validated `*config.Config` and never reads YAML. Folder sources (a file
+  `source` ending in `/`) are the one part that lists folders:
+  `Config.ExpandFolders` (`folder.go`) replaces their component with one per
+  file through the `AddTree` code (`tree.go`, patterns in `glob.go` via
+  doublestar), and `builder.Build` calls it between two validation passes.
+  Replaced components stay in `Config.folders`, so the second pass still
+  reports problems at their YAML path.
 - [`pkg/builder`](pkg/builder): the public `Build`, `Options`, `Result` and
   `File`. It converts to and from `internal/builder` and adds nothing else;
   `Options` and `File` mirror the internal structs field by field so that a
@@ -130,6 +136,11 @@ go test ./... -shuffle=on -race
   `internal/builder/nativetest`, `internal/cab/native_windows_test.go`) and the bounded-memory
   tests (`TestBoundedMemory`, `TestLargePayloadBoundedMemory`). CI runs
   `-short` on Linux and the full set on Windows.
+  `TestMsiexecInstallsLargePackage` (CAB-10) also needs
+  `MSI_BUILDER_LARGE_PACKAGE=1` and about 10 GB of free disk: it builds and
+  installs a package of about 2.9 GB in external cabinets. CI runs it in a
+  step of its own, without `-race`. Tests that need several cabinets set
+  `builder.Options.CabinetSize` instead of writing 2 GB.
 - Bounded-memory tests assert on the live heap that `memtest.PeakHeap` reads
   from `/gc/heap/live:bytes`, not on `HeapAlloc`. `HeapAlloc` includes
   uncollected garbage up to the collector's goal (about twice the live heap),
@@ -161,6 +172,13 @@ go test ./... -shuffle=on -race
   non-administrator installs with 1625 unless the machine policy `DisableMsi`
   is 0, and a per-user test package needs `INSTALLDIR` under
   `LocalAppDataFolder`, or it stops with 1303 at Program Files.
+- To learn what Windows does before writing a test, a temporary nativetest
+  that collects its observations and reports them with one `t.Errorf` runs
+  on the `windows-latest` runner: push the branch and start CI with
+  `workflow_dispatch` on it, then read the job log. Replace the probe with a
+  test that asserts the observed behavior before the pull request merges.
+  The runner does not let the Windows Firewall service stop (access denied),
+  so firewall behavior with the service stopped cannot be probed there.
 - Wizard changes need a full-UI run: `/qn` never shows a dialog, so dialog
   bugs (wrong event names, missing ErrorIcon) only appear with the full UI.
   `internal/builder/nativetest/fullui_windows_test.go` drives msiexec through
@@ -168,6 +186,13 @@ go test ./... -shuffle=on -race
   installs may share the desktop). It needs an elevated process in an
   interactive session: in session 0 msiexec silently drops to no UI. Control
   event names are case-sensitive (`RMShutdownAndRestart`).
+  The GitHub `windows-latest` runner qualifies, but `go test ./...` there has
+  the default 10-minute timeout and a test skips when less than
+  `fullUIBudget` is left, so a full-UI test runs in CI only when the shuffle
+  starts it early. UI Automation names drop `&`, even on a NoPrefix Text
+  control; a Text control hidden by its ControlCondition from the start was
+  absent from the control view the driver walks (UI-07). Each driver run starts with an
+  empty log.
 
 ## Implementation rules
 
@@ -245,3 +270,8 @@ Follow the template in `.github/PULL_REQUEST_TEMPLATE.md`. Titles start with
 request carries one release label. Sign off each commit (`git commit -s`).
 Report in the pull request which checks ran, including the Windows run, and
 which could not run and why.
+
+Automatic releases are controlled by the repository Actions variable
+`RELEASE_ENABLED`: the `release` job in `ci.yaml` runs only when it is
+`true` (compared case-insensitively). Unset means merges to `main` create no
+tag. Don't change it from a pull request; the maintainer sets it.

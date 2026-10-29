@@ -227,6 +227,12 @@ var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 		"SDDLText|s0||FormattedSDDLText||||||String to indicate permissions to be applied to the LockObject.",
 		"Condition|S255||Condition||||||Expression which must evaluate to TRUE in order for this row to be applied.",
 	},
+	"MsiShortcutProperty": {
+		"MsiShortcutProperty|s72|K|Identifier||||||Primary key, non-localized token.",
+		"Shortcut_|s72||Identifier|Shortcut|1||||Foreign key into the Shortcut table.",
+		"PropertyKey|s0||Formatted||||||Canonical name of a shell property, such as System.AppUserModel.ID.",
+		"PropVariantValue|s0||Formatted||||||The value of the property.",
+	},
 	"MsiServiceConfig": {
 		"MsiServiceConfig|s72|K|Identifier||||||Primary key, non-localized token.",
 		"Name|s255||Formatted||||||Name of a service.",

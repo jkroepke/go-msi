@@ -165,7 +165,7 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 
 		// exec actions must state how their exit code is handled; the
 		// validator reports a missing value instead of defaulting it.
-		if action.Return == "" && action.Exec == nil && action.ExecProperty == nil && action.Run == nil {
+		if action.Return == "" && action.Exec == nil && action.ExecProperty == nil && action.Run == nil && action.EXE == nil {
 			action.Return = "check"
 		}
 
@@ -294,6 +294,12 @@ func defaultComponent(comp *Component) { //nolint:cyclop,gocognit // a flat list
 		}
 	}
 
+	for _, entry := range comp.RemoveFiles {
+		if entry.On == "" {
+			entry.On = RemoveOnUninstall
+		}
+	}
+
 	for _, r := range comp.Registry {
 		if r.Type == "" {
 			r.Type = "string"
@@ -318,14 +324,19 @@ func defaultComponent(comp *Component) { //nolint:cyclop,gocognit // a flat list
 		}
 
 		ctl := &svc.Control
+		// StartServices fails a disabled service with 1920 (SVC-05).
+		if ctl.StartOnInstall == nil && svc.Start == "disabled" {
+			ctl.StartOnInstall = new(false)
+		}
+
 		for _, b := range []**bool{&ctl.StartOnInstall, &ctl.StopOnInstall, &ctl.StopOnUninstall, &ctl.DeleteOnUninstall, &ctl.Wait} {
 			if *b == nil {
 				*b = new(true)
 			}
 		}
 
-		if svc.Recovery != nil && svc.Recovery.RestartDelay == 0 {
-			svc.Recovery.RestartDelay = Duration(DefaultRestartDelay)
+		if svc.Recovery != nil && svc.Recovery.RestartDelay == nil {
+			svc.Recovery.RestartDelay = new(Duration(DefaultRestartDelay))
 		}
 	}
 

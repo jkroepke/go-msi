@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/jkroepke/msi-builder/internal/testpe"
@@ -162,5 +163,28 @@ func TestOversizedSections(t *testing.T) {
 				t.Errorf("parsed but lost the version: %+v", info)
 			}
 		})
+	}
+}
+
+func TestIsDLL(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{})
+	if IsDLL(bytes.NewReader(exe)) {
+		t.Error("an EXE reads as a DLL")
+	}
+
+	// COFF Characteristics: PE offset + signature + 18 bytes; 0x2000 is
+	// IMAGE_FILE_DLL.
+	dll := slices.Clone(exe)
+	off := int(binary.LittleEndian.Uint32(dll[0x3C:]))
+	dll[off+4+18+1] |= 0x20
+
+	if !IsDLL(bytes.NewReader(dll)) {
+		t.Error("a DLL does not read as one")
+	}
+
+	if IsDLL(bytes.NewReader([]byte("MZ"))) {
+		t.Error("a truncated file reads as a DLL")
 	}
 }

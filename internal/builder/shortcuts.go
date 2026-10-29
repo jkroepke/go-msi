@@ -1,7 +1,10 @@
 package builder
 
 import (
+	"cmp"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -129,6 +132,11 @@ func (b *build) writeShortcut(path, carrier, fileKey string, shortcut *config.Sh
 	b.dirs[shortcut.WorkingDirectory].used = true
 	b.table("Shortcut").Add(key, dirID, name, carrier, target, nullable(shortcut.Arguments), nullable(shortcut.Description),
 		nil, icon, iconIndex, showCommands[shortcut.Show], shortcut.WorkingDirectory, nil, nil, nil, nil)
+
+	// The engine sets these when it creates the .lnk (SHORTCUT-02).
+	for _, name := range slices.Sorted(maps.Keys(shortcut.Properties)) {
+		b.table("MsiShortcutProperty").Add(generatedID("scp", key, name), key, name, shortcut.Properties[name])
+	}
 }
 
 // removeShortcutFolders writes a RemoveFile row for every folder between a
@@ -146,4 +154,65 @@ func (b *build) removeShortcutFolders(carrier, dirID string, removed map[string]
 		removed[dir.id] = true
 		b.table("RemoveFile").Add(generatedID("rmf", "Shortcuts", carrier, dir.id), carrier, nil, dir.id, removeOnUninstall)
 	}
+}
+
+// removeModes maps removeFiles[].on to RemoveFile.InstallMode.
+var removeModes = map[string]int{ //nolint:gochecknoglobals // lookup table
+	config.RemoveOnInstall:   1,
+	config.RemoveOnUninstall: removeOnUninstall,
+	config.RemoveOnBoth:      3,
+}
+
+// removeFiles writes the RemoveFile rows of every component's removeFiles,
+// and one for each folder a component creates in the user profile, which
+// the engine removes once it is empty (ICE64).
+func (b *build) removeFiles() error {
+	for _, comp := range b.cfg.Components {
+		for _, entry := range comp.RemoveFiles {
+			dirID := cmp.Or(entry.Directory, comp.Directory)
+			b.dirs[dirID].used = true
+
+			key := cmp.Or(entry.ID, generatedID("rmf", "RemoveFile", comp.ID, dirID, strings.ToLower(entry.Name), entry.On))
+
+			var name any
+			if entry.Name != "" {
+				name = b.removeFileName(dirID, entry.Name)
+			}
+
+			b.table("RemoveFile").Add(key, comp.ID, name, dirID, removeModes[entry.On])
+		}
+
+		if !config.IsProfileFolder(b.topFolder(comp.Directory)) {
+			continue
+		}
+
+		for dir := b.dirs[comp.Directory]; dir != nil && !dir.standard; dir = b.dirs[dir.parent] {
+			b.table("RemoveFile").Add(generatedID("rmf", "Folder", comp.ID, dir.id), comp.ID, nil, dir.id, removeOnUninstall)
+		}
+	}
+
+	return nil
+}
+
+// removeFileName returns the FileName of a RemoveFile row: that of a
+// packaged file with the same long name in the folder, so that both carry
+// the same short name, else the pattern with a generated short name part
+// when it is no valid short name. Such a short name matches only the
+// literal name, so a long wildcard pattern works with long names only.
+func (b *build) removeFileName(dirID, pattern string) string {
+	folder := b.folderKey(dirID)
+
+	for _, file := range b.files {
+		if b.folderKey(file.Component.dir.id) == folder && strings.EqualFold(file.LongName, pattern) {
+			return file.FileName
+		}
+	}
+
+	return filename(dirID, pattern, false, b.taken(dirID), validShortPattern)
+}
+
+// validShortPattern reports whether a filename pattern is a valid short
+// name once its wildcards stand for one character each.
+func validShortPattern(pattern string) bool {
+	return config.ValidShortName(strings.NewReplacer("*", "x", "?", "x").Replace(pattern))
 }

@@ -69,8 +69,19 @@ msi-builder verify hello.msi
 
 See [Signing](docs/signing.md) for PEM keys, `msi-builder sign` and the Go API.
 
-Packages can also be built from Go without a YAML file, including a whole
-folder tree; see the [Go API](docs/go-api.md).
+A whole build output can be added without listing each file: a `source`
+that ends in `/` is a folder, and every file below it gets a component of
+its own:
+
+```yaml
+components:
+  - files:
+      - source: dist/
+        exclude: '*.pdb'
+```
+
+Packages can also be built from Go without a YAML file; see the
+[Go API](docs/go-api.md).
 
 A complete package with a Windows service, a firewall rule, an event log source
 and custom actions is in
@@ -88,15 +99,14 @@ agent with a service. These are not supported:
   bundles or bootstrappers.** Ship a new major-upgrade MSI instead of a patch.
 - **Multi-language packages.** A package has one language; there are no
   embedded language transforms. Not in schema v1.
-- **Spanned cabinets.** Every cabinet holds one folder; cabinets are LZX
-  (the default), MSZIP or stored.
+- **Spanned cabinets.** A file never continues into the next cabinet. A
+  payload above 2 GB is split at file boundaries into several cabinets
+  beside the `.msi` (`package.embedCabinets: false`); a single file is at
+  most 2 GiB − 32 KiB. Cabinets are LZX (the default), MSZIP or stored.
 - **Script custom actions** (VBScript, JScript).
 - **Editing existing packages and WiX XML input.** `msi-builder inspect` only
   reads packages to help debugging.
 - **Advertised installs and advertised shortcuts.**
-- **File harvesting in YAML.** List each file of a component; a YAML file
-  cannot add a whole directory. Not in schema v1. Go callers can use
-  `Config.AddTree` ([Go API](docs/go-api.md)).
 - **Hand-built dialogs.** The UI is a built-in wizard plus optional form
   pages that ask for properties; there is no free control layout.
 

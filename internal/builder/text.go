@@ -161,8 +161,10 @@ func (b *build) checkStreams(tables []*msidb.Table) {
 		}
 	}
 
-	if len(b.files) > 0 {
-		b.claimStream(owners, b.cfg.Package.Cabinet, "package.cabinet")
+	if b.cfg.Package.CabinetsEmbedded() {
+		for _, cabinet := range b.cabinets {
+			b.claimStream(owners, cabinet.name, "package.cabinet")
+		}
 	}
 }
 
@@ -198,7 +200,7 @@ func (b *build) builderRowPath(table, key string, owners map[string]string) stri
 	switch table {
 	case "Icon":
 		return "icons." + key
-	case "Binary":
+	case tableBinary:
 		path := "binaries." + key
 		if b.cfg.Binaries[key] != "" && owners["Binary."+key] != path {
 			return path

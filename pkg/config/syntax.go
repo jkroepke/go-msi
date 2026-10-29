@@ -44,8 +44,9 @@ func ParseVersion(text string) (Version, error) {
 	dst := []*int{&version.Major, &version.Minor, &version.Build, &version.Revision}
 
 	for i, p := range parts {
+		// Digits only: Atoi also takes a sign, and "-0" would pass as 0.
 		num, err := strconv.Atoi(p)
-		if err != nil || num < 0 || p == "" || (len(p) > 1 && p[0] == '+') {
+		if err != nil || strings.Trim(p, "0123456789") != "" {
 			return Version{}, fmt.Errorf("version %q: field %d is not a number", text, i+1)
 		}
 

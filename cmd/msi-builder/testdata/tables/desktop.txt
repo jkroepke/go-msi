@@ -6,7 +6,7 @@ summary  4: Example
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install Example Viewer.
 summary  7: x64;1033
-summary  9: {0BF8F78D-3661-50AA-9761-7627A38E48B0}
+summary  9: {8E1C55E0-B493-5600-AAF1-A79861314546}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500
@@ -74,7 +74,7 @@ s72!	S38	s72	i2	S255	S72
 cmpDC7F075D4854A7F87FB831277DA6373D	{E4E867C1-CBB3-521A-A812-037B2DBD33DF}	ProgramMenuFolder	260		regDC7F075D4854A7F87FB831277DA6373D
 viewer.exe	{8B93EB6B-F828-573A-9E04-0CEC555CCB06}	INSTALLDIR	256		viewer.exe
 
-== Control (150 rows)
+== Control (151 rows)
 Dialog_	Control	Type	X	Y	Width	Height	Attributes	Property	Text	Control_Next	Help
 s72!	s50!	s20	i2	i2	i2	i2	I4	S50	L0	S50	L50
 BrowseDlg	Banner	Bitmap	0	0	370	44	1		BannerBmp		
@@ -106,8 +106,9 @@ ExitDlg	Back	PushButton	180	243	56	17	1		< &Back
 ExitDlg	Background	Bitmap	0	0	370	234	1		DialogBmp		
 ExitDlg	BottomLine	Line	0	234	370	0	1				
 ExitDlg	Cancel	PushButton	304	243	56	17	1		Cancel		
-ExitDlg	Description	Text	135	90	220	80	196611		Click the Finish button to exit the Setup Wizard.		
+ExitDlg	Description	Text	135	90	220	40	196611		Click the Finish button to exit the Setup Wizard.		
 ExitDlg	Finish	PushButton	236	243	56	17	3		&Finish	LaunchCheckBox	
+ExitDlg	FinishText	Text	135	135	220	89	196611		Start [ProductName] from the Start menu or the desktop shortcut.		
 ExitDlg	LaunchCheckBox	CheckBox	20	243	155	17	3	LaunchOnFinish	&Launch [ProductName]	Finish	
 ExitDlg	Title	Text	135	20	220	60	196611		{\BigFont}Completed the [ProductName] Setup Wizard		
 FatalErrorDlg	Back	PushButton	180	243	56	17	1		< &Back		
@@ -231,9 +232,10 @@ WelcomeDlg	Description	Text	135	90	220	80	196611		The Setup Wizard will install 
 WelcomeDlg	Next	PushButton	236	243	56	17	3		&Next >	Cancel	
 WelcomeDlg	Title	Text	135	20	220	60	196611		{\BigFont}Welcome to the [ProductName] Setup Wizard		
 
-== ControlCondition (5 rows)
+== ControlCondition (6 rows)
 Dialog_	Control_	Action	Condition
 s72!	s50!	s50!	s255!
+ExitDlg	FinishText	Hide	Installed OR ACTION = "ADMIN"
 ExitDlg	LaunchCheckBox	Hide	NOT (NOT Installed AND NOT ACTION = "ADMIN" AND $viewer.exe = 3)
 LicenseAgreementDlg	Next	Disable	LicenseAccepted <> "1"
 LicenseAgreementDlg	Next	Enable	LicenseAccepted = "1"
@@ -448,7 +450,7 @@ DefaultUIFont	DefaultFont
 ErrorDialog	ErrorDlg
 LaunchOnFinish	1
 Manufacturer	Example
-ProductCode	{C18F935F-B714-52C0-AB3D-B22A7689BC08}
+ProductCode	{BD34D0DA-129C-50F9-9553-6752BC6C18DA}
 ProductLanguage	1033
 ProductName	Example Viewer
 ProductVersion	2.0.0
