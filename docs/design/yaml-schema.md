@@ -1698,10 +1698,46 @@ the default and selecting another option sets the property on the server
 `WelcomeDlg`, `CustomizeDlg` or an added dialog. With `enabled: false` (the
 default) no UI tables are written and msiexec shows its basic progress
 window; silent installs never depend on the UI in any mode. Without
-`chooseFeatures` `ARPNOMODIFY` is set, whatever `product.arp.noModify` says:
-such a package has no page that Change could show, so `noModify: false` does
-not bring the button back. A feature tree page without the wizard is an
-error.
+`chooseFeatures` and without remove dialogs `ARPNOMODIFY` is set, whatever
+`product.arp.noModify` says: such a package has no page that Change could
+show, so `noModify: false` does not bring the button back. A feature tree
+page without the wizard is an error.
+
+#### Remove dialogs
+
+```yaml
+properties:
+  DELETE_CONFIGURATION: {}           # secure, so the purge on the server sees it
+
+components:
+  - directory: CommonAppDataFolder/Example/Hello
+    createFolder: true
+    purge:
+      condition: DELETE_CONFIGURATION="1"
+
+ui:
+  enabled: true
+  dialogs:
+    - id: RemoveOptionsDlg
+      flow: remove                   # install (default) | remove
+      title: Remove options
+      fields:
+        - property: DELETE_CONFIGURATION
+          type: checkbox
+          label: '&Delete the configuration'
+```
+
+`flow: remove` puts the dialog on the maintenance menu's remove path:
+Remove in `MaintenanceTypeDlg` opens it, and its Next goes to
+`VerifyRemoveDlg`, the page that confirms the removal. `after` defaults to
+`MaintenanceTypeDlg` and may name another remove dialog; install pages and
+remove pages cannot follow each other. The fields are the same as on install
+pages. A package with remove dialogs keeps `ARPNOMODIFY` unset, so Change in
+Add or Remove Programs opens the maintenance menu; with
+`product.arp.noModify: true` the validator warns that only running the
+package again shows the page. `msiexec /x` and the Uninstall button do not
+show the wizard (spec section 7.7, UI-09), so the property is also the
+command-line switch: `msiexec /x hello.msi DELETE_CONFIGURATION=1`.
 
 #### License page
 
