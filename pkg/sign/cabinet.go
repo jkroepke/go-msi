@@ -211,9 +211,19 @@ func SignCabinet(ctx context.Context, file CabinetFile, opts Options) ([]byte, e
 		return nil, fmt.Errorf("sign: %w", err)
 	}
 
+	if err := hdr.attach(file, signature); err != nil {
+		return nil, err
+	}
+
+	return sdata.signer.EncryptedDigest, nil
+}
+
+// attach writes the PKCS #7 signature after the cabinet, padded to 8 bytes,
+// and fills the signature header.
+func (hdr *cabinetHeader) attach(file io.WriterAt, signature []byte) error {
 	padded := make([]byte, (len(signature)+cabSigAlign-1)/cabSigAlign*cabSigAlign)
 	if len(padded) > cabSigMax {
-		return nil, fmt.Errorf("sign: the cabinet signature takes %d bytes, more than %d", len(padded), cabSigMax)
+		return fmt.Errorf("sign: the cabinet signature takes %d bytes, more than %d", len(padded), cabSigMax)
 	}
 
 	copy(padded, signature)
@@ -222,17 +232,17 @@ func SignCabinet(ctx context.Context, file CabinetFile, opts Options) ([]byte, e
 
 	binary.LittleEndian.PutUint32(sig[:], cabSigMagic)
 	binary.LittleEndian.PutUint32(sig[4:], uint32(hdr.size))    //nolint:gosec // read from a u32
-	binary.LittleEndian.PutUint32(sig[8:], uint32(len(padded))) //nolint:gosec // a few kilobytes
+	binary.LittleEndian.PutUint32(sig[8:], uint32(len(padded))) //nolint:gosec // at most cabSigMax
 
 	if _, err := file.WriteAt(padded, hdr.size); err != nil {
-		return nil, fmt.Errorf("sign: write the signature: %w", err)
+		return fmt.Errorf("sign: write the signature: %w", err)
 	}
 
 	if _, err := file.WriteAt(sig[:], cabSigHeader); err != nil {
-		return nil, fmt.Errorf("sign: write the signature header: %w", err)
+		return fmt.Errorf("sign: write the signature header: %w", err)
 	}
 
-	return sdata.signer.EncryptedDigest, nil
+	return nil
 }
 
 // VerifyCabinet checks the Authenticode signature of the cabinet in src
