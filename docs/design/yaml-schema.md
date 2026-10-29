@@ -1739,9 +1739,9 @@ menu through `ModifyPath` (unverified); with `product.arp.noModify: true` the
 validator warns that only running the package again shows the page, and with
 `product.arp.noRemove: true`, which disables Remove in the menu, that no one
 can reach it.
-`msiexec /x` is expected to remove the product without the maintenance pages
-(spec section 7.7, UI-09; what the Uninstall button shows is unverified), so
-the property is also the command-line switch:
+`msiexec /x` asks "Are you sure?" and removes the product without the
+wizard (spec section 7.7, UI-09; what the Uninstall button shows is
+unverified), so the property is also the command-line switch:
 `msiexec /x hello.msi DELETE_CONFIGURATION=1`.
 
 #### License page
