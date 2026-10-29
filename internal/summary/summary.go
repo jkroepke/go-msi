@@ -364,14 +364,14 @@ func checkEntries(section []byte, ents []entry) error {
 
 	slices.SortFunc(extents, func(a, b extent) int { return a.start - b.start })
 
-	prevEnd := 8 + 8*len(ents)
+	lastEnd := 8 + 8*len(ents)
 
 	for _, ext := range extents {
-		if ext.start < prevEnd {
+		if ext.start < lastEnd {
 			return fmt.Errorf("summary: PID %d value overlaps another entry", ext.pid)
 		}
 
-		prevEnd = ext.end
+		lastEnd = ext.end
 	}
 
 	return nil
