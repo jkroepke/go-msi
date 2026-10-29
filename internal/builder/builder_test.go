@@ -797,22 +797,26 @@ func TestServiceRecoverySteps(t *testing.T) {
 		}
 	}
 
-	svc.Recovery = &config.ServiceRecovery{
-		ResetAfter:   &reset,
-		RestartDelay: new(config.Duration(5 * time.Minute)),
-		Actions:      []config.RecoveryAction{{Action: "restart", Restart: &minute}, {Action: "restart"}},
-	}
+	// A zero restartDelay is a delay of its own, not the default.
+	for delay, want := range map[time.Duration]string{
+		5 * time.Minute: `failure "windows_exporter" reset= 86400 actions= restart/60000/restart/300000/none/0`,
+		0:               `failure "windows_exporter" reset= 86400 actions= restart/60000/restart/0/none/0`,
+	} {
+		svc.Recovery = &config.ServiceRecovery{
+			ResetAfter:   &reset,
+			RestartDelay: new(config.Duration(delay)),
+			Actions:      []config.RecoveryAction{{Action: "restart", Restart: &minute}, {Action: "restart"}},
+		}
 
-	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
-	if err != nil {
-		t.Fatal(err)
-	}
+		database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	target := cell(t, database, "CustomAction", "Target", func(r []any) bool { return strings.HasPrefix(fmt.Sprint(r[0]), "ServiceRecovery") })
-
-	want := `failure "windows_exporter" reset= 86400 actions= restart/60000/restart/300000/none/0`
-	if !strings.HasSuffix(fmt.Sprint(target), want) {
-		t.Errorf("recovery command %q, want suffix %q", target, want)
+		target := cell(t, database, "CustomAction", "Target", func(r []any) bool { return strings.HasPrefix(fmt.Sprint(r[0]), "ServiceRecovery") })
+		if !strings.HasSuffix(fmt.Sprint(target), want) {
+			t.Errorf("recovery command %q, want suffix %q", target, want)
+		}
 	}
 }
 

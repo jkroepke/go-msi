@@ -123,12 +123,7 @@ func resolveAccounts(sddl string) (string, error) {
 			return "<bad>"
 		}
 
-		_, name, _ := strings.Cut(inner, `\`)
-		if name == "" {
-			name = inner
-		}
-
-		if strings.EqualFold(name, "SYSTEM") || strings.EqualFold(name, "Administrators") {
+		if installerAccount(inner) {
 			return installerSID
 		}
 
@@ -231,12 +226,32 @@ func validSID(sid string) bool {
 	return true
 }
 
+// installerAccount reports whether an <account> form names LocalSystem or
+// BUILTIN\Administrators by its English name. Localized names count as
+// other accounts, so they only cause a needless warning.
+func installerAccount(account string) bool {
+	domain, name, found := strings.Cut(account, `\`)
+	if !found {
+		domain, name = "", account
+	}
+
+	switch {
+	case strings.EqualFold(name, "SYSTEM"):
+		return domain == "" || strings.EqualFold(domain, "NT AUTHORITY")
+	case strings.EqualFold(name, "Administrators"):
+		return domain == "" || strings.EqualFold(domain, "BUILTIN")
+	default:
+		return false
+	}
+}
+
 // installerSIDs are LocalSystem and BUILTIN\Administrators.
 var installerSIDs = map[string]bool{"SY": true, "BA": true, "S-1-5-18": true, "S-1-5-32-544": true} //nolint:gochecknoglobals // lookup table
 
 // grantsInstaller reports whether a DACL lets the engine in: it has no
-// access control at all, or an allow ACE for SYSTEM or Administrators.
-// Only the trustee is checked, not the rights.
+// access control at all, or an allow ACE for SYSTEM or Administrators that
+// applies to the object itself (no IO flag). Only the trustee is checked,
+// not the rights; object ACEs (OA) do not count.
 func grantsInstaller(body string) bool {
 	flags, aces, _ := strings.Cut(body, "(")
 	if strings.Contains(flags, "NO_ACCESS_CONTROL") {
@@ -245,7 +260,7 @@ func grantsInstaller(body string) bool {
 
 	for ace := range strings.SplitSeq(aces, "(") {
 		fields := strings.Split(strings.TrimSuffix(ace, ")"), ";")
-		if len(fields) >= minACEFields && fields[0] == "A" && installerSIDs[fields[5]] {
+		if len(fields) >= minACEFields && fields[0] == "A" && !hasPair(fields[1], "IO") && installerSIDs[fields[5]] {
 			return true
 		}
 	}
@@ -397,4 +412,16 @@ func pairs(codes string, set map[string]bool) error {
 	}
 
 	return nil
+}
+
+// hasPair reports whether a string of two-letter codes such as "OICIIO"
+// holds code.
+func hasPair(codes, code string) bool {
+	for i := 0; i+1 < len(codes); i += 2 {
+		if codes[i:i+2] == code {
+			return true
+		}
+	}
+
+	return false
 }

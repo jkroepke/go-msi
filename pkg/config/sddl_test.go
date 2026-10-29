@@ -31,6 +31,10 @@ func TestCheckSDDL(t *testing.T) {
 		{sddl: "D:(A;;FA;;;S-1-5-32-544)"},
 		{sddl: "D:NO_ACCESS_CONTROL"},
 		{sddl: "O:SYG:SY"},
+		// Inherit-only grants nothing on the object; other domains are other accounts.
+		{sddl: "D:(A;OICIIO;FA;;;SY)(A;;FA;;;NS)", warn: true},
+		{sddl: "D:(A;;FA;;;<CONTOSO\\SYSTEM>)", warn: true},
+		{sddl: "D:(A;;FA;;;<BUILTIN\\Administrators>)"},
 		{sddl: "", wantErr: "empty"},
 		{sddl: "D:(A;;FA;;;[PERMSID])", wantErr: "1943"},
 		{sddl: "D:(A;;FA;;;<[PERMSID]>)", wantErr: "<account>"},
