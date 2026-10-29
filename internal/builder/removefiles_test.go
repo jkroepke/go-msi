@@ -15,7 +15,9 @@ func TestRemoveFiles(t *testing.T) {
 	cfg := shortcutConfig(t, `
   - files:
       - source: app.exe
+      - { source: tool.exe, name: my-application.exe }
     removeFiles:
+      - name: MY-APPLICATION.exe
       - name: '*.log'
       - { name: acme-server-*.log, on: both }
       - { id: StaleConfig, name: stale.txt, on: install }
@@ -49,6 +51,21 @@ func TestRemoveFiles(t *testing.T) {
 
 	if row := byName["stale.txt"]; row == nil || row[0] != "StaleConfig" || fmt.Sprint(row[4]) != "1" {
 		t.Errorf("stale.txt row %v", row)
+	}
+
+	// A packaged file's long name gets that file's short name.
+	file := rowWhere(t, database, "File", func(r []any) bool { return r[0] == "my_application.exe" })
+
+	var same []any
+
+	for _, row := range rows(t, database, "RemoveFile") {
+		if row[2] == file[2] {
+			same = row
+		}
+	}
+
+	if same == nil {
+		t.Errorf("no RemoveFile row with the File name %v: %v", file[2], byName)
 	}
 
 	folders := 0

@@ -169,7 +169,7 @@ func (b *build) removeFiles() error {
 
 			var name any
 			if entry.Name != "" {
-				name = filename(dirID, entry.Name, false, b.taken(dirID), validShortPattern)
+				name = b.removeFileName(dirID, entry.Name)
 			}
 
 			b.table("RemoveFile").Add(key, comp.ID, name, dirID, removeModes[entry.On])
@@ -185,6 +185,23 @@ func (b *build) removeFiles() error {
 	}
 
 	return nil
+}
+
+// removeFileName returns the FileName of a RemoveFile row: that of a
+// packaged file with the same long name in the folder, so that both carry
+// the same short name, else the pattern with a generated short name part
+// when it is no valid short name. Such a short name matches only the
+// literal name, so a long wildcard pattern works with long names only.
+func (b *build) removeFileName(dirID, pattern string) string {
+	folder := b.folderKey(dirID)
+
+	for _, file := range b.files {
+		if b.folderKey(file.Component.dir.id) == folder && strings.EqualFold(file.LongName, pattern) {
+			return file.FileName
+		}
+	}
+
+	return filename(dirID, pattern, false, b.taken(dirID), validShortPattern)
 }
 
 // validShortPattern reports whether a filename pattern is a valid short

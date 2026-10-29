@@ -35,6 +35,7 @@ components:
       - { directory: LOGS }
   - id: Menu
     directory: MENUSUB
+    createFolder: true
     registry: [{ root: HKCU, key: 'SOFTWARE\MsiBuilderTest\RemoveFiles', name: menu, type: dword, value: 1 }]
 `
 
@@ -106,7 +107,7 @@ func TestMsiexecRemovesFiles(t *testing.T) { //nolint:paralleltest // msiexec ru
 		_ = exec.CommandContext(ctx, "msiexec", "/x", path, "/qn").Run()
 		_ = os.RemoveAll(install)
 		_ = os.RemoveAll(menu)
-		_ = exec.CommandContext(ctx, "reg.exe", "delete", `HKCU\SOFTWARE\MsiBuilderTest`, "/f").Run()
+		_ = exec.CommandContext(ctx, "reg.exe", "delete", `HKCU\SOFTWARE\MsiBuilderTest\RemoveFiles`, "/f").Run()
 	}
 
 	cleanup()
@@ -150,6 +151,8 @@ func TestMsiexecRemovesFiles(t *testing.T) { //nolint:paralleltest // msiexec ru
 		t.Error("app.log next to the Logs folder was removed")
 	}
 
+	// RemoveFolders removes Tools, the CreateFolder of Menu; the generated
+	// RemoveFile row removes the folder above it.
 	if exists(menu) {
 		t.Error("the Start menu folder is still there after the uninstall")
 	}

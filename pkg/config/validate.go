@@ -1215,6 +1215,10 @@ func (v *validator) componentRemoveFiles(cfg *Config, p string, comp *Component,
 	}
 }
 
+// maxRemoveFilePattern leaves room in the 255 characters of
+// RemoveFile.FileName for a generated "xxxxxxxx.xxx|" short name part.
+const maxRemoveFilePattern = 255 - len("xxxxxxxx.xxx|")
+
 // removeFilePattern checks a RemoveFile pattern. The engine matches * and ?
 // itself; the rest must be a filename.
 func (v *validator) removeFilePattern(field, pattern string, longNames bool) {
@@ -1228,6 +1232,8 @@ func (v *validator) removeFilePattern(field, pattern string, longNames bool) {
 		v.errorf(field, "%q is not a filename pattern; a pattern matches files of one folder only", pattern)
 	case !longNames && !isShortName(plain):
 		v.errorf(field, "longFileNames is false, so %q must be a valid 8.3 pattern", pattern)
+	case len(pattern) > maxRemoveFilePattern:
+		v.errorf(field, "%q is longer than %d bytes; with its short name part it must fit RemoveFile.FileName (255)", pattern, maxRemoveFilePattern)
 	}
 }
 

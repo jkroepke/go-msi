@@ -369,6 +369,10 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    removeFiles: [{name: \"app~1.log|app.log\"}]\n    files:", 1),
 			sevError, "components[0].removeFiles[0].name", "short name part",
 		},
+		"removeFiles pattern too long": {
+			base + strings.Replace(appComponent, "    files:", "    removeFiles: [{name: \"" + strings.Repeat("a", 243) + "\"}]\n    files:", 1),
+			sevError, "components[0].removeFiles[0].name", "longer than 242",
+		},
 		"removeFiles twice": {
 			base + strings.Replace(appComponent, "    files:", "    removeFiles: [{name: \"*.log\"}, {name: \"*.LOG\"}]\n    files:", 1),
 			sevError, "components[0].removeFiles[1]", "already removes",
@@ -1037,5 +1041,15 @@ func TestZeroRestartDelay(t *testing.T) {
 		if got := time.Duration(*cfg.Components[0].Services[0].Recovery.RestartDelay); got != want {
 			t.Errorf("%s: restartDelay %v, want %v", doc, got, want)
 		}
+	}
+}
+
+// A null removeFiles entry is an error, not a panic.
+func TestRemoveFilesEmptyEntry(t *testing.T) {
+	t.Parallel()
+
+	doc := base + strings.Replace(appComponent, "    files:", "    removeFiles: [~]\n    files:", 1)
+	if _, err := config.Parse([]byte(doc), config.Options{}); err == nil || !strings.Contains(err.Error(), "components[0].removeFiles[0]: empty entry") {
+		t.Errorf("parse: %v", err)
 	}
 }

@@ -524,8 +524,11 @@ components:
 
 The engine removes the files when the component is installed (`install`),
 removed (`uninstall`) or both, and resolves the folder at that time, so the
-rows follow an install dir the user moved, unlike `purge`. A pattern that is
-no valid short name gets a generated short name part. Two limits come from
+rows follow an install dir the user moved, unlike `purge`. The name of a
+packaged file in that folder gets the file's short name; any other pattern
+that is no valid short name gets a generated short name part, which matches
+only itself, so such a wildcard pattern does nothing when the package is
+installed with short names. Two limits come from
 FILE-03: a pattern never matches in subfolders, so the folder row only
 removes a folder whose subfolders are gone, and `uninstall` rows also run
 when a major upgrade removes the old product, so logs or data matched by
