@@ -29,6 +29,12 @@ InstallDirText: "Spustelėkite Toliau, kad įdiegtumėte į numatytąjį aplank�
 InstallDirLabel: "Įdiegti [ProductName] į:"
 InstallDirChange: "&Keisti..."
 
+InstallScopeTitle: "Diegimo apimtis"
+InstallScopeText: "Pasirinkite, kas šiame kompiuteryje galės naudoti [ProductName]."
+InstallScopeUser: "Įdiegti tik &man ([LogonUser])"
+InstallScopeMachine: "Įdiegti &visiems šio kompiuterio naudotojams"
+InstallScopeHint: "Diegiant visiems naudotojams reikia administratoriaus teisių. Diegiant tik jums jų nereikia, ir [ProductName] galėsite naudoti tik jūs."
+
 CustomizeTitle: "Pasirinktinis diegimas"
 CustomizeText: "Pasirinkite, kaip įdiegti funkcijas."
 CustomizeHint: "Spustelėkite piktogramas toliau esančiame medyje, kad pakeistumėte funkcijų diegimo būdą."

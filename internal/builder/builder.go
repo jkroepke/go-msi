@@ -20,12 +20,25 @@ import (
 	"github.com/jkroepke/msi-builder/internal/schema"
 	"github.com/jkroepke/msi-builder/internal/sequence"
 	"github.com/jkroepke/msi-builder/pkg/config"
+	"github.com/jkroepke/msi-builder/pkg/sign"
 )
 
 // Options control a build.
 type Options struct {
 	BuildTime time.Time
-	ToolName  string
+	// SignCabinets signs each cabinet written beside the package
+	// (package.embedCabinets false) with Authenticode and lists the
+	// signing certificate and each cabinet's signature value in the
+	// MsiDigitalCertificate and MsiDigitalSignature tables, so that Windows
+	// Installer refuses a cabinet that was changed or swapped. The package
+	// itself is not signed: sign it with sign.Sign after the build, since
+	// the tables protect the cabinets only as far as the package is
+	// protected. Nil, or embedded cabinets, which the package signature
+	// covers, leave the cabinets unsigned. A timestamp request is bounded
+	// by the HTTP client's timeout; the build cannot cancel it. An ECDSA key
+	// makes the package differ per build, since its signature values are.
+	SignCabinets *sign.Options
+	ToolName     string
 	// Output is the path the package is written to. The cabinet and the
 	// package are written to temporary files beside it and the payload
 	// files stream through, so the build needs memory for the tables only,
@@ -100,6 +113,9 @@ type File struct {
 // build holds the state of one build.
 type build struct { //nolint:govet // grouped by build step
 	secure map[string]bool
+	// lastScopeAction is the last UI action the scope page added; the
+	// next one follows it.
+	lastScopeAction string
 	// runDLL is set once the custom action DLL of run actions is in the
 	// Binary table.
 	runDLL     bool
@@ -113,6 +129,12 @@ type build struct { //nolint:govet // grouped by build step
 	// shortcutCarrier maps a component to the generated component that
 	// holds the shortcuts to its files.
 	shortcutCarrier map[string]string
+	// removedFolders are the folders that generated RemoveFile rows remove
+	// on uninstall.
+	removedFolders map[string]bool
+	// guids maps each ComponentId to the component that has it, to report
+	// duplicates (ICE08).
+	guids map[any]string
 	// shortNames are the short names taken per folder (canonical path),
 	// shared by the directories and files in it and by every directory key
 	// that names it (section 11.3).
@@ -213,6 +235,10 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 		return &Result{Diagnostics: diags}, err //nolint:wrapcheck // the diagnostics carry their own paths
 	}
 
+	if err := checkSigning(cfg, &opts); err != nil {
+		return &Result{Diagnostics: diags}, err
+	}
+
 	if opts.BuildTime.IsZero() {
 		opts.BuildTime = defaultBuildTime()
 	}
@@ -242,6 +268,20 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 	return res, nil
 }
 
+// checkSigning checks the cabinet signing options before the first cabinet
+// is compressed; embedded cabinets are not signed.
+func checkSigning(cfg *config.Config, opts *Options) error {
+	if opts.SignCabinets == nil || cfg.Package.CabinetsEmbedded() {
+		return nil
+	}
+
+	if err := opts.SignCabinets.Check(); err != nil {
+		return fmt.Errorf("builder: SignCabinets: %w", err)
+	}
+
+	return nil
+}
+
 // newBuild returns the state of one build of cfg, in product.language.
 func newBuild(cfg *config.Config, opts Options, diags config.Diagnostics) *build {
 	return &build{
@@ -256,6 +296,7 @@ func newBuild(cfg *config.Config, opts Options, diags config.Diagnostics) *build
 		secure:          make(map[string]bool),
 		hidden:          make(map[string]bool),
 		shortcutCarrier: make(map[string]string),
+		removedFolders:  make(map[string]bool),
 		shortNames:      make(map[string]map[string]bool),
 		shortcutNames:   make(map[string]map[string]bool),
 		schedules:       make(map[string][]sequence.Action),

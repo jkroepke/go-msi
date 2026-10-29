@@ -57,13 +57,28 @@ func (p Platform) Is64Bit() bool {
 // Scope is the install context.
 type Scope string
 
-// Install contexts.
+// Install contexts. The two dual scopes write ALLUSERS=2 and let the user
+// choose the context at install time; the first part of the name is the
+// default (spec section 8.2, INST-02).
 const (
-	ScopePerMachine Scope = "perMachine"
-	ScopePerUser    Scope = "perUser"
+	ScopePerMachine       Scope = "perMachine"
+	ScopePerUser          Scope = "perUser"
+	ScopePerUserOrMachine Scope = "perUserOrMachine"
+	ScopePerMachineOrUser Scope = "perMachineOrUser"
 )
 
-// UnmarshalYAML accepts perMachine and perUser in any case.
+// Dual reports whether the package can be installed in either context.
+func (s Scope) Dual() bool {
+	return s == ScopePerUserOrMachine || s == ScopePerMachineOrUser
+}
+
+// MayBePerUser reports whether the package can be installed per user, so
+// that it must pass ICE105.
+func (s Scope) MayBePerUser() bool {
+	return s == ScopePerUser || s.Dual()
+}
+
+// UnmarshalYAML accepts the scope names in any case.
 func (s *Scope) UnmarshalYAML(node *yaml.Node) error {
 	var text string
 	if err := node.Decode(&text); err != nil {
@@ -75,8 +90,12 @@ func (s *Scope) UnmarshalYAML(node *yaml.Node) error {
 		*s = ScopePerMachine
 	case "peruser":
 		*s = ScopePerUser
+	case "peruserormachine":
+		*s = ScopePerUserOrMachine
+	case "permachineoruser":
+		*s = ScopePerMachineOrUser
 	default:
-		return fmt.Errorf("line %d: unknown scope %q, want perMachine or perUser", node.Line, text)
+		return fmt.Errorf("line %d: unknown scope %q, want perMachine, perUser, perUserOrMachine or perMachineOrUser", node.Line, text)
 	}
 
 	return nil

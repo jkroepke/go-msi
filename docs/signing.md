@@ -2,7 +2,7 @@
 
 msi-builder signs packages with Authenticode without `signtool`, cgo or the Windows
 SDK. The format is described in [MSISPEC §12](spec/MSISPEC.md#12-digital-signatures),
-and the Windows results are SIG-01 to SIG-06 in
+and the Windows results are SIG-01 to SIG-09 in
 [MSISPEC-RESULTS](spec/MSISPEC-RESULTS.md).
 
 ## Command line
@@ -45,8 +45,42 @@ or revocation; Windows does that at install time.
 - RSA signatures without a timestamp are deterministic: the same package and
   key give the same bytes.
 
-Packages with sub-storages (embedded transforms) cannot be signed, because
-msi-builder does not write sub-storages. `msi-builder verify` reads them.
+Packages with storages directly under the root, such as the embedded
+language transforms of a multi-language package (`ui.languages`), are
+signed like any other: the signature covers each storage's streams and CLSID,
+and streams named like the signature streams inside a storage are left out.
+A storage inside a storage is refused rather than dropped, since msi-builder
+does not write deeper trees. `msi-builder verify` reads both.
+
+## External cabinets
+
+With `package.embedCabinets: false`, `msi-builder build` with signing options
+signs every cabinet beside the package with the same key, then signs the
+package. The package lists each cabinet in `MsiDigitalSignature`, so Windows
+Installer refuses to install from a cabinet that was changed, replaced by a
+cabinet of another build, or left unsigned (SIG-09). Ship the cabinets
+together with the `.msi` they were built with.
+
+The check pins the certificate and each cabinet's signature in the package;
+it does not ask Windows whether the certificate is trusted (a self-signed
+one passes). It is only as strong as the package signature, which keeps
+anyone from replacing the tables along with the cabinets.
+
+- `msi-builder sign` signs only the package; it cannot add cabinet signatures
+  to a package built without them, because they change the package's tables.
+- Embedded cabinets are covered by the package signature and are not signed
+  on their own.
+- Windows Server 2025 installs cabinets signed with RSA (SHA-1, SHA-256,
+  SHA-384), ECDSA P-256 and with a timestamp (SIG-09). Older Windows
+  versions are not yet confirmed for cabinets.
+- Each cabinet's signature value is in the package, so an ECDSA key (whose
+  signatures are randomized) gives a different package and automatic
+  PackageCode on every build. RSA without a timestamp keeps both
+  reproducible; a timestamp changes only the cabinets.
+- Size limits (`builder.Options.CabinetSize`, 2 GiB) count the cabinet
+  without its signature, which adds a few kilobytes to each file.
+- `msi-builder verify` checks the package signature only; it does not yet
+  check the cabinets beside it against `MsiDigitalSignature`.
 
 ## Go API
 
@@ -63,4 +97,7 @@ signed, err := sign.Sign(ctx, pkg, sign.Options{
 
 For signers that only return a finished PKCS #7, `sign.Digest` gives the
 content digest to sign and `sign.Attach` stores and verifies the result.
+`sign.SignCabinet` and `sign.VerifyCabinet` sign and check a cabinet written
+with a signature reserve; the builder does that with
+`builder.Options.SignCabinets`.
 `sign.Verify` and `sign.Unsign` check and remove a signature.

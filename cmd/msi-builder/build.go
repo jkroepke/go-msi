@@ -136,7 +136,8 @@ Diagnostics go to stderr; on success one summary line goes to stdout.`,
 	}
 
 	flags.load.register(cmd)
-	cmd.Flags().StringVarP(&flags.out, "output", "o", "", "output file (default: <product name>-<version>.msi next to the YAML file)")
+	cmd.Flags().StringVarP(&flags.out, "output", "o", "",
+		"output file (default: <product name>-<version>.msi next to the YAML file, characters a file name cannot hold replaced by _)")
 	cmd.Flags().IntVar(&flags.cfbVersion, "cfb", 4, "compound file version, 3 (512-byte sectors) or 4 (4096-byte sectors)")
 	cmd.Flags().BoolVar(&flags.skipVerify, "skip-verify", false, "do not read the finished package back")
 	cmd.Flags().BoolVarP(&flags.quiet, "quiet", "q", false, "print nothing on success")
@@ -176,21 +177,17 @@ func (f *buildFlags) run(cmd *cobra.Command, path string) error {
 		defer cleanup()
 	}
 
-	res, err := builder.Build(cfg, builder.Options{
-		CFBVersion: f.cfbVersion,
-		ToolName:   "msi-builder " + version,
-		SkipVerify: f.skipVerify,
-		Output:     target,
-	})
+	opts, err := f.builderOptions(cfg, target)
+	if err != nil {
+		return err
+	}
+
+	res, err := builder.Build(cfg, opts)
 
 	printDiagnostics(cmd.ErrOrStderr(), res.Diagnostics)
 
 	if err != nil {
-		if res.Diagnostics.Err() != nil {
-			return errors.New("build failed")
-		}
-
-		return fmt.Errorf("build failed: %w", err)
+		return buildFailed(res, err)
 	}
 
 	if f.signing.enabled() {
@@ -204,6 +201,34 @@ func (f *buildFlags) run(cmd *cobra.Command, path string) error {
 	}
 
 	return nil
+}
+
+// buildFailed is the error of a failed build: the diagnostics are already
+// printed.
+func buildFailed(res *builder.Result, err error) error {
+	if res.Diagnostics.Err() != nil {
+		return errors.New("build failed")
+	}
+
+	return fmt.Errorf("build failed: %w", err)
+}
+
+// builderOptions are the build options for a package written to target.
+// Cabinets beside the package are signed as they are written, so that the
+// package can list their digests.
+func (f *buildFlags) builderOptions(cfg *config.Config, target string) (builder.Options, error) {
+	signCabinets, err := f.signing.cabinetOptions(cfg)
+	if err != nil {
+		return builder.Options{}, err
+	}
+
+	return builder.Options{
+		CFBVersion:   f.cfbVersion,
+		ToolName:     "msi-builder " + version,
+		SkipVerify:   f.skipVerify,
+		Output:       target,
+		SignCabinets: signCabinets,
+	}, nil
 }
 
 // printResult reports the package at out and the cabinets beside it.
@@ -232,7 +257,29 @@ func (f *buildFlags) output(cfg *config.Config) string {
 		return f.out
 	}
 
-	return filepath.Join(cfg.BaseDir, cfg.Product.Name+"-"+cfg.Product.Version+".msi")
+	return filepath.Join(cfg.BaseDir, defaultFileName(cfg.Product.Name+"-"+cfg.Product.Version)+".msi")
+}
+
+// defaultFileName turns a product name into a file name in the YAML file's
+// folder: a display name may hold path separators or characters Windows
+// does not allow in a file name, and must neither pick another folder nor
+// fail the build. Leading dots, spaces and dashes go too, so that the name
+// is never "." or "..", nor hidden, nor read as a flag.
+func defaultFileName(name string) string {
+	safe := strings.Map(func(r rune) rune {
+		if r < 0x20 || strings.ContainsRune(`<>:"/\|?*`, r) {
+			return '_'
+		}
+
+		return r
+	}, name)
+
+	safe = strings.TrimLeft(safe, ". -")
+	if safe == "" {
+		return "package"
+	}
+
+	return safe
 }
 
 // tempPackage returns a temporary path next to out for the unsigned

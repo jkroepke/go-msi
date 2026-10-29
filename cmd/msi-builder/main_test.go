@@ -18,6 +18,7 @@ import (
 	"software.sslmate.com/src/go-pkcs12"
 
 	"github.com/jkroepke/msi-builder/internal/testpe"
+	"github.com/jkroepke/msi-builder/pkg/sign"
 )
 
 func TestBuildValidateInspect(t *testing.T) {
@@ -438,6 +439,19 @@ func TestSignExternalCabinets(t *testing.T) {
 		t.Errorf("verify: exit %d: %s", code, stderr.String())
 	}
 
+	// The cabinet carries a signature of its own that the package lists.
+	cabFile, err := os.Open(cabinet)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = sign.VerifyCabinet(cabFile)
+	_ = cabFile.Close()
+
+	if err != nil {
+		t.Errorf("cabinet signature: %v", err)
+	}
+
 	before := map[string][]byte{}
 
 	for _, path := range []string{signed, cabinet} {
@@ -467,5 +481,66 @@ func TestSignExternalCabinets(t *testing.T) {
 	left, _ := os.ReadDir(out)
 	if len(left) != 2 {
 		t.Errorf("the output folder holds %d entries, want the package and its cabinet", len(left))
+	}
+}
+
+// TestDefaultOutputStaysBesideTheConfig checks that the default output name
+// built from a display name with path separators stays in the YAML file's
+// folder (REVIEW1 #9).
+func TestDefaultOutputStaysBesideTheConfig(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	dir := filepath.Join(root, "config")
+
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	yaml := filepath.Join(dir, "msi.yaml")
+	src := `schema: msi-builder/v1
+product: { name: ../Client/Server, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+installDir: { name: Application }
+components:
+  - files: [{ source: readme.txt }]
+`
+
+	for name, data := range map[string]string{yaml: src, filepath.Join(dir, "readme.txt"): "hello"} {
+		if err := os.WriteFile(name, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+
+	if code := run([]string{"build", "-q", yaml}, &stdout, &stderr); code != 0 {
+		t.Fatalf("build: exit %d: %s", code, stderr.String())
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "_Client_Server-1.0.0.msi")); err != nil {
+		t.Errorf("package not beside the YAML file: %v", err)
+	}
+
+	if entries, _ := os.ReadDir(root); len(entries) != 1 {
+		t.Errorf("the build wrote outside the YAML file's folder: %v", entries)
+	}
+}
+
+func TestDefaultFileName(t *testing.T) {
+	t.Parallel()
+
+	for name, want := range map[string]string{
+		"Hello-1.0.0":          "Hello-1.0.0",
+		"Client/Server-1.0.0":  "Client_Server-1.0.0",
+		`a<b>c:d"e\f|g?h*-1.0`: "a_b_c_d_e_f_g_h_-1.0",
+		"..-1.0.0":             "1.0.0",
+		"-":                    "package",
+		". .hidden-1.0":        "hidden-1.0",
+		"tab\there-1.0":        "tab_here-1.0",
+	} {
+		if got := defaultFileName(name); got != want {
+			t.Errorf("defaultFileName(%q) = %q, want %q", name, got, want)
+		}
 	}
 }

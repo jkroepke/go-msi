@@ -373,6 +373,111 @@ func TestVerifyDetectsTampering(t *testing.T) {
 	})
 }
 
+// TestVerifyChecksSignatureAlgorithm checks that Verify rejects a signer
+// whose digestEncryptionAlgorithm is unknown or does not fit the key and
+// digest, although the signature bytes still verify (REVIEW1 #12).
+func TestVerifyChecksSignatureAlgorithm(t *testing.T) {
+	t.Parallel()
+
+	signedBy := func(keys testKey) []byte {
+		signed, err := Sign(context.Background(), vectorPackage(t), Options{Signer: keys.signer, Certificates: keys.certs})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return signed
+	}
+
+	rsaSigned, ecSigned := signedBy(rsaKey(t)), signedBy(ecKey(t))
+	p256 := asn1.ObjectIdentifier{1, 2, 840, 10045, 3, 1, 7}
+
+	for _, tc := range []struct {
+		name   string
+		signed []byte
+		algo   []byte
+		want   string
+	}{
+		{"unknown", rsaSigned, sequence(mustMarshal(asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 127}), mustMarshal(asn1Null)), "does not match"},
+		{"other digest", rsaSigned, sequence(mustMarshal(oidSHA512WithRSA), mustMarshal(asn1Null)), "does not match"},
+		{"ECDSA on RSA", rsaSigned, sequence(mustMarshal(oidECDSASHA256)), "does not match"},
+		{"parameters", rsaSigned, sequence(mustMarshal(oidRSAEncryption), mustMarshal(true)), "has parameters"},
+		{"sha256WithRSAEncryption", rsaSigned, sequence(mustMarshal(oidSHA256WithRSA), mustMarshal(asn1Null)), ""},
+		{"absent parameters", rsaSigned, sequence(mustMarshal(oidRSAEncryption)), ""},
+		{"ecdsa-with-SHA256", ecSigned, sequence(mustMarshal(oidECDSASHA256)), ""},
+		{"id-ecPublicKey", ecSigned, sequence(mustMarshal(oidECPublicKey)), ""},
+		{"id-ecPublicKey with curve", ecSigned, sequence(mustMarshal(oidECPublicKey), mustMarshal(p256)), ""},
+		{"ECDSA other digest", ecSigned, sequence(mustMarshal(oidECDSASHA384)), "does not match"},
+		{"RSA on ECDSA", ecSigned, sequence(mustMarshal(oidRSAEncryption), mustMarshal(asn1Null)), "does not match"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			streams := cloneStreams(readFile(t, tc.signed).Streams())
+
+			for i := range streams {
+				if streams[i].Name == StreamSignature {
+					// Replacing a field of another length breaks the outer
+					// lengths; re-encode the SignedData instead.
+					streams[i].Data = replaceSignerAlgorithm(t, streams[i].Data, tc.algo)
+				}
+			}
+
+			out, err := cfb.Write(streams, cfb.Options{Version: 3, CLSID: cfb.CLSIDMSI})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = Verify(out)
+
+			switch {
+			case tc.want == "" && err != nil:
+				t.Errorf("Verify = %v", err)
+			case tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)):
+				t.Errorf("Verify = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// replaceSignerAlgorithm returns the ContentInfo der with the
+// digestEncryptionAlgorithm of its only SignerInfo replaced by algo.
+func replaceSignerAlgorithm(t *testing.T, der, algo []byte) []byte {
+	t.Helper()
+
+	var outer contentInfo
+	if err := unmarshalExact(der, &outer); err != nil {
+		t.Fatal(err)
+	}
+
+	var sdata struct {
+		Version          int
+		DigestAlgorithms asn1.RawValue
+		ContentInfo      asn1.RawValue
+		Certificates     asn1.RawValue `asn1:"optional,tag:0"`
+		SignerInfos      asn1.RawValue
+	}
+
+	if _, err := asn1.Unmarshal(outer.Content.Bytes, &sdata); err != nil {
+		t.Fatal(err)
+	}
+
+	var info signerInfo
+	if _, err := asn1.Unmarshal(sdata.SignerInfos.Bytes, &info); err != nil {
+		t.Fatal(err)
+	}
+
+	var id pkix.AlgorithmIdentifier
+	if _, err := asn1.Unmarshal(algo, &id); err != nil {
+		t.Fatal(err)
+	}
+
+	info.DigestEncryptionAlgorithm = id
+	sdata.SignerInfos = asn1.RawValue{FullBytes: marshalSet(asn1.TagSet, asn1.ClassUniversal, [][]byte{mustMarshal(info)})}
+	outer.Content = asn1.RawValue{FullBytes: tlv(asn1.ClassContextSpecific, 0, true, mustMarshal(sdata))}
+
+	return mustMarshal(outer)
+}
+
 func cloneStreams(in []cfb.Stream) []cfb.Stream {
 	out := make([]cfb.Stream, len(in))
 	for i, s := range in {
@@ -426,8 +531,13 @@ func TestDigestAttach(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	content, err := indirectData(crypto.SHA256, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// An external signer builds the PKCS #7 from D.
-	pkcs7DER, err := buildSignature(context.Background(), digest, &Options{Signer: keys.signer, Certificates: keys.certs})
+	pkcs7DER, err := buildSignature(context.Background(), content, &Options{Signer: keys.signer, Certificates: keys.certs})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -575,6 +685,44 @@ func TestTimestamp(t *testing.T) {
 		}
 
 		srv.Close()
+	}
+}
+
+// TestTimestampBodyTimeout checks that a timeout while reading the reply
+// body, after the authority sent its headers, is reported as
+// ErrTimestampUnavailable like one before them (REVIEW1 #13).
+func TestTimestampBodyTimeout(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+
+		w.Header().Set("Content-Type", "application/timestamp-reply")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte{0x30})
+
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(release) })
+
+	client := srv.Client()
+	client.Timeout = 200 * time.Millisecond
+
+	keys := rsaKey(t)
+	opts := Options{Signer: keys.signer, Certificates: keys.certs, TimestampURL: srv.URL, HTTPClient: client}
+
+	_, err := Sign(context.Background(), vectorPackage(t), opts)
+	if !errors.Is(err, ErrTimestampUnavailable) {
+		t.Errorf("Sign = %v, want ErrTimestampUnavailable", err)
 	}
 }
 

@@ -19,6 +19,19 @@ func desktop(t *testing.T) *config.Config {
 	})
 }
 
+// dualDesktop is the desktop example as a perUserOrMachine package, without
+// the HKLM rows that one cannot have.
+func dualDesktop(t *testing.T) *config.Config {
+	t.Helper()
+
+	cfg := desktop(t)
+	cfg.Package.Scope = config.ScopePerUserOrMachine
+	cfg.Components[0].RemoveRegistry = nil
+	cfg.Properties = nil
+
+	return cfg
+}
+
 // eventsOf returns the events of one control as "Event Argument [Condition]"
 // in their order.
 func eventsOf(t *testing.T, res *builder.Result, dialog, control string) []string {
@@ -331,7 +344,8 @@ func TestWizardOptionErrors(t *testing.T) {
 func TestUIStrings(t *testing.T) {
 	t.Parallel()
 
-	cfg := desktop(t)
+	// A dual package, so the scope page is in it too.
+	cfg := dualDesktop(t)
 	cfg.UI.Wizard = "featureTree"
 	cfg.UI.Strings = make(map[string]string)
 

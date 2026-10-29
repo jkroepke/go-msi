@@ -33,6 +33,13 @@ const (
 func shortcutConfig(t *testing.T, components string) *config.Config {
 	t.Helper()
 
+	return scopedShortcutConfig(t, "perMachine", components)
+}
+
+// scopedShortcutConfig is shortcutConfig with a package scope.
+func scopedShortcutConfig(t *testing.T, scope, components string) *config.Config {
+	t.Helper()
+
 	dir := t.TempDir()
 	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
 
@@ -44,7 +51,7 @@ func shortcutConfig(t *testing.T, components string) *config.Config {
 
 	cfg, err := config.Parse([]byte(`schema: msi-builder/v1
 product: { name: Acme App, manufacturer: Acme, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
-package: { platform: x64 }
+package: { platform: x64, scope: `+scope+` }
 icons: { app.ico: app.ico }
 components:
 `+components), config.Options{})

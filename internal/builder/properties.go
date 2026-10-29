@@ -23,8 +23,24 @@ func (b *build) writeProperties() error { //nolint:cyclop // one pass over the f
 	b.properties["Manufacturer"] = product.Manufacturer
 	b.properties["UpgradeCode"] = b.upgradeCode
 
-	if b.cfg.Package.Scope == config.ScopePerMachine {
+	// A dual package starts in the context its scope names first; the
+	// user switches it with MSIINSTALLPERUSER (spec section 8.2, INST-02).
+	switch b.cfg.Package.Scope {
+	case config.ScopePerMachine:
 		b.properties["ALLUSERS"] = "1"
+	case config.ScopePerUserOrMachine:
+		b.properties["ALLUSERS"] = "2"
+		b.properties["MSIINSTALLPERUSER"] = "1"
+	case config.ScopePerMachineOrUser:
+		b.properties["ALLUSERS"] = "2"
+	case config.ScopePerUser:
+	}
+
+	// The scope page sets MSIINSTALLPERUSER in the client; a standard user's
+	// elevated install passes only restricted public properties
+	// (ALLUSERS among them) and secure ones to the server.
+	if b.cfg.Package.Scope.Dual() {
+		b.secure["MSIINSTALLPERUSER"] = true
 	}
 
 	arp := product.ARP
@@ -234,33 +250,66 @@ func (b *build) rememberInstallDir() error {
 		return nil
 	}
 
-	property := install.ID + "_REMEMBERED"
-
-	root := 2
-	if config.RememberRoot(b.cfg) == "HKCU" {
-		root = 1
-	}
-
 	typ := regLocatorRaw
 	if b.is64 && !remember32Bit(b.cfg) {
 		typ |= regLocator64Bit
 	}
 
 	b.table("Signature")
-	b.table("AppSearch").Add(property, config.RememberComponentID)
-	b.table("RegLocator").Add(config.RememberComponentID, root, config.RememberKey(b.cfg), config.RememberValueName, typ)
+
+	if !b.cfg.Package.Scope.Dual() {
+		root := regRootLocalMachine
+		if config.RememberRoot(b.cfg) == "HKCU" {
+			root = regRootCurrentUser
+		}
+
+		b.rememberSearch(install.ID+"_REMEMBERED", config.RememberComponentID, config.RememberActionID, root, typ, "")
+
+		return nil
+	}
+
+	// HKMU follows the context, which RegLocator cannot name: a dual
+	// package searches both roots and restores the one of the context the
+	// engine chose; ALLUSERS is 1 per machine and unset per user (INST-02).
+	b.rememberSearch(rememberedUser(install.ID), config.RememberComponentID+"User",
+		config.RememberActionID+"User", regRootCurrentUser, typ, "NOT ALLUSERS")
+	b.rememberSearch(rememberedMachine(install.ID), config.RememberComponentID+"Machine",
+		config.RememberActionID+"Machine", regRootLocalMachine, typ, "ALLUSERS=1")
+
+	return nil
+}
+
+// RegLocator roots.
+const (
+	regRootCurrentUser  = 1
+	regRootLocalMachine = 2
+)
+
+// rememberedUser and rememberedMachine name the properties a dual package
+// searches the remembered install dir into.
+func rememberedUser(dir string) string    { return dir + "_REMEMBERED_USER" }
+func rememberedMachine(dir string) string { return dir + "_REMEMBERED_MACHINE" }
+
+// rememberSearch reads the remembered install dir from one root into
+// property, and copies it into the install dir under context.
+func (b *build) rememberSearch(property, signature, action string, root, typ int, context string) {
+	install := b.cfg.InstallDir.ID
+
+	b.table("AppSearch").Add(property, signature)
+	b.table("RegLocator").Add(signature, root, config.RememberKey(b.cfg), config.RememberValueName, typ)
 	b.secure[property] = true
 
-	const action = config.RememberActionID
+	b.addAction(&actionInfo{name: action, typ: caSetProperty, source: install, target: "[" + property + "]"})
 
-	b.addAction(&actionInfo{name: action, typ: caSetProperty, source: install.ID, target: "[" + property + "]"})
+	cond := property + " AND NOT " + install
+	if context != "" {
+		cond += " AND " + context
+	}
 
 	for _, seq := range []string{seqInstallExecute, seqInstallUI} {
 		b.standardAt(seq, "AppSearch")
-		b.schedule(seq, action, property+" AND NOT "+install.ID, "", "AppSearch", 0)
+		b.schedule(seq, action, cond, "", "AppSearch", 0)
 	}
-
-	return nil
 }
 
 // searchProperties writes the AppSearch and locator rows of the properties

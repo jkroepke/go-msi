@@ -30,6 +30,12 @@ InstallDirText: "Faceţi clic pe Înainte pentru a instala în folderul implicit
 InstallDirLabel: "Instalare [ProductName] în:"
 InstallDirChange: "&Modificare..."
 
+InstallScopeTitle: "Domeniul instalării"
+InstallScopeText: "Alegeţi cine poate utiliza [ProductName] pe acest computer."
+InstallScopeUser: "Instalare doar pentru &mine ([LogonUser])"
+InstallScopeMachine: "Instalare pentru &toţi utilizatorii acestui computer"
+InstallScopeHint: "Instalarea pentru toţi utilizatorii necesită drepturi de administrator. Instalarea doar pentru dvs. nu le necesită şi doar dvs. veţi putea utiliza [ProductName]."
+
 CustomizeTitle: "Instalare particularizată"
 CustomizeText: "Selectaţi modul în care doriţi să se instaleze caracteristicile."
 CustomizeHint: "Faceţi clic pe pictogramele din arborele de mai jos pentru a modifica modul în care se instalează caracteristicile."

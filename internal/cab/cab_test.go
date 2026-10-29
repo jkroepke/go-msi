@@ -3,6 +3,7 @@ package cab //nolint:testpackage // the tests reach unexported encoders
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"math/rand"
 	"testing"
@@ -335,5 +336,60 @@ func TestBound(t *testing.T) {
 				t.Errorf("compression %d: wrote %d bytes, bound %d", comp, len(out), bound)
 			}
 		}
+	}
+}
+
+// TestSignatureReserve writes the zeroed per-cabinet reserve a signature
+// header fills, and reads the cabinet back with and without trailing
+// signature bytes.
+func TestSignatureReserve(t *testing.T) {
+	t.Parallel()
+
+	files := []File{{Name: "a.txt", Data: []byte("reserved")}, {Name: "b.txt", Data: bytes.Repeat([]byte("x"), 70000)}}
+
+	plain, err := Write(files, Options{Compression: MSZIP})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := Write(files, Options{Compression: MSZIP, SignatureReserve: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(out) != len(plain)+SignatureReserve {
+		t.Fatalf("%d bytes, want %d plus the reserve", len(out), len(plain))
+	}
+
+	order := binary.LittleEndian
+	if flags := order.Uint16(out[0x1E:]); flags != flagReserve {
+		t.Errorf("flags %#x, want %#x", flags, flagReserve)
+	}
+
+	if got := out[headerSize : headerSize+SignatureReserve]; !bytes.Equal(got, append([]byte{20, 0, 0, 0}, make([]byte, 20)...)) {
+		t.Errorf("reserve % x", got)
+	}
+
+	if got := order.Uint32(out[8:]); int(got) != len(out) {
+		t.Errorf("cbCabinet %d, want %d", got, len(out))
+	}
+
+	// A signature follows cbCabinet; readers go by the offsets.
+	for _, data := range [][]byte{out, append(bytes.Clone(out), make([]byte, 64)...)} {
+		got, err := Read(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(got) != 2 || !bytes.Equal(got[1].Data, files[1].Data) {
+			t.Errorf("read back %d files", len(got))
+		}
+	}
+
+	bad := bytes.Clone(out)
+	bad[headerSize+2] = 1
+
+	if _, err := Read(bad); err == nil {
+		t.Error("a per-folder reserve was accepted")
 	}
 }

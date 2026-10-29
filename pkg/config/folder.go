@@ -365,12 +365,14 @@ func (v *validator) folderComponentFields(compPath string, comp *Component) {
 		{"keyPath", comp.KeyPath != ""},
 		{"registry", len(comp.Registry) > 0},
 		{"removeRegistry", len(comp.RemoveRegistry) > 0},
+		{"removeFiles", len(comp.RemoveFiles) > 0},
 		{"services", len(comp.Services) > 0},
 		{"eventLog", len(comp.EventLog) > 0},
 		{"environment", len(comp.Environment) > 0},
 		{"purge", comp.Purge.Enabled()},
 		{"createFolder", comp.CreateFolder},
 		{"folderPermissions", comp.FolderPermissions != nil},
+		{"shortcuts", len(comp.Shortcuts) > 0},
 	} {
 		if field.set {
 			v.errorf(compPath+"."+field.name, "not allowed on a component with a folder source, which becomes one component per file; "+

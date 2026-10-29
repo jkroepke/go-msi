@@ -186,7 +186,7 @@ Silent-failure cases a producer has to guard against itself:
 | SUM-05 | Partial | [log](msitest/results/SUM-05/word-count/log.md); 0, 1, 2, 3, 4, 8, 10 install elevated; no standard-user session |
 | SUM-06 | Confirmed | [log](msitest/results/SUM-06/revision-and-times/log.md) |
 | SUM-07 | Confirmed | [log](msitest/results/SUM-07/summary-system-identifier/log.md); field ignored |
-| LANG-01 | Confirmed | [CI log](msitest/results/LANG-01/embedded-language-transform/log.md), [SERVER2025 log](msitest/results/LANG-01/embedded-language-transform/log-server2025.md); the user's default language ID (format, not display language) picks the transform; the first Template language is the database's own |
+| LANG-01 | Confirmed | [CI log](msitest/results/LANG-01/embedded-language-transform/log.md); the SERVER2025 run (de-DE format) is summarized in spec section 7.6, its log was not committed; the user's default language ID (format, not display language) picks the transform; the first Template language is the database's own |
 | LANG-03 | Confirmed | [CI log](msitest/results/LANG-03/builder-languages/log.md); the CI runner (en-US) installed the builder's package with `ProductLanguage=1036` and `1031` and registered each, and its full-UI run showed the German wizard from the built-in translation with the `de` entry's finish text |
 | LANG-02 | Confirmed | SERVER2025: msi.dll applies MarshalTransform's transform; embedded as storage 1031 it installs as "Minimal Beispiel Zurück" with Language 1031 |
 | CAB-01 | Confirmed | Uncompressed, makecab stored/MSZIP and spec-writer stored/MSZIP install byte-identical ([go-mszip](msitest/results/CAB-01/go-mszip/log.md)) |
@@ -206,7 +206,7 @@ Silent-failure cases a producer has to guard against itself:
 | BUILD-01 | Not run | msi-rs regression case; test a candidate writer |
 | BUILD-02 | Not run | msi-rs regression case; test a candidate writer |
 | INST-01 | Confirmed | Labelled substitute (published `minimal.msi` not in the repository), [x64](msitest/results/INST-01/x64-substitute/log.md) and [Intel](msitest/results/INST-01/intel-substitute/log.md) |
-| INST-02 | Blocked | Needs a standard-user session (a new local account) |
+| INST-02 | Confirmed | [admin](msitest/results/INST-02/admin/log.md), [non-admin](msitest/results/INST-02/nonadmin/log.md); SERVER2025, 2026-10-29, `msitest/inst02/run.ps1`: `MSIINSTALLPERUSER` selects the context of an `ALLUSERS=2` package for admins and standard users, files, HKMU, HKCR, shortcuts and registration follow it, a standard user's per-user install needs no Word Count bit 3, a per-machine one fails with 1925; a context switch in the UI sequence leaves the client-resolved `INSTALLDIR` in the old context; a major upgrade does not cross contexts |
 | FILE-01 | Confirmed | [empty version, REP 1401](msitest/results/FILE-01/empty-version-rep1401/log.md) deletes the file |
 | FILE-02 | Confirmed | [log](msitest/results/FILE-02/file-hash/log.md) |
 | FILE-03 | Confirmed | [removefile-upgrade](msitest/results/FILE-03/removefile-upgrade/log.md), [purge-upgrade](msitest/results/FILE-03/purge-upgrade/log.md); `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
@@ -220,6 +220,7 @@ Silent-failure cases a producer has to guard against itself:
 | REG-01 | Confirmed | [x64](msitest/results/REG-01/x64/log.md) and [Intel](msitest/results/REG-01/Intel/log.md) templates: bit 256 picks the view |
 | REG-02 | Confirmed | [log](msitest/results/REG-02/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40863315162: install deletes whole keys (with subkeys) and single values in the component's view only, HKMU as HKLM; a `/fomus` repair deletes them again; uninstall leaves them and removes only the package's own values |
 | REG-03 | Confirmed | [log](msitest/results/REG-03/powershell/log.md); SERVER2025, 2026-10-29: hand-made keys under `EventLog\Application` are sources with and without `CustomSource`, which changes nothing; `New-EventLog` writes only `EventMessageFile`; [details](#event-log-sources-reg-03) |
+| REG-04 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40906307375 (PR #113, `TestMsiexecFileTypes`): a `Registry` row with a `Name` and a Null `Value` writes an empty `REG_SZ` of that name in `HKLM\SOFTWARE\Classes\.ext\OpenWithProgids`; uninstall removes it and the key the package created, and leaves another program's value in the same key |
 | ENVVAR-01 | Contradicted | [log](msitest/results/ENVVAR-01/environment/log.md); finding 4; segment removal on uninstall confirmed |
 | PROP-01 | Not run | Needs a non-administrator elevated install |
 | SEARCH-01 | Not run | Interactive full UI |
@@ -245,6 +246,8 @@ Silent-failure cases a producer has to guard against itself:
 | CA-05 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40893135210 (PR #106): the engine copies the `Binary` program to `C:\Windows\Installer\MSIxxxx.tmp`, runs it in `C:\Windows\system32` and deletes it; deferred no-impersonate runs as LocalSystem, the rest as the user; exit 7 and exit 3010 are both error 1722 and msiexec 1603; [details](#exe-actions-ca-05) |
 | SHORTCUT-01 | Confirmed | [hkcu-folder](msitest/results/SHORTCUT-01/hkcu-folder/log.md), [file-component](msitest/results/SHORTCUT-01/file-component/log.md), [file-component-folder](msitest/results/SHORTCUT-01/file-component-folder/log.md), [advertised](msitest/results/SHORTCUT-01/advertised/log.md), [per-user](msitest/results/SHORTCUT-01/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-shortcut-01) |
 | SHORTCUT-02 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40882369236 (PR #98): the engine converts `PropVariantValue` to the property's type and formats it; a CLSID needs braces; an unknown name or a bad value is warning 1946 and the install goes on; [details](#shortcut-properties-shortcut-02) |
+| SHORTCUT-03 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI runs 40900720903 and 40908162979 (PR #105): WriteIniValues writes the `.url` as ANSI with CRLF, the shell reads the address, the `RemoveFile` row deletes it at uninstall after the shell added a section; [details](#shortcut-targets-shortcut-03-shortcut-04) |
+| SHORTCUT-04 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI runs 40898943433, 40900720903 and 40908162979 (PR #105): folder and program `.lnk` targets as authored, `[SystemFolder]` is `SysWOW64` in an x64 package, a shortcut feature adds and removes only its shortcut, ICE69 rejects `[#file]` across features and accepts `[DIRECTORY]name`; [details](#shortcut-targets-shortcut-03-shortcut-04) |
 | UI-01 | Confirmed | Wizard rendering on Windows Server 2025, go-msi packages driven by hand and by window messages, with PrintWindow and screen captures (2026-10-26); [details](#wizard-rendering-ui-01) |
 | UI-02 | Not run | Interactive full UI |
 | UI-03 | Not run | Interactive full UI |
@@ -260,6 +263,8 @@ Silent-failure cases a producer has to guard against itself:
 | SIG-05 | Partly confirmed | A changed root CLSID gives `0x800B0003` (TRUST_E_SUBJECT_FORM_UNKNOWN): the MSI SIP no longer claims the file. Nested storages not covered (go-msi writes none) |
 | SIG-06 | Confirmed | RSA with SHA-1/256/384/512, ECDSA P-256/SHA-256 and P-384/SHA-384, and an RFC 3161 timestamp all pass WinVerifyTrust on Server 2025. Not run on Server 2016 |
 | SIG-07 | Not run | msi-rs regression case; test a candidate writer |
+| SIG-08 | Confirmed | [Signed external cabinets](#signed-external-cabinets-sig-08-sig-09): WinVerifyTrust, `Get-AuthenticodeSignature` and `signtool` accept msi-builder cabinet signatures; `MsiGetFileSignatureInformation` reports the signature value |
+| SIG-09 | Confirmed | [Signed external cabinets](#signed-external-cabinets-sig-08-sig-09): msiexec refuses changed, swapped, re-signed and unsigned cabinets when Hash is the signature value; trust is not checked |
 | INT-01…03 | Not run | WiX 5.0.2 is on the machine and wixl 0.106 runs in a container since ENV-02 (2026-10-29); ENV-02 covers only one-file packages; INT-02 and INT-03 also need msitools' `msibuild` and `msiinfo`, which `build-wixl.sh` does not install |
 
 ## WiX and msitools one-file packages (ENV-02)
@@ -756,6 +761,60 @@ in `internal/builder/nativetest/media_windows_test.go`.
 - Not run: Windows Server 2016, a single file near 0x7FFF8000 bytes, LZX or
   MSZIP at this size, an install from a network share.
 
+## Signed external cabinets (SIG-08, SIG-09)
+
+Run on 2026-10-29 by the `windows-latest` CI runner (Windows Server 2025
+Datacenter 10.0.26100, image windows-2025-vs2026 20261021.278.1), elevated,
+for msi-builder PR #103 (workflow runs 40892925093, commit 2cbd01f,
+40895190291, commit b947afb, and 40900782153, commit aa54bd3): `TestCabinetSignatureFormat` and
+`TestMsiexecChecksSignedCabinets` and `TestICESignedCabinets` in
+`internal/builder/nativetest/cabsign_windows_test.go`, with a test CA added
+to the machine's root store and an RSA-2048 leaf.
+
+- SIG-08: a two-file MSZIP cabinet written with the signature reserve and
+  signed by msi-builder verified with WinVerifyTrust,
+  `Get-AuthenticodeSignature` (`Valid`) and `signtool verify /pa`, for
+  SHA-256 and SHA-1. A changed data byte gave `0x80096010`. A changed
+  `reserved1` (0x04) still verified; a changed `iCabinet` (0x22) gave
+  `0x80096010` although the digest leaves it out.
+  `MsiGetFileSignatureInformation` returned 0 with size 0 for a call without
+  a buffer, then filled 256 bytes: the signer's signature value, found
+  inside the PKCS#7, and neither the content digest nor a hash of the file.
+- SIG-08, `signtool`: signing the same cabinet without the reserve (337
+  bytes) set flag `0x0004`, inserted `14 00 00 00`, then the signature
+  header `00 00 10 00`, `69 01 00 00` (cbCabinet 361), `f0 05 00 00`, 0, 0,
+  and appended the PKCS#7 (1881 bytes in all). Its indirect data is `SpcLink`
+  1.3.6.1.4.1.311.2.1.28 with an `SpcSerializedObject` holding a page hash
+  (1.3.6.1.4.1.311.2.5.1). msi-builder verified its digest.
+- SIG-09: three external cabinets, one file each. msiexec logged
+  "Validating digital signature of file" for each cabinet. With the second
+  cabinet as built, changed in one data byte, taken from another build signed
+  with the same certificate, or unsigned:
+
+  | MsiDigitalSignature.Hash | as built | changed | other build | unsigned |
+  | --- | --- | --- | --- | --- |
+  | signature value (what msi-builder writes) | installs | 1603 | 1603 | 1603 |
+  | null | installs | 1603 | installs, other files | 1603 |
+  | content digest (32 bytes) | 1603, error 1330 | 1603 | 1603 | 1603 |
+
+  The same second cabinet signed by another (self-signed) certificate was
+  refused (1603) with every Hash, so the certificate is compared with
+  `CertData` (run 40900782153).
+
+  With the content digest, the log said "Hash of signed file … differs in
+  size with the hash of the file authored in the installation package", then
+  error 1330 ("… invalid digital signature … Error 0 was returned by
+  WinVerifyTrust"). Every refused install left no install folder.
+- SIG-09, trust: cabinets signed with a self-signed certificate that is in
+  no store installed with exit 0 (runs 40895190291, 40900782153); with the
+  content digest as Hash the same package was refused for the hash (run
+  40892925093). Cabinets signed with ECDSA P-256 (SHA-256), RSA with SHA-384,
+  RSA with SHA-1, and RSA with an RFC 3161 timestamp from DigiCert each
+  installed with the right files (run 40900782153). The ICE suite, ICE81
+  among it, reported nothing for a package with signed cabinets.
+- Not run: Windows Server 2016, an install from a network share, a signed
+  cabinet near 2 GiB.
+
 ## Per-user rollback (CA-01)
 
 Run on 2026-10-29 on SERVER2025 (Windows Server 2025 10.0.26100, a domain
@@ -823,3 +882,36 @@ which `.gitignore` keeps out of the repository.
   instead of a failing action, and Windows Server 2016. WinRM as the
   non-administrator failed on this domain controller ("The WSMan service
   could not launch a host process"), so only the interactive logon was used.
+
+## Shortcut targets (SHORTCUT-03, SHORTCUT-04)
+
+Run on 2026-10-29 in the `Build & Test (windows-latest)` job (Windows Server
+2025 x64, elevated) of PR #105, by `TestMsiexecShortcutTargets` and
+`TestICEShortcutTargets` in `internal/builder/nativetest`. The x64
+per-machine package installs `app.exe` to `Program Files\MsiBuilderShortcutTargets`
+in feature `Main`, together with a component that lists three shortcuts in
+the Start menu folder `MsiBuilderShortcutTargets`, and a desktop shortcut to
+`app.exe` from a component in feature `DesktopShortcut` (`default: off`).
+
+| Shortcut | Rows | Read back after the install |
+| --- | --- | --- |
+| `Documentation.url` | `IniFile` `URL=https://example.com/docs?v=[ProductVersion]`, `IconFile=[#app.exe]`, `IconIndex=0`; `CreateFolder` for the Start menu folder; `RemoveFile` for the `.url` | the file holds `[InternetShortcut]\r\nURL=https://example.com/docs?v=1.2.3\r\nIconIndex=0\r\nIconFile=C:\Program Files\MsiBuilderShortcutTargets\app.exe\r\n` (ANSI; run 40908162979; run 40900720903 had `IconFile` before `IconIndex`, so the key order is not fixed); `System.Link.TargetUrl` through `Shell.Application` is the formatted address |
+| `Configuration.lnk` | `Shortcut` target `[<config dir>]`, no `WkDir`; `CreateFolder` for the folder | target `C:\Program Files\MsiBuilderShortcutTargets\config`, no arguments or working folder; the folder exists |
+| `Uninstall.lnk` | target `[SystemFolder]msiexec.exe`, arguments `/x [ProductCode]` | target `C:\Windows\SysWOW64\msiexec.exe`, arguments `/x {ProductCode}` |
+| desktop `MsiBuilderShortcutTargets.lnk` | target `[INSTALLDIR]app.exe` (runs 40900720903 and 40908162979) | absent after the default install; `ADDLOCAL=DesktopShortcut` adds it with target `app.exe` and working folder the install folder; `REMOVE=DesktopShortcut` removes it and leaves the rest |
+
+- Before the uninstall the test appended a
+  `[{000214A0-0000-0000-C000-000000000046}]` section, as the shell writes when
+  a user changes a `.url`. After `msiexec /x` the `.url`, the Start menu
+  folder, the `config` folder, the install folder and the desktop shortcut
+  were all gone.
+- `[SystemFolder]` is the 32-bit system folder on 64-bit Windows also in an
+  x64 package; `[System64Folder]` names `System32` there (reported, not run).
+- ICE suite, run 40898943433: with the desktop target `[#app.exe]`, ICE69
+  reported an error ("Components belong to different features"); the
+  `IniFile` value `[#app.exe]` of a component in the same feature was an ICE69
+  warning. With the target `[INSTALLDIR]app.exe` (runs 40900720903 and 40908162979) the suite
+  reported no error.
+- Not covered: a per-user install, repair, whether WriteIniValues creates a
+  missing folder by itself, whether RemoveIniValues deletes a `.url` it
+  emptied, the icon the shell shows for `IconFile`, Windows Server 2016.

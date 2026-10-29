@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
 	"fmt"
@@ -28,6 +29,9 @@ type Signature struct {
 	Certificates []*x509.Certificate
 	// Digest is the content digest D the signature covers.
 	Digest []byte
+	// Value is the signer's signature value, the SignerInfo encryptedDigest.
+	// For a cabinet it is what MsiDigitalSignature.Hash holds (SIG-09).
+	Value []byte
 	// Hash is the digest algorithm.
 	Hash crypto.Hash
 	// Extended reports a MsiDigitalSignatureEx stream, whose pre-hash was
@@ -152,11 +156,49 @@ func (sdata *parsedSignedData) verify() (*x509.Certificate, crypto.Hash, error) 
 		return nil, 0, err
 	}
 
+	if err := checkSignatureAlgorithm(sdata.signer.DigestEncryptionAlgorithm, cert.PublicKey, algo); err != nil {
+		return nil, 0, err
+	}
+
 	if err := checkSignature(cert.PublicKey, algo, sum, sdata.signer.EncryptedDigest); err != nil {
 		return nil, 0, err
 	}
 
 	return cert, algo, nil
+}
+
+// checkSignatureAlgorithm checks the SignerInfo's digestEncryptionAlgorithm
+// against the signer's key and digest: the bare key algorithm
+// (rsaEncryption, which Sign writes, or id-ecPublicKey) or the signature
+// algorithm of that key with the same digest, with absent or NULL
+// parameters, or a named curve for id-ecPublicKey. checkSignature picks the
+// scheme from the key alone, so an unknown identifier would otherwise pass.
+func checkSignatureAlgorithm(ident pkix.AlgorithmIdentifier, key crypto.PublicKey, algo crypto.Hash) error {
+	var allowed []asn1.ObjectIdentifier
+
+	switch key.(type) {
+	case *rsa.PublicKey:
+		allowed = []asn1.ObjectIdentifier{oidRSAEncryption, rsaOID(algo)}
+	case *ecdsa.PublicKey:
+		allowed = []asn1.ObjectIdentifier{oidECPublicKey, ecdsaOID(algo)}
+	default:
+		return fmt.Errorf("unsupported key type %T", key)
+	}
+
+	if !slices.ContainsFunc(allowed, ident.Algorithm.Equal) {
+		return fmt.Errorf("signature algorithm %v does not match the %T signer key and the %v digest", ident.Algorithm, key, algo)
+	}
+
+	// id-ecPublicKey may name its curve, as in a certificate's key.
+	if params := ident.Parameters; ident.Algorithm.Equal(oidECPublicKey) && params.Class == asn1.ClassUniversal && params.Tag == asn1.TagOID {
+		return nil
+	}
+
+	if params := ident.Parameters.FullBytes; len(params) != 0 && !bytes.Equal(params, []byte{asn1.TagNull, 0}) {
+		return fmt.Errorf("signature algorithm %v has parameters", ident.Algorithm)
+	}
+
+	return nil
 }
 
 // checkAttributes checks the contentType and messageDigest attributes.
@@ -245,7 +287,7 @@ func Verify(pkg []byte) (*Signature, error) {
 		return nil, fmt.Errorf("sign: signer uses %v but the content digest is %v", signerHash, algo)
 	}
 
-	sig := &Signature{Signer: cert, Certificates: sdata.certs, Hash: algo, Digest: signed}
+	sig := &Signature{Signer: cert, Certificates: sdata.certs, Hash: algo, Digest: signed, Value: sdata.signer.EncryptedDigest}
 
 	if sig.Extended, err = checkContent(file, algo, signed); err != nil {
 		return nil, err
@@ -261,18 +303,9 @@ func Verify(pkg []byte) (*Signature, error) {
 // parseIndirectData returns the digest algorithm and the content digest D
 // an Authenticode signature of an MSI carries.
 func parseIndirectData(sdata *parsedSignedData) (crypto.Hash, []byte, error) {
-	if !sdata.contentType.Equal(oidSpcIndirectData) {
-		return 0, nil, fmt.Errorf("sign: signed content %v is not SpcIndirectDataContent", sdata.contentType)
-	}
-
-	var indirect spcIndirectDataContent
-
-	if err := unmarshalExact(sdata.contentDER, &indirect); err != nil {
-		return 0, nil, fmt.Errorf("sign: malformed SpcIndirectDataContent: %w", err)
-	}
-
-	if !indirect.Data.Type.Equal(oidSpcSipInfo) {
-		return 0, nil, fmt.Errorf("sign: indirect data %v is not SpcSipInfo", indirect.Data.Type)
+	indirect, err := parseIndirect(sdata, oidSpcSipInfo)
+	if err != nil {
+		return 0, nil, err
 	}
 
 	var sip spcSipInfo
@@ -287,6 +320,26 @@ func parseIndirectData(sdata *parsedSignedData) (crypto.Hash, []byte, error) {
 	}
 
 	return algo, indirect.MessageDigest.Digest, nil
+}
+
+// parseIndirect decodes the SpcIndirectDataContent of sdata and checks that
+// its data has one of the types kinds.
+func parseIndirect(sdata *parsedSignedData, kinds ...asn1.ObjectIdentifier) (*spcIndirectDataContent, error) {
+	if !sdata.contentType.Equal(oidSpcIndirectData) {
+		return nil, fmt.Errorf("sign: signed content %v is not SpcIndirectDataContent", sdata.contentType)
+	}
+
+	var indirect spcIndirectDataContent
+
+	if err := unmarshalExact(sdata.contentDER, &indirect); err != nil {
+		return nil, fmt.Errorf("sign: malformed SpcIndirectDataContent: %w", err)
+	}
+
+	if !slices.ContainsFunc(kinds, indirect.Data.Type.Equal) {
+		return nil, fmt.Errorf("sign: indirect data %v, want %v", indirect.Data.Type, kinds)
+	}
+
+	return &indirect, nil
 }
 
 // checkContent recomputes the pre-hash, when the package has one, and the

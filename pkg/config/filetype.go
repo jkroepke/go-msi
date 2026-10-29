@@ -47,7 +47,9 @@ func defaultFileTypes(file *File) {
 }
 
 // fileTypes checks the file types of every file. ProgIDs and extensions are
-// keys under HKEY_CLASSES_ROOT, so each may be registered once per package.
+// keys under HKEY_CLASSES_ROOT, so each ProgID and each extension's default
+// may be registered once per package; any number of ProgIDs may list an
+// extension with openWithOnly.
 func (v *validator) fileTypes(cfg *Config) {
 	progIDs := make(map[string]string)
 	extensions := make(map[string]string)
@@ -64,8 +66,10 @@ func (v *validator) fileTypes(cfg *Config) {
 
 				v.progID(typePath+".progId", fileType.ProgID, progIDs)
 
+				listed := make(map[string]bool)
+
 				for l, ext := range fileType.Extensions {
-					v.fileTypeExtension(fmt.Sprintf("%s.extensions[%d]", typePath, l), ext, extensions)
+					v.fileTypeExtension(fmt.Sprintf("%s.extensions[%d]", typePath, l), ext, extensions, listed)
 				}
 
 				verbs := make(map[string]bool)
@@ -83,14 +87,8 @@ func (v *validator) progID(field, progID string, seen map[string]string) {
 		return
 	}
 
-	if problem := classKeyProblem(progID); problem != "" {
+	if problem := progIDProblem(progID); problem != "" {
 		v.errorf(field, "%q %s", progID, problem)
-
-		return
-	}
-
-	if strings.HasPrefix(progID, ".") {
-		v.errorf(field, "%q starts with a dot, which makes it an extension key", progID)
 
 		return
 	}
@@ -108,7 +106,7 @@ func (v *validator) progID(field, progID string, seen map[string]string) {
 	}
 }
 
-func (v *validator) fileTypeExtension(field string, ext *FileTypeExtension, seen map[string]string) {
+func (v *validator) fileTypeExtension(field string, ext *FileTypeExtension, defaults map[string]string, listed map[string]bool) {
 	if ext == nil {
 		v.errorf(field, "empty entry")
 
@@ -120,28 +118,38 @@ func (v *validator) fileTypeExtension(field string, ext *FileTypeExtension, seen
 		return
 	}
 
-	if strings.HasPrefix(name, ".") {
-		v.errorf(field+".extension", "%q: write the extension without its dot", name)
-
-		return
-	}
-
-	if problem := classKeyProblem(name); problem != "" || strings.ContainsAny(name, " *?.") {
-		v.errorf(field+".extension", "%q is not a file name extension", name)
+	if problem := extensionProblem(name); problem != "" {
+		v.errorf(field+".extension", "%q %s", name, problem)
 
 		return
 	}
 
 	lower := strings.ToLower(name)
-	if other, dup := seen[lower]; dup {
-		v.errorf(field+".extension", "%s registers .%s too; the last one written wins", other, name)
+	if listed[lower] {
+		v.errorf(field+".extension", ".%s is listed twice", name)
+
+		return
 	}
 
-	seen[lower] = field
+	listed[lower] = true
+
+	if ext.OpenWithOnly {
+		if ext.ContentType != "" {
+			v.errorf(field+".contentType", "openWithOnly leaves the content type of .%s alone", name)
+		}
+
+		return
+	}
+
+	if other, dup := defaults[lower]; dup {
+		v.errorf(field+".extension", "%s registers .%s too; the last one written wins (set openWithOnly on one of them)", other, name)
+	}
+
+	defaults[lower] = field
 
 	if systemExtensions[lower] {
 		v.warnf(field+".extension", ".%s belongs to Windows or other programs: uninstalling deletes its default value and "+
-			"leaves .%s without a handler", name, name)
+			"leaves .%s without a handler; openWithOnly adds the program to its Open with menu instead", name, name)
 	}
 }
 
@@ -167,6 +175,32 @@ func (v *validator) fileTypeVerb(field string, verb *FileTypeVerb, seen map[stri
 	}
 
 	seen[strings.ToLower(verb.ID)] = true
+}
+
+// progIDProblem reports why progID cannot be a ProgID, or "".
+func progIDProblem(progID string) string {
+	switch {
+	case strings.HasPrefix(progID, "."):
+		return "starts with a dot, which makes it an extension key"
+	// HKCR\* holds every file's verbs, and +, - and * are the Registry
+	// table's key operators in the OpenWithProgids value name.
+	case progID == "*" || progID == "+" || progID == "-":
+		return "is not a ProgID"
+	default:
+		return classKeyProblem(progID)
+	}
+}
+
+// extensionProblem reports why name cannot be an extension, or "".
+func extensionProblem(name string) string {
+	switch {
+	case strings.HasPrefix(name, "."):
+		return "has a dot: write the extension without it"
+	case classKeyProblem(name) != "" || strings.ContainsAny(name, " *?."):
+		return "is not a file name extension"
+	default:
+		return ""
+	}
 }
 
 // classKeyProblem reports why name cannot be one key below

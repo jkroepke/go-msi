@@ -142,6 +142,11 @@ type InstallDir struct {
 	Name string `yaml:"name"`
 	// Parent is the standard folder the install dir is created in.
 	Parent string `yaml:"parent"`
+	// besides lists, comma separated, the directories of the file's own
+	// tree that could be meant as the install dir (configurable, or upper
+	// case below Program Files) when the default install dir was added
+	// next to them, for the validator to warn about.
+	besides string
 	// Remember stores the chosen folder in the registry and reads it back
 	// on the next install, so that a major upgrade keeps a custom folder
 	// (SEARCH-03).
@@ -230,6 +235,10 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	KeyPath           string       `yaml:"keyPath"`
 	Bitness           string       `yaml:"bitness"`
 	FolderPermissions *Permissions `yaml:"folderPermissions"`
+	// Shortcuts are shortcuts that this component installs and that do not
+	// point at a file they are listed under: each names a file, a folder,
+	// a program or a URL.
+	Shortcuts []*Shortcut `yaml:"shortcuts"`
 
 	// ref marks a features[].components entry written as an id.
 	ref bool
@@ -331,6 +340,10 @@ type FileTypeExtension struct {
 	// Extension is the extension without its dot, such as acme.
 	Extension   string `yaml:"extension"`
 	ContentType string `yaml:"contentType"`
+	// OpenWithOnly lists the ProgID in the extension's Open with menu
+	// (OpenWithProgids) and leaves the extension's default program and
+	// content type alone.
+	OpenWithOnly bool `yaml:"openWithOnly,omitempty"`
 }
 
 // FileTypeVerb is a shell verb of a FileType that runs the file.
@@ -346,12 +359,23 @@ type FileTypeVerb struct { //nolint:govet // field order is the YAML key order
 	Arguments *string `yaml:"arguments"`
 }
 
-// Shortcut is a non-advertised shortcut to the file it is listed under, in
-// the Start menu, on the desktop or in any other folder.
+// Shortcut is a non-advertised shortcut in the Start menu, on the desktop
+// or in any other folder. Under a file it points at that file; under a
+// component it points at exactly one of File, Folder, Program or URL.
 type Shortcut struct { //nolint:govet // field order is the YAML key order
 	ID string `yaml:"id"`
-	// Name is the shortcut's name without ".lnk", default product.name.
+	// Name is the shortcut's name without ".lnk" or ".url", default
+	// product.name.
 	Name string `yaml:"name"`
+	// File is the id or name of a packaged file, in any component.
+	File string `yaml:"file"`
+	// Folder is a directory ID, a standard folder or a folder path.
+	Folder string `yaml:"folder"`
+	// Program is the formatted path of a program outside the package,
+	// starting with a folder property such as [SystemFolder].
+	Program string `yaml:"program"`
+	// URL makes an internet shortcut, a .url file, instead of a .lnk.
+	URL string `yaml:"url"`
 	// Directory is a directory ID, a standard folder or a folder path,
 	// default ProgramMenuFolder.
 	Directory   string `yaml:"directory"`
@@ -360,7 +384,10 @@ type Shortcut struct { //nolint:govet // field order is the YAML key order
 	// WorkingDirectory is a directory ID, default the file's directory.
 	WorkingDirectory string `yaml:"workingDirectory"`
 	// Icon names an entry of Config.Icons; empty shows the target's icon.
-	Icon      string `yaml:"icon"`
+	Icon string `yaml:"icon"`
+	// IconFile is the id or name of a packaged file whose icon a url
+	// shortcut shows; .lnk shortcuts take Icon.
+	IconFile  string `yaml:"iconFile"`
 	IconIndex int    `yaml:"iconIndex"`
 	// Show is normal (default), maximized or minimized.
 	Show string `yaml:"show"`
@@ -588,6 +615,10 @@ type Placement struct { //nolint:govet // field order is the YAML key order
 	// is ANDed with Condition (see Placement.FullCondition).
 	When string `yaml:"when"`
 }
+
+// registryTypeKey is the registry type of an entry that creates a key
+// without a value.
+const registryTypeKey = "key"
 
 // ScheduleReboot asks for a restart at the end of the installation: the
 // ScheduleReboot action after InstallFinalize. With /norestart or

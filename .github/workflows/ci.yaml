@@ -183,11 +183,12 @@ jobs:
           MSI_BUILDER_LARGE_PACKAGE: '1'
         run: go test -v -count=1 -timeout 30m -run 'TestMsiexecInstallsLargePackage' ./internal/builder/nativetest/
 
-      # Print the Windows signature experiments (MSISPEC-RESULTS SIG-01…06).
+      # Print the Windows signature experiments (MSISPEC-RESULTS SIG-01…06,
+      # signed external cabinets SIG-08 and SIG-09).
       - name: go test (signature results)
         if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
-        run: go test -v -count=1 -run 'TestSignature' ./internal/builder/nativetest/
+        run: go test -v -count=1 -run 'TestSignature|TestCabinetSignature|TestMsiexecChecksSignedCabinets' ./internal/builder/nativetest/
 
       # Print what the engine stores in an installed .lnk (MSISPEC-RESULTS
       # SHORTCUT-02).
@@ -208,6 +209,13 @@ jobs:
         if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
         run: go test -v -count=1 -run 'TestMsiexecEXEActions' ./internal/builder/nativetest/
+
+      # Print what the engine writes for folder, program and URL shortcuts
+      # (MSISPEC-RESULTS SHORTCUT-03, SHORTCUT-04).
+      - name: go test (shortcut target results)
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        shell: bash
+        run: go test -v -count=1 -run 'TestMsiexecShortcutTargets' ./internal/builder/nativetest/
 
       - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         if: runner.os == 'Linux'
@@ -375,7 +383,9 @@ jobs:
 
   # The one job to mark as required in branch protection. It only runs, and
   # fails, when a needed job failed or was cancelled; GitHub counts the
-  # skipped job as passed. Add every new check job to needs.
+  # skipped job as passed. Add every new check job to needs, and to the
+  # needs of release and publish, so that nothing is tagged or published
+  # past a failed check.
   fail:
     name: fail
     if: "${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}"
@@ -409,6 +419,7 @@ jobs:
     concurrency: create-tag
     needs:
       - build
+      - ca-dll
       - lint
       - goreleaser
       - super-lint
@@ -472,6 +483,7 @@ jobs:
       && startsWith(github.ref, 'refs/tags/v')
     needs:
       - build
+      - ca-dll
       - lint
       - goreleaser
       - super-lint
