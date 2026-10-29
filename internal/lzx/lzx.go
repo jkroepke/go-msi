@@ -15,7 +15,7 @@
 // 2 MiB window.
 //
 // The format is docs/spec/MSISPEC.md section 5. cabinet.dll is the reference
-// decoder; pkg/cab/native_windows_test.go checks the encoder against it.
+// decoder; internal/cab/native_windows_test.go checks the encoder against it.
 package lzx
 
 import (

@@ -11,28 +11,38 @@ runs the packages it writes. MSIX is out of scope; signing is `pkg/sign`.
 [`docs/design/architecture.md`](docs/design/architecture.md) explains the
 packages and the build pipeline; read it before changing more than one package.
 
-Packages under `pkg/` are the importable API; packages under `internal/` are
-implementation details that may change without notice.
+Packages under `pkg/` are the importable Go API and only hold what a Go
+program needs to build and sign a package: `config`, `builder` and `sign`.
+Everything else lives under `internal/` and may change without notice; do not
+add a package to `pkg/` or export an `internal/` type through it without
+asking the maintainer, since every exported name is bound by semantic
+versioning after 1.0.
 
 - [`pkg/config`](pkg/config): the YAML schema (`docs/design/yaml-schema.md`,
   `pkg/config/schema.json`), parsing and validation. The builder consumes a
   validated `*config.Config` and never reads YAML.
-- [`pkg/builder`](pkg/builder): config to tables. Identities and GUIDs,
+- [`pkg/builder`](pkg/builder): the public `Build`, `Options`, `Result` and
+  `File`. It converts to and from `internal/builder` and adds nothing else;
+  `Options` and `File` mirror the internal structs field by field so that a
+  type conversion compiles, and a new `Result` field is copied in `Build`
+  (`TestResultFieldsMatch` fails until it is). The internal
+  `Result.Database` is not exposed; only the internal tests read it.
+- [`internal/builder`](internal/builder): config to tables. Identities and GUIDs,
   directories and short names, components, files, media, registry, services,
   upgrades, custom actions, sequences, the setup wizard (`ui*.go`),
   `_Validation`, summary information, then the streaming write and a
-  verification pass (`finish.go`). `pkg/builder/nativetest` holds the Windows
+  verification pass (`finish.go`). `internal/builder/nativetest` holds the Windows
   msi.dll and msiexec tests.
-- [`pkg/msidb`](pkg/msidb): the database: column types, typed rows,
+- [`internal/msidb`](internal/msidb): the database: column types, typed rows,
   stream-name encoding, string pool and code pages, catalog, column-major table
   streams, binary streams; `MarshalTo` writes a package, `Unmarshal`/`Decode`
   read one.
-- [`pkg/cfb`](pkg/cfb): Compound File Binary v3/v4 writer and lazy reader.
-- [`pkg/cab`](pkg/cab): cabinet writer and reader, one folder per cabinet,
+- [`internal/cfb`](internal/cfb): Compound File Binary v3/v4 writer and lazy reader.
+- [`internal/cab`](internal/cab): cabinet writer and reader, one folder per cabinet,
   stored, MSZIP or LZX blocks, plus an `fs.FS` view. The LZX encoder and
   decoder are [`internal/lzx`](internal/lzx), written from [MS-PATCH] and
   [MS-CAB] only.
-- [`pkg/summary`](pkg/summary): the summary information stream.
+- [`internal/summary`](internal/summary): the summary information stream.
 - [`pkg/sign`](pkg/sign): Authenticode signing and verification of packages
   (spec chapter 12), written from the spec without cgo.
 - [`internal/cadll`](internal/cadll): the custom action DLL that `run`
@@ -94,14 +104,14 @@ go test ./... -shuffle=on -race
 - Tests add no test-only module dependencies. Test vectors from the spec appendix
   (stream names, compound files, summary stream, cabinets) are golden hashes:
   a writer change that alters them is a bug unless the spec changed.
-- `TestConformance` (`pkg/cfb/conformance_test.go`) is an independent
+- `TestConformance` (`internal/cfb/conformance_test.go`) is an independent
   [MS-CFB] checker for the writer's output (header, FAT/DIFAT/MiniFAT,
   sector ownership, directory entries, red-black trees, zero padding). Run a
   new writer layout through it; the coverage table in `MSISPEC.md` section 2
   lists which rules are supported and which are not needed, with reasons.
 - Snapshots: `TestExampleTables` (`cmd/msi-builder/testdata/tables`) holds the
   tables of every example, and `TestMsiexecInstallsExamples`
-  (`pkg/builder/nativetest/testdata/install`) holds the entries that
+  (`internal/builder/nativetest/testdata/install`) holds the entries that
   installing and removing each example adds under the watched folders and
   registry keys on Windows, plus the firewall rules. Only entries whose name,
   with or without its extension, occurs as a whole word in one of the
@@ -117,7 +127,7 @@ go test ./... -shuffle=on -race
   `installExamples` and in `TestScopeOwns`.
 - `-short` skips the slow tests: the native tests that open packages with
   `msi.dll` and install them with `msiexec` (Windows only,
-  `pkg/builder/nativetest`, `pkg/cab/native_windows_test.go`) and the bounded-memory
+  `internal/builder/nativetest`, `internal/cab/native_windows_test.go`) and the bounded-memory
   tests (`TestBoundedMemory`, `TestLargePayloadBoundedMemory`). CI runs
   `-short` on Linux and the full set on Windows.
 - Bounded-memory tests assert on the live heap that `memtest.PeakHeap` reads
@@ -139,7 +149,7 @@ go test ./... -shuffle=on -race
   the goroutine stack: a stack move makes `msi.dll` write the handle to the old
   copy, the caller reads 0, and the next call fails with error 6 while the
   leaked handle keeps the package open. Check with
-  `GOOS=windows go test -c -o /dev/null -gcflags=-m ./pkg/builder/nativetest`
+  `GOOS=windows go test -c -o /dev/null -gcflags=-m ./internal/builder/nativetest`
   (or `GOOS=windows go build -o /dev/null -gcflags=-m .` in
   `docs/spec/msitest`) and look for `moved to heap`.
 - Changes that affect the generated packages need a Windows run. Use the
@@ -147,7 +157,7 @@ go test ./... -shuffle=on -race
   pull request which checks ran and which could not.
 - Wizard changes need a full-UI run: `/qn` never shows a dialog, so dialog
   bugs (wrong event names, missing ErrorIcon) only appear with the full UI.
-  `pkg/builder/nativetest/fullui_windows_test.go` drives msiexec through
+  `internal/builder/nativetest/fullui_windows_test.go` drives msiexec through
   UIAutomation (BM_CLICK on the msiexec PID's own windows only, because other
   installs may share the desktop). It needs an elevated process in an
   interactive session: in session 0 msiexec silently drops to no UI. Control
@@ -166,12 +176,12 @@ go test ./... -shuffle=on -race
   `msidb.Decode`, `cab.Walk`) and compares the SHA-256 digests computed while
   hashing the sources. A new feature that needs file contents gets them from a
   reader in the same pass as `MsiFileHash`. Every input goes through
-  `openSource` (`pkg/builder/finish.go`), which picks `File.FS`, `Config.FS`
+  `openSource` (`internal/builder/finish.go`), which picks `File.FS`, `Config.FS`
   or `BaseDir`; never call `os.Open` on a source path directly.
 - Byte-slice entry points (`cab.Write`, `cfb.Write`, `msidb.Marshal`) are thin
   wrappers over the streaming functions and must stay byte-identical to them.
 - `productCode: auto` hashes the encoded configuration with null, `""`,
-  `[]` and `{}` values pruned (`pruneEmpty` in `pkg/builder/tree.go`); `false`
+  `[]` and `{}` values pruned (`pruneEmpty` in `internal/builder/tree.go`); `false`
   and `0` stay, because an explicit `secure: false` differs from the default.
   A new optional config field must therefore be a pointer, string, slice or
   map, or carry `yaml:",omitempty"`; a plain `bool` or `int` would change

@@ -22,7 +22,7 @@ The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
   It was `GoMsiRun` before the rename to msi-builder. Never give it, or any
   other name of our own in a package, the prefix `Msi`: Microsoft
   reserves it for the engine (spec 17.6).
-  The builder (`pkg/builder/actions.go`, `runAction`) passes
+  The builder (`internal/builder/actions.go`, `runAction`) passes
   `<directory>|<command>` in `CustomActionData` (deferred, rollback, commit)
   or the `BuilderRun` property (immediate); `|` cannot occur in a path, so the
   first one ends the directory.
@@ -45,7 +45,7 @@ The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
   `€` came out as `?`); PowerShell with `[Console]::OutputEncoding` does.
 - `cadll_test.go` checks the checksums, the PE machine, the export and that
   the imports are only kernel32, advapi32 and msi. `testdata/probe` is the
-  CA-03 package that `pkg/builder/nativetest` installs on Windows
+  CA-03 package that `internal/builder/nativetest` installs on Windows
   (`TestMsiexecRunActions`), natively on x64 and arm64 runners and under
   x64 emulation on arm64.
 - Never take code from another installer toolkit's custom action library;

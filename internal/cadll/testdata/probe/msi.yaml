@@ -1,5 +1,5 @@
 # The CA-03 probe of the embedded custom action DLL: every kind of run
-# action, installed by pkg/builder/nativetest (TestMsiexecRunActions) and by
+# action, installed by internal/builder/nativetest (TestMsiexecRunActions) and by
 # docs/spec case CA-03. ARCH selects the platform and so the DLL.
 schema: msi-builder/v1
 

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/msi-builder/pkg/msidb"
+	"github.com/jkroepke/msi-builder/internal/msidb"
 )
 
 func TestDefinitions(t *testing.T) {
