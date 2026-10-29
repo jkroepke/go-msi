@@ -1631,7 +1631,7 @@
                           },
                           "arguments": {
                             "type": "string",
-                            "description": "Arguments after the quoted file path; default \"%1\", empty for none.",
+                            "description": "Arguments after the quoted file path, as formatted text; default \"%1\", empty for none.",
                             "default": "\"%1\""
                           }
                         },
