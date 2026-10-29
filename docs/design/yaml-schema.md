@@ -857,8 +857,8 @@ the folder is the YAML file's folder or one above it.
   source folder moves or the case of the name changes. A file that is gone
   from a later version is expected to leave with the old product on the
   major upgrade, with an early as well as a late `removeOld`, while a file
-  that is new gets a new component; FILE-08 checks this on Windows and is
-  still pending.
+  that is new gets a new component; FILE-08 confirmed this on a Windows
+  CI runner, including a name whose case changed.
 - **IDs.** Component, file and directory IDs are the component's ID (cut to
   50 characters), `_`, a kind letter and 20 hex digits, derived from the
   directory, `source` as written and the path below it, exactly as
