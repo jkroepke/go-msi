@@ -49,10 +49,18 @@ func (c *Config) HarvestFiles() Diagnostics {
 			// Diagnostics of a harvested file name the entry and the path
 			// below its source.
 			comp.origin = fmt.Sprintf("%s{%s}", entryPath, rel)
+			comp.Bitness = entry.Bitness
 			file.AllowUnversionedExecutable = entry.AllowUnversionedExecutable
 		}
 
 		entry.expanded = true
+
+		if c.holdsYAMLFile(entry.Source) {
+			diags = append(diags, Diagnostic{
+				Severity: SeverityWarning, Path: entryPath + ".source",
+				Message: "the folder holds the YAML file, so a package built next to it is harvested by the next build; harvest a separate output folder",
+			})
+		}
 	}
 
 	// The default feature takes the new components when there was no
@@ -72,6 +80,18 @@ func (c *Config) harvestEntry(entry *Harvest) ([]*Component, string, error) {
 	filter, err := newHarvestFilter(entry.Include, entry.Exclude)
 	if err != nil {
 		return nil, "", err
+	}
+
+	// The checks of Validate, worded for YAML, for a caller that did not
+	// run it.
+	if findDirectory(c.Directories, entry.Directory) == nil {
+		return nil, "", fmt.Errorf("directory %q is not defined", entry.Directory)
+	}
+
+	if entry.Feature == "" {
+		if n := featureCount(c.Features); n > 1 {
+			return nil, "", fmt.Errorf("feature is required: the package has %d features", n)
+		}
 	}
 
 	fsys, root := c.harvestFS(entry.Source)
@@ -98,6 +118,32 @@ func (c *Config) harvestFS(src string) (fs.FS, string) {
 	}
 }
 
+// holdsYAMLFile reports whether a source read from disk is the YAML file's
+// folder or one above it.
+func (c *Config) holdsYAMLFile(src string) bool {
+	if c.BaseDir == "" || (c.FS != nil && !filepath.IsAbs(src)) {
+		return false
+	}
+
+	dir := filepath.FromSlash(harvestIDRoot(src))
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(c.BaseDir, dir)
+	}
+
+	rel, err := filepath.Rel(dir, c.BaseDir)
+
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// featureCount counts the features of the tree.
+func featureCount(features []*Feature) int {
+	count := 0
+
+	WalkFeatures(features, func(_, _ *Feature) { count++ })
+
+	return count
+}
+
 // harvestIDRoot is the source as written in slash form, cleaned; the ids of
 // the entry are derived from it, so they do not depend on where the build
 // runs as long as the source is relative.
@@ -108,9 +154,7 @@ func harvestIDRoot(src string) string {
 // harvest checks the harvest entries without reading the folders, which
 // HarvestFiles does.
 func (v *validator) harvest(cfg *Config, known *refs) {
-	features := 0
-
-	WalkFeatures(cfg.Features, func(_, _ *Feature) { features++ })
+	features := featureCount(cfg.Features)
 
 	for i, entry := range cfg.Harvest {
 		entryPath := fmt.Sprintf("harvest[%d]", i)
@@ -131,15 +175,24 @@ func (v *validator) harvest(cfg *Config, known *refs) {
 			v.errorf(entryPath+".directory", "directory %q is not defined", entry.Directory)
 		}
 
-		switch {
-		case entry.Feature != "" && findFeature(cfg.Features, entry.Feature) == nil:
-			v.errorf(entryPath+".feature", "feature %q is not defined", entry.Feature)
-		case entry.Feature == "" && features > 1:
-			v.errorf(entryPath+".feature", "required: the package has %d features", features)
+		v.harvestFeature(cfg, entryPath, entry, features)
+
+		if entry.Bitness != "" {
+			v.oneOf(entryPath+".bitness", entry.Bitness, Auto, "32", "64")
 		}
 
 		v.harvestPatterns(entryPath+".include", entry.Include)
 		v.harvestPatterns(entryPath+".exclude", entry.Exclude)
+	}
+}
+
+// harvestFeature checks the feature an entry joins.
+func (v *validator) harvestFeature(cfg *Config, entryPath string, entry *Harvest, features int) {
+	switch {
+	case entry.Feature != "" && findFeature(cfg.Features, entry.Feature) == nil:
+		v.errorf(entryPath+".feature", "feature %q is not defined", entry.Feature)
+	case entry.Feature == "" && features > 1:
+		v.errorf(entryPath+".feature", "required: the package has %d features", features)
 	}
 }
 

@@ -388,6 +388,24 @@
             "$ref": "#/$defs/bool",
             "default": false,
             "description": "Accept executables without a version resource among the files (FILE-01)."
+          },
+          "bitness": {
+            "anyOf": [
+              {
+                "enum": [
+                  "auto",
+                  "32",
+                  "64",
+                  32,
+                  64
+                ]
+              },
+              {
+                "$ref": "#/$defs/var"
+              }
+            ],
+            "default": "auto",
+            "description": "Bitness of every harvested component, as a component's bitness; 32 for a folder of 32-bit files in an x64 package."
           }
         },
         "required": [

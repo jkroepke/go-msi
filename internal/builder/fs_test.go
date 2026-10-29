@@ -388,3 +388,55 @@ func TestBuildHarvestDiagnostics(t *testing.T) {
 		t.Errorf("want a duplicate install path error, got %v\n%s", err, res.Diagnostics)
 	}
 }
+
+func TestBuildHarvestFromDisk(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	files := map[string][]byte{
+		"dist/app.exe":       testpe.Build(testpe.Options{FileVersion: "1.2.3.4"}),
+		"dist/conf/app.yaml": []byte("a: 1"),
+	}
+
+	for name, data := range files {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	yamlDir := filepath.Join(root, "packaging")
+	if err := os.Mkdir(yamlDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	yamlPath := filepath.Join(yamlDir, "msi.yaml")
+	if err := os.WriteFile(yamlPath, []byte(strings.Replace(harvestYAML, "source: dist", "source: ../dist", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(yamlPath, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, res.Diagnostics)
+	}
+
+	payload := cabinetFiles(t, res)
+	if len(payload) != 2 {
+		t.Fatalf("cabinet holds %d files, want 2", len(payload))
+	}
+
+	for _, f := range res.Files {
+		if !bytes.Equal(payload[f.Key], files["dist/"+f.Source]) {
+			t.Errorf("%s: cabinet content differs from dist/%s", f.Key, f.Source)
+		}
+	}
+}

@@ -821,7 +821,12 @@ harvest:
     include: ['**']              # default: every file
     exclude: ['*.pdb', logs/, 'docs/**/*.tmp']
     allowUnversionedExecutable: false   # applies to every harvested file (FILE-01)
+    bitness: auto                # of every harvested component, as for a component
 ```
+
+Harvest a separate output folder, not the YAML file's own: a package built
+next to the YAML file would be added by the next build. The builder warns
+when `source` is that folder or one above it.
 
 - **Layout.** Each folder below `source` that holds a file, directly or
   further down, becomes a directory below `directory`; a folder that
@@ -835,15 +840,18 @@ harvest:
   from the source path or the generated IDs, so a file that stays at its
   install path keeps its component in every later build, also when the
   source folder moves or the case of the name changes. A file that is gone
-  from a later version is removed with the old product on the major upgrade,
-  with an early as well as a late `removeOld`; a file that is new gets a new
-  component (FILE-08).
+  from a later version is expected to leave with the old product on the
+  major upgrade, with an early as well as a late `removeOld`, while a file
+  that is new gets a new component; FILE-08 checks this on Windows and is
+  still pending.
 - **IDs.** Component, file and directory IDs are `tree_` plus a kind letter
   and 20 hex digits, derived from the directory, `source` as written and the
   path below it, exactly as `Config.AddTree` derives them. They are stable
-  between builds of the same input and need not be: nothing in an
-  upgrade depends on them. Diagnostics name a harvested file as
-  `harvest[0]{bin/app.exe}`.
+  between builds of the same input. A major upgrade presumably does not
+  depend on them, since components are matched by GUID (inferred, not
+  tested). Diagnostics name a harvested file as `harvest[0]{bin/app.exe}`,
+  and a file's `source` (also in `builder.Result.Files`) is its path below
+  the entry's `source`.
 - **Patterns.** `include` and `exclude` take one pattern or a list, in the
   syntax of [doublestar](https://github.com/bmatcuk/doublestar): `*`, `?`,
   `[a-z]` and `{a,b}` within one name, and a `**` folder for any number of
@@ -859,7 +867,9 @@ harvest:
   harvest without any file are errors, unless the patterns leave them out.
   So is a file that another component or harvest installs to the same path:
   exclude it here to give it a component of its own, for example one with
-  `permissions`, `preserve` or a shortcut. `longFileNames: false` cannot be
+  `permissions`, `preserve` or a shortcut. In an x64 package, a harvest into
+  a 32-bit folder such as `ProgramFilesFolder` needs `bitness: 32` (ICE80).
+  `longFileNames: false` cannot be
   combined with `harvest`, since harvested names need not be 8.3 names.
 - **When.** `msi-builder validate` checks the entries but does not read the
   folders; `msi-builder build` and `builder.Build` expand them first and

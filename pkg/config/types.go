@@ -254,7 +254,7 @@ func (c *Component) Path(index int) string {
 // Harvest adds every file below a folder of the build machine, each in a
 // component of its own, as Config.AddTree does. The builder expands it
 // before it validates the config, see Config.HarvestFiles.
-type Harvest struct {
+type Harvest struct { //nolint:govet // field order is the YAML key order
 	// Source is the folder to add: relative to the YAML file (or a path in
 	// Config.FS), or absolute.
 	Source string `yaml:"source"`
@@ -270,6 +270,8 @@ type Harvest struct {
 	Exclude StringList `yaml:"exclude"`
 	// AllowUnversionedExecutable is set on every harvested file.
 	AllowUnversionedExecutable bool `yaml:"allowUnversionedExecutable"`
+	// Bitness is set on every harvested component: auto, 32 or 64.
+	Bitness string `yaml:"bitness"`
 
 	// expanded is set once HarvestFiles has added the files.
 	expanded bool

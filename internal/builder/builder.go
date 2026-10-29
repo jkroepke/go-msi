@@ -174,11 +174,12 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 	// Harvested files are added once the entries are known to be valid,
 	// and the config is checked again with them.
 	if len(cfg.Harvest) > 0 {
-		if harvested := cfg.HarvestFiles(); harvested.Err() != nil {
-			return &Result{Diagnostics: append(diags, harvested...)}, harvested.Err() //nolint:wrapcheck // the diagnostics carry their own paths
+		harvested := cfg.HarvestFiles()
+		if err := harvested.Err(); err != nil {
+			return &Result{Diagnostics: append(diags, harvested...)}, err //nolint:wrapcheck // the diagnostics carry their own paths
 		}
 
-		diags = config.Validate(cfg)
+		diags = append(config.Validate(cfg), harvested...)
 		if err := diags.Err(); err != nil {
 			return &Result{Diagnostics: diags}, err //nolint:wrapcheck // the diagnostics carry their own paths
 		}

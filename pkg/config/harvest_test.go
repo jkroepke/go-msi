@@ -312,3 +312,104 @@ func TestHarvestDisk(t *testing.T) {
 		t.Error("a relative and an absolute source gave the same ids")
 	}
 }
+
+func TestHarvestFilesWithoutValidate(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ name, section, want string }{
+		{"unknown directory", "harvest: [{ source: dist/conf, directory: NOPE }]", `directory "NOPE" is not defined`},
+		{"two features", "features: [{ id: A, title: A }, { id: B, title: B }]\nharvest: [{ source: dist/conf }]", "feature is required: the package has 2 features"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg, err := config.Parse([]byte(harvestHeader+tc.section), config.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			cfg.FS = harvestFS()
+
+			diags := cfg.HarvestFiles()
+			if len(diags) != 1 || diags[0].Path != "harvest[0]" || diags[0].Message != tc.want {
+				t.Errorf("diagnostics %s, want harvest[0]: %s", diags, tc.want)
+			}
+		})
+	}
+}
+
+func TestHarvestFilesRetriesFailedEntries(t *testing.T) {
+	t.Parallel()
+
+	fsys := harvestFS()
+
+	cfg, diags, got := harvest(t, fsys, "harvest: [{ source: dist/missing }, { source: dist/conf, bitness: '32' }]")
+	if len(diags) != 1 || diags[0].Path != "harvest[0]" || !slices.Equal(got, []string{"app.yaml"}) {
+		t.Fatalf("diagnostics %s and files %q, want harvest[0] to fail and app.yaml from harvest[1]", diags, got)
+	}
+
+	if cfg.Components[0].Bitness != "32" {
+		t.Errorf("bitness = %q, want 32 from the entry", cfg.Components[0].Bitness)
+	}
+
+	// Once the folder exists, the next call adds only the failed entry.
+	fsys["dist/missing/late.txt"] = &fstest.MapFile{Data: []byte("late")}
+
+	if diags := cfg.HarvestFiles(); diags.Err() != nil {
+		t.Fatal(diags)
+	}
+
+	if got := targets(cfg); !slices.Equal(got, []string{"app.yaml", "late.txt"}) {
+		t.Errorf("files after the retry = %q", got)
+	}
+}
+
+func TestHarvestBitness(t *testing.T) {
+	t.Parallel()
+
+	_, diags, _ := harvest(t, harvestFS(), "harvest: [{ source: dist/conf, bitness: '16' }]")
+	if diags.Err() == nil || diags[0].Path != "harvest[0].bitness" {
+		t.Errorf("want an error at harvest[0].bitness, got %s", diags)
+	}
+}
+
+func TestHarvestWarnsAboutYAMLFolder(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		source string
+		warn   bool
+	}{{".", true}, {"sub/..", true}, {"out", false}} {
+		yamlPath := filepath.Join(dir, "msi.yaml")
+		if err := os.MkdirAll(filepath.Join(dir, "out"), 0o750); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(filepath.Join(dir, "out", "a.txt"), []byte("a"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(yamlPath, []byte(harvestHeader+"harvest: [{ source: '"+tc.source+"' }]\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg, err := config.Load(yamlPath, config.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		diags := cfg.HarvestFiles()
+		if diags.Err() != nil {
+			t.Fatalf("%s: %s", tc.source, diags)
+		}
+
+		if warned := len(diags) == 1 && diags[0].Path == "harvest[0].source"; warned != tc.warn {
+			t.Errorf("source %s: diagnostics %s, want a warning %v", tc.source, diags, tc.warn)
+		}
+	}
+}

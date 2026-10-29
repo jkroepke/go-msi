@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jkroepke/msi-builder/internal/builder"
@@ -106,6 +107,15 @@ func TestMsiexecUpgradesHarvest(t *testing.T) {
 			upgrade := buildHarvest(t, t.TempDir(), second, removeOld)
 			logs := t.TempDir()
 
+			// The premise: a file that stays at its install path keeps its
+			// component, whatever the case of its name.
+			before, after := componentGUIDs(t, old), componentGUIDs(t, upgrade)
+			for _, name := range []string{"app.exe", "readme.txt", "notes.txt", "same.txt"} {
+				if before[name] == "" || before[name] != after[name] {
+					t.Fatalf("%s has ComponentId %q in v1 and %q in v2", name, before[name], after[name])
+				}
+			}
+
 			t.Cleanup(func() {
 				ctx := context.Background()
 				_ = exec.CommandContext(ctx, "msiexec", "/x", upgrade, "/qn").Run()
@@ -175,6 +185,28 @@ func harvestState(t *testing.T, step, dir string, want map[string][]byte) {
 			}
 		}
 	}
+}
+
+// componentGUIDs returns the ComponentId of each file of a package by its
+// lower-case long name.
+func componentGUIDs(t *testing.T, path string) map[string]string {
+	t.Helper()
+
+	db := openDB(t, path)
+	defer closeHandle(db)
+
+	guids := make(map[string]string)
+
+	for _, row := range query(t, db, "SELECT `File`.`FileName`, `Component`.`ComponentId` FROM `File`, `Component` WHERE `File`.`Component_` = `Component`.`Component`") {
+		name := row[0]
+		if i := strings.IndexByte(name, '|'); i >= 0 {
+			name = name[i+1:]
+		}
+
+		guids[strings.ToLower(name)] = row[1]
+	}
+
+	return guids
 }
 
 func exists(path string) bool {
