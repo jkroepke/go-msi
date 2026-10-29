@@ -779,8 +779,9 @@ packages with file associations that were checked have no `ProgId`,
 `Extension` or `Verb` table at all, and the msi-builder ports with the same
 rows left the same registry behind (specification section 10.2). Microsoft
 documents those tables for normal installs too (`RegisterExtensionInfo`
-registers the extensions of features set to be installed); msi-builder
-uses Registry rows like those packages do. msi-builder also writes an empty `<progId>` value in
+registers the extensions of features set to be installed; documented, and
+REG-05 observed it); msi-builder uses `Registry` rows like those packages
+do. msi-builder also writes an empty `<progId>` value in
 `.<extension>\OpenWithProgids`, which Microsoft asks of every program that
 takes over an extension and which lists the program under Open with
 (specification section 10.2, REG-04). The root is HKCR, which the engine
@@ -820,9 +821,10 @@ actions (section 4.9) and calls its `BuilderAssocChanged` entry right after
 `afterInstallFinalize`), on install, repair and removal: it calls
 `SHChangeNotify(SHCNE_ASSOCCHANGED)`, which Microsoft asks for after a
 change to file associations, because the shell may otherwise not pick the
-change up before a restart. A failure there is logged and ignored. On
-SERVER2025 a window listening for that notification received it on
-install and on uninstall; plain registry entries send none (REG-05).
+change up before a restart (documented, unverified). A failure there is
+logged and ignored. On SERVER2025 a window listening for that
+notification received it on install and on uninstall; plain registry
+entries send none (REG-05).
 
 **Component shortcuts.** A component can list `shortcuts` of its own, for
 shortcuts that do not point at a file listed with them. Each names exactly

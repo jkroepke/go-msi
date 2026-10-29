@@ -71,6 +71,7 @@ $report.Add("# REG-05 run $(Get-Date -Format s) on $env:COMPUTERNAME as $($id.Na
 $report.Add("OS $([Environment]::OSVersion.VersionString); msi.dll $((Get-Item "$env:windir\System32\msi.dll").VersionInfo.FileVersion)")
 $keys = @{ probe = '.reg05p'; baseline = '.reg05b'; native = '.reg05n' }
 foreach ($p in 'probe', 'baseline', 'native') {
+  $report.Add("$p before: HKCR\$($keys[$p]) exists=$(Test-Path "Registry::HKEY_CLASSES_ROOT\$($keys[$p])")")
   foreach ($step in 'install', 'uninstall') {
     $log = "$work\$p-$step.log"
     Mark "$p $step start"
@@ -85,6 +86,14 @@ foreach ($p in 'probe', 'baseline', 'native') {
     }
   }
 }
+# The probe keeps .reg05p on purpose (permanent component). Remove it and
+# the permanent component registration, so the next run starts clean.
+reg.exe delete 'HKLM\SOFTWARE\Classes\.reg05p' /f /reg:64 2>$null | Out-Null
+$comps = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Components'
+# Its key path is the .reg05p default, held by the null product GUID.
+Get-ChildItem $comps | Where-Object {
+  ($_.GetValue('00000000000000000000000000000000') -as [string]) -like '*\.reg05p*'
+} | ForEach-Object { $report.Add("cleanup: removed permanent component $($_.PSChildName)"); Remove-Item -Recurse -Force $_.PSPath }
 New-Item -ItemType File $stop | Out-Null
 $proc.WaitForExit(10000) | Out-Null
 $report.Add('')

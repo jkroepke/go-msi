@@ -66,10 +66,11 @@ native uninstall : exit 0; HKCR\.reg05n exists=False
 - baseline (the same kind of keys as plain `Registry` rows, no action): no
   notification. The engine sends none for `Registry` rows.
 - native (`ProgId`, `Extension` and `Verb` rows, built with WiX 5 as a
-  black box, no custom action): one notification on install and one on
-  uninstall, while the engine's Register/UnregisterExtensionInfo and
-  Register/UnregisterProgIdInfo actions run; `.reg05n` is removed on
-  uninstall.
+  black box from `ProgId Advertise="yes"`, installed locally with `/i`, no
+  custom action): one notification on install and one on uninstall, while
+  the engine's Register/UnregisterExtensionInfo and
+  Register/UnregisterProgIdInfo actions ran (which of them sends it was not
+  isolated); `.reg05n` is removed on uninstall.
 - Not checked: whether Explorer's view changed, and whether a session
   without the `msiexec` client receives the notification.
 
