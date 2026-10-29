@@ -399,9 +399,10 @@ func (v *validator) fileSearchBounds(field string, file *FileSearch) {
 // fileSearchVersions checks the version and language bounds of a file search.
 func (v *validator) fileSearchVersions(field string, file *FileSearch) { //nolint:cyclop // a flat list of independent checks
 	if (file.MinVersion != "" || file.MaxVersion != "") && systemFolders.MatchString(searchBasePath(file.Path, file.Under)) {
-		v.warnf(field, "the versions of Windows' own files are unreliable to a search: the engine reports shimmed "+
-			"versions on Windows 10 and later (reported), and no version-bounded search found kernel32.dll in SEARCH-05; "+
-			"test VersionNT or WindowsBuild in a condition instead")
+		v.warnf(field, "the versions of Windows' own files are unreliable to a search: the engine sees shimmed "+
+			"versions of them: a minVersion search found ucrtbase.dll in System64Folder only below its real version (SEARCH-02); "+
+			"search the registry value CurrentBuildNumber under HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion "+
+			"and compare it in a condition instead; VersionNT and WindowsBuild stop at Windows 8.1 (603 and 9600, PROP-02)")
 	}
 
 	if len(file.Languages) > 0 && file.MinVersion == "" {

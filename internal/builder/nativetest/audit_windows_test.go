@@ -34,11 +34,30 @@ type osVersionInfoEx struct {
 	productType, reserved               byte
 }
 
+const osPropertiesConfig = `schema: msi-builder/v1
+product: { name: MsiBuilderOSProperties, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 7c4e2a90-5d1b-4f3e-8a6c-0b9d2e4f6a17 }
+package: { platform: x64 }
+installDir: { name: MsiBuilderOSProperties }
+properties:
+  OS_BUILD:
+    search: { registry: { root: HKLM, key: 'SOFTWARE\Microsoft\Windows NT\CurrentVersion', name: CurrentBuildNumber } }
+components:
+  - files: [{ source: app.exe }]
+customActions:
+  - id: SetBuild22000
+    setProperty: { name: BUILD_GE_22000, value: '1' }
+    schedule: [{ sequence: execute, after: AppSearch, condition: OS_BUILD >= 22000 }]
+  - id: SetBuild99999
+    setProperty: { name: BUILD_GE_99999, value: '1' }
+    schedule: [{ sequence: execute, after: AppSearch, condition: OS_BUILD >= 99999 }]
+`
+
 // TestMsiexecOSProperties records the operating-system properties the engine
 // sets on this machine next to the version that RtlGetVersion reports, which
-// no compatibility shim changes (PROP-02). The builder's file-search warning
-// tells authors to test VersionNT or WindowsBuild instead of an OS file's
-// version.
+// no compatibility shim changes (PROP-02). VersionNT and WindowsBuild stop
+// at Windows 8.1 (603 and 9600), so the builder's file-search warning points
+// at the CurrentBuildNumber registry value instead, which this package
+// searches and compares with integers in a condition.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestMsiexecOSProperties(t *testing.T) {
@@ -51,7 +70,9 @@ func TestMsiexecOSProperties(t *testing.T) {
 		t.Fatalf("RtlGetVersion: status %#x", r)
 	}
 
-	path, _ := buildExample(t, "minimal", nil, minimalInputs())
+	path := buildConfig(t, t.TempDir(), "osprops", osPropertiesConfig, map[string][]byte{
+		"app.exe": testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}}),
+	})
 	log := filepath.Join(filepath.Dir(path), "install.log")
 
 	t.Cleanup(func() { _ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn").Run() })
@@ -63,16 +84,29 @@ func TestMsiexecOSProperties(t *testing.T) {
 	t.Logf("PROP-02: RtlGetVersion %d.%d.%d, product type %d, service pack %d.%d",
 		info.major, info.minor, info.build, info.productType, info.servicePackMajor, info.servicePackMinor)
 
-	for _, name := range []string{"VersionNT", "VersionNT64", "WindowsBuild", "ServicePackLevel", "MsiNTProductType", "Msix64", "Intel", "VersionMsi", "VersionDatabase"} {
+	for _, name := range []string{
+		"VersionNT", "VersionNT64", "WindowsBuild", "ServicePackLevel", "MsiNTProductType", "Msix64", "Intel", "VersionMsi", "VersionDatabase",
+		"OS_BUILD", "BUILD_GE_22000", "BUILD_GE_99999",
+	} {
 		t.Logf("PROP-02: %s = %q", name, props[name])
 	}
 
-	if props["VersionNT"] == "" || props["WindowsBuild"] == "" {
-		t.Fatalf("VersionNT or WindowsBuild missing from the log\n%s", readLog(log))
+	ge22000 := ""
+	if info.build >= 22000 {
+		ge22000 = "1"
 	}
 
-	if got, want := props["MsiNTProductType"], strconv.Itoa(int(info.productType)); got != want {
-		t.Errorf("MsiNTProductType = %q, RtlGetVersion reports product type %s", got, want)
+	for name, want := range map[string]string{
+		"VersionNT":        "603",
+		"WindowsBuild":     "9600",
+		"MsiNTProductType": strconv.Itoa(int(info.productType)),
+		"OS_BUILD":         strconv.Itoa(int(info.build)),
+		"BUILD_GE_22000":   ge22000,
+		"BUILD_GE_99999":   "",
+	} {
+		if got := props[name]; got != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
 	}
 
 	msiexecQuiet(t, filepath.Join(filepath.Dir(path), "uninstall.log"), "/x", path)

@@ -1355,10 +1355,16 @@ The engine finds a file whose version equals `MinVersion` only when
 every file; the one difference is a file of exactly that lower version
 without any language, which is found too. With `languages` the bound is
 written as given. Versions of Windows' own files are unreliable to a search
-(reported shims on Windows 10 and later; no version-bounded search of
-`kernel32.dll` found it in SEARCH-05, for reasons not yet known), so the builder warns about version bounds in
+(the engine sees compatibility-shimmed versions of them: a `minVersion`
+search for `ucrtbase.dll` in `System64Folder` at its real version found
+nothing, while the same search for a copy in another folder found it,
+SEARCH-02), so the builder warns about version bounds in
 `[SystemFolder]`, `[System64Folder]`, `[WindowsFolder]` and `C:\Windows`;
-test `VersionNT` or `WindowsBuild` instead. A path that names a folder of the
+search the registry value `CurrentBuildNumber` under
+`HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion` instead and compare it
+with a number in a condition (`OS_BUILD >= 22000`): `VersionNT` and
+`WindowsBuild` stop at Windows 8.1, 603 and 9600, also on Windows Server
+2025 (MSISPEC PROP-02). A path that names a folder of the
 package itself (`[INSTALLDIR]`) gets a warning: `AppSearch` runs before
 `CostFinalize` resolves those folders. A path that names a searched
 property is an error, since its result is set only after `AppSearch`; use
