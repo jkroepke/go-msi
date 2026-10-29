@@ -1695,7 +1695,8 @@ searched property is an error for the same reason, and so is a choice on a
 property that another field binds too. In the full UI the group starts on
 the default and selecting another option sets the property on the server
 (UI-05, observed on Windows). `after` names the page the dialog follows:
-`WelcomeDlg`, `CustomizeDlg` or an added dialog. With `enabled: false` (the
+`WelcomeDlg`, `LicenseAgreementDlg`, `InstallScopeDlg`, `InstallDirDlg`,
+`CustomizeDlg` (each when the wizard has it) or an added dialog. With `enabled: false` (the
 default) no UI tables are written and msiexec shows its basic progress
 window; silent installs never depend on the UI in any mode. Without
 `chooseFeatures` and without remove dialogs `ARPNOMODIFY` is set, whatever
@@ -1735,9 +1736,10 @@ remove pages cannot follow each other. The fields are the same as on install
 pages. A package with remove dialogs keeps `ARPNOMODIFY` unset, so Change in
 Add or Remove Programs opens the maintenance menu; with
 `product.arp.noModify: true` the validator warns that only running the
-package again shows the page. `msiexec /x` and the Uninstall button do not
-show the wizard (spec section 7.7, UI-09), so the property is also the
-command-line switch: `msiexec /x hello.msi DELETE_CONFIGURATION=1`.
+package again shows the page. `msiexec /x` and the Uninstall button are
+expected not to show the wizard (spec section 7.7, UI-09, unverified), so
+the property is also the command-line switch:
+`msiexec /x hello.msi DELETE_CONFIGURATION=1`.
 
 #### License page
 

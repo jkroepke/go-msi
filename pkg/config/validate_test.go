@@ -529,6 +529,11 @@ func TestValidate(t *testing.T) {
 				"    - {id: ExtraDlg, title: x, flow: remove, fields: [{property: OPT}]}\n",
 			sevWarning, "ui.dialogs[0].flow", "only when the package runs again",
 		},
+		"remove dialog without Remove": {
+			strings.Replace(base, "product:\n", "product:\n  arp: {noRemove: true}\n", 1) + appComponent + "ui:\n  enabled: true\n  dialogs:\n" +
+				"    - {id: ExtraDlg, title: x, flow: remove, fields: [{property: OPT}]}\n",
+			sevWarning, "ui.dialogs[0].flow", "no one can reach this page",
+		},
 		"dialog field type": {
 			base + appComponent + "ui:\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: radio}]}\n",
 			sevError, "ui.dialogs[0].fields[0].type", "",

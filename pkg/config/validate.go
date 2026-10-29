@@ -2119,18 +2119,25 @@ func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independ
 	v.removeDialogs(cfg)
 }
 
-// removeDialogs warns when Add or Remove Programs cannot reach the remove
-// flow: only Change opens the maintenance menu, since Uninstall runs
-// without the wizard (UI-09).
+// removeDialogs warns when a remove dialog cannot be reached:
+// ARPNOREMOVE disables Remove in the maintenance menu, and without Change
+// in Add or Remove Programs only running the package again opens the menu
+// (Uninstall is expected to skip the wizard, UI-09).
 func (v *validator) removeDialogs(cfg *Config) {
-	if !cfg.Product.ARP.NoModify {
+	arp := cfg.Product.ARP
+	if !arp.NoModify && !arp.NoRemove {
 		return
+	}
+
+	reason := "product.arp.noModify hides Change in Add or Remove Programs, which opens the maintenance menu; " +
+		"without it this page shows only when the package runs again"
+	if arp.NoRemove {
+		reason = "product.arp.noRemove disables Remove in the maintenance menu, so no one can reach this page"
 	}
 
 	for i, dialog := range cfg.UI.Dialogs {
 		if dialog != nil && dialog.Removal() {
-			v.warnf(fmt.Sprintf("ui.dialogs[%d].flow", i), "product.arp.noModify hides Change in Add or Remove Programs, "+
-				"which opens the maintenance menu; without it this page shows only when the package runs again")
+			v.warnf(fmt.Sprintf("ui.dialogs[%d].flow", i), "%s", reason)
 
 			return
 		}

@@ -14,8 +14,9 @@ const (
 	removeUILabel = "Delete the configuration"
 	// removeUIAdvance presses through the maintenance welcome page, Remove
 	// in the menu and on the confirmation page, the remove dialog's Next,
-	// Finish, and Yes on the box msiexec /x asks first.
-	removeUIAdvance = "^(Next|Remove|Finish|Yes)$"
+	// Finish, and Yes on the box msiexec /x asks first. Install answers
+	// ResumeDlg, so a /x that shows it ends instead of timing out.
+	removeUIAdvance = "^(Next|Remove|Finish|Yes|Install)$"
 )
 
 const removeUIConfig = `schema: msi-builder/v1
@@ -95,6 +96,10 @@ func TestFullUIRemoveDialog(t *testing.T) { //nolint:paralleltest // msiexec run
 	install("install1")
 
 	arp := reg(t, "query", `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\`+res.ProductCode, "/reg:64")
+	if !strings.Contains(arp, removeUIName) {
+		t.Fatalf("the ARP entry was not read:\n%s", arp)
+	}
+
 	if strings.Contains(arp, "NoModify") {
 		t.Errorf("the ARP entry has NoModify:\n%s", arp)
 	}
@@ -117,6 +122,10 @@ func TestFullUIRemoveDialog(t *testing.T) { //nolint:paralleltest // msiexec run
 		t.Error("the product is still installed after the remove keeping the configuration")
 	}
 
+	if got := serverProperties(readLog(keepLog))["DELETE_CONFIGURATION"]; got != "" {
+		t.Errorf("DELETE_CONFIGURATION on the server = %q with the box clear, want empty", got)
+	}
+
 	if _, err := os.Stat(filepath.Join(data, "config.yaml")); err != nil {
 		t.Errorf("the configuration is gone with the box clear: %v", err)
 	}
@@ -131,8 +140,9 @@ func TestFullUIRemoveDialog(t *testing.T) { //nolint:paralleltest // msiexec run
 		t.Errorf("msiexec /x: exit %d, want 0", code)
 	}
 
-	if strings.Contains(removeX, "Remove options") {
-		t.Error("msiexec /x showed RemoveOptionsDlg")
+	// Every wizard page shows the banner or the side-panel bitmap.
+	if strings.Contains(removeX, "BannerBmp") || strings.Contains(removeX, "DialogBmp") {
+		t.Error("msiexec /x showed a wizard page")
 	}
 
 	if productInstalled(t, res.ProductCode) {

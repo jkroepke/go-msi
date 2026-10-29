@@ -93,14 +93,14 @@ func TestRemoveFlowErrors(t *testing.T) {
 		dialogs []*config.Dialog
 		want    string
 	}{
-		{"install anchor", []*config.Dialog{checkBoxDialog("RemoveOptionsDlg", "WelcomeDlg", config.FlowRemove)}, "in the remove flow; use MaintenanceTypeDlg"},
-		{"confirmation anchor", []*config.Dialog{checkBoxDialog("RemoveOptionsDlg", "VerifyRemoveDlg", config.FlowRemove)}, "in the remove flow"},
+		{"install anchor", []*config.Dialog{checkBoxDialog("RemoveOptionsDlg", "WelcomeDlg", config.FlowRemove)}, "ui.dialogs[0].after: WelcomeDlg is not a wizard page that can be followed in the remove flow; use MaintenanceTypeDlg"},
+		{"confirmation anchor", []*config.Dialog{checkBoxDialog("RemoveOptionsDlg", "VerifyRemoveDlg", config.FlowRemove)}, "ui.dialogs[0].after: VerifyRemoveDlg is not"},
 		{"remove anchor in install", []*config.Dialog{
 			checkBoxDialog("RemoveOptionsDlg", "", config.FlowRemove),
 			checkBoxDialog("ExtraDlg", "RemoveOptionsDlg", ""),
-		}, "in the install flow; use WelcomeDlg"},
-		{"maintenance anchor in install", []*config.Dialog{checkBoxDialog("ExtraDlg", "MaintenanceTypeDlg", "")}, "in the install flow"},
-		{"confirmation name", []*config.Dialog{checkBoxDialog("VerifyRemoveDlg", "", config.FlowRemove)}, "is a wizard dialog"},
+		}, "ui.dialogs[1].after: RemoveOptionsDlg is not a wizard page that can be followed in the install flow; use WelcomeDlg"},
+		{"maintenance anchor in install", []*config.Dialog{checkBoxDialog("ExtraDlg", "MaintenanceTypeDlg", "")}, "ui.dialogs[0].after: MaintenanceTypeDlg is not"},
+		{"confirmation name", []*config.Dialog{checkBoxDialog("VerifyRemoveDlg", "", config.FlowRemove)}, "ui.dialogs[0].id: VerifyRemoveDlg is a wizard dialog"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
