@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"path"
@@ -67,6 +68,7 @@ func Validate(cfg *Config) Diagnostics {
 	checker.directories(cfg, known)
 	checker.features(cfg, known)
 	checker.components(cfg, known)
+	checker.folderComponents(cfg, known)
 	checker.shortcuts(cfg, known)
 	checker.properties(cfg)
 	checker.launchConditions(cfg)
@@ -646,6 +648,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 	paths := newFolderPaths(cfg.Directories)
 	regIDs := make(map[string]bool)
 	removeIDs := make(map[string]bool)
+	removeFileIDs := make(map[string]bool)
 	perUser := cfg.Package.Scope == ScopePerUser
 
 	for i, comp := range cfg.Components {
@@ -659,10 +662,22 @@ func (v *validator) components(cfg *Config, known *refs) {
 
 		v.componentID(p, comp, seen, known)
 		v.componentDirectory(cfg, p, comp, known)
+
+		if folderComponent(comp) {
+			v.folderComponent(cfg, p, comp)
+
+			continue
+		}
+
 		v.componentGUID(p, comp)
+		v.filePatterns(p, comp)
 
 		v.oneOf(p+".bitness", comp.Bitness, Auto, "32", "64")
-		v.preserve(cfg, p, comp)
+
+		if !preserveReported(comp) {
+			v.preserve(cfg, p, comp)
+		}
+
 		v.purge(cfg, known, p, comp)
 
 		if comp.Bitness == "64" && !cfg.Package.Platform.Is64Bit() {
@@ -672,6 +687,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 		files := v.componentFiles(cfg, p, comp, fileIDs, paths)
 		v.componentRegistry(p, comp, regIDs, perUser)
 		v.componentRemoveRegistry(p, comp, removeIDs, perUser)
+		v.componentRemoveFiles(cfg, p, comp, known, removeFileIDs)
 		keyFile := v.componentKeyFile(p, comp, files)
 
 		for j, svc := range comp.Services {
@@ -724,9 +740,15 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 	perUser := cfg.Package.Scope == ScopePerUser
 	top := known.topFolder(comp.Directory)
 
+	// The component of a folder source reports these once, not once per
+	// file.
+	if directoryReported(known, comp) {
+		return
+	}
+
 	if cfg.Package.Platform.Is64Bit() && comp.Bitness != "32" && folders32[top] {
 		v.warnf(compPath+".directory", "%s is the 32-bit folder on 64-bit Windows (ICE80); "+
-			"use its 64-bit counterpart", top)
+			"use its 64-bit counterpart, or bitness: 32 for 32-bit files", top)
 	}
 
 	if perUser && perMachineFolders[top] {
@@ -737,11 +759,7 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 	case !profileFolders[top]:
 	case !userRegistryKeyPath(comp, perUser):
 		v.warnf(compPath+".directory", "a component in the user profile (%s) needs an HKCU registry value "+
-			"as key path (ICE38), and its folders need RemoveFolder rows (ICE64), which msi-builder "+
-			"does not write yet", top)
-	default:
-		v.warnf(compPath+".directory", "the folders of a component in the user profile (%s) need "+
-			"RemoveFolder rows (ICE64), which msi-builder does not write yet", top)
+			"as key path (ICE38)", top)
 	}
 }
 
@@ -1180,6 +1198,64 @@ func (v *validator) componentRemoveRegistry(p string, c *Component, ids map[stri
 	}
 }
 
+// componentRemoveFiles checks the files and folders a component deletes.
+func (v *validator) componentRemoveFiles(cfg *Config, p string, comp *Component, known *refs, ids map[string]bool) {
+	seen := make(map[[3]string]bool)
+
+	for j, entry := range comp.RemoveFiles {
+		entryPath := fmt.Sprintf("%s.removeFiles[%d]", p, j)
+
+		if entry.ID != "" {
+			if !IsIdentifier(entry.ID) || len(entry.ID) > MaxIdentifierLength {
+				v.errorf(entryPath+".id", "%q is not an identifier of at most %d characters", entry.ID, MaxIdentifierLength)
+			}
+
+			if ids[entry.ID] {
+				v.errorf(entryPath+".id", "removeFiles id %s is defined twice", entry.ID)
+			}
+
+			ids[entry.ID] = true
+		}
+
+		v.oneOf(entryPath+".on", entry.On, RemoveOnInstall, RemoveOnUninstall, RemoveOnBoth)
+
+		row := [3]string{cmp.Or(entry.Directory, comp.Directory), strings.ToLower(entry.Name), entry.On}
+		if seen[row] {
+			v.errorf(entryPath, "this component already removes %q there", entry.Name)
+		}
+
+		seen[row] = true
+
+		if entry.Directory != "" && known.dirs[entry.Directory] == nil {
+			v.errorf(entryPath+".directory", "directory %q is not defined", entry.Directory)
+		}
+
+		v.removeFilePattern(entryPath+".name", entry.Name, *cfg.Package.LongFileNames)
+	}
+}
+
+// maxRemoveFilePattern leaves room in the 255 characters of
+// RemoveFile.FileName for a generated "xxxxxxxx.xxx|" short name part.
+const maxRemoveFilePattern = 255 - len("xxxxxxxx.xxx|")
+
+// removeFilePattern checks a RemoveFile pattern. The engine matches * and ?
+// itself; the rest must be a filename.
+func (v *validator) removeFilePattern(field, pattern string, longNames bool) {
+	plain := strings.NewReplacer("*", "x", "?", "x").Replace(pattern)
+
+	switch {
+	case pattern == "":
+	case strings.Contains(pattern, "|"):
+		v.errorf(field, "%q has a short name part; short names are generated, so give only the long name", pattern)
+	case !validLongName(plain):
+		v.errorf(field, "%q is not a filename pattern; a pattern matches files of one folder only", pattern)
+	case !longNames && !isShortName(plain):
+		v.errorf(field, "longFileNames is false, so %q must be a valid 8.3 pattern", pattern)
+	case len(pattern) > maxRemoveFilePattern:
+		v.errorf(field, "%q is longer than %d bytes; with its short name part it must fit RemoveFile.FileName (255)", pattern, maxRemoveFilePattern)
+	}
+}
+
 func (v *validator) registryScalar(fieldPath, typ, val string) { //nolint:cyclop // a flat list of independent checks
 	switch typ {
 	case "dword":
@@ -1251,13 +1327,14 @@ const secondsPerDay = 86400
 
 // recoveryDuration checks a delay or reset period that sc.exe takes as a
 // whole number of units (milliseconds or seconds) in a 32-bit value.
-func (v *validator) recoveryDuration(field string, value Duration, unit time.Duration) {
+func (v *validator) recoveryDuration(field string, value *Duration, unit time.Duration) {
 	switch {
-	case value < 0:
+	case value == nil:
+	case *value < 0:
 		v.errorf(field, "must not be negative")
-	case time.Duration(value)%unit != 0:
+	case time.Duration(*value)%unit != 0:
 		v.errorf(field, "must be a whole number of %s", map[time.Duration]string{time.Millisecond: "milliseconds", time.Second: "seconds"}[unit])
-	case int64(time.Duration(value)/unit) > math.MaxInt32:
+	case int64(time.Duration(*value)/unit) > math.MaxInt32:
 		v.errorf(field, "is too long for sc.exe")
 	}
 }
@@ -1277,7 +1354,7 @@ func (v *validator) recovery(recPath string, rec *ServiceRecovery) {
 				v.errorf(step+".restart", "a delay is only allowed on a restart action")
 			}
 
-			v.recoveryDuration(step+".restart", *recAction.Restart, time.Millisecond)
+			v.recoveryDuration(step+".restart", recAction.Restart, time.Millisecond)
 		}
 	}
 
@@ -1296,7 +1373,7 @@ func (v *validator) recovery(recPath string, rec *ServiceRecovery) {
 			v.errorf(recPath+".resetAfter", "set resetAfter or resetAfterDays, not both")
 		}
 
-		v.recoveryDuration(recPath+".resetAfter", *rec.ResetAfter, time.Second)
+		v.recoveryDuration(recPath+".resetAfter", rec.ResetAfter, time.Second)
 	}
 }
 
@@ -1714,7 +1791,12 @@ func (v *validator) firewall(cfg *Config, known *refs) { //nolint:cyclop // a fl
 			}
 		}
 
-		if v.required(p+".component", rule.Component) && known.components[rule.Component] == nil {
+		switch {
+		case !v.required(p+".component", rule.Component):
+		case isFolderComponentID(cfg, rule.Component):
+			v.errorf(p+".component", "component %s has a folder source, which becomes one component per file; "+
+				"put the program on a component of its own and exclude it from the folder", rule.Component)
+		case known.components[rule.Component] == nil:
 			v.errorf(p+".component", "component %q is not defined", rule.Component)
 		}
 
@@ -1862,6 +1944,17 @@ func (v *validator) wizardOptions(cfg *Config, ids *refs) {
 	}
 }
 
+// finishText checks ui.finishText: it needs a wizard and some text.
+func (v *validator) finishText(cfg *Config) {
+	switch text := cfg.UI.FinishText; {
+	case text == "":
+	case strings.TrimSpace(text) == "":
+		v.errorf("ui.finishText", "the finish page text is blank")
+	case cfg.UI.Wizard == None:
+		v.errorf("ui.finishText", "a finish page text needs a wizard")
+	}
+}
+
 // colorPattern is the #RRGGBB form of the theme colours.
 var colorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
@@ -1871,6 +1964,8 @@ func (v *validator) theme(cfg *Config) {
 	if none && cfg.UI.License != "" {
 		v.errorf("ui.license", "a license page needs a wizard")
 	}
+
+	v.finishText(cfg)
 
 	theme := &cfg.UI.Theme
 	if none && *theme != (Theme{}) {

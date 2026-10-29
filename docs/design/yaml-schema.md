@@ -191,6 +191,7 @@ way:
 | no `upgrade` | the standard policy of section 4.3, as `upgrade: {}`; `upgrade: false` writes no Upgrade rows |
 | `features[].default: on`, `off` or `disabled` | `level: 1`, `2` or `0` (section 4.5) |
 | `features[].firewall` | the rules in `firewall`, following an empty component `<feature>_Firewall` that the feature holds (section 4.11) |
+| a file `source` that ends in `/` (or `\`) | in place of its component, a directory per folder that holds a file and a component per file, as `Config.AddTree` adds them; the builder expands it after a first validation and validates the result again (section 4.6, "Adding a folder") |
 | a service argument with a `condition` | a private property set by an immediate `setProperty` action before InstallServices under that condition (section 4.6) |
 
 Generated IDs are stable: the same file gives the same IDs. Component GUIDs
@@ -228,7 +229,7 @@ them braced and upper case.
 | `compression` | enum | `lzx` | `lzx` (LZX with a 2 MB window), `lzx:15` … `lzx:21` (a window of 2^N bytes), `mszip` or `none` (stored blocks) |
 | `cabinet` | string | `<name>.cab` | Name of the first cabinet; further cabinets insert their number before the extension (`Hello2.cab`, `Hello3.cab`). Embedded, it is a stream name of at most 62 characters (fewer outside `0-9A-Za-z._`). ICE03 wants an identifier (letters, digits, `_` and `.`, not starting with a digit), so the default keeps only those characters of `<name>`, and an explicit name that is no identifier warns. The default is `product.cab` when that is no identifier, cannot be a stream name or `<name>` has non-ASCII characters. Beside the package (`embedCabinets: false`) it is a plain filename and need not be a stream name |
 | `embedCabinets` | bool | `true` | `false` writes the cabinets as files beside the `.msi` (`Media.Cabinet` without `#`), which the package needs at install time. A package cannot exceed 2 GB, so a payload whose cabinets add up to more needs `false`; an embedded build above that fails with an error that says so. The payload is split into cabinets at file boundaries either way: a cabinet holds at most 65535 files and 2 GiB, counted with every block at the largest size its compression allows, so with LZX one cabinet takes about 1.8 GB of files whatever they compress to. A single file is at most 2 GiB − 32 KiB (section 5, CAB-10) |
-| `longFileNames` | bool | `true` | `false` sets Word Count bit 1 (short source paths). Each listed filename must itself be a valid 8.3 name, and a harvested tree is refused; directories and shortcuts get a generated `short\|long` when their name is not a valid 8.3 name. Installed folders still get the long names unless `SHORTFILENAMES=1` is set (FILE-06) |
+| `longFileNames` | bool | `true` | `false` sets Word Count bit 1 (short source paths). Each listed filename must itself be a valid 8.3 name, and a folder source is refused; directories and shortcuts get a generated `short\|long` when their name is not a valid 8.3 name. Installed folders still get the long names unless `SHORTFILENAMES=1` is set (FILE-06) |
 | `summary` | map | | `title` (`Installation Database`), `keywords` (`Installer`), `author` (manufacturer) |
 
 The x64 floor stays at 2.0 although the engine accepted 1.5 (SUM-03): ICE80
@@ -332,8 +333,10 @@ lands in it, so an explicit tree never gains an unused folder.
 
 A per-user install dir lies in the user profile. Windows Installer wants an
 HKCU registry value as the key path of such components (ICE38) and
-RemoveFolder rows for their folders (ICE64); msi-builder does not write either
-yet, and the validator warns about such components.
+RemoveFolder rows for their folders (ICE64). The builder writes the
+RemoveFolder rows (a `RemoveFile` row with no filename, at uninstall, for
+every folder from the component's up to the profile folder); the validator
+warns about the key path.
 
 A component's `directory` is a directory ID, a standard folder, or a folder
 path. A path starts at its first segment when that is a directory ID or a
@@ -443,6 +446,7 @@ components:
         checksum: true
     registry: []
     removeRegistry: []
+    removeFiles: []                  # RemoveFile rows, see "File removal" below
     services: []
     eventLog: []
     environment: []
@@ -501,6 +505,35 @@ components:
     files:
       - source: config.alloy
 ```
+
+**File removal.** `removeFiles` writes `RemoveFile` rows of the component.
+Each entry removes the files of one folder that match a pattern, or the
+folder itself when it is empty:
+
+```yaml
+components:
+  - id: Server
+    files:
+      - source: redis-server.exe
+    removeFiles:
+      - name: '*.log'                 # * and ? match; one folder, no subfolders
+        directory: LOGS               # a directory ID, default the component's
+        on: uninstall                 # install | uninstall (default) | both
+      - directory: LOGS               # no name: the folder itself, once empty
+      - { name: stale.txt, on: install }
+```
+
+The engine removes the files when the component is installed (`install`),
+removed (`uninstall`) or both, and resolves the folder at that time, so the
+rows follow an install dir the user moved, unlike `purge`. The name of a
+packaged file in that folder gets the file's short name; any other pattern
+that is no valid short name gets a generated short name part, which matches
+only itself, so such a wildcard pattern does nothing when the package is
+installed with short names. Two limits come from
+FILE-03: a pattern never matches in subfolders, so the folder row only
+removes a folder whose subfolders are gone, and `uninstall` rows also run
+when a major upgrade removes the old product, so logs or data matched by
+them do not survive an upgrade. Use `purge` for a data folder that must.
 
 **Data removal.** `purge` deletes the component's directory with every
 file and subfolder in it when the product is uninstalled, including what the
@@ -673,6 +706,12 @@ the engine resolves (including `[%ENV]` inside it), is replaced by a
 placeholder SID. `[Property]` references are not expanded by the engine and
 are rejected. A deny ACE gets a warning, because SEC-01 saw a deny for
 `BUILTIN\Users` lock the installer out of its own file on uninstall. A
+DACL with no allow ACE for SYSTEM or Administrators on the object itself
+(`SY`, `BA`, their SIDs, `<SYSTEM>`, `<NT AUTHORITY\SYSTEM>`,
+`<Administrators>` or `<BUILTIN\Administrators>`; localized or
+machine-qualified names are not recognized) gets a
+warning too: the engine runs as SYSTEM, and a folder locked to
+`NetworkService` alone failed its install and the rollback of an upgrade. A
 `LockPermissions` custom table cannot coexist with it (ICE104, error 1941).
 
 **Registry values.**
@@ -778,9 +817,9 @@ it back. With `false` the install succeeds and leaves such a service stopped;
 `recovery` becomes a deferred, no-impersonate `sc.exe failure` action after
 InstallServices, with its exit code ignored (SVC-01). Each step is `restart`,
 `none` or `{restart: <delay>}`; a plain `restart` waits `restartDelay`
-(default 60s). Delays are whole milliseconds and `resetAfter` is whole
-seconds, as `sc.exe` takes them (SVC-03); `resetAfter` and `resetAfterDays`
-exclude each other. A `password` is added
+(default 60s; `0s` restarts at once). Delays are whole milliseconds and
+`resetAfter` is whole seconds, as `sc.exe` takes them (SVC-03); `resetAfter`
+and `resetAfterDays` exclude each other. A `password` is added
 to `MsiHiddenProperties` when it names a property.
 
 **Event log sources** become Registry rows of the component:
@@ -820,8 +859,105 @@ them gets a warning, since `set` replaces the whole variable. A component may
 not list the same variable (names compared without case) twice with the same
 action and scope.
 
-**Top-level `files` shorthand.** Not in version 1. Every file belongs to an
-explicit component, so that its GUID and key path are visible in review.
+**Top-level `files` shorthand.** Not in version 1. Every listed file belongs
+to an explicit component, so that its GUID and key path are visible in
+review. A whole folder is added with a folder source instead.
+
+#### Adding a folder (folder sources)
+
+A file `source` that ends in `/` (or `\`) is a folder of the build machine. Its
+component becomes one component per file below it, so a package does not
+list each file of a build output:
+
+```yaml
+components:
+  - id: App                      # starts the generated ids; default: the folder's name
+    directory: INSTALLDIR        # default: the install dir; also a folder path such as bin
+    condition: INSTALLAPP        # copied to every generated component
+    bitness: auto                # copied, as are permanent, neverOverwrite, preserve,
+                                 # sharedDllRefCount and transitive
+    files:
+      - source: ../dist/         # relative to the YAML file, or absolute; the / makes it a folder
+        include: ['**']          # default: every file
+        exclude: ['*.pdb', logs/, 'docs/**/*.tmp']
+        allowUnversionedExecutable: false   # copied to every file (FILE-01), as are vital,
+                                            # checksum, readOnly, hidden, system, permissions
+```
+
+The folder must be the component's only file. Settings that name one file
+or one component cannot be copied to many: `guid` (other than `auto`),
+`keyPath`, `registry`, `removeRegistry`, `services`, `eventLog`,
+`environment`, `purge`, `createFolder` and `folderPermissions` on the
+component, and `name`, `id`, `version`, `language` and `shortcuts` on the
+file, are errors. Put them on a component of their own and exclude its file
+from the folder. `include` and `exclude` on a file that is not a folder are
+errors too, and so is a `firewall` rule whose `component` is a folder
+component. The generated components take the component's place in
+`components` and in the features that hold it.
+
+Add a separate output folder, not the YAML file's own: a package built next
+to the YAML file would be added by the next build. The builder warns when
+the folder is the YAML file's folder or one above it.
+
+- **Layout.** Each folder below `source` that holds a file, directly or
+  further down, becomes a directory below `directory`; a folder that
+  already exists there under the same name (case ignored), from
+  `directories` or a folder path, is reused. Folders without a file are
+  left out; give a component `createFolder: true` for an empty one. The
+  `source` folder itself is not installed, only its content.
+- **One component per file.** Every file is the key path of its own
+  component with an `auto` GUID. That GUID comes from the upgrade code,
+  the bitness and the install path in lower case (see GUIDs above), not
+  from the source path or the generated IDs, so a file that stays at its
+  install path keeps its component in every later build, also when the
+  source folder moves or the case of the name changes. A file that is gone
+  from a later version is expected to leave with the old product on the
+  major upgrade, with an early as well as a late `removeOld`, while a file
+  that is new gets a new component; FILE-08 confirmed this on a Windows
+  CI runner, including a name whose case changed.
+- **IDs.** Component, file and directory IDs are the component's ID (cut to
+  50 characters), `_`, a kind letter and 20 hex digits, derived from the
+  directory, `source` as written and the path below it, exactly as
+  `Config.AddTree` derives them. They are stable between builds of the same
+  input; an absolute `source` puts the build machine's path into them, and
+  with it into the automatic ProductCode, so prefer a relative one. A major
+  upgrade presumably does not depend on them, since
+  components are matched by GUID (inferred, not tested). Diagnostics name a
+  generated component as `components[0]{bin/app.exe}`. A generated file's
+  `source` (also in `builder.Result.Files`) is its path below the folder
+  when the folder is read from disk, and its path in `Config.FS`, with the
+  folder in front, when that is set.
+- **Patterns.** `include` and `exclude` take one pattern or a list, in the
+  syntax of [doublestar](https://github.com/bmatcuk/doublestar): `*`, `?`,
+  `[a-z]` and `{a,b}` within one name, and a `**` folder for any number of
+  folders. A pattern is matched against the slash path below `source`,
+  ignoring case, as Windows does. A pattern without a `/` matches a name in
+  any folder (`*.pdb`), one with a `/` is anchored at `source`
+  (`lib/**/*.dll`), and a trailing `/` matches folders only (`logs/`). A
+  pattern that matches a folder covers everything in it. Without `include`
+  every file is added; `exclude` wins over `include`. `\`, a leading `/`,
+  and `.` or `..` folders are errors.
+- **Errors.** A symbolic link or another special file, a name Windows does
+  not allow (`a|b.txt`, `nul.txt`, a trailing dot), a missing folder and a
+  folder without any file are errors, unless the patterns leave them out.
+  So is a file that another component installs to the same path: exclude it
+  from the folder to give it a component of its own, for example one with
+  `permissions`, `preserve` or a shortcut. `longFileNames: false` cannot be
+  combined with a folder source, since its names need not be 8.3 names.
+- **32-bit folders.** In an x64 package, a folder source in a 32-bit folder
+  such as `ProgramFilesFolder` gets one warning (ICE80) unless its
+  component sets `bitness: 32`, which makes every generated component
+  32-bit.
+- **When.** `msi-builder validate` checks the component but does not read
+  the folder; `msi-builder build` and `builder.Build` expand it first and
+  then validate the whole package. In Go, `Config.ExpandFolders` expands
+  folder sources on its own; a relative `source` is read from the file's
+  `FS`, else `Config.FS`, when one is set.
+
+These were considered and not adopted; section 16 of the specification has
+the reasons: a separate top-level `harvest` list, a component per folder,
+following symbolic links, adding empty folders, leaving out dot files by
+default, and matching patterns with case.
 
 ### 4.7 `properties`
 
@@ -1210,6 +1346,37 @@ cannot start a document or a library.
 When `launch` is set, the custom action name and the property
 `LaunchOnFinish` are reserved.
 
+#### Finish page text
+
+```yaml
+ui:
+  wizard: minimal
+  finishText: Open a new command prompt to use [ProductName].
+```
+
+`finishText` adds a paragraph (`FinishText`) to the finish page (`ExitDlg`)
+below its standard text, for advice the user needs right after the
+installation, such as opening a new shell to pick up a changed `PATH`. It is
+formatted, so `[Property]` references resolve and any other `[...]` or
+`{...}` is formatted syntax too: Microsoft documents `[\[]` and `[\]]` for
+literal brackets (not tested). The control has NoPrefix, so `&` is shown
+as it is. The standard text keeps the first 40 dialog units below the title
+and the paragraph gets the rest of the page above the bottom strip, 220×89
+units (about nine lines of the default font, not observed). The control is
+hidden by `Installed OR ACTION = "ADMIN"`, so that a finish page after a
+repair does not repeat advice about the installation. UI-07 observed the
+resolved text after a full UI install and no paragraph after a repair
+through the maintenance menu. That a major upgrade shows it, and that
+Change, Remove, a patch, a minor upgrade or an administrative install hide
+it, follows from the documented `Installed` and `ACTION` properties and was
+not tested. Whether `Installed` is set when a suspended first installation
+resumes, which would hide the paragraph, is a guess and was not tested
+either. The pages where the setup was cancelled or failed keep their text,
+and a silent install shows no finish page. A Text control wraps long text
+(not observed for this one); leading and trailing whitespace is dropped, a
+blank text is an error, and how a line break inside the text renders was not
+tested. A NoPrefix text showing `&` literally is from UI-01.
+
 #### Theme
 
 ```yaml
@@ -1243,7 +1410,8 @@ the size above is a warning, and a side above 8192 pixels or more than
 4096×4096 pixels in all is an error.
 `colors` recolours the built-in pictures and the error dialog's icon (drawn
 in `accent`); a colour that is not given keeps its default. A license,
-theme, install folder page or launch checkbox without a wizard is an error.
+theme, install folder page, finish page text or launch checkbox without a
+wizard is an error.
 
 ### 4.13 `tables`
 
@@ -1289,10 +1457,8 @@ the generated tables, and the cabinet round trip.
 
 ## 6. Not in version 1
 
-Multiple languages in one package and a top-level file harvester (Go
-callers have `config.Config.AddTree`, see [Go API](../go-api.md)). A future
-`schema: msi-builder/v2` can add them without changing the meaning of a v1
-file.
+Multiple languages in one package. A future `schema: msi-builder/v2` can add
+it without changing the meaning of a v1 file.
 
 Advertised installs, advertised shortcuts, script custom actions, patches,
 transforms, merge modules and bundles are out of scope for good
