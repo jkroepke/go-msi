@@ -308,6 +308,7 @@ These are format and integrity requirements for a conforming, lossless serialize
 - VT_LPSTR (0x001E) is a u32 byte count including the NUL, then the bytes. VT_FILETIME (0x0040) is low and high u32 of 100 ns since 1601 UTC.
 - PID 1 (VT_I2) MUST be present and is read as unsigned (0xFDE9 = 65001). Readers treat VT_EMPTY and VT_NULL as absent.
 - Readers check every value's VT against the PID table below and its byte count against the section size before copying. Crafted packages with a VT_LPSTR count of 0xFFFFFFFF, or a string where a FILETIME belongs, crashed one reader (reported).
+- msi-builder's reader rejects a section that names a PID twice or whose values overlap each other or the entry list, before it decodes any value: each entry is decoded on its own, so 200 entries aliasing one 128 KiB string held 52 MB (deliberate strictness, no writer emits such a list).
 - FILETIME is UTC. A text form such as `.idt`'s `yyyy/mm/dd hh:mm:ss` MUST state its zone or use UTC; converting through local time shifts the value by an hour across daylight saving (reported).
 - Writers MUST use an ANSI code page (874, 932, 936, 949, 950, 1250–1258): the database code page when it is one, else 1252. The reason 65001 is out: the engine reads the summary code page as a 16-bit signed value and cannot open a database whose value exceeds 32767 (reported).
 - Toolchains fill in what the author left out: a random package code, Created and Last Saved set to the build time, Creating Application set to the producer's name, and the product language appended to a Template that has none (reported).
@@ -1365,7 +1366,7 @@ An older model hashes P first; a public 2026 report on a Microsoft-signed packag
 
 Timestamps are RFC 3161 only: `messageImprint` = H(encryptedDigest), and the token goes in unauthenticated attribute 1.3.6.1.4.1.311.3.3.1. Legacy countersignatures (1.2.840.113549.1.9.6) may be read, never written. A timestamp touches only the excluded stream, so it can be added later.
 
-To sign: finalize all streams, drop old signatures, add P (extended mode), compute D, build the PKCS#7, add `\u0005DigitalSignature`. A split mode SHOULD export D for HSM or cloud signers; an external PKCS#7 must carry D and the SIP GUID. Verification recomputes P and D, checks messageDigest and the RSA signature, and leaves trust to Windows.
+To sign: finalize all streams, drop old signatures, add P (extended mode), compute D, build the PKCS#7, add `\u0005DigitalSignature`. A split mode SHOULD export D for HSM or cloud signers; an external PKCS#7 must carry D and the SIP GUID. Verification recomputes P and D, checks messageDigest and the signature, and leaves trust to Windows. The SignerInfo's digestEncryptionAlgorithm must fit the signer's key and digest: `rsaEncryption` or the `sha*WithRSAEncryption` of the digest for RSA, `id-ecPublicKey` (optionally naming its curve) or the `ecdsa-with-SHA*` of the digest for ECDSA, with absent or NULL parameters. Any other identifier fails, although the signature scheme is chosen from the key: accepting an unknown identifier would report a malformed signature as valid.
 
 ### Validation
 

@@ -179,6 +179,7 @@ func TestFolderErrors(t *testing.T) {
 		{"second file", "components: [{ files: [{ source: dist/conf/ }, { source: dist/app.exe }] }]", "components[0].files", "only file"},
 		{"pinned guid", "components: [{ guid: 3f2504e0-4f89-41d3-9a0c-0305e82c3302, files: [{ source: dist/conf/ }] }]", "components[0].guid", "not allowed"},
 		{"registry", "components: [{ registry: [{ root: HKLM, key: Software/X }], files: [{ source: dist/conf/ }] }]", "components[0].registry", "not allowed"},
+		{"remove files", "components: [{ removeFiles: [{ name: '*.log', on: uninstall }], files: [{ source: dist/conf/ }] }]", "components[0].removeFiles", "not allowed"},
 		{"file name", "components: [{ files: [{ source: dist/conf/, name: x }] }]", "components[0].files[0].name", "not allowed"},
 		{"version", "components: [{ files: [{ source: dist/conf/, version: 1.0.0 }] }]", "components[0].files[0].version", "not allowed"},
 		{"shortcut", "components: [{ files: [{ source: dist/conf/, shortcuts: [{ name: X }] }] }]", "components[0].files[0].shortcuts", "not allowed"},

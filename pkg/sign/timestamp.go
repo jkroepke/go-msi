@@ -134,9 +134,11 @@ func postTimestampRequest(ctx context.Context, opts *Options, req []byte) ([]byt
 		return nil, fmt.Errorf("sign: timestamp: %s answered %s", opts.TimestampURL, resp.Status)
 	}
 
+	// A failure here is the connection's, such as a timeout while the
+	// authority stalls after its headers, not a bad reply.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
 	if err != nil {
-		return nil, fmt.Errorf("sign: timestamp: %w", err)
+		return nil, fmt.Errorf("%w: reading the reply: %w", ErrTimestampUnavailable, err)
 	}
 
 	if len(body) > maxResponse {
