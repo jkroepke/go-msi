@@ -326,6 +326,9 @@ type Shortcut struct { //nolint:govet // field order is the YAML key order
 	IconIndex int    `yaml:"iconIndex"`
 	// Show is normal (default), maximized or minimized.
 	Show string `yaml:"show"`
+	// Properties are shell properties of the .lnk, by canonical name
+	// (System.AppUserModel.ID); the values are formatted text.
+	Properties map[string]string `yaml:"properties"`
 }
 
 // RegistryValue is a typed registry value or key.
