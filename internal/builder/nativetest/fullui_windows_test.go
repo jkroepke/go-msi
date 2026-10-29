@@ -116,9 +116,9 @@ ui:
 `
 
 // fullUIDriver answers the wizard through UIAutomation: the -Choose radio
-// button once, Next, Install and Finish, "Close the applications" and OK on MsiRMFilesInUse, OK on ErrorDlg
+// button once, the -Advance buttons (Next, Install and Finish), "Close the applications" and OK on MsiRMFilesInUse, OK on ErrorDlg
 // and on any unexpected error box. It writes every window it sees to -Out.
-const fullUIDriver = `param([int]$MsiPid, [string]$Out, [string]$ErrorText, [string]$Choose = '', [int]$Seconds = 110)
+const fullUIDriver = `param([int]$MsiPid, [string]$Out, [string]$ErrorText, [string]$Choose = '', [string]$Advance = '^(Next|Install|Finish)$', [int]$Seconds = 110)
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type -Namespace MsiBuilder -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);'
 $AE = [System.Windows.Automation.AutomationElement]
@@ -164,8 +164,8 @@ while ((Get-Date) -lt $deadline -and (Get-Process -Id $MsiPid -ErrorAction Silen
         $c = Press $els $Choose
         if ($c) { $chosen = $true; Note "CHOSE: $c"; Start-Sleep -Milliseconds 300 }
       }
-      $n = Press $els '^(Next|Install|Finish)$'
-      if ($n) { Note "PRESSED: $n"; Start-Sleep 1 }
+      $n = Press $els $Advance
+      if ($n) { Note ('PRESSED: ' + ($n -replace '&', '')); Start-Sleep 1 }
     }
   }
 }
@@ -267,7 +267,14 @@ func waitForMsiexec(t *testing.T) {
 func buildFullUI(t *testing.T, dir, version, fileVersion string) (string, *builder.Result) {
 	t.Helper()
 
-	if err := os.WriteFile(filepath.Join(dir, "msi.yaml"), []byte(fullUIConfig), 0o600); err != nil {
+	return buildFullUIFrom(t, dir, fullUIConfig, version, fileVersion)
+}
+
+// buildFullUIFrom is buildFullUI with another configuration.
+func buildFullUIFrom(t *testing.T, dir, doc, version, fileVersion string) (string, *builder.Result) {
+	t.Helper()
+
+	if err := os.WriteFile(filepath.Join(dir, "msi.yaml"), []byte(doc), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -356,12 +363,22 @@ func fullUI(t *testing.T, dir string, args ...string) (int, string) {
 func fullUIChoosing(t *testing.T, dir, choose string, args ...string) (int, string) {
 	t.Helper()
 
+	return fullUIDriven(t, dir, choose, "", args...)
+}
+
+// fullUIDriven is fullUIChoosing with the driver pressing the buttons whose
+// names match advance instead of Next, Install and Finish.
+func fullUIDriven(t *testing.T, dir, choose, advance string, args ...string) (int, string) {
+	t.Helper()
+
 	driver := filepath.Join(dir, "driver.ps1")
 	if err := os.WriteFile(driver, []byte(fullUIDriver), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
+	// The driver appends, so a second run in the same folder starts empty.
 	seen := filepath.Join(dir, "driver.txt")
+	_ = os.Remove(seen)
 
 	var drv *exec.Cmd
 
@@ -376,6 +393,10 @@ func fullUIChoosing(t *testing.T, dir, choose string, args ...string) (int, stri
 		}
 		if choose != "" {
 			args = append(args, "-Choose", choose)
+		}
+
+		if advance != "" {
+			args = append(args, "-Advance", advance)
 		}
 
 		drv = exec.CommandContext(ctx, "powershell", args...)
@@ -563,6 +584,72 @@ func TestFullUIChoice(t *testing.T) { //nolint:paralleltest // msiexec runs one 
 	}
 
 	t.Logf("UI-05 UI:\n%s\nlog excerpt:\n%s", seen, excerpt(text, "LOG_LEVEL", "Error 28"))
+}
+
+// TestFullUIFinishText installs with the full UI, where the finish page
+// shows ui.finishText, then repairs through the maintenance menu, where the
+// finish page hides it.
+func TestFullUIFinishText(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
+	requireFullUI(t)
+	waitForMsiexec(t)
+
+	const finishText = "Open a new command prompt to use [ProductName] & its tools."
+
+	// UI Automation names drop "&" even with NoPrefix, which the page shows
+	// (UI-01), so the checks look for the part before it.
+	want := "Open a new command prompt to use " + fullUIName
+
+	doc := strings.Replace(fullUIConfig, "  wizard: featureTree\n", "  wizard: featureTree\n  finishText: "+finishText+"\n", 1)
+	if !strings.Contains(doc, "finishText:") {
+		t.Fatal("fullUIConfig has no wizard: featureTree line to add finishText to")
+	}
+
+	dir := t.TempDir()
+	pkg, _ := buildFullUIFrom(t, dir, doc, "1.0.0", "auto")
+
+	cleanupFullUI(t, pkg)
+
+	code, install := fullUI(t, dir, "/i", pkg)
+	if code != 0 {
+		t.Fatalf("full UI install: exit %d, want 0\nUI:\n%s", code, install)
+	}
+
+	if !finishShows(install, want) {
+		t.Errorf("the finish page of the installation does not show %q", want)
+	}
+
+	code, repair := fullUIDriven(t, dir, "", "^(Next|Repair|Finish)$", "/i", pkg)
+	if code != 0 {
+		t.Fatalf("full UI repair: exit %d, want 0\nUI:\n%s", code, repair)
+	}
+
+	if !strings.Contains(repair, "PRESSED: Repair") || !strings.Contains(repair, "Completed the "+fullUIName) {
+		t.Error("the driver did not repair through the maintenance menu")
+	}
+
+	if finishShows(repair, want) {
+		t.Errorf("the finish page of the repair shows %q", want)
+	}
+
+	if strings.Contains(install+repair, "UNEXPECTED:") {
+		t.Error("the engine showed an unexpected error box")
+	}
+
+	t.Logf("UI-07 install:\n%s\nrepair:\n%s", install, repair)
+}
+
+// finishShows reports whether any finish page the driver saw shows s. The
+// driver logs the page once, then presses Finish. A control hidden by a
+// ControlCondition is not in the control view the driver walks (UI-07), so
+// the WINDOW line lists only the shown texts.
+func finishShows(seen, paragraph string) bool {
+	for line := range strings.SplitSeq(seen, "\n") {
+		if strings.HasPrefix(line, "WINDOW: ") && strings.Contains(line, "Completed the ") && strings.Contains(line, paragraph) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // TestICEFullUI runs the ICE suite on the full-UI package, including ICE34

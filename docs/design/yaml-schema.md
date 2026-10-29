@@ -1329,6 +1329,37 @@ cannot start a document or a library.
 When `launch` is set, the custom action name and the property
 `LaunchOnFinish` are reserved.
 
+#### Finish page text
+
+```yaml
+ui:
+  wizard: minimal
+  finishText: Open a new command prompt to use [ProductName].
+```
+
+`finishText` adds a paragraph (`FinishText`) to the finish page (`ExitDlg`)
+below its standard text, for advice the user needs right after the
+installation, such as opening a new shell to pick up a changed `PATH`. It is
+formatted, so `[Property]` references resolve and any other `[...]` or
+`{...}` is formatted syntax too: Microsoft documents `[\[]` and `[\]]` for
+literal brackets (not tested). The control has NoPrefix, so `&` is shown
+as it is. The standard text keeps the first 40 dialog units below the title
+and the paragraph gets the rest of the page above the bottom strip, 220×89
+units (about nine lines of the default font, not observed). The control is
+hidden by `Installed OR ACTION = "ADMIN"`, so that a finish page after a
+repair does not repeat advice about the installation. UI-07 observed the
+resolved text after a full UI install and no paragraph after a repair
+through the maintenance menu. That a major upgrade shows it, and that
+Change, Remove, a patch, a minor upgrade or an administrative install hide
+it, follows from the documented `Installed` and `ACTION` properties and was
+not tested. Whether `Installed` is set when a suspended first installation
+resumes, which would hide the paragraph, is a guess and was not tested
+either. The pages where the setup was cancelled or failed keep their text,
+and a silent install shows no finish page. A Text control wraps long text
+(not observed for this one); leading and trailing whitespace is dropped, a
+blank text is an error, and how a line break inside the text renders was not
+tested. A NoPrefix text showing `&` literally is from UI-01.
+
 #### Theme
 
 ```yaml
@@ -1362,7 +1393,8 @@ the size above is a warning, and a side above 8192 pixels or more than
 4096×4096 pixels in all is an error.
 `colors` recolours the built-in pictures and the error dialog's icon (drawn
 in `accent`); a colour that is not given keeps its default. A license,
-theme, install folder page or launch checkbox without a wizard is an error.
+theme, install folder page, finish page text or launch checkbox without a
+wizard is an error.
 
 ### 4.13 `tables`
 

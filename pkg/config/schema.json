@@ -851,6 +851,10 @@
           "type": "boolean",
           "description": "Adds a page after the welcome and license pages that shows the install folder (installDir) and lets the user change it."
         },
+        "finishText": {
+          "type": "string",
+          "description": "Formatted paragraph shown on the finish page below its standard text; hidden by the condition Installed OR ACTION = \"ADMIN\"."
+        },
         "launch": {
           "type": "object",
           "description": "A check box on the finish page that starts an installed program when the user clicks Finish.",

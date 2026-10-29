@@ -1944,6 +1944,17 @@ func (v *validator) wizardOptions(cfg *Config, ids *refs) {
 	}
 }
 
+// finishText checks ui.finishText: it needs a wizard and some text.
+func (v *validator) finishText(cfg *Config) {
+	switch text := cfg.UI.FinishText; {
+	case text == "":
+	case strings.TrimSpace(text) == "":
+		v.errorf("ui.finishText", "the finish page text is blank")
+	case cfg.UI.Wizard == None:
+		v.errorf("ui.finishText", "a finish page text needs a wizard")
+	}
+}
+
 // colorPattern is the #RRGGBB form of the theme colours.
 var colorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
@@ -1953,6 +1964,8 @@ func (v *validator) theme(cfg *Config) {
 	if none && cfg.UI.License != "" {
 		v.errorf("ui.license", "a license page needs a wizard")
 	}
+
+	v.finishText(cfg)
 
 	theme := &cfg.UI.Theme
 	if none && *theme != (Theme{}) {
