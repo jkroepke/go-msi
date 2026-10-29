@@ -20,7 +20,13 @@ versioning after 1.0.
 
 - [`pkg/config`](pkg/config): the YAML schema (`docs/design/yaml-schema.md`,
   `pkg/config/schema.json`), parsing and validation. The builder consumes a
-  validated `*config.Config` and never reads YAML.
+  validated `*config.Config` and never reads YAML. Folder sources (a file
+  `source` ending in `/`) are the one part that lists folders:
+  `Config.ExpandFolders` (`folder.go`) replaces their component with one per
+  file through the `AddTree` code (`tree.go`, patterns in `glob.go` via
+  doublestar), and `builder.Build` calls it between two validation passes.
+  Replaced components stay in `Config.folders`, so the second pass still
+  reports problems at their YAML path.
 - [`pkg/builder`](pkg/builder): the public `Build`, `Options`, `Result` and
   `File`. It converts to and from `internal/builder` and adds nothing else;
   `Options` and `File` mirror the internal structs field by field so that a
@@ -167,6 +173,13 @@ go test ./... -shuffle=on -race
   installs may share the desktop). It needs an elevated process in an
   interactive session: in session 0 msiexec silently drops to no UI. Control
   event names are case-sensitive (`RMShutdownAndRestart`).
+  The GitHub `windows-latest` runner qualifies, but `go test ./...` there has
+  the default 10-minute timeout and a test skips when less than
+  `fullUIBudget` is left, so a full-UI test runs in CI only when the shuffle
+  starts it early. UI Automation names drop `&`, even on a NoPrefix Text
+  control; a Text control hidden by its ControlCondition from the start was
+  absent from the control view the driver walks (UI-07). Each driver run starts with an
+  empty log.
 
 ## Implementation rules
 
