@@ -60,6 +60,12 @@ func TestDuplicateShortNamesFail(t *testing.T) {
     files:
       - { source: two.txt, id: Two, name: PROG~1.TXT }
 `, "components[1].files[0].name"},
+		"file named by its source": {`components:
+  - directory: APPDIR
+    files:
+      - { source: one.txt, id: One, name: "ONE.TXT|One Long.txt" }
+      - { source: one.txt, id: Two }
+`, "components[0].files[1].source"},
 		"directory and file": {`        children:
           - id: DATADIR
             name: "DATA~1|Data Files"
@@ -149,8 +155,9 @@ func TestGeneratedShortNameAvoidsLiteralName(t *testing.T) {
 	}
 }
 
-// TestShortcutKeepsItsOwnShortNames checks that a shortcut does not compete
-// with a folder for a short name: it is written as name.lnk.
+// TestShortcutKeepsItsOwnShortNames checks that the short-name check leaves
+// shortcuts out: a shortcut is written as name.lnk, so its literal short
+// name may equal a folder's.
 func TestShortcutKeepsItsOwnShortNames(t *testing.T) {
 	t.Parallel()
 

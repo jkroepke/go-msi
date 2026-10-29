@@ -147,7 +147,7 @@ func (b *build) reserveShortNames() error {
 	owners := make(map[string]map[string]string)
 
 	for _, dir := range b.dirOrder {
-		if !dir.standard && dir.id != targetDir {
+		if !dir.standard {
 			b.reserveShortName(owners, dir.parent, dir.long, dir.namePath)
 		}
 	}
@@ -157,8 +157,13 @@ func (b *build) reserveShortNames() error {
 		path := info.cfg.Path(info.index)
 
 		for j, cfgFile := range comp.Files {
+			field := "name"
+			if cfgFile.Name == "" {
+				field = "source"
+			}
+
 			file := b.fileByKey[config.FileKey(cfgFile)]
-			b.reserveShortName(owners, info.dir.id, configuredFileName(file), fmt.Sprintf("%s.files[%d].name", path, j))
+			b.reserveShortName(owners, info.dir.id, configuredFileName(file), fmt.Sprintf("%s.files[%d].%s", path, j, field))
 		}
 	}
 
