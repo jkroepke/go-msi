@@ -1509,7 +1509,7 @@
               },
               "fileTypes": {
                 "type": "array",
-                "description": "File types this file opens: Registry rows under HKEY_CLASSES_ROOT for the ProgID, its verbs and the extensions that point at it.",
+                "description": "File types this file opens: the ProgID, its verbs and the extensions it owns go into the ProgId, Extension and Verb tables, which the installer registers; the file must be its component's key path.",
                 "items": {
                   "type": "object",
                   "properties": {

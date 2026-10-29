@@ -14,8 +14,8 @@ import (
 )
 
 // TestBinaries checks every committed DLL against SHA256SUMS and inspects
-// its PE headers: the machine of its platform, the exported entry points and
-// no import beyond kernel32, advapi32 and msi (shell32 is loaded at run time).
+// its PE headers: the machine of its platform, the exported entry point and
+// no import beyond kernel32, advapi32 and msi.
 func TestBinaries(t *testing.T) {
 	t.Parallel()
 
@@ -79,10 +79,8 @@ func TestBinaries(t *testing.T) {
 				t.Errorf("imports %v, want %v", libs, want)
 			}
 
-			for _, entry := range []string{cadll.Entry, cadll.AssocChangedEntry} {
-				if !bytes.Contains(data, []byte(entry+"\x00")) {
-					t.Errorf("export %s not found", entry)
-				}
+			if !bytes.Contains(data, []byte(cadll.Entry+"\x00")) {
+				t.Errorf("export %s not found", cadll.Entry)
 			}
 
 			// The log template and the immediate property are UTF-16 arrays

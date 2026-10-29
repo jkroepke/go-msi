@@ -339,6 +339,30 @@ var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 		"Wait|I2|||||0|1||Boolean for whether to wait for the service to fully start",
 		"Component_|s72||Identifier|Component|1||||Required foreign key into the Component Table that controls the startup of the service",
 	},
+	// MIME_ and Class_ name no key table: msi-builder writes no MIME or
+	// Class table, so they stay Null.
+	"Extension": {
+		"Extension|s255|K|Text||||||The extension associated with the table row.",
+		"Component_|s72|K|Identifier|Component|1||||Required foreign key into the Component Table.",
+		"ProgId_|S255||Text|ProgId|1||||Optional ProgId associated with this extension.",
+		"MIME_|S64||Text||||||Optional Context identifier, typically \"type/format\" associated with the extension",
+		"Feature_|s38||Identifier|Feature|1||||Required foreign key into the Feature Table.",
+	},
+	"ProgId": {
+		"ProgId|s255|K|Text||||||The Program Identifier. Primary key.",
+		"ProgId_Parent|S255||Text|ProgId|1||||The parent ProgId; set for a version independent ProgId.",
+		"Class_|S38||Guid||||||The CLSID of an OLE factory corresponding to the ProgId.",
+		"Description|L255||Text||||||Localized description for the Program identifier.",
+		"Icon_|S72||Identifier|Icon|1||||Optional foreign key into the Icon Table, written under the DefaultIcon key.",
+		"IconIndex|I2|||||-32767|32767||Optional icon index.",
+	},
+	"Verb": {
+		"Extension_|s255|K|Text|Extension|1||||The extension associated with the table row.",
+		"Verb|s32|K|Text||||||The verb for the command.",
+		"Sequence|I2|||||0|32767||Order within the verbs for a particular extension. Also used simply to specify the default verb.",
+		"Command|L255||Formatted||||||The command text.",
+		"Argument|S255||Formatted||||||Optional value for the command arguments.",
+	},
 	"ServiceInstall": {
 		"ServiceInstall|s72|K|Identifier||||||Primary key, non-localized token.",
 		"Name|s255||Formatted||||||Internal Name of the Service",

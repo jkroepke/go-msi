@@ -769,24 +769,29 @@ files:
             arguments: /p "%1"                   # after the quoted file; default "%1", '' for none
 ```
 
-The builder writes them as `Registry` rows of the file's component, so
-they follow its features and key path: `<progId>` = description,
-`<progId>\DefaultIcon`, `<progId>\shell\<verb>` = text,
-`<progId>\shell\<verb>\command` = `"[#file]" <arguments>`, `.<extension>` =
-progId and its `Content Type`. These are the rows WiX writes for
-non-advertised `ProgId`, `Extension` and `Verb` elements: the five real WiX
-packages with file associations that were checked have no `ProgId`,
-`Extension` or `Verb` table at all, and the msi-builder ports with the same
-rows left the same registry behind (specification section 10.2). Microsoft
-documents those tables for normal installs too (`RegisterExtensionInfo`
-registers the extensions of features set to be installed; documented, and
-REG-05 observed it); msi-builder uses `Registry` rows like those packages
-do. msi-builder also writes an empty `<progId>` value in
+The builder writes each extension a file type owns into Windows
+Installer's own tables: a `ProgId` row (the description), an `Extension`
+row per extension in the file's component and the first feature that
+installs it, and a `Verb` row per verb and extension (`text` is the menu
+text, `arguments` the arguments; the verbs are numbered in their order, so
+the first one is the default). The engine's RegisterExtensionInfo and
+RegisterProgIdInfo actions write `.<extension>` = progId, `<progId>` =
+description and the verbs on install, the Unregister actions remove them,
+and the engine tells the shell that associations changed (REG-05: one
+notification per install and per uninstall, seen by a listener window;
+Explorer's view not checked). The engine runs the verbs with the key path
+of the extension's component, so the file must be its component's key path
+(`keyPath`, or the first file); anything else is an error. msi-builder adds
+`Registry` rows in the file's component for what the tables do not hold:
+`<progId>\DefaultIcon` = `"[#file]",<iconIndex>` (the table's icon column
+needs the icon in the `Icon` table), the extension's `Content Type` (the
+table's MIME column needs the `MIME` table, which also writes the MIME
+database, see specification chapter 16) and an empty `<progId>` value in
 `.<extension>\OpenWithProgids`, which Microsoft asks of every program that
 takes over an extension and which lists the program under Open with
-(specification section 10.2, REG-04). The root is HKCR, which the engine
-writes to `HKLM\Software\Classes` per machine; a per-user package names
-`HKCU\Software\Classes` itself, because HKCR fails ICE105.
+(specification section 10.2, REG-04). Those rows use HKCR, which the
+engine writes to `HKLM\Software\Classes` per machine; a per-user package
+names `HKCU\Software\Classes` itself, because HKCR fails ICE105.
 
 `arguments` is formatted text, so `[INSTALLDIR]` works there;
 `description`, `text` and `contentType` are written literally. A ProgID may
@@ -794,37 +799,26 @@ be registered once per package, must not start with a dot and must not be
 `*`, `+` or `-`. A ProgID that is not COM-style (at most 39 letters, digits
 and periods, not starting with a digit) gets a warning.
 
-The default value of `.<extension>` goes into a permanent component of its
-own, one per extension, beside the file's component and in its features, so
-uninstalling leaves it in place, as Microsoft asks: another program may have
-taken the extension over since, and Windows ignores a default that names a
-ProgID nobody registers any more (documented; REG-05 checks what stays, not
-what Explorer then shows). Its `Content Type` stays with it, which is
-msi-builder's choice rather than Microsoft's: the value describes the
-extension, not the program, and keeps the content type mapped to the
-extension after uninstalling. The ProgID itself, its verbs and the
-`OpenWithProgids` entries are removed. A repair presumably writes the
-default again and so takes the extension back from a program that took it
-over (not tested). Registering an extension that Windows or other programs
-own (`txt`, `xml`, `pdf`, …) gets a warning, because the package takes it
-over from them. For such an extension, `openWithOnly: true` writes only the
-`OpenWithProgids` entry: the program shows up under Open with and the
-extension keeps its default program and content type (`contentType` is then
-an error). Uninstalling removes only that entry and keeps other programs'
-entries (REG-04). Any number of ProgIDs may list an extension with
-`openWithOnly`; the default may be registered once. Explorer's "Open with"
-choice of the user (`UserChoice`) still wins over the package's default.
-
-A package with file types also carries the custom action DLL of `run`
-actions (section 4.9) and calls its `BuilderAssocChanged` entry right after
-`InstallFinalize` (after `RemoveExistingProducts` when `removeOld` is
-`afterInstallFinalize`), on install, repair and removal: it calls
-`SHChangeNotify(SHCNE_ASSOCCHANGED)`, which Microsoft asks for after a
-change to file associations, because the shell may otherwise not pick the
-change up before a restart (documented, unverified). A failure there is
-logged and ignored. On SERVER2025 a window listening for that
-notification received it on install and on uninstall; plain registry
-entries send none (REG-05).
+Uninstalling removes what the package registered, the `.<extension>`
+default included. Microsoft's File Types page asks installers to leave that
+default in place, because another program may have taken the extension over
+since; the engine's own actions remove it (REG-05), and REG-06 records what
+they do with a default or a value another program wrote. Registering an
+extension that Windows or other programs own (`txt`, `xml`, `pdf`, …) gets
+a warning, because the package takes it over from them. For such an
+extension, `openWithOnly: true` writes only the `OpenWithProgids` entry:
+the program shows up under Open with and the extension keeps its default
+program and content type (`contentType` is then an error). Uninstalling
+removes only that entry and keeps other programs' entries (REG-04). Any
+number of ProgIDs may list an extension with `openWithOnly`; the default
+may be registered once. A file type whose extensions are all `openWithOnly`
+owns no extension, and the engine registers a ProgID without a COM class
+only through an `Extension` row, so msi-builder writes its ProgID,
+description and verbs as `Registry` rows (`<progId>\shell\<verb>\command` =
+`"[#file]" <arguments>`); plain `Registry` rows bring no shell notification
+(REG-05).
+Explorer's "Open with" choice of the user (`UserChoice`) still wins over
+the package's default.
 
 **Component shortcuts.** A component can list `shortcuts` of its own, for
 shortcuts that do not point at a file listed with them. Each names exactly
@@ -1390,8 +1384,7 @@ through the `BuilderRun` property to immediate ones. `hideTarget` hides the
 command in both places. `return` is required (`check` or `ignore`;
 `asyncWait` is allowed, `asyncNoWait` is not). Impersonation follows
 `impersonate`: the DLL starts the process with the impersonated user's
-token when there is one. The key `BuilderRun` is reserved in `binaries`,
-and in a package with file types the action ID `BuilderAssocChanged` too.
+token when there is one. The key `BuilderRun` is reserved in `binaries`.
 Output is decoded as UTF-8 when it is valid UTF-8 and in the OEM code page
 otherwise, which covers Go programs, cmd.exe and PowerShell. Specification
 section 17.6 and case CA-03 (Appendix C) hold the Windows evidence.

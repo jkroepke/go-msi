@@ -892,9 +892,9 @@ func (b *build) features() error {
 	return nil
 }
 
-// featureComponents lists a configured component with the components the
-// builder split off it (shortcut and file type carriers), which belong to
-// the same feature.
+// featureComponents lists a configured component with the component the
+// builder split off it (the shortcut carrier), which belongs to the same
+// feature.
 func (b *build) featureComponents(compID string) []string {
 	ids := []string{compID}
 
@@ -902,7 +902,7 @@ func (b *build) featureComponents(compID string) []string {
 		ids = append(ids, carrier)
 	}
 
-	return append(ids, b.fileTypeCarrier[compID]...)
+	return ids
 }
 
 // uniqueGUID records the ComponentId of a component and reports one that

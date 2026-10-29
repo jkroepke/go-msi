@@ -208,6 +208,8 @@ var tableActions = map[string][]string{ //nolint:gochecknoglobals // lookup tabl
 	"File":             {actInstallFiles, actRemoveFiles},
 	"RemoveFile":       {actRemoveFiles, actRemoveFolders},
 	"Registry":         {actWriteRegistryValues, actRemoveRegistryValues},
+	"Extension":        {"UnregisterExtensionInfo", "RegisterExtensionInfo"},
+	"ProgId":           {"UnregisterProgIdInfo", "RegisterProgIdInfo"},
 	"RemoveRegistry":   {actWriteRegistryValues, actRemoveRegistryValues},
 	"Environment":      {"WriteEnvironmentStrings", "RemoveEnvironmentStrings"},
 	"ServiceInstall":   {actInstallServices, actStartServices, actStopServices, actDeleteServices},
@@ -491,7 +493,7 @@ func (b *build) useRunDLL() bool {
 	}
 
 	if b.cfg.Binaries[cadll.Key] != "" {
-		b.errorf("binaries."+cadll.Key, "the key %s is reserved for the custom action DLL of run actions and file types", cadll.Key)
+		b.errorf("binaries."+cadll.Key, "the key %s is reserved for the custom action DLL of run actions", cadll.Key)
 	}
 
 	dll, err := cadll.Binary(string(b.cfg.Package.Platform))

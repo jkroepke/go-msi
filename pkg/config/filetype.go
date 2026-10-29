@@ -16,9 +16,9 @@ const DefaultVerb = "open"
 const DefaultVerbArguments = `"%1"`
 
 // systemExtensions are extensions that Windows or common programs already
-// own. A package that registers one takes it over from them; uninstalling
-// leaves the default naming the removed ProgID, which Windows ignores
-// (documented).
+// own. A package that registers one takes it over from them, and the
+// engine's UnregisterExtensionInfo removes the extension's registration on
+// uninstall (REG-06).
 var systemExtensions = map[string]bool{ //nolint:gochecknoglobals // lookup table
 	"bat": true, "bmp": true, "cer": true, "cmd": true, "crt": true, "csv": true, "dll": true,
 	"exe": true, "gif": true, "htm": true, "html": true, "inf": true, "ini": true, "jpeg": true,

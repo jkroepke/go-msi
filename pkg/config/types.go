@@ -320,9 +320,11 @@ type File struct { //nolint:govet // field order is the YAML key order
 }
 
 // FileType is a ProgId that the file it is listed under opens, with the
-// extensions that point at it and its shell verbs. The builder writes them
-// as Registry rows under HKEY_CLASSES_ROOT, in the file's component, the
-// way non-advertised ProgId, Extension and Verb elements are written.
+// extensions that point at it and its shell verbs. The builder writes the
+// extensions it owns into the ProgId, Extension and Verb tables, which the
+// engine registers, so the file must be its component's key path; icon,
+// content type and Open with entries are Registry rows of the file's
+// component.
 type FileType struct {
 	// ProgID is the programmatic identifier, such as Acme.Document.1.
 	ProgID string `yaml:"progId"`

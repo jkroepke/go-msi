@@ -8,14 +8,15 @@ import (
 	"testing"
 
 	"github.com/jkroepke/msi-builder/internal/builder"
+	"github.com/jkroepke/msi-builder/internal/msidb"
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
-// TestFileTypes writes a file type as HKCR Registry rows in the file's
-// component: the ProgID, its icon and verbs, the extensions that point at
-// it and its entry in their OpenWithProgids lists. An openWithOnly
-// extension gets only the list entry, also for an extension another type
-// owns.
+// TestFileTypes writes the extensions a file type owns into the ProgId,
+// Extension and Verb tables, which bring the engine's register and
+// unregister actions, and the rest as HKCR Registry rows in the file's
+// component: DefaultIcon, Content Type and the OpenWithProgids entries. A
+// ProgID whose extensions are all openWithOnly is Registry rows too.
 func TestFileTypes(t *testing.T) {
 	t.Parallel()
 
@@ -31,7 +32,7 @@ func TestFileTypes(t *testing.T) {
               - { extension: acmedoc, contentType: application/x-acme }
               - extension: acmd
             verbs:
-              - { id: open, text: '&Open' }
+              - { id: open, text: '&Open [Now]' }
               - { id: print, arguments: '/p "%1"' }
               - { id: run, arguments: '' }
           - progId: Acme.Plain
@@ -46,44 +47,55 @@ func TestFileTypes(t *testing.T) {
 		t.Errorf("diagnostics: %v", res.Diagnostics)
 	}
 
-	// Each extension default lives in a permanent component of its own
-	// beside App, with the default as key path, in App's features.
-	appDir := rowWhere(t, database, "Component", func(r []any) bool { return r[0] == "App" })[2]
-	carriers := make(map[any]string)
-
-	for _, row := range rows(t, database, "Component") {
-		if row[0] == "App" {
-			continue
-		}
-
-		if attrs, ok := row[3].(int); !ok || attrs&(16|4) != 16|4 || row[2] != appDir {
-			t.Errorf("defaults component %v: want Permanent and RegistryKeyPath in App's folder", row)
-		}
-
-		rowWhere(t, database, "FeatureComponents", func(r []any) bool { return r[1] == row[0] })
-
-		carriers[row[0]] = fmt.Sprint(row[5])
+	if n := len(rows(t, database, "Component")); n != 1 {
+		t.Errorf("%d components, want only App", n)
 	}
 
-	if len(carriers) != 2 {
-		t.Errorf("%d defaults components, want one per extension default: %v", len(carriers), carriers)
+	progIDs := rows(t, database, "ProgId")
+	if len(progIDs) != 1 || fmt.Sprint(progIDs[0]) != "[Acme.Document <nil> <nil> #1 [Beta] document <nil> <nil>]" {
+		t.Errorf("ProgId %v", progIDs)
+	}
+
+	feature := fmt.Sprint(rowWhere(t, database, "FeatureComponents", func(r []any) bool { return r[1] == "App" })[0])
+	extensions := make(map[string]string)
+
+	for _, row := range rows(t, database, "Extension") {
+		extensions[fmt.Sprint(row[0])] = fmt.Sprint(row[1:]...)
+	}
+
+	for _, ext := range []string{"acmedoc", "acmd"} {
+		if want := fmt.Sprint("App", "Acme.Document", nil, feature); extensions[ext] != want {
+			t.Errorf("Extension %s = %q, want %q", ext, extensions[ext], want)
+		}
+	}
+
+	if len(extensions) != 2 {
+		t.Errorf("Extension rows %v, want only the owned extensions", extensions)
+	}
+
+	verbs := make(map[string]string)
+
+	for _, row := range rows(t, database, "Verb") {
+		verbs[fmt.Sprintf("%v|%v", row[0], row[1])] = fmt.Sprint(row[2:]...)
+	}
+
+	for _, ext := range []string{"acmedoc", "acmd"} {
+		for verb, want := range map[string]string{
+			"open":  fmt.Sprint(1, `&Open [\[]Now[\]]`, `"%1"`),
+			"print": fmt.Sprint(2, nil, `/p "%1"`),
+			"run":   fmt.Sprint(3, nil, nil),
+		} {
+			if got := verbs[ext+"|"+verb]; got != want {
+				t.Errorf("Verb %s %s = %q, want %q", ext, verb, got, want)
+			}
+		}
 	}
 
 	got := make(map[string]string)
-	inCarrier := make(map[string]bool)
 
 	for _, row := range rows(t, database, "Registry") {
-		keyPath, carried := carriers[row[5]]
-		if row[5] != "App" && !carried {
+		if row[5] != "App" {
 			continue
-		}
-
-		if carried {
-			inCarrier[fmt.Sprintf("%v|%v", row[2], row[3])] = true
-
-			if row[0] == keyPath && row[3] != nil {
-				t.Errorf("key path %v is not an extension default", row)
-			}
 		}
 
 		if fmt.Sprint(row[1]) != "0" {
@@ -94,20 +106,13 @@ func TestFileTypes(t *testing.T) {
 	}
 
 	want := map[string]string{
-		`Acme.Document|<nil>`:                     `##1 [\[]Beta[\]] document`,
-		`Acme.Document\DefaultIcon|<nil>`:         `"[#app.exe]",1`,
-		`Acme.Document\shell\open|<nil>`:          "&Open",
-		`Acme.Document\shell\open\command|<nil>`:  `"[#app.exe]" "%1"`,
-		`Acme.Document\shell\print\command|<nil>`: `"[#app.exe]" /p "%1"`,
-		`Acme.Document\shell\run\command|<nil>`:   `"[#app.exe]"`,
-		`.acmedoc|<nil>`:                          "Acme.Document",
-		`.acmedoc|Content Type`:                   "application/x-acme",
-		`.acmd|<nil>`:                             "Acme.Document",
-		`.acmedoc\OpenWithProgids|Acme.Document`:  "<nil>",
-		`.acmd\OpenWithProgids|Acme.Document`:     "<nil>",
-		`.acmedoc\OpenWithProgids|Acme.Plain`:     "<nil>",
-		`.txt\OpenWithProgids|Acme.Plain`:         "<nil>",
-		`Acme.Plain\shell\open\command|<nil>`:     `"[#app.exe]" "%1"`,
+		`Acme.Document\DefaultIcon|<nil>`:        `"[#app.exe]",1`,
+		`.acmedoc|Content Type`:                  "application/x-acme",
+		`.acmedoc\OpenWithProgids|Acme.Document`: "<nil>",
+		`.acmd\OpenWithProgids|Acme.Document`:    "<nil>",
+		`.acmedoc\OpenWithProgids|Acme.Plain`:    "<nil>",
+		`.txt\OpenWithProgids|Acme.Plain`:        "<nil>",
+		`Acme.Plain\shell\open\command|<nil>`:    `"[#app.exe]" "%1"`,
 	}
 
 	for key, value := range want {
@@ -120,41 +125,27 @@ func TestFileTypes(t *testing.T) {
 		t.Errorf("got %d rows, want %d: %v", len(got), len(want), got)
 	}
 
-	for key := range inCarrier {
-		if key != `.acmedoc|<nil>` && key != `.acmedoc|Content Type` && key != `.acmd|<nil>` {
-			t.Errorf("%s is in a permanent component", key)
-		}
-	}
-
-	if len(inCarrier) != 3 {
-		t.Errorf("permanent components hold %v, want the three extension rows", inCarrier)
-	}
-
-	// The shell hears about the change right after InstallFinalize, from
-	// the run DLL, whatever the action returns.
-	action := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == "BuilderAssocChanged" })
-	if action[1] != 1|0x40 || action[2] != "BuilderRun" || action[3] != "BuilderAssocChanged" {
-		t.Errorf("CustomAction %v", action)
-	}
-
-	rowWhere(t, database, "Binary", func(r []any) bool { return r[0] == "BuilderRun" })
-
-	ies := rows(t, database, "InstallExecuteSequence")
 	sequence := map[string]int{}
 
-	for _, row := range ies {
+	for _, row := range rows(t, database, "InstallExecuteSequence") {
 		if n, ok := row[2].(int); ok {
 			sequence[fmt.Sprint(row[0])] = n
 		}
 	}
 
-	if sequence["BuilderAssocChanged"] <= sequence["InstallFinalize"] {
-		t.Errorf("BuilderAssocChanged at %d, InstallFinalize at %d", sequence["BuilderAssocChanged"], sequence["InstallFinalize"])
+	for _, action := range []string{"UnregisterExtensionInfo", "UnregisterProgIdInfo", "RegisterExtensionInfo", "RegisterProgIdInfo"} {
+		if sequence[action] == 0 {
+			t.Errorf("%s is not scheduled", action)
+		}
+	}
+
+	if hasRows(t, database, "CustomAction") || hasRows(t, database, "Binary") {
+		t.Error("file types brought a custom action or a binary")
 	}
 }
 
-// TestFileTypesOpenWithOnly writes no permanent component when every
-// extension is openWithOnly, but still notifies the shell.
+// TestFileTypesOpenWithOnly writes only Registry rows when every extension
+// is openWithOnly.
 func TestFileTypesOpenWithOnly(t *testing.T) {
 	t.Parallel()
 
@@ -166,11 +157,42 @@ func TestFileTypesOpenWithOnly(t *testing.T) {
 `)
 	database := mustBuild(t, cfg).Database
 
-	if n := len(rows(t, database, "Component")); n != 1 {
-		t.Errorf("%d components, want only App", n)
+	for _, table := range []string{"ProgId", "Extension", "Verb"} {
+		if hasRows(t, database, table) {
+			t.Errorf("%s has rows", table)
+		}
 	}
 
-	rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == "BuilderAssocChanged" })
+	rowWhere(t, database, "Registry", func(r []any) bool { return r[2] == `Acme.Plain\shell\open\command` })
+}
+
+// TestFileTypesKeyPath reports a file type on a file that is not its
+// component's key path: the engine runs the verbs with the key path.
+func TestFileTypesKeyPath(t *testing.T) {
+	t.Parallel()
+
+	cfg := shortcutConfig(t, `
+  - id: App
+    files:
+      - source: app.exe
+      - source: tool.exe
+        fileTypes: [{ progId: Acme.Document, extensions: [{ extension: acmedoc }] }]
+`)
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "components[0].files[1].fileTypes[0]") {
+		t.Errorf("err %v, diagnostics %s: want the key path error at the file type", err, res.Diagnostics)
+	}
+
+	cfg = shortcutConfig(t, `
+  - id: App
+    keyPath: tool.exe
+    files:
+      - source: app.exe
+      - source: tool.exe
+        fileTypes: [{ progId: Acme.Document, extensions: [{ extension: acmedoc }] }]
+`)
+	mustBuild(t, cfg)
 }
 
 // TestFileTypesPerUser names HKCU\Software\Classes in a per-user package.
@@ -184,7 +206,7 @@ components:
   - id: App
     files:
       - source: a.txt
-        fileTypes: [{ progId: Acme.Document, extensions: [{ extension: acmedoc }] }]
+        fileTypes: [{ progId: Acme.Document, extensions: [{ extension: acmedoc, contentType: text/x-acme }] }]
 `), config.Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -203,46 +225,11 @@ components:
 	}
 }
 
-// TestFileTypesAssocChangedAfterRemoval schedules the shell notification
-// after RemoveExistingProducts when the old product is removed after
-// InstallFinalize, and reserves the action's name.
-func TestFileTypesAssocChangedAfterRemoval(t *testing.T) {
-	t.Parallel()
+// hasRows reports whether the database has table with at least one row.
+func hasRows(t *testing.T, db *msidb.Database, table string) bool {
+	t.Helper()
 
-	cfg := shortcutConfig(t, `
-  - id: App
-    files:
-      - source: app.exe
-        fileTypes: [{ progId: Acme.Document, extensions: [{ extension: acmedoc }] }]
-`)
-	cfg.Upgrade.RemoveOld = "afterInstallFinalize"
-	database := mustBuild(t, cfg).Database
-	sequence := map[string]int{}
+	tbl := db.Table(table)
 
-	for _, row := range rows(t, database, "InstallExecuteSequence") {
-		if n, ok := row[2].(int); ok {
-			sequence[fmt.Sprint(row[0])] = n
-		}
-	}
-
-	if sequence["BuilderAssocChanged"] <= sequence["RemoveExistingProducts"] || sequence["RemoveExistingProducts"] <= sequence["InstallFinalize"] {
-		t.Errorf("InstallFinalize %d, RemoveExistingProducts %d, BuilderAssocChanged %d",
-			sequence["InstallFinalize"], sequence["RemoveExistingProducts"], sequence["BuilderAssocChanged"])
-	}
-
-	cfg = shortcutConfig(t, `
-  - id: App
-    files:
-      - source: app.exe
-        fileTypes: [{ progId: Acme.Document, extensions: [{ extension: acmedoc }] }]
-customActions:
-  - id: BuilderAssocChanged
-    error: x
-    schedule: [{ sequence: execute, before: InstallInitialize }]
-`)
-
-	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
-	if err == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "customActions[0].id") {
-		t.Errorf("err %v, diagnostics %s: want the reserved name at customActions[0].id", err, res.Diagnostics)
-	}
+	return tbl != nil && len(tbl.Rows) > 0
 }
