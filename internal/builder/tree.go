@@ -695,8 +695,10 @@ func (b *build) resolveKeyPath(path string, info *componentInfo) error { //nolin
 	case keyPath == "directory":
 		info.keyPath = nil
 	case keyPath == "":
+		// The first file in the configuration, not in sequence order: the
+		// validator checks that one, and a service names its executable.
 		if len(files) > 0 {
-			info.keyFile = files[0]
+			info.keyFile = files[max(0, slices.IndexFunc(files, func(f *fileInfo) bool { return f.cfg == comp.Files[0] }))]
 		} else if len(comp.Registry) > 0 {
 			info.keyPath = b.registryID(info, comp.Registry[0])
 			info.attributes |= compRegistryKeyPath

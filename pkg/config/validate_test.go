@@ -353,6 +353,14 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {resetAfter: 1500ms, actions: [restart]}}]\n    files:", 1),
 			sevError, "components[0].services[0].recovery.resetAfter", "whole number of seconds",
 		},
+		"recovery restart delay negative": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {restartDelay: -1s, actions: [restart]}}]\n    files:", 1),
+			sevError, "components[0].services[0].recovery.restartDelay", "negative",
+		},
+		"recovery restart delay fraction": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {restartDelay: 1500us, actions: [restart]}}]\n    files:", 1),
+			sevError, "components[0].services[0].recovery.restartDelay", "whole number of milliseconds",
+		},
 		"recovery step delay negative": {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [{restart: -1s}]}}]\n    files:", 1),
 			sevError, "components[0].services[0].recovery.actions[0].restart", "negative",
@@ -985,6 +993,25 @@ func TestPreserveInFeature(t *testing.T) {
 	for _, c := range cfg.Components {
 		if c.ID == "Config" && !c.NeverOverwrite {
 			t.Error("preserved component without neverOverwrite")
+		}
+	}
+}
+
+// A zero restartDelay is a delay of its own, not the default.
+func TestZeroRestartDelay(t *testing.T) {
+	t.Parallel()
+
+	for doc, want := range map[string]time.Duration{
+		"recovery: {restartDelay: 0s, actions: [restart]}": 0,
+		"recovery: {actions: [restart]}":                   config.DefaultRestartDelay,
+	} {
+		cfg, err := config.Parse([]byte(base+strings.Replace(appComponent, "    files:", "    services: [{name: svc, "+doc+"}]\n    files:", 1)), config.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if got := time.Duration(*cfg.Components[0].Services[0].Recovery.RestartDelay); got != want {
+			t.Errorf("%s: restartDelay %v, want %v", doc, got, want)
 		}
 	}
 }

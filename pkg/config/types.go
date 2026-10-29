@@ -403,7 +403,7 @@ type ServiceRecovery struct { //nolint:govet // field order is the YAML key orde
 	ResetAfterDays int              `yaml:"resetAfterDays"`
 	ResetAfter     *Duration        `yaml:"resetAfter"`
 	Actions        []RecoveryAction `yaml:"actions"`
-	RestartDelay   Duration         `yaml:"restartDelay"`
+	RestartDelay   *Duration        `yaml:"restartDelay"`
 }
 
 // RecoveryAction is one failure step: "restart", "none", or
