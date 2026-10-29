@@ -54,7 +54,7 @@ func isFolderComponentID(cfg *Config, compID string) bool {
 }
 
 // ExpandFolders replaces every component whose file is a folder source
-// (a source that ends in "/" or "\\") with one component per file below the
+// (a source that ends in "/" or "\") with one component per file below the
 // folder, as AddTree adds them: subfolders become directories below the
 // component's directory, and each file gets its own component, key path and
 // GUID. The include and exclude patterns of the file pick the files. The
