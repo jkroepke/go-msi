@@ -142,18 +142,18 @@ func TestDefaultCodepage(t *testing.T) {
 	t.Parallel()
 
 	for name, tc := range map[string]struct {
-		wizard    string
+		wizard    bool
 		languages []string
 		base      int
 		want      int
 	}{
-		"no wizard":         {None, nil, 1049, 1252},
-		"English":           {"minimal", nil, 1033, 1252},
-		"German base":       {"minimal", nil, 1031, 1252},
-		"one ANSI page":     {"minimal", []string{"de", "fr"}, 1033, 1252},
-		"Cyrillic":          {"minimal", []string{"ru", "uk"}, 1033, 65001},
-		"Hindi":             {"minimal", []string{"hi"}, 1033, 65001},
-		"unknown LCID base": {"minimal", []string{"de"}, 1279, 65001},
+		"no wizard":         {false, nil, 1049, 1252},
+		"English":           {true, nil, 1033, 1252},
+		"German base":       {true, nil, 1031, 1252},
+		"one ANSI page":     {true, []string{"de", "fr"}, 1033, 1252},
+		"Cyrillic":          {true, []string{"ru", "uk"}, 1033, 65001},
+		"Hindi":             {true, []string{"hi"}, 1033, 65001},
+		"unknown LCID base": {true, []string{"de"}, 1279, 65001},
 	} {
 		cfg := &Config{Product: Product{Language: new(tc.base)}, UI: UI{Wizard: tc.wizard, Languages: map[string]*Language{}}}
 		for _, l := range tc.languages {

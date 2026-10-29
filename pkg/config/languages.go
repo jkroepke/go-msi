@@ -120,7 +120,7 @@ func (u *UI) LanguageIDs() map[int]string {
 // ones or one is not in the table; any other package gets 1252.
 func defaultCodepage(cfg *Config) int {
 	base := *cfg.Product.Language
-	translated := cfg.UI.Wizard != "" && cfg.UI.Wizard != None &&
+	translated := cfg.UI.Wizard &&
 		primaryLanguage(base) != englishPrimary && Translation(base) != nil
 
 	if !translated && len(cfg.UI.Languages) == 0 {
@@ -156,7 +156,7 @@ func (v *validator) uiLanguages(cfg *Config) {
 		return
 	}
 
-	if cfg.UI.Wizard == None {
+	if !cfg.UI.Wizard {
 		v.errorf("ui.languages", "wizard languages need a wizard")
 	}
 

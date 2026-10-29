@@ -62,7 +62,8 @@ icons:
   icon.ico: icon.ico
 
 ui:
-  wizard: featureTree
+  wizard: true
+  chooseFeatures: true
   license: LICENSE.rtf
   theme:
     banner: banner.bmp

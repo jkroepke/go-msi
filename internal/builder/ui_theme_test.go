@@ -223,7 +223,7 @@ func TestThemeColors(t *testing.T) {
 
 	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
 	cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
-	cfg.UI.Wizard = "minimal"
+	cfg.UI.Wizard = true
 	cfg.UI.Theme.Colors = config.ThemeColors{Dark: "#102030", Paper: "#fafafa"}
 	res := mustBuild(t, cfg)
 

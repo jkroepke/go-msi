@@ -116,7 +116,7 @@ icons: {}
 binaries: {}
 firewall: []             # helper: firewall rules
 scheduleReboot: {}       # ask for a restart after the installation
-ui: {}                   # built-in wizard and added dialogs
+ui: {}                   # wizard (off by default), its pages and added dialogs
 tables: []               # escape hatch: custom tables
 ```
 
@@ -1624,7 +1624,8 @@ under the feature, such as `features[1].firewall[0].program`.
 
 ```yaml
 ui:
-  wizard: featureTree               # none | minimal | featureTree
+  wizard: true                      # the setup wizard; default false (basic UI)
+  chooseFeatures: true              # adds the feature tree page
   dialogs:
     - id: ConfigDlg
       title: windows_exporter configuration
@@ -1655,8 +1656,10 @@ ui:
 
 The wizards are written from scratch for msi-builder, including the bitmaps,
 which the `artwork` package draws from a colour palette at build time.
-`minimal` has welcome, ready, progress and finish; `featureTree` adds the
-feature tree (`CustomizeDlg`) with Browse and disk usage. Both include
+`wizard: true` has welcome, ready, progress and finish; `chooseFeatures`
+adds the feature tree (`CustomizeDlg`) with Browse and disk usage. Browse
+changes the directory of the selected feature (`features[].directory`); the
+generated `MainFeature` has the install dir. Every wizard includes
 maintenance (Repair and Remove; Change with the feature tree), cancel, user
 exit, fatal error, files in use, Restart Manager and the error dialog. Added
 dialogs are laid out automatically: one label and one edit field per
@@ -1685,14 +1688,17 @@ for the same reason, and so is a choice on a property that another field
 binds too. In the full UI the group starts on the default and selecting
 another option sets the property on the server (UI-05, observed on Windows). `after` names the
 page the dialog follows: `WelcomeDlg`, `CustomizeDlg` or an added dialog.
-`none` writes no UI tables; silent installs never depend on the UI in any
-mode. Without feature selection (`none`, `minimal`) `ARPNOMODIFY` is set.
+Without `wizard` no UI tables are written and msiexec shows its basic
+progress window; silent installs never depend on the UI in any mode.
+Without `chooseFeatures` `ARPNOMODIFY` is set. A feature tree page without
+the wizard is an error.
 
 #### License page
 
 ```yaml
 ui:
-  wizard: featureTree
+  wizard: true
+  chooseFeatures: true
   license: LICENSE.rtf     # RTF as is, any other file is text converted to RTF
 ```
 
@@ -1713,11 +1719,11 @@ license page. `ui.dialogs` can follow it with `after: LicenseAgreementDlg`;
 
 ```yaml
 ui:
-  wizard: minimal
-  installDirPage: true     # needs installDir
+  wizard: true
+  chooseDirectory: true     # needs installDir
 ```
 
-`installDirPage` adds `InstallDirDlg` after the welcome and license pages:
+`chooseDirectory` adds `InstallDirDlg` after the welcome and license pages:
 the install folder (`installDir.id`) in a PathEdit control and Change,
 which opens the folder browser (`BrowseDlg`) on the same folder. Next sets
 the typed path as the folder's target, so the engine checks it before the
@@ -1749,7 +1755,7 @@ define either.
 
 ```yaml
 ui:
-  wizard: minimal
+  wizard: true
   launch:
     file: viewer.exe       # files[].id, or the file name when it has no id
     arguments: --welcome   # formatted, optional
@@ -1777,7 +1783,7 @@ When `launch` is set, the custom action name and the property
 
 ```yaml
 ui:
-  wizard: minimal
+  wizard: true
   finishText: Open a new command prompt to use [ProductName].
 ```
 
@@ -1837,8 +1843,8 @@ the size above is a warning, and a side above 8192 pixels or more than
 4096×4096 pixels in all is an error.
 `colors` recolours the built-in pictures and the error dialog's icon (drawn
 in `accent`); a colour that is not given keeps its default. A license,
-theme, install folder page, finish page text or launch checkbox without a
-wizard is an error.
+theme, install folder page (`chooseDirectory`), finish page text or launch
+checkbox without a wizard is an error.
 
 #### Wizard texts and languages
 
@@ -1846,7 +1852,7 @@ wizard is an error.
 product:
   language: 1031           # LCID of the package (Template, ProductLanguage)
 ui:
-  wizard: minimal
+  wizard: true
   strings:
     Next: '&Weiter >'
     Back: '< &Zurück'
@@ -1895,7 +1901,7 @@ further language (spec section 7.6):
 product:
   language: 1033           # base language, in the database itself
 ui:
-  wizard: minimal
+  wizard: true
   finishText: Thanks for installing [ProductName].
   languages:
     de: {}                 # or 1031: the built-in German texts

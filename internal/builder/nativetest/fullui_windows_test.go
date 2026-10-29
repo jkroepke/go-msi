@@ -98,7 +98,8 @@ properties:
   LOG_LEVEL: {}
 
 ui:
-  wizard: featureTree
+  wizard: true
+  chooseFeatures: true
   dialogs:
     - id: ChoiceDlg
       title: Log level
@@ -599,9 +600,9 @@ func TestFullUIFinishText(t *testing.T) { //nolint:paralleltest // msiexec runs 
 	// (UI-01), so the checks look for the part before it.
 	want := "Open a new command prompt to use " + fullUIName
 
-	doc := strings.Replace(fullUIConfig, "  wizard: featureTree\n", "  wizard: featureTree\n  finishText: "+finishText+"\n", 1)
+	doc := strings.Replace(fullUIConfig, "  wizard: true\n", "  wizard: true\n  finishText: "+finishText+"\n", 1)
 	if !strings.Contains(doc, "finishText:") {
-		t.Fatal("fullUIConfig has no wizard: featureTree line to add finishText to")
+		t.Fatal("fullUIConfig has no wizard: true line to add finishText to")
 	}
 
 	dir := t.TempDir()

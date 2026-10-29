@@ -15,7 +15,7 @@ package:
   scope: ${SCOPE}
 
 ui:
-  wizard: none
+  wizard: false
 
 components:
   - files:

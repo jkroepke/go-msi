@@ -514,7 +514,7 @@ func TestValidate(t *testing.T) {
 			sevWarning, "ui.strings.RMUseRM", "column width of 64",
 		},
 		"wizard texts without a wizard": {
-			base + appComponent + "ui:\n  wizard: none\n  strings: {Next: Weiter}\n",
+			base + appComponent + "ui:\n  wizard: false\n  strings: {Next: Weiter}\n",
 			sevError, "ui.strings", "need a wizard",
 		},
 		"dialog field type": {
@@ -526,47 +526,47 @@ func TestValidate(t *testing.T) {
 			sevError, "ui.dialogs[0].fields[0].value", "only a checkbox",
 		},
 		"choice one option": {
-			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a]}]}\n",
+			base + appComponent + "ui:\n  wizard: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a]}]}\n",
 			sevError, "ui.dialogs[0].fields[0].options", "at least two",
 		},
 		"choice duplicate": {
-			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, a]}]}\n",
+			base + appComponent + "ui:\n  wizard: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, a]}]}\n",
 			sevError, "ui.dialogs[0].fields[0].options[1].value", "offered twice",
 		},
 		"choice brackets": {
-			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, '[b]']}]}\n",
+			base + appComponent + "ui:\n  wizard: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, '[b]']}]}\n",
 			sevError, "ui.dialogs[0].fields[0].options[1].value", "formatted",
 		},
 		"choice long value": {
-			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]}]}\n",
+			base + appComponent + "ui:\n  wizard: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]}]}\n",
 			sevError, "ui.dialogs[0].fields[0].options[1].value", "at most 64",
 		},
 		"choice long label": {
-			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, {value: b, label: yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy}]}]}\n",
+			base + appComponent + "ui:\n  wizard: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, {value: b, label: yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy}]}]}\n",
 			sevError, "ui.dialogs[0].fields[0].options[1].label", "at most 64",
 		},
 		"choice empty value": {
-			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, {label: b}]}]}\n",
+			base + appComponent + "ui:\n  wizard: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, {label: b}]}]}\n",
 			sevError, "ui.dialogs[0].fields[0].options[1].value", "required",
 		},
 		"choice default not an option": {
-			base + appComponent + "properties: {OPT: c}\nui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}]}\n",
+			base + appComponent + "properties: {OPT: c}\nui:\n  wizard: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}]}\n",
 			sevError, "ui.dialogs[0].fields[0].property", "none of the options",
 		},
 		"choice on a searched property": {
-			base + appComponent + "properties: {OPT: {search: {registry: {root: HKLM, key: X}}}}\nui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}]}\n",
+			base + appComponent + "properties: {OPT: {search: {registry: {root: HKLM, key: X}}}}\nui:\n  wizard: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}]}\n",
 			sevError, "ui.dialogs[0].fields[0].property", "ICE34",
 		},
 		"options on text": {
-			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, options: [a, b]}]}\n",
+			base + appComponent + "ui:\n  wizard: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, options: [a, b]}]}\n",
 			sevError, "ui.dialogs[0].fields[0].options", "only a choice",
 		},
 		"choice shares a property": {
-			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}, {property: OPT}]}\n",
+			base + appComponent + "ui:\n  wizard: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}, {property: OPT}]}\n",
 			sevError, "ui.dialogs[0].fields[0].property", "another field",
 		},
 		"choice on RMOPTION": {
-			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: RMOPTION, type: choice, options: [a, b]}]}\n",
+			base + appComponent + "ui:\n  wizard: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: RMOPTION, type: choice, options: [a, b]}]}\n",
 			sevError, "ui.dialogs[0].fields[0].property", "wizard",
 		},
 		"checkbox with a default": {
@@ -1099,6 +1099,10 @@ components:
 			base + appComponent + "ui: {dialogs: [{id: D, title: T, after: X, fields: [{property: P}]}]}\n",
 			sevError, "ui.dialogs", "need a wizard",
 		},
+		"feature tree without wizard": {
+			base + appComponent + "ui: {chooseFeatures: true}\n",
+			sevError, "ui.chooseFeatures", "needs a wizard",
+		},
 		"license without wizard": {
 			base + appComponent + "ui: {license: LICENSE.rtf}\n",
 			sevError, "ui.license", "needs a wizard",
@@ -1108,7 +1112,7 @@ components:
 			sevError, "ui.theme", "needs a wizard",
 		},
 		"bad theme colour": {
-			base + appComponent + "ui: {wizard: minimal, theme: {colors: {accent: \"#12345\"}}}\n",
+			base + appComponent + "ui: {wizard: true, theme: {colors: {accent: \"#12345\"}}}\n",
 			sevError, "ui.theme.colors.accent", "#RRGGBB",
 		},
 	} {
@@ -1182,7 +1186,7 @@ func TestGeneratedFileKey(t *testing.T) {
 	// launch.file and a companion version may name the file by its long name.
 	doc = base + strings.Replace(appComponent, "      - source: app.exe\n",
 		"      - source: my-app.exe\n      - { source: data.bin, version: my-app.exe }\n", 1) +
-		"ui: {wizard: minimal, launch: {file: my-app.exe}}\n"
+		"ui: {wizard: true, launch: {file: my-app.exe}}\n"
 	if err := validate(t, doc).Err(); err != nil {
 		t.Errorf("references by long name: %v", err)
 	}
@@ -1190,7 +1194,7 @@ func TestGeneratedFileKey(t *testing.T) {
 	// A file with an id is named by its id only.
 	doc = base + strings.Replace(appComponent, "      - source: app.exe\n",
 		"      - { source: my-app.exe, id: Main }\n      - { source: data.bin, version: my-app.exe }\n", 1) +
-		"ui: {wizard: minimal, launch: {file: my-app.exe}}\n"
+		"ui: {wizard: true, launch: {file: my-app.exe}}\n"
 	ds := validate(t, doc)
 
 	if !find(ds, config.SeverityError, "components[0].files[1].version", "not auto") || !find(ds, config.SeverityError, "ui.launch.file", "not defined") {

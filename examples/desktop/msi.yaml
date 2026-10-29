@@ -42,9 +42,9 @@ properties:
       registry: { root: HKLM, key: SOFTWARE\Example\Viewer, name: Theme }
 
 ui:
-  wizard: minimal
+  wizard: true
   license: LICENSE.txt
-  installDirPage: true
+  chooseDirectory: true
   # A paragraph on the finish page after a new installation.
   finishText: Start [ProductName] from the Start menu or the desktop shortcut.
   launch:

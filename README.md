@@ -154,6 +154,7 @@ PowerShell; `msi-builder completion <shell> --help` shows how to load it.
 The documentation lives in the [wiki](https://github.com/jkroepke/msi-builder/wiki):
 
 - [Getting Started](https://github.com/jkroepke/msi-builder/wiki/Getting-Started)
+- [End user guide](https://github.com/jkroepke/msi-builder/wiki/End-User-Guide) for the people who install your packages
 - [Command-line reference](https://github.com/jkroepke/msi-builder/wiki/Command-Line)
 - [YAML schema](https://github.com/jkroepke/msi-builder/wiki/YAML-Schema)
 - [Signing](https://github.com/jkroepke/msi-builder/wiki/Signing)
