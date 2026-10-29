@@ -26,7 +26,7 @@ func (b *build) fileTypes() error {
 				target := `"[#` + config.FileKey(file) + `]"`
 				progID := fileType.ProgID
 
-				writer.value(progID, "", fileType.Description)
+				writer.value(progID, "", escapeFormatted(fileType.Description))
 
 				if fileType.IconIndex != nil {
 					writer.value(progID+`\DefaultIcon`, "", fmt.Sprintf("%s,%d", target, *fileType.IconIndex))
@@ -34,13 +34,13 @@ func (b *build) fileTypes() error {
 
 				for _, verb := range fileType.Verbs {
 					key := progID + `\shell\` + verb.ID
-					writer.value(key, "", verb.Text)
+					writer.value(key, "", escapeFormatted(verb.Text))
 					writer.value(key+`\command`, "", strings.TrimSpace(target+" "+*verb.Arguments))
 				}
 
 				for _, ext := range fileType.Extensions {
 					writer.value("."+ext.Extension, "", progID)
-					writer.value("."+ext.Extension, "Content Type", ext.ContentType)
+					writer.value("."+ext.Extension, "Content Type", escapeFormatted(ext.ContentType))
 				}
 			}
 		}
@@ -57,8 +57,8 @@ type classWriter struct {
 	root   int
 }
 
-// value writes a string value; an empty one is left out, and a key without
-// values is created by the values below it.
+// value writes a string value of formatted text; an empty one is left out,
+// and a key without values is created by the values below it.
 func (w classWriter) value(key, name, value string) {
 	if value == "" {
 		return

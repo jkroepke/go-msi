@@ -339,7 +339,9 @@ type FileTypeVerb struct { //nolint:govet // field order is the YAML key order
 	// Text is the menu text; empty shows the shell's text for the id.
 	Text string `yaml:"text"`
 	// Arguments follow the quoted file path in the command, default "%1";
-	// an empty string runs the file without arguments.
+	// an empty string runs the file without arguments. They are formatted
+	// text, so [INSTALLDIR] works; description, text and contentType are
+	// written literally.
 	Arguments *string `yaml:"arguments"`
 }
 

@@ -722,7 +722,10 @@ good (section 6). The root is HKCR, which the engine writes to
 `HKLM\Software\Classes` per machine; a per-user package names
 `HKCU\Software\Classes` itself, because HKCR fails ICE105.
 
-A ProgID and an extension may be registered once per package. A ProgID
+`arguments` is formatted text, so `[INSTALLDIR]` works there;
+`description`, `text` and `contentType` are written literally. A ProgID and
+an extension may be registered once per package, and a ProgID must not start
+with a dot. A ProgID
 that is not COM-style (at most 39 letters, digits and periods, not starting
 with a digit) gets a warning. Uninstalling removes the default value of
 `.<extension>`, so registering an extension that Windows or other programs

@@ -89,6 +89,12 @@ func (v *validator) progID(field, progID string, seen map[string]string) {
 		return
 	}
 
+	if strings.HasPrefix(progID, ".") {
+		v.errorf(field, "%q starts with a dot, which makes it an extension key", progID)
+
+		return
+	}
+
 	if other, dup := seen[strings.ToLower(progID)]; dup {
 		v.errorf(field, "%s registers %q too", other, progID)
 	}

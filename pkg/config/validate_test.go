@@ -366,6 +366,10 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: 'Acme\\\\Doc'}]\n", 1),
 			sevError, "components[0].files[0].fileTypes[0].progId", "must not hold",
 		},
+		"fileTypes progId dot": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: .acme}]\n", 1),
+			sevError, "components[0].files[0].fileTypes[0].progId", "starts with a dot",
+		},
 		"fileTypes progId twice": {
 			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc}, {progId: acme.doc}]\n", 1),
 			sevError, "components[0].files[0].fileTypes[1].progId", "registers",

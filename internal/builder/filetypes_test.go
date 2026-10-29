@@ -21,7 +21,7 @@ func TestFileTypes(t *testing.T) {
       - source: app.exe
         fileTypes:
           - progId: Acme.Document
-            description: '#1 document'
+            description: '#1 [Beta] document'
             iconIndex: 1
             extensions:
               - { extension: acmedoc, contentType: application/x-acme }
@@ -49,7 +49,7 @@ func TestFileTypes(t *testing.T) {
 	}
 
 	want := map[string]string{
-		`Acme.Document|<nil>`:                     "##1 document",
+		`Acme.Document|<nil>`:                     `##1 [\[]Beta[\]] document`,
 		`Acme.Document\DefaultIcon|<nil>`:         `"[#app.exe]",1`,
 		`Acme.Document\shell\open|<nil>`:          "&Open",
 		`Acme.Document\shell\open\command|<nil>`:  `"[#app.exe]" "%1"`,

@@ -79,6 +79,25 @@ func regDefault(t *testing.T, key string) string {
 	return "<absent>"
 }
 
+// regNamed returns the REG_SZ value of a key in the 64-bit view whose name
+// may hold spaces, or "<absent>".
+func regNamed(t *testing.T, key, name string) string {
+	t.Helper()
+
+	for line := range strings.Lines(reg(t, "query", key, "/v", name, "/reg:64")) {
+		rest, ok := strings.CutPrefix(strings.TrimSpace(line), name)
+		if !ok {
+			continue
+		}
+
+		if _, data, ok := strings.Cut(rest, "REG_SZ"); ok {
+			return strings.TrimSpace(data)
+		}
+	}
+
+	return "<absent>"
+}
+
 // TestMsiexecFileTypes installs a package with a file type: the per-machine
 // HKCR rows land in HKLM\Software\Classes, cmd's assoc and ftype resolve
 // the extension and the open command to the installed file, and uninstall
@@ -120,7 +139,7 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 		}
 	}
 
-	if got := regData(t, classes+".msibtdoc", "Content Type"); got != "application/x-msibt" {
+	if got := regNamed(t, classes+".msibtdoc", "Content Type"); got != "application/x-msibt" {
 		t.Errorf("Content Type = %q", got)
 	}
 
