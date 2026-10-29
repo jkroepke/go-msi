@@ -136,6 +136,9 @@ const grantConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderGrant, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 5b2e7d14-8c3f-4a96-b1d0-6e9f2a4c8b37 }
 package: { platform: x64, compression: none }
 installDir: { name: MsiBuilderGrant }
+properties:
+  SVC_ACCOUNT: { secure: true }
+  FAILNOW: { secure: true }
 components:
   - files:
       - source: app.exe
@@ -228,14 +231,8 @@ func TestMsiexecGrants(t *testing.T) {
 		}
 	}
 
-	// The rollback can leave the DACL without the AI (auto-inherited)
-	// control flag; the ACEs are what counts.
-	if got := objectSDDL(t, existing); got != before {
-		t.Logf("SEC-02: existing folder after the rollback: %s", got)
-
-		if strings.Replace(got, "D:(", "D:AI(", 1) != before {
-			t.Errorf("existing folder after rollback:\n%s\nwant\n%s", got, before)
-		}
+	if got := objectSDDL(t, existing); !sameACEs(got, before) {
+		t.Errorf("existing folder after rollback:\n%s\nwant\n%s", got, before)
 	}
 
 	requireNoGrantRecord(t, "after the rollback")
@@ -263,9 +260,9 @@ func TestMsiexecGrants(t *testing.T) {
 	t.Logf("SEC-02: grant, service: %s", installed["service"])
 
 	for name, want := range map[string][]string{
-		"file":            {"(A;;0x1200a9;;;BG)", ";ID;"},
-		"data folder":     {"(A;OICI;0x1301bf;;;BG)", ";ID;"},
-		"existing folder": {"(A;OICI;FA;;;LS)", "(A;OICI;0x1200a9;;;BG)", ";ID;"},
+		"file":            {"(A;;0x1200a9;;;BG)", "ID;"},
+		"data folder":     {"(A;OICI;0x1301bf;;;BG)", "ID;"},
+		"existing folder": {"(A;OICI;FA;;;LS)", "(A;OICI;0x1200a9;;;BG)", "ID;"},
 		"service":         {"(A;;RPWP;;;BU)"},
 	} {
 		for _, part := range want {
@@ -283,18 +280,18 @@ func TestMsiexecGrants(t *testing.T) {
 	}
 
 	for name, object := range map[string]string{"file": app, "data folder": data, "existing folder": existing} {
-		if got := objectSDDL(t, object); got != installed[name] {
+		if got := objectSDDL(t, object); !sameACEs(got, installed[name]) {
 			t.Errorf("%s after repair:\n%s\nwant\n%s", name, got, installed[name])
 		}
 	}
 
 	// A repair that fails after the grants keeps the rights that were there.
 	if code := msiexecCode(t, filepath.Join(dir, "repair-rollback.log"), "/fa", path, account, "FAILNOW=1"); code != 1603 {
-		t.Fatalf("repair with FAILNOW=1 returned %d, want 1603", code)
+		t.Fatalf("repair with FAILNOW=1 returned %d, want 1603\n%s", code, grepLog(readLog(filepath.Join(dir, "repair-rollback.log")), "FailNow", "FAILNOW", "BuilderGrant"))
 	}
 
 	for name, object := range map[string]string{"data folder": data, "existing folder": existing} {
-		if got := objectSDDL(t, object); got != installed[name] {
+		if got := objectSDDL(t, object); !sameACEs(got, installed[name]) {
 			t.Errorf("%s after a failed repair:\n%s\nwant\n%s", name, got, installed[name])
 		}
 	}
@@ -306,9 +303,34 @@ func TestMsiexecGrants(t *testing.T) {
 	msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
 
 	// Uninstalling leaves the ACE on the folder that outlives the package.
-	if got := objectSDDL(t, existing); got != installed["existing folder"] {
+	if got := objectSDDL(t, existing); !sameACEs(got, installed["existing folder"]) {
 		t.Errorf("existing folder after uninstall:\n%s\nwant\n%s", got, installed["existing folder"])
 	}
+}
+
+// sameACEs compares two SDDL strings without the AI (auto-inherited) control
+// flag of the DACL, which a rollback and a repair that replaces the file
+// can drop while the ACEs stay the same (SEC-02).
+func sameACEs(a, b string) bool {
+	return strings.Replace(a, "D:AI(", "D:(", 1) == strings.Replace(b, "D:AI(", "D:(", 1)
+}
+
+// grepLog returns the lines of an installer log that contain one of the
+// words.
+func grepLog(log string, words ...string) string {
+	var out []string
+
+	for line := range strings.SplitSeq(log, "\n") {
+		for _, word := range words {
+			if strings.Contains(line, word) {
+				out = append(out, line)
+
+				break
+			}
+		}
+	}
+
+	return strings.Join(out, "\n")
 }
 
 // requireNoGrantRecord fails when a product's rollback record of grants
