@@ -201,13 +201,16 @@ func (b *build) topFolder(dirID string) string {
 }
 
 // shortcutComponent writes the component that carries the shortcuts to the
-// files of info and returns its key. The key and the key path value name
-// hold the upgrade code and the case of the component id, so that neither
-// two components nor two products share a key path.
+// files of info and returns its key. The key path value name holds the
+// upgrade code and the case of the component id, so that neither two
+// components nor two products share a key path; so does the key, unless the
+// component lists only shortcuts and is the carrier itself.
 func (b *build) shortcutComponent(info *componentInfo, dirID string) string {
 	comp := info.cfg
 
-	carrier := generatedID("cmp", "Shortcuts", b.upgradeCode, comp.ID)
+	valueName := generatedID("cmp", "Shortcuts", b.upgradeCode, comp.ID)
+
+	carrier := valueName
 	if shortcutsOnly(comp) {
 		carrier = comp.ID
 	}
@@ -245,7 +248,7 @@ func (b *build) shortcutComponent(info *componentInfo, dirID string) string {
 	}
 
 	b.table("Component").Add(carrier, guid, dirID, attributes, nullable(comp.Condition), registry)
-	b.table("Registry").Add(registry, registryRoots["HKCU"], `Software\[Manufacturer]\[ProductName]`, carrier, "#1", carrier)
+	b.table("Registry").Add(registry, registryRoots["HKCU"], `Software\[Manufacturer]\[ProductName]`, valueName, "#1", carrier)
 	b.dirs[dirID].used = true
 	b.shortcutCarrier[comp.ID] = carrier
 

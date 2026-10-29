@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -388,12 +389,13 @@ func componentIDs(cfg *Config) {
 			continue
 		}
 
-		comp.ID = uniqueID(identifier(componentBase(comp)), used)
+		comp.ID = uniqueID(identifier(componentBase(comp, cfg.Product.Name)), used)
 	}
 }
 
 // componentBase is the name a component without an id is named after.
-func componentBase(comp *Component) string {
+// product is the product name, which a shortcut without a name defaults to.
+func componentBase(comp *Component, product string) string {
 	base := "Component"
 
 	switch {
@@ -405,10 +407,11 @@ func componentBase(comp *Component) string {
 		base = fileName(comp.Files[0])
 	case len(comp.Services) > 0:
 		base = comp.Services[0].Name
-	case shortcutsOnly(comp) && comp.Shortcuts[0] != nil && comp.Shortcuts[0].Name != "":
+	case shortcutsOnly(comp) && comp.Shortcuts[0] != nil && cmp.Or(comp.Shortcuts[0].Name, product) != "":
 		// Named after its first shortcut, so that the id, and the
-		// ComponentId of its shortcuts, do not move with the order.
-		base = comp.Shortcuts[0].Name + " Shortcuts"
+		// ComponentId of its shortcuts, do not move with the order. The
+		// shortcut's name is not defaulted yet.
+		base = cmp.Or(comp.Shortcuts[0].Name, product) + " Shortcuts"
 	case comp.Directory != "":
 		base = comp.Directory
 	}

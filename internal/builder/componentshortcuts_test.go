@@ -236,8 +236,8 @@ func TestURLShortcutPackagedName(t *testing.T) {
 	}
 }
 
-// Two components that only list shortcuts are empty components in the
-// install dir, and their automatic ComponentIds differ.
+// Two components that only list shortcuts are carriers in the folders of
+// their shortcuts, and their automatic ComponentIds differ.
 func TestShortcutOnlyComponents(t *testing.T) {
 	t.Parallel()
 
@@ -346,6 +346,8 @@ func TestShortcutsOnlyComponentGUIDAndDirectory(t *testing.T) {
   - files: [{ source: app.exe }]
   - id: Links
     guid: 11111111-2222-3333-4444-555555555555
+    condition: VersionNT >= 600
+    transitive: true
     directory: CommonAppDataFolder/Acme
     shortcuts: [{ name: Docs, url: "https://a" }]
   - id: Kept
@@ -359,11 +361,59 @@ func TestShortcutsOnlyComponentGUIDAndDirectory(t *testing.T) {
 		t.Errorf("Links ComponentId %v", links[1])
 	}
 
-	if kept := rowWhere(t, res.Database, "Component", func(r []any) bool { return r[0] == "Kept" }); kept[1] != nil {
+	if attrs, ok := links[3].(int); !ok || links[4] != "VersionNT >= 600" || attrs&64 == 0 {
+		t.Errorf("Links condition %v, attributes %v, want the condition and transitive", links[4], links[3])
+	}
+
+	kept := rowWhere(t, res.Database, "Component", func(r []any) bool { return r[0] == "Kept" })
+	if kept[1] != nil {
 		t.Errorf("Kept ComponentId %v, want null", kept[1])
+	}
+
+	if attrs, ok := kept[3].(int); !ok || attrs&16 == 0 {
+		t.Errorf("Kept attributes %v, want permanent", kept[3])
 	}
 
 	if strings.Contains(fmt.Sprint(res.Diagnostics), "components[1]") {
 		t.Errorf("diagnostics %s", res.Diagnostics)
+	}
+}
+
+// An id-less component of shortcuts whose first shortcut has no name is
+// named after the product, the shortcut's default name, not its folder.
+func TestShortcutsOnlyComponentUnnamedShortcut(t *testing.T) {
+	t.Parallel()
+
+	res := mustBuild(t, shortcutConfig(t, `
+  - files: [{ source: app.exe }]
+  - shortcuts: [{ directory: DesktopFolder, file: app.exe }]
+`))
+
+	if carrier := rows(t, res.Database, "Shortcut")[0][scComponent]; carrier != "Acme_App_Shortcuts" {
+		t.Errorf("carrier %v, want Acme_App_Shortcuts", carrier)
+	}
+}
+
+// Components of shortcuts only whose ids differ in case get distinct key
+// path values, which the registry compares without case.
+func TestShortcutsOnlyComponentKeyPath(t *testing.T) {
+	t.Parallel()
+
+	res := mustBuild(t, shortcutConfig(t, `
+  - files: [{ source: app.exe }]
+  - { id: Links, shortcuts: [{ name: One, url: "https://a" }] }
+  - { id: links, shortcuts: [{ name: Two, url: "https://b" }] }
+`))
+
+	values := map[string]bool{}
+
+	for _, id := range []string{"Links", "links"} {
+		comp := rowWhere(t, res.Database, "Component", func(r []any) bool { return r[0] == id })
+		reg := rowWhere(t, res.Database, "Registry", func(r []any) bool { return r[0] == comp[5] })
+		values[strings.ToLower(fmt.Sprint(reg[2], `\`, reg[3]))] = true
+	}
+
+	if len(values) != 2 {
+		t.Errorf("key path values %v", values)
 	}
 }
