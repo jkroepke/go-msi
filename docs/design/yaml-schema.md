@@ -324,13 +324,6 @@ detection row.
 | `afterInstallExecute` (default when a component has `preserve: true`) | right after InstallExecute | new first, then old, one transaction; strict component rules |
 | `afterInstallFinalize` | after InstallFinalize | separate transaction; a failed removal leaves both |
 
-`ignoreRemoveFailure: true` sets the IgnoreRemoveFailure bit (4) on every
-Upgrade row that removes products, `related` rows included. When the
-removal of an old product fails, the install goes on instead of failing
-with 1603, and the old product stays registered next to the new one
-(UPG-10, section 8.10 of the specification). It is meant for a release
-whose own uninstall is known to fail; the user removes that product by hand.
-
 "Strict component rules" bite when a package moves from another toolset
 whose components install the same files under different GUIDs, for example
 harvested components replaced by a folder source. With
@@ -339,6 +332,13 @@ there ("hash matches"), and removing the old product then deletes them
 (observed on Windows Server 2025). A component that kept WiX's GUID through
 `guid` survived. Early removal keeps all of them; for a folder source,
 which cannot take a `guid`, it is the only way.
+
+`ignoreRemoveFailure: true` sets the IgnoreRemoveFailure bit (4) on every
+Upgrade row that removes products, `related` rows included. When the
+removal of an old product fails, the install goes on instead of failing
+with 1603, and the old product stays registered next to the new one
+(UPG-10, section 8.10 of the specification). It is meant for a release
+whose own uninstall is known to fail; the user removes that product by hand.
 
 Every property named here must be public, is added to
 `SecureCustomProperties` and must not appear in `properties`.

@@ -474,7 +474,6 @@ The keys used most inside them:
 | `components[].environment` | none | Environment variables such as `PATH` |
 | `components[].preserve` | `false` | Keep the user's changes on upgrade |
 | `components[].purge` | `false` | Delete the folder on uninstall |
-| `upgrade.ignoreRemoveFailure` | `false` | Install even when removing the old version fails |
 | `features[].default` | `on` | `off` installs only on request |
 | `ui.enabled` | `false` | The setup wizard |
 | `ui.license` | none | License page |

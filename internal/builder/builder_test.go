@@ -701,9 +701,23 @@ components:
 
 	for _, row := range rows(t, database, "Upgrade") {
 		property := fmt.Sprint(row[6])
-		if got := fmt.Sprint(row[4]); got != strconv.Itoa(want[property]) {
-			t.Errorf("Upgrade row %s: attributes %s, want %d", property, got, want[property])
+
+		attrs, ok := want[property]
+		if !ok {
+			t.Errorf("unexpected Upgrade row %v", row)
+
+			continue
 		}
+
+		delete(want, property)
+
+		if got := fmt.Sprint(row[4]); got != strconv.Itoa(attrs) {
+			t.Errorf("Upgrade row %s: attributes %s, want %d", property, got, attrs)
+		}
+	}
+
+	if len(want) > 0 {
+		t.Errorf("missing Upgrade rows: %v", want)
 	}
 }
 

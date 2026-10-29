@@ -289,7 +289,9 @@ Next to the link, list what this page cannot know about your package:
 - whether the package installs per user, for all users or lets the user
   choose (`package.scope`);
 - the languages, if you set `ui.languages`;
-- whether upgrades keep the feature choice (`upgrade.migrateFeatures`) and
+- whether upgrades keep the feature choice (`upgrade.migrateFeatures`),
+  whether an upgrade can leave the old version installed when its removal
+  fails (`upgrade.ignoreRemoveFailure`) and how to remove it then, and
   whether Repair, Change or Uninstall is hidden (`product.arp`).
 
 The [YAML Schema Design](design/yaml-schema.md) describes each of these settings.

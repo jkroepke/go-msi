@@ -205,6 +205,13 @@ jobs:
         shell: bash
         run: go test -v -count=1 -run 'TestLanguagesInstallLANG03|TestFullUILanguages' ./internal/builder/nativetest/
 
+      # Print what a major upgrade does when removing the old product fails,
+      # with and without IgnoreRemoveFailure (MSISPEC-RESULTS UPG-10).
+      - name: go test (upgrade remove failure results)
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        shell: bash
+        run: go test -v -count=1 -run 'TestMsiexecIgnoreRemoveFailure' ./internal/builder/nativetest/
+
       # Print where and as whom the engine runs exe actions (MSISPEC-RESULTS
       # CA-05). The x64 package under emulation on Arm64 tests Windows'
       # emulation, not the package.

@@ -73,8 +73,8 @@ func TestMsiexecIgnoreRemoveFailure(t *testing.T) {
 				fmt.Sprintf(removeFailureConfig, "1.1.0", tc.removeOld, tc.ignore, ""), inputs)
 
 			t.Cleanup(func() {
-				_ = exec.CommandContext(context.Background(), "msiexec", "/x", newer, "/qn").Run()
-				_ = exec.CommandContext(context.Background(), "msiexec", "/x", older, "/qn", "KEEPGOING=1").Run()
+				_ = exec.CommandContext(context.Background(), "msiexec", "/x", newer, "/qn", "/norestart").Run()
+				_ = exec.CommandContext(context.Background(), "msiexec", "/x", older, "/qn", "/norestart", "KEEPGOING=1").Run()
 				_ = os.RemoveAll(folder)
 			})
 
