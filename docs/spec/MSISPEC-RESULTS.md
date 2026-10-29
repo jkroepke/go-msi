@@ -21,7 +21,7 @@ section 17.6); they are left as they ran.
 | `msiexec.exe` | 5.0.26100.1, SHA-256 `5872fe75e96a1c653972421c5874e19ea6181a08bed623c269fd3576c2bb707e` |
 | `cabinet.dll` | 5.00, SHA-256 `074504cad602a2a69fceb0a4e62ba233525ad3114017948d2b7fa22b640046d5` |
 | `makecab.exe` | 5.00, SHA-256 `070a98b4f7c03f99048a10f490d5916a9a98417e0d0de2c414c76b3dd00cb35e` |
-| Toolchain | Go 1.27; no WiX, msitools, Windows SDK or `signtool` on the machine |
+| Toolchain | Go 1.27; no WiX, msitools, Windows SDK or `signtool` on the machine (2026-10-25; ENV-02 on 2026-10-29 used WiX 5.0.2, see below) |
 
 The machine is a development box, not a snapshotted VM: every installing case
 uninstalled its product afterwards, and a final check found no product,
@@ -142,7 +142,7 @@ Silent-failure cases a producer has to guard against itself:
 | ID | Result | Evidence and notes |
 | --- | --- | --- |
 | ENV-01 | Confirmed | [inventory](msitest/results/ENV-01/inventory/log.md); control package opens and queries natively |
-| ENV-02 | Blocked | No WiX or msitools on the machine |
+| ENV-02 | Confirmed | [WiX](msitest/results/ENV-02/wix/log.md), [wixl](msitest/results/ENV-02/wixl/log.md), [compare](msitest/results/ENV-02/compare/log.md); run 2026-10-29, see [ENV-02](#env-02-wix-and-msitools-one-file-packages) |
 | CFB-01 | Confirmed | [log](msitest/results/CFB-01/v3-vs-v4/log.md); native writes v4 (finding 6) |
 | CFB-02 | Confirmed | [log](msitest/results/CFB-02/root-clsid/log.md); wrong CLSID: 110 / 1620 |
 | CFB-03 | Confirmed | [log](msitest/results/CFB-03/empty-stream-start/log.md); native uses ENDOFCHAIN |
@@ -241,7 +241,54 @@ Silent-failure cases a producer has to guard against itself:
 | SIG-05 | Partly confirmed | A changed root CLSID gives `0x800B0003` (TRUST_E_SUBJECT_FORM_UNKNOWN): the MSI SIP no longer claims the file. Nested storages not covered (go-msi writes none) |
 | SIG-06 | Confirmed | RSA with SHA-1/256/384/512, ECDSA P-256/SHA-256 and P-384/SHA-384, and an RFC 3161 timestamp all pass WinVerifyTrust on Server 2025. Not run on Server 2016 |
 | SIG-07 | Not run | msi-rs regression case; test a candidate writer |
-| INT-01…03 | Blocked | No WiX or msitools |
+| INT-01…03 | Not run | WiX 5.0.2 is on the machine and wixl 0.106 runs in a container since ENV-02 (2026-10-29); ENV-02 covers only one-file packages |
+
+## ENV-02: WiX and msitools one-file packages
+
+Run on 2026-10-29 on the ENV-01 machine. Both packages install the same
+24-byte `hello.txt` per machine into their own folder under
+`ProgramFiles64Folder`, with fixed ProductCode, UpgradeCode and component GUID,
+from the sources in [`msitest/env02`](msitest/env02):
+
+- **WiX 5.0.2** (`wix --version` 5.0.2+aa65968c, installed system-wide):
+  `wix build -arch x64`, run by `msitest ENV-02`.
+- **msitools wixl 0.106** (`0.106+repack-1`, Debian trixie container):
+  `wixl -a x64`, run by [`build-wixl.sh`](msitest/env02/build-wixl.sh).
+  Two builds of the same source differ (the package code is random), so the
+  log names the SHA-256 of the package that ran.
+
+Both tools were used as black boxes; no source of either was read. Both
+packages open with `MsiOpenDatabaseW`, answer every `_Tables` query, carry the
+same `MsiFileHash` row, embed one single-folder cabinet that `expand.exe`
+extracts to the payload, and install and uninstall with exit 0, leaving
+nothing behind. The two agree on the root CLSID, every table column type they
+share, the sequence numbers of every action they share, and summary PIDs 1, 2,
+4, 5, 7, 14, 15 and 19 (code page 1252, `x64;1033`, Page Count 500, Word Count
+2, Security 2).
+
+Producer differences, none of which kept either package from installing:
+
+| | WiX 5.0.2 | wixl 0.106 |
+| --- | --- | --- |
+| Container | CFB v4, 4096-byte sectors, 32 KB | CFB v3, 512-byte sectors, 9.5 KB |
+| Database code page | 65001 (all-ASCII text) | 0 |
+| String refcounts | all equal to the counted references | 51 of 208 differ, e.g. `CostInitialize` stored 1, used 5 |
+| Tables | 16, every one with rows, plus `_Validation` (77 rows) | 33 in `_Tables`; 19 have no rows and no stream; no `_Validation` |
+| Cabinet | LZX, `typeCompress` 0x1203 (2¹⁸ window) | MSZIP |
+| Upgrade handling | `Upgrade` rows for older and newer versions, `LaunchCondition` blocking downgrades, `SecureCustomProperties`, `FindRelatedProducts`, `MigrateFeatureStates`, `RemoveExistingProducts` 1401, without any upgrade element in the source | none |
+| Other actions | `LaunchConditions`, `CreateFolders`, `RemoveFolders` | none of those |
+| `Directory.DefaultDir` | `PFiles64` for `ProgramFiles64Folder`; `iugsytnf\|MsiSpecEnv02Wix` | `.`; `MsiSpecEnv02Wixl` (a 16-character long name without a short part) |
+| PID 18 | `WiX Toolset (5.0.2.0)` | `msitools 0.106` |
+
+What this settles: an under-counted string refcount, a code page 0
+database, catalog entries for empty tables with no data stream, a missing
+`_Validation` table and a long `DefaultDir` without a short part are all
+accepted by `msiexec` for a normal install and uninstall (they match findings
+MSIDB-05 and MSIDB-09 and section 3). msi-builder's own choices are unchanged:
+it keeps exact refcounts, writes `_Validation` and short names, and section 13
+records WiX's defaults; the cabinet window WiX picked here (2¹⁸, one tiny
+file, no compression level set) differs from the 2²¹ seen in the larger WiX
+package of section 13, and what decides it was not tested.
 
 ## Wizard rendering (UI-01)
 
