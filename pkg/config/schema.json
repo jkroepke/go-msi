@@ -1866,12 +1866,20 @@
                   "stopOnInstall": {
                     "$ref": "#/$defs/bool"
                   },
+                  "deleteOnInstall": {
+                    "$ref": "#/$defs/bool",
+                    "description": "Delete a service of the same name that is already registered before this one is installed (ServiceControl event 8)."
+                  },
                   "stopOnUninstall": {
                     "$ref": "#/$defs/bool"
                   },
                   "deleteOnUninstall": {
                     "$ref": "#/$defs/bool",
                     "default": true
+                  },
+                  "startCondition": {
+                    "type": "string",
+                    "description": "Start the service at install only when this condition is true. The start moves to a generated component with the condition."
                   },
                   "wait": {
                     "$ref": "#/$defs/bool"
@@ -1933,6 +1941,45 @@
               },
               "permissions": {
                 "$ref": "#/$defs/permissions"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "serviceControl": {
+          "type": "array",
+          "description": "Services the package does not install, stopped, started or deleted when the component is installed or removed (ServiceControl rows). Every event is off unless set.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The service name; may hold [PROPERTY] references."
+              },
+              "stopOnInstall": {
+                "$ref": "#/$defs/bool"
+              },
+              "startOnInstall": {
+                "$ref": "#/$defs/bool"
+              },
+              "deleteOnInstall": {
+                "$ref": "#/$defs/bool"
+              },
+              "stopOnUninstall": {
+                "$ref": "#/$defs/bool"
+              },
+              "startOnUninstall": {
+                "$ref": "#/$defs/bool"
+              },
+              "deleteOnUninstall": {
+                "$ref": "#/$defs/bool"
+              },
+              "wait": {
+                "$ref": "#/$defs/bool",
+                "default": true
               }
             },
             "required": [

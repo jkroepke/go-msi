@@ -226,7 +226,7 @@ func (b *build) writeServices(info *componentInfo) { //nolint:cyclop // one pass
 			}
 		}
 
-		b.serviceControl(comp.ID, svc)
+		b.serviceControl(info, svc)
 
 		if svc.DelayedAutoStart {
 			b.table("MsiServiceConfig").Add(serviceID("scd", svc.Name), svc.Name, configEventInstall|configEventReinstall, configDelayedStart, "1", comp.ID)
@@ -244,14 +244,21 @@ func (b *build) writeServices(info *componentInfo) { //nolint:cyclop // one pass
 
 // serviceControl writes the ServiceControl rows of a service. Wait is a
 // column of the row, so a start that waits differently from the stop and
-// delete events gets a row of its own.
-func (b *build) serviceControl(componentID string, svc *config.Service) {
+// delete events gets a row of its own. A start with a condition goes to a
+// component of its own, since the row has no condition column (SVC-08).
+func (b *build) serviceControl(info *componentInfo, svc *config.Service) {
 	ctl := svc.Control
 	event, startEvent := serviceEvents(ctl)
 
 	wait, waitForStart := *ctl.Wait, *ctl.Wait
 	if ctl.WaitForStart != nil {
 		waitForStart = *ctl.WaitForStart
+	}
+
+	if startEvent != 0 && ctl.StartCondition != "" {
+		carrier := b.startCarrier(info, svc)
+		b.table("ServiceControl").Add(serviceID("scs", svc.Name), svc.Name, startEvent, nil, waitColumn(waitForStart), carrier)
+		startEvent = 0
 	}
 
 	switch {
@@ -263,11 +270,11 @@ func (b *build) serviceControl(componentID string, svc *config.Service) {
 	}
 
 	if event != 0 {
-		b.table("ServiceControl").Add(serviceID("sc", svc.Name), svc.Name, event, nil, waitColumn(wait), componentID)
+		b.table("ServiceControl").Add(serviceID("sc", svc.Name), svc.Name, event, nil, waitColumn(wait), info.cfg.ID)
 	}
 
 	if startEvent != 0 {
-		b.table("ServiceControl").Add(serviceID("scs", svc.Name), svc.Name, startEvent, nil, waitColumn(waitForStart), componentID)
+		b.table("ServiceControl").Add(serviceID("scs", svc.Name), svc.Name, startEvent, nil, waitColumn(waitForStart), info.cfg.ID)
 	}
 }
 
@@ -280,19 +287,90 @@ func serviceEvents(ctl config.ServiceControl) (int, int) {
 		startEvent = eventStartInstall
 	}
 
-	if *ctl.StopOnInstall {
-		event |= eventStopInstall
-	}
-
-	if *ctl.StopOnUninstall {
-		event |= eventStopUninstall
-	}
-
-	if *ctl.DeleteOnUninstall {
-		event |= eventDeleteUninstall
+	for _, set := range []struct {
+		on    *bool
+		event int
+	}{
+		{ctl.StopOnInstall, eventStopInstall},
+		{ctl.DeleteOnInstall, eventDeleteInstall},
+		{ctl.StopOnUninstall, eventStopUninstall},
+		{ctl.DeleteOnUninstall, eventDeleteUninstall},
+	} {
+		if set.on != nil && *set.on {
+			event |= set.event
+		}
 	}
 
 	return event, startEvent
+}
+
+// startCarrier writes the component that starts svc only when its start
+// condition, and the condition of the service's component, are true at
+// install time, and returns its key. It installs with the service's
+// component: same folder, bitness and features. Its key path is a registry
+// value named after the component, so that neither two components nor two
+// products share it.
+func (b *build) startCarrier(info *componentInfo, svc *config.Service) string {
+	comp := info.cfg
+	carrier := generatedID("cmp", "StartService", b.upgradeCode, comp.ID, svc.Name)
+	registry := generatedID("reg", "StartService", b.upgradeCode, comp.ID, svc.Name)
+
+	bitness := "32"
+	attributes := compRegistryKeyPath
+
+	if info.attributes&comp64Bit != 0 {
+		bitness = "64"
+		attributes |= comp64Bit
+	}
+
+	guid := uuid5(namespaceComponent, b.upgradeCode+"|"+bitness+"|start|"+carrier)
+
+	cond := "(" + svc.Control.StartCondition + ")"
+	if comp.Condition != "" {
+		cond = "(" + comp.Condition + ") AND " + cond
+	}
+
+	// A public property set in the wizard must reach the server.
+	for _, prop := range condition.Properties(svc.Control.StartCondition) {
+		if config.IsPublicProperty(prop) {
+			b.secure[prop] = true
+		}
+	}
+
+	b.table("Component").Add(carrier, guid, comp.Directory, attributes, cond, registry)
+	b.table("Registry").Add(registry, registryRoots["HKLM"], `Software\[Manufacturer]\[ProductName]`, carrier, "#1", carrier)
+	b.carriers[comp.ID] = append(b.carriers[comp.ID], carrier)
+
+	return carrier
+}
+
+// controlServices writes the ServiceControl rows of the services a
+// component stops, starts or deletes without installing them (SVC-07).
+func (b *build) controlServices(info *componentInfo) {
+	comp := info.cfg
+
+	for _, ctl := range comp.ServiceControl {
+		event := 0
+
+		for _, set := range []struct {
+			on    bool
+			event int
+		}{
+			{ctl.StartOnInstall, eventStartInstall},
+			{ctl.StopOnInstall, eventStopInstall},
+			{ctl.DeleteOnInstall, eventDeleteInstall},
+			{ctl.StartOnUninstall, eventStartUninstall},
+			{ctl.StopOnUninstall, eventStopUninstall},
+			{ctl.DeleteOnUninstall, eventDeleteUninstall},
+		} {
+			if set.on {
+				event |= set.event
+			}
+		}
+
+		key := generatedID("scx", comp.ID, strings.ToLower(ctl.Name))
+		b.table("ServiceControl").Add(key, ctl.Name, event, nil, waitColumn(*ctl.Wait), comp.ID)
+	}
 }
 
 // waitColumn is the ServiceControl.Wait value.

@@ -110,9 +110,10 @@ type build struct { //nolint:govet // grouped by build step
 	schedules  map[string][]sequence.Action
 	components map[string]*componentInfo
 	hidden     map[string]bool
-	// shortcutCarrier maps a component to the generated component that
-	// holds the shortcuts to its files.
-	shortcutCarrier map[string]string
+	// carriers maps a component to the generated components that install
+	// with it: the one that holds the shortcuts to its files and those that
+	// start its services under a condition.
+	carriers map[string][]string
 	// shortNames are the short names taken per folder (canonical path),
 	// shared by the directories and files in it and by every directory key
 	// that names it (section 11.3).
@@ -218,22 +219,22 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 	}
 
 	bld := &build{
-		cfg:             cfg,
-		opts:            opts,
-		diags:           diags,
-		tables:          make(map[string]*msidb.Table),
-		dirs:            make(map[string]*dirInfo),
-		components:      make(map[string]*componentInfo),
-		fileByKey:       make(map[string]*fileInfo),
-		properties:      make(map[string]string),
-		secure:          make(map[string]bool),
-		hidden:          make(map[string]bool),
-		shortcutCarrier: make(map[string]string),
-		shortNames:      make(map[string]map[string]bool),
-		shortcutNames:   make(map[string]map[string]bool),
-		schedules:       make(map[string][]sequence.Action),
-		numbered:        make(map[string][]sequence.Numbered),
-		is64:            cfg.Package.Platform.Is64Bit(),
+		cfg:           cfg,
+		opts:          opts,
+		diags:         diags,
+		tables:        make(map[string]*msidb.Table),
+		dirs:          make(map[string]*dirInfo),
+		components:    make(map[string]*componentInfo),
+		fileByKey:     make(map[string]*fileInfo),
+		properties:    make(map[string]string),
+		secure:        make(map[string]bool),
+		hidden:        make(map[string]bool),
+		carriers:      make(map[string][]string),
+		shortNames:    make(map[string]map[string]bool),
+		shortcutNames: make(map[string]map[string]bool),
+		schedules:     make(map[string][]sequence.Action),
+		numbered:      make(map[string][]sequence.Numbered),
+		is64:          cfg.Package.Platform.Is64Bit(),
 	}
 
 	res := &Result{}

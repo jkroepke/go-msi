@@ -696,6 +696,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 			v.permissions(svcPath+".permissions", svc.Permissions)
 		}
 
+		v.componentServiceControl(p, comp, perUser)
 		v.componentPermissions(p, comp)
 		v.componentEvents(p, comp, perUser)
 	}
@@ -1322,8 +1323,51 @@ func (v *validator) serviceControl(ctlPath string, ctl *ServiceControl, start st
 		v.warnf(ctlPath+".deleteOnUninstall", "without it the service stays registered after uninstall (SVC-01)")
 	}
 
+	if ctl.StartCondition != "" {
+		if !*ctl.StartOnInstall {
+			v.errorf(ctlPath+".startCondition", "needs startOnInstall")
+		} else if err := condition.Check(ctl.StartCondition); err != nil {
+			v.errorf(ctlPath+".startCondition", "%v", err)
+		}
+	}
+
 	if ctl.WaitForStart != nil && !*ctl.StartOnInstall {
 		v.warnf(ctlPath+".waitForStart", "has no effect without startOnInstall")
+	}
+}
+
+// componentServiceControl checks the services a component stops, starts or
+// deletes without installing them.
+func (v *validator) componentServiceControl(compPath string, comp *Component, perUser bool) {
+	seen := make(map[string]bool)
+
+	for _, svc := range comp.Services {
+		seen[strings.ToLower(svc.Name)] = true
+	}
+
+	for j, ctl := range comp.ServiceControl {
+		ctlPath := fmt.Sprintf("%s.serviceControl[%d]", compPath, j)
+
+		if perUser {
+			v.errorf(ctlPath, "a per-user package cannot control services, which needs elevation")
+		}
+
+		if !v.required(ctlPath+".name", ctl.Name) {
+			continue
+		}
+
+		key := strings.ToLower(ctl.Name)
+		if seen[key] {
+			v.errorf(ctlPath+".name", "this component already controls %s; set the events of a service it installs in services[].control, "+
+				"and list each other service once", ctl.Name)
+		}
+
+		seen[key] = true
+
+		if !ctl.anyEvent() {
+			v.errorf(ctlPath, "names no event; set at least one of stopOnInstall, startOnInstall, deleteOnInstall, "+
+				"stopOnUninstall, startOnUninstall and deleteOnUninstall")
+		}
 	}
 }
 

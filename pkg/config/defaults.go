@@ -340,6 +340,8 @@ func defaultComponent(comp *Component) { //nolint:cyclop,gocognit // a flat list
 		}
 	}
 
+	defaultServiceControl(comp.ServiceControl)
+
 	for _, source := range comp.EventLog {
 		if source.Log == "" {
 			source.Log = "Application"
@@ -400,4 +402,14 @@ func identifierRune(r rune) rune {
 	}
 
 	return -1
+}
+
+// defaultServiceControl waits for the events of services a component
+// controls without installing them, unless told otherwise.
+func defaultServiceControl(controls []*ControlledService) {
+	for _, ctl := range controls {
+		if ctl.Wait == nil {
+			ctl.Wait = new(true)
+		}
+	}
 }

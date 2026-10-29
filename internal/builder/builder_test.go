@@ -877,6 +877,87 @@ func TestServiceControlWait(t *testing.T) {
 	}
 }
 
+// deleteOnInstall adds event 8 to the service's row, a start condition moves
+// the start to a generated component with that condition, and
+// serviceControl entries become rows of their component (SVC-06 to SVC-08).
+func TestServiceControlEvents(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "0.32.0.5", Languages: []int{1033}})
+	inputs := map[string][]byte{
+		"windows_exporter.exe": exe,
+		"icon.ico":             append([]byte{0, 0, 1, 0, 1, 0}, bytes.Repeat([]byte{0xAB}, 64)...),
+	}
+
+	cfg := example(t, "windows_exporter", map[string]string{"VERSION": "0.32.0.5"}, inputs)
+
+	var owner *config.Component
+
+	for _, comp := range cfg.Components {
+		for _, svc := range comp.Services {
+			owner = comp
+			svc.Control.DeleteOnInstall = new(true)
+			svc.Control.StartCondition = `START_AFTER_INSTALL="1"`
+			comp.ServiceControl = []*config.ControlledService{
+				{Name: "OldExporter", StopOnInstall: true, DeleteOnInstall: true, StopOnUninstall: true, DeleteOnUninstall: true, Wait: new(true)},
+				{Name: "Spooler", StopOnInstall: true, StartOnUninstall: true, Wait: new(false)},
+			}
+		}
+	}
+
+	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := make([]string, 0, 4)
+	carrier := ""
+
+	for _, row := range rows(t, database, "ServiceControl") {
+		comp := fmt.Sprint(row[5])
+		if comp != owner.ID {
+			carrier, comp = comp, "carrier"
+		}
+
+		got = append(got, fmt.Sprintf("%v/%v/%v/%v", row[1], row[2], row[4], comp))
+	}
+
+	slices.Sort(got)
+
+	want := "OldExporter/170/1/" + owner.ID + " Spooler/18/0/" + owner.ID +
+		" windows_exporter/1/0/carrier windows_exporter/170/1/" + owner.ID
+	if strings.Join(got, " ") != want {
+		t.Fatalf("ServiceControl rows %q, want %q", strings.Join(got, " "), want)
+	}
+
+	cond := cell(t, database, "Component", "Condition", func(r []any) bool { return r[0] == carrier })
+	if cond != `(START_AFTER_INSTALL="1")` {
+		t.Errorf("carrier condition %v", cond)
+	}
+
+	keyPath := cell(t, database, "Component", "KeyPath", func(r []any) bool { return r[0] == carrier })
+	if root := cell(t, database, "Registry", "Root", func(r []any) bool { return r[0] == keyPath }); root != 2 {
+		t.Errorf("carrier key path %v in root %v, want HKLM", keyPath, root)
+	}
+
+	features := map[string]bool{}
+
+	for _, row := range rows(t, database, "FeatureComponents") {
+		features[fmt.Sprint(row[0], "/", row[1])] = true
+	}
+
+	for _, row := range rows(t, database, "FeatureComponents") {
+		if row[1] == owner.ID && !features[fmt.Sprint(row[0], "/", carrier)] {
+			t.Errorf("carrier is not in feature %v", row[0])
+		}
+	}
+
+	secure := fmt.Sprint(cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "SecureCustomProperties" }))
+	if !slices.Contains(strings.Split(secure, ";"), "START_AFTER_INSTALL") {
+		t.Errorf("SecureCustomProperties %q lacks START_AFTER_INSTALL", secure)
+	}
+}
+
 // Text the database code page cannot hold must fail with a diagnostic, not
 // with a marshal error (FuzzBuild finding).
 func TestCodepageDiagnostic(t *testing.T) {

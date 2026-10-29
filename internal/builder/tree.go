@@ -654,6 +654,7 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 		b.writeRegistry(info)
 		b.writeEnvironment(info)
 		b.writeServices(info)
+		b.controlServices(info)
 		b.purgeAction(info)
 	}
 
@@ -834,7 +835,7 @@ func (b *build) features() error {
 		for _, c := range feature.Components {
 			featureComps.Add(feature.ID, c.ID)
 
-			if carrier, ok := b.shortcutCarrier[c.ID]; ok {
+			for _, carrier := range b.carriers[c.ID] {
 				featureComps.Add(feature.ID, carrier)
 			}
 		}

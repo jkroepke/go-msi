@@ -785,8 +785,10 @@ services:
     control:
       startOnInstall: true
       stopOnInstall: true
+      deleteOnInstall: false     # replace a stale service of the same name
       stopOnUninstall: true
       deleteOnUninstall: true
+      startCondition: START_AFTER_INSTALL="1"   # start only when true
       wait: true                 # stop and delete wait for completion
       waitForStart: true         # defaults to wait
     recovery:
@@ -818,6 +820,24 @@ it back. With `false` the install succeeds and leaves such a service stopped;
 set to `true` there: StartServices cannot start a disabled service and ends
 the install with error 1920 (SVC-05).
 
+`deleteOnInstall` (default `false`) adds event 8: DeleteServices removes a
+service of the same name that is already registered, for example by an old
+installer or by hand, before InstallServices creates the package's own.
+Without it InstallServices leaves an existing registration alone, so the
+package's service would keep the old binary path and account (SVC-06). A
+repair reinstalls the component, which deletes and creates the service
+again.
+
+`startCondition` starts the service at install only when the condition is
+true. `ServiceControl` has no condition column, so the start row goes to a
+generated component (`cmp…`) in the same folder and features, with the
+service component's condition and this one as its `Condition` and an HKLM
+registry value as key path; public properties in the condition become
+secure, so a value set in the wizard reaches the server. A component
+condition is evaluated when the component is first installed, so the
+property counts at install (and on each major upgrade, which installs
+afresh), not on a later repair (SVC-08). It needs `startOnInstall`.
+
 `recovery` becomes a deferred, no-impersonate `sc.exe failure` action after
 InstallServices, with its exit code ignored (SVC-01). Each step is `restart`,
 `none` or `{restart: <delay>}`; a plain `restart` waits `restartDelay`
@@ -825,6 +845,33 @@ InstallServices, with its exit code ignored (SVC-01). Each step is `restart`,
 `resetAfter` is whole seconds, as `sc.exe` takes them (SVC-03); `resetAfter`
 and `resetAfterDays` exclude each other. A `password` is added
 to `MsiHiddenProperties` when it names a property.
+
+**Services the package does not install** are stopped, started or deleted
+with `serviceControl` entries, which become `ServiceControl` rows of the
+component (SVC-07). A typical use retires a service an older version
+installed under another name:
+
+```yaml
+components:
+  - files: [{ source: app.exe }]
+    serviceControl:
+      - name: app-old            # may hold [PROPERTY] references
+        stopOnInstall: true
+        deleteOnInstall: true
+        stopOnUninstall: true
+        deleteOnUninstall: true
+      - name: Spooler
+        stopOnInstall: true
+        startOnInstall: true     # starts again after InstallFiles
+        wait: false              # default true
+```
+
+Each event is off unless set, and an entry needs at least one. Install
+events run when the component is installed (including a repair of it),
+uninstall events when it is removed. A service that does not exist is not
+an error. A service the component installs is controlled with
+`services[].control` instead; naming it here is an error, and so is a name
+listed twice in one component. A per-user package cannot control services.
 
 **Event log sources** become Registry rows of the component:
 

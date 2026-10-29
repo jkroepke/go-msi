@@ -366,6 +366,7 @@ func (v *validator) folderComponentFields(compPath string, comp *Component) {
 		{"registry", len(comp.Registry) > 0},
 		{"removeRegistry", len(comp.RemoveRegistry) > 0},
 		{"services", len(comp.Services) > 0},
+		{"serviceControl", len(comp.ServiceControl) > 0},
 		{"eventLog", len(comp.EventLog) > 0},
 		{"environment", len(comp.Environment) > 0},
 		{"purge", comp.Purge.Enabled()},

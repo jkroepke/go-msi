@@ -176,13 +176,19 @@ func emptyComponents(cfg *Config) error { //nolint:cyclop // one pass in a fixed
 }
 
 // emptyFiles rejects null entries in a component's files, their
-// shortcuts and its removeFiles.
+// shortcuts, its removeFiles and its serviceControl.
 func emptyFiles(compPath string, comp *Component) []error {
 	var errs []error
 
 	for j, entry := range comp.RemoveFiles {
 		if entry == nil {
 			errs = append(errs, fmt.Errorf("%s.removeFiles[%d]: empty entry", compPath, j))
+		}
+	}
+
+	for j, entry := range comp.ServiceControl {
+		if entry == nil {
+			errs = append(errs, fmt.Errorf("%s.serviceControl[%d]: empty entry", compPath, j))
 		}
 	}
 
