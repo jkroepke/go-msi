@@ -62,9 +62,9 @@ ui:
 // TestFullUIRemoveDialog removes the product three times through the full
 // UI, reinstalling it quietly in between: the ARP entry's ModifyPath command
 // with the remove dialog's box left clear keeps the purged folder, msiexec
-// /x shows neither the maintenance menu nor the page and keeps it too, and the menu with the box checked
-// deletes it, because the secure property reaches the deferred purge on
-// the server (UI-08). It also records what Add or Remove Programs is given
+// /x shows neither the maintenance menu nor the page and keeps it too, and
+// the menu with the box checked deletes it, because the secure property
+// reaches the deferred purge on the server (UI-08). It also records what Add or Remove Programs is given
 // for a package whose ARPNOMODIFY stays unset (UI-09).
 func TestFullUIRemoveDialog(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
 	requireFullUI(t)

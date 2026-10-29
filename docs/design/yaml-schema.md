@@ -1734,7 +1734,7 @@ Remove in `MaintenanceTypeDlg` opens it, and its Next goes to
 `MaintenanceTypeDlg` and may name another remove dialog; install pages and
 remove pages cannot follow each other. The fields are the same as on install
 pages. A package with remove dialogs keeps `ARPNOMODIFY` unset, so Add or
-Remove Programs offers Change; its `ModifyPath` command,
+Remove Programs is expected to offer Change (unverified); its `ModifyPath` command,
 `MsiExec.exe /I{ProductCode}`, opens the maintenance menu (UI-09; which
 command the button runs is unverified); with `product.arp.noModify: true` the
 validator warns that only running the package again shows the page, and with

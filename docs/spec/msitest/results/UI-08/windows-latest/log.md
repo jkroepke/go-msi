@@ -10,14 +10,24 @@ on `DELETE_CONFIGURATION` (declared in `properties`) and a component whose
 quiet install that writes `config.yaml` into the purged folder. The test
 passed, so its assertions held:
 
-- keep: it ran the ARP entry's `ModifyPath`, checked to be exactly
-  `MsiExec.exe /I{ProductCode}` (the test reports an error otherwise), with
-  the box left clear. The product was removed, `config.yaml` was still
-  there, and the server's properties had no `DELETE_CONFIGURATION`.
+- keep: it ran `msiexec` with the arguments of the ARP entry's
+  `ModifyPath`, whose value the UI-09 log records as
+  `MsiExec.exe /I{ProductCode}` (the test at this commit only checked that
+  it starts with `MsiExec.exe`), with the box left clear. The product was
+  removed, `config.yaml` was still there, and the `Property(S)` lines of
+  the run's verbose log had no `DELETE_CONFIGURATION` (the check also
+  passes for a missing log; no keep-run excerpt was recorded).
 - delete: `msiexec /i` on the package, the box checked. The server's
   properties held `DELETE_CONFIGURATION = 1` and the folder no longer
   existed afterwards.
-- `TestICEFullUIRemove` (`requireCleanICE`) passed on the same package.
+- `TestICEFullUIRemove` (`requireCleanICE`) found no ICE errors on the
+  same package and logged three warnings outside the remove dialog:
+
+  ```text
+  ICE03 warning: String overflow (greater than length permitted in column); Table: RadioButton, Column: Text, Key(s): RMOPTION.2
+  ICE45 warning: Row 'ErrorDlg.ErrorIcon' in table 'Control' has bits set in the 'Attributes' column that are reserved.
+  ICE61 warning: This product should remove only older versions of itself. The Maximum version is not less than the current product. (1.0.0 1.0.0)
+  ```
 
 The driver's view of both runs and the excerpt of the delete run's log:
 
