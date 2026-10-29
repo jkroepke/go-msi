@@ -69,8 +69,9 @@ func buildFileTypes(t *testing.T) string {
 }
 
 // regDefault returns the REG_SZ default value of a key in the 64-bit view,
-// or "<absent>". The value's name is localised, so the line is found by its
-// type.
+// or "<absent>" when the key is missing. For a key without a default it
+// returns reg.exe's localized "(value not set)" (hasDefault tells them
+// apart). The value's name is localised, so the line is found by its type.
 func regDefault(t *testing.T, key string) string {
 	t.Helper()
 
@@ -81,6 +82,24 @@ func regDefault(t *testing.T, key string) string {
 	}
 
 	return "<absent>"
+}
+
+// hasDefault reports whether a key in the 64-bit view has a default value.
+// reg.exe prints a localized "(value not set)" REG_SZ line for a key
+// without one, so the value is read through .NET instead.
+func hasDefault(t *testing.T, key string) bool {
+	t.Helper()
+
+	path := "Registry::" + strings.Replace(key, `HKLM\`, `HKEY_LOCAL_MACHINE\`, 1)
+	script := `$k = Get-Item -LiteralPath '` + path + `' -ErrorAction SilentlyContinue; ` +
+		`if ($k -and $null -ne $k.GetValue('')) { 'set' } else { 'unset' }`
+
+	out, err := exec.CommandContext(t.Context(), "powershell.exe", "-NoProfile", "-Command", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("powershell: %v\n%s", err, out)
+	}
+
+	return strings.TrimSpace(string(out)) == "set"
 }
 
 // regNamed returns the REG_SZ value of a key in the 64-bit view whose name
@@ -106,12 +125,11 @@ func regNamed(t *testing.T, key, name string) string {
 // HKCR rows land in HKLM\Software\Classes, cmd's assoc and ftype resolve
 // the extension and the open command to the installed file, each ProgID is
 // an empty REG_SZ in its extensions' OpenWithProgids (REG-04), an
-// openWithOnly extension gets no default, and the run DLL notifies the
-// shell after InstallFinalize (REG-05). Uninstall removes the ProgIDs and
-// their OpenWithProgids entries but keeps another program's entry, leaves
-// the package's own extension defaults and Content Type in place (the
-// permanent component, REG-05), and leaves a default that another program
-// set after the install alone.
+// openWithOnly extension gets no default. Uninstall removes the values the
+// package wrote: the ProgIDs, their OpenWithProgids entries, the extension
+// defaults and Content Type, a default that another program set after the
+// install included (the value name is the same). Other programs' values and
+// subkeys in an extension key stay (REG-07).
 func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
 	if testing.Short() {
 		t.Skip("installing needs msiexec time and elevation")
@@ -134,8 +152,12 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 	cleanup()
 	t.Cleanup(cleanup)
 
-	// Another program already lists itself under .msibtoth.
+	// Another program already lists itself under .msibtoth, and keeps a
+	// value and subkeys of its own in .msibtkeep.
 	regSet(t, "64", classes+`.msibtoth\OpenWithProgids`, "MsiBuilderTest.Foreign", "")
+	regSet(t, "64", classes+".msibtkeep", "PerceivedType", "text")
+	regSet(t, "64", classes+`.msibtkeep\ShellNew`, "NullFile", "")
+	regSet(t, "64", classes+`.msibtkeep\OpenWithProgids`, "MsiBuilderTest.Foreign", "")
 
 	log := filepath.Join(filepath.Dir(path), "install.log")
 	if code := msiexecCode(t, log, "/i", path); code != 0 {
@@ -176,32 +198,12 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 		t.Errorf(".msibtoth has a value, want none for openWithOnly:\n%s", text)
 	}
 
-	// The action starts after InstallFinalize and logs its session.
-	notified := func(log string) {
-		t.Helper()
-
-		text := readLog(log)
-		finalize := strings.Index(text, ": InstallFinalize.")
-		action := strings.Index(text, ": BuilderAssocChanged.")
-
-		if finalize < 0 || action < finalize {
-			t.Errorf("%s: BuilderAssocChanged starts at %d, InstallFinalize at %d", log, action, finalize)
-		}
-
-		for line := range strings.Lines(text) {
-			if strings.Contains(line, "BuilderRun: SHChangeNotify(SHCNE_ASSOCCHANGED) in session") {
-				t.Logf("%s: %s", filepath.Base(log), strings.TrimSpace(line))
-
-				return
-			}
-		}
-
-		t.Errorf("%s has no SHChangeNotify line", log)
+	// cmd reads HKEY_CLASSES_ROOT, the merged view Explorer uses.
+	// The control for the checks after the uninstall.
+	if !hasDefault(t, classes+".msibtdoc") {
+		t.Error("hasDefault does not see the .msibtdoc default after the install")
 	}
 
-	notified(log)
-
-	// cmd reads HKEY_CLASSES_ROOT, the merged view Explorer uses.
 	out, _ := exec.CommandContext(t.Context(), "cmd.exe", "/c", "assoc .msibtdoc && ftype MsiBuilderTest.Document").CombinedOutput()
 	if text := string(out); !strings.Contains(text, ".msibtdoc=MsiBuilderTest.Document") ||
 		!strings.Contains(strings.ToLower(text), strings.ToLower(`MsiBuilderTest.Document="`+exe+`" "%1"`)) {
@@ -218,24 +220,36 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 		t.Fatalf("msiexec /x returned %d\n%s", code, readLog(log))
 	}
 
-	notified(log)
-
-	for _, key := range []string{"MsiBuilderTest.Document", "MsiBuilderTest.Other", `.msibtdoc\OpenWithProgids`, `.msibtkeep\OpenWithProgids`} {
+	for _, key := range []string{"MsiBuilderTest.Document", "MsiBuilderTest.Other", `.msibtdoc\OpenWithProgids`} {
 		if regHas(t, "64", classes+key, "") {
 			t.Errorf("%s is still there after the uninstall", key)
 		}
 	}
 
-	// The extension defaults stay: the one another program set, and the
-	// package's own, which now names a ProgID that is gone.
-	for key, want := range map[string]string{".msibtdoc": "MsiBuilderTest.Foreign", ".msibtkeep": "MsiBuilderTest.Document"} {
-		if got := regDefault(t, classes+key); got != want {
-			t.Errorf("%s = %q after the uninstall, want %q", key, got, want)
+	// The defaults go, the one another program set after the install too;
+	// other programs' values and subkeys stay (REG-07).
+	for _, key := range []string{".msibtdoc", ".msibtkeep"} {
+		if hasDefault(t, classes+key) {
+			t.Errorf("%s = %q after the uninstall, want no default", key, regDefault(t, classes+key))
 		}
 	}
 
-	if got := regNamed(t, classes+".msibtdoc", "Content Type"); got != "application/x-msibt" {
-		t.Errorf("Content Type = %q after the uninstall, want it kept", got)
+	if got := regNamed(t, classes+".msibtdoc", "Content Type"); got != "<absent>" {
+		t.Errorf("Content Type = %q after the uninstall, want it removed", got)
+	}
+
+	if regHas(t, "64", classes+`.msibtkeep\OpenWithProgids`, "MsiBuilderTest.Document") {
+		t.Error(`.msibtkeep\OpenWithProgids still lists MsiBuilderTest.Document after the uninstall`)
+	}
+
+	if got := regNamed(t, classes+".msibtkeep", "PerceivedType"); got != "text" {
+		t.Errorf(".msibtkeep PerceivedType = %q after the uninstall, want another program's value kept", got)
+	}
+
+	for key, name := range map[string]string{`.msibtkeep\ShellNew`: "NullFile", `.msibtkeep\OpenWithProgids`: "MsiBuilderTest.Foreign"} {
+		if !regHas(t, "64", classes+key, name) {
+			t.Errorf("%s %s is gone after the uninstall, want another program's value kept", key, name)
+		}
 	}
 
 	out, _ = exec.CommandContext(t.Context(), "cmd.exe", "/c", "ftype MsiBuilderTest.Document").CombinedOutput()
