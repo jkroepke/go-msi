@@ -148,7 +148,7 @@ while ((Get-Date) -lt $deadline -and (Get-Process -Id $MsiPid -ErrorAction Silen
     if (-not $seen.ContainsKey($text)) {
       $seen[$text] = 1
       Note "WINDOW: $text"
-      # Controls hidden by a ControlCondition are still in the tree.
+      # Off-screen elements, such as a control a ControlCondition hid.
       $hidden = @($els | Where-Object { $_.Current.IsOffscreen -and $_.Current.Name } | ForEach-Object { $_.Current.Name })
       if ($hidden) { Note ('HIDDEN: ' + ($hidden -join ' | ')) }
     }
@@ -171,7 +171,7 @@ while ((Get-Date) -lt $deadline -and (Get-Process -Id $MsiPid -ErrorAction Silen
         if ($c) { $chosen = $true; Note "CHOSE: $c"; Start-Sleep -Milliseconds 300 }
       }
       $n = Press $els $Buttons
-      if ($n) { Note "PRESSED: $n"; Start-Sleep 1 }
+      if ($n) { Note ('PRESSED: ' + ($n -replace '&', '')); Start-Sleep 1 }
     }
   }
 }
@@ -382,7 +382,9 @@ func fullUIDriven(t *testing.T, dir, choose, buttons string, args ...string) (in
 		t.Fatal(err)
 	}
 
+	// The driver appends, so a second run in the same folder starts empty.
 	seen := filepath.Join(dir, "driver.txt")
+	_ = os.Remove(seen)
 
 	var drv *exec.Cmd
 
