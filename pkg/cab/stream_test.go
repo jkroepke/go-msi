@@ -395,10 +395,10 @@ func boundedMemory(t *testing.T, comp cab.Compression) {
 		t.Fatal(werr)
 	}
 
-	t.Logf("wrote %d bytes for %d bytes of input; live heap before %d, peak %d, allocated peak %d", written, size, peak.Before, peak.Max, peak.Allocated)
+	t.Logf("wrote %d bytes for %d bytes of input; %v", written, size, peak)
 
 	if peak.Used() > limit {
-		t.Errorf("writer used %d bytes of live heap, want at most %d", peak.Used(), limit)
+		t.Errorf("writer used %d bytes of live heap, want at most %d; %v", peak.Used(), limit, peak)
 	}
 
 	want := sha256.New()
@@ -436,6 +436,6 @@ func boundedMemory(t *testing.T, comp cab.Compression) {
 	}
 
 	if peak.Used() > limit {
-		t.Errorf("reader used %d bytes of live heap, want at most %d", peak.Used(), limit)
+		t.Errorf("reader used %d bytes of live heap, want at most %d; %v", peak.Used(), limit, peak)
 	}
 }

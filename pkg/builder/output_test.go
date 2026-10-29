@@ -180,10 +180,10 @@ func TestLargePayloadBoundedMemory(t *testing.T) { //nolint:paralleltest // meas
 		t.Fatalf("build: %v\n%s", err, res.Diagnostics)
 	}
 
-	t.Logf("package of %d bytes; live heap before %d, peak %d, allocated peak %d", res.Size, peak.Before, peak.Max, peak.Allocated)
+	t.Logf("package of %d bytes; %v", res.Size, peak)
 
 	if peak.Used() > limit {
-		t.Errorf("the build used %d bytes of live heap, want at most %d", peak.Used(), limit)
+		t.Errorf("the build used %d bytes of live heap, want at most %d; %v", peak.Used(), limit, peak)
 	}
 
 	// The package holds the file: extract it through the lazy readers and

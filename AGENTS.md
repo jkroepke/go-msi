@@ -117,12 +117,17 @@ go test ./... -shuffle=on -race
   `-short` on Linux and the full set on Windows.
 - Bounded-memory tests assert on the live heap that `memtest.PeakHeap` reads
   from `/gc/heap/live:bytes`, not on `HeapAlloc`. `HeapAlloc` includes
-  uncollected garbage up to the collector's goal (about twice the live heap)
-  plus whatever is allocated during a concurrent mark, so it moved with
-  core count and runner load: `TestBoundedMemory/MSZIP` measured 9.6 MB
-  locally and 17.7 MB on a busy `windows-latest` runner for a live heap of
-  about 5 MB. Do not raise a limit to fix such a failure; check the live peak
-  in the log first.
+  uncollected garbage up to the collector's goal (about twice the live heap),
+  so it moved with allocation rate and load: `TestBoundedMemory/MSZIP`
+  measured 9.6 MB locally and 17.7 MB on a busy `windows-latest` runner for a
+  live heap of about 5 MB. One collection's live value also counts objects
+  allocated while it marks, which grows with a slow mark on a loaded machine,
+  so `Peak.Max` is the larger of min(live[i], live[i+1]) over consecutive
+  collections: data the code holds survives both, mark-time garbage does not.
+  Under 8 CPU hogs on 4 cores the MSZIP writer reads about 5 MB with
+  `GOMAXPROCS=4` and about 10 MB with `GOMAXPROCS=16` (one cycle up to
+  15 MB). Do not raise a limit to fix such a failure; compare the peak, the
+  one-cycle peak and the allocated peak in the failure message first.
 - Windows syscall helpers that forward `...uintptr` to `(*syscall.LazyProc).Call`
   need `//go:uintptrescapes`, and every `uintptr(unsafe.Pointer(...))` must be
   written inside the call's argument list. Without that, out-parameters stay on
