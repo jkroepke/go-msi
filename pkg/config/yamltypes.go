@@ -204,7 +204,36 @@ type Property struct { //nolint:govet // field order is the YAML key order
 	Value  string `yaml:"value"`
 	Secure *bool  `yaml:"secure"`
 	Hidden bool   `yaml:"hidden"`
+	// Search fills the property from the target machine before the
+	// install; a value from the command line wins, and Value is the
+	// fallback when the search finds nothing (SEARCH-04).
+	Search *Search `yaml:"search"`
 }
+
+// Search is where a property's value is looked up.
+type Search struct {
+	Registry *RegistrySearch `yaml:"registry"`
+}
+
+// RegistrySearch reads a registry value through a RegLocator row.
+type RegistrySearch struct {
+	Root string `yaml:"root"`
+	Key  string `yaml:"key"`
+	// Name is the value to read; empty reads the key's default value.
+	Name string `yaml:"name"`
+	// Bitness selects the 32- or 64-bit registry view; empty selects the
+	// package's own.
+	Bitness string `yaml:"bitness"`
+	// Type is value (default), the data with the engine's type prefix, or
+	// directory, the folder the data names when that folder exists.
+	Type string `yaml:"type"`
+}
+
+// Registry search types.
+const (
+	SearchValue     = "value"
+	SearchDirectory = "directory"
+)
 
 // Properties maps property names to their settings.
 type Properties map[string]*Property

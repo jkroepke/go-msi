@@ -6,7 +6,7 @@ summary  4: Example
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install Example Agent.
 summary  7: x64;1033
-summary  9: {D9149D46-CCD3-5DBA-94A8-698D45BE7E06}
+summary  9: {035285BB-FA3F-56B1-BC42-B785ABE8005D}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500
@@ -472,7 +472,7 @@ ARPPRODUCTICON	icon.ico
 DefaultUIFont	DefaultFont
 ErrorDialog	ErrorDlg
 Manufacturer	Example
-ProductCode	{CEF908A6-5FA7-5D3E-969A-D88EA61C36A2}
+ProductCode	{02130B18-0282-5216-814E-5005C821C7A3}
 ProductLanguage	1033
 ProductName	Example Agent
 ProductVersion	1.5.0

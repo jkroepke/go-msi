@@ -165,6 +165,12 @@ go test ./... -shuffle=on -race
   or `BaseDir`; never call `os.Open` on a source path directly.
 - Byte-slice entry points (`cab.Write`, `cfb.Write`, `msidb.Marshal`) are thin
   wrappers over the streaming functions and must stay byte-identical to them.
+- `productCode: auto` hashes the encoded configuration with null, `""`,
+  `[]` and `{}` values pruned (`pruneEmpty` in `pkg/builder/tree.go`); `false`
+  and `0` stay, because an explicit `secure: false` differs from the default.
+  A new optional config field must therefore be a pointer, string, slice or
+  map, or carry `yaml:",omitempty"`; a plain `bool` or `int` would change
+  the automatic ProductCode of every existing configuration.
 - The builder removes a partial output when a build fails; every spool or
   temporary file is cleaned up on every error path.
 - Reject at build time what Windows would accept and then install in a broken

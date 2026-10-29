@@ -67,7 +67,9 @@ func (b *build) writeProperties() error { //nolint:cyclop // one pass over the f
 	for _, name := range b.cfg.Properties.Names() {
 		prop := b.cfg.Properties[name]
 
-		if prop.Value != "" {
+		// A searched property gets its default from an action after the
+		// search, so that the guard can tell a command-line value from it.
+		if prop.Value != "" && prop.Search == nil {
 			b.properties[name] = prop.Value
 		}
 
@@ -214,8 +216,9 @@ func (b *build) launchConditions() error {
 
 // Registry locator types (RegLocator.Type).
 const (
-	regLocatorRaw   = 2
-	regLocator64Bit = 16
+	regLocatorDirectory = 0
+	regLocatorRaw       = 2
+	regLocator64Bit     = 16
 )
 
 // rememberInstallDir reads back the folder installDir.remember stored. The
@@ -258,6 +261,96 @@ func (b *build) rememberInstallDir() error {
 	}
 
 	return nil
+}
+
+// searchProperties writes the AppSearch and RegLocator rows of the
+// properties with a search. The search fills a property of its own, and
+// type-51 actions copy it, or the default value, into the property only when
+// it is still empty, so that a command-line value wins (SEARCH-03 showed
+// that a search straight into the property overrides one). Both run in the
+// UI and the execute sequence; after a UI sequence the engine skips
+// AppSearch in the execute sequence (reported), so the property must be
+// secure to arrive there.
+func (b *build) searchProperties() error {
+	for _, name := range b.cfg.Properties.Names() {
+		if prop := b.cfg.Properties[name]; prop.Search != nil && prop.Search.Registry != nil {
+			b.searchProperty(name, prop)
+		}
+	}
+
+	return nil
+}
+
+// searchProperty writes the search of one property.
+func (b *build) searchProperty(name string, prop *config.Property) {
+	reg := prop.Search.Registry
+	signature := searchName("Search_", name)
+	found := config.SearchFoundProperty(name)
+
+	typ := regLocatorRaw
+	if reg.Type == config.SearchDirectory {
+		typ = regLocatorDirectory
+	}
+
+	if reg.Bitness == "64" || reg.Bitness == "" && b.is64 {
+		typ |= regLocator64Bit
+	}
+
+	if prop.Hidden {
+		b.hidden[found] = true
+	}
+
+	// AppSearch fails with 2228 without a Signature table (SEARCH-03).
+	b.table("Signature")
+	b.table("AppSearch").Add(found, signature)
+	b.table("RegLocator").Add(signature, registryRoots[reg.Root], reg.Key, nullable(reg.Name), typ)
+
+	apply := searchName("SearchApply_", name)
+	b.addAction(&actionInfo{name: apply, typ: caSetProperty, source: name, target: "[" + found + "]"})
+
+	var fallback string
+	if prop.Value != "" {
+		fallback = searchName("SearchDefault_", name)
+		b.addAction(&actionInfo{name: fallback, typ: caSetProperty, source: name, target: escapeFormatted(prop.Value)})
+	}
+
+	for _, seq := range []string{seqInstallExecute, seqInstallUI} {
+		b.standardAt(seq, "AppSearch")
+		b.schedule(seq, apply, found+" AND NOT "+name, "", "AppSearch", 0)
+
+		if fallback != "" {
+			b.schedule(seq, fallback, "NOT "+name, "", apply, 0)
+		}
+	}
+}
+
+// searchName joins a prefix and a property name into an identifier of at
+// most 72 characters.
+func searchName(prefix, name string) string {
+	if len(prefix)+len(name) <= config.MaxIdentifierLength {
+		return prefix + name
+	}
+
+	return generatedID(strings.TrimSuffix(prefix, "_"), name)
+}
+
+// escapeFormatted makes text a literal in a Formatted column: [ ] { } become
+// [\x], the escape the formatted-text grammar defines (section 8.9).
+func escapeFormatted(text string) string {
+	var out strings.Builder
+
+	for _, char := range text {
+		switch char {
+		case '[', ']', '{', '}':
+			out.WriteString(`[\`)
+			out.WriteRune(char)
+			out.WriteByte(']')
+		default:
+			out.WriteRune(char)
+		}
+	}
+
+	return out.String()
 }
 
 // remember32Bit reports whether the component installDir.remember adds is a

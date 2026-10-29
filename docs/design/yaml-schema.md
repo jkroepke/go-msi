@@ -76,7 +76,7 @@ closes each one.
 | Corrupted cabinet data (MSZIP-01, CAB-04) | Wrong DEFLATE history, or a bit flip without a checksum, installs a corrupted file | Writer: every cabinet data block gets a checksum, and the builder re-extracts every cabinet after writing it and compares each file's SHA-256 with the source. Neither can be turned off, so the schema has no field for them. |
 | Script custom actions (CA-02) | Inline JScript/VBScript actions (types 37/38) report success whatever they return; a Binary script returning 5 ends the install with 0 and leaves files unregistered | There are no script custom actions. Actions run an executable (`exec`), a DLL (`dll`), set a property or directory, or fail with an error. |
 | EXE exit codes (CA-02) | Any non-zero exit fails the install unless the action ignores it | `customActions[].return` is required for `exec` actions (`check` or `ignore`), so the author decides. |
-| Same ProductCode, new package (UPG-03) | Installing a rebuilt package over the installed one fails with 1638 | `product.productCode: auto` derives the code from the upgrade code, version, platform and a digest of every input. Changed content gives a new ProductCode (a major upgrade); unchanged content gives the same package byte for byte. A pinned ProductCode makes the validator warn. |
+| Same ProductCode, new package (UPG-03) | Installing a rebuilt package over the installed one fails with 1638 | `product.productCode: auto` derives the code from the upgrade code, version, platform and a digest of every input. Changed content gives a new ProductCode (a major upgrade); unchanged content gives the same package byte for byte. Keys whose value means the same as a missing key (null, `""`, `[]`, `{}`) are left out of the digest, so a key a later version adds to the schema (as a pointer, string, list or mapping, or left out when empty) does not change the code of a configuration that does not use it; `false` and `0` stay in, since an explicit `secure: false` is not the default. The release that introduced this pruning derives a new code once for every configuration, unchanged ones included. A pinned ProductCode makes the validator warn. |
 | Quote in a firewall rule description (CA-04) | netsh drops the quote and stores the rest of the description | `firewall[].name` and `firewall[].description` must not contain a double quote. |
 | Versions that differ in the fourth field only (UPG-01) | Without an inclusive maximum both products stay installed side by side | `upgrade.allowSameVersion` defaults to `true` (maximum inclusive), so `0.32.0.5` replaces `0.32.0.4`. Four-field versions get a warning that Windows compares only three. |
 
@@ -441,6 +441,7 @@ components:
       - source: dist/windows_exporter.exe
         checksum: true
     registry: []
+    removeRegistry: []
     services: []
     eventLog: []
     environment: []
@@ -664,6 +665,34 @@ creates the key (`+`) or, with `removeOnUninstall: true`, creates and removes
 it (`*`). `append: true` and `prepend: true` on a `multiString` merge with an
 existing value.
 
+**Registry removal.** `removeRegistry` deletes keys or values that exist
+before the install, for example the handlers of an old version or a value
+an earlier release wrote outside its own components:
+
+```yaml
+removeRegistry:
+  - root: HKCU                       # HKLM | HKCU | HKCR | HKU | HKMU
+    key: Software\Classes\oldapp      # no name: the key with all values and subkeys
+  - id: LegacyArgs                   # optional; generated from the content otherwise
+    root: HKLM
+    key: SOFTWARE\Example\App
+    name: Arguments                  # one value
+```
+
+Each entry is a `RemoveRegistry` row of the component (name `-` for a whole
+key). The engine deletes it when the component is installed, in the
+component's registry view only, again on a repair, and leaves it alone at
+uninstall (REG-02, observed on Windows). `RemoveRegistryValues` runs before
+`WriteRegistryValues`, so a key that is removed and also written by the
+package ends up with exactly the package's values, without values the user
+added there (REG-02). `HKMU` in a per-machine package is `HKLM`. In a per-machine package an `HKCU` entry
+can only reach the profile of the user who runs the install; other users'
+profiles are not touched (not tested). A component that only removes
+registry entries has its directory as key path. Removing the default value
+of a key is not supported. The same root, key and name twice in one
+component is an error, with or without `id`, and so is a per-user package
+that removes from HKLM or HKCR.
+
 **Services** (only in a component whose key file is the service executable):
 
 ```yaml
@@ -726,6 +755,17 @@ eventLog:
     typesSupported: 7
 ```
 
+They write `EventMessageFile` (`REG_EXPAND_SZ`) and `TypesSupported`
+(`REG_DWORD`) under
+`HKLM\SYSTEM\CurrentControlSet\Services\EventLog\<log>\<source>`.
+Nothing else was needed in REG-03: a key there with these two values was a
+registered source for `Write-EventLog`, `[EventLog]::SourceExists` and
+`Remove-EventLog`, and events showed their text through the generic `%1`
+message file `EventCreate.exe`. There is no `customSource` option: a
+`CustomSource` value made no difference to any of these in REG-03, and
+`New-EventLog` itself does not write it. A package that wants it anyway can
+add it as a `registry` entry.
+
 **Environment variables** (section 2.1, finding 4):
 
 ```yaml
@@ -758,14 +798,60 @@ properties:
 
 | Key | Default | Notes |
 |---|---|---|
-| `value` | none | Written to the Property table; an empty value writes no row |
+| `value` | none | Written to the Property table; an empty value writes no row. With `search` it is set by an action after `AppSearch` instead (see below) |
 | `secure` | `true` for public names | Listed in `SecureCustomProperties` |
 | `hidden` | `false` | Listed in `MsiHiddenProperties` |
+| `search` | none | Fills the property from the registry; see below |
 
 Public names have no lower-case letter. `secure: true` on a private name is
 an error. The request properties (`ADDLOCAL`, `REMOVE`, `REINSTALL`, …) and
 the properties the builder owns (`ProductCode`, `ProductVersion`, `ALLUSERS`,
 `SecureCustomProperties`, …) cannot be set here (ICE87).
+
+**Search.** `search` fills a property from the registry of the target
+machine before the install:
+
+```yaml
+properties:
+  NETFX_RELEASE:
+    search:
+      registry:
+        root: HKLM                     # HKLM | HKCU | HKCR | HKU
+        key: SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full
+        name: Release                  # empty: the key's default value
+        bitness: 64                    # 32 | 64; default: the package's
+        type: value                    # value (default) | directory
+  DATA_DIR:
+    value: C:\Data                     # used when the search finds nothing
+    search:
+      registry: { root: HKLM, key: SOFTWARE\Example, name: DataDir, type: directory }
+```
+
+`value` returns the registry data the way the engine formats it: a
+`REG_SZ` as it is (brackets stay literal), a `REG_DWORD` as `#` and the
+number, a `REG_EXPAND_SZ` already expanded (observed, SEARCH-04; Microsoft
+documents a `#%` prefix that the engine does not add). Conditions compare
+such a value as a string: `NETFX_RELEASE >= 394802` is false and
+`NETFX_RELEASE >= "#394802"` only works while both numbers have the same
+number of digits (SEARCH-04). Do not search a `REG_MULTI_SZ` value: the
+property starts and ends with a NUL, which is reported to break the full UI
+(specification section 8.7). `directory` returns the folder the data names
+with a trailing backslash, and nothing when it names a file or a missing
+folder (SEARCH-04).
+
+The precedence is: a value from the command line, then the search result,
+then `value`. The builder writes an `AppSearch` row into `<NAME>_FOUND`
+(public, so ICE52 stays quiet) and two immediate type-51 actions after
+`AppSearch` in both sequences: `SearchApply_<NAME>` copies the result when
+the property is still empty, and `SearchDefault_<NAME>` sets `value` when it
+is still empty after that. A search straight into the property would
+override a command-line value (SEARCH-03). `value` therefore has no
+`Property` row; it is written as a literal, with `[`, `]`, `{` and `}`
+escaped. A searched property must be public and secure, because after a
+UI sequence the engine does not run `AppSearch` again in the execute
+sequence (Microsoft documents this; not tested) and only secure properties
+reach it. `<NAME>_FOUND` cannot be defined in `properties`, and
+`installDir.remember` already searches the install dir.
 
 ### 4.8 `launchConditions`
 

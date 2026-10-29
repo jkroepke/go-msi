@@ -205,11 +205,14 @@ Silent-failure cases a producer has to guard against itself:
 | FILE-06 | Confirmed | [probe](msitest/results/FILE-06/probe/log.md); in a Word Count 3 package the target folder and an administrative image kept the long part of the `short\|long` directory, and `SHORTFILENAMES=1` installed to the short one; [details](#short-name-packages-file-06) |
 | FILE-07 | Confirmed | [probe](msitest/results/FILE-07/probe/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40833269994: ICE30 reports two files with one short name in a folder, not two directories or a directory and a file; a normal install is unaffected, with `SHORTFILENAMES=1` one file overwrites the other, two directories merge and a directory beside a file of its short name fails with 1312 and 1603; [details](#duplicate-short-names-file-07) |
 | REG-01 | Confirmed | [x64](msitest/results/REG-01/x64/log.md) and [Intel](msitest/results/REG-01/Intel/log.md) templates: bit 256 picks the view |
+| REG-02 | Confirmed | [log](msitest/results/REG-02/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40863315162: install deletes whole keys (with subkeys) and single values in the component's view only, HKMU as HKLM; a `/fomus` repair deletes them again; uninstall leaves them and removes only the package's own values |
+| REG-03 | Confirmed | [log](msitest/results/REG-03/powershell/log.md); SERVER2025, 2026-10-29: hand-made keys under `EventLog\Application` are sources with and without `CustomSource`, which changes nothing; `New-EventLog` writes only `EventMessageFile`; [details](#event-log-sources-reg-03) |
 | ENVVAR-01 | Contradicted | [log](msitest/results/ENVVAR-01/environment/log.md); finding 4; segment removal on uninstall confirmed |
 | PROP-01 | Not run | Needs a non-administrator elevated install |
 | SEARCH-01 | Not run | Interactive full UI |
 | SEARCH-02 | Not run | |
 | SEARCH-03 | Confirmed | [direct-cmdline](msitest/results/SEARCH-03/direct-cmdline/log.md), [guarded-cmdline](msitest/results/SEARCH-03/guarded-cmdline/log.md), [direct-nosignature](msitest/results/SEARCH-03/direct-nosignature/log.md); `AppSearch` into `INSTALLDIR` overrides the command line; the guarded type-51 form does not; no `Signature` table gives 2228/1603; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
+| SEARCH-04 | Confirmed | [log](msitest/results/SEARCH-04/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40863315162: command line > search > default holds; `REG_DWORD` gives `#394802`, `REG_EXPAND_SZ` comes back expanded without `#%` (contradicts Microsoft's documentation), brackets stay literal; directory search adds a trailing `\` and finds nothing for a file; `"#394802" >= "#1000000"` is true (string compare) |
 | UPG-01 | Confirmed | [higher](msitest/results/UPG-01/higher/log.md) removes; equal, lower and fourth-field-only stay side by side |
 | UPG-02 | Confirmed | [LaunchCondition](msitest/results/UPG-02/launchcondition/log.md) and [type 19](msitest/results/UPG-02/type19/log.md): 1603, newer stays |
 | UPG-03 | Confirmed | [log](msitest/results/UPG-03/same-productcode/log.md); 1638 |
@@ -524,3 +527,26 @@ removed from the pull request afterwards; its output is in
 - Not run: `*` after an address (`10.0.0.1,*`), other spellings of `any`
   in a list, SERVER2025 (Remote Control did not start) and Windows Server
   2016.
+
+## Event log sources (REG-03)
+
+Run on 2026-10-29 on SERVER2025 (Windows Server 2025 10.0.26100.1742) in an
+elevated Windows PowerShell 5.1, with sources under
+`HKLM\SYSTEM\CurrentControlSet\Services\EventLog\Application`; the
+commands and outputs are in
+[`msitest/results/REG-03/powershell/log.md`](msitest/results/REG-03/powershell/log.md).
+
+| Source | Values | `SourceExists` | Event text | `Remove-EventLog` |
+| --- | --- | --- | --- | --- |
+| A, `New-EventLog` | `EventMessageFile` = `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\EventLogMessages.dll` only | not run | not run | not recorded |
+| B | `EventMessageFile` `%SystemRoot%\System32\EventCreate.exe`, `TypesSupported` 7 | True | `probe` | key removed |
+| C | as B plus `CustomSource` 1 | True | `probe` | key removed |
+| D | `TypesSupported` 7 only | True | `Get-EventLog`: "The description for Event ID '1' … cannot be found", then `probe`; `Get-WinEvent`: empty | not run |
+
+- `CustomSource` made no difference, and `New-EventLog` does not write it,
+  so msi-builder has no option for it (spec chapter 16, "Decisions not
+  adopted").
+- `Write-EventLog` added no values to the key, and no `Sources` list under
+  the log key exists to maintain.
+- Not run: other tools that might read `CustomSource`, a custom log
+  instead of `Application`, `CategoryMessageFile`, and Windows Server 2016.

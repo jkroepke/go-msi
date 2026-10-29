@@ -89,6 +89,56 @@ func (b *build) identity() error {
 	return nil
 }
 
+// pruneEmpty removes the mapping entries whose value means the same as an
+// absent key (null, "", an empty list or mapping) and reports whether node
+// itself is such a value. false and 0 stay: an explicit false or 0 can mean
+// something else than a missing key (secure: false, checked: false), and a
+// mapping that only becomes empty by pruning stays too (purge: true is
+// {condition: ""}). List items are kept, because their position is part of
+// the configuration. A new optional config field therefore needs a type
+// whose unset value is pruned, or yaml:",omitempty".
+func pruneEmpty(node *yaml.Node) bool {
+	switch node.Kind {
+	case yaml.DocumentNode:
+		for _, child := range node.Content {
+			pruneEmpty(child)
+		}
+
+		return false
+	case yaml.MappingNode:
+		return pruneMapping(node)
+	case yaml.SequenceNode:
+		for _, child := range node.Content {
+			pruneEmpty(child)
+		}
+
+		return len(node.Content) == 0
+	case yaml.ScalarNode:
+		return node.Tag == "!!null" || node.Tag == "!!str" && node.Value == ""
+	case yaml.AliasNode:
+		return false
+	}
+
+	return false
+}
+
+// pruneMapping drops the entries of a mapping whose value pruneEmpty
+// reports as empty, and reports whether the mapping was empty to begin with.
+func pruneMapping(node *yaml.Node) bool {
+	empty := len(node.Content) == 0
+	kept := node.Content[:0]
+
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if !pruneEmpty(node.Content[i+1]) {
+			kept = append(kept, node.Content[i], node.Content[i+1])
+		}
+	}
+
+	node.Content = kept
+
+	return empty
+}
+
 // deriveProductCode computes productCode: auto from the upgrade code, the
 // platform, the version and a digest of the configuration and every input
 // file, so that changed content gives a new code (UPG-03) and unchanged
@@ -101,7 +151,16 @@ func (b *build) deriveProductCode() error { //nolint:cyclop // one pass over the
 	cfgCopy := *b.cfg
 	cfgCopy.BaseDir = ""
 
-	yamlBytes, err := yaml.Marshal(&cfgCopy)
+	var tree yaml.Node
+	if err := tree.Encode(&cfgCopy); err != nil {
+		return fmt.Errorf("digest of the configuration: %w", err)
+	}
+
+	// Keys with an empty value are left out, so that a new optional key in
+	// a later msi-builder keeps the code of an unchanged configuration.
+	pruneEmpty(&tree)
+
+	yamlBytes, err := yaml.Marshal(&tree)
 	if err != nil {
 		return fmt.Errorf("digest of the configuration: %w", err)
 	}
