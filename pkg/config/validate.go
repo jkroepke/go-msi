@@ -1600,63 +1600,8 @@ func (v *validator) properties(cfg *Config) {
 		}
 
 		if prop.Search != nil {
-			v.propertySearch(cfg, propPath, name, prop.Search)
+			v.propertySearches(cfg, propPath, name, prop.Search)
 		}
-	}
-}
-
-// propertySearch checks the search of a property.
-func (v *validator) propertySearch(cfg *Config, propPath, name string, search *Search) {
-	searchPath := propPath + ".search"
-
-	if !IsPublicProperty(name) {
-		v.errorf(searchPath, "only a public (upper-case) property can be searched, so that a command-line value and "+
-			"the result reach the execute sequence")
-	}
-
-	if cfg.InstallDir.Remember && name == cfg.InstallDir.ID {
-		v.errorf(searchPath, "installDir.remember already searches %s", name)
-	}
-
-	if prop := cfg.Properties[name]; prop.Secure != nil && !*prop.Secure {
-		v.errorf(propPath+".secure", "a searched property must be secure: after a UI sequence the execute sequence "+
-			"does not search again and only receives secure properties")
-	}
-
-	if _, taken := cfg.Properties[SearchFoundProperty(name)]; taken {
-		v.errorf(searchPath, "%s holds the search result; it cannot also be defined in properties", SearchFoundProperty(name))
-	}
-
-	reg := search.Registry
-	if reg == nil {
-		v.errorf(searchPath+".registry", "required")
-
-		return
-	}
-
-	v.registrySearch(cfg, searchPath+".registry", reg)
-}
-
-// registrySearch checks the registry value a property search reads.
-func (v *validator) registrySearch(cfg *Config, regPath string, reg *RegistrySearch) {
-	// RegLocator has no HKMU root.
-	v.oneOf(regPath+".root", reg.Root, "HKLM", "HKCU", "HKCR", "HKU")
-	v.required(regPath+".key", reg.Key)
-
-	if strings.HasPrefix(reg.Key, `\`) || strings.HasSuffix(reg.Key, `\`) {
-		v.errorf(regPath+".key", "no leading or trailing backslash")
-	}
-
-	if reg.Bitness != "" {
-		v.oneOf(regPath+".bitness", reg.Bitness, "32", "64")
-	}
-
-	if reg.Bitness == "64" && !cfg.Package.Platform.Is64Bit() {
-		v.errorf(regPath+".bitness", "a 32-bit package cannot read the 64-bit registry view")
-	}
-
-	if reg.Type != "" {
-		v.oneOf(regPath+".type", reg.Type, SearchValue, SearchDirectory)
 	}
 }
 

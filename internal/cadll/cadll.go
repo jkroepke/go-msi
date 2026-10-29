@@ -20,6 +20,10 @@ const (
 	Key   = "BuilderRun"
 	Entry = "BuilderRun"
 
+	// AssocChangedEntry tells the shell that file associations changed
+	// (SHChangeNotify with SHCNE_ASSOCCHANGED). It takes no data.
+	AssocChangedEntry = "BuilderAssocChanged"
+
 	// DataProperty is the property an immediate action reads its command
 	// from; deferred actions read CustomActionData, which the engine takes
 	// from a property named like the action.

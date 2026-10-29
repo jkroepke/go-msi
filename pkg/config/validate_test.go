@@ -92,6 +92,14 @@ func TestValidateAccepted(t *testing.T) {
 		"environment actions": environment("{name: FOO, value: a}, {name: FOO, value: b, action: append}"),
 		"property search": base + appComponent +
 			"properties: {P: {value: x, search: {registry: {root: HKLM, key: Software\\X, name: V, bitness: 32, type: directory}}}}\n",
+		"property searches": base + appComponent + "properties: {P: {value: x, search: [" +
+			"{registry: {root: HKLM, key: Software\\X, name: V}}, " +
+			"{directory: {path: '[ProgramFiles64Folder]Vendor\\App'}}, " +
+			"{directory: {path: bin, under: {registry: {root: HKLM, key: Software\\X, name: Home}}}}, " +
+			"{file: {name: app.exe, path: '\\\\server\\share', depth: 2, minVersion: 1.2, maxVersion: 2.0.0.0, minSize: 1, maxSize: 10, " +
+			"minDate: 2020-01-01, maxDate: 2043-12-31, languages: [0, 1033]}}, " +
+			"{file: {name: app.exe, under: {component: {guid: 6A0D3C2E-5B1F-4E7A-9C3D-2F8E1B4A7C60}}}}, " +
+			"{component: {guid: '{6a0d3c2e-5b1f-4e7a-9c3d-2f8e1b4a7c60}'}}]}}\n",
 		"remove registry": base + strings.Replace(appComponent, "    files:",
 			"    removeRegistry: [{root: HKCU, key: Software\\Classes\\old}, {root: HKMU, key: Software\\X, name: Legacy}]\n    files:", 1),
 		// Program Files and HKCR follow the context of a dual package.
@@ -395,7 +403,7 @@ func TestValidate(t *testing.T) {
 		},
 		"fileTypes system extension": {
 			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, extensions: [{extension: txt}]}]\n", 1),
-			sevWarning, "components[0].files[0].fileTypes[0].extensions[0].extension", "without a handler",
+			sevWarning, "components[0].files[0].fileTypes[0].extensions[0].extension", "takes it over",
 		},
 		"fileTypes progId star": {
 			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: '*'}]\n", 1),
@@ -900,9 +908,150 @@ components:
 			base + appComponent + "properties: {P: {secure: false, search: {registry: {root: HKLM, key: Software\\X}}}}\n",
 			sevError, "properties.P.secure", "must be secure",
 		},
-		"search without registry": {
+		"search without kind": {
 			base + appComponent + "properties: {P: {search: {}}}\n",
-			sevError, "properties.P.search.registry", "required",
+			sevError, "properties.P.search", "exactly one of",
+		},
+		"search two kinds": {
+			base + appComponent + "properties: {P: {search: {registry: {root: HKLM, key: X}, component: {guid: 6A0D3C2E-5B1F-4E7A-9C3D-2F8E1B4A7C60}}}}\n",
+			sevError, "properties.P.search", "exactly one of",
+		},
+		"search empty list": {
+			base + appComponent + "properties: {P: {search: []}}\n",
+			sevError, "properties.P.search", "at least one",
+		},
+		"search list found taken": {
+			base + appComponent + "properties: {P: {search: [{directory: {path: 'C:\\a'}}, {directory: {path: 'C:\\b'}}]}, P_FOUND2: x}\n",
+			sevError, "properties.P.search[1]", "P_FOUND2",
+		},
+		"search list item": {
+			base + appComponent + "properties: {P: {search: [{directory: {path: 'C:\\a'}}, {directory: {}}]}}\n",
+			sevError, "properties.P.search[1].directory.path", "required",
+		},
+		"search directory relative": {
+			base + appComponent + "properties: {P: {search: {directory: {path: sub}}}}\n",
+			sevError, "properties.P.search.directory.path", "not a full path",
+		},
+		"search directory under full path": {
+			base + appComponent + "properties: {P: {search: {directory: {path: 'C:\\a', under: {directory: {path: 'C:\\b'}}}}}}\n",
+			sevError, "properties.P.search.directory.path", "relative",
+		},
+		"search under file": {
+			base + appComponent + "properties: {P: {search: {directory: {under: {file: {name: a.exe, path: 'C:\\b'}}}}}}\n",
+			sevError, "properties.P.search.directory.under.file", "must find a folder",
+		},
+		"search under registry value": {
+			base + appComponent + "properties: {P: {search: {directory: {path: bin, under: {registry: {root: HKLM, key: X, type: value}}}}}}\n",
+			sevError, "properties.P.search.directory.under.registry.type", "must find a folder",
+		},
+		"search under nested too deep": {
+			base + appComponent + "properties: {P: {search: {directory: {under: {directory: {under: {directory: {under: {directory: {under: " +
+				"{directory: {under: {directory: {under: {directory: {under: {directory: {under: {directory: {path: 'C:\\a'}}}}}}}}}}}}}}}}}}}}\n",
+			sevError, "properties.P.search" + strings.Repeat(".directory.under", 8), "searches in one chain",
+		},
+		"search short long path": {
+			base + appComponent + "properties: {P: {search: {directory: {path: '[ProgramFiles64Folder]a~1|a b'}}}}\n",
+			sevError, "properties.P.search.directory.path", "short|long",
+		},
+		"search install dir in path": {
+			base + appComponent + "properties: {P: {search: {directory: {path: '[INSTALLDIR]sub'}}}}\n",
+			sevWarning, "properties.P.search.directory.path", "CostFinalize",
+		},
+		"search file name": {
+			base + appComponent + "properties: {P: {search: {file: {name: 'bin\\a.exe', path: 'C:\\a'}}}}\n",
+			sevError, "properties.P.search.file.name", "not a file name",
+		},
+		"search file without name": {
+			base + appComponent + "properties: {P: {search: {file: {path: 'C:\\a'}}}}\n",
+			sevError, "properties.P.search.file.name", "required",
+		},
+		"search file depth": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', depth: -1}}}}\n",
+			sevError, "properties.P.search.file.depth", "0 to",
+		},
+		"search file version": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', minVersion: 1.x}}}}\n",
+			sevError, "properties.P.search.file.minVersion", "not a number",
+		},
+		"search file version fields": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', maxVersion: 1.2.3.4.5}}}}\n",
+			sevError, "properties.P.search.file.maxVersion", "four fields",
+		},
+		"search file size": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', minSize: 10, maxSize: 5}}}}\n",
+			sevError, "properties.P.search.file.maxSize", "less than minSize",
+		},
+		"search file size range": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', maxSize: 3000000000}}}}\n",
+			sevError, "properties.P.search.file.maxSize", "0 to",
+		},
+		"search file date": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', minDate: 2050-01-01}}}}\n",
+			sevError, "properties.P.search.file.minDate", "2043-12-31",
+		},
+		"search file date format": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', minDate: 01.02.2020}}}}\n",
+			sevError, "properties.P.search.file.minDate", "YYYY-MM-DD",
+		},
+		"search file date order": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', minDate: 2020-02-01, maxDate: 2020-01-01}}}}\n",
+			sevError, "properties.P.search.file.maxDate", "before minDate",
+		},
+		"search file language": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', languages: [70000]}}}}\n",
+			sevError, "properties.P.search.file.languages[0]", "language ID",
+		},
+		"search directory under without path": {
+			base + appComponent + "properties: {P: {search: {directory: {under: {registry: {root: HKLM, key: X, name: Dir}}}}}}\n",
+			sevError, "properties.P.search.directory.path", "required under another search",
+		},
+		"search file version order": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', minVersion: 2.0, maxVersion: 1.10}}}}\n",
+			sevError, "properties.P.search.file.maxVersion", "less than minVersion",
+		},
+		"search directory depth without path": {
+			base + appComponent + "properties: {P: {search: {directory: {under: {directory: {path: 'C:\\a'}}, depth: 2}}}}\n",
+			sevError, "properties.P.search.directory.depth", "needs a path",
+		},
+		"search system file version": {
+			base + appComponent + "properties: {P: {search: {file: {name: kernel32.dll, path: '[System64Folder]', minVersion: 10.0}}}}\n",
+			sevWarning, "properties.P.search.file", "VersionNT",
+		},
+		"search languages without min version": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', languages: [1033]}}}}\n",
+			sevWarning, "properties.P.search.file.languages", "no effect",
+		},
+		"search searched property in path": {
+			base + appComponent + "properties: {DATA: {search: {directory: {path: 'C:\\data'}}}, P: {search: {directory: {path: '[DATA]logs'}}}}\n",
+			sevError, "properties.P.search.directory.path", "under",
+		},
+		"search unknown property in path": {
+			base + appComponent + "properties: {P: {search: {directory: {path: '[SOMEWHERE]logs'}}}}\n",
+			sevWarning, "properties.P.search.directory.path", "every fixed drive",
+		},
+		"search path length": {
+			base + appComponent + "properties: {P: {search: {directory: {path: 'C:\\" + strings.Repeat("a", 260) + "'}}}}\n",
+			sevError, "properties.P.search.directory.path", "255",
+		},
+		"search name length": {
+			base + appComponent + "properties: {P: {search: {file: {name: " + strings.Repeat("a", 260) + ", path: 'C:\\a'}}}}\n",
+			sevError, "properties.P.search.file.name", "255",
+		},
+		"search lowered min version length": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', minVersion: '1000.0'}}}}\n",
+			sevError, "properties.P.search.file.minVersion", "999.65535.65535.65535",
+		},
+		"search max version length": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', maxVersion: 65535.65535.65535.65535}}}}\n",
+			sevError, "properties.P.search.file.maxVersion", "20",
+		},
+		"search system file under": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.dll, under: {directory: {path: '[SystemFolder]'}}, maxVersion: 1.0}}}}\n",
+			sevWarning, "properties.P.search.file", "VersionNT",
+		},
+		"search component guid": {
+			base + appComponent + "properties: {P: {search: {component: {guid: nope}}}}\n",
+			sevError, "properties.P.search.component.guid", "not a GUID",
 		},
 		"search hkmu": {
 			base + appComponent + "properties: {P: {search: {registry: {root: HKMU, key: Software\\X}}}}\n",
@@ -1263,6 +1412,28 @@ func TestRemoveFilesEmptyEntry(t *testing.T) {
 	}
 }
 
+func TestSearchMinVersion(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		in    string
+		langs []int
+		want  string
+	}{
+		{"1.2.3.4", nil, "1.2.3.3"},
+		{"1.2.3.0", nil, "1.2.2.65535"},
+		{"1.2", nil, "1.1.65535.65535"},
+		{"2", nil, "1.65535.65535.65535"},
+		{"0.0.0.1", nil, "0.0.0.0"},
+		{"0.0", nil, "0.0.0.0"},
+		{"1.2.3.4", []int{1033}, "1.2.3.4"},
+	} {
+		if got := config.SearchMinVersion(tc.in, tc.langs); got != tc.want {
+			t.Errorf("SearchMinVersion(%q, %v) = %q, want %q", tc.in, tc.langs, got, tc.want)
+		}
+	}
+}
+
 // TestInstallDirBesideDataFolder does not warn about a default install dir
 // next to an upper-case data folder, which is no install dir.
 func TestInstallDirBesideDataFolder(t *testing.T) {
@@ -1278,6 +1449,58 @@ func TestInstallDirBesideDataFolder(t *testing.T) {
 	for _, d := range validate(t, doc) {
 		if strings.Contains(d.Message, "next to") {
 			t.Errorf("unexpected warning: %s: %s", d.Path, d.Message)
+		}
+	}
+}
+
+func TestSearchDate(t *testing.T) {
+	t.Parallel()
+
+	// (year - 1980) × 512 + month × 32 + day in the high word.
+	if got, err := config.SearchDate("2020-01-02", false); err != nil || got != (40*512+32+2)<<16 {
+		t.Errorf("SearchDate(2020-01-02) = %d, %v", got, err)
+	}
+
+	if got, err := config.SearchDate("2020-01-02", true); err != nil || got != (40*512+32+2)<<16|0xBF7D {
+		t.Errorf("SearchDate(2020-01-02, end of day) = %#x, %v", got, err)
+	}
+
+	for _, bad := range []string{"1979-12-31", "2044-01-01", "2020-1-2", "2020-02-30"} {
+		if _, err := config.SearchDate(bad, true); err == nil {
+			t.Errorf("SearchDate(%q) accepted", bad)
+		}
+	}
+}
+
+func TestIsFullSearchPath(t *testing.T) {
+	t.Parallel()
+
+	for path, want := range map[string]bool{
+		`C:\a`: true, `c:\`: true, `\\server\share`: true, `[ProgramFilesFolder]x`: true,
+		`a\b`: false, `\a`: false, `C:a`: false, `1:\a`: false, ``: false,
+	} {
+		if got := config.IsFullSearchPath(path); got != want {
+			t.Errorf("IsFullSearchPath(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
+
+func TestSearchDecodeErrors(t *testing.T) {
+	t.Parallel()
+
+	const head = "schema: msi-builder/v1\nproperties:\n  P:\n    search: "
+
+	for doc, want := range map[string]string{
+		"{directory: {path: 'C:\\a', bogus: 1}}":     "field bogus not found",
+		"{reg: {root: HKLM, key: X}}":                "field reg not found",
+		"{file: {name: [a, b], path: 'C:\\a'}}":      "cannot unmarshal !!seq into string",
+		"[{directory: {path: 'C:\\a'}}, {bogus: 1}]": "field bogus not found",
+		"[{file: {name: {x: 1}, path: 'C:\\a'}}]":    "cannot unmarshal !!map into string",
+		"x": "cannot unmarshal",
+	} {
+		_, err := config.Parse([]byte(head+doc+"\n"), config.Options{})
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("search %s: error %v, want one containing %q", doc, err, want)
 		}
 	}
 }

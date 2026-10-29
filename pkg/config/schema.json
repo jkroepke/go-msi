@@ -391,76 +391,19 @@
                 "$ref": "#/$defs/bool"
               },
               "search": {
-                "type": "object",
-                "description": "Fills the property from the target machine before the install. A command-line value wins; value is the fallback when nothing is found.",
-                "properties": {
-                  "registry": {
-                    "type": "object",
-                    "properties": {
-                      "root": {
-                        "anyOf": [
-                          {
-                            "enum": [
-                              "HKLM",
-                              "HKCU",
-                              "HKCR",
-                              "HKU"
-                            ]
-                          },
-                          {
-                            "$ref": "#/$defs/var"
-                          }
-                        ]
-                      },
-                      "key": {
-                        "type": "string"
-                      },
-                      "name": {
-                        "type": "string",
-                        "description": "Empty reads the key's default value."
-                      },
-                      "bitness": {
-                        "anyOf": [
-                          {
-                            "enum": [
-                              "32",
-                              "64",
-                              32,
-                              64
-                            ]
-                          },
-                          {
-                            "$ref": "#/$defs/var"
-                          }
-                        ],
-                        "description": "Registry view; default: the package's."
-                      },
-                      "type": {
-                        "anyOf": [
-                          {
-                            "enum": [
-                              "value",
-                              "directory"
-                            ]
-                          },
-                          {
-                            "$ref": "#/$defs/var"
-                          }
-                        ],
-                        "description": "value: the data with the engine's type prefix (#n for a DWORD); directory: the folder the data names, if it exists."
-                      }
-                    },
-                    "required": [
-                      "root",
-                      "key"
-                    ],
-                    "additionalProperties": false
+                "description": "Fills the property from the target machine before the install. A command-line value wins; value is the fallback when nothing is found. A list is tried in order; the first search that finds something wins.",
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/search"
+                  },
+                  {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/$defs/search"
+                    }
                   }
-                },
-                "required": [
-                  "registry"
-                ],
-                "additionalProperties": false
+                ]
               }
             },
             "additionalProperties": false
@@ -2438,6 +2381,211 @@
         "type": "string"
       },
       "description": "Replaces built-in wizard texts by key, for example to build the wizard in another language. Values other than the UIText rows are formatted text; & marks the access key on buttons, check boxes, radio buttons and the browse labels."
+    },
+    "search": {
+      "type": "object",
+      "description": "One search: exactly one of registry, directory, file or component.",
+      "properties": {
+        "registry": {
+          "type": "object",
+          "properties": {
+            "root": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "HKLM",
+                    "HKCU",
+                    "HKCR",
+                    "HKU"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/var"
+                }
+              ]
+            },
+            "key": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string",
+              "description": "Empty reads the key's default value."
+            },
+            "bitness": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "32",
+                    "64",
+                    32,
+                    64
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/var"
+                }
+              ],
+              "description": "Registry view; default: the package's."
+            },
+            "type": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "value",
+                    "directory"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/var"
+                }
+              ],
+              "description": "value: the data with the engine's type prefix (#n for a DWORD); directory: the folder the data names, if it exists. Under another search: directory (the default there)."
+            }
+          },
+          "required": [
+            "root",
+            "key"
+          ],
+          "additionalProperties": false
+        },
+        "directory": {
+          "type": "object",
+          "description": "Finds a folder; the result ends with a backslash.",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "A full path (drive, share or [PROPERTY]), or with under a path relative to that folder."
+            },
+            "under": {
+              "$ref": "#/$defs/search",
+              "description": "The search that finds the folder path is relative to: a registry search, a directory or a component search."
+            },
+            "depth": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "$ref": "#/$defs/var"
+                }
+              ],
+              "description": "How many levels of subfolders may lie between the path's parent and its last folder."
+            }
+          },
+          "additionalProperties": false
+        },
+        "file": {
+          "type": "object",
+          "description": "Finds a file; the result is its full path.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The file name."
+            },
+            "path": {
+              "type": "string",
+              "description": "The folder: a full path, or with under a path relative to that folder."
+            },
+            "under": {
+              "$ref": "#/$defs/search",
+              "description": "The search that finds the folder path is relative to."
+            },
+            "depth": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "$ref": "#/$defs/var"
+                }
+              ],
+              "description": "How many levels of subfolders below the folder are searched too."
+            },
+            "minVersion": {
+              "$ref": "#/$defs/searchVersion",
+              "description": "Lowest version, inclusive, in any language unless languages is set."
+            },
+            "maxVersion": {
+              "$ref": "#/$defs/searchVersion",
+              "description": "Highest version, inclusive."
+            },
+            "minSize": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "$ref": "#/$defs/var"
+                }
+              ]
+            },
+            "maxSize": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "$ref": "#/$defs/var"
+                }
+              ]
+            },
+            "minDate": {
+              "type": "string",
+              "description": "YYYY-MM-DD"
+            },
+            "maxDate": {
+              "type": "string",
+              "description": "YYYY-MM-DD"
+            },
+            "languages": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/int"
+              },
+              "description": "Language IDs the file must have; compared only when its version equals minVersion."
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        "component": {
+          "type": "object",
+          "description": "Finds the folder of an installed component's key path.",
+          "properties": {
+            "guid": {
+              "$ref": "#/$defs/guid"
+            }
+          },
+          "required": [
+            "guid"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "minProperties": 1,
+      "maxProperties": 1
+    },
+    "searchVersion": {
+      "anyOf": [
+        {
+          "type": [
+            "string",
+            "number"
+          ],
+          "description": "One to four numbers",
+          "pattern": "^\\d+(\\.\\d+){0,3}$"
+        },
+        {
+          "$ref": "#/$defs/var"
+        }
+      ]
     },
     "shortcut": {
       "type": "object",

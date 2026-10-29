@@ -1,0 +1,24 @@
+# REG-05 baseline: the same kind of HKCR values as plain registry entries,
+# so the package has no shell notification action. Shows whether the
+# engine itself notifies the shell for Registry rows.
+schema: msi-builder/v1
+
+product:
+  name: Reg05Baseline
+  manufacturer: MsiSpecProbe
+  version: 1.0.0
+  upgradeCode: 9e4c2a71-5d3b-4c8e-b1f0-7a6d2e9c4b35
+
+package:
+  platform: x64
+
+ui:
+  wizard: none
+
+components:
+  - files:
+      - source: hello.exe
+    registry:
+      - { root: HKCR, key: MsiSpecReg05.Baseline, value: REG-05 baseline }
+      - { root: HKCR, key: MsiSpecReg05.Baseline\shell\open\command, value: '"[INSTALLDIR]hello.exe" "%1"' }
+      - { root: HKCR, key: .reg05b, value: MsiSpecReg05.Baseline }
