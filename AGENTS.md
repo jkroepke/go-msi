@@ -50,7 +50,12 @@ versioning after 1.0.
   [MS-CAB] only.
 - [`internal/summary`](internal/summary): the summary information stream.
 - [`pkg/sign`](pkg/sign): Authenticode signing and verification of packages
-  (spec chapter 12), written from the spec without cgo.
+  and of cabinets written with a signature reserve (spec chapter 12), written
+  from the spec without cgo. `MsiDigitalSignature.Hash` is the signer's
+  signature value (`SignerInfo` encryptedDigest), not the content digest:
+  that is what `MsiGetFileSignatureInformation` returns and msiexec compares
+  (SIG-09). `nativetest/cabsign_windows_test.go` probes it with growing
+  buffers, because a call without a buffer returns 0 and size 0.
 - [`internal/cadll`](internal/cadll): the custom action DLL that `run`
   actions embed, built from C by `build.sh` with clang and lld and committed
   for x86, x64 and arm64; see its `AGENTS.md` before touching it.
