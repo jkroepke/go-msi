@@ -783,7 +783,7 @@ The per-file decision for the common cases (reported):
 |---|---|
 | Public | No lower-case letter. Settable on the command line; passed from client to server. |
 | Private | Has a lower-case letter. Command-line values are ignored; lost at the UI→execute hand-off. |
-| Secure | Public and in `SecureCustomProperties` or the default 28-name list (section 19.2). Only these pass in managed or elevated non-admin installs. |
+| Secure | Public and in `SecureCustomProperties` or the default 28-name list (section 19.2). Only these pass in managed or elevated non-admin installs (observed for elevated non-admin installs, PROP-01). |
 | Hidden | Listed in `MsiHiddenProperties`; values are not logged. |
 
 Precedence, high to low: OS-set values, command line, AdminProperties, transforms, Property table. Values are never empty and never formatted. Required: `ProductCode`, `ProductLanguage` (listed in Template), `Manufacturer`, `ProductName` (≤ 63 characters), `ProductVersion`.

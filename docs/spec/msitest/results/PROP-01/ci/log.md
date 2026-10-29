@@ -14,7 +14,7 @@ no-impersonate `run` action echoes both and `Privileged`. Both installs pass
 | Install | Exit | Echoed by the deferred action |
 | --- | --- | --- |
 | Administrator (elevated runner account) | 0 | `SECURE=cmd PLAIN=cmd Privileged=1` |
-| Standard user `msitest`, elevated by `AlwaysInstallElevated` (HKLM and the user's policy key) | 0 | `SECURE=cmd PLAIN=default Privileged=1` |
+| Standard user `msitest`, elevated by `AlwaysInstallElevated` (HKLM and the user's policy key), with `DisableMsi` 0 set by the CI step | 0 | `SECURE=cmd PLAIN=default Privileged=1` |
 
 An administrator passes every public property to the server. In a standard
 user's elevated install, the server keeps only the properties listed in
@@ -22,5 +22,5 @@ user's elevated install, the server keeps only the properties listed in
 Confirmed. Managed (advertised or group-policy assigned) installs were not run;
 advertised installs are a non-goal.
 
-The policy values were removed again after the run, and the package
-uninstalled.
+The `AlwaysInstallElevated` values were removed again after the run, and the
+package uninstalled.

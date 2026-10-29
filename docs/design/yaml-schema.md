@@ -62,7 +62,7 @@ schema surface; they are listed so that the writer's design starts from them.
 | 4. `*` and removal (ENVVAR-01) | `=*NAME` (machine scope, no `-`) survives uninstall | `environment[].scope` and `environment[].removeOnUninstall` are separate fields. Removal defaults to `true` and the builder always writes `-` explicitly; scope never implies it. |
 | 5. RemoveExistingProducts window (UPG-04) | 1399 (before InstallValidate) works like 1401; only 5802 gives 2613 | `upgrade.removeOld` names one of four windows. The validator checks the numbered result against the windows as the engine accepts them, not against a fixed number. |
 | 6. Native CFB version (CFB-01) | `msi.dll` writes v4 even for small databases; v3 and v4 behave the same | Writer: emits v4 (4096-byte sectors) by default. No schema field. |
-| 7. Per-user rollback (CA-01) | A deferred action failing after `PublishProduct` rolled back completely | The "deferred action after RegisterProduct in a per-user package" check is a warning, not an error. It stays a warning because the leftover reproduces only for a non-administrator user (CA-01 results). |
+| 7. Per-user rollback (CA-01) | A deferred action failing after `PublishProduct` rolled back completely for an elevated administrator; for a non-administrator it left the registration | The "deferred action after RegisterProduct in a per-user package" check is a warning, not an error. It stays a warning because the leftover reproduces only for a non-administrator user (CA-01 results). |
 | 8. SystemIdentifier (SUM-07) | The engine ignores it; the native writer stores `0x0002000A` | Writer: writes `0x0002000A` like the native writer. No schema field. |
 
 ### 2.2 Silent failures
