@@ -66,6 +66,9 @@ jobs:
         os:
           - ubuntu-26.04
           - windows-latest
+          # Windows on Arm installs the packages natively (Arm64 packages with
+          # the arm64 custom action DLL) and the x64 ones under emulation.
+          - windows-11-arm
     permissions:
       contents: read
       # Codecov upload without a token.
@@ -89,7 +92,7 @@ jobs:
       # tools feature is installed, and it ships the MsiVal2 package. The
       # ICE runner needs nothing but darice.cub, so only that file is cached.
       - name: Cache the ICE suite
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         id: ice-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -97,7 +100,7 @@ jobs:
           key: ice-Microsoft.WindowsSDK.10.0.28000-10.0.28000.2526-v1
 
       - name: Install the ICE suite
-        if: runner.os == 'Windows' && steps.ice-cache.outputs.cache-hit != 'true'
+        if: runner.os == 'Windows' && runner.arch == 'X64' && steps.ice-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -124,7 +127,7 @@ jobs:
           Copy-Item (Join-Path ${env:ProgramFiles(x86)} 'MsiVal2\darice.cub') C:\ice\darice.cub
 
       - name: Use the ICE suite
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: pwsh
         run: |
           if (-not (Test-Path C:\ice\darice.cub)) { throw 'C:\ice\darice.cub is missing' }
@@ -136,26 +139,28 @@ jobs:
 
       # Windows runs the native tests too: they open the built packages with
       # msi.dll, run the ICE suite and install them with msiexec. They are
-      # skipped with -short.
+      # skipped with -short. The race detector does not support windows/arm64,
+      # and the ICE suite runs on x64 only.
       # The install snapshots that differ from testdata are saved to
       # MSI_BUILDER_SNAPSHOT_DIR and uploaded below.
       - name: go test
         shell: bash
         env:
           MSI_BUILDER_SNAPSHOT_DIR: ${{ runner.temp }}/install-snapshots
-        run: go test ./... ${{ runner.os != 'Windows' && '-short' || '' }} -shuffle=on -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./...
+        run: go test ./... ${{ runner.os != 'Windows' && '-short' || '' }} -shuffle=on ${{ runner.arch == 'X64' && '-race' || '' }} -covermode=atomic -coverprofile=coverage.out -coverpkg=./...
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure() && runner.os == 'Windows'
         with:
-          name: install-snapshots
+          name: install-snapshots-${{ matrix.os }}
           path: ${{ runner.temp }}/install-snapshots/
           if-no-files-found: ignore
 
       # The race detector slows the LZX encoder down about fifty times, so the
       # race run above shrinks the large LZX cases; run them at full size.
+      # Windows on Arm runs without the race detector, so already at full size.
       - name: go test (LZX at full size)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
         run: |
           go test -count=1 ./internal/lzx/
@@ -332,30 +337,6 @@ jobs:
           internal/cadll/build.sh
           diff /tmp/committed-SHA256SUMS internal/cadll/SHA256SUMS
 
-  # Windows on Arm installs the run action probe natively (Arm64 package with
-  # the arm64 DLL) and under x64 emulation; the x64 runner in build covers
-  # x64 natively.
-  arm64:
-    name: Run actions on Windows Arm64
-    needs: detect-changes
-    if: needs.detect-changes.outputs.changed != '0'
-    runs-on: windows-11-arm
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: 'false'
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: 'go.mod'
-          cache: "${{ github.actor != 'renovate[bot]' }}"
-
-      - name: go test
-        shell: bash
-        run: go test ./internal/cadll/ ./internal/builder/nativetest/ -run 'TestBinaries|TestMsiexecRunActions' -v -shuffle=on
-
   # The one job to mark as required in branch protection. It only runs, and
   # fails, when a needed job failed or was cancelled; GitHub counts the
   # skipped job as passed. Add every new check job to needs.
@@ -366,7 +347,6 @@ jobs:
       - detect-changes
       - build
       - ca-dll
-      - arm64
       - goreleaser
       - lint
       - super-lint
