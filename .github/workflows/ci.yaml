@@ -140,13 +140,15 @@ jobs:
       # msi.dll, run the ICE suite and install them with msiexec. They are
       # skipped with -short.
       # The install snapshots that differ from testdata are saved to
-      # MSI_BUILDER_SNAPSHOT_DIR and uploaded below.
+      # MSI_BUILDER_SNAPSHOT_DIR and uploaded below. The msiexec tests of
+      # nativetest take about nine minutes under -race, close to go test's
+      # default ten-minute limit, so the limit is raised.
       - name: go test
         if: runner.arch == 'X64'
         shell: bash
         env:
           MSI_BUILDER_SNAPSHOT_DIR: ${{ runner.temp }}/install-snapshots
-        run: go test ./... ${{ runner.os != 'Windows' && '-short' || '' }} -shuffle=on -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./...
+        run: go test ./... ${{ runner.os != 'Windows' && '-short' || '' }} -timeout 25m -shuffle=on -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./...
 
       # Windows on Arm installs the run action probe natively (Arm64 package
       # with the arm64 DLL). msiexec is slow on this runner, so the rest of
