@@ -623,11 +623,11 @@ type dirTree struct {
 	origin string
 	// installOrigin is the YAML path of the install dir's name.
 	installOrigin string
-	// installDefaulted is set when the file sets no installDir.
-	installDefaulted bool
 	// installCandidates are the directories of the file's own tree that
 	// could be meant as the install dir.
 	installCandidates []string
+	// installDefaulted is set when the file sets no installDir.
+	installDefaulted bool
 }
 
 func newDirTree(cfg *Config) *dirTree {
@@ -678,18 +678,14 @@ func (t *dirTree) installDir() {
 		install.ID = DefaultInstallDirID
 	}
 
-	// A per-user install dir goes below LocalAppDataFolder\Programs, the
-	// per-user Program Files, also when installDir names it.
-	defaultParent := install.Parent == ""
-	if defaultParent {
+	if install.Parent == "" {
 		install.Parent = defaultInstallParent(t.cfg.Package.Platform, perUser)
+		if perUser {
+			install.Name = perUserProgramsName(install.Name)
+		}
 	}
 
 	t.installOrigin = "installDir.name"
-
-	if names := splitPath(install.Name); defaultParent && perUser && len(names) > 0 && !strings.EqualFold(names[0], "Programs") {
-		install.Name = "Programs/" + install.Name
-	}
 
 	if install.Name == "" {
 		t.installOrigin = productNamePath
@@ -703,6 +699,17 @@ func (t *dirTree) installDir() {
 	if eager {
 		t.ensureInstallDir()
 	}
+}
+
+// perUserProgramsName puts a per-user install dir name below Programs, the
+// per-user Program Files in LocalAppDataFolder, unless it already starts
+// there or is empty.
+func perUserProgramsName(name string) string {
+	if names := splitPath(name); len(names) == 0 || strings.EqualFold(names[0], "Programs") {
+		return name
+	}
+
+	return "Programs/" + name
 }
 
 // ensureInstallDir returns the install dir's node, adding it unless the

@@ -142,6 +142,11 @@ type InstallDir struct {
 	Name string `yaml:"name"`
 	// Parent is the standard folder the install dir is created in.
 	Parent string `yaml:"parent"`
+	// besides lists, comma separated, the directories of the file's own
+	// tree that could be meant as the install dir (configurable, or upper
+	// case below Program Files) when the default install dir was added
+	// next to them, for the validator to warn about.
+	besides string
 	// Remember stores the chosen folder in the registry and reads it back
 	// on the next install, so that a major upgrade keeps a custom folder
 	// (SEARCH-03).
@@ -149,11 +154,6 @@ type InstallDir struct {
 
 	// expanded is set by the first expandShorthands.
 	expanded bool
-	// besides lists, comma separated, the directories of the file's own
-	// tree that could be meant as the install dir (configurable, or upper
-	// case below Program Files) when the default install dir was added
-	// next to them, for the validator to warn about.
-	besides string
 }
 
 // Directory is a node of the install tree.

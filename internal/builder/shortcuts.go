@@ -395,10 +395,7 @@ func (b *build) removeFiles() error {
 			dirID := cmp.Or(entry.Directory, comp.Directory)
 			b.dirs[dirID].used = true
 
-			if entry.Name == "" && entry.On == config.RemoveOnUninstall && b.removedFolders[dirID] {
-				b.warnf(fmt.Sprintf("%s.removeFiles[%d]", comp.Path(i), j),
-					"the builder already removes this folder on uninstall, for a shortcut or a component in the user profile; this entry adds a second row")
-			}
+			b.warnDuplicateFolderRow(fmt.Sprintf("%s.removeFiles[%d]", comp.Path(i), j), dirID, entry)
 
 			key := cmp.Or(entry.ID, generatedID("rmf", "RemoveFile", comp.ID, dirID, strings.ToLower(entry.Name), entry.On))
 
@@ -421,6 +418,14 @@ func (b *build) removeFiles() error {
 	}
 
 	return nil
+}
+
+// warnDuplicateFolderRow warns about a removeFiles entry that removes a
+// folder on uninstall that a generated row already removes.
+func (b *build) warnDuplicateFolderRow(path, dirID string, entry *config.RemoveFile) {
+	if entry.Name == "" && entry.On == config.RemoveOnUninstall && b.removedFolders[dirID] {
+		b.warnf(path, "the builder already removes this folder on uninstall, for a shortcut or a component in the user profile; this entry adds a second row")
+	}
 }
 
 // profileFolders yields the folders between a directory in the user
