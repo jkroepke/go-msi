@@ -70,32 +70,36 @@ $id = [Security.Principal.WindowsIdentity]::GetCurrent()
 $report.Add("# REG-05 run $(Get-Date -Format s) on $env:COMPUTERNAME as $($id.Name), session $((Get-Process -Id $PID).SessionId)")
 $report.Add("OS $([Environment]::OSVersion.VersionString); msi.dll $((Get-Item "$env:windir\System32\msi.dll").VersionInfo.FileVersion)")
 $keys = @{ probe = '.reg05p'; baseline = '.reg05b'; native = '.reg05n' }
-foreach ($p in 'probe', 'baseline', 'native') {
-  $report.Add("$p before: HKCR\$($keys[$p]) exists=$(Test-Path "Registry::HKEY_CLASSES_ROOT\$($keys[$p])")")
-  foreach ($step in 'install', 'uninstall') {
-    $log = "$work\$p-$step.log"
-    Mark "$p $step start"
-    $rc = if ($step -eq 'install') { Msiexec $log @('/i', "$work\$p.msi") } else { Msiexec $log @('/x', "$work\$p.msi") }
-    Start-Sleep -Seconds 3
-    Mark "$p $step end (exit $rc)"
-    $ext = Test-Path "Registry::HKEY_CLASSES_ROOT\$($keys[$p])"
-    $report.Add("$p $step : exit $rc; HKCR\$($keys[$p]) exists=$ext")
-    $text = Get-Content $log -Raw
-    foreach ($m in [regex]::Matches($text, '[^\r\n]*(SHChangeNotify|Doing action: (RegisterExtensionInfo|RegisterProgIdInfo|UnregisterExtensionInfo|UnregisterProgIdInfo|BuilderAssocChanged\w*))[^\r\n]*')) {
-      $report.Add("  log: $($m.Value.Trim())")
+try {
+  foreach ($p in 'probe', 'baseline', 'native') {
+    $report.Add("$p before: HKCR\$($keys[$p]) exists=$(Test-Path "Registry::HKEY_CLASSES_ROOT\$($keys[$p])")")
+    foreach ($step in 'install', 'uninstall') {
+      $log = "$work\$p-$step.log"
+      Mark "$p $step start"
+      $rc = if ($step -eq 'install') { Msiexec $log @('/i', "$work\$p.msi") } else { Msiexec $log @('/x', "$work\$p.msi") }
+      Start-Sleep -Seconds 3
+      Mark "$p $step end (exit $rc)"
+      $ext = Test-Path "Registry::HKEY_CLASSES_ROOT\$($keys[$p])"
+      $report.Add("$p $step : exit $rc; HKCR\$($keys[$p]) exists=$ext")
+      $text = Get-Content $log -Raw
+      foreach ($m in [regex]::Matches($text, '[^\r\n]*(SHChangeNotify|Doing action: (RegisterExtensionInfo|RegisterProgIdInfo|UnregisterExtensionInfo|UnregisterProgIdInfo|BuilderAssocChanged\w*))[^\r\n]*')) {
+        $report.Add("  log: $($m.Value.Trim())")
+      }
     }
   }
+  # The probe keeps .reg05p on purpose (permanent component). Remove it and
+  # the permanent component registration, so the next run starts clean.
+  Remove-Item 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.reg05p' -Recurse -Force -ErrorAction SilentlyContinue
+  $comps = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Components'
+  # Its key path is the .reg05p default, held by the null product GUID.
+  Get-ChildItem $comps | Where-Object {
+    ($_.GetValue('00000000000000000000000000000000') -as [string]) -like '*\.reg05p*'
+  } | ForEach-Object { $report.Add("cleanup: removed permanent component $($_.PSChildName)"); Remove-Item -Recurse -Force -ErrorAction Continue $_.PSPath }
+} finally {
+  # Always stop the listener, also when a step above fails.
+  New-Item -ItemType File -Force $stop | Out-Null
+  $proc.WaitForExit(10000) | Out-Null
 }
-# The probe keeps .reg05p on purpose (permanent component). Remove it and
-# the permanent component registration, so the next run starts clean.
-reg.exe delete 'HKLM\SOFTWARE\Classes\.reg05p' /f /reg:64 2>$null | Out-Null
-$comps = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Components'
-# Its key path is the .reg05p default, held by the null product GUID.
-Get-ChildItem $comps | Where-Object {
-  ($_.GetValue('00000000000000000000000000000000') -as [string]) -like '*\.reg05p*'
-} | ForEach-Object { $report.Add("cleanup: removed permanent component $($_.PSChildName)"); Remove-Item -Recurse -Force $_.PSPath }
-New-Item -ItemType File $stop | Out-Null
-$proc.WaitForExit(10000) | Out-Null
 $report.Add('')
 $report.Add('## listener')
 foreach ($l in Get-Content $events) { $report.Add("    $l") }
