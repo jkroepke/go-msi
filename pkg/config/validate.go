@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -34,6 +35,14 @@ const (
 
 // cabinetForbidden are the characters a cabinet file name cannot hold.
 const cabinetForbidden = `\/:*?"<>|#`
+
+// numberedName is the name of the second cabinet when the first is named
+// first, as the builder derives it.
+func numberedName(first string) string {
+	ext := filepath.Ext(first)
+
+	return strings.TrimSuffix(first, ext) + "2" + ext
+}
 
 // plainFileName reports whether name holds none of cabinetForbidden and no
 // control characters, which also keeps the cabinet off the streams that
@@ -283,7 +292,9 @@ func (v *validator) pkg(cfg *Config) { //nolint:cyclop // a flat list of indepen
 	switch {
 	case !plainFileName(pkg.Cabinet):
 		v.errorf("package.cabinet", "%q is not a plain file name", pkg.Cabinet)
-	case !pkg.CabinetsEmbedded() && !validLongName(pkg.Cabinet):
+	// Further cabinets insert their number before the extension, so a
+	// base name of COM or LPT turns into the device COM2.
+	case !pkg.CabinetsEmbedded() && (!validLongName(pkg.Cabinet) || !validLongName(numberedName(pkg.Cabinet))):
 		v.errorf("package.cabinet", "%q cannot be a file name on Windows (a device name, a trailing dot or space, or . or ..)", pkg.Cabinet)
 	case !pkg.CabinetsEmbedded():
 		// An external cabinet is a file beside the package, not a stream.

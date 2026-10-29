@@ -249,7 +249,7 @@ func TestExternalCabinetNames(t *testing.T) {
 		t.Errorf("the failed build left %d entries", len(left))
 	}
 
-	for _, name := range []string{"NUL.cab", "a.cab.", "..", "a.cab "} {
+	for _, name := range []string{"NUL.cab", "a.cab.", "..", "a.cab ", "COM.cab", "lpt.cab"} {
 		cfg := splitConfig(t)
 		cfg.Package.EmbedCabinets = new(false)
 		cfg.Package.Cabinet = name

@@ -68,11 +68,15 @@ func commitOne(move Move) (moved, error) {
 	}
 
 	if err := os.Rename(move.From, move.To); err != nil {
+		err = fmt.Errorf("move %s to %s: %w", filepath.Base(move.From), move.To, err)
+
 		if step.backup != "" {
-			_ = os.Rename(step.backup, move.To)
+			if restore := os.Rename(step.backup, move.To); restore != nil {
+				err = errors.Join(err, fmt.Errorf("restore %s from %s: %w", move.To, step.backup, restore))
+			}
 		}
 
-		return step, fmt.Errorf("move %s to %s: %w", filepath.Base(move.From), move.To, err)
+		return step, err
 	}
 
 	return step, nil

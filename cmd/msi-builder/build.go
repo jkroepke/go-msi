@@ -240,6 +240,13 @@ func (f *buildFlags) output(cfg *config.Config) string {
 // it, and the function that removes what is left there.
 func tempPackage(out string, withCabinets bool) (string, func(), error) {
 	if withCabinets {
+		// The cabinets move next to the package's real file, so the
+		// temporary folder goes there too, on the same file system, and
+		// the package keeps that file's name for the builder's name check.
+		if resolved, err := filepath.EvalSymlinks(out); err == nil {
+			out = resolved
+		}
+
 		dir, err := os.MkdirTemp(filepath.Dir(out), ".msi-builder-*")
 		if err != nil {
 			return "", nil, fmt.Errorf("create a temporary folder: %w", err)
@@ -296,8 +303,17 @@ func commitSigned(target, out string, signed []byte, cabinets []builder.Cabinet)
 		return err
 	}
 
+	link := filepath.Base(out)
 	if resolved, err := filepath.EvalSymlinks(out); err == nil {
 		out = resolved
+	}
+
+	// The builder saw the name of the symlink's target; a cabinet must not
+	// replace the symlink either.
+	for _, cabinet := range cabinets {
+		if strings.EqualFold(cabinet.Name, link) {
+			return fmt.Errorf("the cabinet %s would replace the package; choose another package.cabinet or output name", cabinet.Name)
+		}
 	}
 
 	if info, err := os.Stat(out); err == nil && info.Mode().IsRegular() {
