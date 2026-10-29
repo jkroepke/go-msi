@@ -81,15 +81,14 @@ components:
     files:
       - { source: two.txt }
 `, "directories[0].children[0].children[1].name"},
-		"shortcut and file": {`components:
-  - directory: APPDIR
+		"shorthand directories": {`components:
+  - directory: APPDIR/DATA~1|Data One
     files:
-      - source: one.txt
-        id: One
-        shortcuts:
-          - { name: "PROG~1|Program Notes", directory: APPDIR }
-      - { source: two.txt, id: Two, name: "PROG~1|Program Two" }
-`, "components[0].files[1].name"},
+      - { source: one.txt }
+  - directory: APPDIR/DATA~1|Data Two
+    files:
+      - { source: two.txt }
+`, "components[1].directory"},
 	}
 
 	for name, tc := range cases {
@@ -147,5 +146,26 @@ func TestGeneratedShortNameAvoidsLiteralName(t *testing.T) {
 
 	if len(seen) != 2 {
 		t.Errorf("File rows: %v", rows(t, second.Database, "File"))
+	}
+}
+
+// TestShortcutKeepsItsOwnShortNames checks that a shortcut does not compete
+// with a folder for a short name: it is written as name.lnk.
+func TestShortcutKeepsItsOwnShortNames(t *testing.T) {
+	t.Parallel()
+
+	res := mustBuild(t, shortNameConfig(t, `        children:
+          - id: DATADIR
+            name: "ACME~1|Acme Tools"
+components:
+  - directory: DATADIR
+    files:
+      - source: one.txt
+        shortcuts:
+          - { name: "ACME~1|Acme App", directory: APPDIR }
+`))
+
+	if got := cell(t, res.Database, "Shortcut", "Name", func([]any) bool { return true }); got != "ACME~1|Acme App" {
+		t.Errorf("Shortcut.Name = %v", got)
 	}
 }

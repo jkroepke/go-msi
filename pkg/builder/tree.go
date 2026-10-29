@@ -201,7 +201,7 @@ func (b *build) directories() error {
 				continue
 			}
 
-			info := &dirInfo{id: dir.ID, path: dirPath}
+			info := &dirInfo{id: dir.ID, namePath: dir.NamePath(dirPath)}
 
 			switch {
 			case parent == nil && config.IsStandardFolder(dir.ID):
@@ -536,7 +536,7 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 		file.Sequence = i + 1
 
 		dir := file.Component.dir.id
-		file.FileName = filename(dir, b.fileName(file), false, b.taken(dir), config.ValidShortName)
+		file.FileName = filename(dir, configuredFileName(file), false, b.taken(dir), config.ValidShortName)
 	}
 
 	if err := b.deriveProductCode(); err != nil {

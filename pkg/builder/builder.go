@@ -91,20 +91,23 @@ type build struct { //nolint:govet // grouped by build step
 	// holds the shortcuts to its files.
 	shortcutCarrier map[string]string
 	// shortNames are the short names taken per directory key, shared by
-	// the directories, files and shortcuts in it (section 11.3).
-	shortNames  map[string]map[string]bool
-	fileByKey   map[string]*fileInfo
-	properties  map[string]string
-	upgradeCode string
-	productCode string
-	packageCode string
-	files       []*fileInfo
-	actions     []*actionInfo
-	dirOrder    []*dirInfo
-	diags       config.Diagnostics
-	opts        Options
-	version     config.Version
-	is64        bool
+	// the directories and files in it (section 11.3).
+	shortNames map[string]map[string]bool
+	// shortcutNames are the short names taken per shortcut directory: a
+	// shortcut is written as name.lnk, so it has a set of its own.
+	shortcutNames map[string]map[string]bool
+	fileByKey     map[string]*fileInfo
+	properties    map[string]string
+	upgradeCode   string
+	productCode   string
+	packageCode   string
+	files         []*fileInfo
+	actions       []*actionInfo
+	dirOrder      []*dirInfo
+	diags         config.Diagnostics
+	opts          Options
+	version       config.Version
+	is64          bool
 	// summaryWarned holds the config paths already reported as made to fit
 	// the summary code page.
 	summaryWarned map[string]bool
@@ -115,7 +118,7 @@ type dirInfo struct {
 	parent    string
 	long      string // long name, "" for standard folders and TARGETDIR
 	canonical string // canonical path for GUIDs and sorting
-	path      string // config path, "" for directories the builder adds
+	namePath  string // config path of the name, "" for directories the builder adds
 	standard  bool
 	used      bool
 }
@@ -191,6 +194,7 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 		hidden:          make(map[string]bool),
 		shortcutCarrier: make(map[string]string),
 		shortNames:      make(map[string]map[string]bool),
+		shortcutNames:   make(map[string]map[string]bool),
 		schedules:       make(map[string][]sequence.Action),
 		numbered:        make(map[string][]sequence.Numbered),
 		is64:            cfg.Package.Platform.Is64Bit(),

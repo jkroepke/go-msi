@@ -117,9 +117,9 @@ func filename(parentKey, long string, directory bool, taken map[string]bool, val
 	return shortName(parentKey, long, directory, taken) + "|" + long
 }
 
-// taken returns the short names taken in the directory dirKey. Directories,
-// files and shortcuts in one directory share it: section 11.3 makes a short
-// name unique among all names in its directory.
+// taken returns the short names taken in the directory dirKey. The
+// directories and files in one directory share it: section 11.3 makes a
+// short name unique among the names in its directory.
 func (b *build) taken(dirKey string) map[string]bool {
 	if b.shortNames[dirKey] == nil {
 		b.shortNames[dirKey] = make(map[string]bool)
@@ -128,8 +128,8 @@ func (b *build) taken(dirKey string) map[string]bool {
 	return b.shortNames[dirKey]
 }
 
-// fileName returns the configured name of a file, or its long name.
-func (b *build) fileName(file *fileInfo) string {
+// configuredFileName returns the configured name of a file, or its long name.
+func configuredFileName(file *fileInfo) string {
 	if file.cfg.Name != "" {
 		return file.cfg.Name
 	}
@@ -141,14 +141,14 @@ func (b *build) fileName(file *fileInfo) string {
 // a short|long name and a long name that is itself a valid short name, so
 // that no generated short name can take one of them, whichever row comes
 // first. Two different names with the same literal short name in one
-// directory are an error: the engine would install both to that short name
-// when it uses short names (FILE-07).
+// directory are an error: with SHORTFILENAMES=1 the engine installs both
+// to that short name (FILE-07).
 func (b *build) reserveShortNames() error {
 	owners := make(map[string]map[string]string)
 
 	for _, dir := range b.dirOrder {
 		if !dir.standard && dir.id != targetDir {
-			b.reserveShortName(owners, dir.parent, dir.long, dir.path+".name")
+			b.reserveShortName(owners, dir.parent, dir.long, dir.namePath)
 		}
 	}
 
@@ -157,15 +157,8 @@ func (b *build) reserveShortNames() error {
 		path := info.cfg.Path(info.index)
 
 		for j, cfgFile := range comp.Files {
-			filePath := fmt.Sprintf("%s.files[%d]", path, j)
-
-			if file := b.fileByKey[config.FileKey(cfgFile)]; file != nil && file.cfg == cfgFile {
-				b.reserveShortName(owners, info.dir.id, b.fileName(file), filePath+".name")
-			}
-
-			for k, shortcut := range cfgFile.Shortcuts {
-				b.reserveShortName(owners, shortcut.Directory, shortcut.Name, fmt.Sprintf("%s.shortcuts[%d].name", filePath, k))
-			}
+			file := b.fileByKey[config.FileKey(cfgFile)]
+			b.reserveShortName(owners, info.dir.id, configuredFileName(file), fmt.Sprintf("%s.files[%d].name", path, j))
 		}
 	}
 
@@ -173,8 +166,8 @@ func (b *build) reserveShortNames() error {
 }
 
 // reserveShortName takes the literal short name of name, if it has one, in
-// dirKey. owners maps each directory's literal short names to the long
-// names that took them.
+// dirKey. owners maps each directory's literal short names, in lower case,
+// to the long names that took them.
 func (b *build) reserveShortName(owners map[string]map[string]string, dirKey, name, path string) {
 	short, long, ok := strings.Cut(name, "|")
 	if !ok {
@@ -185,19 +178,19 @@ func (b *build) reserveShortName(owners map[string]map[string]string, dirKey, na
 		short, long = name, name
 	}
 
-	short, long = strings.ToLower(short), strings.ToLower(long)
+	key := strings.ToLower(short)
 
 	if owners[dirKey] == nil {
 		owners[dirKey] = make(map[string]string)
 	}
 
-	if owner, dup := owners[dirKey][short]; dup && owner != long {
+	if owner, dup := owners[dirKey][key]; dup && !strings.EqualFold(owner, long) {
 		b.errorf(path, "short name %s is also the short name of %q in directory %s; short names must be unique in a directory (FILE-07)",
 			short, owner, dirKey)
 
 		return
 	}
 
-	owners[dirKey][short] = long
-	b.taken(dirKey)[short] = true
+	owners[dirKey][key] = long
+	b.taken(dirKey)[key] = true
 }

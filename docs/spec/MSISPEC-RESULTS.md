@@ -54,7 +54,7 @@ Contradicted claims:
    the pool: every one of 32768 or 65536 rows then reads back as NULL. Reading
    ignores the stored refcount (0, 32768 and 65535 all read fine), but a native
    commit keeps it masked to 15 bits and drops the string when that is 0. Section
-   3 says "Fail above 65535" and "refcount MUST equal the stored references";
+   3 said "Fail above 65535" (until 2026-10-29) and "refcount MUST equal the stored references";
    neither holds for what Windows writes or survives. A writer whose output may
    be edited by `msi.dll` should keep every refcount in 1…32767.
 4. **`*` does not imply removal (ENVVAR-01).** `=*MSISPEC_PERM` (machine scope,
@@ -478,7 +478,7 @@ removed from the pull request afterwards; its output is in
   system assigns its own 8.3 names (`PROGRA~1.TXT`, `DATAON~1`), not the
   package's.
 - ICE30 checks files only; the directory cases pass the suite. msi-builder's
-  check (section 11.3) covers directories, files and shortcuts.
+  check (section 11.3) covers directories and files.
 - Not run: an administrative image, a volume without long names, a duplicate
   shortcut short name, Windows Server 2016.
 

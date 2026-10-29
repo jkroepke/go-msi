@@ -8,7 +8,7 @@ Every case is an x64 package with `PROBEDIR` (`snprobe<case>` under `ProgramFile
 - c: `one.txt` in `DIRONE` and `two.txt` in `DIRTWO`.
 - d: a file `DATA~1|Data Three` and `two.txt` in `PROBEDIR`, and `three.txt` in `DIRONE`.
 
-Log lines about the missing `Error` table (notes 2205 and 2228), source directories, property changes and the volume summary of `dir /x` are left out.
+The probe failed on purpose so that `go test` printed its output; only that output is kept. Log lines about the missing `Error` table (notes 2205 and 2228), source directories, property changes and the volume summary of `dir /x` are left out.
 ```
 === case a
 ICE err=<nil>
@@ -266,46 +266,4 @@ File Not Found
 uninstall: err=exit status 1605 This action is only valid for products that are currently installed.
 
   root after uninstall: GetFileAttributesEx C:\Program Files\snprobed: The system cannot find the file specified.
-FAIL
-coverage: 66.2% of statements in ./...
-FAIL	github.com/jkroepke/msi-builder/pkg/builder/nativetest	298.328s
-ok  	github.com/jkroepke/msi-builder/pkg/cab	142.020s	coverage: 13.2% of statements in ./...
-ok  	github.com/jkroepke/msi-builder/pkg/cfb	32.901s	coverage: 6.1% of statements in ./...
-ok  	github.com/jkroepke/msi-builder/pkg/config	1.718s	coverage: 21.6% of statements in ./...
-ok  	github.com/jkroepke/msi-builder/pkg/msidb	3.855s	coverage: 13.0% of statements in ./...
-ok  	github.com/jkroepke/msi-builder/pkg/sign	1.672s	coverage: 9.7% of statements in ./...
-ok  	github.com/jkroepke/msi-builder/pkg/summary	1.142s	coverage: 1.5% of statements in ./...
-FAIL
-##[error]Process completed with exit code 1.
-##[group]Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-with:
-  name: install-snapshots
-  path: D:\a\_temp/install-snapshots/
-  if-no-files-found: ignore
-  compression-level: 6
-  overwrite: false
-  include-hidden-files: false
-  archive: true
-env:
-  GOTOOLCHAIN: local
-  MSI_BUILDER_ICE_CUB: C:\ice\darice.cub
-  MSI_BUILDER_ICE_REQUIRED: 1
-##[endgroup]
-No files were found with the provided path: D:\a\_temp/install-snapshots/. No artifacts will be uploaded.
-Post job cleanup.
-[command]"C:\Program Files\Git\bin\git.exe" version
-git version 2.56.0.windows.2
-Temporarily overriding HOME='D:\a\_temp\96b235f5-1711-4087-ba2d-ce3aa59e1337' before making global git config changes
-Adding repository directory to the temporary git global config as a safe directory
-[command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\msi-builder\msi-builder
-Removing SSH command configuration
-[command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
-[command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
-Removing HTTP extra header
-[command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
-[command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
-Removing includeIf entries pointing to credentials config files
-[command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
-[command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
-Cleaning up orphan processes
 ```
