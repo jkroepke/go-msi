@@ -113,6 +113,9 @@ func TestValidateAccepted(t *testing.T) {
 		// Only a dual package reserves the scope page's names.
 		"scope names in a perMachine package": pkg(`{platform: x64}`) + appComponent +
 			"properties:\n  BuilderInstallScope: {value: x}\n",
+		// A remove dialog follows MaintenanceTypeDlg without an after.
+		"remove dialog": base + appComponent + "properties: {DELETE_CONFIGURATION: {}}\nui:\n  enabled: true\n  dialogs:\n" +
+			"    - {id: RemoveOptionsDlg, title: x, flow: remove, fields: [{property: DELETE_CONFIGURATION, type: checkbox}]}\n",
 	} {
 		if ds := validate(t, doc); len(ds) != 0 {
 			t.Errorf("%s: unexpected diagnostics: %v", name, ds)
@@ -516,6 +519,24 @@ func TestValidate(t *testing.T) {
 		"wizard texts without a wizard": {
 			base + appComponent + "ui:\n  enabled: false\n  strings: {Next: Weiter}\n",
 			sevError, "ui.strings", "need a wizard",
+		},
+		"dialog flow": {
+			base + appComponent + "ui:\n  enabled: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, flow: uninstall, fields: [{property: OPT}]}\n",
+			sevError, "ui.dialogs[0].flow", "not one of",
+		},
+		"install dialog without after": {
+			base + appComponent + "ui:\n  enabled: true\n  dialogs:\n    - {id: ExtraDlg, title: x, flow: install, fields: [{property: OPT}]}\n",
+			sevError, "ui.dialogs[0].after", "required",
+		},
+		"remove dialog without Change": {
+			strings.Replace(base, "product:\n", "product:\n  arp: {noModify: true}\n", 1) + appComponent + "ui:\n  enabled: true\n  dialogs:\n" +
+				"    - {id: ExtraDlg, title: x, flow: remove, fields: [{property: OPT}]}\n",
+			sevWarning, "ui.dialogs[0].flow", "only when the package runs again",
+		},
+		"remove dialog without Remove": {
+			strings.Replace(base, "product:\n", "product:\n  arp: {noRemove: true}\n", 1) + appComponent + "ui:\n  enabled: true\n  dialogs:\n" +
+				"    - {id: ExtraDlg, title: x, flow: remove, fields: [{property: OPT}]}\n",
+			sevWarning, "ui.dialogs[0].flow", "no one can reach this page",
 		},
 		"dialog field type": {
 			base + appComponent + "ui:\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: radio}]}\n",

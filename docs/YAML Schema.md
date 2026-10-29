@@ -414,6 +414,40 @@ components:
       condition: DELETE_DATA="1"
 ```
 
+### Ask before deleting data on uninstall
+
+A `flow: remove` dialog adds a page to the wizard's remove path, after
+Remove in the maintenance menu, for example a checkbox that the purge above
+reads. Users reach it by running the package again or, expected but not yet
+verified on Windows, through Change in Add or Remove Programs. `msiexec /x`
+removes the product without the wizard, so the property also works on the
+command line:
+`msiexec /x hello.msi DELETE_CONFIGURATION=1`.
+
+```yaml
+properties:
+  DELETE_CONFIGURATION: {}  # declared, so the uninstall sees the box
+
+components:
+  - files:
+      - source: hello.exe
+  - directory: CommonAppDataFolder/Example/Hello
+    createFolder: true
+    purge:
+      condition: DELETE_CONFIGURATION="1"
+
+ui:
+  enabled: true
+  dialogs:
+    - id: RemoveOptionsDlg
+      flow: remove
+      title: Remove options
+      fields:
+        - property: DELETE_CONFIGURATION
+          type: checkbox
+          label: '&Delete the configuration'
+```
+
 ### Run a command during installation
 
 ```yaml
@@ -529,6 +563,7 @@ The keys used most inside them:
 | `ui.chooseFeatures` | `false` | Feature tree page |
 | `ui.launch.file` | none | "Launch" checkbox on the finish page |
 | `ui.finishText` | none | A paragraph on the finish page |
+| `ui.dialogs[].flow` | `install` | `remove` shows the page after Remove in the maintenance menu |
 | `ui.strings` | none | Your own texts for the built-in wizard |
 | `ui.languages` | none | More wizard languages in the same package |
 
