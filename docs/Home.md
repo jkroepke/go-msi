@@ -1,12 +1,16 @@
 # Home
 
-msi-builder builds Windows Installer (MSI) packages from a single YAML file. It is
-written in pure Go without cgo, so the same binary builds packages on Linux,
-macOS and Windows, for example in a CI job next to the rest of your release.
+**YAML in, MSI out.** msi-builder turns one short YAML file into a Windows
+Installer (MSI) package: write down what to install, run one command, ship the
+`.msi`. There is no XML to write and no Windows machine needed to build on.
+
+msi-builder is a single Go binary without cgo, so the same command builds the
+package on Linux, macOS and Windows, for example in a CI job next to the rest
+of your release.
 
 > [!NOTE]
-> msi-builder is under active development. The YAML schema is defined, the MSI
-> writer and the command line tool are in progress.
+> msi-builder is under active development and has not reached 1.0 yet, so the
+> YAML schema can still change between releases.
 
 ## Where to start
 

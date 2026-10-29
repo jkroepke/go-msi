@@ -63,8 +63,9 @@ type pkg struct {
 	WordCount      int32
 	Is64           bool
 	InstallDirName string
-	LongOnlyDir    bool // write DefaultDir without a short name part (invalid 8.3)
-	PerUser        bool // leave ALLUSERS out of the Property table
+	LongOnlyDir    bool   // write DefaultDir without a short name part (invalid 8.3)
+	PerUser        bool   // leave ALLUSERS out of the Property table
+	ParentDir      string // parent of INSTALLDIR instead of Program Files
 	Files          []payload
 	Extra          map[string][][]string // extra rows per table
 	ExtraProps     [][]string
@@ -277,6 +278,9 @@ func (p *pkg) build(out string) error {
 	if p.Is64 {
 		pf = "ProgramFiles64Folder"
 		compAttr = "256"
+	}
+	if p.ParentDir != "" {
+		pf = p.ParentDir
 	}
 	tables := map[string][][]string{}
 	tables["Property"] = append([][]string{

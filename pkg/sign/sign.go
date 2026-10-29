@@ -13,6 +13,7 @@
 package sign
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
@@ -65,58 +66,138 @@ func (o *Options) hash() crypto.Hash {
 	return o.Hash
 }
 
-// readPackage parses an .msi and returns it with its root streams, minus
-// both signature streams.
-func readPackage(pkg []byte) (*cfb.File, []cfb.Stream, error) {
+// pkgFile is a parsed package: its root streams minus both signature
+// streams, and its root-level storages.
+type pkgFile struct {
+	file     *cfb.File
+	streams  []cfb.Stream
+	storages []cfb.Storage
+	// dropped is set when storagesOf left signature-named streams out, so
+	// the rewritten package differs from file below the root.
+	dropped bool
+}
+
+// readPackage parses an .msi.
+func readPackage(pkg []byte) (*pkgFile, error) {
 	file, err := cfb.Read(pkg)
 	if err != nil {
-		return nil, nil, fmt.Errorf("sign: %w", err)
+		return nil, fmt.Errorf("sign: %w", err)
 	}
 
-	for _, ent := range file.Entries[1:] {
-		if ent.Type == typeStorage && ent.Parent >= 0 {
-			return nil, nil, fmt.Errorf("sign: storage %q: packages with sub-storages are not supported", ent.Name)
-		}
+	storages, dropped, err := storagesOf(file)
+	if err != nil {
+		return nil, err
 	}
 
-	var streams []cfb.Stream
+	out := &pkgFile{file: file, storages: storages, dropped: dropped}
 
 	for _, s := range file.Streams() {
 		if s.Name != StreamSignature && s.Name != StreamSignatureEx {
-			streams = append(streams, s)
+			out.streams = append(out.streams, s)
 		}
-	}
-
-	return file, streams, nil
-}
-
-// rewrite builds a container like file holding streams.
-func rewrite(file *cfb.File, streams []cfb.Stream) ([]byte, error) {
-	out, err := cfb.Write(streams, cfb.Options{Version: file.Version, CLSID: file.CLSID})
-	if err != nil {
-		return nil, fmt.Errorf("sign: %w", err)
 	}
 
 	return out, nil
 }
 
+// storagesOf returns the root-level storages of file with their streams.
+// Storages are kept one level deep, which is what embedded transforms use;
+// a storage inside a storage is refused, since rewriting would drop it.
+// Streams named like the signature streams are left out of storages too,
+// so that a verifier that excludes them at every level and one that
+// excludes them at the root only compute the same digest (MSISPEC §12).
+func storagesOf(file *cfb.File) ([]cfb.Storage, bool, error) {
+	storages, index, err := rootStorages(file)
+	if err != nil {
+		return nil, false, err
+	}
+
+	dropped := false
+
+	for _, ent := range file.Entries[1:] {
+		i, ok := index[ent.Parent]
+
+		switch {
+		case !ok || ent.Type != typeStream || ent.Parent == 0:
+		case ent.Name == StreamSignature || ent.Name == StreamSignatureEx:
+			dropped = true
+		default:
+			storages[i].Streams = append(storages[i].Streams, cfb.Stream{Name: ent.Name, Data: ent.Data}.Source())
+		}
+	}
+
+	return storages, dropped, nil
+}
+
+// rootStorages returns the root-level storages of file, without streams,
+// and their index by SID.
+func rootStorages(file *cfb.File) ([]cfb.Storage, map[int]int, error) {
+	var storages []cfb.Storage
+
+	index := make(map[int]int)
+
+	for _, ent := range file.Entries[1:] {
+		switch {
+		case ent.Type != typeStorage || ent.Parent < 0:
+		case ent.Parent != 0:
+			return nil, nil, fmt.Errorf("sign: storage %q: storages inside storages are not supported", ent.Name)
+		default:
+			index[ent.SID] = len(storages)
+			storages = append(storages, cfb.Storage{Name: ent.Name, CLSID: ent.CLSID})
+		}
+	}
+
+	return storages, index, nil
+}
+
+// rewrite builds a container like p holding streams and p's storages.
+func (p *pkgFile) rewrite(streams []cfb.Stream) ([]byte, error) {
+	sources := make([]cfb.Source, 0, len(streams))
+	for _, s := range streams {
+		sources = append(sources, s.Source())
+	}
+
+	var buf bytes.Buffer
+
+	if _, err := cfb.WriteStoragesTo(&buf, sources, p.storages, cfb.Options{Version: p.file.Version, CLSID: p.file.CLSID}); err != nil {
+		return nil, fmt.Errorf("sign: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
 // Unsign returns pkg without its signature streams.
 func Unsign(pkg []byte) ([]byte, error) {
-	file, streams, err := readPackage(pkg)
+	p, err := readPackage(pkg)
 	if err != nil {
 		return nil, err
 	}
 
-	return rewrite(file, streams)
+	return p.rewrite(p.streams)
 }
 
 // Digest returns the content digest D of pkg as a basic-mode signature
 // covers it, ignoring any existing signature. An external signer puts D
 // into SpcIndirectDataContent; Attach then stores its PKCS #7.
 func Digest(pkg []byte, algo crypto.Hash) ([]byte, error) {
-	file, _, err := readPackage(pkg)
+	parsed, err := readPackage(pkg)
 	if err != nil {
 		return nil, err
+	}
+
+	file := parsed.file
+
+	// Attach writes the package without the dropped streams, so the
+	// digest is taken over that package.
+	if parsed.dropped {
+		out, err := parsed.rewrite(parsed.streams)
+		if err != nil {
+			return nil, err
+		}
+
+		if file, err = cfb.Read(out); err != nil {
+			return nil, fmt.Errorf("sign: %w", err)
+		}
 	}
 
 	return contentDigest(file, algo, true)
@@ -125,14 +206,14 @@ func Digest(pkg []byte, algo crypto.Hash) ([]byte, error) {
 // Attach stores an externally made DER PKCS #7 signature in pkg, replacing
 // any existing one, and verifies the result.
 func Attach(pkg, signature []byte) ([]byte, *Signature, error) {
-	file, streams, err := readPackage(pkg)
+	parsed, err := readPackage(pkg)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	streams = append(streams, cfb.Stream{Name: StreamSignature, Data: signature})
+	streams := append(parsed.streams, cfb.Stream{Name: StreamSignature, Data: signature}) //nolint:gocritic // parsed is not used again
 
-	out, err := rewrite(file, streams)
+	out, err := parsed.rewrite(streams)
 	if err != nil {
 		return nil, nil, err
 	}

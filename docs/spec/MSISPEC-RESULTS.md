@@ -68,12 +68,17 @@ Contradicted claims:
    writes a 4096-byte-sector v4 file even for a 20 KB database; section 2 only
    knew large native packages to be v4. v3 and v4 repacks of the same streams
    behave identically.
-7. **Per-user rollback leaves nothing behind (CA-01).** In a per-user install
-   run by an elevated administrator, a deferred action that fails after
-   `PublishProduct` rolls back the `Installer\Products` and `UserData`
-   registration completely, the same as one that fails after `InstallFiles`.
-   The leftover registration that section 8.2 and W17 report (WiX issue 8574)
-   did not reproduce here; it may need a non-administrator user.
+7. **Per-user rollback: confirmed only for non-administrators (CA-01).** A
+   deferred action that fails after `PublishProduct` rolls back completely in
+   an install by an elevated administrator. In a non-administrator's install,
+   the rollback of every failure after `RegisterProduct` cannot remove the
+   registration (`Info 1403`, access denied): after `PublishProduct` the
+   product stays installed (state 5) and a reinstall fails with 1603; between
+   `RegisterProduct` and `PublishProduct` an HKLM entry stays (state 2) that
+   `msiexec /x` cannot remove (1605). WiX issue 8574 reproduces with a
+   package the harness built. Windows Server also refuses
+   non-administrator installs by default (`DisableMsi` 1, 1625); see
+   [Per-user rollback](#per-user-rollback-ca-01).
 8. **SystemIdentifier (SUM-07).** The native writer stores `0x0002000A`, not
    `0x00020006`, and the engine ignores the field: 0, 5, 6 and `0xFFFFFFFF`
    all install.
@@ -164,7 +169,7 @@ Silent-failure cases a producer has to guard against itself:
 | MSIDB-09 | Confirmed | [log](msitest/results/MSIDB-09/empty-table/log.md); no stream and 0-byte stream both work |
 | MSIDB-10 | Confirmed | [log](msitest/results/MSIDB-10/validation-table/log.md); runtime needs no `_Validation` |
 | MSIDB-11 | Confirmed | [log](msitest/results/MSIDB-11/stream-name-limit/log.md); 62 characters, commit fails with 2213 |
-| MSIDB-12 | Not run | P2 |
+| MSIDB-12 | Confirmed | msi.dll transform layout, wide masks, code page switch (section 3); CI runner logs in `msitest/results/MSIDB-12` |
 | MSIDB-13 | Not run | P2 |
 | MSIDB-15 | Confirmed | Same as MSIDB-04 |
 | MSIDB-16 | Contradicted | Same as MSIDB-05 |
@@ -181,6 +186,9 @@ Silent-failure cases a producer has to guard against itself:
 | SUM-05 | Partial | [log](msitest/results/SUM-05/word-count/log.md); 0, 1, 2, 3, 4, 8, 10 install elevated; no standard-user session |
 | SUM-06 | Confirmed | [log](msitest/results/SUM-06/revision-and-times/log.md) |
 | SUM-07 | Confirmed | [log](msitest/results/SUM-07/summary-system-identifier/log.md); field ignored |
+| LANG-01 | Confirmed | [CI log](msitest/results/LANG-01/embedded-language-transform/log.md), [SERVER2025 log](msitest/results/LANG-01/embedded-language-transform/log-server2025.md); the user's default language ID (format, not display language) picks the transform; the first Template language is the database's own |
+| LANG-03 | Confirmed | [CI log](msitest/results/LANG-03/builder-languages/log.md); the CI runner (en-US) installed the builder's package with `ProductLanguage=1036` and `1031` and registered each, and its full-UI run showed the German wizard from the built-in translation with the `de` entry's finish text |
+| LANG-02 | Confirmed | SERVER2025: msi.dll applies MarshalTransform's transform; embedded as storage 1031 it installs as "Minimal Beispiel Zurück" with Language 1031 |
 | CAB-01 | Confirmed | Uncompressed, makecab stored/MSZIP and spec-writer stored/MSZIP install byte-identical ([go-mszip](msitest/results/CAB-01/go-mszip/log.md)) |
 | CAB-04 | Confirmed | [log](msitest/results/CAB-04/header-mutations/log.md); version ≠ 1.3 and bad checksum 1603, `cbCabinet` ignored |
 | CAB-05 | Confirmed | [log](msitest/results/CAB-05/zero-byte-file/log.md); missing external cabinet 1603 |
@@ -229,7 +237,7 @@ Silent-failure cases a producer has to guard against itself:
 | SVC-03 | Confirmed | [per-step](msitest/results/SVC-03/per-step/log.md); per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
 | SVC-04 | Confirmed | SERVER2025, 2026-10-29, windows_exporter with `EXTRA_FLAGS=--no-such-flag`: split rows (start `Wait=0`), from msi-builder and from the WiX-built package, install with exit 0 in 1–2 s and leave the service stopped; one row with `Wait=1` fails with 1920 after about 247 s of start retries and rolls back; [details](#service-start-without-waiting-svc-04) |
 | SVC-05 | Confirmed | [ci](msitest/results/SVC-05/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40885964831: a start event on a disabled service fails the install with 1920 and 1603 after about 30 seconds; without it the service installs stopped; the start type was not logged |
-| CA-01 | Contradicted | Per-user (`Assignment=0`), elevated administrator: a deferred EXE action failing [after PublishProduct](msitest/results/CA-01/fail-after-publishproduct/log.md) or [after InstallFiles](msitest/results/CA-01/fail-after-installfiles/log.md) rolls back completely (1603, no `Products` or `UserData` key left, state unknown); finding 7 |
+| CA-01 | Confirmed (non-administrator) | Elevated administrator: the three variants run (after `PublishProduct`, `dual-*` after `PublishProduct`, after `InstallFiles`) roll back completely; non-administrator: a failure after `PublishProduct` leaves the registration (state 5, reinstall 1603, `msiexec /x` cleans up), a failure after `RegisterProduct` leaves an HKLM entry the user cannot remove (state 2, 1605), a failure after `InstallFiles` is clean; [details](#per-user-rollback-ca-01) |
 | CA-02 | Confirmed | EXE exit 1 fails unless Continue; [type-6 return 5](msitest/results/CA-02/vbs-binary-return-5-immediate/log.md) ends with 0 and skips the rest; [deferred](msitest/results/CA-02/vbs-binary-return-5-deferred/log.md) leaves files unregistered |
 | CA-03 | Confirmed | GitHub `windows-latest` (x64) and `windows-11-arm` runners, 2026-10-28, `TestMsiexecRunActions`: every stdout and stderr line of the seven run actions is in the verbose log as `GoMsiRun:`, `whoami` shows LocalSystem versus the user, brackets stay literal, OEM and UTF-8 output decode, exit 3 with `Continue` returns 1, exit 7 fails with 1603 and runs the rollback action with the hidden command absent; Arm64 package native and x64 package under emulation on Arm; repeated on SERVER2025 with the same result; [details](#embedded-custom-action-dll-ca-03) |
 | CA-04 | Confirmed | GitHub `windows-latest` runner, 2026-10-28, CI run 40787803798: netsh rejects `any` or `*` combined with other `remoteip=` entries (exit 1), accepts `ANY` and `*` alone and accepts `localsubnet,10.0.0.1`; quotes inside a quoted description are dropped; [details](#firewall-arguments-ca-04) |
@@ -240,6 +248,7 @@ Silent-failure cases a producer has to guard against itself:
 | UI-02 | Not run | Interactive full UI |
 | UI-03 | Not run | Interactive full UI |
 | UI-05 | Confirmed | [log](msitest/results/UI-05/server2025/log.md); SERVER2025, 2026-10-29: the group starts on the first option the builder set as default, a `BM_CLICK` on "Debug" sets `LOG_LEVEL=debug` on the client and the server; ICE clean apart from warnings outside the choice dialog |
+| UI-06 | Confirmed | SERVER2025: German (1252) and Russian/Japanese (65001) wizards installed by pressing the translated buttons; the 65001 package replaced the German one; engine log messages follow ProductLanguage |
 | UI-07 | Confirmed | [log](msitest/results/UI-07/windows-latest/log.md); GitHub `windows-latest` runner, 2026-10-29, `TestFullUIFinishText`: after a full UI install the finish page lists the paragraph with `[ProductName]` resolved; after a repair through the maintenance menu the finish page has no such element (the hidden control is absent from the UI Automation control view the driver walks, not reported off-screen). UI Automation names drop `&`, so the literal `&` rests on UI-01 |
 | SEC-01 | Confirmed | File, [CreateFolder](msitest/results/SEC-01/createfolder/log.md), [Registry](msitest/results/SEC-01/registry/log.md) and [ServiceInstall](msitest/results/SEC-01/service/log.md) rows get the authored DACL; [`/fa` and `/fvomus` restore it](msitest/results/SEC-01/file/log.md); [owner and group](msitest/results/SEC-01/file-owner-group/log.md) are set; `[Property]` stays literal (1943) but [`<[%USERDOMAIN]\[%USERNAME]>`](msitest/results/SEC-01/account-angle-env/log.md) and [`<BUILTIN\Users>`](msitest/results/SEC-01/account-angle-builtin/log.md) resolve; invalid SDDL 1943, two true rows 1942, both tables 1941; [deny ACE for `BU`](msitest/results/SEC-01/file-deny-ace/log.md) leaves the file on uninstall |
 | VAL-01 | Confirmed | [log](msitest/results/VAL-01/msival2-compare/log.md); the Go runner and `msival2.exe` agree on all three packages (1, 25 and 26 warning and error findings; Info lines left out); ICE08 reports the duplicate GUID |
@@ -745,3 +754,71 @@ in `internal/builder/nativetest/media_windows_test.go`.
   install needed one.
 - Not run: Windows Server 2016, a single file near 0x7FFF8000 bytes, LZX or
   MSZIP at this size, an install from a network share.
+
+## Per-user rollback (CA-01)
+
+Run on 2026-10-29 on SERVER2025 (Windows Server 2025 10.0.26100, a domain
+controller) with the msitest harness at `c32c60f`; later commits added the
+1402/1403 counts to log.md, the fixed RESULT line and a
+`dual-fail-after-registerproduct` variant, which have not run yet. The case
+builds a one-file x64 package with an impersonated deferred EXE action
+(`cmd.exe /c exit 1`, type 1058) at the given sequence number and installs it with `/qn`.
+Variants: `ALLUSERS` unset with `INSTALLDIR` under Program Files (the old
+variants), `dual-*` with `ALLUSERS=2` and `MSIINSTALLPERUSER=1` (the shape
+of WiX issue 8574), and `lad-*` with `ALLUSERS` unset and `INSTALLDIR`
+under `LocalAppDataFolder` (the shape of msi-builder's `perUser` scope).
+`dual-*`, `lad-*` and every non-administrator run use Word Count 10
+(no elevation needed). The administrator was the built-in Administrator,
+elevated; the non-administrator was a domain user in Domain Users only, run
+through an interactive logon at medium integrity. The harness names the
+non-administrator folders `<variant>-nonadmin`; they were renamed to
+`<variant>-nonadmin-interactive` when they were copied into `results/`.
+The 1402 and 1403 counts below come from the verbose `install.log` files,
+which `.gitignore` keeps out of the repository.
+
+| Variant | Failure after | Administrator | Non-administrator |
+| --- | --- | --- | --- |
+| `fail-after-publishproduct` | PublishProduct (6450) | 1603, clean | 1303 at InstallFiles (Program Files), not reached |
+| `fail-after-installfiles` | InstallFiles (4001) | 1603, clean | 1303 at InstallFiles, not reached |
+| `dual-fail-after-publishproduct` | PublishProduct | 1603, clean | 1603, **registered** (state 5) |
+| `dual-fail-after-installfiles` | InstallFiles | not run | 1603, clean |
+| `lad-fail-after-publishproduct` | PublishProduct | not run | 1603, **registered** (state 5) |
+| `lad-fail-after-registerproduct` | RegisterProduct (6150) | not run | 1603, **registered, not published** (state 2) |
+| `lad-fail-after-installfiles` | InstallFiles | not run | 1603, clean |
+
+- Before `DisableMsi=0` was set, every non-administrator install ended with
+  1625 and `Machine policy value 'DisableMsi' is 1`; the
+  `HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer` key did not
+  exist, so this is the Windows Server default. The log also said the package
+  was "LUA installation capable with no elevation required" and
+  `DisableUserInstalls` was 0. The results above are with `DisableMsi=0`.
+- Failure after `PublishProduct`, non-administrator: the rollback logs 66 ×
+  `Info 1403` (`LastUsedSource`, `Clients`, `SourceList\Media`,
+  `SourceList\Net`, …) and 92 × `Note: 1: 1402 … 3: 5`, then
+  `Error in rollback skipped. Return: 3`. Left behind:
+  `HKCU\Software\Microsoft\Installer\Products\<packed>` (`ProductName`,
+  `PackageCode`, `Assignment 0`, `AdvertiseFlags 0x184`, `DeploymentFlags 2`,
+  `Clients`), its `SourceList`, `Media` and `Net`,
+  `HKCU\…\Installer\Features\<packed>`, `HKCU\…\Installer\UpgradeCodes`,
+  and `UserData\<SID>\Products\<packed>`. There was no HKCU `Uninstall`
+  entry. A reinstall of the same package logs "Product registered: entering
+  maintenance mode", `SECUREREPAIR: SecureRepair Failed. Error code:
+  3B65051A8` and RegisterProduct return 3, and exits 1603.
+  `msiexec /x {ProductCode}` by the same user exits 0 and removes it all.
+- Failure after `RegisterProduct`, non-administrator: 48 × `Info 1403` on
+  the HKLM `Uninstall\{ProductCode}` values, the
+  `UserData\<SID>\Products\<packed>\InstallProperties` values and the
+  HKLM `UpgradeCodes` value. Those three keys stay; `LocalPackage` names a
+  cached package in `C:\Windows\Installer` that no longer exists. The product
+  is listed in Apps & features for every user, `MsiQueryProductState` is 2,
+  `msiexec /x` by the user exits 1605, and the user cannot delete the keys.
+  An administrator removed them with `reg delete`.
+- Failure after `InstallFiles`: no 1403 lines and no access-denied 1402
+  notes, for both the `dual-*` and the `lad-*` variant.
+- The `lad-fail-after-registerproduct-nonadmin-interactive` log.md says
+  "registration left … =false": the harness counted only the HKU key then.
+  It now also counts `UserData` and the product state.
+- Not tested: a non-administrator on a client edition of Windows, a cancel
+  instead of a failing action, and Windows Server 2016. WinRM as the
+  non-administrator failed on this domain controller ("The WSMan service
+  could not launch a host process"), so only the interactive logon was used.

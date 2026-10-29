@@ -6,7 +6,7 @@ summary  4: prometheus-community
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install windows_exporter.
 summary  7: x64;1033
-summary  9: {ADC51ED9-59F4-5D89-9359-5296218F53B9}
+summary  9: {B588E1E7-10FF-5C86-A6EC-36BB8E1D052F}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500
@@ -573,7 +573,7 @@ KB	KB
 MB	MB
 MenuAbsent	Entire feature will be unavailable
 MenuAdvertise	Feature will be installed when required
-MenuAllCP	Entire feature will be installed to run from the network
+MenuAllCP	Entire feature will be installed to run from CD
 MenuAllLocal	Entire feature will be installed on local hard drive
 MenuAllNetwork	Entire feature will be installed to run from the network
 MenuCD	Will be installed to run from CD

@@ -1,0 +1,183 @@
+package config
+
+import (
+	"fmt"
+	"strings"
+	"unicode"
+)
+
+// maxProgIDLength is the longest ProgID Microsoft documents for COM.
+const maxProgIDLength = 39
+
+// DefaultVerb is the shell verb a file type gets when it lists none.
+const DefaultVerb = "open"
+
+// DefaultVerbArguments follow the quoted file path in a verb's command.
+const DefaultVerbArguments = `"%1"`
+
+// systemExtensions are extensions that Windows or common programs already
+// own. Uninstalling a package that registers one deletes the default value
+// of its key and leaves the extension without a handler.
+var systemExtensions = map[string]bool{ //nolint:gochecknoglobals // lookup table
+	"bat": true, "bmp": true, "cer": true, "cmd": true, "crt": true, "csv": true, "dll": true,
+	"exe": true, "gif": true, "htm": true, "html": true, "inf": true, "ini": true, "jpeg": true,
+	"jpg": true, "js": true, "json": true, "lnk": true, "log": true, "md": true, "msi": true,
+	"pdf": true, "pem": true, "png": true, "ps1": true, "reg": true, "sys": true, "txt": true,
+	"url": true, "vbs": true, "xml": true, "zip": true,
+}
+
+// defaultFileTypes gives a file type without verbs an open verb and every
+// verb its default arguments.
+func defaultFileTypes(file *File) {
+	for _, fileType := range file.FileTypes {
+		if fileType == nil {
+			continue
+		}
+
+		if len(fileType.Verbs) == 0 {
+			fileType.Verbs = []*FileTypeVerb{{ID: DefaultVerb}}
+		}
+
+		for _, verb := range fileType.Verbs {
+			if verb != nil && verb.Arguments == nil {
+				verb.Arguments = new(DefaultVerbArguments)
+			}
+		}
+	}
+}
+
+// fileTypes checks the file types of every file. ProgIDs and extensions are
+// keys under HKEY_CLASSES_ROOT, so each may be registered once per package.
+func (v *validator) fileTypes(cfg *Config) {
+	progIDs := make(map[string]string)
+	extensions := make(map[string]string)
+
+	for i, comp := range cfg.Components {
+		for j, file := range comp.Files {
+			for k, fileType := range file.FileTypes {
+				typePath := fmt.Sprintf("%s.files[%d].fileTypes[%d]", comp.Path(i), j, k)
+				if fileType == nil {
+					v.errorf(typePath, "empty entry")
+
+					continue
+				}
+
+				v.progID(typePath+".progId", fileType.ProgID, progIDs)
+
+				for l, ext := range fileType.Extensions {
+					v.fileTypeExtension(fmt.Sprintf("%s.extensions[%d]", typePath, l), ext, extensions)
+				}
+
+				verbs := make(map[string]bool)
+
+				for l, verb := range fileType.Verbs {
+					v.fileTypeVerb(fmt.Sprintf("%s.verbs[%d]", typePath, l), verb, verbs)
+				}
+			}
+		}
+	}
+}
+
+func (v *validator) progID(field, progID string, seen map[string]string) {
+	if !v.required(field, progID) {
+		return
+	}
+
+	if problem := classKeyProblem(progID); problem != "" {
+		v.errorf(field, "%q %s", progID, problem)
+
+		return
+	}
+
+	if strings.HasPrefix(progID, ".") {
+		v.errorf(field, "%q starts with a dot, which makes it an extension key", progID)
+
+		return
+	}
+
+	if other, dup := seen[strings.ToLower(progID)]; dup {
+		v.errorf(field, "%s registers %q too", other, progID)
+	}
+
+	seen[strings.ToLower(progID)] = field
+
+	// Microsoft's rules for COM ProgIDs; Explorer itself accepts more.
+	if len(progID) > maxProgIDLength || unicode.IsDigit(rune(progID[0])) ||
+		strings.ContainsFunc(progID, func(r rune) bool { return r != '.' && !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
+		v.warnf(field, "%q is not a COM-style ProgID (at most %d letters, digits and periods, not starting with a digit)", progID, maxProgIDLength)
+	}
+}
+
+func (v *validator) fileTypeExtension(field string, ext *FileTypeExtension, seen map[string]string) {
+	if ext == nil {
+		v.errorf(field, "empty entry")
+
+		return
+	}
+
+	name := ext.Extension
+	if !v.required(field+".extension", name) {
+		return
+	}
+
+	if strings.HasPrefix(name, ".") {
+		v.errorf(field+".extension", "%q: write the extension without its dot", name)
+
+		return
+	}
+
+	if problem := classKeyProblem(name); problem != "" || strings.ContainsAny(name, " *?.") {
+		v.errorf(field+".extension", "%q is not a file name extension", name)
+
+		return
+	}
+
+	lower := strings.ToLower(name)
+	if other, dup := seen[lower]; dup {
+		v.errorf(field+".extension", "%s registers .%s too; the last one written wins", other, name)
+	}
+
+	seen[lower] = field
+
+	if systemExtensions[lower] {
+		v.warnf(field+".extension", ".%s belongs to Windows or other programs: uninstalling deletes its default value and "+
+			"leaves .%s without a handler", name, name)
+	}
+}
+
+func (v *validator) fileTypeVerb(field string, verb *FileTypeVerb, seen map[string]bool) {
+	if verb == nil {
+		v.errorf(field, "empty entry")
+
+		return
+	}
+
+	if !v.required(field+".id", verb.ID) {
+		return
+	}
+
+	if problem := classKeyProblem(verb.ID); problem != "" {
+		v.errorf(field+".id", "%q %s", verb.ID, problem)
+
+		return
+	}
+
+	if seen[strings.ToLower(verb.ID)] {
+		v.errorf(field+".id", "verb %q is listed twice", verb.ID)
+	}
+
+	seen[strings.ToLower(verb.ID)] = true
+}
+
+// classKeyProblem reports why name cannot be one key below
+// HKEY_CLASSES_ROOT, or "".
+func classKeyProblem(name string) string {
+	switch {
+	case strings.ContainsAny(name, `\[]{}`):
+		return `must not hold \, [, ], { or }`
+	case strings.TrimSpace(name) != name:
+		return "must not start or end with a space"
+	default:
+		return ""
+	}
+}

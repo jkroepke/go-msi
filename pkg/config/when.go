@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/jkroepke/msi-builder/internal/condition"
 )
 
 // Placement.When values.
@@ -113,5 +115,19 @@ func (v *validator) whenSequence(placementPath string, place Placement) {
 		}
 	case "adminExecute", sequenceAdminUI:
 		v.errorf(placementPath+".when", "an administrative install has no Installed, REMOVE or upgrade properties")
+	}
+}
+
+// scheduleReboot checks the condition and when of scheduleReboot.
+func (v *validator) scheduleReboot(cfg *Config) {
+	if cfg.ScheduleReboot == nil {
+		return
+	}
+
+	place := cfg.ScheduleReboot.Placement()
+	v.placementWhen("scheduleReboot", *place, cfg)
+
+	if err := condition.Check(place.Condition); err != nil {
+		v.errorf("scheduleReboot.condition", "%v", err)
 	}
 }
