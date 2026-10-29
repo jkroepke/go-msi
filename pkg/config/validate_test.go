@@ -337,6 +337,11 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, control: {startOnInstall: false, waitForStart: false}}]\n    files:", 1),
 			sevWarning, "components[0].services[0].control.waitForStart", "startOnInstall",
 		},
+		// SVC-05.
+		"start a disabled service": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, start: disabled, control: {startOnInstall: true}}]\n    files:", 1),
+			sevError, "components[0].services[0].control.startOnInstall", "SVC-05",
+		},
 		"service on dll": {
 			base + strings.Replace(strings.Replace(appComponent, "app.exe", "app.dll", 1), "    files:", "    services: [{name: svc}]\n    files:", 1),
 			sevError, "components[0].services[0]", "not an .exe",
@@ -853,7 +858,7 @@ func TestHelpers(t *testing.T) {
 		}
 	}
 
-	for _, bad := range []string{"256.0.0", "1.256.0", "1.0.65536", "1", "1.0.0.0.0", "1..0", "1.-1.0", "a.b.c"} {
+	for _, bad := range []string{"256.0.0", "1.256.0", "1.0.65536", "1", "1.0.0.0.0", "1..0", "1.-1.0", "1.-0.0", "1.+1.0", "v1.0.0", "1.0 .0", "a.b.c"} {
 		if _, err := config.ParseVersion(bad); err == nil {
 			t.Errorf("ParseVersion(%q) accepted", bad)
 		}

@@ -209,6 +209,8 @@ Silent-failure cases a producer has to guard against itself:
 | FILE-06 | Confirmed | [probe](msitest/results/FILE-06/probe/log.md); in a Word Count 3 package the target folder and an administrative image kept the long part of the `short\|long` directory, and `SHORTFILENAMES=1` installed to the short one; [details](#short-name-packages-file-06) |
 | FILE-07 | Confirmed | [probe](msitest/results/FILE-07/probe/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40833269994: ICE30 reports two files with one short name in a folder, not two directories or a directory and a file; a normal install is unaffected, with `SHORTFILENAMES=1` one file overwrites the other, two directories merge and a directory beside a file of its short name fails with 1312 and 1603; [details](#duplicate-short-names-file-07) |
 | FILE-08 | Confirmed | [log](msitest/results/FILE-08/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40880910505: with `removeOld` both `afterInstallInitialize` and `afterInstallExecute`, the major upgrade of a folder source (one component per file, `auto` GUIDs from install paths) left exactly v2's files: changed files updated, a dropped file removed with its folder, a new folder added, a file renamed in case only kept with its v2 content; the uninstall removed the install dir |
+| FILE-09 | Confirmed | [ci](msitest/results/FILE-09/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40881913820: a wrong PE checksum installs without `MSICHECKCRCS` and fails with 1603 with it on the command line; a correct one installs. CI run 40885964831: `TestMsiexecVerifiesChecksum`, with the builder's `MSICHECKCRCS` row, passed (1603 and 0) |
+| FILE-10 | Confirmed | [ci](msitest/results/FILE-10/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40881913820: names starting with a dot pass the ICE suite, install and uninstall |
 | REG-01 | Confirmed | [x64](msitest/results/REG-01/x64/log.md) and [Intel](msitest/results/REG-01/Intel/log.md) templates: bit 256 picks the view |
 | REG-02 | Confirmed | [log](msitest/results/REG-02/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40863315162: install deletes whole keys (with subkeys) and single values in the component's view only, HKMU as HKLM; a `/fomus` repair deletes them again; uninstall leaves them and removes only the package's own values |
 | REG-03 | Confirmed | [log](msitest/results/REG-03/powershell/log.md); SERVER2025, 2026-10-29: hand-made keys under `EventLog\Application` are sources with and without `CustomSource`, which changes nothing; `New-EventLog` writes only `EventMessageFile`; [details](#event-log-sources-reg-03) |
@@ -224,14 +226,17 @@ Silent-failure cases a producer has to guard against itself:
 | UPG-04 | Contradicted | 1401, 1501, 6551, 6601 and [1399](msitest/results/UPG-04/rep-1399/log.md) work; [5802](msitest/results/UPG-04/rep-5802/log.md) gives 2613 |
 | UPG-05 | Confirmed | [never-early](msitest/results/UPG-05/never-early/log.md), [never-late](msitest/results/UPG-05/never-late/log.md), [neverperm-early](msitest/results/UPG-05/neverperm-early/log.md); early removal: only `NeverOverwrite` + `Permanent` in both versions keeps an edit; `NeverOverwrite` alone loses the resource. Late removal: `NeverOverwrite` alone keeps it, also when added later; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
 | UPG-06 | Confirmed | Same as UPG-03 |
+| UPG-07 | Confirmed | [ci](msitest/results/UPG-07/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40881913820: a lower-versioned file is deleted by the upgrade with removal at 1401 and 1501, the old file stays at 6551, `REINSTALLMODE=amus` installs the new one, a `/fa` repair restores it; CI run 40885964831: `TestMsiexecDowngradedFile` passed, so an authored `File.Version` above the installed one installs the new file (asserted by the test, no log kept) |
 | SVC-01 | Confirmed | [failure-actions table](msitest/results/SVC-01/failureactions-table-restart/log.md) 1939; [sc.exe recipe](msitest/results/SVC-01/sc-failure-recipe/log.md) works; without event 128 the service stays |
 | SVC-03 | Confirmed | [per-step](msitest/results/SVC-03/per-step/log.md); per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
 | SVC-04 | Confirmed | SERVER2025, 2026-10-29, windows_exporter with `EXTRA_FLAGS=--no-such-flag`: split rows (start `Wait=0`), from msi-builder and from the WiX-built package, install with exit 0 in 1–2 s and leave the service stopped; one row with `Wait=1` fails with 1920 after about 247 s of start retries and rolls back; [details](#service-start-without-waiting-svc-04) |
+| SVC-05 | Confirmed | [ci](msitest/results/SVC-05/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40885964831: a start event on a disabled service fails the install with 1920 and 1603 after about 30 seconds; without it the service installs stopped; the start type was not logged |
 | CA-01 | Contradicted | Per-user (`Assignment=0`), elevated administrator: a deferred EXE action failing [after PublishProduct](msitest/results/CA-01/fail-after-publishproduct/log.md) or [after InstallFiles](msitest/results/CA-01/fail-after-installfiles/log.md) rolls back completely (1603, no `Products` or `UserData` key left, state unknown); finding 7 |
 | CA-02 | Confirmed | EXE exit 1 fails unless Continue; [type-6 return 5](msitest/results/CA-02/vbs-binary-return-5-immediate/log.md) ends with 0 and skips the rest; [deferred](msitest/results/CA-02/vbs-binary-return-5-deferred/log.md) leaves files unregistered |
 | CA-03 | Confirmed | GitHub `windows-latest` (x64) and `windows-11-arm` runners, 2026-10-28, `TestMsiexecRunActions`: every stdout and stderr line of the seven run actions is in the verbose log as `GoMsiRun:`, `whoami` shows LocalSystem versus the user, brackets stay literal, OEM and UTF-8 output decode, exit 3 with `Continue` returns 1, exit 7 fails with 1603 and runs the rollback action with the hidden command absent; Arm64 package native and x64 package under emulation on Arm; repeated on SERVER2025 with the same result; [details](#embedded-custom-action-dll-ca-03) |
 | CA-04 | Confirmed | GitHub `windows-latest` runner, 2026-10-28, CI run 40787803798: netsh rejects `any` or `*` combined with other `remoteip=` entries (exit 1), accepts `ANY` and `*` alone and accepts `localsubnet,10.0.0.1`; quotes inside a quoted description are dropped; [details](#firewall-arguments-ca-04) |
 | SHORTCUT-01 | Confirmed | [hkcu-folder](msitest/results/SHORTCUT-01/hkcu-folder/log.md), [file-component](msitest/results/SHORTCUT-01/file-component/log.md), [file-component-folder](msitest/results/SHORTCUT-01/file-component-folder/log.md), [advertised](msitest/results/SHORTCUT-01/advertised/log.md), [per-user](msitest/results/SHORTCUT-01/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-shortcut-01) |
+| SHORTCUT-02 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40882369236 (PR #98): the engine converts `PropVariantValue` to the property's type and formats it; a CLSID needs braces; an unknown name or a bad value is warning 1946 and the install goes on; [details](#shortcut-properties-shortcut-02) |
 | UI-01 | Confirmed | Wizard rendering on Windows Server 2025, go-msi packages driven by hand and by window messages, with PrintWindow and screen captures (2026-10-26); [details](#wizard-rendering-ui-01) |
 | UI-02 | Not run | Interactive full UI |
 | UI-03 | Not run | Interactive full UI |
@@ -380,7 +385,38 @@ parser (`WScript.Shell.CreateShortcut`) reads the `.lnk` files back.
   asks for one; that the engine needs it is not shown here.
 - Not covered: the ICE verdicts on these layouts (ICE38, ICE43, ICE57, ICE64),
   repair of a deleted shortcut, a second user's profile after a per-machine
-  install, and `MsiShortcutProperty`.
+  install, and `MsiShortcutProperty` (SHORTCUT-02 below).
+
+## Shortcut properties (SHORTCUT-02)
+
+Run on 2026-10-29 in CI run 40882369236 of PR #98, `Build & Test
+(windows-latest)` job (Windows Server 2025 x64, elevated), by
+`TestMsiexecShortcutProperties` in `internal/builder/nativetest`. A
+per-machine package installs two Start menu shortcuts with
+`MsiShortcutProperty` rows; the test opens each installed `.lnk` with the
+shell's `ShellLink` object, reads `IPropertyStore` and prints the VARTYPE and
+`PropVariantToStringAlloc` text of each property.
+
+| Property | `PropVariantValue` | Read back |
+| --- | --- | --- |
+| `System.AppUserModel.ID` | `[Manufacturer].Toast` | `VT_LPWSTR` `MsiBuilderTest.Toast` (formatted) |
+| `System.AppUserModel.ID` | `Plain.Value` | `VT_LPWSTR` `Plain.Value` |
+| `System.AppUserModel.ToastActivatorCLSID` | `{6E3F1A3C-61B6-4C1B-9A0F-2C5D8B7E4A10}` | `VT_CLSID`, the same GUID |
+| `System.AppUserModel.ToastActivatorCLSID` | the same GUID without braces | not set (`VT_EMPTY`); warning 1946, HRESULT 87 |
+| `System.AppUserModel.ExcludeFromShowInNewInstall` | `1` | `VT_BOOL` true (`-1`) |
+| `System.AppUserModel.PreventPinning` | `true` | `VT_BOOL` true (`-1`) |
+| `System.AppUserModel.StartPinOption` | `1` | `VT_UI4` `1` |
+| `System.MsiBuilderTest.Unknown` | `x` | warning 1946, HRESULT 32811 |
+
+- The verbose log shows one `ShortcutPropertyCreate(ShortcutName=…,
+  PropertyKey=…, PropVariantValue=…)` op per row, with the value already
+  formatted, after the shortcut is created.
+- Warning 1946 is logged as `Property '<name>' for shortcut '<file>.lnk' could
+  not be set. HRESULT <n>.`; the install still ended with 0 and the other
+  properties of the same shortcut were set.
+- Later runs assert these results and a lower-case braced CLSID (`VT_CLSID`).
+- Not covered: repair, a per-user install, an upgrade that changes a value,
+  other VARTYPEs (vectors, dates), Windows Server 2016.
 
 ## Short-name packages (FILE-06)
 

@@ -1303,16 +1303,21 @@ func (v *validator) service(svcPath string, svc *Service, keyFile *File, perUser
 		v.errorf(svcPath+".password", "use a hidden property such as [SERVICE_PASSWORD], never a literal password")
 	}
 
-	v.serviceControl(svcPath+".control", &svc.Control)
+	v.serviceControl(svcPath+".control", &svc.Control, svc.Start)
 
 	if svc.Recovery != nil {
 		v.recovery(svcPath+".recovery", svc.Recovery)
 	}
 }
 
-// serviceControl warns about ServiceControl settings that do not do what
+// serviceControl rejects a start the engine fails and warns about
+// ServiceControl settings that do not do what
 // they look like.
-func (v *validator) serviceControl(ctlPath string, ctl *ServiceControl) {
+func (v *validator) serviceControl(ctlPath string, ctl *ServiceControl, start string) {
+	if start == "disabled" && ctl.StartOnInstall != nil && *ctl.StartOnInstall {
+		v.errorf(ctlPath+".startOnInstall", "a disabled service cannot be started; the install would fail with 1920 (SVC-05)")
+	}
+
 	if !*ctl.DeleteOnUninstall {
 		v.warnf(ctlPath+".deleteOnUninstall", "without it the service stays registered after uninstall (SVC-01)")
 	}

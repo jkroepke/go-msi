@@ -189,6 +189,13 @@ jobs:
         shell: bash
         run: go test -v -count=1 -run 'TestSignature' ./internal/builder/nativetest/
 
+      # Print what the engine stores in an installed .lnk (MSISPEC-RESULTS
+      # SHORTCUT-02).
+      - name: go test (shortcut property results)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: go test -v -count=1 -run 'TestMsiexecShortcutProperties' ./internal/builder/nativetest/
+
       - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         if: runner.os == 'Linux'
         with:

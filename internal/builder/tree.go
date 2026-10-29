@@ -561,6 +561,9 @@ func (b *build) readPayload(diagPath string, cfgFile *config.File, comp *compone
 	if cfgFile.Checksum {
 		if file.isPE && info.HasChecksum {
 			file.Attrs |= fileChecksum
+			// The engine verifies the attribute only while MSICHECKCRCS is
+			// set (FILE-09); a non-empty value from properties overrides it.
+			b.properties["MSICHECKCRCS"] = "1"
 		} else {
 			b.warnf(diagPath+".checksum", "%s has no PE checksum to verify; the checksum attribute is not set", file.LongName)
 		}

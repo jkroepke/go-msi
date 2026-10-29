@@ -2,6 +2,9 @@ package config
 
 import (
 	"fmt"
+	"maps"
+	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -12,7 +15,22 @@ const (
 	maxShortcutText      = 255
 	maxShortcutIconIndex = 32767
 	maxShortcutTarget    = 72
+	// minShortcutPropertyPages is the Page Count of Windows Installer 5.0,
+	// the first engine that reads MsiShortcutProperty.
+	minShortcutPropertyPages = 500
 )
+
+// clsidProperties are the shell properties of type CLSID that shortcuts
+// commonly carry.
+var clsidProperties = map[string]bool{"System.AppUserModel.ToastActivatorCLSID": true} //nolint:gochecknoglobals // lookup table
+
+// bracedGUID matches a GUID in registry format, which the engine needs for
+// a CLSID property.
+var bracedGUID = regexp.MustCompile(`^\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}$`)
+
+// propertyKeyName matches the canonical name of a shell property,
+// dot-separated words such as System.AppUserModel.ID.
+var propertyKeyName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$`)
 
 // shortcuts checks every shortcut under the files of the components.
 func (v *validator) shortcuts(cfg *Config, known *refs) {
@@ -115,4 +133,35 @@ func (v *validator) shortcut(cfg *Config, scPath string, shortcut *Shortcut, kno
 	}
 
 	v.oneOf(scPath+".show", shortcut.Show, ShowNormal, ShowMaximized, ShowMinimized)
+	v.shortcutProperties(cfg, scPath, shortcut)
+}
+
+// shortcutProperties checks the shell properties of a shortcut, the rows of
+// MsiShortcutProperty (spec section 19.1).
+func (v *validator) shortcutProperties(cfg *Config, scPath string, shortcut *Shortcut) {
+	for _, name := range slices.Sorted(maps.Keys(shortcut.Properties)) {
+		propPath := scPath + ".properties." + name
+		if !propertyKeyName.MatchString(name) {
+			v.errorf(propPath, "%q is not the canonical name of a shell property, such as System.AppUserModel.ID", name)
+		}
+
+		value := shortcut.Properties[name]
+
+		switch {
+		case value == "":
+			v.errorf(propPath, "a value is required; PropVariantValue cannot be empty")
+		case clsidProperties[name] && !strings.Contains(value, "[") && !bracedGUID.MatchString(value):
+			// SHORTCUT-02: without braces the engine logs warning 1946
+			// (HRESULT 87) and leaves the property unset.
+			v.errorf(propPath, "%q is not a CLSID in braces, such as {6E3F1A3C-61B6-4C1B-9A0F-2C5D8B7E4A10}", value)
+		}
+	}
+
+	if len(shortcut.Properties) == 0 {
+		return
+	}
+
+	if pages, err := PageCount(cfg.Package.InstallerVersion); err == nil && pages < minShortcutPropertyPages {
+		v.warnf(scPath+".properties", "Windows Installer %s ignores shortcut properties; they need installerVersion 5.0", cfg.Package.InstallerVersion)
+	}
 }

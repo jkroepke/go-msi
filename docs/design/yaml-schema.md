@@ -73,6 +73,7 @@ closes each one.
 | Case | What happens | Schema rule |
 |---|---|---|
 | Executable with an empty `File.Version` (FILE-01) | On a major upgrade with early removal the new, unversioned file is disallowed against the old versioned one, then the old product is removed: the executable is **deleted** | `files[].version` defaults to `auto` (read from the PE version resource). A PE file without a version resource is a build error. `version: none` must be written explicitly and is only allowed for non-PE files, or with `allowUnversionedExecutable: true`, which also makes the validator warn about the upgrade. An empty string is never accepted. |
+| A versioned file whose version goes down in a major upgrade (UPG-07) | The new component is disallowed against the installed file with the higher version, then the early removal of the old product deletes it | None in the builder: it cannot know the version a previous release shipped. When a release ships an older version of a file, set its `version` above the one installed (`files[].version: 2.0.0.1` for an installed 2.0.0.0), or use `upgrade.removeOld: afterInstallExecute`, which keeps the old file instead. |
 | Corrupted cabinet data (MSZIP-01, CAB-04) | Wrong DEFLATE history, or a bit flip without a checksum, installs a corrupted file | Writer: every cabinet data block gets a checksum, and the builder re-extracts every cabinet after writing it and compares each file's SHA-256 with the source. Neither can be turned off, so the schema has no field for them. |
 | Script custom actions (CA-02) | Inline JScript/VBScript actions (types 37/38) report success whatever they return; a Binary script returning 5 ends the install with 0 and leaves files unregistered | There are no script custom actions. Actions run an executable (`exec`), a DLL (`dll`), set a property or directory, or fail with an error. |
 | EXE exit codes (CA-02) | Any non-zero exit fails the install unless the action ignores it | `customActions[].return` is required for `exec` actions (`check` or `ignore`), so the author decides. |
@@ -600,7 +601,7 @@ service must have the service executable as key file.
 | `language` | `auto` | From the PE resource; `none` for fonts |
 | `allowUnversionedExecutable` | `false` | Required to build a PE file with `version: none` or without a version resource |
 | `vital` | `true` | |
-| `checksum` | `false` | Verifies the PE checksum at install |
+| `checksum` | `false` | Verifies the PE checksum at install: sets `File.Attributes` 0x400 on a PE file that has a checksum and `MSICHECKCRCS=1`, without which the engine ignores the attribute (FILE-09). A wrong checksum then fails the install (FILE-09). A non-empty `MSICHECKCRCS` in `properties` replaces the value. |
 | `readOnly`, `hidden`, `system` | `false` | |
 
 Unversioned files get an `MsiFileHash` row automatically.
@@ -642,6 +643,9 @@ files:
         icon: viewer.ico                         # a key of icons; default: the file's own icon
         iconIndex: 0                             # needs icon
         show: minimized                          # normal (default), maximized or minimized
+        properties:                              # shell properties of the .lnk, formatted text
+          System.AppUserModel.ID: Example.Viewer
+          System.AppUserModel.ToastActivatorCLSID: "{6E3F1A3C-61B6-4C1B-9A0F-2C5D8B7E4A10}"
 ```
 
 `directory` defaults to `ProgramMenuFolder` and is resolved like a
@@ -669,6 +673,20 @@ warning of section 4.4 for its files. An `icon` is stored in the `Icon` table an
 written to the product's installer folder; without one the shell shows the
 target's icon, and `iconIndex` without `icon` is an error. Advertised
 shortcuts are not supported (section 6).
+
+`properties` sets shell properties on the `.lnk`, one `MsiShortcutProperty`
+row each: the key is the canonical name the Windows property system knows
+the property by, the value formatted text that the engine converts to the
+property's type: text, `1` or `true` for a boolean, a number, a CLSID in
+braces. The common ones are `System.AppUserModel.ID`, which ties
+the shortcut to the program's windows and notifications, and
+`System.AppUserModel.ToastActivatorCLSID`, which a program that is started
+from a toast notification needs. The engine applies them when it creates the
+shortcut, on install and repair; a name the property system does not know
+is warning 1946 in the log and the install goes on, and so is a value the
+engine cannot convert (SHORTCUT-02). A `ToastActivatorCLSID` without braces
+is such a value, so the validator rejects it. The table needs Windows
+Installer 5.0, so a lower `installerVersion` gets a warning.
 
 **Permissions.** A file, registry value, service or the component's folder
 can carry a `permissions` block (`folderPermissions` on the component, which
@@ -796,6 +814,9 @@ when `waitForStart` differs from `wait` the start gets a row of its own
 service that does not get there fails the install with error 1920 and rolls
 it back. With `false` the install succeeds and leaves such a service stopped;
 `recovery`, if set, restarts it (SVC-04).
+`startOnInstall` defaults to `false` for `start: disabled` and may not be
+set to `true` there: StartServices cannot start a disabled service and ends
+the install with error 1920 (SVC-05).
 
 `recovery` becomes a deferred, no-impersonate `sc.exe failure` action after
 InstallServices, with its exit code ignored (SVC-01). Each step is `restart`,
