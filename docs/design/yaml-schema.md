@@ -62,7 +62,7 @@ schema surface; they are listed so that the writer's design starts from them.
 | 4. `*` and removal (ENVVAR-01) | `=*NAME` (machine scope, no `-`) survives uninstall | `environment[].scope` and `environment[].removeOnUninstall` are separate fields. Removal defaults to `true` and the builder always writes `-` explicitly; scope never implies it. |
 | 5. RemoveExistingProducts window (UPG-04) | 1399 (before InstallValidate) works like 1401; only 5802 gives 2613 | `upgrade.removeOld` names one of four windows. The validator checks the numbered result against the windows as the engine accepts them, not against a fixed number. |
 | 6. Native CFB version (CFB-01) | `msi.dll` writes v4 even for small databases; v3 and v4 behave the same | Writer: emits v4 (4096-byte sectors) by default. No schema field. |
-| 7. Per-user rollback (CA-01) | A deferred action failing after `PublishProduct` rolled back completely | The "deferred action after RegisterProduct in a per-user package" check is a warning, not an error. It stays a warning because the reported leftover may need a non-administrator user (PROP-01 was not run). |
+| 7. Per-user rollback (CA-01) | A deferred action failing after `PublishProduct` rolled back completely for an elevated administrator; for a non-administrator it left the registration | The "deferred action after RegisterProduct in a per-user package" check is a warning, not an error. It stays a warning because the leftover reproduces only for a non-administrator user (CA-01 results). |
 | 8. SystemIdentifier (SUM-07) | The engine ignores it; the native writer stores `0x0002000A` | Writer: writes `0x0002000A` like the native writer. No schema field. |
 
 ### 2.2 Silent failures
@@ -1348,10 +1348,15 @@ The engine finds a file whose version equals `MinVersion` only when
 every file; the one difference is a file of exactly that lower version
 without any language, which is found too. With `languages` the bound is
 written as given. Versions of Windows' own files are unreliable to a search
-(reported shims on Windows 10 and later; no version-bounded search of
-`kernel32.dll` found it in SEARCH-05, for reasons not yet known), so the builder warns about version bounds in
+(a `minVersion` search for `ucrtbase.dll` in `System64Folder` at its real
+version found nothing, while the same search for a copy in another folder
+found it, consistent with the reported compatibility shim; SEARCH-02), so the builder warns about version bounds in
 `[SystemFolder]`, `[System64Folder]`, `[WindowsFolder]` and `C:\Windows`;
-test `VersionNT` or `WindowsBuild` instead. A path that names a folder of the
+search the registry value `CurrentBuildNumber` under
+`HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion` instead and compare it
+with a number in a condition (`OS_BUILD >= 22000`): `VersionNT` and
+`WindowsBuild` stop at Windows 8.1, 603 and 9600, also on Windows Server
+2025 (MSISPEC PROP-02). A path that names a folder of the
 package itself (`[INSTALLDIR]`) gets a warning: `AppSearch` runs before
 `CostFinalize` resolves those folders. A path that names a searched
 property is an error, since its result is set only after `AppSearch`; use

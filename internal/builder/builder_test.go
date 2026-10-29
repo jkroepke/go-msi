@@ -2,11 +2,13 @@ package builder_test
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"image"
 	"image/color"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -288,6 +290,56 @@ func TestDeterministic(t *testing.T) {
 	}
 }
 
+// TestDeterministicAcrossProcesses builds the windows_exporter example in 20
+// fresh processes, each with its own map iteration order and allocation
+// pattern, and requires one package hash (BUILD-02).
+func TestDeterministicAcrossProcesses(t *testing.T) {
+	t.Parallel()
+
+	if os.Getenv("MSI_BUILDER_BUILD02_CHILD") == "1" {
+		exe := testpe.Build(testpe.Options{FileVersion: "0.32.0.5", Languages: []int{1033}})
+
+		icon := append([]byte{0, 0, 1, 0, 1, 0}, bytes.Repeat([]byte{0xAB}, 64)...)
+
+		res := mustBuild(t, example(t, "windows_exporter", map[string]string{"VERSION": "0.32.0.5"}, map[string][]byte{
+			"windows_exporter.exe": exe,
+			"icon.ico":             icon,
+		}))
+
+		fmt.Printf("BUILD-02 %x\n", sha256.Sum256(res.Package)) //nolint:forbidigo // the parent process reads it
+
+		return
+	}
+
+	hashes := map[string]int{}
+
+	for range 20 {
+		//nolint:gosec // the test binary runs itself
+		cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestDeterministicAcrossProcesses$", "-test.count=1")
+
+		cmd.Env = append(os.Environ(), "MSI_BUILDER_BUILD02_CHILD=1")
+
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("child build: %v\n%s", err, out)
+		}
+
+		_, hash, ok := strings.Cut(string(out), "BUILD-02 ")
+		if !ok {
+			t.Fatalf("child printed no hash:\n%s", out)
+		}
+
+		hash, _, _ = strings.Cut(hash, "\n")
+		hashes[hash]++
+	}
+
+	if len(hashes) != 1 {
+		t.Errorf("20 processes built %d different packages: %v", len(hashes), hashes)
+	}
+
+	t.Logf("BUILD-02: %v", hashes)
+}
+
 // TestProductCodeFollowsStreams checks that productCode: auto changes with
 // the content of icons, binaries and binary cells of custom tables, not only
 // with the payload files (a changed custom action DLL under the old
@@ -359,6 +411,10 @@ func TestMissingInput(t *testing.T) {
 
 	if !strings.Contains(fmt.Sprint(res.Diagnostics), "hello.exe") {
 		t.Errorf("diagnostics do not name the file: %s", res.Diagnostics)
+	}
+
+	if res != nil && len(res.Package) != 0 {
+		t.Errorf("a failed build returned a %d-byte package", len(res.Package))
 	}
 }
 
