@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -425,9 +426,52 @@ func TestSiblingNames(t *testing.T) {
 		wantError(t, name, rename(raw), "duplicate name")
 	}
 
+	// Names that differ only in a lone surrogate are different names,
+	// although both decode to U+FFFD.
+	raw := write([]Source{src("x\U0001F600"), src("y\U0001F600")}, nil)
+	high, low := []byte{0x3D, 0xD8}, []byte{0x00, 0xDE}
+
+	if bytes.Count(raw, append([]byte{'y', 0}, high...)) != 1 {
+		t.Fatal("cannot find the directory entry")
+	}
+
+	raw = bytes.Replace(raw, append(append([]byte{'x', 0}, high...), low...), append(append([]byte{'z', 0}, high...), 'a', 0), 1)
+	raw = bytes.Replace(raw, append(append([]byte{'y', 0}, high...), low...), append(append([]byte{'z', 0}, low...), 'a', 0), 1)
+
+	if _, err := Read(raw); err != nil {
+		t.Errorf("names with different lone surrogates: %v", err)
+	}
+
 	// The same name under different parents is fine.
-	raw := write([]Source{src("x"), src("S2")}, []Storage{{Name: "S", Streams: []Source{src("x"), src("S2")}}})
+	raw = write([]Source{src("x"), src("S2")}, []Storage{{Name: "S", Streams: []Source{src("x"), src("S2")}}})
 	if _, err := Read(raw); err != nil {
 		t.Errorf("one name in two storages: %v", err)
+	}
+}
+
+// TestHugeSizeAllocatesLittle: the size given to Open may be far larger than
+// the data, as for a file cut short after it was measured. A FAT count that
+// fits that size must not allocate for it before its sectors are read.
+func TestHugeSizeAllocatesLittle(t *testing.T) { //nolint:paralleltest // measures the allocations of the whole process
+	out, err := Write(nil, Options{Version: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	put32(out, 0x2C, 1<<26)
+
+	var stats runtime.MemStats
+
+	runtime.ReadMemStats(&stats)
+	before := stats.TotalAlloc
+
+	if _, err := Open(bytes.NewReader(out), 1<<40); err == nil {
+		t.Error("Open accepted 2^26 FAT sectors that the data does not hold")
+	}
+
+	runtime.ReadMemStats(&stats)
+
+	if grown := stats.TotalAlloc - before; grown > 1<<20 {
+		t.Errorf("Open allocated %d bytes for a FAT count it had not read", grown)
 	}
 }

@@ -689,7 +689,7 @@ func (l *fatList) add(sector uint32, difat bool) error {
 // list, each once, and returns the IDs of the FAT and DIFAT sectors.
 func (r *reader) loadFAT(header []byte, numFAT, firstDIFAT uint32) ([]uint32, error) {
 	list := &fatList{
-		seen:     make(map[uint32]bool, numFAT),
+		seen:     make(map[uint32]bool),                          // no size hint: the count is not checked against the data yet
 		physical: uint64((r.size+int64(r.ss)-1)/int64(r.ss) - 1), //nolint:gosec // the size is at least one header
 		want:     numFAT,
 	}
@@ -712,8 +712,8 @@ func (r *reader) loadFAT(header []byte, numFAT, firstDIFAT uint32) ([]uint32, er
 		return nil, fmt.Errorf("cfb: the header and DIFAT list %d of %d FAT sectors", len(list.ids), numFAT)
 	}
 
-	r.fat = make([]uint32, 0, len(list.ids)*r.ss/4)
-
+	// The FAT grows as its sectors are read, so a size given to Open that
+	// is larger than the data allocates nothing in advance.
 	for _, sector := range list.ids {
 		words, err := r.words(sector)
 		if err != nil {
@@ -769,7 +769,7 @@ func (f *File) checkEntries(size int64, sectors owners) error {
 		}
 
 		// Siblings are compared ignoring ASCII case, like Write does.
-		key := sibling{name: foldName(ent.Name), parent: ent.Parent}
+		key := sibling{name: foldRaw(ent.RawName), parent: ent.Parent}
 		if names[key] {
 			return fmt.Errorf("cfb: duplicate name %q in storage %d", ent.Name, ent.Parent)
 		}
@@ -839,13 +839,14 @@ func (o owners) claim(ids []uint32) error {
 	return nil
 }
 
-// foldName is name with ASCII letters in upper case, the key under which
-// Compare treats two names as equal.
-func foldName(name string) string {
-	units := utf16.Encode([]rune(name))
-	for i, unit := range units {
-		units[i] = upper(unit)
+// foldRaw is a stored UTF-16LE name with ASCII letters in upper case. It
+// keeps units such as lone surrogates that a decoded name would merge.
+func foldRaw(raw []byte) string {
+	out := make([]byte, len(raw))
+
+	for i := 0; i+1 < len(raw); i += 2 {
+		binary.LittleEndian.PutUint16(out[i:], upper(binary.LittleEndian.Uint16(raw[i:])))
 	}
 
-	return string(utf16.Decode(units))
+	return string(out)
 }
