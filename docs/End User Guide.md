@@ -76,7 +76,8 @@ for the current user. The package author can change the folder and give the
 property another name.
 
 Some packages remember the folder: an upgrade then normally installs to
-the folder of the earlier install, if that version remembered it too. For
+the folder of the earlier install, if that version remembered it too and
+the folder still exists; otherwise it uses the default folder. For
 other packages, or if in doubt, pass `INSTALLDIR` again on every upgrade if
 you did not use the default folder.
 

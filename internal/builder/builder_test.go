@@ -1404,10 +1404,10 @@ components:
 	}
 }
 
-// TestRememberInstallDir checks the SEARCH-03 recipe for installDir.remember:
-// a registry value with the folder, a raw 64-bit RegLocator search into a
-// separate property, an empty Signature table, and a guarded type-51 action
-// after AppSearch in both sequences.
+// TestRememberInstallDir checks the SEARCH-03 and SEARCH-07 recipe for
+// installDir.remember: a registry value with the folder, a 64-bit directory
+// RegLocator search into a separate property, an empty Signature table, and
+// a guarded type-51 action after AppSearch in both sequences.
 func TestRememberInstallDir(t *testing.T) {
 	t.Parallel()
 
@@ -1456,8 +1456,8 @@ components:
 		t.Errorf("Registry key %v", got)
 	}
 
-	if got := cell(t, database, "RegLocator", "Type", isRemember); got != 18 {
-		t.Errorf("RegLocator type %v, want 18 (raw, 64-bit)", got)
+	if got := cell(t, database, "RegLocator", "Type", isRemember); got != 16 {
+		t.Errorf("RegLocator type %v, want 16 (directory, 64-bit)", got)
 	}
 
 	if got := cell(t, database, "RegLocator", "Root", isRemember); got != 2 {
@@ -1562,8 +1562,8 @@ components:
 
 	isRemember := func(r []any) bool { return r[0] == config.RememberComponentID }
 
-	if got := cell(t, database, "RegLocator", "Type", isRemember); got != 2 {
-		t.Errorf("RegLocator type %v, want 2 (raw, 32-bit)", got)
+	if got := cell(t, database, "RegLocator", "Type", isRemember); got != 0 {
+		t.Errorf("RegLocator type %v, want 0 (directory, 32-bit)", got)
 	}
 
 	if got, ok := cell(t, database, "Component", "Attributes", isRemember).(int); !ok || got&256 != 0 {
