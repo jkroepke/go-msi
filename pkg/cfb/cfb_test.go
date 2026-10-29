@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"testing"
 )
@@ -287,6 +289,55 @@ func TestEmptyStreamAnyStartSector(t *testing.T) {
 
 		if d, ok := reread.Stream("empty"); !ok || len(d) != 0 {
 			t.Errorf("start %#x: empty stream not empty", start)
+		}
+	}
+}
+
+// Packages from other build tools can end with the last byte of their last
+// stream instead of a whole sector (MSISPEC section 2). The data before the cut stays readable;
+// a cut into the stream data is an error.
+func TestShortLastSector(t *testing.T) {
+	t.Parallel()
+
+	for _, version := range []int{3, 4} {
+		out, err := Write(vectorStreams(), Options{Version: version})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Large (5000 bytes) is the last stream, so the file ends in its tail.
+		sectorSize := 512 << (3 * (version - 3))
+
+		short := out[:len(out)-sectorSize+5000%sectorSize]
+
+		file, err := Read(short)
+		if err != nil {
+			t.Fatalf("v%d: %v", version, err)
+		}
+
+		if data, ok := file.Stream("Large"); !ok || !bytes.Equal(data, vectorStreams()[0].Data) {
+			t.Errorf("v%d: Large differs after the cut", version)
+		}
+
+		if _, err := Read(short[:len(short)-1]); err == nil {
+			t.Errorf("v%d: a cut into the stream data was accepted", version)
+		}
+
+		// The lazy path reports the cut too instead of returning zeros.
+		cut := short[:len(short)-1]
+
+		lazy, err := Open(bytes.NewReader(cut), int64(len(cut)))
+		if err != nil {
+			t.Fatalf("v%d: %v", version, err)
+		}
+
+		stream, err := lazy.Reader("Large")
+		if err != nil {
+			t.Fatalf("v%d: %v", version, err)
+		}
+
+		if _, err := io.ReadAll(stream); !errors.Is(err, io.ErrUnexpectedEOF) {
+			t.Errorf("v%d: lazy read of a cut stream: %v, want io.ErrUnexpectedEOF", version, err)
 		}
 	}
 }

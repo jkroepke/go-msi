@@ -149,6 +149,7 @@ All-black trees are also valid. SIDs: root 0, then depth-first pre-order with ch
 - Writers SHOULD write v3 and MUST fail above 0x7FFFFE00 bytes. A v4 file above 0x7FFFFF00 bytes MUST reserve sector 0x7FFFE as an ENDOFCHAIN range-lock sector.
 - Readers MUST accept both versions; two large packages written by the native engine were v4 (observed). They MUST reject a bad signature, byte order, or (major, shift) other than (3, 9) and (4, 12).
 - Readers SHOULD look names up in a map from a full in-order walk, not by tree search. They ignore colours, keep visited sets, and never allocate from unchecked sizes.
+- Readers MUST accept a file whose last sector is cut short, as long as every stream byte lies inside the file: a 13 MB v4 package from another build tool ended 204 bytes into its last sector, the tail of `_StringData` (observed). A stream whose bytes reach past the end of the file is an error, never zero-filled. FAT, DIFAT, MiniFAT and directory sectors stay whole.
 - Readers MUST treat a size-0 stream as empty whatever its starting sector, without following a chain. Other writers emit 0-byte `_StringData` and `_Tables` streams with a mini-stream start sector, and one CFB library has failed to open them (reported).
 - Every directory entry the walk finds MUST be readable by name. One reader dropped embedded cabinets of current Windows SDK packages because it opened streams by index (reported).
 
