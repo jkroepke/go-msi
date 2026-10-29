@@ -110,15 +110,16 @@ type Summary struct {
 // into the standard policy; "upgrade: false" sets Disabled, which writes no
 // Upgrade rows.
 type Upgrade struct { //nolint:govet // field order is the YAML key order
-	Disabled         bool             `yaml:"-"`
-	AllowSameVersion *bool            `yaml:"allowSameVersion"`
-	Downgrade        string           `yaml:"downgrade"`
-	DowngradeMessage string           `yaml:"downgradeMessage"`
-	RemoveOld        string           `yaml:"removeOld"`
-	MigrateFeatures  *bool            `yaml:"migrateFeatures"`
-	Property         string           `yaml:"property"`
-	NewerProperty    string           `yaml:"newerProperty"`
-	Related          []RelatedProduct `yaml:"related"`
+	Disabled            bool             `yaml:"-"`
+	AllowSameVersion    *bool            `yaml:"allowSameVersion"`
+	Downgrade           string           `yaml:"downgrade"`
+	DowngradeMessage    string           `yaml:"downgradeMessage"`
+	RemoveOld           string           `yaml:"removeOld"`
+	MigrateFeatures     *bool            `yaml:"migrateFeatures"`
+	IgnoreRemoveFailure bool             `yaml:"ignoreRemoveFailure,omitempty"`
+	Property            string           `yaml:"property"`
+	NewerProperty       string           `yaml:"newerProperty"`
+	Related             []RelatedProduct `yaml:"related"`
 }
 
 // RelatedProduct is an extra Upgrade row.
@@ -767,11 +768,28 @@ type ThemeColors struct {
 
 // Dialog is a form dialog laid out by the builder.
 type Dialog struct {
-	ID          string        `yaml:"id"`
-	Title       string        `yaml:"title"`
-	Description string        `yaml:"description"`
-	After       string        `yaml:"after"`
-	Fields      []DialogField `yaml:"fields"`
+	ID          string `yaml:"id"`
+	Title       string `yaml:"title"`
+	Description string `yaml:"description"`
+	// After names the page the dialog follows in its flow; a remove
+	// dialog follows MaintenanceTypeDlg by default.
+	After string `yaml:"after"`
+	// Flow is install (default), the pages of a new installation, or
+	// remove, the pages between Remove in the maintenance menu and the
+	// page that confirms the removal.
+	Flow   string        `yaml:"flow"`
+	Fields []DialogField `yaml:"fields"`
+}
+
+// Dialog flows.
+const (
+	FlowInstall = "install"
+	FlowRemove  = "remove"
+)
+
+// Removal reports whether the dialog is in the remove flow.
+func (d *Dialog) Removal() bool {
+	return d.Flow == FlowRemove
 }
 
 // DialogField is one field bound to a property: a label and an edit field,

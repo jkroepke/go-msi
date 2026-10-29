@@ -656,6 +656,71 @@ components:
 	}
 }
 
+// TestIgnoreRemoveFailure checks that upgrade.ignoreRemoveFailure sets
+// bit 4 on every Upgrade row that removes products and leaves the
+// detect-only rows alone.
+func TestIgnoreRemoveFailure(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Parse([]byte(`schema: msi-builder/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+upgrade:
+  ignoreRemoveFailure: true
+  related:
+    - { upgradeCode: 11111111-2222-3333-4444-555555555555, maxVersion: 1.0.0, property: OLDNAME }
+    - { upgradeCode: 66666666-2222-3333-4444-555555555555, maxVersion: 1.0.0, onlyDetect: true, property: OTHERFOUND }
+components:
+  - files: [{ source: hello.exe }]
+`), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.BaseDir = dir
+
+	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Attributes are column 4, ActionProperty column 6.
+	want := map[string]int{
+		"OLDERVERSIONBEINGUPGRADED": 1 | 4 | 512,
+		"NEWERVERSIONDETECTED":      2,
+		"OLDNAME":                   1 | 4 | 256,
+		"OTHERFOUND":                2 | 256,
+	}
+
+	for _, row := range rows(t, database, "Upgrade") {
+		property := fmt.Sprint(row[6])
+
+		attrs, ok := want[property]
+		if !ok {
+			t.Errorf("unexpected Upgrade row %v", row)
+
+			continue
+		}
+
+		delete(want, property)
+
+		if got := fmt.Sprint(row[4]); got != strconv.Itoa(attrs) {
+			t.Errorf("Upgrade row %s: attributes %s, want %d", property, got, attrs)
+		}
+	}
+
+	if len(want) > 0 {
+		t.Errorf("missing Upgrade rows: %v", want)
+	}
+}
+
 // TestFeatureDisplay checks the Feature.Display parity the selection tree
 // relies on: even values show a feature collapsed, odd values expanded and 0
 // hides it, whatever the display state of the features before it.
@@ -1339,10 +1404,10 @@ components:
 	}
 }
 
-// TestRememberInstallDir checks the SEARCH-03 recipe for installDir.remember:
-// a registry value with the folder, a raw 64-bit RegLocator search into a
-// separate property, an empty Signature table, and a guarded type-51 action
-// after AppSearch in both sequences.
+// TestRememberInstallDir checks the SEARCH-03 and SEARCH-07 recipe for
+// installDir.remember: a registry value with the folder, a 64-bit directory
+// RegLocator search into a separate property, an empty Signature table, and
+// a guarded type-51 action after AppSearch in both sequences.
 func TestRememberInstallDir(t *testing.T) {
 	t.Parallel()
 
@@ -1391,8 +1456,8 @@ components:
 		t.Errorf("Registry key %v", got)
 	}
 
-	if got := cell(t, database, "RegLocator", "Type", isRemember); got != 18 {
-		t.Errorf("RegLocator type %v, want 18 (raw, 64-bit)", got)
+	if got := cell(t, database, "RegLocator", "Type", isRemember); got != 16 {
+		t.Errorf("RegLocator type %v, want 16 (directory, 64-bit)", got)
 	}
 
 	if got := cell(t, database, "RegLocator", "Root", isRemember); got != 2 {
@@ -1497,8 +1562,8 @@ components:
 
 	isRemember := func(r []any) bool { return r[0] == config.RememberComponentID }
 
-	if got := cell(t, database, "RegLocator", "Type", isRemember); got != 2 {
-		t.Errorf("RegLocator type %v, want 2 (raw, 32-bit)", got)
+	if got := cell(t, database, "RegLocator", "Type", isRemember); got != 0 {
+		t.Errorf("RegLocator type %v, want 0 (directory, 32-bit)", got)
 	}
 
 	if got, ok := cell(t, database, "Component", "Attributes", isRemember).(int); !ok || got&256 != 0 {

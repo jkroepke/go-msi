@@ -381,6 +381,21 @@ components:
       - source: hello.conf
 ```
 
+### Upgrade even when the old version cannot be removed
+
+An upgrade removes the old version. When the old version fails during
+uninstall, the upgrade normally fails too and the old version stays.
+`ignoreRemoveFailure` installs the new version anyway:
+
+```yaml
+upgrade:
+  ignoreRemoveFailure: true
+```
+
+The old version then stays installed next to the new one, and its own
+uninstall will still fail the same way. Use this only when an old release is
+known to fail on uninstall.
+
 ### Delete program data on uninstall
 
 `purge` deletes a folder with everything the program wrote into it when the
@@ -397,6 +412,40 @@ components:
     createFolder: true
     purge:
       condition: DELETE_DATA="1"
+```
+
+### Ask before deleting data on uninstall
+
+A `flow: remove` dialog adds a page to the wizard's remove path, after
+Remove in the maintenance menu, for example a checkbox that the purge above
+reads. Users reach it by running the package again or, expected but not yet
+verified on Windows, through Change in Add or Remove Programs. `msiexec /x`
+removes the product without the wizard, so the property also works on the
+command line:
+`msiexec /x hello.msi DELETE_CONFIGURATION=1`.
+
+```yaml
+properties:
+  DELETE_CONFIGURATION: {}  # declared, so the uninstall sees the box
+
+components:
+  - files:
+      - source: hello.exe
+  - directory: CommonAppDataFolder/Example/Hello
+    createFolder: true
+    purge:
+      condition: DELETE_CONFIGURATION="1"
+
+ui:
+  enabled: true
+  dialogs:
+    - id: RemoveOptionsDlg
+      flow: remove
+      title: Remove options
+      fields:
+        - property: DELETE_CONFIGURATION
+          type: checkbox
+          label: '&Delete the configuration'
 ```
 
 ### Run a command during installation
@@ -507,6 +556,7 @@ The keys used most inside them:
 | `ui.chooseFeatures` | `false` | Feature tree page |
 | `ui.launch.file` | none | "Launch" checkbox on the finish page |
 | `ui.finishText` | none | A paragraph on the finish page |
+| `ui.dialogs[].flow` | `install` | `remove` shows the page after Remove in the maintenance menu |
 | `ui.strings` | none | Your own texts for the built-in wizard |
 | `ui.languages` | none | More wizard languages in the same package |
 

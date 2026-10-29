@@ -209,8 +209,12 @@ go test ./... -shuffle=on -race
   `fullUIBudget` is left, so a full-UI test runs in CI only when the shuffle
   starts it early. UI Automation names drop `&`, even on a NoPrefix Text
   control; a Text control hidden by its ControlCondition from the start was
-  absent from the control view the driver walks (UI-07). Each driver run starts with an
-  empty log.
+  absent from the control view the driver walks (UI-07). A PathEdit's
+  text (the install folder) is among the window's names (UI-08). Each
+  driver run starts with an empty log.
+- `HKCU\Software` is shared by the 32-bit and 64-bit registry views, so
+  `reg query /reg:32` finds a per-user value the package wrote in the 64-bit
+  view; only HKLM tells the views apart (SEARCH-06).
 - Quote `${VAR}` inside a YAML flow mapping (`{ version: "${VERSION}" }`):
   `{` and `}` end a plain scalar there, so the document fails to parse
   ("did not find expected ',' or '}'"). The windows-only tests only show

@@ -129,6 +129,21 @@ const (
 	upgradeLanguagesExclusive  = 1024
 )
 
+// removeAttributes returns the attribute bits of an Upgrade row whose
+// products RemoveExistingProducts removes.
+func removeAttributes(upg *config.Upgrade) int {
+	attrs := 0
+	if *upg.MigrateFeatures {
+		attrs |= upgradeMigrateFeatures
+	}
+
+	if upg.IgnoreRemoveFailure {
+		attrs |= upgradeIgnoreRemoveFailure
+	}
+
+	return attrs
+}
+
 // upgrade writes the Upgrade rows and schedules the upgrade actions.
 func (b *build) upgrade() error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	upg := b.cfg.Upgrade
@@ -140,10 +155,7 @@ func (b *build) upgrade() error { //nolint:cyclop // one pass over the format; s
 	version := b.cfg.Product.Version
 
 	// Older (and, with allowSameVersion, equal) versions are removed.
-	attrs := 0
-	if *upg.MigrateFeatures {
-		attrs |= upgradeMigrateFeatures
-	}
+	attrs := removeAttributes(upg)
 
 	if *upg.AllowSameVersion {
 		attrs |= upgradeVersionMaxInclusive
@@ -179,8 +191,8 @@ func (b *build) upgrade() error { //nolint:cyclop // one pass over the format; s
 
 		if related.OnlyDetect {
 			attrs |= upgradeOnlyDetect
-		} else if *upg.MigrateFeatures {
-			attrs |= upgradeMigrateFeatures
+		} else {
+			attrs |= removeAttributes(upg)
 		}
 
 		tbl.Add(code, nullable(related.MinVersion), nullable(related.MaxVersion), nil, attrs, nil, related.Property)
@@ -242,15 +254,17 @@ const (
 // into the install dir only when the command line did not set one: SEARCH-03
 // showed that searching straight into the install dir overrides a command
 // line value, and that AppSearch fails with 2228 without a Signature table,
-// even for a registry search. Both run in the UI and the execute sequence,
-// so that a full-UI install shows the remembered folder (not tested).
+// even for a registry search. It is a directory search, which finds only a
+// folder that exists: a raw search applied a folder on a drive that is gone,
+// and the install failed with 1327 and 1603 (SEARCH-07). Both run in the UI
+// and the execute sequence, so the wizard shows the remembered folder (UI-08).
 func (b *build) rememberInstallDir() error {
 	install := b.cfg.InstallDir
 	if !install.Remember {
 		return nil
 	}
 
-	typ := regLocatorRaw
+	typ := regLocatorDirectory
 	if b.is64 && !remember32Bit(b.cfg) {
 		typ |= regLocator64Bit
 	}

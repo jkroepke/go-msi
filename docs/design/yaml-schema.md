@@ -293,6 +293,7 @@ upgrade:
   downgradeMessage: A later version of [ProductName] is already installed. Setup will now exit.
   removeOld: afterInstallInitialize
   migrateFeatures: true
+  ignoreRemoveFailure: false      # go on when removing an old product fails
   property: OLDERVERSIONBEINGUPGRADED
   newerProperty: NEWERVERSIONDETECTED
   related:                        # extra Upgrade rows, e.g. a renamed predecessor
@@ -332,6 +333,16 @@ there ("hash matches"), and removing the old product then deletes them
 `guid` survived. Early removal keeps all of them; for a folder source,
 which cannot take a `guid`, it is the only way.
 
+`ignoreRemoveFailure: true` sets the IgnoreRemoveFailure bit (4) on every
+Upgrade row that removes products, `related` rows included. When the
+removal of an old product fails, the install goes on instead of failing
+(1603 with the default `afterInstallInitialize`), and the old product
+stays registered next to the new one, in every `removeOld` window
+(observed, UPG-10, section 8.10 of the specification). It is meant for a
+release whose own uninstall is known to fail. That uninstall still fails
+afterwards; removing the old product needs whatever its uninstall offers
+to get past the failure, or a fixed package (not tested).
+
 Every property named here must be public, is added to
 `SecureCustomProperties` and must not appear in `properties`.
 
@@ -357,7 +368,7 @@ and the wizard's Browse button can move it, and its ID must be upper case.
 package writes the folder to the registry value `InstallDir` below
 `HKLM\Software\<manufacturer>\<name>` (`HKCU` for `perUser`), in a component
 `RememberInstallDir` that joins every top-level feature. The next install
-searches that value with `AppSearch` into `<ID>_REMEMBERED` (a raw
+searches that value with `AppSearch` into `<ID>_REMEMBERED` (a directory
 `RegLocator` search, in the 64-bit view on x64 and arm64, plus the empty
 `Signature` table that `AppSearch` needs) and a type-51 action
 `RestoreInstallDir` copies it into the install dir only when
@@ -365,10 +376,11 @@ searches that value with `AppSearch` into `<ID>_REMEMBERED` (a raw
 in the execute sequence of a quiet install: the upgrade went back to the
 remembered folder, and `INSTALLDIR=` on the command line still won, while a
 search straight into `INSTALLDIR` overrode the command line, and a search
-without a `Signature` table failed with 2228 and 1603. The builder also
-schedules both actions in the UI sequence so that the wizard shows the
-remembered folder; that, `perUser`, x86, arm64 and a 32-bit folder in a
-64-bit package were not tested.
+without a `Signature` table failed with 2228 and 1603. SEARCH-06 confirmed
+it for `perUser` (also as a standard user), x86, a 32-bit folder in an
+x64 package, arm64 and both dual scopes in both contexts. The builder also
+schedules both actions in the UI sequence, so the wizard's install folder
+page shows the remembered folder and the upgrade installs there (UI-08).
 
 A dual scope writes the value with root HKMU, which follows the context, and
 searches both roots, since `RegLocator` has no HKMU: `<ID>_REMEMBERED_USER`
@@ -376,7 +388,13 @@ from HKCU with `RestoreInstallDirUser` under `NOT ALLUSERS`, and
 `<ID>_REMEMBERED_MACHINE` from HKLM with `RestoreInstallDirMachine` under
 `ALLUSERS=1`, the values the engine leaves in `ALLUSERS` per user and per
 machine (INST-02). The scope page offers each context's remembered folder.
-Restoring it in a dual package was not tested.
+
+The search finds only a folder that exists (SEARCH-07). A remembered folder
+that is gone, deleted or on a drive that is no longer there, leaves
+`<ID>_REMEMBERED` empty and the package installs into its default folder.
+A raw search would apply the folder as it is: that recreates a deleted folder,
+but a folder on a missing drive fails the install with 1327 (Invalid Drive)
+and 1603, so msi-builder does not use it.
 
 The install dir must be a configurable directory with an upper-case ID, and
 the IDs `RememberInstallDir` and `RestoreInstallDir` are taken. The component
@@ -385,9 +403,7 @@ and the search use the 64-bit registry view in a 64-bit package, and the
 x86. So the folder should not be found after a change of platform or of
 that parent folder, nor after a version without `remember`, and the upgrade
 should use the default folder; this follows from the search but was not
-tested. The search does not check that the folder still
-exists: a remembered folder on a drive that is gone is applied as it is,
-and what the install does then was not tested. Do not write your own
+tested. Do not write your own
 registry value `InstallDir` under the same key, which the generated
 component owns.
 When `directories` defines the install dir's ID, that node is used as
@@ -1729,13 +1745,55 @@ searched property is an error for the same reason, and so is a choice on a
 property that another field binds too. In the full UI the group starts on
 the default and selecting another option sets the property on the server
 (UI-05, observed on Windows). `after` names the page the dialog follows:
-`WelcomeDlg`, `CustomizeDlg` or an added dialog. With `enabled: false` (the
+`WelcomeDlg`, `LicenseAgreementDlg`, `InstallScopeDlg`, `InstallDirDlg`,
+`CustomizeDlg` (each when the wizard has it) or an added dialog. With `enabled: false` (the
 default) no UI tables are written and msiexec shows its basic progress
 window; silent installs never depend on the UI in any mode. Without
-`chooseFeatures` `ARPNOMODIFY` is set, whatever `product.arp.noModify` says:
-such a package has no page that Change could show, so `noModify: false` does
-not bring the button back. A feature tree page without the wizard is an
-error.
+`chooseFeatures` and without remove dialogs `ARPNOMODIFY` is set, whatever
+`product.arp.noModify` says: such a package has no page that Change could
+show, so `noModify: false` does not bring the button back. A feature tree
+page without the wizard is an error.
+
+#### Remove dialogs
+
+```yaml
+properties:
+  DELETE_CONFIGURATION: {}           # secure, so the purge on the server sees it
+
+components:
+  - directory: CommonAppDataFolder/Example/Hello
+    createFolder: true
+    purge:
+      condition: DELETE_CONFIGURATION="1"
+
+ui:
+  enabled: true
+  dialogs:
+    - id: RemoveOptionsDlg
+      flow: remove                   # install (default) | remove
+      title: Remove options
+      fields:
+        - property: DELETE_CONFIGURATION
+          type: checkbox
+          label: '&Delete the configuration'
+```
+
+`flow: remove` puts the dialog on the maintenance menu's remove path:
+Remove in `MaintenanceTypeDlg` opens it, and its Next goes to
+`VerifyRemoveDlg`, the page that confirms the removal. `after` defaults to
+`MaintenanceTypeDlg` and may name another remove dialog; install pages and
+remove pages cannot follow each other. The fields are the same as on install
+pages. A package with remove dialogs keeps `ARPNOMODIFY` unset, so Add or
+Remove Programs is expected to offer Change (unverified); its `ModifyPath` command,
+`MsiExec.exe /I{ProductCode}`, opens the maintenance menu (UI-10; which
+command the button runs is unverified); with `product.arp.noModify: true` the
+validator warns that only running the package again shows the page, and with
+`product.arp.noRemove: true`, which disables Remove in the menu, that no one
+can reach it.
+`msiexec /x` asks for confirmation and removes the product without the
+wizard (spec section 7.7, UI-10; what the Uninstall button shows is
+unverified), so the property is also the command-line switch:
+`msiexec /x hello.msi DELETE_CONFIGURATION=1`.
 
 #### License page
 
