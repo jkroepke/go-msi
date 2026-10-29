@@ -100,26 +100,12 @@ func regNamed(t *testing.T, key, name string) string {
 	return "<absent>"
 }
 
-// regEntry returns the type and data of a named value in the 64-bit view,
-// or "<absent>".
-func regEntry(t *testing.T, key, name string) string {
-	t.Helper()
-
-	for line := range strings.Lines(reg(t, "query", key, "/v", name, "/reg:64")) {
-		fields := strings.Fields(line)
-		if len(fields) >= 2 && strings.EqualFold(fields[0], name) {
-			return strings.Join(fields[1:], " ")
-		}
-	}
-
-	return "<absent>"
-}
-
 // TestMsiexecFileTypes installs a package with file types: the per-machine
 // HKCR rows land in HKLM\Software\Classes, cmd's assoc and ftype resolve
 // the extension and the open command to the installed file, each ProgID is
 // an empty REG_SZ in its extensions' OpenWithProgids (REG-04), an
-// openWithOnly extension gets no default, and uninstall removes every key.
+// openWithOnly extension gets no default, and uninstall removes every key
+// but leaves another program's OpenWithProgids entry.
 func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
 	if testing.Short() {
 		t.Skip("installing needs msiexec time and elevation")
@@ -140,6 +126,9 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 
 	cleanup()
 	t.Cleanup(cleanup)
+
+	// Another program already lists itself under .msibtoth.
+	regSet(t, "64", classes+`.msibtoth\OpenWithProgids`, "MsiBuilderTest.Foreign", "")
 
 	log := filepath.Join(filepath.Dir(path), "install.log")
 	if code := msiexecCode(t, log, "/i", path); code != 0 {
@@ -168,13 +157,15 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 		`.msibtdoc\OpenWithProgids`: "MsiBuilderTest.Document",
 		`.msibtoth\OpenWithProgids`: "MsiBuilderTest.Other",
 	} {
-		if got := regEntry(t, classes+key, name); got != "REG_SZ" {
+		if got := regNamed(t, classes+key, name); got != "" {
 			t.Errorf("%s %s = %q, want an empty REG_SZ", key, name, got)
 		}
 	}
 
-	if got := regDefault(t, classes+".msibtoth"); got != "<absent>" {
-		t.Errorf(".msibtoth default = %q, want none for openWithOnly", got)
+	// A key without a default lists no REG_SZ line without /ve; with /ve,
+	// reg prints a localized "(value not set)".
+	if text := reg(t, "query", classes+".msibtoth", "/reg:64"); strings.Contains(text, "REG_SZ") {
+		t.Errorf(".msibtoth has a value, want none for openWithOnly:\n%s", text)
 	}
 
 	// cmd reads HKEY_CLASSES_ROOT, the merged view Explorer uses.
@@ -189,10 +180,15 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 		t.Fatalf("msiexec /x returned %d\n%s", code, readLog(log))
 	}
 
-	for _, key := range []string{".msibtdoc", "MsiBuilderTest.Document", ".msibtoth", "MsiBuilderTest.Other"} {
+	for _, key := range []string{".msibtdoc", "MsiBuilderTest.Document", "MsiBuilderTest.Other"} {
 		if regHas(t, "64", classes+key, "") {
 			t.Errorf("%s is still there after the uninstall", key)
 		}
+	}
+
+	if regHas(t, "64", classes+`.msibtoth\OpenWithProgids`, "MsiBuilderTest.Other") ||
+		!regHas(t, "64", classes+`.msibtoth\OpenWithProgids`, "MsiBuilderTest.Foreign") {
+		t.Errorf("uninstall left .msibtoth\\OpenWithProgids as:\n%s", reg(t, "query", classes+`.msibtoth\OpenWithProgids`, "/reg:64"))
 	}
 }
 

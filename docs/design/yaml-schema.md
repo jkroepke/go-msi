@@ -714,32 +714,34 @@ The builder writes them as `Registry` rows of the file's component, so
 they follow its features and key path: `<progId>` = description,
 `<progId>\DefaultIcon`, `<progId>\shell\<verb>` = text,
 `<progId>\shell\<verb>\command` = `"[#file]" <arguments>`, `.<extension>` =
-progId and its `Content Type`, and an empty `<progId>` value in
-`.<extension>\OpenWithProgids`, which Microsoft asks of every program that
-takes over an extension and which lists the program under Open with. These are the rows WiX writes for
+progId and its `Content Type`. These are the rows WiX writes for
 non-advertised `ProgId`, `Extension` and `Verb` elements: the five real WiX
 packages with file associations that were checked have no `ProgId`,
 `Extension` or `Verb` table at all, and the msi-builder ports with the same
 rows left the same registry behind (specification section 10.2). Those
 tables only register advertised associations, which are out of scope for
-good (section 6). The root is HKCR, which the engine writes to
-`HKLM\Software\Classes` per machine; a per-user package names
-`HKCU\Software\Classes` itself, because HKCR fails ICE105.
+good (section 6). msi-builder also writes an empty `<progId>` value in
+`.<extension>\OpenWithProgids`, which Microsoft asks of every program that
+takes over an extension and which lists the program under Open with. The
+root is HKCR, which the engine writes to `HKLM\Software\Classes` per
+machine; a per-user package names `HKCU\Software\Classes` itself, because
+HKCR fails ICE105.
 
 `arguments` is formatted text, so `[INSTALLDIR]` works there;
-`description`, `text` and `contentType` are written literally. A ProgID may be
-registered once per package, must not start with a dot and must not be `*`,
-`+` or `-`. A ProgID
-that is not COM-style (at most 39 letters, digits and periods, not starting
-with a digit) gets a warning. Uninstalling removes the default value of
-`.<extension>`, so registering an extension that Windows or other programs
-own (`txt`, `xml`, `pdf`, …) gets a warning: it would be left without a
-handler. For such an extension, `openWithOnly: true` writes only the
-`OpenWithProgids` entry: the program shows up under Open with and the
-extension keeps its default program and content type (`contentType` is then
-an error). Any number of ProgIDs may list an extension with `openWithOnly`;
-the default may be registered once. Explorer's "Open with" choice of the user (`UserChoice`) still
-wins over the package's default.
+`description`, `text` and `contentType` are written literally. A ProgID may
+be registered once per package, must not start with a dot and must not be
+`*`, `+` or `-`. A ProgID that is not COM-style (at most 39 letters, digits
+and periods, not starting with a digit) gets a warning. Uninstalling removes
+the default value of `.<extension>`, so registering an extension that
+Windows or other programs own (`txt`, `xml`, `pdf`, …) gets a warning: it
+would be left without a handler. For such an extension, `openWithOnly: true`
+writes only the `OpenWithProgids` entry: the program shows up under Open
+with and the extension keeps its default program and content type
+(`contentType` is then an error). Uninstalling removes only that entry, and
+other programs' entries stay. Any number of ProgIDs may list an extension
+with `openWithOnly`; the default may be registered once. Explorer's "Open
+with" choice of the user (`UserChoice`) still wins over the package's
+default.
 
 **Permissions.** A file, registry value, service or the component's folder
 can carry a `permissions` block (`folderPermissions` on the component, which
