@@ -33,6 +33,7 @@ package: { platform: x64 }
 		"components[0].removeFiles[0]":        "components: [{ removeFiles: [null] }]\n",
 		"components[0].services[0]":           "components: [{ services: [null] }]\n",
 		"components[0].eventLog[0]":           "components: [{ eventLog: [null] }]\n",
+		"components[0].shortcuts[0]":          "components: [{ shortcuts: [null] }]\n",
 		"components[0].environment[0]":        "components: [{ environment: [null] }]\n",
 		"components[0].files[0].shortcuts[0]": "components: [{ files: [" + file + "shortcuts: [null] }] }]\n",
 		"components[0].files[0].fileTypes[0]": "components: [{ files: [" + file + "fileTypes: [null] }] }]\n",

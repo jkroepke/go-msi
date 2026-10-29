@@ -1561,67 +1561,7 @@
                 "type": "array",
                 "description": "Non-advertised shortcuts to this file.",
                 "items": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "$ref": "#/$defs/identifier",
-                      "description": "Shortcut key; generated when empty."
-                    },
-                    "name": {
-                      "type": "string",
-                      "description": "Shortcut name without .lnk; the 8.3 short name is generated. Defaults to product.name."
-                    },
-                    "directory": {
-                      "type": "string",
-                      "description": "A directory id, a standard folder such as DesktopFolder, or a folder path such as ProgramMenuFolder/Example.",
-                      "default": "ProgramMenuFolder"
-                    },
-                    "arguments": {
-                      "type": "string",
-                      "description": "Command-line arguments, formatted text."
-                    },
-                    "description": {
-                      "type": "string",
-                      "description": "Tooltip text."
-                    },
-                    "workingDirectory": {
-                      "$ref": "#/$defs/directoryRef",
-                      "description": "Defaults to the file's directory."
-                    },
-                    "icon": {
-                      "type": "string",
-                      "description": "A key of icons; empty shows the target's own icon."
-                    },
-                    "iconIndex": {
-                      "$ref": "#/$defs/int",
-                      "description": "Index of the icon in icon; needs icon.",
-                      "default": 0
-                    },
-                    "show": {
-                      "enum": [
-                        "normal",
-                        "maximized",
-                        "minimized"
-                      ],
-                      "default": "normal"
-                    },
-                    "properties": {
-                      "type": "object",
-                      "description": "Shell properties of the .lnk by canonical name, such as System.AppUserModel.ID; the values are formatted text.",
-                      "propertyNames": {
-                        "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$"
-                      },
-                      "additionalProperties": {
-                        "type": [
-                          "string",
-                          "number",
-                          "boolean"
-                        ],
-                        "minLength": 1
-                      }
-                    }
-                  },
-                  "additionalProperties": false
+                  "$ref": "#/$defs/shortcut"
                 }
               },
               "fileTypes": {
@@ -1654,6 +1594,10 @@
                           "contentType": {
                             "type": "string",
                             "description": "MIME type written as Content Type."
+                          },
+                          "openWithOnly": {
+                            "type": "boolean",
+                            "description": "Only list the ProgID in the extension's Open with menu (OpenWithProgids); keep its default program and content type."
                           }
                         },
                         "required": [
@@ -2205,6 +2149,13 @@
         "folderPermissions": {
           "$ref": "#/$defs/permissions",
           "description": "Secures the component's directory; needs a CreateFolder row (createFolder: true or a directory key path)."
+        },
+        "shortcuts": {
+          "type": "array",
+          "description": "Shortcuts that point at a file of any component, a folder, a program outside the package or a URL; each names exactly one of file, folder, program or url. They install with this component's features.",
+          "items": {
+            "$ref": "#/$defs/shortcut"
+          }
         }
       },
       "additionalProperties": false
@@ -2435,6 +2386,89 @@
         "type": "string"
       },
       "description": "Replaces built-in wizard texts by key, for example to build the wizard in another language. Values other than the UIText rows are formatted text; & marks the access key on buttons, check boxes, radio buttons and the browse labels."
+    },
+    "shortcut": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Shortcut key; generated when empty."
+        },
+        "name": {
+          "type": "string",
+          "description": "Shortcut name without .lnk or .url; the 8.3 short name is generated. Defaults to product.name."
+        },
+        "file": {
+          "type": "string",
+          "description": "Component shortcuts only: the id or name of a packaged file in any component."
+        },
+        "folder": {
+          "type": "string",
+          "description": "Component shortcuts only: a directory id, standard folder or folder path the shortcut opens. A folder that is not a standard folder gets a CreateFolder row."
+        },
+        "program": {
+          "type": "string",
+          "description": "Component shortcuts only: the formatted path of a program outside the package, starting with a folder property, such as [SystemFolder]msiexec.exe."
+        },
+        "url": {
+          "type": "string",
+          "description": "Component shortcuts only: the address of an Internet shortcut, written as a .url file; formatted text, printable ASCII."
+        },
+        "directory": {
+          "type": "string",
+          "description": "A directory id, a standard folder such as DesktopFolder, or a folder path such as ProgramMenuFolder/Example.",
+          "default": "ProgramMenuFolder"
+        },
+        "arguments": {
+          "type": "string",
+          "description": "Command-line arguments, formatted text."
+        },
+        "description": {
+          "type": "string",
+          "description": "Tooltip text."
+        },
+        "workingDirectory": {
+          "$ref": "#/$defs/directoryRef",
+          "description": "Defaults to the file's directory; a component's folder, program and url shortcuts have none."
+        },
+        "icon": {
+          "type": "string",
+          "description": "A key of icons; empty shows the target's own icon. Not on url shortcuts, which take iconFile."
+        },
+        "iconFile": {
+          "type": "string",
+          "description": "Url shortcuts only: the id or name of a packaged file (.ico, .exe or .dll) whose icon the .url shows."
+        },
+        "iconIndex": {
+          "$ref": "#/$defs/int",
+          "description": "Index of the icon in icon or iconFile; needs one of them.",
+          "default": 0
+        },
+        "show": {
+          "enum": [
+            "normal",
+            "maximized",
+            "minimized"
+          ],
+          "default": "normal"
+        },
+        "properties": {
+          "type": "object",
+          "description": "Shell properties of the .lnk by canonical name, such as System.AppUserModel.ID; the values are formatted text. Not on url shortcuts.",
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$"
+          },
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ],
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

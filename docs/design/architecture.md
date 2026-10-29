@@ -131,6 +131,10 @@ func Entries(fsys fs.FS) ([]Entry, error)
   entry that is shorter or longer than its declared `Size` is an error), and
   the CFDATA count follows from the folder size; only `cbCabinet` is patched
   afterwards through the seeker. `Write` is `WriteTo` into memory with byte-identical output.
+- `Options.SignatureReserve` writes the 20-byte per-cabinet reserve an
+  Authenticode signature header fills (MSISPEC §12), 24 bytes more than
+  `Bound`; `sign.SignCabinet` then fills it and appends the PKCS #7 after
+  `cbCabinet`, so signing never moves cabinet data.
 - MSZIP blocks are compressed up to four at a time (`Options.Workers`),
   each with the chunk before it as history, and written in order; the
   cabinet is the same for any number of workers.
@@ -286,7 +290,9 @@ Pipeline, each step a file of its own:
    order (canonical directory, name, key), one `Media` row and one embedded
    cabinet, `File.Attributes` (vital, checksum, read-only, hidden, system),
    and the `Shortcut` and `MsiShortcutProperty` rows with the generated component that carries them
-   (HKCU key path, `RemoveFile` rows for profile folders; `shortcuts.go`).
+   (HKCU key path, `RemoveFile` rows for profile folders; `shortcuts.go`),
+   including a component's own shortcuts to files, folders and programs and
+   its `.url` files as `IniFile` rows.
 5. **Registry, event log, environment, services**: value encodings
    (`#`, `#x`, `#%`, `##`, `[~]`), `=-*`-style environment names with an
    explicit `-` (ENVVAR-01), `ServiceInstall`, `ServiceControl`,
@@ -316,14 +322,18 @@ Pipeline, each step a file of its own:
     `cab.Bound` (every block at its compression's largest size), 2 GiB or
     `Options.CabinetSize`. Embedded cabinets become package streams and may
     add up to 2 GB; external ones (`package.embedCabinets: false`) stay
-    files. Then the package with `msidb.MarshalTo` into a second temporary
+    files. With `Options.SignCabinets` (checked before the first cabinet),
+    each external cabinet is signed with `sign.SignCabinet` right after it
+    is written, and its signature value fills the Hash of its
+    `MsiDigitalSignature` row beside the `MsiDigitalCertificate` row. Then the package with `msidb.MarshalTo` into a second temporary
     file, the package code (UUID v5 of the package's SHA-256) is patched into
     the summary stream at its `cfb.Layout` offset, then **verify**: `cfb.Open`
     the package, `msidb.Decode` it, compare every table column and every
     cell (rows as a set, NULL/empty and the integer types folded, binary
     cells by digest), `cab.Walk` each
     cabinet, stream or spool, and compare every file's SHA-256 (computed once while
-    hashing the source for `MsiFileHash`) with its source. Memory stays
+    hashing the source for `MsiFileHash`) with its source; a signed cabinet
+    must also pass `sign.VerifyCabinet` with the signature value its row holds. Memory stays
     bounded by the tables plus a few compression blocks, whatever the payload
     size. The external cabinets and the verified package are then renamed into
     place together by `spool.Commit`, which backs up what they replace and
@@ -340,6 +350,7 @@ through `schema`, ICE18/19/21, ICE04/71, ICE27/63/77, ICE80, ICE87, ICE105).
 - `msi-builder inspect [--table Name] pkg.msi` dumps tables and streams through
   `msidb.Decode`; this is the cross-OS debugging tool.
 - `msi-builder sign` and `msi-builder verify` sign and check packages (`pkg/sign`).
+  `build` with signing options also signs external cabinets (`builder.Options.SignCabinets`).
 
 The commands are built with `spf13/cobra` (POSIX flags, shell completion).
 Help goes to stdout, errors to stderr; the exit code is 0 on success, 1 when

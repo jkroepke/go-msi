@@ -426,8 +426,13 @@ func TestDigestAttach(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	content, err := indirectData(crypto.SHA256, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// An external signer builds the PKCS #7 from D.
-	pkcs7DER, err := buildSignature(context.Background(), digest, &Options{Signer: keys.signer, Certificates: keys.certs})
+	pkcs7DER, err := buildSignature(context.Background(), content, &Options{Signer: keys.signer, Certificates: keys.certs})
 	if err != nil {
 		t.Fatal(err)
 	}

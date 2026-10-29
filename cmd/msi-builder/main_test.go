@@ -18,6 +18,7 @@ import (
 	"software.sslmate.com/src/go-pkcs12"
 
 	"github.com/jkroepke/msi-builder/internal/testpe"
+	"github.com/jkroepke/msi-builder/pkg/sign"
 )
 
 func TestBuildValidateInspect(t *testing.T) {
@@ -436,6 +437,19 @@ func TestSignExternalCabinets(t *testing.T) {
 
 	if code := run([]string{"verify", signed}, &stdout, &stderr); code != 0 {
 		t.Errorf("verify: exit %d: %s", code, stderr.String())
+	}
+
+	// The cabinet carries a signature of its own that the package lists.
+	cabFile, err := os.Open(cabinet)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = sign.VerifyCabinet(cabFile)
+	_ = cabFile.Close()
+
+	if err != nil {
+		t.Errorf("cabinet signature: %v", err)
 	}
 
 	before := map[string][]byte{}
