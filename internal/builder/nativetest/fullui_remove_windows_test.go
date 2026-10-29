@@ -170,8 +170,8 @@ func TestFullUIRemoveDialog(t *testing.T) { //nolint:paralleltest // msiexec run
 		t.Errorf("remove deleting the configuration: exit %d, want 0", code)
 	}
 
-	if !strings.Contains(remove, "CHOSE: ") {
-		t.Error("the driver found no Delete the configuration box")
+	if !strings.Contains(remove, "Remove options") || !strings.Contains(remove, "CHOSE: ") {
+		t.Error("the driver found no RemoveOptionsDlg with its Delete the configuration box")
 	}
 
 	if got := serverProperties(text)["DELETE_CONFIGURATION"]; got != "1" {
