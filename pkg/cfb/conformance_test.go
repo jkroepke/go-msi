@@ -417,7 +417,11 @@ func (c *conformance) streams(entries []dirEntry) {
 		}
 	}
 
-	if root.size > uint64(len(c.raw)) || len(c.errs) > 0 {
+	if len(c.errs) > 0 {
+		return
+	}
+
+	if root.size > uint64(len(c.raw)) {
 		c.errorf("mini stream size %d is larger than the file", root.size)
 
 		return
@@ -617,5 +621,14 @@ func TestConformanceCatchesFaults(t *testing.T) {
 		if len(checkConformance(bad, true)) == 0 {
 			t.Errorf("%s: not detected", name)
 		}
+	}
+	// v4 sizes are 64 bits, so only the file-size guard stops the checker
+	// from allocating for a huge mini stream.
+	v4, _ := Write(vectorStreams(), Options{Version: 4})
+	v4Dir := (int(readU32(v4, 0x30)) + 1) * 4096
+	binary.LittleEndian.PutUint64(v4[v4Dir+0x78:], 1<<50)
+
+	if len(checkConformance(v4, true)) == 0 {
+		t.Error("v4 huge mini stream: not detected")
 	}
 }
