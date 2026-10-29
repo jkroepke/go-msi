@@ -1523,6 +1523,17 @@
                         "minimized"
                       ],
                       "default": "normal"
+                    },
+                    "properties": {
+                      "type": "object",
+                      "description": "Shell properties of the .lnk by canonical name, such as System.AppUserModel.ID; the values are formatted text.",
+                      "propertyNames": {
+                        "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1
+                      }
                     }
                   },
                   "additionalProperties": false

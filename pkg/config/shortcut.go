@@ -2,6 +2,9 @@ package config
 
 import (
 	"fmt"
+	"maps"
+	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -12,7 +15,14 @@ const (
 	maxShortcutText      = 255
 	maxShortcutIconIndex = 32767
 	maxShortcutTarget    = 72
+	// minShortcutPropertyPages is the Page Count of Windows Installer 5.0,
+	// the first engine that reads MsiShortcutProperty.
+	minShortcutPropertyPages = 500
 )
+
+// propertyKeyName matches the canonical name of a shell property,
+// dot-separated words such as System.AppUserModel.ID.
+var propertyKeyName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$`)
 
 // shortcuts checks every shortcut under the files of the components.
 func (v *validator) shortcuts(cfg *Config, known *refs) {
@@ -115,4 +125,28 @@ func (v *validator) shortcut(cfg *Config, scPath string, shortcut *Shortcut, kno
 	}
 
 	v.oneOf(scPath+".show", shortcut.Show, ShowNormal, ShowMaximized, ShowMinimized)
+	v.shortcutProperties(cfg, scPath, shortcut)
+}
+
+// shortcutProperties checks the shell properties of a shortcut, the rows of
+// MsiShortcutProperty (spec section 19.1).
+func (v *validator) shortcutProperties(cfg *Config, scPath string, shortcut *Shortcut) {
+	for _, name := range slices.Sorted(maps.Keys(shortcut.Properties)) {
+		propPath := scPath + ".properties." + name
+		if !propertyKeyName.MatchString(name) {
+			v.errorf(propPath, "%q is not the canonical name of a shell property, such as System.AppUserModel.ID", name)
+		}
+
+		if shortcut.Properties[name] == "" {
+			v.errorf(propPath, "a value is required; PropVariantValue cannot be empty")
+		}
+	}
+
+	if len(shortcut.Properties) == 0 {
+		return
+	}
+
+	if pages, err := PageCount(cfg.Package.InstallerVersion); err == nil && pages < minShortcutPropertyPages {
+		v.warnf(scPath+".properties", "Windows Installer %s ignores shortcut properties; they need installerVersion 5.0", cfg.Package.InstallerVersion)
+	}
 }

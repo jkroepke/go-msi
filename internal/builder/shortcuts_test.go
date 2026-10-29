@@ -256,6 +256,8 @@ func TestShortcutValidation(t *testing.T) {
 		{`{ icon: app.ico, iconIndex: 40000 }`, ".iconIndex", "out of range"},
 		{`{ iconIndex: 3 }`, ".iconIndex", "needs icon"},
 		{`{ name: "` + strings.Repeat("A", 127) + `" }`, ".name", "at most 128 fit"},
+		{`{ properties: { AppUserModelID: x } }`, ".properties.AppUserModelID", "canonical name"},
+		{`{ properties: { "System.AppUserModel.ID": "" } }`, ".properties.System.AppUserModel.ID", "value is required"},
 	} {
 		cfg := shortcutConfig(t, "  - files: [{ source: app.exe, shortcuts: ["+tc.shortcut+"] }]\n")
 
@@ -286,6 +288,61 @@ func TestShortcutValidation(t *testing.T) {
 	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
 	if err != nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "adds .lnk") {
 		t.Errorf("a name ending in .lnk: %v %s", err, res.Diagnostics)
+	}
+}
+
+func TestShortcutProperties(t *testing.T) {
+	t.Parallel()
+
+	cfg := shortcutConfig(t, `
+  - files:
+      - source: app.exe
+        shortcuts:
+          - id: AppMenu
+            properties:
+              System.AppUserModel.ToastActivatorCLSID: "{6E3F1A3C-61B6-4C1B-9A0F-2C5D8B7E4A10}"
+              System.AppUserModel.ID: "[Manufacturer].App"
+          - directory: DesktopFolder
+`)
+	res := mustBuild(t, cfg)
+
+	props := rows(t, res.Database, "MsiShortcutProperty")
+	if len(props) != 2 {
+		t.Fatalf("MsiShortcutProperty rows %v", props)
+	}
+
+	// Sorted by name, so that the rows do not follow map order.
+	want := [][2]string{
+		{"System.AppUserModel.ID", "[Manufacturer].App"},
+		{"System.AppUserModel.ToastActivatorCLSID", "{6E3F1A3C-61B6-4C1B-9A0F-2C5D8B7E4A10}"},
+	}
+
+	for i, row := range props {
+		if !strings.HasPrefix(fmt.Sprint(row[0]), "scp") || row[1] != "AppMenu" || row[2] != want[i][0] || row[3] != want[i][1] {
+			t.Errorf("MsiShortcutProperty row %d: %v", i, row)
+		}
+	}
+
+	if props[0][0] == props[1][0] {
+		t.Errorf("both rows have the key %v", props[0][0])
+	}
+
+	// Without properties the table is not written.
+	plain := mustBuild(t, shortcutConfig(t, "  - files: [{ source: app.exe, shortcuts: [{}] }]\n"))
+	if table := plain.Database.Table("MsiShortcutProperty"); table != nil && len(rows(t, plain.Database, "MsiShortcutProperty")) > 0 {
+		t.Errorf("MsiShortcutProperty rows without properties: %v", rows(t, plain.Database, "MsiShortcutProperty"))
+	}
+}
+
+func TestShortcutPropertiesNeedInstaller5(t *testing.T) {
+	t.Parallel()
+
+	cfg := shortcutConfig(t, "  - files: [{ source: app.exe, shortcuts: [{ properties: { System.AppUserModel.ID: Acme.App } }] }]\n")
+	cfg.Package.InstallerVersion = "4.5"
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err != nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "need installerVersion 5.0") {
+		t.Errorf("installer version 4.5: %v %s", err, res.Diagnostics)
 	}
 }
 

@@ -2,6 +2,8 @@ package builder
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -129,6 +131,11 @@ func (b *build) writeShortcut(path, carrier, fileKey string, shortcut *config.Sh
 	b.dirs[shortcut.WorkingDirectory].used = true
 	b.table("Shortcut").Add(key, dirID, name, carrier, target, nullable(shortcut.Arguments), nullable(shortcut.Description),
 		nil, icon, iconIndex, showCommands[shortcut.Show], shortcut.WorkingDirectory, nil, nil, nil, nil)
+
+	// The engine sets these when it creates the .lnk (SHORTCUT-02).
+	for _, name := range slices.Sorted(maps.Keys(shortcut.Properties)) {
+		b.table("MsiShortcutProperty").Add(generatedID("scp", key, name), key, name, shortcut.Properties[name])
+	}
 }
 
 // removeShortcutFolders writes a RemoveFile row for every folder between a

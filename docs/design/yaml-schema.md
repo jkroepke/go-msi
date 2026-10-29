@@ -609,6 +609,9 @@ files:
         icon: viewer.ico                         # a key of icons; default: the file's own icon
         iconIndex: 0                             # needs icon
         show: minimized                          # normal (default), maximized or minimized
+        properties:                              # shell properties of the .lnk, formatted text
+          System.AppUserModel.ID: Example.Viewer
+          System.AppUserModel.ToastActivatorCLSID: "{6E3F1A3C-61B6-4C1B-9A0F-2C5D8B7E4A10}"
 ```
 
 `directory` defaults to `ProgramMenuFolder` and is resolved like a
@@ -636,6 +639,17 @@ warning of section 4.4 for its files. An `icon` is stored in the `Icon` table an
 written to the product's installer folder; without one the shell shows the
 target's icon, and `iconIndex` without `icon` is an error. Advertised
 shortcuts are not supported (section 6).
+
+`properties` sets shell properties on the `.lnk`, one `MsiShortcutProperty`
+row each: the key is the canonical name the Windows property system knows
+the property by, the value formatted text that the engine converts to the
+property's type. The common ones are `System.AppUserModel.ID`, which ties
+the shortcut to the program's windows and notifications, and
+`System.AppUserModel.ToastActivatorCLSID`, which a program that is started
+from a toast notification needs. The engine applies them when it creates the
+shortcut, on install and repair; a name the property system does not know
+is warning 1946 in the log and the install goes on (SHORTCUT-02). The table
+needs Windows Installer 5.0, so a lower `installerVersion` gets a warning.
 
 **Permissions.** A file, registry value, service or the component's folder
 can carry a `permissions` block (`folderPermissions` on the component, which
