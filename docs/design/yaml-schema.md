@@ -1207,15 +1207,17 @@ formatted, so `[Property]` references resolve, and the control has NoPrefix,
 so `&` is shown as it is. The standard text keeps the first 40 dialog units
 below the title and the paragraph gets the rest of the page above the bottom
 strip, 220×89 units, about nine lines. The control is hidden by
-`Installed OR ACTION = "ADMIN"`: it shows after a new installation or a major
-upgrade, but not when the product was already installed (Change, Repair,
-Remove, a patch or a minor upgrade) or for an administrative install, since
-those end on the same page. The page where the setup was cancelled or failed
-keeps its text. Silent installs never show the finish page. The text wraps
-by itself; leading and trailing whitespace is dropped, a blank text is an
-error, and how a line break inside the text renders was not tested. UI-07 observed
-the resolved text after a full UI install and no paragraph after a repair;
-a NoPrefix text showing `&` literally is from UI-01.
+`Installed OR ACTION = "ADMIN"`, so that a finish page after a repair does
+not repeat advice about the installation. UI-07 observed the resolved text
+after a full UI install and no paragraph after a repair through the
+maintenance menu. That a major upgrade shows it, and that Change, Remove, a
+patch, a minor upgrade or an administrative install hide it, follows from
+the documented `Installed` and `ACTION` properties and was not tested. The
+pages where the setup was cancelled or failed keep their text, and a silent
+install shows no finish page. The text wraps by itself; leading and trailing
+whitespace is dropped, a blank text is an error, and how a line break inside
+the text renders was not tested. A NoPrefix text showing `&` literally is
+from UI-01.
 
 #### Theme
 

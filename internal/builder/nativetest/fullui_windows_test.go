@@ -116,9 +116,9 @@ ui:
 `
 
 // fullUIDriver answers the wizard through UIAutomation: the -Choose radio
-// button once, the -Buttons (Next, Install and Finish), "Close the applications" and OK on MsiRMFilesInUse, OK on ErrorDlg
+// button once, the -Advance buttons (Next, Install and Finish), "Close the applications" and OK on MsiRMFilesInUse, OK on ErrorDlg
 // and on any unexpected error box. It writes every window it sees to -Out.
-const fullUIDriver = `param([int]$MsiPid, [string]$Out, [string]$ErrorText, [string]$Choose = '', [string]$Buttons = '^(Next|Install|Finish)$', [int]$Seconds = 110)
+const fullUIDriver = `param([int]$MsiPid, [string]$Out, [string]$ErrorText, [string]$Choose = '', [string]$Advance = '^(Next|Install|Finish)$', [int]$Seconds = 110)
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type -Namespace MsiBuilder -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);'
 $AE = [System.Windows.Automation.AutomationElement]
@@ -164,7 +164,7 @@ while ((Get-Date) -lt $deadline -and (Get-Process -Id $MsiPid -ErrorAction Silen
         $c = Press $els $Choose
         if ($c) { $chosen = $true; Note "CHOSE: $c"; Start-Sleep -Milliseconds 300 }
       }
-      $n = Press $els $Buttons
+      $n = Press $els $Advance
       if ($n) { Note ('PRESSED: ' + ($n -replace '&', '')); Start-Sleep 1 }
     }
   }
@@ -271,10 +271,10 @@ func buildFullUI(t *testing.T, dir, version, fileVersion string) (string, *build
 }
 
 // buildFullUIFrom is buildFullUI with another configuration.
-func buildFullUIFrom(t *testing.T, dir, yaml, version, fileVersion string) (string, *builder.Result) {
+func buildFullUIFrom(t *testing.T, dir, doc, version, fileVersion string) (string, *builder.Result) {
 	t.Helper()
 
-	if err := os.WriteFile(filepath.Join(dir, "msi.yaml"), []byte(yaml), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "msi.yaml"), []byte(doc), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -367,8 +367,8 @@ func fullUIChoosing(t *testing.T, dir, choose string, args ...string) (int, stri
 }
 
 // fullUIDriven is fullUIChoosing with the driver pressing the buttons whose
-// names match buttons instead of Next, Install and Finish.
-func fullUIDriven(t *testing.T, dir, choose, buttons string, args ...string) (int, string) {
+// names match advance instead of Next, Install and Finish.
+func fullUIDriven(t *testing.T, dir, choose, advance string, args ...string) (int, string) {
 	t.Helper()
 
 	driver := filepath.Join(dir, "driver.ps1")
@@ -395,8 +395,8 @@ func fullUIDriven(t *testing.T, dir, choose, buttons string, args ...string) (in
 			args = append(args, "-Choose", choose)
 		}
 
-		if buttons != "" {
-			args = append(args, "-Buttons", buttons)
+		if advance != "" {
+			args = append(args, "-Advance", advance)
 		}
 
 		drv = exec.CommandContext(ctx, "powershell", args...)
@@ -598,10 +598,10 @@ func TestFullUIFinishText(t *testing.T) { //nolint:paralleltest // msiexec runs 
 	// UI Automation names drop "&" even with NoPrefix, which the page shows
 	// (UI-01), so the driver sees "use MsiBuilderFullUI  its tools.".
 	want := strings.ReplaceAll(strings.ReplaceAll(finishText, "[ProductName]", fullUIName), "&", "")
-	yaml := strings.Replace(fullUIConfig, "  wizard: featureTree\n", "  wizard: featureTree\n  finishText: "+finishText+"\n", 1)
+	doc := strings.Replace(fullUIConfig, "  wizard: featureTree\n", "  wizard: featureTree\n  finishText: "+finishText+"\n", 1)
 
 	dir := t.TempDir()
-	pkg, _ := buildFullUIFrom(t, dir, yaml, "1.0.0", "auto")
+	pkg, _ := buildFullUIFrom(t, dir, doc, "1.0.0", "auto")
 
 	cleanupFullUI(t, pkg)
 
@@ -634,13 +634,14 @@ func TestFullUIFinishText(t *testing.T) { //nolint:paralleltest // msiexec runs 
 	t.Logf("UI-07 install:\n%s\nrepair:\n%s", install, repair)
 }
 
-// finishShows reports whether the finish page the driver saw shows s. A
-// control hidden by a ControlCondition is not in the UI Automation tree
-// (UI-07), so the page's WINDOW line lists only the shown texts.
+// finishShows reports whether any finish page the driver saw shows s. The
+// driver logs a page again whenever its names change, so the first line may
+// predate a control. A control hidden by a ControlCondition is not in the UI
+// Automation tree (UI-07), so the WINDOW lines list only the shown texts.
 func finishShows(seen, paragraph string) bool {
 	for line := range strings.SplitSeq(seen, "\n") {
-		if strings.HasPrefix(line, "WINDOW: ") && strings.Contains(line, "Completed the ") {
-			return strings.Contains(line, paragraph)
+		if strings.HasPrefix(line, "WINDOW: ") && strings.Contains(line, "Completed the ") && strings.Contains(line, paragraph) {
+			return true
 		}
 	}
 

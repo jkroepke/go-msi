@@ -162,6 +162,10 @@ go test ./... -shuffle=on -race
   installs may share the desktop). It needs an elevated process in an
   interactive session: in session 0 msiexec silently drops to no UI. Control
   event names are case-sensitive (`RMShutdownAndRestart`).
+  The GitHub `windows-latest` runner qualifies, so CI runs these tests. UI
+  Automation names drop `&`, even on a NoPrefix Text control, and a control
+  hidden by a ControlCondition is not in the UI Automation tree at all (UI-07);
+  each driver run starts with an empty log.
 
 ## Implementation rules
 

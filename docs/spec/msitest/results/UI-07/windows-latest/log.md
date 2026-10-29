@@ -8,7 +8,10 @@ The driver installs with the full UI, then runs `msiexec /i` again and
 presses Next, Repair (maintenance menu), Repair (VerifyRepairDlg) and Finish.
 The test failed at that commit only because it expected the `&` in the UI
 Automation name; the names drop it, as they drop the access-key `&` of every
-button. Commit 5b2e3fd compares without it.
+button. Commit 5b2e3fd compares without it. The driver at that commit also
+logged every off-screen element with a name as a `HIDDEN:` line and logged
+none, so the hidden control is absent from the tree rather than reported
+off-screen; later commits dropped that logging.
 
 ```text
 install:
