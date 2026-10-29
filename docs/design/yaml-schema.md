@@ -743,9 +743,8 @@ when `waitForStart` differs from `wait` the start gets a row of its own
 (`scs_<service>`) next to the stop and delete row (`sc_<service>`). With
 `waitForStart: true`, StartServices waits for `SERVICE_RUNNING`, and a
 service that does not get there fails the install with error 1920 and rolls
-it back. With `false` the install is expected to succeed and leave such a
-service stopped: a package with the same rows did so (SVC-04), the rows
-msi-builder writes have not been run yet.
+it back. With `false` the install succeeds and leaves such a service stopped
+for SCM recovery to restart (SVC-04).
 
 `recovery` becomes a deferred, no-impersonate `sc.exe failure` action after
 InstallServices, with its exit code ignored (SVC-01). Each step is `restart`,
