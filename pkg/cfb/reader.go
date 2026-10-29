@@ -46,6 +46,7 @@ type Entry struct {
 	Type      byte
 	Colour    byte
 	loaded    bool
+	named     bool // the name length is even and holds 1 to 31 units
 }
 
 // Streams returns the root-level streams in SID order, loading any that are
@@ -202,6 +203,17 @@ func (f *File) walkTree() error {
 
 		visited[top.sid] = true
 		ent := f.Entries[top.sid]
+
+		// The tree holds only storages and streams, each with a name it
+		// can be found by (MS-CFB 2.6.1).
+		if ent.Type != 1 && ent.Type != 2 {
+			return fmt.Errorf("cfb: entry %d in the tree has object type %d", top.sid, ent.Type)
+		}
+
+		if !ent.named {
+			return fmt.Errorf("cfb: entry %d has an invalid name length", top.sid)
+		}
+
 		ent.Parent = top.parent
 
 		stack = append(stack, link{sid: ent.Left, parent: top.parent}, link{sid: ent.Right, parent: top.parent})
@@ -485,6 +497,12 @@ func Open(src io.ReaderAt, size int64) (*File, error) { //nolint:maintidx,cyclop
 		return nil, errors.New("cfb: unsupported mini sector shift")
 	}
 
+	// Every stream below the cutoff lives in the mini stream. MS-CFB fixes
+	// it at 4096; reading another value as 4096 would serve the wrong bytes.
+	if cutoff := order.Uint32(raw[0x38:]); cutoff != miniCutoff {
+		return nil, fmt.Errorf("cfb: unsupported mini stream cutoff %d", cutoff)
+	}
+
 	rdr := &reader{r: src, size: size, ss: 1 << shift}
 	file := &File{Version: major, SectorSize: rdr.ss, byName: make(map[string]*Entry), rdr: rdr}
 	folded := make(map[string]bool)
@@ -566,6 +584,8 @@ func Open(src io.ReaderAt, size int64) (*File, error) { //nolint:maintidx,cyclop
 			}
 
 			copy(ent.CLSID[:], rec[0x50:0x60])
+
+			ent.named = nameLen%2 == 0 && nameLen >= 4 && nameLen <= 64
 
 			if nameLen >= 2 && nameLen <= 64 {
 				units := make([]uint16, 0, nameLen/2-1)

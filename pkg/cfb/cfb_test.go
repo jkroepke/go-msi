@@ -203,7 +203,9 @@ func TestCompare(t *testing.T) {
 func TestNameErrors(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{"", "a/b", "a\\b", "a:b", "a!b", "a\x00b", "0123456789012345678901234567890x", "ä"} {
+	// U+FF41 and U+FF21 are fullwidth letters: Windows upper-cases them,
+	// Compare does not, so the tree order would differ.
+	for _, name := range []string{"", "a/b", "a\\b", "a:b", "a!b", "a\x00b", "0123456789012345678901234567890x", "ä", "\uff41", "\uff21"} {
 		if _, err := Write([]Stream{{Name: name}}, Options{}); err == nil {
 			t.Errorf("name %q accepted", name)
 		}
@@ -217,7 +219,9 @@ func TestNameErrors(t *testing.T) {
 		t.Error("cased non-ASCII name accepted")
 	}
 
-	if _, err := Write([]Stream{{Name: "䡀㠀\u0005"}}, Options{}); err != nil {
+	// Supplementary characters are surrogate pairs, which are never
+	// upper-cased (MS-CFB 2.6.4).
+	if _, err := Write([]Stream{{Name: "䡀㠀\u0005"}, {Name: "\U00010428"}}, Options{}); err != nil {
 		t.Errorf("MSI name rejected: %v", err)
 	}
 }
@@ -239,6 +243,23 @@ func TestReadRejectsGarbage(t *testing.T) {
 	bad[0x1E] = 10
 	if _, err := Read(bad); err == nil {
 		t.Error("bad sector shift accepted")
+	}
+
+	for name, mutate := range map[string]func([]byte, int){
+		// The cutoff decides which streams live in the mini stream.
+		"mini stream cutoff":  func(b []byte, _ int) { binary.LittleEndian.PutUint32(b[0x38:], 2048) },
+		"empty name":          func(b []byte, dir int) { binary.LittleEndian.PutUint16(b[dir+entrySize+0x40:], 0) },
+		"odd name length":     func(b []byte, dir int) { binary.LittleEndian.PutUint16(b[dir+entrySize+0x40:], 7) },
+		"long name length":    func(b []byte, dir int) { binary.LittleEndian.PutUint16(b[dir+entrySize+0x40:], 66) },
+		"unallocated in tree": func(b []byte, dir int) { b[dir+entrySize+0x42] = 0 },
+		"root type in tree":   func(b []byte, dir int) { b[dir+entrySize+0x42] = 5 },
+	} {
+		bad = append([]byte(nil), out...)
+		mutate(bad, (int(readU32(out, 0x30))+1)*512)
+
+		if _, err := Read(bad); err == nil {
+			t.Errorf("%s accepted", name)
+		}
 	}
 
 	// A sibling loop: Large's left points at Small.
