@@ -130,6 +130,11 @@ go test ./... -shuffle=on -race
   `internal/builder/nativetest`, `internal/cab/native_windows_test.go`) and the bounded-memory
   tests (`TestBoundedMemory`, `TestLargePayloadBoundedMemory`). CI runs
   `-short` on Linux and the full set on Windows.
+  `TestMsiexecInstallsLargePackage` (CAB-10) also needs
+  `MSI_BUILDER_LARGE_PACKAGE=1` and about 10 GB of free disk: it builds and
+  installs a package of about 2.9 GB in external cabinets. CI runs it in a
+  step of its own, without `-race`. Tests that need several cabinets set
+  `builder.Options.CabinetSize` instead of writing 2 GB.
 - Bounded-memory tests assert on the live heap that `memtest.PeakHeap` reads
   from `/gc/heap/live:bytes`, not on `HeapAlloc`. `HeapAlloc` includes
   uncollected garbage up to the collector's goal (about twice the live heap),

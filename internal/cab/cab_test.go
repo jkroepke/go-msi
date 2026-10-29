@@ -311,3 +311,29 @@ func TestWorkersSameCabinet(t *testing.T) {
 		}
 	}
 }
+
+// TestBound checks that Bound is never below what WriteTo writes, for random
+// data that does not compress and for data that does, and that it is exact
+// for stored folders.
+func TestBound(t *testing.T) {
+	t.Parallel()
+
+	random := make([]byte, 100000)
+	rand.New(rand.NewSource(7)).Read(random) //nolint:gosec // test data
+
+	for _, comp := range []Compression{None, MSZIP, LZX} {
+		for _, data := range [][]byte{random, bytes.Repeat([]byte("msi"), 30000)} {
+			files := []File{{Name: "first.bin", Data: data}, {Name: "b", Data: data[:5]}}
+
+			out, err := Write(files, Options{Compression: comp})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			bound := Bound(len(files), int64(len("first.bin")+len("b")), int64(len(data)+5), comp)
+			if int64(len(out)) > bound || comp == None && int64(len(out)) != bound {
+				t.Errorf("compression %d: wrote %d bytes, bound %d", comp, len(out), bound)
+			}
+		}
+	}
+}

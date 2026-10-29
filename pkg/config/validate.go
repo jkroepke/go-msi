@@ -280,11 +280,14 @@ func (v *validator) pkg(cfg *Config) { //nolint:cyclop // a flat list of indepen
 
 	v.oneOf("package.compression", pkg.Compression, Compressions()...)
 
-	if !plainFileName(pkg.Cabinet) {
+	switch {
+	case !plainFileName(pkg.Cabinet):
 		v.errorf("package.cabinet", "%q is not a plain file name", pkg.Cabinet)
-	} else if err := msidb.CheckStreamName(pkg.Cabinet); err != nil {
-		v.errorf("package.cabinet", "not a valid stream name (MSIDB-11): %v", err)
-	} else if !IsIdentifier(pkg.Cabinet) {
+	case !pkg.CabinetsEmbedded():
+		// An external cabinet is a file beside the package, not a stream.
+	case msidb.CheckStreamName(pkg.Cabinet) != nil:
+		v.errorf("package.cabinet", "not a valid stream name (MSIDB-11): %v", msidb.CheckStreamName(pkg.Cabinet))
+	case !IsIdentifier(pkg.Cabinet):
 		v.warnf("package.cabinet", "ICE03 reports bad cabinet syntax: an embedded cabinet name must be an identifier")
 	}
 }

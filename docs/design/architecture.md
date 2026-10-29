@@ -306,18 +306,25 @@ Pipeline, each step a file of its own:
    from a palette or decoded from the theme's pictures and re-encoded as
    24-bit BMP, and the ICE-style self-checks.
 10. **Finish**: `_Validation` from `schema`, summary information, then the
-    streaming write: the cabinet is written with `cab.WriteTo` to a spool
+    streaming write: each cabinet is written with `cab.WriteTo` to a spool
     (memory when `Options.Output` is empty, otherwise a temporary file next to
-    the output), the package with `msidb.MarshalTo` into a second temporary
+    the output). The files were split into cabinets, in sequence order and at
+    file boundaries, when the `Media` rows were written: a cabinet ends before
+    the file that would take it above 65535 files, 65535 blocks or, by
+    `cab.Bound` (every block at its compression's largest size), 2 GiB or
+    `Options.CabinetSize`. Embedded cabinets become package streams and may
+    add up to 2 GB; external ones (`package.embedCabinets: false`) stay
+    files. Then the package with `msidb.MarshalTo` into a second temporary
     file, the package code (UUID v5 of the package's SHA-256) is patched into
     the summary stream at its `cfb.Layout` offset, then **verify**: `cfb.Open`
     the package, `msidb.Decode` it, compare every table column and every
     cell (rows as a set, NULL/empty and the integer types folded, binary
-    cells by digest), `cab.Walk` the
-    cabinet stream and compare every file's SHA-256 (computed once while
+    cells by digest), `cab.Walk` each
+    cabinet, stream or spool, and compare every file's SHA-256 (computed once while
     hashing the source for `MsiFileHash`) with its source. Memory stays
     bounded by the tables plus a few compression blocks, whatever the payload
-    size. The verified package is renamed onto `Options.Output`; a failed
+    size. External cabinets are renamed into the output's folder first, then the
+    verified package onto `Options.Output`; a failed
     build leaves an existing package untouched and no temporary files behind.
 
 Static ICE-style checks live next to the step that has the data (ICE03/06/32
@@ -405,7 +412,8 @@ generated from the command tree.
 | 7 | CI: Linux, macOS and Windows runners, native tests, mise | this PR |
 | 8 | `ui`: built-in wizards (`minimal`, `featureTree`), generated dialogs, `artwork` bitmaps | PR 2 |
 | 9 | ICE-style checks that still need the UI tables; `_Validation` for UI | PR 2 |
-| 10 | External cabinets, several media, uncompressed files | later |
+| 10 | External cabinets and several media (`package.embedCabinets`, packages above 2 GB) | done |
+| 12 | Uncompressed files beside the package | later |
 | 11 | `sign`: Authenticode signing, verification and RFC 3161 timestamps (MSISPEC §12) | done |
 
 Out of scope for good: MSIX (nfpm), patches, transforms, merge modules,

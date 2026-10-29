@@ -41,17 +41,45 @@ const (
 	blockSize  = 32768
 	// maxBlockData is the largest compressed block MSZIP allows.
 	maxBlockData = 32780
-	maxFiles     = 65535
-	maxCabinet   = 0x7FFFFFFF
-	// maxFolder is the largest folder whose block count fits cCFData (u16):
-	// 65535 blocks of 32768 bytes, the split threshold of section 5.
-	maxFolder  = maxFiles * blockSize
-	maxNameLen = 255
+	maxNameLen   = 255
+	// recordHeaderSize is a CFDATA record without its payload.
+	recordHeaderSize = 8
 	// fileEntrySize is a CFFILE record without its name and NUL.
 	fileEntrySize = 16
 	// cbCabinetOffset is where the header holds the cabinet size.
 	cbCabinetOffset = 8
 )
+
+// Limits of one cabinet (section 5).
+const (
+	// MaxFiles is the most files one cabinet holds: cFiles is a u16.
+	MaxFiles = 65535
+	// MaxFolder is the largest folder whose block count fits cCFData (u16):
+	// 65535 blocks of 32768 bytes, the split threshold of section 5.
+	MaxFolder = MaxFiles * blockSize
+	// MaxSize is the largest cabinet, the FCI default (section 5).
+	MaxSize = 0x7FFFFFFF
+)
+
+// Bound returns the largest cabinet WriteTo can write for files entries whose
+// names hold nameBytes bytes in all and whose sizes add up to folderBytes,
+// whatever the data: every compressed block taking the most bytes its
+// compression allows. It is exact for None. A cabinet of entries that fits
+// MaxSize by Bound can always be written.
+func Bound(files int, nameBytes, folderBytes int64, comp Compression) int64 {
+	blocks := (folderBytes + blockSize - 1) / blockSize
+	header := headerSize + folderSize + int64(files)*(fileEntrySize+1) + nameBytes + blocks*recordHeaderSize
+
+	switch comp {
+	case MSZIP:
+		return header + blocks*maxBlockData
+	case LZX:
+		return header + blocks*lzx.MaxFrame
+	case None:
+	}
+
+	return header + folderBytes
+}
 
 // File attributes.
 const (
@@ -259,8 +287,8 @@ func checkOptions(opts Options) (int, error) {
 
 // checkEntries validates the entries and returns the folder size.
 func checkEntries(entries []Entry) (int64, error) {
-	if len(entries) > maxFiles {
-		return 0, fmt.Errorf("cab: %d files, at most %d fit in one cabinet", len(entries), maxFiles)
+	if len(entries) > MaxFiles {
+		return 0, fmt.Errorf("cab: %d files, at most %d fit in one cabinet", len(entries), MaxFiles)
 	}
 
 	var folder int64
@@ -282,8 +310,8 @@ func checkEntries(entries []Entry) (int64, error) {
 			return 0, fmt.Errorf("cab: file %d: no Open function", i)
 		}
 
-		if folder+ent.Size > maxFolder {
-			return 0, fmt.Errorf("cab: folder exceeds %d bytes (65535 blocks); split the files across cabinets", maxFolder)
+		if folder+ent.Size > MaxFolder {
+			return 0, fmt.Errorf("cab: folder exceeds %d bytes (65535 blocks); split the files across cabinets", MaxFolder)
 		}
 
 		folder += ent.Size
@@ -352,13 +380,13 @@ func WriteTo(dst io.WriteSeeker, entries []Entry, opts Options) (int64, error) {
 		return 0, err
 	}
 
-	if out.n > maxCabinet {
+	if out.n > MaxSize {
 		return 0, errors.New("cab: cabinet exceeds 2 GiB")
 	}
 
 	var cbCabinet [4]byte
 
-	binary.LittleEndian.PutUint32(cbCabinet[:], uint32(out.n)) //nolint:gosec // checked against maxCabinet
+	binary.LittleEndian.PutUint32(cbCabinet[:], uint32(out.n)) //nolint:gosec // checked against MaxSize
 
 	if _, err := dst.Seek(cbCabinetOffset-out.n, io.SeekCurrent); err != nil {
 		return 0, fmt.Errorf("cab: seek: %w", err)
@@ -393,7 +421,7 @@ func writeHeader(out *countingWriter, entries []Entry, folderBytes int64, opts O
 	order.PutUint32(hdr[16:], uint32(coffFiles))
 	hdr[0x18], hdr[0x19] = 3, 1
 	order.PutUint16(hdr[0x1A:], 1)
-	order.PutUint16(hdr[0x1C:], uint16(len(entries))) //nolint:gosec // the file count was checked against maxFiles
+	order.PutUint16(hdr[0x1C:], uint16(len(entries))) //nolint:gosec // the file count was checked against MaxFiles
 	order.PutUint16(hdr[0x20:], opts.SetID)
 	order.PutUint32(hdr[headerSize:], uint32(dataStart))
 	order.PutUint16(hdr[headerSize+4:], uint16(numBlocks)) //nolint:gosec // at most 65535 blocks by the folder limit

@@ -198,6 +198,11 @@ func (f *buildFlags) run(cmd *cobra.Command, path string) error {
 	if !f.quiet {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s: %d bytes, %d files, ProductCode %s, PackageCode %s\n",
 			out, res.Size, len(res.Files), res.ProductCode, res.PackageCode)
+
+		for _, cabinet := range res.Cabinets {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s: %d bytes, cabinet beside the package\n",
+				filepath.Join(filepath.Dir(out), cabinet.Name), cabinet.Size)
+		}
 	}
 
 	return nil

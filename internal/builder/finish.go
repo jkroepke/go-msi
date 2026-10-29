@@ -222,20 +222,11 @@ func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop /
 
 	defer closeTarget()
 
-	if len(b.files) > 0 {
-		cabSpool, closeSpool, err := b.newTarget("cabinet", output)
-		if err != nil {
-			return nil, err
-		}
+	closeCabinets, err := b.writeCabinets(database, output)
+	defer closeCabinets()
 
-		defer closeSpool()
-
-		source, err := b.cabinet(cabSpool)
-		if err != nil {
-			return nil, err
-		}
-
-		database.Sources = append(database.Sources, source)
+	if err != nil {
+		return nil, err
 	}
 
 	auto := b.packageCode == ""
@@ -267,10 +258,19 @@ func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop /
 	switch out := target.(type) {
 	case *spool.Buffer:
 		res.Package = out.Bytes()
+		res.Cabinets = b.externalCabinets(true)
 	case *os.File:
+		// The cabinets go first, so that a package never names cabinets
+		// that are not there.
+		if err := b.commitCabinets(output); err != nil {
+			return nil, err
+		}
+
 		if err := commitOutput(out, output); err != nil {
 			return nil, err
 		}
+
+		res.Cabinets = b.externalCabinets(false)
 
 		// The cabinet spool is removed when finish returns; the returned
 		// database keeps the cabinet's name and size only.
@@ -382,43 +382,6 @@ func sortedTableNames(m map[string]*msidb.Table) []string {
 	return out
 }
 
-// cabinet packs every payload file in sequence order (section 11.6) into
-// spool, streaming each file from disk, and returns the cabinet as a source
-// for the package.
-func (b *build) cabinet(target spool.Target) (cfb.Source, error) {
-	entries := make([]cab.Entry, 0, len(b.files))
-
-	for _, entry := range b.files {
-		entries = append(entries, cab.Entry{
-			Name:       entry.Key,
-			Size:       entry.Size,
-			Time:       b.opts.BuildTime,
-			Attributes: cab.AttrArchive,
-			Open:       entry.open,
-		})
-	}
-
-	opts := cab.Options{Compression: cab.MSZIP}
-
-	switch window, ok := config.LZXWindow(b.cfg.Package.Compression); {
-	case ok:
-		opts = cab.Options{Compression: cab.LZX, Window: window}
-	case b.cfg.Package.Compression == "none":
-		opts.Compression = cab.None
-	}
-
-	size, err := cab.WriteTo(target, entries, opts)
-	if err != nil {
-		return cfb.Source{}, fmt.Errorf("cabinet: %w", err)
-	}
-
-	return cfb.Source{
-		Name: b.cfg.Package.Cabinet,
-		Size: size,
-		Open: func() (io.ReadCloser, error) { return io.NopCloser(io.NewSectionReader(target, 0, size)), nil },
-	}, nil
-}
-
 // summaryProperties builds the summary information (sections 4 and 11.1).
 func (b *build) summaryProperties() []summary.Property {
 	product := b.cfg.Product
@@ -500,53 +463,163 @@ func (b *build) verify(target spool.Target, size int64, want *msidb.Database) er
 		return fmt.Errorf("summary package code %q, want %q", code, b.packageCode)
 	}
 
-	if len(b.files) == 0 {
+	for _, cabinet := range b.cabinets {
+		if err := b.verifyCabinet(file, cabinet); err != nil {
+			return fmt.Errorf("cabinet %s: %w", cabinet.name, err)
+		}
+	}
+
+	return nil
+}
+
+// writeCabinets packs the cabinets, each into a spool of its own next to
+// output, and adds the embedded ones to database. The returned function
+// closes and removes the spools; a spool committed beside the package is
+// already gone from where it would remove it.
+func (b *build) writeCabinets(database *msidb.Database, output string) (func(), error) {
+	var (
+		embedded int64
+		closers  []func()
+	)
+
+	closeAll := func() {
+		for _, closeSpool := range closers {
+			closeSpool()
+		}
+	}
+
+	for _, cabinet := range b.cabinets {
+		target, closeSpool, err := b.newTarget("cabinet", output)
+		if err != nil {
+			return closeAll, err
+		}
+
+		closers = append(closers, closeSpool)
+
+		if err := b.writeCabinet(target, cabinet); err != nil {
+			return closeAll, err
+		}
+
+		if !b.cfg.Package.CabinetsEmbedded() {
+			continue
+		}
+
+		embedded += cabinet.size
+		database.Sources = append(database.Sources, cabinet.source())
+
+		// Stop at the first cabinet that crosses the limit rather than
+		// compress the rest.
+		if embedded > maxEmbedded {
+			return closeAll, fmt.Errorf("the embedded cabinets add up to more than %d bytes, but a package cannot exceed 2 GB; "+
+				"set package.embedCabinets to false to write them beside the package", maxEmbedded)
+		}
+	}
+
+	return closeAll, nil
+}
+
+// commitCabinets moves the external cabinets from their spools into the
+// folder of output.
+func (b *build) commitCabinets(output string) error {
+	if b.cfg.Package.CabinetsEmbedded() {
 		return nil
 	}
 
-	encoded, err := msidb.EncodeStreamName(b.cfg.Package.Cabinet, false)
-	if err != nil {
-		return fmt.Errorf("cabinet stream: %w", err)
+	for _, cabinet := range b.cabinets {
+		file, ok := cabinet.target.(*os.File)
+		if !ok {
+			return fmt.Errorf("cabinet %s has no file", cabinet.name)
+		}
+
+		if err := commitOutput(file, filepath.Join(filepath.Dir(output), cabinet.name)); err != nil {
+			return err
+		}
 	}
 
-	stream, err := file.Reader(encoded)
-	if err != nil {
-		return fmt.Errorf("cabinet stream %q is missing: %w", b.cfg.Package.Cabinet, err)
+	return nil
+}
+
+// externalCabinets lists the cabinets written beside the package, with their
+// bytes when withData is set.
+func (b *build) externalCabinets(withData bool) []Cabinet {
+	if b.cfg.Package.CabinetsEmbedded() {
+		return nil
+	}
+
+	out := make([]Cabinet, 0, len(b.cabinets))
+
+	for _, cabinet := range b.cabinets {
+		entry := Cabinet{Name: cabinet.name, Size: cabinet.size}
+
+		if buf, ok := cabinet.target.(*spool.Buffer); ok && withData {
+			entry.Data = buf.Bytes()
+		}
+
+		out = append(out, entry)
+	}
+
+	return out
+}
+
+// verifyCabinet reads cabinet back, from its stream in file or, when it is
+// external, from its spool, and compares every entry with its source.
+func (b *build) verifyCabinet(file *cfb.File, cabinet *cabinetInfo) error {
+	var (
+		src  io.ReaderAt = cabinet.target
+		size             = cabinet.size
+	)
+
+	if b.cfg.Package.CabinetsEmbedded() {
+		encoded, err := msidb.EncodeStreamName(cabinet.name, false)
+		if err != nil {
+			return fmt.Errorf("stream name: %w", err)
+		}
+
+		stream, err := file.Reader(encoded)
+		if err != nil {
+			return fmt.Errorf("the stream is missing: %w", err)
+		}
+
+		src, size = stream, stream.Size()
 	}
 
 	index := 0
 
-	err = cab.Walk(stream, stream.Size(), func(entry cab.File, data io.Reader) error {
-		if index >= len(b.files) {
-			return fmt.Errorf("cabinet holds more than %d files", len(b.files))
+	err := cab.Walk(src, size, func(entry cab.File, data io.Reader) error {
+		if index >= len(cabinet.files) {
+			return fmt.Errorf("holds more than %d files", len(cabinet.files))
 		}
 
-		want := b.files[index]
 		index++
 
-		if entry.Name != want.Key {
-			return fmt.Errorf("cabinet entry %d is %q, want %q", index-1, entry.Name, want.Key)
-		}
-
-		hasher := sha256.New()
-
-		n, err := io.Copy(hasher, data)
-		if err != nil {
-			return fmt.Errorf("cabinet entry %s: %w", want.Key, err)
-		}
-
-		if n != want.Size || !bytes.Equal(hasher.Sum(nil), want.digest[:]) {
-			return fmt.Errorf("cabinet entry %s differs from its source", want.Key)
-		}
-
-		return nil
+		return compareEntry(entry, data, cabinet.files[index-1], index-1)
 	})
 	if err != nil {
-		return fmt.Errorf("cabinet: %w", err)
+		return err //nolint:wrapcheck // the caller names the cabinet
 	}
 
-	if index != len(b.files) {
-		return fmt.Errorf("cabinet holds %d files, want %d", index, len(b.files))
+	if index != len(cabinet.files) {
+		return fmt.Errorf("holds %d files, want %d", index, len(cabinet.files))
+	}
+
+	return nil
+}
+
+// compareEntry compares the index-th cabinet entry with the file it holds.
+func compareEntry(entry cab.File, data io.Reader, want *fileInfo, index int) error {
+	if entry.Name != want.Key {
+		return fmt.Errorf("entry %d is %q, want %q", index, entry.Name, want.Key)
+	}
+
+	hasher := sha256.New()
+
+	n, err := io.Copy(hasher, data)
+	if err != nil {
+		return fmt.Errorf("entry %s: %w", want.Key, err)
+	}
+
+	if n != want.Size || !bytes.Equal(hasher.Sum(nil), want.digest[:]) {
+		return fmt.Errorf("entry %s differs from its source", want.Key)
 	}
 
 	return nil

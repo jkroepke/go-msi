@@ -25,21 +25,39 @@ type Options struct {
 	// not for the files. The package replaces a file at Output only once it
 	// is verified; a failed build leaves nothing behind. When Output is
 	// empty the package is built in memory and returned in Result.Package.
-	Output     string
-	CFBVersion int
-	SkipVerify bool
+	Output string
+	// CabinetSize caps the size of each cabinet in bytes, counted as if no
+	// file compressed at all; 0 means the 2 GiB a cabinet holds. A file
+	// larger than the cap gets a cabinet of its own.
+	CabinetSize int64
+	CFBVersion  int
+	SkipVerify  bool
 }
 
 // Result is a finished build.
 type Result struct {
 	// Package holds the bytes when Options.Output was empty.
-	Package     []byte
+	Package []byte
+	// Cabinets are the cabinets written beside the package
+	// (package.embedCabinets false), in DiskId order. After a build to a
+	// file they are in Options.Output's folder and Data is nil.
+	Cabinets    []Cabinet
 	Diagnostics config.Diagnostics
 	ProductCode string
 	PackageCode string
 	// Files lists every payload file in File.Sequence order.
 	Files []File
 	// Size is the package length in bytes.
+	Size int64
+}
+
+// Cabinet is a cabinet written beside the package.
+type Cabinet struct {
+	// Name is the file name, Media.Cabinet.
+	Name string
+	// Data holds the bytes when Options.Output was empty.
+	Data []byte
+	// Size is the cabinet length in bytes.
 	Size int64
 }
 
@@ -77,8 +95,14 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 		files[i] = File(file)
 	}
 
+	var cabinets []Cabinet
+	for _, cabinet := range res.Cabinets {
+		cabinets = append(cabinets, Cabinet(cabinet))
+	}
+
 	return &Result{
 		Package:     res.Package,
+		Cabinets:    cabinets,
 		Diagnostics: res.Diagnostics,
 		ProductCode: res.ProductCode,
 		PackageCode: res.PackageCode,

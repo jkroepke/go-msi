@@ -34,15 +34,23 @@ type Options struct {
 	// empty the package is built in memory and returned in Result.Package.
 	// After a build to a file, Result.Database lists the cabinet by name
 	// and size only and cannot be marshalled again.
-	Output     string
-	CFBVersion int
-	SkipVerify bool
+	Output string
+	// CabinetSize caps the size of each cabinet in bytes, counted as if no
+	// file compressed at all; 0 means the 2 GiB a cabinet holds. A file
+	// larger than the cap gets a cabinet of its own.
+	CabinetSize int64
+	CFBVersion  int
+	SkipVerify  bool
 }
 
 // Result is a finished build.
 type Result struct {
 	// Package holds the bytes when Options.Output was empty.
-	Package     []byte
+	Package []byte
+	// Cabinets are the cabinets written beside the package
+	// (package.embedCabinets false), in DiskId order. After a build to a
+	// file they are in Options.Output's folder and Data is nil.
+	Cabinets    []Cabinet
 	Database    *msidb.Database
 	Diagnostics config.Diagnostics
 	ProductCode string
@@ -50,6 +58,16 @@ type Result struct {
 	// Files lists every payload file in File.Sequence order.
 	Files []File
 	// Size is the package length in bytes.
+	Size int64
+}
+
+// Cabinet is a cabinet written beside the package.
+type Cabinet struct {
+	// Name is the file name, Media.Cabinet.
+	Name string
+	// Data holds the bytes when Options.Output was empty.
+	Data []byte
+	// Size is the cabinet length in bytes.
 	Size int64
 }
 
@@ -103,6 +121,7 @@ type build struct { //nolint:govet // grouped by build step
 	productCode   string
 	packageCode   string
 	files         []*fileInfo
+	cabinets      []*cabinetInfo
 	actions       []*actionInfo
 	dirOrder      []*dirInfo
 	diags         config.Diagnostics
