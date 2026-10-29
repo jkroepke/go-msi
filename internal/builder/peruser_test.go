@@ -21,7 +21,7 @@ components:
 customActions:
   - id: Step
     exec: { command: '"[System64Folder]cmd.exe" /c exit 1', directory: INSTALLDIR }
-    execute: deferred
+    execute: %s
     return: %s
     schedule: [{ sequence: execute, after: %s }]
 `
@@ -32,19 +32,23 @@ func TestPerUserRollbackWarning(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		scope, ret, after string
-		want              bool
+		scope, execute, ret, after string
+		want                       bool
 	}{
-		{"perUser", "check", "PublishProduct", true},
-		{"perUser", "check", "RegisterProduct", true},
-		{"perUser", "check", "InstallFiles", false},
-		{"perUser", "ignore", "PublishProduct", false},
-		{"perMachine", "check", "PublishProduct", false},
+		{"perUser", "deferred", "check", "PublishProduct", true},
+		{"perUser", "deferred", "check", "RegisterProduct", true},
+		{"perUser", "deferred", "asyncWait", "PublishProduct", true},
+		{"perUser", "deferred", "check", "InstallFiles", false},
+		{"perUser", "deferred", "ignore", "PublishProduct", false},
+		{"perUser", "deferred", "asyncNoWait", "PublishProduct", false},
+		{"perUser", "rollback", "check", "PublishProduct", false},
+		{"perUser", "commit", "check", "PublishProduct", false},
+		{"perMachine", "deferred", "check", "PublishProduct", false},
 	} {
-		t.Run(tc.scope+"-"+tc.ret+"-"+tc.after, func(t *testing.T) {
+		t.Run(tc.scope+"-"+tc.execute+"-"+tc.ret+"-"+tc.after, func(t *testing.T) {
 			t.Parallel()
 
-			cfg, err := config.Parse(fmt.Appendf(nil, perUserRollbackConfig, tc.scope, tc.ret, tc.after), config.Options{})
+			cfg, err := config.Parse(fmt.Appendf(nil, perUserRollbackConfig, tc.scope, tc.execute, tc.ret, tc.after), config.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -59,7 +63,18 @@ func TestPerUserRollbackWarning(t *testing.T) {
 				t.Fatalf("build: %v\n%s", err, res.Diagnostics)
 			}
 
-			got := strings.Contains(fmt.Sprint(res.Diagnostics), "runs after RegisterProduct")
+			got := false
+
+			for _, d := range res.Diagnostics {
+				if strings.Contains(d.Message, "runs after RegisterProduct") {
+					got = true
+
+					if d.Path != "customActions[0].schedule[0]" {
+						t.Errorf("warning path = %q", d.Path)
+					}
+				}
+			}
+
 			if got != tc.want {
 				t.Errorf("warning = %v, want %v: %s", got, tc.want, res.Diagnostics)
 			}

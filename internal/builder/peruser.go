@@ -8,11 +8,11 @@ import (
 )
 
 // checkPerUserRollback warns when a deferred action that can fail a per-user
-// install runs after RegisterProduct: a non-administrator's rollback cannot
-// remove the registration (1403, access denied): the product stays
-// registered and a reinstall fails, and a failure before PublishProduct
-// leaves an entry only an administrator can remove (CA-01, specification
-// section 8.2).
+// install runs after RegisterProduct. A non-administrator's rollback cannot
+// remove the registration (1403, access denied), so the product stays
+// registered and a reinstall fails; a failure before PublishProduct leaves an
+// entry only an administrator can remove (CA-01, specification section 8.2).
+// asyncNoWait and ignore actions cannot fail the install.
 func (b *build) checkPerUserRollback() {
 	if b.cfg.Package.Scope != config.ScopePerUser {
 		return
@@ -26,7 +26,7 @@ func (b *build) checkPerUserRollback() {
 	}
 
 	for actionIndex, custom := range b.cfg.CustomActions {
-		if custom.Execute != "deferred" || custom.Return == "ignore" {
+		if custom.Execute != "deferred" || custom.Return == "ignore" || custom.Return == "asyncNoWait" {
 			continue
 		}
 
@@ -37,7 +37,7 @@ func (b *build) checkPerUserRollback() {
 
 			if position := sequence.Find(seq, custom.ID); position > register {
 				path := fmt.Sprintf("customActions[%d].schedule[%d]", actionIndex, placementIndex)
-				b.warnf(path, "%s at %d runs after RegisterProduct (%d) in a per-user package; if it fails, "+
+				b.warnf(path, "%s at %d runs after RegisterProduct (%d) in a per-user package; if it fails during an install, "+
 					"a non-administrator's rollback cannot remove the product registration (CA-01); "+
 					"schedule it before RegisterProduct",
 					custom.ID, position, register)

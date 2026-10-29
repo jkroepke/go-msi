@@ -3,7 +3,9 @@ package main
 // CA-01: per-user rollback of a failing deferred action.
 
 import (
+	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -41,9 +43,17 @@ func currentSID() string {
 	return strings.TrimSpace(string(out))
 }
 
+var (
+	rollback1403 = regexp.MustCompile(`Info 1403\.[^\r\n]*`)
+	denied1402   = regexp.MustCompile(`Note: 1: 1402 2: [^\r\n]* 3: 5`)
+)
+
 // elevated reports whether the process token has the high mandatory level.
 func elevated() bool {
-	out, _ := exec.Command("whoami.exe", "/groups").Output()
+	out, err := exec.Command("whoami.exe", "/groups").Output()
+	if err != nil {
+		fmt.Println("whoami /groups:", err)
+	}
 	return strings.Contains(string(out), "S-1-16-12288")
 }
 
@@ -58,6 +68,7 @@ func caseCA01() {
 		{"fail-after-installfiles", "4001", false, false},
 		// The shape of WiX issue 8574: ALLUSERS=2 with MSIINSTALLPERUSER=1.
 		{"dual-fail-after-publishproduct", "6450", true, false},
+		{"dual-fail-after-registerproduct", "6150", true, false},
 		{"dual-fail-after-installfiles", "4001", true, false},
 		// msi-builder's perUser scope: no ALLUSERS, INSTALLDIR under
 		// LocalAppDataFolder, so a non-administrator can run it.
@@ -93,10 +104,11 @@ func caseCA01() {
 		ud := `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\` + sid + `\Products\` + sq
 		state := productState(p.ProductCode)
 		c.logf("install exit %d; MsiQueryProductState %d", r.Exit, state)
-		for _, h := range r.Hits {
-			if strings.Contains(h, "1402") || strings.Contains(h, "1403") {
-				c.logf("  rollback log: %s", h)
-			}
+		// logPatterns leaves out 1402 and 1403, so count them in the log itself.
+		infos := rollback1403.FindAllString(r.Log, -1)
+		c.logf("rollback: %d x Info 1403, %d x Note 1402 with access denied", len(infos), len(denied1402.FindAllString(r.Log, -1)))
+		for _, h := range infos[:min(len(infos), 3)] {
+			c.logf("  %s", h)
 		}
 		pub := regQuery(hku)
 		c.logf("%s present=%v", hku, !strings.Contains(pub, "ERROR"))

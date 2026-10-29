@@ -67,12 +67,15 @@ Contradicted claims:
    writes a 4096-byte-sector v4 file even for a 20 KB database; section 2 only
    knew large native packages to be v4. v3 and v4 repacks of the same streams
    behave identically.
-7. **Per-user rollback depends on who installs (CA-01).** A deferred action
-   that fails after `RegisterProduct` rolls back completely in an install by
-   an elevated administrator. In a non-administrator's install, the rollback
-   cannot remove the registration (66 × `Info 1403`, access denied), so the
-   product stays registered and a reinstall fails: WiX issue 8574 reproduces
-   with a package msi-builder's harness built. Windows Server also refuses
+7. **Per-user rollback: confirmed only for non-administrators (CA-01).** A
+   deferred action that fails after `PublishProduct` rolls back completely in
+   an install by an elevated administrator. In a non-administrator's install,
+   the rollback of every failure after `RegisterProduct` cannot remove the
+   registration (`Info 1403`, access denied): after `PublishProduct` the
+   product stays installed (state 5) and a reinstall fails with 1603; between
+   `RegisterProduct` and `PublishProduct` an HKLM entry stays (state 2) that
+   `msiexec /x` cannot remove (1605). WiX issue 8574 reproduces with a
+   package the harness built. Windows Server also refuses
    non-administrator installs by default (`DisableMsi` 1, 1625); see
    [Per-user rollback](#per-user-rollback-ca-01).
 8. **SystemIdentifier (SUM-07).** The native writer stores `0x0002000A`, not
@@ -224,7 +227,7 @@ Silent-failure cases a producer has to guard against itself:
 | SVC-01 | Confirmed | [failure-actions table](msitest/results/SVC-01/failureactions-table-restart/log.md) 1939; [sc.exe recipe](msitest/results/SVC-01/sc-failure-recipe/log.md) works; without event 128 the service stays |
 | SVC-03 | Confirmed | [per-step](msitest/results/SVC-03/per-step/log.md); per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
 | SVC-04 | Confirmed | SERVER2025, 2026-10-29, windows_exporter with `EXTRA_FLAGS=--no-such-flag`: split rows (start `Wait=0`), from msi-builder and from the WiX-built package, install with exit 0 in 1–2 s and leave the service stopped; one row with `Wait=1` fails with 1920 after about 247 s of start retries and rolls back; [details](#service-start-without-waiting-svc-04) |
-| CA-01 | Confirmed (non-administrator) | Elevated administrator: every variant rolls back completely; non-administrator: a failure after `PublishProduct` leaves the registration (state 5, reinstall 1603, `msiexec /x` cleans up), a failure after `RegisterProduct` leaves an HKLM entry the user cannot remove (state 2, 1605), a failure after `InstallFiles` is clean; [details](#per-user-rollback-ca-01) |
+| CA-01 | Confirmed (non-administrator) | Elevated administrator: the three variants run (after `PublishProduct`, `dual-*` after `PublishProduct`, after `InstallFiles`) roll back completely; non-administrator: a failure after `PublishProduct` leaves the registration (state 5, reinstall 1603, `msiexec /x` cleans up), a failure after `RegisterProduct` leaves an HKLM entry the user cannot remove (state 2, 1605), a failure after `InstallFiles` is clean; [details](#per-user-rollback-ca-01) |
 | CA-02 | Confirmed | EXE exit 1 fails unless Continue; [type-6 return 5](msitest/results/CA-02/vbs-binary-return-5-immediate/log.md) ends with 0 and skips the rest; [deferred](msitest/results/CA-02/vbs-binary-return-5-deferred/log.md) leaves files unregistered |
 | CA-03 | Confirmed | GitHub `windows-latest` (x64) and `windows-11-arm` runners, 2026-10-28, `TestMsiexecRunActions`: every stdout and stderr line of the seven run actions is in the verbose log as `GoMsiRun:`, `whoami` shows LocalSystem versus the user, brackets stay literal, OEM and UTF-8 output decode, exit 3 with `Continue` returns 1, exit 7 fails with 1603 and runs the rollback action with the hidden command absent; Arm64 package native and x64 package under emulation on Arm; repeated on SERVER2025 with the same result; [details](#embedded-custom-action-dll-ca-03) |
 | CA-04 | Confirmed | GitHub `windows-latest` runner, 2026-10-28, CI run 40787803798: netsh rejects `any` or `*` combined with other `remoteip=` entries (exit 1), accepts `ANY` and `*` alone and accepts `localsubnet,10.0.0.1`; quotes inside a quoted description are dropped; [details](#firewall-arguments-ca-04) |
@@ -590,7 +593,9 @@ service has recovery set to restart after 60 s, three times.
 ## Per-user rollback (CA-01)
 
 Run on 2026-10-29 on SERVER2025 (Windows Server 2025 10.0.26100, a domain
-controller) with the msitest harness at `03cd393`. The case builds a one-file
+controller) with the msitest harness at `c32c60f`; later commits added the
+1402/1403 counts to log.md, the fixed RESULT line and a
+`dual-fail-after-registerproduct` variant, which have not run yet. The case builds a one-file
 x64 package with an impersonated deferred EXE action (`cmd.exe /c exit 1`,
 type 1058) at the given sequence number and installs it with `/qn`.
 Variants: `ALLUSERS` unset with `INSTALLDIR` under Program Files (the old
@@ -600,7 +605,11 @@ under `LocalAppDataFolder` (the shape of msi-builder's `perUser` scope).
 `dual-*`, `lad-*` and every non-administrator run use Word Count 10
 (no elevation needed). The administrator was the built-in Administrator,
 elevated; the non-administrator was a domain user in Domain Users only, run
-through an interactive logon at medium integrity.
+through an interactive logon at medium integrity. The harness names the
+non-administrator folders `<variant>-nonadmin`; they were renamed to
+`<variant>-nonadmin-interactive` when they were copied into `results/`.
+The 1402 and 1403 counts below come from the verbose `install.log` files,
+which `.gitignore` keeps out of the repository.
 
 | Variant | Failure after | Administrator | Non-administrator |
 | --- | --- | --- | --- |
@@ -641,9 +650,9 @@ through an interactive logon at medium integrity.
   An administrator removed them with `reg delete`.
 - Failure after `InstallFiles`: no 1403 lines and no access-denied 1402
   notes, for both the `dual-*` and the `lad-*` variant.
-- The `fail-after-registerproduct` log.md says "registration left … =false":
-  the harness counted only the HKU key then. It now also counts `UserData`
-  and the product state.
+- The `lad-fail-after-registerproduct-nonadmin-interactive` log.md says
+  "registration left … =false": the harness counted only the HKU key then.
+  It now also counts `UserData` and the product state.
 - Not tested: a non-administrator on a client edition of Windows, a cancel
   instead of a failing action, and Windows Server 2016. WinRM as the
   non-administrator failed on this domain controller ("The WSMan service
