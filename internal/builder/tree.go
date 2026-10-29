@@ -704,6 +704,7 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 		b.writeRegistry(info)
 		b.writeEnvironment(info)
 		b.writeServices(info)
+		b.controlServices(info)
 		b.purgeAction(info)
 	}
 
@@ -892,14 +893,16 @@ func (b *build) features() error {
 	return nil
 }
 
-// featureComponents lists a configured component with the component the
-// builder split off it (the shortcut carrier), which belongs to the same
-// feature.
+// featureComponents lists a configured component with the components the
+// builder split off it (shortcut and service start carriers),
+// which belong to the same feature.
 func (b *build) featureComponents(compID string) []string {
 	ids := []string{compID}
 
-	if carrier, ok := b.shortcutCarrier[compID]; ok && carrier != compID {
-		ids = append(ids, carrier)
+	for _, carrier := range b.carriers[compID] {
+		if carrier != compID {
+			ids = append(ids, carrier)
+		}
 	}
 
 	return ids

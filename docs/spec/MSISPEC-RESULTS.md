@@ -82,6 +82,12 @@ Contradicted claims:
 8. **SystemIdentifier (SUM-07).** The native writer stores `0x0002000A`, not
    `0x00020006`, and the engine ignores the field: 0, 5, 6 and `0xFFFFFFFF`
    all install.
+9. **An existing service is reconfigured, not left alone (SVC-06).** With a
+   service of the same name already registered, InstallServices gave it the
+   package's binary path and display name and kept a description the package
+   did not write. Section 8 reported that such a service is left alone. A
+   `ServiceControl` delete at install (event 8) removes it first, so nothing
+   of it carries over.
 
 Settled unverified items and new facts:
 
@@ -241,6 +247,9 @@ Silent-failure cases a producer has to guard against itself:
 | SVC-03 | Confirmed | [per-step](msitest/results/SVC-03/per-step/log.md); per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
 | SVC-04 | Confirmed | SERVER2025, 2026-10-29, windows_exporter with `EXTRA_FLAGS=--no-such-flag`: split rows (start `Wait=0`), from msi-builder and from the WiX-built package, install with exit 0 in 1–2 s and leave the service stopped; one row with `Wait=1` fails with 1920 after about 247 s of start retries and rolls back; [details](#service-start-without-waiting-svc-04) |
 | SVC-05 | Confirmed | [ci](msitest/results/SVC-05/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40885964831: a start event on a disabled service fails the install with 1920 and 1603 after about 30 seconds; without it the service installs stopped; the start type was not logged |
+| SVC-06 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40909069974 (`TestMsiexecDeletesServiceOnInstall`, asserted by the test, no log kept): with a service of the same name registered by `sc create` (other binary, display name and a description), the install without event 8 exits 0 and leaves the service with the package's binary path and display name but the old description; with event 8 the old registration is deleted first, the description is gone and the service runs; a `/fa` repair leaves it running; uninstall removes it. Contradicts the reported "an existing service is left alone" |
+| SVC-07 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40909069974 (`TestMsiexecControlsForeignServices`, asserted by the test): rows of a component that installs no service stop and delete a running service (event 170), start a stopped one at install and stop it at uninstall (event 33); event 170 on a service that does not exist fails neither the install nor the uninstall; ICE clean |
+| SVC-08 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40909069974 (`TestMsiexecStartsServiceOnCondition`, asserted by the test): a start row in a generated component with the condition `START_AFTER_INSTALL="1"` leaves the service stopped without the property and starts it with `START_AFTER_INSTALL=1`; uninstall removes it; ICE clean |
 | CA-01 | Confirmed (non-administrator) | Elevated administrator: the three variants run (after `PublishProduct`, `dual-*` after `PublishProduct`, after `InstallFiles`) roll back completely; non-administrator: a failure after `PublishProduct` leaves the registration (state 5, reinstall 1603, `msiexec /x` cleans up), a failure after `RegisterProduct` leaves an HKLM entry the user cannot remove (state 2, 1605), a failure after `InstallFiles` is clean; [details](#per-user-rollback-ca-01) |
 | CA-02 | Confirmed | EXE exit 1 fails unless Continue; [type-6 return 5](msitest/results/CA-02/vbs-binary-return-5-immediate/log.md) ends with 0 and skips the rest; [deferred](msitest/results/CA-02/vbs-binary-return-5-deferred/log.md) leaves files unregistered |
 | CA-03 | Confirmed | GitHub `windows-latest` (x64) and `windows-11-arm` runners, 2026-10-28, `TestMsiexecRunActions`: every stdout and stderr line of the seven run actions is in the verbose log as `GoMsiRun:`, `whoami` shows LocalSystem versus the user, brackets stay literal, OEM and UTF-8 output decode, exit 3 with `Continue` returns 1, exit 7 fails with 1603 and runs the rollback action with the hidden command absent; Arm64 package native and x64 package under emulation on Arm; repeated on SERVER2025 with the same result; [details](#embedded-custom-action-dll-ca-03) |

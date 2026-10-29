@@ -215,10 +215,13 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	RemoveRegistry []*RemoveRegistry `yaml:"removeRegistry"`
 	// RemoveFiles deletes files or empty folders when the component is
 	// installed or removed (RemoveFile rows).
-	RemoveFiles []*RemoveFile  `yaml:"removeFiles"`
-	Services    []*Service     `yaml:"services"`
-	EventLog    []*EventSource `yaml:"eventLog"`
-	Environment []*Environment `yaml:"environment"`
+	RemoveFiles []*RemoveFile `yaml:"removeFiles"`
+	Services    []*Service    `yaml:"services"`
+	// ServiceControl stops, starts or deletes services that the package
+	// does not install, when the component is installed or removed.
+	ServiceControl []*ControlledService `yaml:"serviceControl"`
+	EventLog       []*EventSource       `yaml:"eventLog"`
+	Environment    []*Environment       `yaml:"environment"`
 	// Purge deletes the component's directory with everything in it when
 	// the product is uninstalled, but not on a major upgrade (FILE-03).
 	Purge          *Purge `yaml:"purge"`
@@ -487,11 +490,19 @@ func (a Arguments) String() string {
 }
 
 // ServiceControl selects the ServiceControl events.
-type ServiceControl struct {
-	StartOnInstall    *bool `yaml:"startOnInstall"`
-	StopOnInstall     *bool `yaml:"stopOnInstall"`
+type ServiceControl struct { //nolint:govet // field order is the YAML key order
+	StartOnInstall *bool `yaml:"startOnInstall"`
+	StopOnInstall  *bool `yaml:"stopOnInstall"`
+	// DeleteOnInstall deletes a service of the same name that is already
+	// registered before InstallServices creates this one (SVC-06). Nil means
+	// false: it stays unset after defaults so the derived product code of
+	// configurations that do not use it does not change.
+	DeleteOnInstall   *bool `yaml:"deleteOnInstall"`
 	StopOnUninstall   *bool `yaml:"stopOnUninstall"`
 	DeleteOnUninstall *bool `yaml:"deleteOnUninstall"`
+	// StartCondition starts the service at install only when the condition
+	// is true at install time (SVC-08).
+	StartCondition string `yaml:"startCondition"`
 	// Wait waits for the stop and delete events to complete.
 	Wait *bool `yaml:"wait"`
 	// WaitForStart waits for the start to complete, so a service that does
@@ -499,6 +510,27 @@ type ServiceControl struct {
 	// unset after defaults so the derived product code of configurations
 	// that do not use it does not change.
 	WaitForStart *bool `yaml:"waitForStart"`
+}
+
+// ControlledService is a service that the package does not install, stopped,
+// started or deleted when its component is installed or removed (SVC-07).
+// Each event is off unless set.
+type ControlledService struct { //nolint:govet // field order is the YAML key order
+	Name              string `yaml:"name"`
+	StopOnInstall     bool   `yaml:"stopOnInstall,omitempty"`
+	StartOnInstall    bool   `yaml:"startOnInstall,omitempty"`
+	DeleteOnInstall   bool   `yaml:"deleteOnInstall,omitempty"`
+	StopOnUninstall   bool   `yaml:"stopOnUninstall,omitempty"`
+	StartOnUninstall  bool   `yaml:"startOnUninstall,omitempty"`
+	DeleteOnUninstall bool   `yaml:"deleteOnUninstall,omitempty"`
+	// Wait waits for each event to complete; nil means true.
+	Wait *bool `yaml:"wait"`
+}
+
+// anyEvent reports whether the entry selects at least one event.
+func (c *ControlledService) anyEvent() bool {
+	return c.StopOnInstall || c.StartOnInstall || c.DeleteOnInstall ||
+		c.StopOnUninstall || c.StartOnUninstall || c.DeleteOnUninstall
 }
 
 // ServiceRecovery is applied with sc.exe after InstallServices.
