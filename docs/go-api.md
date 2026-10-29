@@ -91,6 +91,6 @@ is marked as allowed (FILE-01).
 YAML files harvest a folder with a `harvest` entry, which uses the same
 rules and IDs (see the
 [YAML schema](design/yaml-schema.md#harvesting-a-folder-harvest)). A
-`Config` built in Go can carry `Harvest` entries too: `builder.Build`
+`Config` that Go code builds can carry `Harvest` entries too: `builder.Build`
 expands them before it validates, and `Config.HarvestFiles` does so on its
 own, for example to adjust the new components first.
