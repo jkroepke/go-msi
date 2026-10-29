@@ -249,3 +249,24 @@ func TestProfileKeyPathLateRemoval(t *testing.T) {
 		}
 	}
 }
+
+// A file type writes HKCR values outside a per-user package, so its
+// component keeps the key file there.
+func TestProfileKeyPathFileTypes(t *testing.T) {
+	t.Parallel()
+
+	for scope, kept := range map[string]bool{"perMachine": true, "perUserOrMachine": true, "perUser": false} {
+		res := mustBuild(t, scopedShortcutConfig(t, scope, `
+  - id: Doc
+    directory: AppDataFolder/Acme
+    files: [{ source: app.exe, fileTypes: [{ progId: Acme.Doc, extensions: [{ extension: acmedoc }] }] }]
+`))
+
+		comp := rowWhere(t, res.Database, "Component", func(r []any) bool { return r[0] == "Doc" })
+		warned := strings.Contains(fmt.Sprint(res.Diagnostics), "ICE57")
+
+		if (comp[5] == "app.exe") != kept || warned != kept {
+			t.Errorf("%s: key path %v, warning %v, want kept = %v: %s", scope, comp[5], warned, kept, res.Diagnostics)
+		}
+	}
+}

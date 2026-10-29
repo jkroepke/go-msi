@@ -2361,9 +2361,16 @@ func lateRemoval(cfg *Config) bool {
 // a per-machine root: HKLM (also for event log sources) and HKU, and HKMU
 // and HKCR unless the package only installs per user.
 func machineRegistry(cfg *Config, comp *Component) bool {
-	// Event log sources are HKLM values of the component too.
+	// Event log sources are HKLM values of the component too, and file
+	// types HKCR values outside a per-user package.
 	if len(comp.EventLog) > 0 {
 		return true
+	}
+
+	for _, file := range comp.Files {
+		if len(file.FileTypes) > 0 && cfg.Package.Scope != ScopePerUser {
+			return true
+		}
 	}
 
 	for _, reg := range comp.Registry {

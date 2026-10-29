@@ -70,9 +70,16 @@ func (b *build) keepsKeyPath(comp *config.Component) bool {
 // per-machine root: HKLM (also for event log sources) and HKU, and HKMU
 // and HKCR unless the package only installs per user.
 func (b *build) machineRegistry(comp *config.Component) bool {
-	// Event log sources are HKLM values of the component too.
+	// Event log sources are HKLM values of the component too, and file
+	// types HKCR values outside a per-user package (filetypes.go).
 	if len(comp.EventLog) > 0 {
 		return true
+	}
+
+	for _, file := range comp.Files {
+		if len(file.FileTypes) > 0 && b.cfg.Package.Scope != config.ScopePerUser {
+			return true
+		}
 	}
 
 	for _, reg := range comp.Registry {
