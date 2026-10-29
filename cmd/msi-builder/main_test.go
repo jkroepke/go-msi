@@ -520,7 +520,8 @@ func TestDefaultFileName(t *testing.T) {
 		"Hello-1.0.0":          "Hello-1.0.0",
 		"Client/Server-1.0.0":  "Client_Server-1.0.0",
 		`a<b>c:d"e\f|g?h*-1.0`: "a_b_c_d_e_f_g_h_-1.0",
-		"..":                   "package",
+		"..-1.0.0":             "1.0.0",
+		"-":                    "package",
 		". .hidden-1.0":        "hidden-1.0",
 		"tab\there-1.0":        "tab_here-1.0",
 	} {

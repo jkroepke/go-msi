@@ -77,6 +77,10 @@ components:
 				t.Errorf("no diagnostic for the malformed version resource: %s", diags)
 			}
 
+			if strings.Count(diags, "version resource cannot be read") != 1 || strings.Contains(diags, "without a version resource") {
+				t.Errorf("want exactly one diagnostic about the version resource: %s", diags)
+			}
+
 			if (err != nil) != tc.fails {
 				t.Errorf("Build error %v, want failure %v\n%s", err, tc.fails, diags)
 			}

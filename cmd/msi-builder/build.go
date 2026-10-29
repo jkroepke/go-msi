@@ -239,8 +239,8 @@ func (f *buildFlags) output(cfg *config.Config) string {
 // defaultFileName turns a product name into a file name in the YAML file's
 // folder: a display name may hold path separators or characters Windows
 // does not allow in a file name, and must neither pick another folder nor
-// fail the build. Leading dots and spaces go too, so that the name is never
-// "." or "..", nor hidden.
+// fail the build. Leading dots, spaces and dashes go too, so that the name
+// is never "." or "..", nor hidden, nor read as a flag.
 func defaultFileName(name string) string {
 	safe := strings.Map(func(r rune) rune {
 		if r < 0x20 || strings.ContainsRune(`<>:"/\|?*`, r) {
@@ -250,7 +250,7 @@ func defaultFileName(name string) string {
 		return r
 	}, name)
 
-	safe = strings.TrimLeft(safe, ". ")
+	safe = strings.TrimLeft(safe, ". -")
 	if safe == "" {
 		return "package"
 	}

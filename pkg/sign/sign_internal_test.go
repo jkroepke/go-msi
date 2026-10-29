@@ -379,47 +379,47 @@ func TestVerifyDetectsTampering(t *testing.T) {
 func TestVerifyChecksSignatureAlgorithm(t *testing.T) {
 	t.Parallel()
 
-	keys := rsaKey(t)
+	signedBy := func(keys testKey) []byte {
+		signed, err := Sign(context.Background(), vectorPackage(t), Options{Signer: keys.signer, Certificates: keys.certs})
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	signed, err := Sign(context.Background(), vectorPackage(t), Options{Signer: keys.signer, Certificates: keys.certs})
-	if err != nil {
-		t.Fatal(err)
+		return signed
 	}
 
-	// The SignerInfo's AlgorithmIdentifier is followed by the OCTET STRING
-	// of the signature; the certificate's by a BIT STRING.
-	signerAlgo := append(sequence(mustMarshal(oidRSAEncryption), mustMarshal(asn1Null)), asn1.TagOctetString)
+	rsaSigned, ecSigned := signedBy(rsaKey(t)), signedBy(ecKey(t))
+	p256 := asn1.ObjectIdentifier{1, 2, 840, 10045, 3, 1, 7}
 
 	for _, tc := range []struct {
-		name string
-		algo []byte
-		want string
+		name   string
+		signed []byte
+		algo   []byte
+		want   string
 	}{
-		{"unknown", sequence(mustMarshal(asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 127}), mustMarshal(asn1Null)), "does not match"},
-		{"other digest", sequence(mustMarshal(oidSHA512WithRSA), mustMarshal(asn1Null)), "does not match"},
-		{"ECDSA", sequence(mustMarshal(oidECDSASHA256)), "does not match"},
-		{"parameters", sequence(mustMarshal(oidRSAEncryption), mustMarshal(true)), "has parameters"},
-		{"sha256WithRSAEncryption", sequence(mustMarshal(oidSHA256WithRSA), mustMarshal(asn1Null)), ""},
-		{"absent parameters", sequence(mustMarshal(oidRSAEncryption)), ""},
+		{"unknown", rsaSigned, sequence(mustMarshal(asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 127}), mustMarshal(asn1Null)), "does not match"},
+		{"other digest", rsaSigned, sequence(mustMarshal(oidSHA512WithRSA), mustMarshal(asn1Null)), "does not match"},
+		{"ECDSA on RSA", rsaSigned, sequence(mustMarshal(oidECDSASHA256)), "does not match"},
+		{"parameters", rsaSigned, sequence(mustMarshal(oidRSAEncryption), mustMarshal(true)), "has parameters"},
+		{"sha256WithRSAEncryption", rsaSigned, sequence(mustMarshal(oidSHA256WithRSA), mustMarshal(asn1Null)), ""},
+		{"absent parameters", rsaSigned, sequence(mustMarshal(oidRSAEncryption)), ""},
+		{"ecdsa-with-SHA256", ecSigned, sequence(mustMarshal(oidECDSASHA256)), ""},
+		{"id-ecPublicKey", ecSigned, sequence(mustMarshal(oidECPublicKey)), ""},
+		{"id-ecPublicKey with curve", ecSigned, sequence(mustMarshal(oidECPublicKey), mustMarshal(p256)), ""},
+		{"ECDSA other digest", ecSigned, sequence(mustMarshal(oidECDSASHA384)), "does not match"},
+		{"RSA on ECDSA", ecSigned, sequence(mustMarshal(oidRSAEncryption), mustMarshal(asn1Null)), "does not match"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			streams := cloneStreams(readFile(t, signed).Streams())
+			streams := cloneStreams(readFile(t, tc.signed).Streams())
 
 			for i := range streams {
-				if streams[i].Name != StreamSignature {
-					continue
+				if streams[i].Name == StreamSignature {
+					// Replacing a field of another length breaks the outer
+					// lengths; re-encode the SignedData instead.
+					streams[i].Data = replaceSignerAlgorithm(t, streams[i].Data, tc.algo)
 				}
-
-				der := streams[i].Data
-				if bytes.Count(der, signerAlgo) != 1 {
-					t.Fatal("cannot find the signer's algorithm")
-				}
-
-				// Replacing a field of another length breaks the outer
-				// lengths; re-encode the SignedData instead.
-				streams[i].Data = replaceSignerAlgorithm(t, der, tc.algo)
 			}
 
 			out, err := cfb.Write(streams, cfb.Options{Version: 3, CLSID: cfb.CLSIDMSI})

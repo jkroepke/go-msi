@@ -236,6 +236,9 @@ func Marshal(props []Property, codePage int) ([]byte, error) { //nolint:cyclop,g
 	return out, nil
 }
 
+// entry is one property's ID and value offset in the section.
+type entry struct{ pid, off int }
+
 // Unmarshal parses a summary stream. Strings are decoded with the PID 1 code
 // page.
 func Unmarshal(data []byte) ([]Property, error) { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
@@ -263,21 +266,12 @@ func Unmarshal(data []byte) ([]Property, error) { //nolint:cyclop,gocognit // on
 
 	section := data[sec : sec+size]
 
-	type ent struct{ pid, off int }
-
-	ents := make([]ent, count)
+	ents := make([]entry, count)
 	for i := range ents {
-		ents[i] = ent{int(order.Uint32(section[8+8*i:])), int(order.Uint32(section[12+8*i:]))}
+		ents[i] = entry{int(order.Uint32(section[8+8*i:])), int(order.Uint32(section[12+8*i:]))}
 	}
 
-	pids := make([]int, count)
-	offs := make([]int, count)
-
-	for i, e := range ents {
-		pids[i], offs[i] = e.pid, e.off
-	}
-
-	if err := checkEntries(section, pids, offs); err != nil {
+	if err := checkEntries(section, ents); err != nil {
 		return nil, err
 	}
 
@@ -346,31 +340,31 @@ func Unmarshal(data []byte) ([]Property, error) { //nolint:cyclop,gocognit // on
 // checkEntries rejects a property list that names a PID twice or whose
 // values overlap each other or the list itself. Values are decoded one by
 // one, so a list of aliases would multiply one large string in memory.
-func checkEntries(section []byte, pids, offs []int) error {
-	seen := make(map[int]bool, len(pids))
+func checkEntries(section []byte, ents []entry) error {
+	seen := make(map[int]bool, len(ents))
 
 	type extent struct{ pid, start, end int }
 
-	extents := make([]extent, 0, len(pids))
+	extents := make([]extent, 0, len(ents))
 
-	for i, pid := range pids {
-		if seen[pid] {
-			return fmt.Errorf("summary: PID %d appears twice", pid)
+	for _, ent := range ents {
+		if seen[ent.pid] {
+			return fmt.Errorf("summary: PID %d appears twice", ent.pid)
 		}
 
-		seen[pid] = true
+		seen[ent.pid] = true
 
-		end, err := valueEnd(section, offs[i])
+		end, err := valueEnd(section, ent.off)
 		if err != nil {
-			return fmt.Errorf("summary: PID %d %w", pid, err)
+			return fmt.Errorf("summary: PID %d %w", ent.pid, err)
 		}
 
-		extents = append(extents, extent{pid, offs[i], end})
+		extents = append(extents, extent{ent.pid, ent.off, end})
 	}
 
 	slices.SortFunc(extents, func(a, b extent) int { return a.start - b.start })
 
-	prevEnd := 8 + 8*len(pids)
+	prevEnd := 8 + 8*len(ents)
 
 	for _, ext := range extents {
 		if ext.start < prevEnd {
