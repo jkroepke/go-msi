@@ -1020,8 +1020,9 @@ when it starts: `BuilderGrantSchedule` evaluates the conditions and formats
 accounts and objects, the deferred `BuilderGrantExec` grants without
 impersonation (as LocalSystem in a per-machine install) and records the rights it added, `BuilderGrantRollback` takes exactly those
 away again, so rights an object had before a failed install or repair stay,
-and `BuilderGrantCommit` drops the record. A repair grants again and finds
-the rights there. Uninstalling does not take them away: the objects the
+and `BuilderGrantCommit` drops the record and remembers the accounts that
+came from properties. A repair grants again; an object that kept its ACE is
+left as it is (whether a replaced file keeps it is not recorded, SEC-02). Uninstalling does not take them away: the objects the
 package created are removed, and a folder that existed before keeps the
 ACE.
 

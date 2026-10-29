@@ -301,7 +301,8 @@ func TestMsiexecGrants(t *testing.T) {
 	}
 
 	// A repair without the property, as from Apps & Features, replaces the
-	// file (a fresh DACL) and grants to the remembered account again.
+	// file, which may come with a fresh DACL (logged below), and grants to
+	// the remembered account again.
 	msiexecQuiet(t, filepath.Join(dir, "repair.log"), "/fa", path)
 
 	if log := readLog(filepath.Join(dir, "repair.log")); !strings.Contains(log, "granting to the remembered account") || !strings.Contains(log, `MsiBuilderGrant\data: already granted`) {

@@ -157,8 +157,8 @@ func (b *build) grantSchedule(anchor string) {
 	}
 
 	// The schedule action runs on removal too, where it only hands the
-	// exec action the forgetting of the remembered accounts; each deferred
-	// action runs when it has data.
+	// commit action the forgetting of the remembered accounts, so a failed
+	// removal keeps them; each deferred action runs when it has data.
 	for _, action := range actions {
 		b.addAction(action)
 

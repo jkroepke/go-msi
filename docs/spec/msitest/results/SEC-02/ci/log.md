@@ -30,4 +30,44 @@ install. The test now asserts this.
 
 ## Grants
 
-Pending: the CI run of the grant tests on the final head.
+CI run 40974613442, commit 39126ee (`TestMsiexecGrants`, which asserts
+what follows). The package grants `readExecute` on `app.exe` and `modify`
+on the `data` folder and on a `locked` folder (which also has
+`sddl: D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)`) to `[SVC_ACCOUNT]`, `full` to
+`NT AUTHORITY\LocalService` and `readExecute` to `S-1-5-32-546` (Guests,
+which already has `(A;OICI;FR;;;BG)`) on the `existing` folder, and `start`
+and `stop` on the service to `BU`. `SVC_ACCOUNT=BUILTIN\Guests`.
+
+| Object | SDDL after install |
+| --- | --- |
+| `existing` folder, before | `D:AI(A;OICI;FR;;;BG)(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;ID;FA;;;LA)(A;OICIIOID;GA;;;CO)(A;OICIID;0x1200a9;;;BU)(A;CIID;DCLCRPCR;;;BU)` |
+| `existing` folder | `D:AI(A;OICI;FA;;;LS)(A;OICI;0x1200a9;;;BG)(A;OICIID;FA;;;SY)…` (all inherited ACEs kept; the Guests ACE merged from FR to 0x1200a9) |
+| `existing\keep.txt` (made by the test before) | `D:AI(A;ID;0x1200a9;;;BG)(A;ID;FA;;;LS)(A;ID;FA;;;SY)(A;ID;FA;;;BA)(A;ID;FA;;;LA)(A;ID;0x1200a9;;;BU)` |
+| `app.exe` | `D:AI(A;;0x1200a9;;;BG)(A;ID;FA;;;SY)(A;ID;FA;;;BA)(A;ID;0x1200a9;;;BU)(A;ID;0x1200a9;;;AC)(A;ID;0x1200a9;;;S-1-15-2-2)` |
+| `data` folder | `D:AI(A;OICI;0x1301bf;;;BG)(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)…` |
+| `locked` folder | `D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1301bf;;;BG)` |
+| service | `D:…(A;;CCLCSWLOCRRC;;;SU)(A;;RPWP;;;BU)S:…` |
+
+- An install with `FAILNOW=1` (a deferred action that fails after the
+  grants) returned 1603, logged `BuilderGrant: granted` and `revoked`, and
+  left the `existing` folder with its ACEs from before; no rollback record
+  and no remembered account were left.
+- An install without `SVC_ACCOUNT` returned 1603 with `no account to grant
+  rights to`.
+- After the install, `HKLM\SOFTWARE\msi-builder\GrantAccounts\<ProductCode>`
+  held `BUILTIN\Guests` under `[SVC_ACCOUNT]`.
+- `msiexec /fa` without the property logged `granting to the remembered
+  account` and `already granted` for the `data` folder, and every DACL had
+  the ACEs of the install afterwards. The log showed no `BuilderGrant` line
+  of the deferred action for `app.exe`, so whether the replaced file kept
+  its ACE or was granted again is not recorded; its DACL matched either way.
+- In run 40968697181 (commit 8db502a), `msiexec /fa <package>
+  SVC_ACCOUNT=BUILTIN\Guests FAILNOW=1` set neither property: the log's
+  property dump had no `FAILNOW`, `FailNow` was skipped (condition false)
+  and the grants with `[SVC_ACCOUNT]` were skipped as empty. The failing
+  repair therefore uses `/i <package> REINSTALL=ALL REINSTALLMODE=amus`,
+  which returned 1603 and left every DACL (the file, all three folders, the
+  file in the existing folder) and the service with the ACEs of the install;
+  the AI flag can drop (`D:PAI(` became `D:P(` on the `locked` folder).
+- Uninstalling left the `existing` folder with its granted ACEs and removed
+  the remembered account.
