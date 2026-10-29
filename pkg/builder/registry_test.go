@@ -198,17 +198,23 @@ components:
 		t.Errorf("ProductCode %v with empty keys, %v without", explicit, plain)
 	}
 
-	// An explicit value, false included, is not the same as a missing key.
-	for _, extra := range []string{
-		"    createFolder: true\n",
-	} {
-		if changed := productCode(src + extra); changed == plain {
-			t.Errorf("ProductCode %v did not change with %q", changed, extra)
-		}
-	}
+	// An explicit value, false and a mapping that pruning empties included,
+	// is not the same as a missing key.
+	const (
+		data = "  - directory: dataDir\n"
+		dirs = "directories:\n  - id: CommonAppDataFolder\n    children: [{ id: dataDir, name: Hello }]\n"
+	)
 
-	secure := productCode(src + "properties:\n  FOO: { value: x }\n")
-	if insecure := productCode(src + "properties:\n  FOO: { value: x, secure: false }\n"); insecure == secure {
-		t.Errorf("ProductCode %v is the same with and without secure: false", secure)
+	const launch = "ui: { wizard: minimal, launch: { file: hello.exe"
+
+	for _, pair := range []struct{ without, with string }{
+		{src, src + "    createFolder: true\n"},
+		{src + "properties:\n  FOO: { value: x }\n", src + "properties:\n  FOO: { value: x, secure: false }\n"},
+		{src + data + dirs, src + data + "    purge: true\n" + dirs},
+		{src + launch + " } }\n", src + launch + ", checked: false } }\n"},
+	} {
+		if without, with := productCode(pair.without), productCode(pair.with); without == with {
+			t.Errorf("ProductCode %v is the same for\n%s\nand\n%s", with, pair.without, pair.with)
+		}
 	}
 }

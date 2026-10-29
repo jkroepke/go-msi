@@ -95,7 +95,8 @@ func (b *build) identity() error {
 // something else than a missing key (secure: false, checked: false), and a
 // mapping that only becomes empty by pruning stays too (purge: true is
 // {condition: ""}). List items are kept, because their position is part of
-// the configuration.
+// the configuration. A new optional config field therefore needs a type
+// whose unset value is pruned, or yaml:",omitempty".
 func pruneEmpty(node *yaml.Node) bool {
 	switch node.Kind {
 	case yaml.DocumentNode:
