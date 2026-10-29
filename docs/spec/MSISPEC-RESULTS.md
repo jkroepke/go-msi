@@ -186,7 +186,7 @@ Silent-failure cases a producer has to guard against itself:
 | SUM-05 | Partial | [log](msitest/results/SUM-05/word-count/log.md); 0, 1, 2, 3, 4, 8, 10 install elevated; no standard-user session |
 | SUM-06 | Confirmed | [log](msitest/results/SUM-06/revision-and-times/log.md) |
 | SUM-07 | Confirmed | [log](msitest/results/SUM-07/summary-system-identifier/log.md); field ignored |
-| LANG-01 | Confirmed | [CI log](msitest/results/LANG-01/embedded-language-transform/log.md), [SERVER2025 log](msitest/results/LANG-01/embedded-language-transform/log-server2025.md); the user's default language ID (format, not display language) picks the transform; the first Template language is the database's own |
+| LANG-01 | Confirmed | [CI log](msitest/results/LANG-01/embedded-language-transform/log.md); the SERVER2025 run (de-DE format) is summarized in spec section 7.6, its log was not committed; the user's default language ID (format, not display language) picks the transform; the first Template language is the database's own |
 | LANG-03 | Confirmed | [CI log](msitest/results/LANG-03/builder-languages/log.md); the CI runner (en-US) installed the builder's package with `ProductLanguage=1036` and `1031` and registered each, and its full-UI run showed the German wizard from the built-in translation with the `de` entry's finish text |
 | LANG-02 | Confirmed | SERVER2025: msi.dll applies MarshalTransform's transform; embedded as storage 1031 it installs as "Minimal Beispiel Zurück" with Language 1031 |
 | CAB-01 | Confirmed | Uncompressed, makecab stored/MSZIP and spec-writer stored/MSZIP install byte-identical ([go-mszip](msitest/results/CAB-01/go-mszip/log.md)) |
