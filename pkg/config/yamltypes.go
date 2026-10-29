@@ -206,13 +206,22 @@ type Property struct { //nolint:govet // field order is the YAML key order
 	Hidden bool   `yaml:"hidden"`
 	// Search fills the property from the target machine before the
 	// install; a value from the command line wins, and Value is the
-	// fallback when the search finds nothing (SEARCH-04).
-	Search *Search `yaml:"search"`
+	// fallback when no search finds anything (SEARCH-04). The searches are
+	// tried in order and the first that finds something wins.
+	Search Searches `yaml:"search"`
 }
 
-// Search is where a property's value is looked up.
+// Searches are the searches of one property, in order. YAML takes one
+// search or a list.
+type Searches []*Search
+
+// Search is where a property's value is looked up: exactly one of its
+// fields is set.
 type Search struct {
-	Registry *RegistrySearch `yaml:"registry"`
+	Registry  *RegistrySearch  `yaml:"registry"`
+	Directory *DirectorySearch `yaml:"directory"`
+	File      *FileSearch      `yaml:"file"`
+	Component *ComponentSearch `yaml:"component"`
 }
 
 // RegistrySearch reads a registry value through a RegLocator row.
@@ -227,6 +236,59 @@ type RegistrySearch struct {
 	// Type is value (default), the data with the engine's type prefix, or
 	// directory, the folder the data names when that folder exists.
 	Type string `yaml:"type"`
+}
+
+// DirectorySearch finds a folder through a DrLocator row. The result ends
+// with a backslash.
+type DirectorySearch struct { //nolint:govet // field order is the YAML key order
+	// Path is a full path, or with Under a path relative to the folder
+	// that search finds. It may name properties in brackets.
+	Path string `yaml:"path"`
+	// Under is the search that finds the folder Path is relative to: a
+	// registry search of type directory, a directory or a component
+	// search.
+	Under *Search `yaml:"under"`
+	// Depth is how many levels of subfolders between the parent of Path
+	// and its last folder may lie: with 2, C:\a\b also finds C:\a\x\y\b.
+	Depth int `yaml:"depth,omitempty"`
+}
+
+// FileSearch finds a file through a Signature row and a DrLocator row. The
+// result is the file's full path.
+type FileSearch struct { //nolint:govet // field order is the YAML key order
+	// Name is the file name, without a folder.
+	Name string `yaml:"name"`
+	// Path is the folder to look in, as in DirectorySearch.Path.
+	Path string `yaml:"path"`
+	// Under is the search that finds the folder Path is relative to, as
+	// in DirectorySearch.Under.
+	Under *Search `yaml:"under"`
+	// Depth is how many levels of subfolders below the folder are
+	// searched as well; 0 searches the folder only.
+	Depth int `yaml:"depth,omitempty"`
+	// MinVersion and MaxVersion bound the file version (inclusive). The
+	// engine finds a file whose version equals MinVersion only when
+	// Languages lists its languages, so without Languages the builder
+	// writes MinVersion minus one (SEARCH-05).
+	MinVersion string `yaml:"minVersion"`
+	MaxVersion string `yaml:"maxVersion"`
+	// MinSize and MaxSize bound the size in bytes (inclusive).
+	MinSize *int64 `yaml:"minSize"`
+	MaxSize *int64 `yaml:"maxSize"`
+	// MinDate and MaxDate bound the modification date, as YYYY-MM-DD.
+	MinDate string `yaml:"minDate"`
+	MaxDate string `yaml:"maxDate"`
+	// Languages are the language IDs the file's version resource must
+	// list; the engine compares them only when the version equals
+	// MinVersion.
+	Languages []int `yaml:"languages"`
+}
+
+// ComponentSearch finds the folder of an installed component's key path
+// through a CompLocator row.
+type ComponentSearch struct {
+	// GUID is the component code, of this or of another product.
+	GUID string `yaml:"guid"`
 }
 
 // Registry search types.
@@ -407,4 +469,38 @@ func (a *Argument) UnmarshalYAML(unmarshal func(any) error) error {
 	}
 
 	return publicTypeNames(unmarshal((*rawArgument)(a)))
+}
+
+// UnmarshalYAML accepts one search or a list of them.
+func (s *Searches) UnmarshalYAML(unmarshal func(any) error) error {
+	var one Search
+
+	err := unmarshal(&one)
+	if err == nil {
+		*s = Searches{&one}
+
+		return nil
+	}
+
+	var list []*Search
+	if listErr := unmarshal(&list); listErr == nil {
+		*s = list
+
+		return nil
+	} else if strings.Contains(err.Error(), "!!seq") {
+		return listErr
+	}
+
+	return err
+}
+
+// MarshalYAML writes a single search as a mapping, so that the product code
+// derived from a configuration with one search does not change with the
+// list form.
+func (s Searches) MarshalYAML() (any, error) {
+	if len(s) == 1 {
+		return s[0], nil
+	}
+
+	return []*Search(s), nil
 }

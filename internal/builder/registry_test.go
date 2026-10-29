@@ -1,8 +1,10 @@
 package builder_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/jkroepke/msi-builder/internal/msidb"
@@ -174,6 +176,105 @@ properties:
 	}
 }
 
+// TestPropertyLocators checks the rows of directory, file and component
+// searches, of an under search, and the order of several searches into one
+// property.
+func TestPropertyLocators(t *testing.T) {
+	t.Parallel()
+
+	database := buildYAML(t, `schema: msi-builder/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+components:
+  - files: [{ source: hello.exe }]
+properties:
+  TOOL:
+    value: none
+    search:
+      - file:
+          name: tool.exe
+          under: { registry: { root: HKLM, key: 'SOFTWARE\Example', name: Home } }
+          path: bin
+          depth: 1
+          minVersion: 1.2
+          maxVersion: 2.0.0.0
+          minSize: 10
+          maxSize: 20
+          minDate: 2020-01-02
+          maxDate: 2043-12-31
+          languages: [0, 1033]
+      - directory: { path: '[ProgramFiles64Folder]Example' }
+      - component: { guid: 6a0d3c2e-5b1f-4e7a-9c3d-2f8e1b4a7c60 }
+`)
+
+	bySig := func(name string) func([]any) bool { return func(r []any) bool { return r[0] == name } }
+
+	signature := rows(t, database, "Signature")
+	if len(signature) != 1 {
+		t.Fatalf("Signature rows %v, want the file search only", signature)
+	}
+
+	// 2020-01-02 is ((40 × 512) + (1 × 32) + 2) << 16.
+	want := []any{"Search_TOOL", "tool.exe", "1.2", "2.0.0.0", 10, 20, (40*512 + 32 + 2) << 16, (63*512 + 12*32 + 31) << 16, "0,1033"}
+	if !slices.Equal(signature[0], want) {
+		t.Errorf("Signature row %v, want %v", signature[0], want)
+	}
+
+	for _, tc := range []struct {
+		table, sig string
+		want       []any
+	}{
+		{"DrLocator", "Search_TOOL", []any{"Search_TOOL", "In_Search_TOOL", "bin", 1}},
+		{"RegLocator", "In_Search_TOOL", []any{"In_Search_TOOL", 2, `SOFTWARE\Example`, "Home", 16}},
+		{"DrLocator", "Search2_TOOL", []any{"Search2_TOOL", nil, `[ProgramFiles64Folder]Example`, nil}},
+		{"CompLocator", "Search3_TOOL", []any{"Search3_TOOL", "{6A0D3C2E-5B1F-4E7A-9C3D-2F8E1B4A7C60}", 1}},
+	} {
+		var got []any
+
+		for _, r := range rows(t, database, tc.table) {
+			if bySig(tc.sig)(r) {
+				got = r
+			}
+		}
+
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("%s row %v, want %v", tc.table, got, tc.want)
+		}
+	}
+
+	for i, found := range []string{"TOOL_FOUND", "TOOL_FOUND2", "TOOL_FOUND3"} {
+		sig := "Search_TOOL"
+		if i > 0 {
+			sig = fmt.Sprintf("Search%d_TOOL", i+1)
+		}
+
+		if got := cell(t, database, "AppSearch", "Signature_", func(r []any) bool { return r[0] == found }); got != sig {
+			t.Errorf("AppSearch %s searches %v, want %s", found, got, sig)
+		}
+	}
+
+	// The first search that found something wins, then the default.
+	for _, seq := range []string{"InstallExecuteSequence", "InstallUISequence"} {
+		last, ok := cell(t, database, seq, "Sequence", bySig("AppSearch")).(int)
+		if !ok {
+			t.Fatalf("%s: no AppSearch", seq)
+		}
+
+		for _, action := range []string{"SearchApply_TOOL", "SearchApply2_TOOL", "SearchApply3_TOOL", "SearchDefault_TOOL"} {
+			at, ok := cell(t, database, seq, "Sequence", bySig(action)).(int)
+			if !ok || at <= last {
+				t.Errorf("%s: %s at %v, not after %d", seq, action, at, last)
+			}
+
+			last = at
+		}
+
+		if got := cell(t, database, seq, "Condition", bySig("SearchApply2_TOOL")); got != "TOOL_FOUND2 AND NOT TOOL" {
+			t.Errorf("%s: second apply condition %v", seq, got)
+		}
+	}
+}
+
 // TestProductCodeIgnoresEmptyKeys checks that keys with an empty value do
 // not change the automatic ProductCode, so that an optional key added to the
 // schema keeps the code of an unchanged configuration.
@@ -196,6 +297,13 @@ components:
 
 	if plain != explicit {
 		t.Errorf("ProductCode %v with empty keys, %v without", explicit, plain)
+	}
+
+	// One search written as a list of one is the same configuration.
+	const search = "{ registry: { root: HKLM, key: Software\\Example, name: Dir } }"
+	if one, list := productCode(src+"properties:\n  FOO: { search: "+search+" }\n"),
+		productCode(src+"properties:\n  FOO: { search: ["+search+"] }\n"); one != list {
+		t.Errorf("ProductCode %v for a list of one search, %v for the search alone", list, one)
 	}
 
 	// An explicit value, false and a mapping that pruning empties included,
