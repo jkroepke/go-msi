@@ -146,6 +146,18 @@ func SearchMinVersion(text string, languages []int) string {
 		return text
 	}
 
+	value := searchVersionValue(text)
+
+	if value > 0 {
+		value--
+	}
+
+	return fmt.Sprintf("%d.%d.%d.%d", value>>48, value>>32&0xFFFF, value>>16&0xFFFF, value&0xFFFF)
+}
+
+// searchVersionValue packs a version of up to four fields into 64 bits;
+// missing fields count as 0.
+func searchVersionValue(text string) uint64 {
 	parts := strings.Split(text, ".")
 
 	var value uint64
@@ -159,11 +171,7 @@ func SearchMinVersion(text string, languages []int) string {
 		value = value<<16 | uint64(field)
 	}
 
-	if value > 0 {
-		value--
-	}
-
-	return fmt.Sprintf("%d.%d.%d.%d", value>>48, value>>32&0xFFFF, value>>16&0xFFFF, value&0xFFFF)
+	return value
 }
 
 // propertySearches checks the searches of a property.
@@ -347,6 +355,10 @@ func (v *validator) directorySearch(cfg *Config, field string, dir *DirectorySea
 	v.searchFolder(cfg, field, dir.Path, dir.Under, depth)
 	v.searchDepth(field, dir.Depth)
 
+	if dir.Under != nil && dir.Path == "" {
+		v.errorf(field+".path", "is required under another search; search the folder it names directly instead")
+	}
+
 	if dir.Depth > 0 && dir.Path == "" {
 		v.errorf(field+".depth", "needs a path: depth says how deep below the path's parent its last folder may lie")
 	}
@@ -422,6 +434,11 @@ func (v *validator) fileSearchVersions(field string, file *FileSearch) { //nolin
 				v.errorf(field+"."+key, "%v", err)
 			}
 		}
+	}
+
+	if file.MinVersion != "" && file.MaxVersion != "" && SearchVersion(file.MinVersion) == nil &&
+		SearchVersion(file.MaxVersion) == nil && searchVersionValue(file.MaxVersion) < searchVersionValue(file.MinVersion) {
+		v.errorf(field+".maxVersion", "is less than minVersion")
 	}
 
 	for i, lang := range file.Languages {

@@ -55,6 +55,8 @@ properties:
   F_DEPTH: { search: { file: { name: app.exe, path: '%[1]s', depth: 1 } } }
   F_DEPTH_MISS: { value: none, search: { file: { name: app.exe, path: '%[1]s' } } }
   F_LONG: { search: { file: { name: long file name.txt, path: '%[1]s' } } }
+  F_LONG_EXT: { search: { file: { name: settings.json, path: '%[1]s' } } }
+  F_LONG_MISS: { value: none, search: { file: { name: long file other.txt, path: '%[1]s' } } }
   F_MIN_EQUAL: { search: { file: { name: app.exe, path: '%[1]s\sub', minVersion: 1.2.3.4 } } }
   F_MIN_EQUAL_1033: { search: { file: { name: app.exe, path: '%[1]s\sub', minVersion: 1.2.3.4, languages: [1033] } } }
   F_MIN_EQUAL_1031: { value: none, search: { file: { name: app.exe, path: '%[1]s\sub', minVersion: 1.2.3.4, languages: [1031] } } }
@@ -154,6 +156,7 @@ func TestMsiexecSearchesFiles(t *testing.T) { //nolint:paralleltest // msiexec r
 		`sub\app.exe`:         app,
 		`plain.txt`:           []byte("x"),
 		`long file name.txt`:  []byte("long"),
+		`settings.json`:       []byte("{}"),
 		`deep\a\b\marker.txt`: []byte("deep"),
 	} {
 		path := filepath.Join(locatorRoot, name)
@@ -211,6 +214,8 @@ func TestMsiexecSearchesFiles(t *testing.T) { //nolint:paralleltest // msiexec r
 		"F_DEPTH":           sub + "app.exe",
 		"F_DEPTH_MISS":      "none",
 		"F_LONG":            locatorRoot + `\long file name.txt`,
+		"F_LONG_EXT":        locatorRoot + `\settings.json`,
+		"F_LONG_MISS":       "none",
 		"F_MIN_EQUAL":       sub + "app.exe",
 		"F_MIN_EQUAL_1033":  sub + "app.exe",
 		"F_MIN_EQUAL_1031":  "none",

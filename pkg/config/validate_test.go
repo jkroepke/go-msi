@@ -857,6 +857,14 @@ func TestValidate(t *testing.T) {
 			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', languages: [70000]}}}}\n",
 			sevError, "properties.P.search.file.languages[0]", "language ID",
 		},
+		"search directory under without path": {
+			base + appComponent + "properties: {P: {search: {directory: {under: {registry: {root: HKLM, key: X, name: Dir}}}}}}\n",
+			sevError, "properties.P.search.directory.path", "required under another search",
+		},
+		"search file version order": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', minVersion: 2.0, maxVersion: 1.10}}}}\n",
+			sevError, "properties.P.search.file.maxVersion", "less than minVersion",
+		},
 		"search directory depth without path": {
 			base + appComponent + "properties: {P: {search: {directory: {under: {directory: {path: 'C:\\a'}}, depth: 2}}}}\n",
 			sevError, "properties.P.search.directory.depth", "needs a path",
