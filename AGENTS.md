@@ -122,7 +122,7 @@ go test ./... -shuffle=on -race
   updates the snapshots in the same pull request: rerun the tests with
   `MSI_BUILDER_UPDATE_SNAPSHOTS=1` and review the diff. The install snapshots need
   an elevated Windows machine; on a mismatch CI uploads the new ones as the
-  `install-snapshots-<runner>` artifact. The example inputs live in
+  `install-snapshots` artifact. The example inputs live in
   `internal/exampletest`, and a new example needs an entry there, in
   `installExamples` and in `TestScopeOwns`.
 - `-short` skips the slow tests: the native tests that open packages with
