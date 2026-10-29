@@ -968,16 +968,17 @@ folderPermissions:
   local account, or another name for `LookupAccountNameW`, such as
   `CONTOSO\svc`. Windows localizes the names of built-in accounts and
   groups (`BUILTIN\Users`, `NT AUTHORITY\NETWORK SERVICE`), so use their
-  SIDs or aliases; a two-letter name is always read as an alias. Spaces
+  SIDs or aliases; a two-letter name that is an SDDL alias is read as the
+  alias. Spaces
   around a formatted account are dropped. An account that contains `|` or
   a control character, cannot be resolved or names a domain fails the
-  installation, and so does an empty one on a first install; in a
-  maintenance install (a repair, a patch, a feature change) an empty
-  account skips the grant, because a property set on the first install's
-  command line is not remembered and the rights are there already. A major
-  upgrade is a first install of the new product and needs the account
-  again, so remember it in a registry value and a search when it is not
-  passed every time.
+  installation, and so does an empty one on a first install. An account
+  from a property is remembered per product, so a maintenance install (a
+  repair from Apps & Features, a self-repair, a feature added later, a
+  patch) without the property grants to the account of the first install;
+  only an account that was never remembered is skipped there, with a log
+  line. Removing the product forgets it. A major upgrade is a first
+  install of the new product and needs the account again.
 - An inheriting grant on a folder that a property, an action or a dialog
   can move, such as `INSTALLDIR`, gets a warning: `INSTALLDIR=C:\Windows`
   would grant on that whole tree.

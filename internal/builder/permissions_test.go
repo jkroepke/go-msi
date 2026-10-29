@@ -157,10 +157,28 @@ func TestPermissionGrants(t *testing.T) {
 
 	seq := make(map[string]int)
 
+	conds := map[string]any{}
+
 	for _, row := range rows(t, database, "InstallExecuteSequence") {
 		if number, ok := row[2].(int); ok {
 			seq[fmt.Sprint(row[0])] = number
 		}
+
+		conds[fmt.Sprint(row[0])] = row[1]
+	}
+
+	// The schedule action runs on removal too; each deferred action runs
+	// when the schedule action gave it data.
+	for name, want := range map[string]string{
+		"BuilderGrantRollback": "BuilderGrantRollback", "BuilderGrantExec": "BuilderGrantExec", "BuilderGrantCommit": "BuilderGrantCommit",
+	} {
+		if conds[name] != want {
+			t.Errorf("%s condition %v, want %q", name, conds[name], want)
+		}
+	}
+
+	if cond := conds["BuilderGrantSchedule"]; cond != nil && cond != "" {
+		t.Errorf("BuilderGrantSchedule condition %v, want none", cond)
 	}
 
 	prev := "InstallServices"

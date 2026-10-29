@@ -118,6 +118,7 @@ long WINAPI RegOpenKeyExW(HANDLE, const WCHAR *, DWORD, DWORD, HANDLE *);
 long WINAPI RegSetValueExW(HANDLE, const WCHAR *, DWORD, DWORD, const BYTE *, DWORD);
 long WINAPI RegQueryValueExW(HANDLE, const WCHAR *, DWORD *, DWORD *, BYTE *, DWORD *);
 long WINAPI RegDeleteTreeW(HANDLE, const WCHAR *);
+long WINAPI RegDeleteValueW(HANDLE, const WCHAR *);
 long WINAPI RegCloseKey(HANDLE);
 
 // msi.dll
@@ -173,6 +174,7 @@ enum {
 
     KEY_QUERY_VALUE = 0x1,
     KEY_SET_VALUE = 0x2,
+    REG_SZ = 1,
     REG_DWORD = 4,
     MSICONDITION_TRUE = 1,
     MSICONDITION_NONE = 2,
@@ -555,10 +557,11 @@ done:
 //
 //     <op><ProductCode>
 //     <kind>|<mask>|<flags>|<account>|<object>
+//     a|<account>|<account template>
 //     ...
 //
-// op is `+` (grant), `-` (rollback) or `c` (commit). kind is `f` (file or
-// folder) or `s` (service), mask and flags are hexadecimal access rights and
+// op is `+` (grant), `-` (rollback), `c` (commit) or `x` (the product is
+// removed). kind is `f` (file or folder) or `s` (service), mask and flags are hexadecimal access rights and
 // ACE flags, the account is a SID string, an SDDL alias such as NS, a service
 // manager name such as LocalSystem, or a name for LookupAccountNameW
 // (`.\name` is a local account), and the object is a path or a service name.
@@ -571,8 +574,16 @@ done:
 // number (HKCU of the account the action runs as: LocalSystem's hive in a
 // per-machine install). The rollback takes
 // exactly those rights away again and the commit deletes the record, so rights
-// that were there before the install survive a rollback. Log lines read
-// `BuilderGrant: ...`.
+// that were there before the install survive a rollback.
+//
+// An account that comes from a property, such as [SVC_ACCOUNT], is
+// remembered: an `a` entry stores the account under its template in
+// HKLM\SOFTWARE\msi-builder\GrantAccounts\<ProductCode>, and a maintenance
+// install (a repair from Apps & Features, a self-repair, a feature added
+// later, a patch), whose command line does not have the property, grants to
+// the remembered account. Only an account that was never remembered is
+// skipped there. The removal of the product (`x`) deletes the key. Log lines
+// read `BuilderGrant: ...`.
 
 static const WCHAR propGrants[] = u"BuilderGrants";
 static const WCHAR propProductCode[] = u"ProductCode";
@@ -580,9 +591,13 @@ static const WCHAR propExec[] = u"BuilderGrantExec";
 static const WCHAR propRollback[] = u"BuilderGrantRollback";
 static const WCHAR propCommit[] = u"BuilderGrantCommit";
 static const WCHAR rollbackKey[] = u"Software\\msi-builder\\GrantRollback\\";
+static const WCHAR accountsKey[] = u"SOFTWARE\\msi-builder\\GrantAccounts\\";
+static const WCHAR condRemoveAll[] = u"REMOVE~=\"ALL\"";
+static const WCHAR msgRemembered[] = u"the account is empty in a maintenance install; granting to the remembered account";
+static const WCHAR msgRemember[] = u"cannot remember the account of";
 static const WCHAR msgGrantData[] = u"malformed grant data";
 static const WCHAR msgNoAccount[] = u"no account to grant rights to";
-static const WCHAR msgSkipEmpty[] = u"the account is empty in a maintenance install; skipped";
+static const WCHAR msgSkipEmpty[] = u"the account is empty in a maintenance install and none is remembered; skipped";
 static const WCHAR propInstalled[] = u"Installed";
 static const WCHAR msgAccountType[] = u"the account names a domain, a deleted account or nothing";
 static const WCHAR msgBadAccount[] = u"the account contains | or a control character";
@@ -618,8 +633,10 @@ typedef int INTPTR;
 typedef long long INTPTR;
 #endif
 
-// HKEY_CURRENT_USER, which winreg.h defines as the sign-extended 0x80000001.
+// HKEY_CURRENT_USER and HKEY_LOCAL_MACHINE, which winreg.h defines as the
+// sign-extended 0x80000001 and 0x80000002.
 #define HKCU_ ((HANDLE)(INTPTR)(int)0x80000001)
+#define HKLM_ ((HANDLE)(INTPTR)(int)0x80000002)
 
 static WCHAR wlower(WCHAR c)
 {
@@ -727,9 +744,48 @@ static int maintenance(MSIHANDLE install)
     return installed != 0;
 }
 
+// accountsPath returns HKLM's key of the remembered accounts of a product.
+static int accountsPath(wbuf *path, const WCHAR *product)
+{
+    return wbufAdd(path, accountsKey, wlen(accountsKey)) && wbufAdd(path, product, wlen(product));
+}
+
+// remembered returns the account an earlier install remembered for an
+// account template, or 0.
+static WCHAR *remembered(const WCHAR *product, const WCHAR *template)
+{
+    HANDLE heap = GetProcessHeap(), key = 0;
+    wbuf path = {0, 0, 0};
+    WCHAR *value = 0;
+    if (accountsPath(&path, product) && !RegOpenKeyExW(HKLM_, path.s, 0, KEY_QUERY_VALUE, &key)) {
+        DWORD kind = 0, size = 0;
+        if (!RegQueryValueExW(key, template, 0, &kind, 0, &size) && kind == REG_SZ && size) {
+            // The zeroed extra character ends a value stored without one.
+            value = HeapAlloc(heap, HEAP_ZERO_MEMORY, (SIZE_T)size + 2 * sizeof(WCHAR));
+            if (value && (RegQueryValueExW(key, template, 0, &kind, (BYTE *)value, &size) || kind != REG_SZ)) {
+                HeapFree(heap, 0, value);
+                value = 0;
+            }
+        }
+        RegCloseKey(key);
+    }
+    HeapFree(heap, 0, path.s);
+    return value;
+}
+
+static int hasBracket(const WCHAR *s)
+{
+    for (; *s; s++) {
+        if (*s == '[') {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 // scheduleEntry formats one line of BuilderGrants and appends it to out. It
 // returns 0 when the install has to fail.
-static int scheduleEntry(MSIHANDLE install, WCHAR *line, wbuf *out)
+static int scheduleEntry(MSIHANDLE install, const WCHAR *product, WCHAR *line, wbuf *out)
 {
     static const WCHAR nl[] = u"\n", bar[] = u"|";
     WCHAR *spec = field(line, 0x1F);
@@ -749,17 +805,21 @@ static int scheduleEntry(MSIHANDLE install, WCHAR *line, wbuf *out)
             return 0;
         }
     }
-    WCHAR *acct = format(install, account), *obj = format(install, object);
+    WCHAR *acct = format(install, account), *obj = format(install, object), *kept = 0;
     int ok = 0;
     if (!acct || !obj) {
         logft(install, tmplGrant, msgFormat, acct ? object : account, 0);
     } else {
         WCHAR *name = trim(acct);
-        if (!*name && maintenance(install)) {
+        int again = maintenance(install);
+        if (!*name && again && (kept = remembered(product, account)) != 0 && *trim(kept)) {
             // A property set on the command line of the first install is
-            // not remembered: a repair from Apps & Features, a patch or a
-            // self-repair cannot pass it again, and the rights it granted
-            // are there already.
+            // not there in a repair from Apps & Features, a self-repair or
+            // a patch, which replace files and add components.
+            name = trim(kept);
+            logft(install, tmplGrant, msgRemembered, obj, 0);
+        }
+        if (!*name && again) {
             logft(install, tmplGrant, msgSkipEmpty, obj, 0);
             ok = 1;
         } else if (!*name) {
@@ -769,8 +829,12 @@ static int scheduleEntry(MSIHANDLE install, WCHAR *line, wbuf *out)
         } else if (hasControl(obj, 0) || !*obj) {
             logft(install, tmplGrant, msgBadObject, obj, 0);
         } else {
+            static const WCHAR remember[] = u"\na|";
             ok = wbufAdd(out, nl, 1) && wbufAdd(out, spec, wlen(spec)) && wbufAdd(out, bar, 1) && wbufAdd(out, name, wlen(name)) &&
                  wbufAdd(out, bar, 1) && wbufAdd(out, obj, wlen(obj));
+            if (ok && hasBracket(account) && !hasControl(account, 1)) {
+                ok = wbufAdd(out, remember, 3) && wbufAdd(out, name, wlen(name)) && wbufAdd(out, bar, 1) && wbufAdd(out, account, wlen(account));
+            }
             if (!ok) {
                 logft(install, tmplGrant, msgNoMemory, 0, 0);
             }
@@ -778,6 +842,7 @@ static int scheduleEntry(MSIHANDLE install, WCHAR *line, wbuf *out)
     }
     HeapFree(GetProcessHeap(), 0, acct);
     HeapFree(GetProcessHeap(), 0, obj);
+    HeapFree(GetProcessHeap(), 0, kept);
     return ok;
 }
 
@@ -793,9 +858,15 @@ __declspec(dllexport) UINT WINAPI BuilderGrantSchedule(MSIHANDLE install)
         logft(install, tmplGrant, msgGrantData, 0, 0);
         goto done;
     }
+    if (MsiEvaluateConditionW(install, condRemoveAll) == MSICONDITION_TRUE) {
+        // The removal only forgets the remembered accounts.
+        out.s[0] = 'x';
+        result = MsiSetPropertyW(install, propExec, out.s) == ERROR_SUCCESS ? ERROR_SUCCESS : ERROR_INSTALL_FAILURE;
+        goto done;
+    }
     for (WCHAR *line = list; line && *line;) {
         WCHAR *next = field(line, '\n');
-        if (!scheduleEntry(install, line, &out)) {
+        if (!scheduleEntry(install, product, line, &out)) {
             goto done;
         }
         line = next;
@@ -1082,11 +1153,53 @@ done:
     return ok;
 }
 
+// rememberEntry stores the account of an `a` entry under its template, and
+// records in the rollback record whether the template is new; a rollback
+// removes a new one again. It never fails the install: without it, only a
+// maintenance install without the property skips the grant.
+static void rememberEntry(MSIHANDLE install, WCHAR *entry, int grant, HANDLE record, const WCHAR *valueName, const WCHAR *product)
+{
+    HANDLE heap = GetProcessHeap(), key = 0;
+    WCHAR *account = entry + 2, *template = field(account, '|');
+    wbuf path = {0, 0, 0};
+    if (!template || !*template || !*account) {
+        logft(install, tmplGrant, msgGrantData, 0, 0);
+        return;
+    }
+    if (!accountsPath(&path, product)) {
+        logft(install, tmplGrant, msgNoMemory, 0, 0);
+        return;
+    }
+    if (!grant) {
+        DWORD added = 0, size = sizeof added, kind = 0;
+        if (record && !RegQueryValueExW(record, valueName, 0, &kind, (BYTE *)&added, &size) && kind == REG_DWORD && added &&
+            !RegOpenKeyExW(HKLM_, path.s, 0, KEY_SET_VALUE, &key)) {
+            RegDeleteValueW(key, template);
+            RegCloseKey(key);
+        }
+        HeapFree(heap, 0, path.s);
+        return;
+    }
+    long err = RegCreateKeyExW(HKLM_, path.s, 0, 0, 0, KEY_QUERY_VALUE | KEY_SET_VALUE, 0, &key, 0);
+    if (!err) {
+        DWORD kind = 0, size = 0, added = RegQueryValueExW(key, template, 0, &kind, 0, &size) != 0;
+        if (added && record) {
+            RegSetValueExW(record, valueName, 0, REG_DWORD, (const BYTE *)&added, sizeof added);
+        }
+        err = RegSetValueExW(key, template, 0, REG_SZ, (const BYTE *)account, (DWORD)((wlen(account) + 1) * sizeof(WCHAR)));
+        RegCloseKey(key);
+    }
+    if (err) {
+        logft(install, tmplGrant, msgRemember, template, (DWORD)err);
+    }
+    HeapFree(heap, 0, path.s);
+}
+
 __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
 {
     HANDLE heap = GetProcessHeap();
     WCHAR *data = property(install, propData);
-    if (!data || (data[0] != '+' && data[0] != '-' && data[0] != 'c')) {
+    if (!data || (data[0] != '+' && data[0] != '-' && data[0] != 'c' && data[0] != 'x')) {
         logft(install, tmplGrant, msgGrantData, 0, 0);
         HeapFree(heap, 0, data);
         return data ? ERROR_INSTALL_FAILURE : ERROR_SUCCESS;
@@ -1094,6 +1207,14 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
     WCHAR op = data[0];
     WCHAR *entries = field(data + 1, '\n');
     wbuf path = {0, 0, 0};
+    if (op == 'x') {
+        if (accountsPath(&path, data + 1)) {
+            RegDeleteTreeW(HKLM_, path.s);
+        }
+        HeapFree(heap, 0, path.s);
+        HeapFree(heap, 0, data);
+        return ERROR_SUCCESS;
+    }
     if (!wbufAdd(&path, rollbackKey, wlen(rollbackKey)) || !wbufAdd(&path, data + 1, wlen(data + 1))) {
         HeapFree(heap, 0, data);
         return op == '+' ? ERROR_INSTALL_FAILURE : ERROR_SUCCESS;
@@ -1119,7 +1240,9 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
         SIZE_T pos = 0;
         wappendnum(name, &pos, index);
         // A rollback undoes every entry it can and never fails.
-        if (!applyEntry(install, entry, op == '+', key, keyErr, name) && op == '+') {
+        if (entry[0] == 'a' && entry[1] == '|') {
+            rememberEntry(install, entry, op == '+', key, name, data + 1);
+        } else if (!applyEntry(install, entry, op == '+', key, keyErr, name) && op == '+') {
             result = ERROR_INSTALL_FAILURE;
             break;
         }

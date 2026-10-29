@@ -130,7 +130,8 @@ func TestMsiexecSDDLWithoutProtection(t *testing.T) {
 }
 
 // grantConfig grants rights on a file to an account from a property, on a
-// new folder and a folder that exists before the install, and on a service.
+// new folder, a folder with an sddl as well and a folder that exists before
+// the install, and on a service.
 // FAILNOW=1 fails the install after the grants, so the rollback runs.
 const grantConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderGrant, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 5b2e7d14-8c3f-4a96-b1d0-6e9f2a4c8b37 }
@@ -155,6 +156,12 @@ components:
     createFolder: true
     folderPermissions:
       grant: [{ account: '[SVC_ACCOUNT]', rights: modify }]
+  - id: LockedFolder
+    directory: CommonAppDataFolder/MsiBuilderGrant/locked
+    createFolder: true
+    folderPermissions:
+      sddl: 'D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)'
+      grant: [{ account: '[SVC_ACCOUNT]', rights: modify }]
   - id: OldFolder
     directory: CommonAppDataFolder/MsiBuilderGrant/existing
     createFolder: true
@@ -173,11 +180,13 @@ customActions:
 
 // TestMsiexecGrants installs grantConfig (SEC-02): each grant adds one
 // explicit ACE, the inherited ACEs and the explicit ACE the test put on the
-// existing folder stay, a repair adds no second ACE, the rollback of a
-// failed install takes the rights away again, the rollback of a failed
-// repair keeps the rights the install granted, an empty account fails the
-// install, and uninstalling leaves the ACE on the folder that existed
-// before.
+// existing folder stay and reach the file in it, an sddl and a grant on one
+// folder give the protected DACL plus the grant, the account from the
+// property is remembered, so a repair without it grants again on the files
+// it replaces, the rollback of a failed install takes the rights away
+// again, the rollback of a failed repair keeps the rights the install
+// granted, an empty account fails the install, and uninstalling leaves the
+// ACE on the folder that existed before and forgets the account.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestMsiexecGrants(t *testing.T) {
@@ -188,6 +197,8 @@ func TestMsiexecGrants(t *testing.T) {
 	root := filepath.Join(os.Getenv("ProgramData"), "MsiBuilderGrant")
 	existing := filepath.Join(root, "existing")
 	data := filepath.Join(root, "data")
+	locked := filepath.Join(root, "locked")
+	keep := filepath.Join(existing, "keep.txt")
 	installDir := filepath.Join(os.Getenv("ProgramFiles"), "MsiBuilderGrant")
 	app := filepath.Join(installDir, "app.exe")
 
@@ -196,7 +207,7 @@ func TestMsiexecGrants(t *testing.T) {
 	}
 
 	// A file of its own keeps the folder when the package is removed.
-	if err := os.WriteFile(filepath.Join(existing, "keep.txt"), []byte("x"), 0o600); err != nil {
+	if err := os.WriteFile(keep, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -237,6 +248,10 @@ func TestMsiexecGrants(t *testing.T) {
 
 	requireNoGrantRecord(t, "after the rollback")
 
+	if got := rememberedAccounts(t); strings.Contains(got, `BUILTIN\Guests`) {
+		t.Errorf("after the rollback, the account is still remembered:\n%s", got)
+	}
+
 	// An empty account fails the install.
 	if code := msiexecCode(t, filepath.Join(dir, "empty.log"), "/i", path); code != 1603 {
 		t.Errorf("install without SVC_ACCOUNT returned %d, want 1603", code)
@@ -250,8 +265,10 @@ func TestMsiexecGrants(t *testing.T) {
 
 	requireNoGrantRecord(t, "after the install")
 
+	objects := map[string]string{"file": app, "data folder": data, "locked folder": locked, "existing folder": existing, "file in the existing folder": keep}
 	installed := map[string]string{}
-	for name, object := range map[string]string{"file": app, "data folder": data, "existing folder": existing} {
+
+	for name, object := range objects {
 		installed[name] = objectSDDL(t, object)
 		t.Logf("SEC-02: grant, %s: %s", name, installed[name])
 	}
@@ -263,7 +280,10 @@ func TestMsiexecGrants(t *testing.T) {
 		"file":            {"(A;;0x1200a9;;;BG)", "ID;"},
 		"data folder":     {"(A;OICI;0x1301bf;;;BG)", "ID;"},
 		"existing folder": {"(A;OICI;FA;;;LS)", "(A;OICI;0x1200a9;;;BG)", "ID;"},
-		"service":         {"(A;;RPWP;;;BU)"},
+		"locked folder":   {"D:P(", "(A;OICI;FA;;;SY)", "(A;OICI;FA;;;BA)", "(A;OICI;0x1301bf;;;BG)"},
+		// The folder's ACEs reach what is in it already.
+		"file in the existing folder": {"(A;ID;FA;;;LS)", "(A;ID;0x1200a9;;;BG)"},
+		"service":                     {"(A;;RPWP;;;BU)"},
 	} {
 		for _, part := range want {
 			if !strings.Contains(installed[name], part) {
@@ -272,28 +292,36 @@ func TestMsiexecGrants(t *testing.T) {
 		}
 	}
 
-	// A repair grants again and finds the rights there. msiexec /fa left
-	// the command line properties out on the CI runner (SVC_ACCOUNT and
-	// FAILNOW were not set), so the repairs use /i with REINSTALL.
-	repair := []string{"/i", path, "REINSTALL=ALL", "REINSTALLMODE=amus", account}
-	msiexecQuiet(t, filepath.Join(dir, "repair.log"), repair...)
-
-	if log := readLog(filepath.Join(dir, "repair.log")); !strings.Contains(log, `MsiBuilderGrant\data: already granted`) {
-		t.Errorf("repair: the data folder grant did not run\n%s", grepLog(log, "BuilderGrant", "Command Line"))
+	if got := rememberedAccounts(t); !strings.Contains(got, `BUILTIN\Guests`) {
+		t.Errorf("after the install, the account is not remembered:\n%s", got)
 	}
 
-	for name, object := range map[string]string{"file": app, "data folder": data, "existing folder": existing} {
+	if strings.Contains(installed["locked folder"], "ID;") {
+		t.Errorf("locked folder: %s, want the protected DACL without inherited ACEs", installed["locked folder"])
+	}
+
+	// A repair without the property, as from Apps & Features, replaces the
+	// file (a fresh DACL) and grants to the remembered account again.
+	msiexecQuiet(t, filepath.Join(dir, "repair.log"), "/fa", path)
+
+	if log := readLog(filepath.Join(dir, "repair.log")); !strings.Contains(log, "granting to the remembered account") || !strings.Contains(log, `MsiBuilderGrant\data: already granted`) {
+		t.Errorf("repair: no grant to the remembered account\n%s", grepLog(log, "BuilderGrant"))
+	}
+
+	for name, object := range objects {
 		if got := objectSDDL(t, object); !sameACEs(got, installed[name]) {
 			t.Errorf("%s after repair:\n%s\nwant\n%s", name, got, installed[name])
 		}
 	}
 
 	// A repair that fails after the grants keeps the rights that were there.
-	if code := msiexecCode(t, filepath.Join(dir, "repair-rollback.log"), append(repair, "FAILNOW=1")...); code != 1603 {
+	// msiexec /fa left the command line properties out on the CI runner
+	// (FAILNOW was not set), so this repair uses /i with REINSTALL.
+	if code := msiexecCode(t, filepath.Join(dir, "repair-rollback.log"), "/i", path, "REINSTALL=ALL", "REINSTALLMODE=amus", account, "FAILNOW=1"); code != 1603 {
 		t.Fatalf("repair with FAILNOW=1 returned %d, want 1603\n%s", code, grepLog(readLog(filepath.Join(dir, "repair-rollback.log")), "FailNow", "FAILNOW", "BuilderGrant"))
 	}
 
-	for name, object := range map[string]string{"data folder": data, "existing folder": existing} {
+	for name, object := range objects {
 		if got := objectSDDL(t, object); !sameACEs(got, installed[name]) {
 			t.Errorf("%s after a failed repair:\n%s\nwant\n%s", name, got, installed[name])
 		}
@@ -309,6 +337,23 @@ func TestMsiexecGrants(t *testing.T) {
 	if got := objectSDDL(t, existing); !sameACEs(got, installed["existing folder"]) {
 		t.Errorf("existing folder after uninstall:\n%s\nwant\n%s", got, installed["existing folder"])
 	}
+
+	if got := rememberedAccounts(t); strings.Contains(got, `BUILTIN\Guests`) {
+		t.Errorf("after the uninstall, the account is still remembered:\n%s", got)
+	}
+}
+
+// rememberedAccounts returns the accounts that installs remembered for their
+// account templates, as reg query lists them.
+func rememberedAccounts(t *testing.T) string {
+	t.Helper()
+
+	out, err := exec.CommandContext(t.Context(), "reg", "query", `HKLM\SOFTWARE\msi-builder\GrantAccounts`, "/s").CombinedOutput()
+	if err != nil {
+		return "" // nothing remembered
+	}
+
+	return string(out)
 }
 
 // sameACEs compares two SDDL strings without the AI (auto-inherited) control

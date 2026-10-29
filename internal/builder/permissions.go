@@ -104,8 +104,9 @@ func (b *build) grant(component, object string, kind byte, flags uint32, perm *c
 // conditions and formats accounts and objects, then the deferred
 // BuilderGrantExec grants without impersonation (as LocalSystem in a per-machine install), its rollback
 // takes away what it added and the commit action drops the record of that.
-// They run after the objects exist and before StartServices. Nothing runs
-// on removal: the objects the package created go with it.
+// They run after the objects exist and before StartServices. An account
+// from a property is remembered for maintenance installs, and the removal
+// of the product forgets it; the objects the package created go with it.
 func (b *build) grantActions() {
 	if len(b.grants) == 0 || !b.useRunDLL() {
 		return
@@ -143,7 +144,11 @@ func (b *build) grantActions() {
 	}
 
 	b.standardAt(seqInstallExecute, anchor)
+	b.grantSchedule(anchor)
+}
 
+// grantSchedule adds the grant actions after anchor.
+func (b *build) grantSchedule(anchor string) {
 	actions := []*actionInfo{
 		{name: cadll.GrantSchedule, typ: caDLL, source: cadll.Key, target: cadll.GrantSchedule},
 		{name: cadll.GrantRollback, typ: caDLL | caRollback | caNoImpersonate, source: cadll.Key, target: cadll.GrantEntryPoint},
@@ -151,8 +156,17 @@ func (b *build) grantActions() {
 		{name: cadll.GrantCommit, typ: caDLL | caCommit | caNoImpersonate, source: cadll.Key, target: cadll.GrantEntryPoint},
 	}
 
+	// The schedule action runs on removal too, where it only hands the
+	// exec action the forgetting of the remembered accounts; each deferred
+	// action runs when it has data.
 	for _, action := range actions {
 		b.addAction(action)
-		b.schedule(seqInstallExecute, action.name, `NOT REMOVE~="ALL"`, "", anchor, 0)
+
+		cond := action.name
+		if action.name == cadll.GrantSchedule {
+			cond = ""
+		}
+
+		b.schedule(seqInstallExecute, action.name, cond, "", anchor, 0)
 	}
 }
