@@ -450,12 +450,13 @@ func (v *validator) builderProperty(name string) bool {
 	return builderProperties[name] || v.scope.Dual() && (name == "MSIINSTALLPERUSER" || name == "BuilderInstallScope")
 }
 
-// installPerUser warns about MSIINSTALLPERUSER outside a dual package: the
-// engine ignores it unless ALLUSERS is 2 and deletes it at install, so a
-// condition on it is never true (spec section 8.2).
+// installPerUser warns about MSIINSTALLPERUSER outside a dual package: it
+// has no effect unless ALLUSERS is 2 (spec section 8.2), and a per-user
+// install was seen deleting it, which skips a component conditioned on it
+// (reported).
 func (v *validator) installPerUser(propPath, name string) {
 	if name == "MSIINSTALLPERUSER" && !v.scope.Dual() {
-		v.warnf(propPath, "MSIINSTALLPERUSER only works with ALLUSERS=2, and the installer deletes it otherwise; "+
+		v.warnf(propPath, "MSIINSTALLPERUSER has no effect unless ALLUSERS is 2, and a condition on it may not hold; "+
 			"use scope perUserOrMachine for a package that installs per user or per machine")
 	}
 }

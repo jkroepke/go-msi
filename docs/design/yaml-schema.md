@@ -271,8 +271,8 @@ folder stays there too. `purge` is rejected under Program Files, Common
 Files and those shell folders, because ICE105 keeps the action unelevated.
 Custom action IDs starting with `SetInstallScope`, `SetScope` or
 `RestoreInstallDir` are taken by the scope page. In the other scopes a
-`MSIINSTALLPERUSER` property gets a warning: the installer deletes it unless
-`ALLUSERS` is 2, so a condition on it is never true. Like every per-user
+`MSIINSTALLPERUSER` property gets a warning: it has no effect unless
+`ALLUSERS` is 2, and a per-user install was seen deleting it (reported). Like every per-user
 package, a dual one needs its deferred actions that can fail before
 RegisterProduct (section 8.2). A major upgrade only finds a product installed in the same context, so a product
 installed per user and then per machine is installed twice; offer one

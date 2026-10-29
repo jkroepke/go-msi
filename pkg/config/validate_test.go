@@ -809,7 +809,7 @@ components:
 		},
 		"MSIINSTALLPERUSER without a dual scope": {
 			pkg(`{platform: x64, scope: perUser}`) + appComponent + "properties:\n  MSIINSTALLPERUSER: {value: \"1\"}\n",
-			config.SeverityWarning, "properties.MSIINSTALLPERUSER", "only works with ALLUSERS=2",
+			config.SeverityWarning, "properties.MSIINSTALLPERUSER", "no effect unless ALLUSERS is 2",
 		},
 		"dual scope MSIINSTALLPERUSER": {
 			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + "properties:\n  MSIINSTALLPERUSER: {value: \"1\"}\n",
