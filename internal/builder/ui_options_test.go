@@ -325,3 +325,41 @@ func TestWizardOptionErrors(t *testing.T) {
 		})
 	}
 }
+
+// TestUIStrings replaces every built-in wizard text and checks that each
+// replacement reaches the UI tables, so that no page keeps a hard-coded text.
+func TestUIStrings(t *testing.T) {
+	t.Parallel()
+
+	cfg := desktop(t)
+	cfg.UI.Wizard = "featureTree"
+	cfg.UI.Strings = make(map[string]string)
+
+	for key := range config.UIStrings() {
+		cfg.UI.Strings[key] = "«" + key + "»"
+	}
+
+	res := mustBuild(t, cfg)
+
+	var all strings.Builder
+
+	for _, table := range []string{"Dialog", "Control", "RadioButton", "UIText"} {
+		for _, row := range rows(t, res.Database, table) {
+			for _, cell := range row {
+				if text, ok := cell.(string); ok {
+					all.WriteString(text + "\n")
+				}
+			}
+		}
+	}
+
+	for key := range config.UIStrings() {
+		if !strings.Contains(all.String(), "«"+key+"»") {
+			t.Errorf("ui.strings.%s is not used", key)
+		}
+	}
+
+	if strings.Contains(all.String(), "&Next >") {
+		t.Error("a page still shows the built-in Next button")
+	}
+}

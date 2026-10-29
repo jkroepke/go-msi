@@ -143,6 +143,7 @@ const (
 
 // uiDialog is one dialog with its controls in drawing order.
 type uiDialog struct {
+	wiz      *wizard
 	name     string
 	title    string
 	first    string
@@ -185,12 +186,19 @@ type uiRadio struct {
 type wizard struct {
 	dialogs []*uiDialog
 	byName  map[string]*uiDialog
-	radios  []uiRadio
+	// ui holds ui.strings, which replace the built-in texts.
+	ui     *config.UI
+	radios []uiRadio
 	// checkBoxes maps a CheckBox property to the value it sets.
 	checkBoxes map[string]string
 	// flow is the install path through the pages, from the welcome page
 	// to the ready page; added dialogs are inserted into it.
 	flow []string
+}
+
+// text returns the wizard text for a ui.strings key.
+func (w *wizard) text(key string) string {
+	return w.ui.UIString(key)
 }
 
 func (w *wizard) add(dialog *uiDialog) *uiDialog {
@@ -199,9 +207,10 @@ func (w *wizard) add(dialog *uiDialog) *uiDialog {
 	}
 
 	if dialog.title == "" {
-		dialog.title = "[ProductName] Setup"
+		dialog.title = w.text("DialogTitle")
 	}
 
+	dialog.wiz = w
 	w.dialogs = append(w.dialogs, dialog)
 	w.byName[dialog.name] = dialog
 
@@ -289,7 +298,7 @@ func (b *build) ui() error {
 		return nil
 	}
 
-	wiz := &wizard{byName: make(map[string]*uiDialog), checkBoxes: make(map[string]string)}
+	wiz := &wizard{byName: make(map[string]*uiDialog), checkBoxes: make(map[string]string), ui: b.languageUI()}
 	tree := b.cfg.UI.Wizard == "featureTree"
 
 	wiz.commonDialogs(tree, b.hasRows("Component"))
@@ -395,7 +404,7 @@ func formHeight(cfg *config.Dialog) int {
 // formDialog lays out an added dialog: per field a label and an edit, a
 // check box in the same space, or a label and a group of radio buttons.
 func (b *build) formDialog(wiz *wizard, cfg *config.Dialog) *uiDialog {
-	dialog := &uiDialog{name: cfg.ID, attrs: dlgPage}
+	dialog := &uiDialog{wiz: wiz, name: cfg.ID, attrs: dlgPage}
 	dialog.innerHeader(cfg.Title, cfg.Description)
 
 	top := fieldTop
@@ -519,9 +528,9 @@ func (d *uiDialog) sideHeader(title, description string) {
 // Back are linked by wizard.link.
 func (d *uiDialog) navigation() {
 	d.control(strip())
-	d.control(button(ctlBack, backX, buttonY, "< &Back"))
-	d.control(button(ctlNext, nextX, buttonY, "&Next >"))
-	d.control(button(ctlCancel, cancelX, buttonY, "Cancel")).on(evSpawnDialog, dlgCancel, condAlways)
+	d.control(button(ctlBack, backX, buttonY, d.wiz.text("Back")))
+	d.control(button(ctlNext, nextX, buttonY, d.wiz.text("Next")))
+	d.control(button(ctlCancel, cancelX, buttonY, d.wiz.text("Cancel"))).on(evSpawnDialog, dlgCancel, condAlways)
 	d.def = ctlNext
 	d.cancel = ctlCancel
 }
@@ -603,8 +612,8 @@ func (b *build) writeWizard(wiz *wizard) {
 	b.properties[propRMOption] = "UseRM"
 
 	uiText := b.table("UIText")
-	for _, kv := range uiTexts {
-		uiText.Add(kv[0], kv[1])
+	for _, key := range config.UITextKeys() {
+		uiText.Add(key, wiz.text(key))
 	}
 
 	b.table("ListBox") // required with a Dialog table (ICE20), stays empty

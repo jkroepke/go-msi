@@ -361,7 +361,7 @@ func (db *Database) MarshalTo(dst io.Writer, opts Options) (*cfb.Layout, error) 
 		streams = append(streams, cfb.Stream{Name: summary.StreamName, Data: data}.Source())
 	}
 
-	layout, err := cfb.WriteTo(dst, streams, cfb.Options{Version: opts.CFBVersion, CLSID: cfb.CLSIDMSI})
+	layout, err := cfb.WriteStoragesTo(dst, streams, db.Storages, cfb.Options{Version: opts.CFBVersion, CLSID: cfb.CLSIDMSI})
 	if err != nil {
 		return nil, fmt.Errorf("msidb: %w", err)
 	}

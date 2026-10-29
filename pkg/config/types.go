@@ -35,6 +35,7 @@ type Config struct { //nolint:govet // field order is the YAML key order
 	Icons            map[string]string `yaml:"icons"`
 	Binaries         map[string]string `yaml:"binaries"`
 	Firewall         []*FirewallRule   `yaml:"firewall"`
+	ScheduleReboot   *ScheduleReboot   `yaml:"scheduleReboot"`
 	UI               UI                `yaml:"ui"`
 	Tables           []*Table          `yaml:"tables"`
 
@@ -588,6 +589,21 @@ type Placement struct { //nolint:govet // field order is the YAML key order
 	When string `yaml:"when"`
 }
 
+// ScheduleReboot asks for a restart at the end of the installation: the
+// ScheduleReboot action after InstallFinalize. With /norestart or
+// REBOOT=ReallySuppress msiexec returns 3010 instead of restarting; a quiet
+// install without them may restart without asking.
+type ScheduleReboot struct {
+	// When is install, upgrade, uninstall or maintenance, as in a schedule.
+	When      string `yaml:"when"`
+	Condition string `yaml:"condition"`
+}
+
+// Placement returns the reboot's placement in the execute sequence.
+func (r *ScheduleReboot) Placement() *Placement {
+	return &Placement{Sequence: "execute", After: "InstallFinalize", Condition: r.Condition, When: r.When}
+}
+
 // FirewallRule is an inbound rule that follows a component's state.
 type FirewallRule struct { //nolint:govet // field order is the YAML key order
 	Name            string     `yaml:"name"`
@@ -625,6 +641,13 @@ type UI struct {
 	// Launch adds a check box to the finish page that starts an installed
 	// program when the user clicks Finish.
 	Launch *Launch `yaml:"launch"`
+	// Strings replaces built-in wizard texts by key, for example to build
+	// the wizard in another language (UIStrings lists the keys).
+	Strings map[string]string `yaml:"strings"`
+	// Languages adds wizard languages by LCID or language tag, each built
+	// as an embedded language transform that msiexec picks by the user's
+	// language (spec section 7.6).
+	Languages map[string]*Language `yaml:"languages"`
 	// FinishText is a formatted paragraph shown on the finish page below
 	// its standard text; hidden by Installed OR ACTION = "ADMIN".
 	FinishText string    `yaml:"finishText"`

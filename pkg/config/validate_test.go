@@ -402,6 +402,14 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, verbs: [{id: open}, {id: Open}]}]\n", 1),
 			sevError, "components[0].files[0].fileTypes[0].verbs[1].id", "listed twice",
 		},
+		"scheduleReboot bad when": {
+			base + appComponent + "scheduleReboot: { when: always }\n",
+			sevError, "scheduleReboot.when", "always",
+		},
+		"scheduleReboot bad condition": {
+			base + appComponent + "scheduleReboot: { condition: 'A AND' }\n",
+			sevError, "scheduleReboot.condition", "",
+		},
 		"removeFiles bad on": {
 			base + strings.Replace(appComponent, "    files:", "    removeFiles: [{name: \"*.log\", on: upgrade}]\n    files:", 1),
 			sevError, "components[0].removeFiles[0].on", "upgrade",
@@ -453,6 +461,22 @@ func TestValidate(t *testing.T) {
 		"recovery four steps": {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {actions: [restart, restart, restart, restart]}}]\n    files:", 1),
 			sevError, "components[0].services[0].recovery.actions", "one to three",
+		},
+		"unknown wizard text": {
+			base + appComponent + "ui:\n  strings: {NextButton: Weiter}\n",
+			sevError, "ui.strings.NextButton", "not a wizard text",
+		},
+		"empty wizard text": {
+			base + appComponent + "ui:\n  strings: {Next: ''}\n",
+			sevError, "ui.strings.Next", "leave the key out",
+		},
+		"wizard text over its column": {
+			base + appComponent + "ui:\n  strings: {RMUseRM: " + strings.Repeat("x", 65) + "}\n",
+			sevWarning, "ui.strings.RMUseRM", "column width of 64",
+		},
+		"wizard texts without a wizard": {
+			base + appComponent + "ui:\n  wizard: none\n  strings: {Next: Weiter}\n",
+			sevError, "ui.strings", "need a wizard",
 		},
 		"dialog field type": {
 			base + appComponent + "ui:\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: radio}]}\n",
