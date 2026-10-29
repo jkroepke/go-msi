@@ -541,7 +541,7 @@ type UI struct {
 	// program when the user clicks Finish.
 	Launch *Launch `yaml:"launch"`
 	// FinishText is a formatted paragraph shown on the finish page below
-	// its standard text, only after a new installation.
+	// its standard text, unless the product was already installed.
 	FinishText string    `yaml:"finishText"`
 	Theme      Theme     `yaml:"theme"`
 	Dialogs    []*Dialog `yaml:"dialogs"`

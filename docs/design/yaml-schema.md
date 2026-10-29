@@ -1206,18 +1206,19 @@ installation, such as opening a new shell to pick up a changed `PATH`. It is
 formatted, so `[Property]` references resolve, and the control has NoPrefix,
 so `&` is shown as it is. The standard text keeps the first 40 dialog units
 below the title and the paragraph gets the rest of the page above the bottom
-strip, 220×89 units, about nine lines. The control is hidden by
-`Installed OR ACTION = "ADMIN"`, so that a finish page after a repair does
-not repeat advice about the installation. UI-07 observed the resolved text
-after a full UI install and no paragraph after a repair through the
-maintenance menu. That a major upgrade shows it, and that Change, Remove, a
-patch, a minor upgrade or an administrative install hide it, follows from
-the documented `Installed` and `ACTION` properties and was not tested. The
-pages where the setup was cancelled or failed keep their text, and a silent
-install shows no finish page. The text wraps by itself; leading and trailing
-whitespace is dropped, a blank text is an error, and how a line break inside
-the text renders was not tested. A NoPrefix text showing `&` literally is
-from UI-01.
+strip, 220×89 units (about nine lines of the default font, not observed).
+The control is hidden by `Installed OR ACTION = "ADMIN"`, so that a finish
+page after a repair does not repeat advice about the installation. UI-07
+observed the resolved text after a full UI install and no paragraph after a
+repair through the maintenance menu. That a major upgrade shows it, and that
+Change, Remove, a patch, a minor upgrade, a resumed installation or an
+administrative install hide it, follows from the documented `Installed` and
+`ACTION` properties and was not tested. The pages where the setup was
+cancelled or failed keep their text, and a silent install shows no finish
+page. A Text control wraps long text (not observed for this one); leading
+and trailing whitespace is dropped, a blank text is an error, and how a line
+break inside the text renders was not tested. A NoPrefix text showing `&`
+literally is from UI-01.
 
 #### Theme
 

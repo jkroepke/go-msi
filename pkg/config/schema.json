@@ -849,7 +849,7 @@
         },
         "finishText": {
           "type": "string",
-          "description": "Formatted paragraph shown on the finish page below its standard text, only after a new installation."
+          "description": "Formatted paragraph shown on the finish page below its standard text, unless the product was already installed (repair, change, removal) or for an administrative install."
         },
         "launch": {
           "type": "object",
