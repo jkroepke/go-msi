@@ -29,6 +29,12 @@ InstallDirText: "Varsayılan klasöre yüklemek için İleri'ye, başka bir klas
 InstallDirLabel: "[ProductName] ürününü şuraya yükle:"
 InstallDirChange: "&Değiştir..."
 
+InstallScopeTitle: "Yükleme kapsamı"
+InstallScopeText: "Bu bilgisayarda [ProductName] ürününü kimlerin kullanabileceğini seçin."
+InstallScopeUser: "Yalnızca &benim için yükle ([LogonUser])"
+InstallScopeMachine: "Bu bilgisayarın &tüm kullanıcıları için yükle"
+InstallScopeHint: "Tüm kullanıcılar için yükleme yönetici hakları gerektirir. Yalnızca sizin için yükleme bunu gerektirmez ve [ProductName] ürününü yalnızca siz kullanabilirsiniz."
+
 CustomizeTitle: "Özel Kurulum"
 CustomizeText: "Özelliklerin nasıl yükleneceğini seçin."
 CustomizeHint: "Özelliklerin yüklenme şeklini değiştirmek için aşağıdaki ağaçta simgelere tıklayın."

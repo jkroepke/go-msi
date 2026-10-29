@@ -94,6 +94,13 @@ func TestValidateAccepted(t *testing.T) {
 			"properties: {P: {value: x, search: {registry: {root: HKLM, key: Software\\X, name: V, bitness: 32, type: directory}}}}\n",
 		"remove registry": base + strings.Replace(appComponent, "    files:",
 			"    removeRegistry: [{root: HKCU, key: Software\\Classes\\old}, {root: HKMU, key: Software\\X, name: Legacy}]\n    files:", 1),
+		// Program Files and HKCR follow the context of a dual package.
+		"dual scope": pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:",
+			"    registry: [{root: HKCR, key: .app, value: App.File}, {root: HKMU, key: Software\\X, name: N, value: v}]\n    files:", 1),
+		"dual scope machine first": pkg(`{platform: x64, scope: PerMachineOrUser}`) + appComponent,
+		// Only a dual package reserves the scope page's names.
+		"scope names in a perMachine package": pkg(`{platform: x64}`) + appComponent +
+			"properties:\n  BuilderInstallScope: {value: x}\n",
 	} {
 		if ds := validate(t, doc); len(ds) != 0 {
 			t.Errorf("%s: unexpected diagnostics: %v", name, ds)
@@ -405,6 +412,14 @@ func TestValidate(t *testing.T) {
 		"fileTypes verb twice": {
 			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, verbs: [{id: open}, {id: Open}]}]\n", 1),
 			sevError, "components[0].files[0].fileTypes[0].verbs[1].id", "listed twice",
+		},
+		"registry value twice": {
+			base + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\App, name: a, value: x}, {root: HKLM, key: software\\app, name: A, value: y}]\n    files:", 1),
+			sevError, "components[0].registry[1]", "already writes this registry value",
+		},
+		"default install dir beside a tree": {
+			strings.ReplaceAll(base, "INSTALLDIR", "APPLICATIONFOLDER") + "components:\n  - files: [{ source: app.exe }]\n",
+			sevWarning, "installDir", "next to APPLICATIONFOLDER",
 		},
 		"scheduleReboot bad when": {
 			base + appComponent + "scheduleReboot: { when: always }\n",
@@ -797,6 +812,78 @@ func TestValidate(t *testing.T) {
 				"  - id: Other\n    directory: INSTALLDIR\n    removeRegistry: [{id: A, root: HKLM, key: Software\\Y}]\n",
 			sevError, "components[1].removeRegistry[0].id", "defined twice",
 		},
+		"dual scope service": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + strings.Replace(appComponent, "    files:", "    services: [{name: svc}]\n    files:", 1),
+			sevError, "components[0].services[0]", "a perMachineOrUser package cannot install services (ICE105)",
+		},
+		"dual scope HKLM": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\X, name: N, value: v}]\n    files:", 1),
+			sevError, "components[0].registry[0].root", "ICE105",
+		},
+		"dual scope system folder": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + "  - id: Data\n    directory: CommonAppDataFolder/App\n    createFolder: true\n",
+			sevError, "components[1].directory", "cannot install under CommonAppDataFolder (ICE105)",
+		},
+		"dual scope installer 4.5": {
+			pkg(`{platform: x64, scope: perUserOrMachine, installerVersion: "4.5"}`) + appComponent,
+			sevError, "package.installerVersion", "MSIINSTALLPERUSER",
+		},
+		"dual scope machine variable": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:", "    environment: [{name: FOO, value: a}]\n    files:", 1),
+			sevError, "components[0].environment[0].scope", "machine variables",
+		},
+		"dual scope purge": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + "  - id: Data\n    directory: ProgramFiles64Folder/AcmeData\n    createFolder: true\n    purge: true\n",
+			sevError, "components[1].purge", "runs as the user",
+		},
+		"dual scope public start menu folder": {
+			strings.Replace(pkg(`{platform: x64, scope: perUserOrMachine}`), "directories:\n",
+				"directories:\n  - id: ProgramMenuFolder\n    children: [{id: MENUDIR, name: Acme, configurable: true}]\n", 1) +
+				appComponent + "  - id: Menu\n    directory: MENUDIR\n    createFolder: true\n",
+			sevError, "directories[0].children[0].id", "public directory under ProgramMenuFolder",
+		},
+		"dual scope purge start menu": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + "  - id: Menu\n    directory: ProgramMenuFolder/Acme/Tools\n    createFolder: true\n    purge: true\n",
+			sevError, "components[1].purge", "runs as the user",
+		},
+		"dual scope install dir on desktop": {
+			`schema: msi-builder/v1
+product: {name: App, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301}
+package: {platform: x64, scope: perUserOrMachine}
+installDir: {parent: DesktopFolder, name: Acme}
+components:
+  - files: [{source: app.exe}]
+`,
+			sevError, "installDir.parent", "must be under Program Files",
+		},
+		"dual scope install dir defined on desktop": {
+			strings.Replace(pkg(`{platform: x64, scope: perUserOrMachine}`), "id: ProgramFiles64Folder", "id: DesktopFolder", 1) + appComponent,
+			sevError, "directories[0].children[0].id", "must be under Program Files",
+		},
+		"dual scope BuilderInstallScope": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + "properties:\n  BuilderInstallScope: {value: perMachine}\n",
+			sevError, "properties.BuilderInstallScope", "set by the builder",
+		},
+		"dual scope action prefix": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + `customActions:
+  - id: SetInstallScopeX
+    setProperty: {name: X, value: "1"}
+    schedule: [{sequence: execute, after: CostFinalize}]
+`,
+			sevError, "customActions[0].id", "scope page",
+		},
+		"MSIINSTALLPERUSER without a dual scope": {
+			pkg(`{platform: x64, scope: perUser}`) + appComponent + "properties:\n  MSIINSTALLPERUSER: {value: \"1\"}\n",
+			config.SeverityWarning, "properties.MSIINSTALLPERUSER", "no effect unless ALLUSERS is 2",
+		},
+		"dual scope MSIINSTALLPERUSER": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + "properties:\n  MSIINSTALLPERUSER: {value: \"1\"}\n",
+			sevError, "properties.MSIINSTALLPERUSER", "set by the builder",
+		},
+		"per-user HKCR": {
+			pkg(`{platform: x64, scope: perUser}`) + strings.Replace(appComponent, "    files:", "    registry: [{root: HKCR, key: .app, value: v}]\n    files:", 1),
+			sevError, "components[0].registry[0].root", "a per-user package cannot change HKCR",
+		},
 		"remove registry per user": {
 			pkg(`{platform: x64, scope: perUser}`) + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X}]\n    files:", 1),
 			sevError, "components[0].removeRegistry[0].root", "ICE105",
@@ -1173,5 +1260,38 @@ func TestRemoveFilesEmptyEntry(t *testing.T) {
 	doc := base + strings.Replace(appComponent, "    files:", "    removeFiles: [~]\n    files:", 1)
 	if _, err := config.Parse([]byte(doc), config.Options{}); err == nil || !strings.Contains(err.Error(), "components[0].removeFiles[0]: empty entry") {
 		t.Errorf("parse: %v", err)
+	}
+}
+
+// TestInstallDirBesideDataFolder does not warn about a default install dir
+// next to an upper-case data folder, which is no install dir.
+func TestInstallDirBesideDataFolder(t *testing.T) {
+	t.Parallel()
+
+	doc := strings.Replace(base, "  - id: ProgramFiles64Folder\n    children:\n      - id: INSTALLDIR\n        name: App\n        configurable: true\n",
+		"  - id: CommonAppDataFolder\n    children:\n      - id: DATADIR\n        name: App\n", 1) +
+		"components:\n  - files: [{ source: app.exe }]\n  - { directory: DATADIR, createFolder: true }\n"
+	if !strings.Contains(doc, "DATADIR") {
+		t.Fatal("base changed; update the test")
+	}
+
+	for _, d := range validate(t, doc) {
+		if strings.Contains(d.Message, "next to") {
+			t.Errorf("unexpected warning: %s: %s", d.Path, d.Message)
+		}
+	}
+}
+
+// TestInstallDirBesideTargetDirTree warns about an upper-case directory
+// below Program Files in a tree rooted at TARGETDIR.
+func TestInstallDirBesideTargetDirTree(t *testing.T) {
+	t.Parallel()
+
+	doc := strings.Replace(base, "  - id: ProgramFiles64Folder\n    children:\n      - id: INSTALLDIR\n        name: App\n        configurable: true\n",
+		"  - id: TARGETDIR\n    children:\n      - id: ProgramFiles64Folder\n        children:\n          - id: APPDIR\n            name: App\n", 1) +
+		"components:\n  - files: [{ source: app.exe }]\n"
+
+	if !find(validate(t, doc), config.SeverityWarning, "installDir", "next to APPDIR") {
+		t.Error("no warning about APPDIR")
 	}
 }

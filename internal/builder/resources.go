@@ -17,12 +17,29 @@ var registryRoots = map[string]int{"HKMU": -1, "HKCR": 0, "HKCU": 1, "HKLM": 2, 
 
 // registryID returns the Registry key of a value: the explicit id, else one
 // generated from the value's identity.
-func (b *build) registryID(info *componentInfo, r *config.RegistryValue) string {
-	if r.ID != "" {
-		return r.ID
+func (b *build) registryID(info *componentInfo, reg *config.RegistryValue) string {
+	if reg.ID != "" {
+		return reg.ID
 	}
 
-	return generatedID("reg", "Registry", info.cfg.ID, r.Root, strings.ToLower(r.Key), strings.ToLower(r.Name))
+	// A key row's Name column is * or +, so it must not share the id of the
+	// key's default value.
+	name := strings.ToLower(reg.Name)
+	if reg.Type == regTypeKey {
+		name = registryKeyName(reg)
+	}
+
+	return generatedID("reg", "Registry", info.cfg.ID, reg.Root, strings.ToLower(reg.Key), name)
+}
+
+// registryKeyName is the Name column of a type key row: * also deletes the
+// key on uninstall, + only creates it.
+func registryKeyName(r *config.RegistryValue) string {
+	if r.RemoveOnUninstall {
+		return "*"
+	}
+
+	return "+"
 }
 
 // registryValue encodes a typed value the way the Registry table expects
@@ -75,12 +92,9 @@ func (b *build) writeRegistry(info *componentInfo) {
 	for _, reg := range comp.Registry {
 		var name any
 
-		switch {
-		case reg.Type == "key" && reg.RemoveOnUninstall:
-			name = "*"
-		case reg.Type == "key":
-			name = "+"
-		default:
+		if reg.Type == regTypeKey {
+			name = registryKeyName(reg)
+		} else {
 			name = nullable(reg.Name)
 		}
 

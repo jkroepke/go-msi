@@ -63,7 +63,12 @@ func dialogAccessKeys(t *testing.T, database *msidb.Database) map[string]map[run
 
 	for _, row := range rows(t, database, "Control") {
 		dialog := str(row[0])
-		add(dialog, str(row[1]), str(row[9]))
+
+		// The ready page of a dual package shows one of two Install
+		// buttons, so they share the access key.
+		if row[1] != "InstallElevated" {
+			add(dialog, str(row[1]), str(row[9]))
+		}
 
 		if row[2] == "RadioButtonGroup" {
 			groups[str(row[8])] = append(groups[str(row[8])], dialog)
@@ -90,10 +95,16 @@ func TestAccessKeysUnique(t *testing.T) {
 	lcids := append([]int{1033}, config.TranslatedLanguages()...)
 	slices.Sort(lcids)
 
-	for _, wizard := range []string{"minimal", "featureTree"} {
+	for _, wizard := range []string{"minimal", "featureTree", "scope"} {
 		for _, lcid := range lcids {
 			cfg := desktop(t)
 			cfg.UI.Wizard = wizard
+
+			if wizard == "scope" {
+				cfg = dualDesktop(t)
+				cfg.UI.Wizard = "minimal"
+			}
+
 			cfg.Product.Language = new(lcid)
 			cfg.Package.Codepage = 0
 

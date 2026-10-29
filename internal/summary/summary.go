@@ -236,6 +236,9 @@ func Marshal(props []Property, codePage int) ([]byte, error) { //nolint:cyclop,g
 	return out, nil
 }
 
+// entry is one property's ID and value offset in the section.
+type entry struct{ pid, off int }
+
 // Unmarshal parses a summary stream. Strings are decoded with the PID 1 code
 // page.
 func Unmarshal(data []byte) ([]Property, error) { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
@@ -263,11 +266,13 @@ func Unmarshal(data []byte) ([]Property, error) { //nolint:cyclop,gocognit // on
 
 	section := data[sec : sec+size]
 
-	type ent struct{ pid, off int }
-
-	ents := make([]ent, count)
+	ents := make([]entry, count)
 	for i := range ents {
-		ents[i] = ent{int(order.Uint32(section[8+8*i:])), int(order.Uint32(section[12+8*i:]))}
+		ents[i] = entry{int(order.Uint32(section[8+8*i:])), int(order.Uint32(section[12+8*i:]))}
+	}
+
+	if err := checkEntries(section, ents); err != nil {
+		return nil, err
 	}
 
 	codePage := codepage.Windows1252
@@ -330,6 +335,83 @@ func Unmarshal(data []byte) ([]Property, error) { //nolint:cyclop,gocognit // on
 	}
 
 	return props, nil
+}
+
+// checkEntries rejects a property list that names a PID twice or whose
+// values overlap each other or the list itself. Values are decoded one by
+// one, so a list of aliases would multiply one large string in memory.
+func checkEntries(section []byte, ents []entry) error {
+	seen := make(map[int]bool, len(ents))
+
+	type extent struct{ pid, start, end int }
+
+	extents := make([]extent, 0, len(ents))
+
+	for _, ent := range ents {
+		if seen[ent.pid] {
+			return fmt.Errorf("summary: PID %d appears twice", ent.pid)
+		}
+
+		seen[ent.pid] = true
+
+		end, err := valueEnd(section, ent.off)
+		if err != nil {
+			return fmt.Errorf("summary: PID %d %w", ent.pid, err)
+		}
+
+		extents = append(extents, extent{ent.pid, ent.off, end})
+	}
+
+	slices.SortFunc(extents, func(a, b extent) int { return a.start - b.start })
+
+	lastEnd := 8 + 8*len(ents)
+
+	for _, ext := range extents {
+		if ext.start < lastEnd {
+			return fmt.Errorf("summary: PID %d value overlaps another entry", ext.pid)
+		}
+
+		lastEnd = ext.end
+	}
+
+	return nil
+}
+
+// valueEnd returns the end offset of the typed value at off, or an error for
+// a value that does not fit the section. Unknown types end after their
+// header; Unmarshal rejects them later.
+func valueEnd(section []byte, off int) (int, error) {
+	if off < 0 || off > len(section)-4 {
+		return 0, errors.New("value out of range")
+	}
+
+	size := 0
+
+	switch binary.LittleEndian.Uint16(section[off:]) {
+	case vtI2:
+		size = 2
+	case vtI4:
+		size = 4
+	case vtFILETIME:
+		size = 8
+	case vtLPSTR:
+		if off > len(section)-8 {
+			return 0, errors.New("truncated")
+		}
+
+		n := binary.LittleEndian.Uint32(section[off+4:])
+		if int64(n) > int64(len(section)-off-8) {
+			return 0, errors.New("truncated")
+		}
+
+		size = 4 + int(n)
+	}
+
+	if size > len(section)-off-4 {
+		return 0, errors.New("truncated")
+	}
+
+	return off + 4 + size, nil
 }
 
 // Get returns the value of a PID, or nil.

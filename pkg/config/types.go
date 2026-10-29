@@ -142,6 +142,11 @@ type InstallDir struct {
 	Name string `yaml:"name"`
 	// Parent is the standard folder the install dir is created in.
 	Parent string `yaml:"parent"`
+	// besides lists, comma separated, the directories of the file's own
+	// tree that could be meant as the install dir (configurable, or upper
+	// case below Program Files) when the default install dir was added
+	// next to them, for the validator to warn about.
+	besides string
 	// Remember stores the chosen folder in the registry and reads it back
 	// on the next install, so that a major upgrade keeps a custom folder
 	// (SEARCH-03).
@@ -642,6 +647,10 @@ type Placement struct { //nolint:govet // field order is the YAML key order
 	// is ANDed with Condition (see Placement.FullCondition).
 	When string `yaml:"when"`
 }
+
+// registryTypeKey is the registry type of an entry that creates a key
+// without a value.
+const registryTypeKey = "key"
 
 // ScheduleReboot asks for a restart at the end of the installation: the
 // ScheduleReboot action after InstallFinalize. With /norestart or

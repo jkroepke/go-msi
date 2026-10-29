@@ -112,6 +112,18 @@ func TestShorthandInstallDir(t *testing.T) {
 			"per user", short + "  scope: perUser\n",
 			[]string{"LocalAppDataFolder", "LocalAppDataFolder_Programs", "INSTALLDIR"}, "Hello",
 		},
+		{
+			"per user name", short + "  scope: perUser\ninstallDir: Hello World\n",
+			[]string{"LocalAppDataFolder", "LocalAppDataFolder_Programs", "INSTALLDIR"}, "Hello World",
+		},
+		{
+			"per user name with Programs", short + "  scope: perUser\ninstallDir: programs/Hello\n",
+			[]string{"LocalAppDataFolder", "LocalAppDataFolder_programs", "INSTALLDIR"}, "Hello",
+		},
+		{
+			"per user parent", short + "  scope: perUser\ninstallDir: { name: Hello, parent: LocalAppDataFolder }\n",
+			[]string{"LocalAppDataFolder", "INSTALLDIR"}, "Hello",
+		},
 	} {
 		cfg := parseValid(t, tc.doc+"components:\n  - files: [{ source: hello.exe }]\n")
 
