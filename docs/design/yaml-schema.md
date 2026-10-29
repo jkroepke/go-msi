@@ -1967,7 +1967,8 @@ properties, conditions and the page order stay those of `ui.dialogs`; only
 texts change. The texts are formatted and `&` marks the access key on the
 same controls as in `ui.dialogs` (checkboxes and radio buttons). LANG-04
 runs a German transform's translated page through the full UI and checks
-that the option chosen by its translated label sets its value.
+that the option chosen by its translated label sets its value (not run
+yet).
 
 A `languages` key is a decimal LCID or a language tag: a full tag such as
 `de-AT` (3079) or `pt-PT` (2070) names that locale, and a short tag such as
