@@ -216,10 +216,10 @@ Silent-failure cases a producer has to guard against itself:
 | MSZIP-02 | Confirmed | Go's trailing empty block and makecab's stream both extract and install (CAB-01, MSZIP-01) |
 | LZX-01 | Not run | P2, needs an LZX reference set |
 | LZX-02 | Not run | msi-rs regression case; test a candidate writer |
-| BUILD-01 | Confirmed (msi-builder) | [ci](msitest/results/BUILD-02/ci/log.md); `TestMissingInput`: a missing source fails the build with a diagnostic naming it and no package |
-| BUILD-02 | Confirmed (msi-builder) | [ci](msitest/results/BUILD-02/ci/log.md); `TestDeterministicAcrossProcesses`: 20 fresh processes build one SHA-256, on Linux and Windows runners; the two hosts' hashes are not compared |
+| BUILD-01 | Confirmed (msi-builder, missing source) | [ci](msitest/results/BUILD-02/ci/log.md) (shared with BUILD-02); `TestMissingInput`: a missing source fails the build with a diagnostic naming it and no package; the stale-cabinet half does not apply to msi-builder (inferred) |
+| BUILD-02 | Partial | [ci](msitest/results/BUILD-02/ci/log.md); CI run 40941177928, `TestDeterministicAcrossProcesses`: 20 fresh processes build one SHA-256 on the Linux and on the Windows runner; the two hosts' hashes are not compared and insertion order is not shuffled |
 | INST-01 | Confirmed | Labelled substitute (published `minimal.msi` not in the repository), [x64](msitest/results/INST-01/x64-substitute/log.md) and [Intel](msitest/results/INST-01/intel-substitute/log.md) |
-| INST-02 | Confirmed | [admin](msitest/results/INST-02/admin/log.md), [non-admin](msitest/results/INST-02/nonadmin/log.md), [non-admin on CI](msitest/results/INST-02/nonadmin-ci/log.md); SERVER2025, 2026-10-29, and the GitHub `windows-latest` runner as a standard user on every CI run (CI run 40942811121), `msitest/inst02/run.ps1`: `MSIINSTALLPERUSER` selects the context of an `ALLUSERS=2` package for admins and standard users, files, HKMU, HKCR, shortcuts and registration follow it, a standard user's per-user install needs no Word Count bit 3, a per-machine one fails with 1925; a context switch in the UI sequence leaves the client-resolved `INSTALLDIR` in the old context; a major upgrade does not cross contexts |
+| INST-02 | Confirmed | [admin](msitest/results/INST-02/admin/log.md), [non-admin](msitest/results/INST-02/nonadmin/log.md), [non-admin on CI](msitest/results/INST-02/nonadmin-ci/log.md); SERVER2025, 2026-10-29, `msitest/inst02/run.ps1`: `MSIINSTALLPERUSER` selects the context of an `ALLUSERS=2` package for admins and standard users, files, HKMU, HKCR, shortcuts and registration follow it, a standard user's per-user install needs no Word Count bit 3, a per-machine one fails with 1925; a context switch in the UI sequence leaves the client-resolved `INSTALLDIR` in the old context; a major upgrade does not cross contexts; on CI, `TestNonAdminInstallScopes` repeats the four scopes as a standard user on every run since CI run 40942811121 (exit codes, error 1925, install folder) |
 | FILE-01 | Confirmed | [empty version, REP 1401](msitest/results/FILE-01/empty-version-rep1401/log.md) deletes the file |
 | FILE-02 | Confirmed | [log](msitest/results/FILE-02/file-hash/log.md) |
 | FILE-03 | Confirmed | [removefile-upgrade](msitest/results/FILE-03/removefile-upgrade/log.md), [purge-upgrade](msitest/results/FILE-03/purge-upgrade/log.md); `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
@@ -969,3 +969,30 @@ the Start menu folder `MsiBuilderShortcutTargets`, and a desktop shortcut to
 - Not covered: a per-user install, repair, whether WriteIniValues creates a
   missing folder by itself, whether RemoveIniValues deletes a `.url` it
   emptied, the icon the shell shows for `IconFile`, Windows Server 2016.
+
+## Firewall service stopped
+
+SERVER2025 (Windows Server 2025 10.0.26100.1742, msi.dll 5.0.26100.1742),
+2026-10-29, elevated administrator, msi-builder from main cd62ea8. The
+question was whether a firewall rule action fails the install while the
+Windows Defender Firewall service is stopped (MSISPEC section 16, WiX issues
+1723, 1736 and 4483).
+
+- Control with the service running: a package with one rule (`port: 9999`)
+  installs with exit 0. The add action is type 3106 (deferred,
+  no-impersonate, no Continue flag); the log shows
+  `netsh.exe advfirewall firewall add rule name="MsiBuilderFwStopped" dir=in action=allow protocol=tcp localport=9999 program="C:\Program Files\MsiBuilderFwStopped\app.exe"`,
+  and `show rule` lists it enabled for all profiles. Uninstall (type 3170,
+  `delete rule name="MsiBuilderFwStopped" dir=in`) exits 0 and removes it.
+- Stopping the service is refused: `Stop-Service MpsSvc -Force` fails with
+  "Cannot open MpsSvc service on computer '.'", and `sc.exe stop mpssvc`
+  with `OpenService FAILED 5: Access is denied`. The service's security
+  descriptor, `D:(A;;CCLCLORC;;;AU)(A;;CCDCLCSWRPLORCWDWO;;;SY)(A;;CCLCSWRPLORCWDWO;;;BA)(A;;CCLCLO;;;BU)`,
+  gives no one the stop right (`WP`). SYSTEM and Administrators hold `WD`
+  (write DAC), so they could grant it with `sc sdset`; that was not tried.
+  The GitHub runner refused the stop the same way (CI run 40881913820).
+- A safety-net task to restart the service was registered and deleted; the
+  service stayed running and all three profiles stayed on; the rule, the
+  product and the work folder were removed.
+
+The stopped-service install did not run: Not tested.

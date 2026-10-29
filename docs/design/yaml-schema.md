@@ -1355,10 +1355,9 @@ The engine finds a file whose version equals `MinVersion` only when
 every file; the one difference is a file of exactly that lower version
 without any language, which is found too. With `languages` the bound is
 written as given. Versions of Windows' own files are unreliable to a search
-(the engine sees compatibility-shimmed versions of them: a `minVersion`
-search for `ucrtbase.dll` in `System64Folder` at its real version found
-nothing, while the same search for a copy in another folder found it,
-SEARCH-02), so the builder warns about version bounds in
+(a `minVersion` search for `ucrtbase.dll` in `System64Folder` at its real
+version found nothing, while the same search for a copy in another folder
+found it, consistent with the reported compatibility shim; SEARCH-02), so the builder warns about version bounds in
 `[SystemFolder]`, `[System64Folder]`, `[WindowsFolder]` and `C:\Windows`;
 search the registry value `CurrentBuildNumber` under
 `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion` instead and compare it

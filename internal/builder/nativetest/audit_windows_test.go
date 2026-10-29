@@ -199,10 +199,22 @@ properties:
 		t.Logf("SEARCH-02: %s = %q", name, props[name])
 	}
 
-	// The private copy is the control: its search must follow the file's
-	// real version.
-	if !strings.EqualFold(props["PRIV_EQUAL"], filepath.Join(search02Root, "ucrtbase.dll")) || props["PRIV_ABOVE"] != "none" {
-		t.Errorf("private copy: PRIV_EQUAL = %q, PRIV_ABOVE = %q", props["PRIV_EQUAL"], props["PRIV_ABOVE"])
+	// The private copy is the control: its search follows the file's real
+	// version, while the system folder's copy is found only below it.
+	private := filepath.Join(search02Root, "ucrtbase.dll")
+	system64 := filepath.Join(os.Getenv("SystemRoot"), "System32", "ucrtbase.dll")
+
+	for name, want := range map[string]string{
+		"PRIV_EQUAL": private,
+		"PRIV_ABOVE": "none",
+		"SYS_PLAIN":  system64,
+		"SYS_LOW":    system64,
+		"SYS_EQUAL":  "none",
+		"SYS_ABOVE":  "none",
+	} {
+		if got := props[name]; !strings.EqualFold(got, want) {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
 	}
 
 	msiexecQuiet(t, filepath.Join(filepath.Dir(path), "uninstall.log"), "/x", path)

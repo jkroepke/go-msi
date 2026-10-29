@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/jkroepke/msi-builder/internal/testpe"
@@ -107,16 +108,19 @@ func (u nonAdminUser) run(t *testing.T, cmdline string) int {
 func (u nonAdminUser) msiexec(t *testing.T, log string, args ...string) int {
 	t.Helper()
 
+	// msiexec takes PROPERTY="value", not a quoted whole argument.
 	quoted := make([]string, 0, len(args))
 	for _, arg := range args {
-		if strings.ContainsRune(arg, ' ') && !strings.Contains(arg, "=") {
-			arg = `"` + arg + `"`
+		if name, value, ok := strings.Cut(arg, "="); ok && !strings.HasPrefix(arg, "/") {
+			arg = name + `="` + strings.ReplaceAll(value, `"`, `""`) + `"`
+		} else {
+			arg = syscall.EscapeArg(arg)
 		}
 
 		quoted = append(quoted, arg)
 	}
 
-	return u.run(t, fmt.Sprintf(`msiexec.exe %s /qn /norestart /l*v "%s"`, strings.Join(quoted, " "), log))
+	return u.run(t, fmt.Sprintf(`msiexec.exe %s /qn /norestart /l*v %s`, strings.Join(quoted, " "), syscall.EscapeArg(log)))
 }
 
 // policy runs reg.exe on the user's Installer policy key. A standard user
@@ -144,6 +148,25 @@ func (u nonAdminUser) policy(t *testing.T, action string, args ...string) error 
 	ctx := context.Background()
 	key := hive + `\SOFTWARE\Policies\Microsoft\Windows\Installer`
 
+	// The profile service unloads the hive some time after the logon
+	// ends, so a loaded hive can go away and a load can meet NTUSER.DAT
+	// still open; try again a few times.
+	var last error
+
+	for range 10 {
+		if last = u.writePolicy(ctx, hive, key, action, args); last == nil {
+			return nil
+		}
+
+		time.Sleep(time.Second)
+	}
+
+	return last
+}
+
+// writePolicy runs reg.exe action on key in hive, loading the user's
+// NTUSER.DAT for it when the hive is not loaded.
+func (u nonAdminUser) writePolicy(ctx context.Context, hive, key, action string, args []string) error {
 	if exec.CommandContext(ctx, "reg.exe", "query", hive).Run() != nil {
 		profile := filepath.Join(os.Getenv("SystemDrive")+`\`, "Users", u.name, "NTUSER.DAT")
 		//nolint:gosec // the hive and profile path come from the test account
@@ -291,12 +314,14 @@ func TestNonAdminSecureProperties(t *testing.T) {
 		t.Fatalf("reg add: %v\n%s", err, out)
 	}
 
+	// Cleanups run last in, first out: the user's policy goes before the
+	// machine's, and a failing logon there cannot keep the machine's.
 	t.Cleanup(func() {
-		_ = user.policy(t, "delete", "/v", "AlwaysInstallElevated", "/f")
 		_ = exec.CommandContext(ctx, "reg.exe", "delete", policy, "/v", "AlwaysInstallElevated", "/f").Run()
 		_ = exec.CommandContext(ctx, "msiexec", "/x", path, "/qn").Run()
 		_ = os.RemoveAll(filepath.Join(os.Getenv("ProgramFiles"), "MsiBuilderSecure"))
 	})
+	t.Cleanup(func() { _ = user.policy(t, "delete", "/v", "AlwaysInstallElevated", "/f") })
 
 	if err := user.policy(t, "add", "/v", "AlwaysInstallElevated", "/t", "REG_DWORD", "/d", "1", "/f"); err != nil {
 		t.Fatal(err)

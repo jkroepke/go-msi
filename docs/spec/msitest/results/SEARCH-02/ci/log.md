@@ -22,5 +22,6 @@ it in `[System64Folder]` and in the copy's folder. msi-builder writes
 | PRIV_ABOVE | private copy, `minVersion` 10.0.26100.33649 | not found |
 
 The same bytes are found at their real version in a private folder and only
-below it in the system folder: the engine sees a shimmed version of the
-system's own file. Confirmed.
+below it in the system folder, consistent with the reported compatibility
+shim for the system's own files; the version the engine saw was not
+measured. Confirmed.

@@ -412,6 +412,10 @@ func TestMissingInput(t *testing.T) {
 	if !strings.Contains(fmt.Sprint(res.Diagnostics), "hello.exe") {
 		t.Errorf("diagnostics do not name the file: %s", res.Diagnostics)
 	}
+
+	if res != nil && len(res.Package) != 0 {
+		t.Errorf("a failed build returned a %d-byte package", len(res.Package))
+	}
 }
 
 func TestWindowsExporter(t *testing.T) {
