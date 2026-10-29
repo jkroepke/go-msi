@@ -91,7 +91,8 @@ func caseCA01() {
 		sq := squash(p.ProductCode)
 		hku := `HKU\` + sid + `\Software\Microsoft\Installer\Products\` + sq
 		ud := `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\` + sid + `\Products\` + sq
-		c.logf("install exit %d; MsiQueryProductState %d", r.Exit, productState(p.ProductCode))
+		state := productState(p.ProductCode)
+		c.logf("install exit %d; MsiQueryProductState %d", r.Exit, state)
 		for _, h := range r.Hits {
 			if strings.Contains(h, "1402") || strings.Contains(h, "1403") {
 				c.logf("  rollback log: %s", h)
@@ -102,11 +103,15 @@ func caseCA01() {
 		if !strings.Contains(pub, "ERROR") {
 			c.logf("  %s", oneLine(regQuery(hku+`\SourceList`)))
 		}
-		c.logf("%s present=%v", ud, !strings.Contains(regQuery(ud), "ERROR"))
+		udLeft := !strings.Contains(regQuery(ud), "ERROR")
+		c.logf("%s present=%v", ud, udLeft)
+		// A failure between RegisterProduct and PublishProduct leaves only
+		// the UserData registration (state 2), so count every key and state.
+		registered := !strings.Contains(pub, "ERROR") || udLeft || state != -1
 		u := runMsiexec(c, "uninstall.log", "/x", p.ProductCode)
 		c.logf("uninstall by ProductCode exit %d; state after %d", u.Exit, productState(p.ProductCode))
 		left := !strings.Contains(regQuery(hku), "ERROR") || !strings.Contains(regQuery(ud), "ERROR")
-		c.logf("RESULT %s: install %d, registration left after failed install=%v", name, r.Exit, !strings.Contains(pub, "ERROR"))
+		c.logf("RESULT %s: install %d, registration left after failed install=%v", name, r.Exit, registered)
 		if left {
 			c.logf("  cleanup: deleting leftover registration keys")
 			for _, k := range []string{hku, ud} {

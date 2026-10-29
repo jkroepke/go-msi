@@ -620,6 +620,7 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 
 	b.checkSequences()
 	b.checkWhen()
+	b.checkPerUserRollback()
 
 	scheduled := make(map[string]bool)
 
