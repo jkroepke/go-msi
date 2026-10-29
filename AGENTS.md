@@ -166,6 +166,12 @@ go test ./... -shuffle=on -race
 - Changes that affect the generated packages need a Windows run. Use the
   `msitest` harness or the native tests on a Windows machine; state in the
   pull request which checks ran and which could not.
+- Per-user behaviour needs a non-administrator run as well: an elevated
+  administrator's install can hide failures (CA-01: the rollback of the product
+  registration only fails for a non-administrator). Windows Server refuses
+  non-administrator installs with 1625 unless the machine policy `DisableMsi`
+  is 0, and a per-user test package needs `INSTALLDIR` under
+  `LocalAppDataFolder`, or it stops with 1303 at Program Files.
 - To learn what Windows does before writing a test, a temporary nativetest
   that collects its observations and reports them with one `t.Errorf` runs
   on the `windows-latest` runner: push the branch and start CI with
