@@ -22,7 +22,7 @@ var standardFolders = set( //nolint:gochecknoglobals // lookup table
 )
 
 // profileFolders are below the user profile; components there need an HKCU
-// key path (ICE38) and RemoveFolder rows (ICE64).
+// key path (ICE38) and RemoveFolder rows (ICE64), which the builder writes.
 var profileFolders = set( //nolint:gochecknoglobals // lookup table
 	"AppDataFolder", "DesktopFolder", "FavoritesFolder", "LocalAppDataFolder",
 	"MyPicturesFolder", "NetHoodFolder", "PersonalFolder", "PrintHoodFolder",

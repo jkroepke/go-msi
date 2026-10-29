@@ -720,9 +720,14 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 		// same automatic GUID.
 		b.uniqueGUID(path, comp.ID, info.guid)
 
+		// A component keyed on its folder creates it, also when a
+		// generated registry value becomes its key path.
+		createFolder := info.keyPath == nil || comp.CreateFolder
+
+		b.profileKeyPath(info)
 		b.table("Component").Add(comp.ID, info.guid, comp.Directory, info.attributes, nullable(comp.Condition), info.keyPath)
 
-		if info.keyPath == nil || comp.CreateFolder {
+		if createFolder {
 			b.table("CreateFolder").Add(comp.Directory, comp.ID)
 		}
 

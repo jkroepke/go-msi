@@ -397,10 +397,21 @@ lands in it, so an explicit tree never gains an unused folder.
 
 A per-user install dir lies in the user profile. Windows Installer wants an
 HKCU registry value as the key path of such components (ICE38) and
-RemoveFolder rows for their folders (ICE64). The builder writes the
-RemoveFolder rows (a `RemoveFile` row with no filename, at uninstall, for
-every folder from the component's up to the profile folder); the validator
-warns about the key path.
+RemoveFolder rows for their folders (ICE64). The builder writes both, for
+every component below a profile folder in every scope: the RemoveFolder
+rows (a `RemoveFile` row with no filename, at uninstall, for every folder
+from the component's up to the profile folder), and, unless the component
+sets `keyPath` or its key path already is an HKCU value (or an HKMU value
+in a package that may install per user), a `Registry` row
+`HKCU\Software\[Manufacturer]\[ProductName]` with a generated value name
+and the DWORD 1, as its key path (INST-04). The ComponentId is derived before that,
+from the key file, registry value or folder the component would have had,
+so a package built before keeps its component codes. A component with
+services keeps its executable as key path, and it and an explicit
+`keyPath` that is not an HKCU value get the ICE38 warning. A dual package's
+install dir is under Program Files in the package, so its components keep
+their key files; components in profile folders get the HKCU value in both
+contexts.
 
 A component's `directory` is a directory ID, a standard folder, or a folder
 path. A path starts at its first segment when that is a directory ID or a
@@ -529,7 +540,9 @@ components:
 **GUIDs.** `auto` derives a UUIDv5 from the upgrade code, the bitness and
 the key path's canonical location (directory path and filename, or
 registry root, key and value name). A changed key path therefore gets a new
-GUID, as the component rules require. A pinned GUID is kept as it is (the
+GUID, as the component rules require. The HKCU value the builder adds as
+the key path of a component in the user profile is the exception: the GUID
+follows the key path the component would have without it (section 4.4). A pinned GUID is kept as it is (the
 windows_exporter executable component keeps the GUID of its released
 packages). `none` writes a NULL ComponentId and is only accepted with
 `permanent: true`, because such a component is never removed (specification
@@ -735,8 +748,7 @@ SHORTCUT-01 installed and removed shortcuts from an own HKCU-keyed component and
 from the file's own component alike, and removed an empty Start menu folder
 without a `RemoveFile` row; the Windows tests run the ICE suite on the
 generated layout of a per-machine package (desktop, Start menu, a Start
-menu subfolder and an icon). A per-user package still gets the ICE38
-warning of section 4.4 for its files. An `icon` is stored in the `Icon` table and
+menu subfolder and an icon), in per-machine, per-user and dual packages. An `icon` is stored in the `Icon` table and
 written to the product's installer folder; without one the shell shows the
 target's icon, and `iconIndex` without `icon` is an error. Advertised
 shortcuts are not supported (section 6).

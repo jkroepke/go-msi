@@ -826,11 +826,16 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 		v.errorf(compPath+".directory", "%s cannot install under %s (ICE105)", v.perUserPackage(), top)
 	}
 
+	// Without a keyPath the builder writes an HKCU value as the key path
+	// (INST-04); services keep their executable.
 	switch {
-	case !profileFolders[top]:
-	case !userRegistryKeyPath(comp, perUser):
-		v.warnf(compPath+".directory", "a component in the user profile (%s) needs an HKCU registry value "+
-			"as key path (ICE38)", top)
+	case !profileFolders[top] || userRegistryKeyPath(comp, perUser):
+	case len(comp.Services) > 0:
+		v.warnf(compPath+".directory", "a component with services in the user profile (%s) keeps the service "+
+			"executable as key path, but ICE38 asks for an HKCU registry value", top)
+	case comp.KeyPath != "":
+		v.warnf(compPath+".keyPath", "a component in the user profile (%s) needs an HKCU registry value "+
+			"as key path (ICE38); without keyPath the builder writes one", top)
 	}
 }
 

@@ -92,15 +92,14 @@ func TestMsiexecInstallsShortcuts(t *testing.T) {
 
 // TestICEShortcuts runs the full ICE suite against shortcuts in a Start menu
 // subfolder, which need RemoveFile rows (ICE64), and on the desktop, with an
-// icon. A per-user package is left out: its install dir lies in the user
-// profile, and the file components there still fail ICE38 (see the
-// validator's warning), whatever the shortcuts do.
+// icon, in every scope. The file components of a per-user install dir in
+// the user profile get an HKCU key path too (INST-04).
 //
 //nolint:paralleltest // msi.dll's external UI handler is process-wide
 func TestICEShortcuts(t *testing.T) {
 	cub := iceCube(t)
 
-	for _, scope := range []string{"perMachine"} {
+	for _, scope := range []string{"perMachine", "perUser", "perUserOrMachine"} {
 		t.Run(scope, func(t *testing.T) {
 			dir := t.TempDir()
 			inputs := map[string][]byte{

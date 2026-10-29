@@ -393,10 +393,11 @@ func TestShorthandInstallDirErrors(t *testing.T) {
 		}
 	}
 
-	// A per-user component in the profile gets the ICE38 warning.
+	// The builder gives a per-user component in the profile its HKCU key
+	// path, so it gets no ICE38 warning (INST-04).
 	ds := validate(t, short+"  scope: perUser\n"+comp)
-	if !find(ds, config.SeverityWarning, "components[0].directory", "ICE38") {
-		t.Errorf("no ICE38 warning: %v", ds)
+	if strings.Contains(fmt.Sprint(ds), "ICE38") {
+		t.Errorf("ICE38 warning: %v", ds)
 	}
 }
 
@@ -482,13 +483,19 @@ func TestShorthandProfileKeyPath(t *testing.T) {
 
 	reg := "registry: [{ root: HKCU, key: Software\\Acme, name: installed, type: dword, value: 1 }]"
 
-	for comp, ice38 := range map[string]bool{
-		"{ directory: ProgramMenuFolder/Acme, " + reg + " }":                             false,
-		"{ directory: ProgramMenuFolder/Acme, files: [{ source: a.txt }], " + reg + " }": true,
+	// Only a key path the builder may not replace is reported (INST-04).
+	for comp, ice38 := range map[string]string{
+		"{ directory: ProgramMenuFolder/Acme, " + reg + " }":                                             "",
+		"{ directory: ProgramMenuFolder/Acme, files: [{ source: a.txt }], " + reg + " }":                 "",
+		"{ directory: ProgramMenuFolder/Acme, files: [{ source: a.txt }] }":                              "",
+		"{ directory: ProgramMenuFolder/Acme, createFolder: true }":                                      "",
+		"{ directory: ProgramMenuFolder/Acme, keyPath: a.txt, files: [{ source: a.txt }], " + reg + " }": "components[0].keyPath",
+		"{ directory: AppDataFolder/Acme, files: [{ source: a.exe }], services: [{ name: acme }] }":      "components[0].directory",
 	} {
 		diags := validate(t, short+"components:\n  - "+comp+"\n")
-		if find(diags, config.SeverityWarning, "components[0].directory", "ICE38") != ice38 {
-			t.Errorf("%s: ICE38 warning = %v, want %v: %v", comp, !ice38, ice38, diags)
+		if strings.Contains(fmt.Sprint(diags), "ICE38") != (ice38 != "") ||
+			ice38 != "" && !find(diags, config.SeverityWarning, ice38, "ICE38") {
+			t.Errorf("%s: want an ICE38 warning at %q: %v", comp, ice38, diags)
 		}
 
 		// The builder writes the RemoveFile rows for the folders.

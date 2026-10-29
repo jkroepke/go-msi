@@ -11,8 +11,12 @@ import (
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
-// regTypeKey marks a registry row that creates a key without a value.
-const regTypeKey = "key"
+const (
+	// regTypeKey marks a registry row that creates a key without a value.
+	regTypeKey = "key"
+	// rootHKCU is the current user's registry root.
+	rootHKCU = "HKCU"
+)
 
 var registryRoots = map[string]int{"HKMU": -1, "HKCR": 0, "HKCU": 1, "HKLM": 2, "HKU": 3} //nolint:gochecknoglobals // lookup table
 
