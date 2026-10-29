@@ -237,7 +237,7 @@ func TestCabinetSignatureFormat(t *testing.T) {
 	if len(data) < 60 || order.Uint16(data[0x1E:])&0x4 == 0 || order.Uint32(data[36:]) != 20 ||
 		order.Uint32(data[40:]) != 0x00100000 || int(order.Uint32(data[8:])) != len(plain)+cab.SignatureReserve ||
 		len(data) != len(plain)+cab.SignatureReserve+int(order.Uint32(data[48:])) {
-		t.Errorf("signtool's cabinet layout differs from the reserve msi-builder writes")
+		t.Error("signtool's cabinet layout differs from the reserve msi-builder writes")
 	}
 
 	// The indirect data signtool writes for a cabinet: SpcLink with a page
@@ -342,6 +342,7 @@ func checkInstall(t *testing.T, path string, files []probeFile, label string, wa
 	dir := filepath.Join(os.Getenv("ProgramFiles"), "Cabinet Probe")
 
 	code := msiexecCode(t, log, "/i", path)
+
 	if !strings.Contains(readLog(log), "Validating digital signature of file") {
 		t.Errorf("%s: msiexec did not log a cabinet signature check", label)
 	}
