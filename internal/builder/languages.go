@@ -78,7 +78,6 @@ var entryPaths = []struct{ from, to string }{ //nolint:gochecknoglobals // looku
 	{"ui.strings", ".strings"},
 	{"ui.finishText", ".finishText"},
 	{"ui.license", ".license"},
-	{"ui.launch.text", ".launch.text"},
 }
 
 // languageBuild builds the tables of the package in language lcid: the

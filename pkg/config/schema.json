@@ -872,7 +872,10 @@
                 }
               },
               "dialogs": {
-                "type": "object",
+                "type": [
+                  "object",
+                  "null"
+                ],
                 "description": "Texts of ui.dialogs pages in this language, by dialog id. A text left out keeps the base language's.",
                 "additionalProperties": {
                   "type": [
@@ -888,7 +891,10 @@
                       "type": "string"
                     },
                     "fields": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "description": "Texts of the page's fields, by the property the field binds.",
                       "additionalProperties": {
                         "type": [
@@ -901,10 +907,17 @@
                             "type": "string"
                           },
                           "options": {
-                            "type": "object",
+                            "type": [
+                              "object",
+                              "null"
+                            ],
                             "description": "Labels of a choice field's options, by option value; & marks the access key.",
                             "additionalProperties": {
-                              "type": "string"
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "maxLength": 64
                             }
                           }
                         }

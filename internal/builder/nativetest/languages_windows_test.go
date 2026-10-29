@@ -105,8 +105,8 @@ func TestFullUILanguages(t *testing.T) { //nolint:paralleltest // msiexec runs o
 	// LANG-04: the translated radio button still sets its option's value.
 	if !strings.Contains(seen, "CHOSE: ") {
 		t.Error("LANG-04: the driver found no translated radio button")
-	} else if text := readLog(log); !strings.Contains(text, "LOG_LEVEL = debug") {
-		t.Errorf("LANG-04: LOG_LEVEL is not debug after choosing Ausführlich\n%s", excerpt(text, "LOG_LEVEL"))
+	} else if got := serverProperties(readLog(log))["LOG_LEVEL"]; got != "debug" {
+		t.Errorf("LANG-04: LOG_LEVEL on the server = %q after choosing Ausführlich, want debug", got)
 	}
 
 	if !productInstalled(t, res.ProductCode) {

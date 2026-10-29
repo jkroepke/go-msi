@@ -360,7 +360,7 @@ The keys of `strings` are the names in `pkg/config/schema.json`, such as
 `Next`, `WelcomeTitle` or `ExitText`. A text you leave out keeps the
 built-in one, or its built-in translation in another language; a page
 text you leave out of a language keeps your own. `[ProductName]` and
-other properties work in every text, and `&` marks the access key on
+other properties work in the page texts and labels, and `&` marks the access key on
 buttons, checkboxes and radio buttons. Quote a text that starts with `&`,
 `[` or `<`. msiexec shows the language that matches the user's regional
 format, and `msiexec /i hello.msi ProductLanguage=1031` picks one.

@@ -221,7 +221,7 @@ func (v *validator) uiLanguages(cfg *Config) {
 }
 
 // languageLaunch checks the launch texts of a ui.languages entry: they need
-// ui.launch and some text.
+// ui.launch, and a text that is set must not be blank.
 func (v *validator) languageLaunch(cfg *Config, path string, launch *LanguageLaunch) {
 	if launch == nil {
 		return
@@ -310,8 +310,8 @@ func (v *validator) languageOptions(path string, field *DialogField, options map
 		switch label := options[value]; {
 		case !slices.ContainsFunc(field.Options, func(o ChoiceOption) bool { return o.Value == value }):
 			v.errorf(optionPath, "%q is not an option of the field", value)
-		case strings.TrimSpace(label) == "":
-			v.errorf(optionPath, "the label is blank; leave the key out to keep the base language's")
+		case label != "" && strings.TrimSpace(label) == "":
+			v.errorf(optionPath, "the text is blank; leave it out to keep the base language's")
 		case utf8.RuneCountInString(label) > maxChoiceText:
 			v.errorf(optionPath, "at most %d characters", maxChoiceText)
 		}
