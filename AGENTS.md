@@ -199,6 +199,10 @@ go test ./... -shuffle=on -race
   control; a Text control hidden by its ControlCondition from the start was
   absent from the control view the driver walks (UI-07). Each driver run starts with an
   empty log.
+- Quote `${VAR}` inside a YAML flow mapping (`{ version: "${VERSION}" }`):
+  `{` and `}` end a plain scalar there, so the document fails to parse
+  ("did not find expected ',' or '}'"). The windows-only tests only show
+  this in CI, so parse their configs with `config.Parse` on Linux first.
 - Uninstall test products with `defer`, not `t.Cleanup`: `msiexecQuiet` runs
   under `t.Context()`, which is cancelled before cleanups run, so a cleanup
   uninstall fails with "context canceled" and leaves the product installed.

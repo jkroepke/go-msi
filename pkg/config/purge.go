@@ -25,7 +25,7 @@ func (v *validator) purge(cfg *Config, known *refs, field string, comp *Componen
 
 	// ICE105 keeps a dual package's actions impersonated, so in a
 	// per-machine install a standard user's rmdir cannot delete there.
-	if top := known.topFolder(comp.Directory); cfg.Package.Scope.Dual() && perMachineFolders[top] {
+	if top := known.topFolder(comp.Directory); cfg.Package.Scope.Dual() && (perMachineFolders[top] || contextShellFolders[top]) {
 		v.errorf(field+".purge", "the purge of a %s package runs as the user (ICE105 rejects elevated actions), "+
 			"so a per-machine install could not delete under %s; purge a folder in the user profile, such as "+
 			"LocalAppDataFolder/Vendor/Product", cfg.Package.Scope, top)

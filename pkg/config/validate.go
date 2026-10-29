@@ -418,7 +418,7 @@ func (v *validator) directories(cfg *Config, known *refs) { //nolint:cyclop,goco
 				v.errorf(dirPath+".id", "a configurable directory needs an upper-case id")
 			}
 
-			v.contextDirectory(dirPath, dir.ID, top, known)
+			v.contextDirectory(cfg, dirPath, dir.ID, top, known)
 
 			walk(dir.Children, dirPath+".children", false)
 		}
@@ -445,20 +445,30 @@ func (v *validator) directories(cfg *Config, known *refs) { //nolint:cyclop,goco
 }
 
 // builderProperty reports a property the builder or the installer sets: a
-// dual package also writes MSIINSTALLPERUSER.
+// dual package also writes MSIINSTALLPERUSER and its scope page's property.
 func (v *validator) builderProperty(name string) bool {
-	return builderProperties[name] || name == "MSIINSTALLPERUSER" && v.scope.Dual()
+	return builderProperties[name] || v.scope.Dual() && (name == "MSIINSTALLPERUSER" || name == "BuilderInstallScope")
 }
 
 // contextDirectory rejects a public directory of a dual package below a
 // shell folder that follows the context: the scope page moves only Program
 // Files and Common Files folders, and the client resolved this one for the
 // context the package opened in.
-func (v *validator) contextDirectory(dirPath, dirID string, top bool, known *refs) {
-	if folder := known.topFolder(dirID); !top && v.scope.Dual() && IsPublicProperty(dirID) && contextShellFolders[folder] {
-		v.errorf(dirPath+".id", "a %s package cannot have a public directory under %s, which the scope page cannot "+
-			"move to the chosen context; use a private (mixed-case) id", v.scope, folder)
+func (v *validator) contextDirectory(cfg *Config, dirPath, dirID string, top bool, known *refs) {
+	folder := known.topFolder(dirID)
+	if top || !v.scope.Dual() || !IsPublicProperty(dirID) || !contextShellFolders[folder] {
+		return
 	}
+
+	if dirID == cfg.InstallDir.ID {
+		v.errorf("installDir.parent", "the install folder of a %s package must be under Program Files, which the scope "+
+			"page moves to the chosen context, not under %s", v.scope, folder)
+
+		return
+	}
+
+	v.errorf(dirPath+".id", "a %s package cannot have a public directory under %s, which the scope page cannot "+
+		"move to the chosen context; use a private (mixed-case) id", v.scope, folder)
 }
 
 // rememberComponent checks installDir.remember: the install dir must be

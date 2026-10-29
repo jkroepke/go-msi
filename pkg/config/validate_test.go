@@ -777,6 +777,24 @@ func TestValidate(t *testing.T) {
 				appComponent + "  - id: Menu\n    directory: MENUDIR\n    createFolder: true\n",
 			sevError, "directories[0].children[0].id", "public directory under ProgramMenuFolder",
 		},
+		"dual scope purge start menu": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + "  - id: Menu\n    directory: ProgramMenuFolder/Acme/Tools\n    createFolder: true\n    purge: true\n",
+			sevError, "components[1].purge", "runs as the user",
+		},
+		"dual scope install dir on desktop": {
+			`schema: msi-builder/v1
+product: {name: App, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301}
+package: {platform: x64, scope: perUserOrMachine}
+installDir: {parent: DesktopFolder, name: Acme}
+components:
+  - files: [{source: app.exe}]
+`,
+			sevError, "installDir.parent", "must be under Program Files",
+		},
+		"dual scope BuilderInstallScope": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + "properties:\n  BuilderInstallScope: {value: perMachine}\n",
+			sevError, "properties.BuilderInstallScope", "set by the builder",
+		},
 		"dual scope action prefix": {
 			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + `customActions:
   - id: SetInstallScopeX

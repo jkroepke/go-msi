@@ -266,9 +266,9 @@ standard user fails with 1925. The ICE105 checks of `perUser` apply, except
 that Program Files, Common Files and HKCR are allowed because they follow
 the context. Directories below the Start menu, the desktop, the startup
 and template folders need private (mixed-case) ids: the scope page can only
-move public folders under Program Files and Common Files. `purge` is
-rejected under Program Files and Common Files, because ICE105 keeps the
-action unelevated. Custom action ids starting with `SetInstallScope`,
+move public folders under Program Files and Common Files, so the install
+folder stays there too. `purge` is rejected under Program Files, Common
+Files and those shell folders, because ICE105 keeps the action unelevated. Custom action ids starting with `SetInstallScope`,
 `SetScope` or `RestoreInstallDir` are taken by the scope page. Like every
 per-user package, a dual one needs its deferred actions that can fail
 before RegisterProduct (section 8.2). A major
@@ -1466,8 +1466,9 @@ products step over the page, since they keep their context. Its texts are
 the `ui.strings` keys `InstallScopeTitle`, `InstallScopeText`,
 `InstallScopeUser`, `InstallScopeMachine` and `InstallScopeHint`, translated
 like the other pages. The page's property is `BuilderInstallScope`; the
-builder writes `MSIINSTALLPERUSER` and makes it secure, so that a standard
-user's choice reaches the elevated server, and `properties` cannot define it.
+builder writes it and `MSIINSTALLPERUSER`, which it makes secure so that a
+standard user's choice reaches the elevated server, and `properties` cannot
+define either.
 
 #### Launch checkbox
 
