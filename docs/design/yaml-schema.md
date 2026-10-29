@@ -442,8 +442,8 @@ uninstall removes them too (INST-04). Event log sources count as per-machine reg
 values, and so do machine environment variables, HKLM and HKU
 `removeRegistry` entries, and file types and HKMU or HKCR removals outside
 a `perUser` package. A firewall carrier in the profile
-gets the value. A `component` search for the GUID of a component that
-gets the value finds the registry value after the upgrade, not the file
+gets the value. A `component` search for the GUID of a component whose
+key path becomes the value finds the registry value after the upgrade, not the file
 (not tested). In a per-machine install the desktop and Start menu folders
 are the all-users ones; the value still goes to the installing user's
 HKCU, as ICE38 asks. A dual package's install dir is under Program Files in the

@@ -255,11 +255,11 @@ func profileUpgrade(t *testing.T, oldUpgrade, newUpgrade string, oldPinned bool)
 	msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
 	checkProfile(t, "after the uninstall", "perUser", values, false)
 
-	// Version 2 owns the same values, so its uninstall removes version 1's
-	// too.
+	// Version 2 owns the values version 1 wrote, under the same names, so
+	// its uninstall removes them (checked above).
 	for comp, name := range oldValues {
-		if regHas(t, "64", profileKey, name) {
-			t.Errorf("after the uninstall: the HKCU value %s of %s from version 1 is still there", name, comp)
+		if values[comp] != name {
+			t.Errorf("version 1 names the HKCU value of %s %s, version 2 %s", comp, name, values[comp])
 		}
 	}
 
@@ -282,22 +282,29 @@ const shellFolderFiles = `  - { id: Desk, directory: DesktopFolder, files: [{ so
 // TestICEProfileKeyPath runs the ICE suite on the profile packages of every
 // scope, with files on the desktop and in the Start menu in the per-user
 // and per-machine ones: ICE38 and ICE64 report nothing and no ICE reports
-// an error. The file-keyed variant shows that ICE38 finds the old layout.
+// an error. The file-keyed variant shows that ICE38 finds the old layout,
+// and so do the late-removal variants, whose components keep their key
+// files next to the HKCU value.
 //
 //nolint:paralleltest // msi.dll's external UI handler is process-wide
 func TestICEProfileKeyPath(t *testing.T) {
 	cub := iceCube(t)
 
 	for _, tc := range []struct {
-		scope  string
-		pinned bool
+		scope        string
+		pinned, late bool
 	}{
-		{"perUser", false}, {"perMachine", false}, {"perUserOrMachine", false}, {"perMachineOrUser", false}, {"perUser", true},
+		{"perUser", false, false}, {"perMachine", false, false}, {"perUserOrMachine", false, false},
+		{"perMachineOrUser", false, false}, {"perUser", true, false}, {"perUser", false, true}, {"perMachine", false, true},
 	} {
-		t.Run(fmt.Sprintf("%s pinned=%t", tc.scope, tc.pinned), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s pinned=%t late=%t", tc.scope, tc.pinned, tc.late), func(t *testing.T) {
 			extra := ""
 			if tc.scope == "perUser" || tc.scope == "perMachine" {
 				extra = shellFolderFiles
+			}
+
+			if tc.late {
+				extra += "upgrade: { removeOld: afterInstallExecute }\n"
 			}
 
 			path, _ := buildProfileExtra(t, t.TempDir(), tc.scope, "1.0.0", tc.pinned, extra)
@@ -323,8 +330,8 @@ func TestICEProfileKeyPath(t *testing.T) {
 				}
 			}
 
-			if (ice38 > 0) != tc.pinned {
-				t.Errorf("%d ICE38 findings, want some = %v", ice38, tc.pinned)
+			if (ice38 > 0) != (tc.pinned || tc.late) {
+				t.Errorf("%d ICE38 findings, want some = %v", ice38, tc.pinned || tc.late)
 			}
 		})
 	}

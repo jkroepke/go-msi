@@ -9,7 +9,8 @@ import (
 
 // profileKeyPath gives a component in the user profile an HKCU registry
 // value under Software\[Manufacturer]\[ProductName] as its key path, as
-// ICE38 asks, when needsProfileKeyPath says so. The value is written in
+// ICE38 asks: it writes the value for every profileCandidate and makes it
+// the key path when needsProfileKeyPath says so. The value is written in
 // every installation context, also when a dual package installs per
 // machine (INST-04). It runs after componentGUID, so the ComponentId
 // still follows the key file, registry value or folder the component had
@@ -40,7 +41,8 @@ func (b *build) profileKeyPath(info *componentInfo) {
 
 // needsProfileKeyPath reports whether the builder makes the HKCU value the
 // key path of a component: a profileCandidate in a package without a late
-// removeOld.
+// removeOld. The validator makes the same decision and warns about the
+// components this leaves out.
 func (b *build) needsProfileKeyPath(comp *config.Component) bool {
 	return b.profileCandidate(comp) && !b.lateRemoval()
 }
@@ -49,8 +51,7 @@ func (b *build) needsProfileKeyPath(comp *config.Component) bool {
 // leaves its key path to the builder and would not get an HKCU value
 // anyway (keepsKeyPath lists the exceptions). An HKMU value counts as HKCU
 // only in a per-user package: a dual package installed per machine writes
-// it to HKLM. The validator makes the same decision and warns about the
-// components this leaves out.
+// it to HKLM.
 func (b *build) profileCandidate(comp *config.Component) bool {
 	if b.keepsKeyPath(comp) || shortcutsOnly(comp) || !config.IsProfileFolder(b.topFolder(comp.Directory)) {
 		return false

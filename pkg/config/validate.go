@@ -2359,7 +2359,9 @@ func (v *validator) tableRow(rowPath string, cols []Column, row []any) { //nolin
 // profileKeyPath reports whether the builder gives a component an HKCU
 // registry value as its key path (INST-04): one below a profile folder
 // whose key path is not an HKCU value already and that keepsKeyPath does
-// not hold. The builder's needsProfileKeyPath makes the same decision.
+// not hold. The builder's needsProfileKeyPath makes the same decision; with
+// a late removeOld (keepsKeyPath) it still writes the value, as an ordinary
+// row that is not the key path.
 func profileKeyPath(cfg *Config, known *refs, comp *Component) bool {
 	if keepsKeyPath(cfg, comp) || shortcutsOnly(comp) || !profileFolders[known.topFolder(comp.Directory)] {
 		return false

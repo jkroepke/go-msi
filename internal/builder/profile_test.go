@@ -295,18 +295,27 @@ func TestProfileKeyPathFileTypes(t *testing.T) {
 // not reuse the code an older one derived for the file-keyed package
 // (error 1638): without the marker the per-user code would be
 // {10F2FD9A-13FB-59D8-AA6B-2900690C1CC3}. The per-machine package has no
-// profile component and keeps its code. The golden codes change with any
-// change to the digest.
+// profile component and keeps its code. A late removeOld still writes the
+// value, so its package carries the marker too: without it the code would
+// be {2EC1740A-9EC4-59F1-B5E1-1CF2D663AECB}. The golden codes change with any change to the digest.
 func TestProfileKeyPathProductCode(t *testing.T) {
 	t.Parallel()
 
-	for scope, want := range map[string]string{
-		"perUser":    "{6077413F-6CEF-5DE9-8AFD-493E1E61B4B6}",
-		"perMachine": "{2DA868B6-26AC-55FC-8F58-DFA6664FC441}",
+	for name, want := range map[string]string{
+		"perUser":      "{6077413F-6CEF-5DE9-8AFD-493E1E61B4B6}",
+		"perMachine":   "{2DA868B6-26AC-55FC-8F58-DFA6664FC441}",
+		"perUser late": "{D7555963-21B3-5566-99A9-5A35760F7687}",
 	} {
-		res := mustBuild(t, scopedShortcutConfig(t, scope, "  - { id: App, files: [{ source: app.exe }] }\n"))
+		scope, late := strings.CutSuffix(name, " late")
+
+		cfg := scopedShortcutConfig(t, scope, "  - { id: App, files: [{ source: app.exe }] }\n")
+		if late {
+			cfg.Upgrade.RemoveOld = "afterInstallExecute"
+		}
+
+		res := mustBuild(t, cfg)
 		if res.ProductCode != want {
-			t.Errorf("%s: ProductCode %s, want %s", scope, res.ProductCode, want)
+			t.Errorf("%s: ProductCode %s, want %s", name, res.ProductCode, want)
 		}
 	}
 }
