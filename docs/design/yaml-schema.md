@@ -1202,18 +1202,18 @@ ui:
 
 `finishText` adds a paragraph (`FinishText`) to the finish page (`ExitDlg`)
 below its standard text, for advice the user needs right after the
-installation, such as opening a new shell to pick up a changed `PATH`. The
-control's text is formatted, so `[Property]` references should resolve, and
-it has NoPrefix, so `&` should show as it is. The standard text keeps the
-first 40 dialog units below the title and the paragraph gets the rest of the
-page above the bottom strip, 220×89 units, about nine lines. The control is
-hidden by `Installed OR ACTION = "ADMIN"`: it shows after a new installation
-or a major upgrade, but not when the product was already installed (Change,
-Repair, Remove, a patch or a minor upgrade) or for an administrative
-install, since those end on the same page. The page where the setup was
-cancelled or failed keeps its text. Silent installs never show the finish
-page. How Windows renders and hides the paragraph is case UI-07, not yet run
-on Windows.
+installation, such as opening a new shell to pick up a changed `PATH`. It is
+formatted, so `[Property]` references resolve, and the control has NoPrefix,
+so `&` is shown as it is. The standard text keeps the first 40 dialog units
+below the title and the paragraph gets the rest of the page above the bottom
+strip, 220×89 units, about nine lines. The control is hidden by
+`Installed OR ACTION = "ADMIN"`: it shows after a new installation or a major
+upgrade, but not when the product was already installed (Change, Repair,
+Remove, a patch or a minor upgrade) or for an administrative install, since
+those end on the same page. The page where the setup was cancelled or failed
+keeps its text. Silent installs never show the finish page. UI-07 observed
+the resolved text after a full UI install and no paragraph after a repair;
+a NoPrefix text showing `&` literally is from UI-01.
 
 #### Theme
 
