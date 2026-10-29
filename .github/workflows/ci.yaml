@@ -381,11 +381,12 @@ jobs:
   # created with GITHUB_TOKEN does not trigger the tag push run of CI, but a
   # workflow_dispatch does, so dispatch CI on the new tag like tag.yaml.
   #
-  # Paused: merges to main cut no releases for now. To resume, drop the
-  # leading `false &&` from the condition. The Create Tag workflow still
+  # Runs only while the repository variable RELEASE_ENABLED is 'true'
+  # (Settings > Secrets and variables > Actions > Variables). Unset or any
+  # other value pauses automatic releases. The Create Tag workflow still
   # publishes a release by hand.
   release:
-    if: false && github.repository_owner == 'jkroepke' && github.ref_name == 'main'
+    if: vars.RELEASE_ENABLED == 'true' && github.repository_owner == 'jkroepke' && github.ref_name == 'main'
     name: Release
     runs-on: ubuntu-26.04
     environment: "Create Release Tag"
