@@ -5,7 +5,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/jkroepke/msi-builder/pkg/msidb"
+	"github.com/jkroepke/msi-builder/internal/msidb"
 )
 
 // Defaults of docs/design/yaml-schema.md section 4.

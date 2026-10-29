@@ -13,7 +13,7 @@ import (
 	"unicode"
 
 	"github.com/jkroepke/msi-builder/internal/condition"
-	"github.com/jkroepke/msi-builder/pkg/msidb"
+	"github.com/jkroepke/msi-builder/internal/msidb"
 )
 
 // Limits checked by Validate. Section references are to docs/spec/MSISPEC.md;

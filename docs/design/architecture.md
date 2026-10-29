@@ -13,13 +13,13 @@ never consulted (both are LGPL).
 
 ## 1. Package map
 
-Each package under `pkg/` is independently usable. Every package has no cgo,
+Each format package (`cfb`, `cab`, `summary`, `msidb`) is independently usable. Every package has no cgo,
 no package the product uses has platform-specific code, and every package
 except the test helpers is tested on its own. Arrows point from a package to what it imports. The
 diagram leaves out the test helpers: `internal/testpe` (and its
 `internal/testpe/cmd` generator) builds PE files for tests, `internal/ice`
 runs the ICE suite through msi.dll (Windows only, used by tests only), and
-`pkg/builder/nativetest` holds only the Windows msi.dll, msiexec install and
+`internal/builder/nativetest` holds only the Windows msi.dll, msiexec install and
 ICE tests.
 
 ```mermaid
@@ -56,30 +56,31 @@ flowchart LR
 
 | Package | Responsibility | Spec | Depends on |
 |---|---|---|---|
-| `pkg/cfb` | Compound File Binary v3/v4 writer and reader: sectors, FAT, DIFAT, mini stream, red-black directory tree, name comparison | §2 | stdlib |
-| `pkg/cab` | Cabinet writer and reader: one folder per cabinet, stored, MSZIP blocks with carried DEFLATE history or LZX frames (`internal/lzx`), checksums on every block | §5 | stdlib (`compress/flate`), `internal/lzx` |
-| `pkg/summary` | `\u0005SummaryInformation` property-set writer and reader (PIDs 1–19, VT_I2/I4/LPSTR/FILETIME) | §4 | `internal/codepage` |
-| `pkg/msidb` | The database: column types, typed rows, stream-name encoding, string pool with code pages, catalog, column-major table streams, binary streams, embedded streams; plus a reader that decodes a package back into tables | §3 | `cfb`, `summary`, `internal/codepage` (`golang.org/x/text`) |
+| `internal/cfb` | Compound File Binary v3/v4 writer and reader: sectors, FAT, DIFAT, mini stream, red-black directory tree, name comparison | §2 | stdlib |
+| `internal/cab` | Cabinet writer and reader: one folder per cabinet, stored, MSZIP blocks with carried DEFLATE history or LZX frames (`internal/lzx`), checksums on every block | §5 | stdlib (`compress/flate`), `internal/lzx` |
+| `internal/summary` | `\u0005SummaryInformation` property-set writer and reader (PIDs 1–19, VT_I2/I4/LPSTR/FILETIME) | §4 | `internal/codepage` |
+| `internal/msidb` | The database: column types, typed rows, stream-name encoding, string pool with code pages, catalog, column-major table streams, binary streams, embedded streams; plus a reader that decodes a package back into tables | §3 | `cfb`, `summary`, `internal/codepage` (`golang.org/x/text`) |
 | `internal/schema` | Column definitions and `_Validation` metadata of every standard table the builder can write | §6 | `msidb` |
 | `internal/pe` | PE version resource reader: file version, translations, "is this a PE file", PE checksum presence | §11.5 | stdlib |
 | `internal/condition` | Parser for the condition grammar, used to reject conditions the engine would ignore | §8.8 | stdlib |
 | `internal/sequence` | Numbering of sequence tables: fixed standard actions plus before/after chains, overlap and window checks | §9.2, §11.7 | stdlib |
-| `pkg/builder` | The config-to-tables layer: identities, directories and short names, components and GUIDs, files, media and cabinets, registry, services, environment, upgrades, custom actions, helpers, `_Validation`, summary; then the package bytes and a verification pass | §6–§11 | everything above, plus `config`, `internal/artwork`, `internal/cadll`, `internal/rtf` and `go.yaml.in/yaml/v3` |
+| `internal/builder` | The config-to-tables layer: identities, directories and short names, components and GUIDs, files, media and cabinets, registry, services, environment, upgrades, custom actions, helpers, `_Validation`, summary; then the package bytes and a verification pass | §6–§11 | everything above, plus `config`, `internal/artwork`, `internal/cadll`, `internal/rtf` and `go.yaml.in/yaml/v3` |
 | `pkg/config` | YAML decoding, defaults and validation into a `*config.Config` | | `internal/condition`, `go.yaml.in/yaml/v3` |
 | `internal/codepage` | ANSI code page encoders for the string pool and summary | §3, §4 | `golang.org/x/text` |
 | `internal/cadll` | The custom action DLL of `run` actions: freestanding C (`src/builderrun.c`), cross-built by `build.sh` (`go generate`) with clang 18 and lld for x86, x64 and arm64, committed, pinned by `SHA256SUMS` and embedded with `go:embed`; the builder copies the platform's DLL into the `Binary` table | §9.4 | stdlib |
 | `internal/artwork` | Draws the wizard bitmaps (our own artwork, generated in code) and decodes a theme's BMP, PNG or JPEG pictures | | stdlib |
 | `internal/rtf` | Converts a plain-text license to RTF and checks an RTF license for the ScrollableText control | | stdlib |
-| `cmd/msi-builder` | CLI: `build`, `validate`, `inspect`, `sign`, `verify`, `completion`, `version` | | `builder`, `config`, `msidb`, `sign`, `spf13/cobra` |
+| `pkg/builder` | Public build API: `Build`, `Options`, `Result`, `File`, converted to and from `internal/builder` | | `internal/builder`, `config` |
+| `cmd/msi-builder` | CLI: `build`, `validate`, `inspect`, `sign`, `verify`, `completion`, `version` | | `builder`, `config`, `msidb`, `cfb`, `sign`, `spf13/cobra` |
 
 `pkg/config` (PR #2) stays as it is: the builder consumes a validated `*config.Config`
 and never reads YAML.
 
-Packages under `pkg/` are the importable API: `config`, `builder` and the
-format packages `msidb`, `cfb`, `summary` and `cab`. Packages under `internal/` (`schema`, `pe`,
-`condition`, `sequence`, `codepage`, `artwork`, `rtf`, `testpe`, `ice`) are implementation
-details and may change without notice. `pkg/builder/nativetest` sits under
-`pkg/` only because it tests `pkg/builder`; it has no exported API.
+Packages under `pkg/` are the importable Go API: `config`, `builder` and
+`sign`. `pkg/builder` is a thin wrapper over `internal/builder` that exposes
+`Build`, `Options`, `Result` and `File` only, so no format type (`msidb`,
+`cfb`, `cab`, `summary`) is part of the API. Every other package lives under
+`internal/` and may change without notice.
 
 ### 1.1 `cfb`
 
@@ -291,7 +292,7 @@ Pipeline, each step a file of its own:
    typed kinds, firewall `netsh` actions with rollback, `ARPINSTALLLOCATION`.
 8. **Sequences**: the standard actions each used table needs (§9.3), the
    chains, `sequence.Number`, the window checks.
-9. **UI**: the wizard pages as table data (`pkg/builder/ui*.go`): the flow of
+9. **UI**: the wizard pages as table data (`internal/builder/ui*.go`): the flow of
    pages, `ui.dialogs` inserted after their anchor, the maintenance menu, the
    end, cancel, error, files-in-use and Restart Manager dialogs, the license
    page (RTF checked or converted by `rtf`), the install folder page, the
@@ -360,7 +361,7 @@ generated from the command tree.
   `inspect` output with `cmd/msi-builder/testdata/tables/<name>.txt`, so a change
   to the generated tables shows up as a diff in the pull request.
 - **Windows runner** (`.github/workflows/ci.yaml`, `windows-latest`): the
-  same tests, plus `//go:build windows` tests in `pkg/builder/nativetest` that open
+  same tests, plus `//go:build windows` tests in `internal/builder/nativetest` that open
   the built package with `msi.dll` (`MsiOpenDatabaseW`, views over every table,
   `MsiGetSummaryInformationW`, `MsiRecordReadStream` on the cabinet) and
   install and uninstall every example silently (`msiexec /i … /qn`, verify
@@ -371,7 +372,7 @@ generated from the command tree.
   a whole word in its strings, or they carry its product code) added under
   the watched places (files under the known folders, registry keys,
   services, event log sources, the ARP entry, shortcut targets) and the
-  firewall rules with `pkg/builder/nativetest/testdata/install/<name>.txt`.
+  firewall rules with `internal/builder/nativetest/testdata/install/<name>.txt`.
   They also run the full ICE suite on the examples through
   `internal/ice`, with the `darice.cub` that CI installs from the Windows
   SDK (cached; its SHA-256 is logged). The install test needs elevation;
@@ -430,5 +431,5 @@ bundles, advertised installs and shortcuts, script custom actions.
   two silent failures of MSZIP-01 and CAB-04 and a string pool or integer
   encoding bug that keeps the row count, without any Windows machine.
 - **Windows-only code is test-only** (`//go:build windows` in
-  `pkg/builder/nativetest`, `pkg/cab/native_windows_test.go` and the ICE
+  `internal/builder/nativetest`, `internal/cab/native_windows_test.go` and the ICE
   runner `internal/ice`, which only tests import), so the product stays cross-OS.
