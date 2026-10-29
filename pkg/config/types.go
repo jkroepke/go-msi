@@ -298,6 +298,7 @@ type File struct { //nolint:govet // field order is the YAML key order
 	System                     bool         `yaml:"system"`
 	Permissions                *Permissions `yaml:"permissions"`
 	Shortcuts                  []*Shortcut  `yaml:"shortcuts"`
+	FileTypes                  []*FileType  `yaml:"fileTypes"`
 	// Include and Exclude are glob patterns over the paths below a folder
 	// source (one that ends in a slash); see Config.ExpandFolders.
 	Include StringList `yaml:"include"`
@@ -306,6 +307,42 @@ type File struct { //nolint:govet // field order is the YAML key order
 	// FS, when set, is where Source is read from, overriding Config.FS for
 	// this file. AddTree sets it. It is never read from YAML.
 	FS fs.FS `yaml:"-"`
+}
+
+// FileType is a ProgId that the file it is listed under opens, with the
+// extensions that point at it and its shell verbs. The builder writes them
+// as Registry rows under HKEY_CLASSES_ROOT, in the file's component, the
+// way non-advertised ProgId, Extension and Verb elements are written.
+type FileType struct {
+	// ProgID is the programmatic identifier, such as Acme.Document.1.
+	ProgID string `yaml:"progId"`
+	// Description is the type's name in Explorer.
+	Description string `yaml:"description"`
+	// IconIndex picks an icon resource of the file for DefaultIcon; nil
+	// writes no DefaultIcon.
+	IconIndex  *int                 `yaml:"iconIndex"`
+	Extensions []*FileTypeExtension `yaml:"extensions"`
+	Verbs      []*FileTypeVerb      `yaml:"verbs"`
+}
+
+// FileTypeExtension is a file name extension that opens with a FileType.
+type FileTypeExtension struct {
+	// Extension is the extension without its dot, such as acme.
+	Extension   string `yaml:"extension"`
+	ContentType string `yaml:"contentType"`
+}
+
+// FileTypeVerb is a shell verb of a FileType that runs the file.
+type FileTypeVerb struct { //nolint:govet // field order is the YAML key order
+	// ID is the verb's key, such as open or edit.
+	ID string `yaml:"id"`
+	// Text is the menu text; empty shows the shell's text for the id.
+	Text string `yaml:"text"`
+	// Arguments follow the quoted file path in the command, default "%1";
+	// an empty string runs the file without arguments. They are formatted
+	// text, so [INSTALLDIR] works; description, text and contentType are
+	// written literally.
+	Arguments *string `yaml:"arguments"`
 }
 
 // Shortcut is a non-advertised shortcut to the file it is listed under, in

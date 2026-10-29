@@ -904,7 +904,9 @@
               "description": "Whether the box starts checked. Default: true."
             }
           },
-          "required": ["file"],
+          "required": [
+            "file"
+          ],
           "additionalProperties": false
         },
         "theme": {
@@ -1572,6 +1574,77 @@
                       }
                     }
                   },
+                  "additionalProperties": false
+                }
+              },
+              "fileTypes": {
+                "type": "array",
+                "description": "File types this file opens: Registry rows under HKEY_CLASSES_ROOT for the ProgID, its verbs and the extensions that point at it.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "progId": {
+                      "type": "string",
+                      "description": "Programmatic identifier, such as Acme.Document.1."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The type's name in Explorer."
+                    },
+                    "iconIndex": {
+                      "type": "integer",
+                      "description": "Icon resource of the file for DefaultIcon; leave out for none."
+                    },
+                    "extensions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "extension": {
+                            "type": "string",
+                            "description": "Extension without its dot."
+                          },
+                          "contentType": {
+                            "type": "string",
+                            "description": "MIME type written as Content Type."
+                          }
+                        },
+                        "required": [
+                          "extension"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "verbs": {
+                      "type": "array",
+                      "description": "Shell verbs; default one open verb.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "Verb key, such as open or edit."
+                          },
+                          "text": {
+                            "type": "string",
+                            "description": "Menu text; empty shows the shell's text for the id."
+                          },
+                          "arguments": {
+                            "type": "string",
+                            "description": "Arguments after the quoted file path, as formatted text; default \"%1\", empty for none.",
+                            "default": "\"%1\""
+                          }
+                        },
+                        "required": [
+                          "id"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "progId"
+                  ],
                   "additionalProperties": false
                 }
               },

@@ -70,6 +70,7 @@ func Validate(cfg *Config) Diagnostics {
 	checker.components(cfg, known)
 	checker.folderComponents(cfg, known)
 	checker.shortcuts(cfg, known)
+	checker.fileTypes(cfg)
 	checker.properties(cfg)
 	checker.launchConditions(cfg)
 	checker.customActions(cfg, known)
