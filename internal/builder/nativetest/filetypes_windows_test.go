@@ -83,6 +83,24 @@ func regDefault(t *testing.T, key string) string {
 	return "<absent>"
 }
 
+// hasDefault reports whether a key in the 64-bit view has a default value.
+// reg.exe prints a localized "(value not set)" REG_SZ line for a key
+// without one, so the value is read through .NET instead.
+func hasDefault(t *testing.T, key string) bool {
+	t.Helper()
+
+	path := "Registry::" + strings.Replace(key, `HKLM\`, `HKEY_LOCAL_MACHINE\`, 1)
+	script := `$k = Get-Item -LiteralPath '` + path + `' -ErrorAction SilentlyContinue; ` +
+		`if ($k -and $null -ne $k.GetValue('')) { 'set' } else { 'unset' }`
+
+	out, err := exec.CommandContext(t.Context(), "powershell.exe", "-NoProfile", "-Command", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("powershell: %v\n%s", err, out)
+	}
+
+	return strings.TrimSpace(string(out)) == "set"
+}
+
 // regNamed returns the REG_SZ value of a key in the 64-bit view whose name
 // may hold spaces, or "<absent>".
 func regNamed(t *testing.T, key, name string) string {
@@ -205,8 +223,8 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 	// The defaults go, the one another program set after the install too;
 	// other programs' values and subkeys stay (REG-07).
 	for _, key := range []string{".msibtdoc", ".msibtkeep"} {
-		if got := regDefault(t, classes+key); got != "<absent>" {
-			t.Errorf("%s = %q after the uninstall, want no default", key, got)
+		if hasDefault(t, classes+key) {
+			t.Errorf("%s = %q after the uninstall, want no default", key, regDefault(t, classes+key))
 		}
 	}
 

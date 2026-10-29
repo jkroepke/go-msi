@@ -44,10 +44,24 @@ func TestFileTypes(t *testing.T) {
 		t.Errorf("diagnostics: %v", res.Diagnostics)
 	}
 
+	// Every row is in the file's component, and file types need no
+	// custom action or extra component.
+	if n := len(rows(t, database, "Component")); n != 1 {
+		t.Errorf("%d components, want only App", n)
+	}
+
+	for _, table := range []string{"CustomAction", "Binary"} {
+		if tbl := database.Table(table); tbl != nil && len(tbl.Rows) != 0 {
+			t.Errorf("%s rows %v, want none", table, tbl.Rows)
+		}
+	}
+
 	got := make(map[string]string)
 
 	for _, row := range rows(t, database, "Registry") {
 		if row[5] != "App" {
+			t.Errorf("row %v is not in App", row)
+
 			continue
 		}
 

@@ -784,8 +784,8 @@ later survey found the same rows in 9 of 10 real packages with file
 associations, the tenth being advertised. Microsoft documents those tables
 for normal installs too (`RegisterExtensionInfo` registers the extensions
 of features set to be installed; documented, and REG-05 observed it), but
-their uninstall deletes the whole `.<extension>` key with other programs'
-values (REG-06), so msi-builder uses `Registry` rows like those packages
+their uninstall deletes the `.<extension>` key's values, other programs'
+included (REG-06; with their subkeys in a real package, REG-07), so msi-builder uses `Registry` rows like those packages
 do (specification chapter 16). msi-builder also writes an empty `<progId>` value in
 `.<extension>\OpenWithProgids`, which Microsoft asks of every program that
 takes over an extension and which lists the program under Open with
@@ -1428,7 +1428,7 @@ Kinds, exactly one per action:
 console window and keeps none of their output (specification section
 17.1). `run` instead calls the custom action DLL that msi-builder embeds
 (`internal/cadll`, written into the `Binary` table once as `BuilderRun`, 7 to
-9 KB for the package's platform): it starts the command with no window,
+8 KB for the package's platform): it starts the command with no window,
 copies every line it writes to stdout or stderr into the verbose log as
 `BuilderRun: <line>`, logs the exit code and returns success for 0 and
 `ERROR_INSTALL_FAILURE` otherwise, which `return: ignore` turns into a
