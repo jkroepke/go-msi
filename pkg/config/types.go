@@ -587,14 +587,24 @@ type Dialog struct {
 }
 
 // DialogField is one field bound to a property: a label and an edit field,
-// or a check box.
+// a check box, or a label and a group of radio buttons.
 type DialogField struct {
 	Property string `yaml:"property"`
 	Label    string `yaml:"label"`
-	// Type is text (default), password or checkbox.
+	// Type is text (default), password, checkbox or choice.
 	Type string `yaml:"type"`
 	// Value is what a checked checkbox sets the property to, default 1.
 	Value string `yaml:"value"`
+	// Options are the values a choice field offers, in the order shown.
+	Options []ChoiceOption `yaml:"options"`
+}
+
+// ChoiceOption is one radio button of a choice field. "info" is the short
+// form of {value: info}.
+type ChoiceOption struct {
+	Value string `yaml:"value"`
+	// Label is the button's text, default Value; "&" marks the access key.
+	Label string `yaml:"label"`
 }
 
 // Dialog field types.
@@ -602,6 +612,7 @@ const (
 	FieldText     = "text"
 	FieldPassword = "password"
 	FieldCheckBox = "checkbox"
+	FieldChoice   = "choice"
 )
 
 // CheckBoxValue returns the value a checked checkbox field sets.

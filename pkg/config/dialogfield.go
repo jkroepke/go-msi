@@ -1,9 +1,39 @@
 package config
 
+import (
+	"fmt"
+	"slices"
+	"strings"
+	"unicode/utf8"
+
+	"go.yaml.in/yaml/v3"
+)
+
+// maxChoiceText is the width of the RadioButton table's Value (s64) and
+// Text (L64) columns.
+const maxChoiceText = 64
+
+// UnmarshalYAML accepts a scalar as the short form of {value: scalar}.
+func (o *ChoiceOption) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		return node.Decode(&o.Value) //nolint:wrapcheck // yaml.v3 collects an unwrapped *yaml.TypeError with the others
+	}
+
+	type plain ChoiceOption
+
+	return decodeStrict(node, (*plain)(o))
+}
+
 // dialogField checks the type of a ui.dialogs field and the value of a
 // checkbox.
 func (v *validator) dialogField(cfg *Config, fieldPath string, field *DialogField) {
-	v.oneOf(fieldPath+".type", field.Type, "", FieldText, FieldPassword, FieldCheckBox)
+	v.oneOf(fieldPath+".type", field.Type, "", FieldText, FieldPassword, FieldCheckBox, FieldChoice)
+
+	if field.Type == FieldChoice {
+		v.choiceField(cfg, fieldPath, field)
+	} else if len(field.Options) > 0 {
+		v.errorf(fieldPath+".options", "only a choice field has options")
+	}
 
 	if field.Value != "" && field.Type != FieldCheckBox {
 		v.errorf(fieldPath+".value", "only a checkbox field has a value")
@@ -14,5 +44,57 @@ func (v *validator) dialogField(cfg *Config, fieldPath string, field *DialogFiel
 	if prop := cfg.Properties[field.Property]; field.Type == FieldCheckBox && prop != nil && prop.Value != "" {
 		v.warnf(fieldPath+".property", "%s has the default %q, so the checkbox starts checked and leaves that value "+
 			"when the user does not touch it; leave the default empty for an unchecked box", field.Property, prop.Value)
+	}
+}
+
+// choiceOptions checks each option of a choice field and returns the values.
+func (v *validator) choiceOptions(fieldPath string, options []ChoiceOption) []string {
+	values := make([]string, 0, len(options))
+
+	for i, option := range options {
+		optionPath := fmt.Sprintf("%s.options[%d]", fieldPath, i)
+
+		switch {
+		case option.Value == "":
+			v.errorf(optionPath+".value", "required")
+		case utf8.RuneCountInString(option.Value) > maxChoiceText:
+			v.errorf(optionPath+".value", "at most %d characters", maxChoiceText)
+		case strings.ContainsAny(option.Value, "[]{}"):
+			v.errorf(optionPath+".value", "%q: [ ] { } would be formatted by the installer", option.Value)
+		case slices.Contains(values, option.Value):
+			v.errorf(optionPath+".value", "%q is offered twice", option.Value)
+		}
+
+		if utf8.RuneCountInString(option.Label) > maxChoiceText {
+			v.errorf(optionPath+".label", "at most %d characters", maxChoiceText)
+		}
+
+		values = append(values, option.Value)
+	}
+
+	return values
+}
+
+// choiceField checks the options of a choice field and the default of its
+// property, which must select one of them (ICE34).
+func (v *validator) choiceField(cfg *Config, fieldPath string, field *DialogField) {
+	if len(field.Options) < 2 {
+		v.errorf(fieldPath+".options", "a choice field needs at least two options")
+	}
+
+	values := v.choiceOptions(fieldPath, field.Options)
+
+	prop := cfg.Properties[field.Property]
+	if prop == nil {
+		return
+	}
+
+	if prop.Search != nil {
+		v.errorf(fieldPath+".property", "%s is searched, so it has no Property row; a choice needs one that selects an "+
+			"option (ICE34)", field.Property)
+	}
+
+	if prop.Value != "" && !slices.Contains(values, prop.Value) {
+		v.errorf(fieldPath+".property", "the default %q of %s is none of the options", prop.Value, field.Property)
 	}
 }

@@ -77,7 +77,10 @@ const (
 	fieldEditH   = 15
 	fieldGap     = 5
 	fieldTop     = 58
-	maxFields    = 4
+	radioStep    = 16
+	// fieldsHeight is the room for fields between the banner and the
+	// buttons: four label and edit pairs.
+	fieldsHeight = 4 * (fieldLabelH + fieldEditH + fieldGap)
 
 	// Keys shared by several pages.
 	dlgWelcome      = "WelcomeDlg"
@@ -133,6 +136,7 @@ const (
 	typScrollText = "ScrollableText"
 	typCheckBox   = "CheckBox"
 	typText       = "Text"
+	typRadioGroup = "RadioButtonGroup"
 )
 
 // uiDialog is one dialog with its controls in drawing order.
@@ -169,10 +173,10 @@ type uiSub struct{ event, attribute string }
 
 type uiCond struct{ action, cond string }
 
-// uiRadio is a RadioButton row.
+// uiRadio is a RadioButton row; a zero width or height is 330 by 16.
 type uiRadio struct {
 	property, value, text string
-	y                     int
+	y, w, h               int
 }
 
 // wizard collects the dialogs of one build.
@@ -349,8 +353,9 @@ func (b *build) addedDialogs(wiz *wizard) {
 			continue
 		}
 
-		if len(cfg.Fields) > maxFields {
-			b.errorf(path+".fields", "a dialog holds at most %d fields; split them over two dialogs", maxFields)
+		if height := formHeight(cfg); height > fieldsHeight {
+			b.errorf(path+".fields", "the fields need %d dialog units of height and a dialog has %d (four text fields, "+
+				"a choice takes 20 plus 16 per option); split them over two dialogs", height, fieldsHeight)
 
 			continue
 		}
@@ -359,14 +364,34 @@ func (b *build) addedDialogs(wiz *wizard) {
 			continue
 		}
 
-		wiz.add(b.formDialog(cfg))
+		wiz.add(b.formDialog(wiz, cfg))
 		wiz.flow = slices.Insert(wiz.flow, index+1, cfg.ID)
 	}
 }
 
-// formDialog lays out an added dialog: per field a label and an edit, or
-// a check box in the same space.
-func (b *build) formDialog(cfg *config.Dialog) *uiDialog {
+// fieldHeight is the height a field takes on a form dialog, without the gap
+// below it.
+func fieldHeight(field *config.DialogField) int {
+	if field.Type == config.FieldChoice {
+		return fieldLabelH + radioStep*len(field.Options)
+	}
+
+	return fieldLabelH + fieldEditH
+}
+
+// formHeight is the height the fields of a form dialog take.
+func formHeight(cfg *config.Dialog) int {
+	height := 0
+	for i := range cfg.Fields {
+		height += fieldHeight(&cfg.Fields[i]) + fieldGap
+	}
+
+	return height
+}
+
+// formDialog lays out an added dialog: per field a label and an edit, a
+// check box in the same space, or a label and a group of radio buttons.
+func (b *build) formDialog(wiz *wizard, cfg *config.Dialog) *uiDialog {
 	dialog := &uiDialog{name: cfg.ID, attrs: dlgPage}
 	dialog.innerHeader(cfg.Title, cfg.Description)
 
@@ -390,6 +415,14 @@ func (b *build) formDialog(cfg *config.Dialog) *uiDialog {
 				name: name, typ: typCheckBox, property: field.Property, text: label, ring: true,
 				x: margin + 5, y: top, w: width, h: fieldLabelH + fieldEditH, attrs: ctlActive,
 			})
+		case config.FieldChoice:
+			name = fmt.Sprintf("Choice%d", i+1)
+			dialog.control(text(fmt.Sprintf("Label%d", i+1), margin+5, top, width, fieldLabelH, label))
+			dialog.control(&uiControl{
+				name: name, typ: typRadioGroup, property: field.Property, ring: true,
+				x: margin + 5, y: top + fieldLabelH, w: width, h: radioStep * len(field.Options), attrs: ctlActive,
+			})
+			b.choiceButtons(wiz, field, width)
 		default:
 			attrs := ctlActive
 			if field.Type == config.FieldPassword {
@@ -409,12 +442,34 @@ func (b *build) formDialog(cfg *config.Dialog) *uiDialog {
 			dialog.first = name
 		}
 
-		top += fieldLabelH + fieldEditH + fieldGap
+		top += fieldHeight(field) + fieldGap
 	}
 
 	dialog.navigation()
 
 	return dialog
+}
+
+// choiceButtons adds the radio buttons of a choice field; an option without
+// a label shows its value. A property without
+// a default selects the first option, because a group whose property matches
+// no button fails ICE34 and starts with nothing selected.
+func (b *build) choiceButtons(wiz *wizard, field *config.DialogField, width int) {
+	for i, option := range field.Options {
+		label := option.Label
+		if label == "" {
+			label = option.Value
+		}
+
+		wiz.radios = append(wiz.radios, uiRadio{
+			property: field.Property, value: option.Value, text: label,
+			y: i * radioStep, w: width, h: radioStep,
+		})
+	}
+
+	if _, set := b.properties[field.Property]; !set {
+		b.properties[field.Property] = field.Options[0].Value
+	}
 }
 
 // fieldCheckBoxes records the value each checkbox field of an added dialog
@@ -559,8 +614,13 @@ func (b *build) writeWizard(wiz *wizard) {
 	}
 
 	radios := b.table("RadioButton")
-	for i, r := range wiz.radios {
-		radios.Add(r.property, i+1, r.value, 0, r.y, 330, 16, r.text, nil)
+	for i, radio := range wiz.radios {
+		width, height := radio.w, radio.h
+		if width == 0 {
+			width, height = 330, 16
+		}
+
+		radios.Add(radio.property, i+1, radio.value, 0, radio.y, width, height, nullable(radio.text), nil)
 	}
 
 	slices.SortFunc(wiz.dialogs, func(a, b *uiDialog) int { return strings.Compare(a.name, b.name) })

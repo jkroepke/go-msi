@@ -7,7 +7,7 @@ import (
 // Control types that must bind a property (spec section 19.3).
 var boundControls = map[string]bool{ //nolint:gochecknoglobals // lookup table
 	"CheckBox": true, "ComboBox": true, typDirCombo: true, typDirList: true, "Edit": true, typListBox: true,
-	"ListView": true, "MaskedEdit": true, typPathEdit: true, "RadioButtonGroup": true, "SelectionTree": true, "VolumeSelectCombo": true,
+	"ListView": true, "MaskedEdit": true, typPathEdit: true, typRadioGroup: true, "SelectionTree": true, "VolumeSelectCombo": true,
 }
 
 // Events whose argument names a dialog (ICE44).

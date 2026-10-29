@@ -237,7 +237,12 @@ func TestWizardErrors(t *testing.T) {
 		{"install folder name", config.Dialog{ID: "InstallDirDlg", Title: "x", After: "WelcomeDlg", Fields: []config.DialogField{{Property: "PROP"}}}, "is a wizard dialog"},
 		{"too many fields", config.Dialog{ID: "ExtraDlg", Title: "x", After: "WelcomeDlg", Fields: []config.DialogField{
 			{Property: "A1"}, {Property: "A2"}, {Property: "A3"}, {Property: "A4"}, {Property: "A5"},
-		}}, "at most 4 fields"},
+		}}, "split them over two dialogs"},
+		{"choice too tall", config.Dialog{ID: "ExtraDlg", Title: "x", After: "WelcomeDlg", Fields: []config.DialogField{
+			{Property: "A1"}, {Property: "A2"}, {Property: "LEVEL", Type: config.FieldChoice, Options: []config.ChoiceOption{
+				{Value: "a"}, {Value: "b"}, {Value: "c"}, {Value: "d"}, {Value: "e"},
+			}},
+		}}, "need 185 dialog units"},
 		{"two check box values", config.Dialog{ID: "ExtraDlg", Title: "x", After: "WelcomeDlg", Fields: []config.DialogField{
 			{Property: "OPT", Type: config.FieldCheckBox}, {Property: "OPT", Type: config.FieldCheckBox, Value: "yes"},
 		}}, "another check box sets OPT"},
@@ -310,6 +315,69 @@ func TestDialogFieldTypes(t *testing.T) {
 
 	checkRings(t, res)
 }
+
+// TestDialogChoiceField checks a choice field: a label, a RadioButtonGroup
+// as tall as its buttons, a RadioButton row per option in order, and the
+// first option as the default of a property that has none.
+func TestDialogChoiceField(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
+	cfg.UI.Wizard = "minimal"
+	cfg.UI.Dialogs = []*config.Dialog{{
+		ID: "ExtraDlg", Title: "Options", After: "WelcomeDlg", Fields: []config.DialogField{
+			{Property: "LOG_LEVEL", Label: "&Log level", Type: config.FieldChoice, Options: []config.ChoiceOption{
+				{Value: "warn", Label: "&Warnings"}, {Value: "info"}, {Value: "debug", Label: "&Debug"},
+			}},
+			{Property: "PORT", Label: "Port"},
+		},
+	}}
+	res := mustBuild(t, cfg)
+
+	controls := make(map[string][]any)
+
+	for _, row := range rows(t, res.Database, "Control") {
+		if row[0] == "ExtraDlg" {
+			controls[fmt.Sprint(row[1])] = row
+		}
+	}
+
+	group := controls["Choice1"]
+	if group == nil || group[2] != "RadioButtonGroup" || group[8] != "LOG_LEVEL" || group[6] != 48 || group[4] != 78 {
+		t.Errorf("radio button group %v", group)
+	}
+
+	if label := controls["Label1"]; label == nil || label[9] != "&Log level" {
+		t.Errorf("label %v", label)
+	}
+
+	// The edit below starts after the three buttons and the gap.
+	if edit := controls["Edit2"]; edit == nil || edit[4] != 78+48+fieldGapForTest+20 {
+		t.Errorf("edit %v", edit)
+	}
+
+	var buttons []string
+
+	for _, row := range rows(t, res.Database, "RadioButton") {
+		if row[0] == "LOG_LEVEL" {
+			buttons = append(buttons, fmt.Sprintf("%v=%v@%v", row[2], row[7], row[4]))
+		}
+	}
+
+	if got := strings.Join(buttons, " "); got != "warn=&Warnings@0 info=info@16 debug=&Debug@32" {
+		t.Errorf("radio buttons %s", got)
+	}
+
+	if got := cell(t, res.Database, "Property", "Value", func(r []any) bool { return r[0] == "LOG_LEVEL" }); got != "warn" {
+		t.Errorf("LOG_LEVEL default %v, want the first option", got)
+	}
+
+	checkRings(t, res)
+}
+
+// fieldGapForTest is the gap below a form field.
+const fieldGapForTest = 5
 
 // TestScheduleWhen checks that a schedule's when is written into the
 // sequence condition, ANDed with its condition.

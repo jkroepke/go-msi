@@ -93,14 +93,31 @@ customActions:
     schedule:
       - { sequence: execute, before: InstallInitialize, condition: FORCEERR }
 
+properties:
+  LOG_LEVEL: warn
+
 ui:
   wizard: featureTree
+  dialogs:
+    - id: ChoiceDlg
+      title: Log level
+      after: WelcomeDlg
+      fields:
+        - property: LOG_LEVEL
+          label: Log level
+          type: choice
+          options:
+            - value: warn
+              label: '&Warnings'
+            - info
+            - value: debug
+              label: '&Debug'
 `
 
-// fullUIDriver answers the wizard through UIAutomation: Next, Install and
-// Finish, "Close the applications" and OK on MsiRMFilesInUse, OK on ErrorDlg
+// fullUIDriver answers the wizard through UIAutomation: the -Choose radio
+// button once, Next, Install and Finish, "Close the applications" and OK on MsiRMFilesInUse, OK on ErrorDlg
 // and on any unexpected error box. It writes every window it sees to -Out.
-const fullUIDriver = `param([int]$MsiPid, [string]$Out, [string]$ErrorText, [int]$Seconds = 110)
+const fullUIDriver = `param([int]$MsiPid, [string]$Out, [string]$ErrorText, [string]$Choose = '', [int]$Seconds = 110)
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type -Namespace MsiBuilder -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);'
 $AE = [System.Windows.Automation.AutomationElement]
@@ -117,6 +134,7 @@ function Press($els, [string]$pattern) {
   return $name
 }
 $seen = @{}
+$chosen = $false
 $deadline = (Get-Date).AddSeconds($Seconds)
 while ((Get-Date) -lt $deadline -and (Get-Process -Id $MsiPid -ErrorAction SilentlyContinue)) {
   Start-Sleep -Milliseconds 500
@@ -141,6 +159,10 @@ while ((Get-Date) -lt $deadline -and (Get-Process -Id $MsiPid -ErrorAction Silen
       Press $els '^OK$' | Out-Null
       Start-Sleep 1
     } else {
+      if ($Choose -and -not $chosen) {
+        $c = Press $els $Choose
+        if ($c) { $chosen = $true; Note "CHOSE: $c"; Start-Sleep -Milliseconds 300 }
+      }
       $n = Press $els '^(Next|Install|Finish)$'
       if ($n) { Note "PRESSED: $n"; Start-Sleep 1 }
     }
@@ -325,6 +347,14 @@ func runMsiexec(args []string, started func(pid int)) (int, error) {
 func fullUI(t *testing.T, dir string, args ...string) (int, string) {
 	t.Helper()
 
+	return fullUIChoosing(t, dir, "", args...)
+}
+
+// fullUIChoosing is fullUI with the driver clicking the first radio button
+// whose name matches choose.
+func fullUIChoosing(t *testing.T, dir, choose string, args ...string) (int, string) {
+	t.Helper()
+
 	driver := filepath.Join(dir, "driver.ps1")
 	if err := os.WriteFile(driver, []byte(fullUIDriver), 0o600); err != nil {
 		t.Fatal(err)
@@ -339,7 +369,7 @@ func fullUI(t *testing.T, dir string, args ...string) (int, string) {
 
 	code, err := runMsiexec(args, func(pid int) {
 		drv = exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-			"-File", driver, "-MsiPid", strconv.Itoa(pid), "-Out", seen, "-ErrorText", fullUIErrorText,
+			"-File", driver, "-MsiPid", strconv.Itoa(pid), "-Out", seen, "-ErrorText", fullUIErrorText, "-Choose", choose,
 			"-Seconds", strconv.Itoa(int((fullUITimeout - 10*time.Second).Seconds())))
 		if err := drv.Start(); err != nil {
 			t.Errorf("driver: %v", err)
@@ -491,6 +521,50 @@ func TestFullUIErrorDialog(t *testing.T) { //nolint:paralleltest // msiexec runs
 	if t.Failed() {
 		t.Logf("UI:\n%s\nlog excerpt:\n%s", seen, excerpt(text, "Error 28", "error code is", fullUIErrorText))
 	}
+}
+
+// TestFullUIChoice selects the third radio button of the added choice
+// dialog and checks that the server sees its value (UI-05).
+func TestFullUIChoice(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
+	requireFullUI(t)
+	waitForMsiexec(t)
+
+	dir := t.TempDir()
+	pkg, _ := buildFullUI(t, dir, "1.0.0", "auto")
+
+	cleanupFullUI(t, pkg)
+
+	log := filepath.Join(dir, "choice.log")
+	code, seen := fullUIChoosing(t, dir, "^Debug$", "/i", pkg, "/l*v", log)
+	text := readLog(log)
+
+	if code != 0 {
+		t.Errorf("full UI install: exit %d, want 0", code)
+	}
+
+	if !strings.Contains(seen, "CHOSE: ") {
+		t.Error("the driver found no Debug radio button")
+	}
+
+	if got := serverProperties(text)["LOG_LEVEL"]; got != "debug" {
+		t.Errorf("LOG_LEVEL on the server = %q, want debug", got)
+	}
+
+	if strings.Contains(seen, "UNEXPECTED:") {
+		t.Error("the engine showed an unexpected error box")
+	}
+
+	t.Logf("UI-05 UI:\n%s\nlog excerpt:\n%s", seen, excerpt(text, "LOG_LEVEL", "Error 28"))
+}
+
+// TestICEFullUI runs the ICE suite on the full-UI package, including ICE34
+// on the choice dialog.
+//
+//nolint:paralleltest // msi.dll's external UI handler is process-wide
+func TestICEFullUI(t *testing.T) {
+	cub := iceCube(t)
+	pkg, _ := buildFullUI(t, t.TempDir(), "1.0.0", "auto")
+	requireCleanICE(t, pkg, cub)
 }
 
 // excerpt returns the log lines that contain any of the markers.
