@@ -741,6 +741,7 @@ func TestGeneratedFileKey(t *testing.T) {
 		"fleetspeak-client.exe": "fleetspeak_client.exe",
 		"7zip.dll":              "_7zip.dll",
 		"my app (x64).exe":      "my_app__x64_.exe",
+		".config":               "_.config",
 	} {
 		if got := config.FileKey(&config.File{Source: "bin/" + name}); got != want {
 			t.Errorf("FileKey(%q) = %q, want %q", name, got, want)
@@ -751,9 +752,25 @@ func TestGeneratedFileKey(t *testing.T) {
 		t.Errorf("FileKey with id = %q, want Main", got)
 	}
 
+	// Long names are cut to at most 60 characters with a hash suffix,
+	// whether or not they were identifiers.
+	for _, name := range []string{strings.Repeat("a-", 35) + ".exe", strings.Repeat("a", 80) + ".exe"} {
+		if got := config.FileKey(&config.File{Source: name}); len(got) > 60 || !config.IsIdentifier(got) {
+			t.Errorf("FileKey(%q) = %q", name, got)
+		}
+	}
+
 	doc := base + strings.Replace(appComponent, "app.exe", "my-app.exe", 1)
 	if ds := validate(t, doc); len(ds) != 0 {
 		t.Errorf("unexpected diagnostics for my-app.exe: %v", ds)
+	}
+
+	// launch.file and a companion version may name the file by its long name.
+	doc = base + strings.Replace(appComponent, "      - source: app.exe\n",
+		"      - source: my-app.exe\n      - { source: data.bin, version: my-app.exe }\n", 1) +
+		"ui: {wizard: minimal, launch: {file: my-app.exe}}\n"
+	if err := validate(t, doc).Err(); err != nil {
+		t.Errorf("references by long name: %v", err)
 	}
 }
 

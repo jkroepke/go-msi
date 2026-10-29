@@ -1426,7 +1426,7 @@
               },
               "id": {
                 "$ref": "#/$defs/identifier",
-                "description": "File key."
+                "description": "File key. Default: the name, with characters an identifier cannot hold replaced by _ (fleetspeak-client.exe becomes fleetspeak_client.exe)."
               },
               "version": {
                 "type": [

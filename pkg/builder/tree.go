@@ -412,11 +412,14 @@ func (b *build) inputs() error { //nolint:cyclop // one pass over the format; sp
 		return err //nolint:wrapcheck // the diagnostics carry their own paths
 	}
 
-	// Companion files: Version names another File key.
+	// Companion files: Version names another file of the component, by key
+	// or by the long name of a file without an id; the column holds the key.
 	for _, fi := range b.files {
 		if v, ok := fi.Version.(string); ok && fi.cfg.Version != config.Auto && fi.cfg.Version != config.None {
 			if _, err := config.ParseVersion(v); err != nil {
-				if _, exists := b.fileByKey[v]; !exists {
+				if other := config.FileByRef(fi.Component.cfg.Files, v); other != nil && b.fileByKey[config.FileKey(other)] != nil {
+					fi.Version = config.FileKey(other)
+				} else {
 					b.errorf(fi.Component.cfg.Path(fi.Component.index)+".files", "companion file %s is not defined", v)
 				}
 			}

@@ -561,7 +561,7 @@ service must have the service executable as key file.
 |---|---|---|
 | `source` | required | Path relative to the YAML file; `\` counts as `/` on every OS |
 | `name` | base name of `source` | The long name; the short name is generated |
-| `id` | the name, with every character other than letters, digits, `_` and `.` replaced by `_` and a `_` before a leading digit (`fleetspeak-client.exe` becomes `fleetspeak_client.exe`) | File key, used in `[#id]` references; two files that end up with one key need an explicit `id` |
+| `id` | the name, made into an identifier (see below) | File key, used in `[#id]` references |
 | `version` | `auto` | `auto`, a four-field version, the ID of another file (companion), or `none`; never empty (section 2.2) |
 | `language` | `auto` | From the PE resource; `none` for fonts |
 | `allowUnversionedExecutable` | `false` | Required to build a PE file with `version: none` or without a version resource |
@@ -570,6 +570,17 @@ service must have the service executable as key file.
 | `readOnly`, `hidden`, `system` | `false` | |
 
 Unversioned files get an `MsiFileHash` row automatically.
+
+Without `id`, a name that is an identifier of at most 72 characters is the
+file key as it is. Any other name is made into one: every character other
+than letters, digits, `_` and `.` becomes `_`, a name that starts with a
+digit or `.` gets a leading `_`, and a result longer than 60 characters is
+cut and ends in `_` and eight hex digits of its SHA-256. So
+`fleetspeak-client.exe` is keyed `fleetspeak_client.exe`, which is the name
+to use in `[#fleetspeak_client.exe]`; give long names an explicit `id`.
+`version` (a companion) and `ui.launch.file` also accept the long name of a
+file without `id`. Two files that end up with one key are an error that asks
+for an `id` on one of them.
 
 Two files must not resolve to the same target path, even through two
 directory IDs for one folder, and a file must not have the path of a

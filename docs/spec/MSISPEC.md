@@ -1110,7 +1110,7 @@ Full detail: chapter 09 §9.2–§9.19.
 
 **Unverified (chapter 09):**
 
-- Primary feature when none is marked; child kinds in automatic key-path selection; file key for non-identifier names.
+- Primary feature when none is marked; child kinds in automatic key-path selection; the file key other toolchains derive for non-identifier names (msi-builder's rule is below).
 - Default code page without localization; x86 `InstallerVersion` default; `Arm`/`Arm64` tokens; PID 3/5 defaults in 3.11.
 - Feature `expand` numbering and nested order; type 307 for "first"; the SetDirectory anchor.
 - MajorUpgrade downgrade-row attributes, `LaunchCondition` blocking and `Disallow` bits (a producer policy rather than a file-format rule).
@@ -1156,7 +1156,7 @@ Reproducible mode (for example `SOURCE_DATE_EPOCH` set):
 Prefixes: `reg` Registry, `rrg` RemoveRegistry, `cmp` Component, `fil` File, `dir` Directory, `rmf` RemoveFile, `ini` IniFile, `rif` RemoveIniFile, `env` Environment, `sc` ServiceControl, `svi` ServiceInstall, `scp` MsiShortcutProperty, `dup` DuplicateFile, `mvf` MoveFile, `lpe` MsiLockPermissionsEx, `sig` Signature, `id` other.
 
 - Observed v3: `reg`, `scp`, `fil`, `cmp`, `dir` + 32 upper-case hex. Observed v5: `reg`, `scp`, `fls`, `d` + 27 characters from `[A-Za-z0-9._]`. Hashes are not expected to match.
-- A file key defaults to the filename if it is a legal identifier unique in the package. A component key defaults to its key-path resource's key.
+- A file key defaults to the filename if it is a legal identifier of at most 72 characters. msi-builder makes any other filename into one: characters outside `[A-Za-z0-9_.]` become `_`, a leading digit or `.` gets a `_` prefix, and a key over 60 characters is cut and ends in `_` plus eight hex digits of its SHA-256. This is a producer convention: the engine only needs a unique identifier. Two files with the same default key are an error. A component key defaults to its key-path resource's key.
 - Harvesting uses the identity `"cmp|"`, `"fil|"` or `"dir|"` + path below the harvest root (forward slashes, lower case). It makes one component per file, ordered by name.
 - Normalize harvest paths first: drop empty, `.` and trailing-slash segments. A harvester that kept them emitted directories with an empty name, which broke the build (reported). Identities never use random numbers, so a rebuild gives the same keys (reported).
 - A file without an explicit key whose default key collides with another file's (the same name in two directories) is an error naming both sources, never a silent drop. One reported producer that lost such File rows wrote components with empty key paths and still exited 0 (reported).
