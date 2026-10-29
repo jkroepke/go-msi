@@ -137,7 +137,11 @@ customActions:
       - { sequence: execute, before: InstallInitialize, condition: EXTRA_FLAGS AND (EXTRA_FLAGS >< "--config.file") }
 
   # config.yaml is not owned by a component, so it survives upgrades and
-  # uninstall.
+  # uninstall. Only while the executable is installed or reinstalled: on
+  # removal, CONFIG_FILE falls back to its default, and when config.yaml was
+  # never created (a custom CONFIG_FILE) or was deleted, the empty folder is
+  # already gone. Starting the command there fails with error 267
+  # (MSISPEC-RESULTS, run 40334482129) and fails the uninstall.
   - id: CreateConfigFile
     run:
       command: '"[%ComSpec]" /c TYPE NUL >>"[APPLICATIONFOLDER]config.yaml"'
@@ -146,7 +150,7 @@ customActions:
     impersonate: false
     return: check
     schedule:
-      - { sequence: execute, before: InstallServices, condition: CONFIG_FILE="config.yaml" }
+      - { sequence: execute, before: InstallServices, condition: CONFIG_FILE="config.yaml" AND $Executable=3 }
 
   # Kill only processes that run this installation's binary, so a copy
   # elsewhere or a Kubernetes HostProcess container keeps running.

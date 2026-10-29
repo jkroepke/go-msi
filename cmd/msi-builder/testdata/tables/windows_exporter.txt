@@ -6,7 +6,7 @@ summary  4: prometheus-community
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install windows_exporter.
 summary  7: x64;1033
-summary  9: {7EDC0DEF-8B5F-5D8A-8BA8-CA649DF8A393}
+summary  9: {BB54C3D0-207D-5709-BB3F-6423C83DC704}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500
@@ -420,8 +420,8 @@ AllocateRegistrySpace	NOT Installed	1550
 CheckExtraFlags	EXTRA_FLAGS AND (EXTRA_FLAGS >< "--config.file")	1499
 CostFinalize		1000
 CostInitialize		800
-CreateConfigFile	CONFIG_FILE="config.yaml"	5793
-CreateConfigFile.Data	CONFIG_FILE="config.yaml"	5792
+CreateConfigFile	CONFIG_FILE="config.yaml" AND $Executable=3	5793
+CreateConfigFile.Data	CONFIG_FILE="config.yaml" AND $Executable=3	5792
 CreateFolders		3700
 DeleteServices	VersionNT	2000
 FileCost		900
@@ -525,7 +525,7 @@ LISTEN_PORT	9182
 MSIRESTARTMANAGERCONTROL	Disable
 Manufacturer	prometheus-community
 MsiHiddenProperties	SERVICE_PASSWORD
-ProductCode	{97D81CD6-56B7-5018-BB03-1CCE5271AB90}
+ProductCode	{45A10138-5708-525C-8D30-B99FCBF81D92}
 ProductLanguage	1033
 ProductName	windows_exporter
 ProductVersion	0.32.0.5
