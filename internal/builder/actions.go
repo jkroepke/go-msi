@@ -273,6 +273,19 @@ func (b *build) standardAt(table, name string) {
 	b.schedule(table, name, s.condition, "", "", s.number(table))
 }
 
+// anchorActions adds a standard action that an action is scheduled
+// relative to, but that no table needs, at its default number.
+func (b *build) anchorActions() {
+	for _, table := range sequenceTables {
+		for _, action := range b.schedules[table] {
+			anchor := action.Before + action.After
+			if s, ok := standardActions[anchor]; ok && s.number(table) != 0 {
+				b.standardAt(table, anchor)
+			}
+		}
+	}
+}
+
 // customActions turns the customActions section into CustomAction rows and
 // placements.
 func (b *build) customActions() error { //nolint:cyclop // one pass over the format; splitting would scatter it
@@ -582,6 +595,8 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 	if b.hasRows("Component") {
 		b.standardAt(seqInstallExecute, "AllocateRegistrySpace")
 	}
+
+	b.anchorActions()
 
 	// Every scheduled name must be a standard action or a custom action.
 	for _, table := range sequenceTables {
