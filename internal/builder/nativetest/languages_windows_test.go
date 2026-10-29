@@ -3,6 +3,7 @@
 package nativetest_test
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -93,4 +94,44 @@ func TestFullUILanguages(t *testing.T) { //nolint:paralleltest // msiexec runs o
 	}
 
 	t.Logf("LANG-03 UI:\n%s", seen)
+}
+
+// TestLanguageOnlyLicenseInstall installs, with the German transform, a
+// package whose license page only the German entry has. The base carries
+// an empty CheckBox table so that the transform adds rows, not a table.
+func TestLanguageOnlyLicenseInstall(t *testing.T) { //nolint:paralleltest // one msiexec at a time
+	if testing.Short() {
+		t.Skip("msiexec install")
+	}
+
+	waitForMsiexec(t)
+
+	const anchor = "ui:\n  wizard: featureTree\n"
+
+	if strings.Count(fullUIConfig, anchor) != 1 {
+		t.Fatalf("the full UI configuration no longer holds %q once", anchor)
+	}
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "LIZENZ.txt"), []byte("Lizenz nur auf Deutsch\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	doc := strings.Replace(fullUIConfig, anchor, anchor+"  languages:\n    de: {license: LIZENZ.txt}\n", 1)
+	pkg, res := buildFullUIFrom(t, dir, doc, "1.0.0", "auto")
+
+	log := filepath.Join(dir, "install.log")
+	if code := msiexec(t, "/i", pkg, "/qn", "ProductLanguage=1031", "/l*v", log); code != 0 {
+		t.Fatalf("install with ProductLanguage=1031: exit %d\n%s", code, excerpt(readLog(log), "Error", "Transform"))
+	}
+
+	got := productInfo(res.ProductCode, "Language")
+
+	if code := msiexec(t, "/x", res.ProductCode, "/qn", "/l*v", filepath.Join(dir, "uninstall.log")); code != 0 {
+		t.Errorf("uninstall: exit %d", code)
+	}
+
+	if got != "1031" {
+		t.Errorf("registered Language %q, want 1031", got)
+	}
 }

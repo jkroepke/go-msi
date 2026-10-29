@@ -1277,7 +1277,11 @@ and, since the add action has no Continue flag, the install fails (MSISPEC
 CA-02), so the build reports an error. `*` after an address is rejected as
 well, although that case is not tested. Keywords such as `localsubnet` combine with addresses.
 Neither the name nor the description may contain a double quote; netsh drops
-quotes inside the quoted description (MSISPEC CA-04).
+quotes inside the quoted description (MSISPEC CA-04). The name is literal
+text without `[` or `]`, and `all` in any case is an error: netsh treats
+`name=all` as every rule, so the delete that runs before each add would
+remove every inbound rule on the machine, and a property in the name could
+resolve to `all` at run time (MSISPEC section 17.3).
 
 A rule that a feature switches can be written under that feature instead,
 without `component`:

@@ -2214,7 +2214,7 @@
       "properties": {
         "name": {
           "type": "string",
-          "description": "Must not contain a double quote."
+          "description": "Literal text: no double quote, no [ or ], and not all, which netsh reserves."
         },
         "description": {
           "type": "string",

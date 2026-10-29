@@ -3,6 +3,8 @@ package builder_test
 import (
 	"bytes"
 	"fmt"
+	"image"
+	"image/color"
 	"maps"
 	"os"
 	"path/filepath"
@@ -12,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jkroepke/msi-builder/internal/artwork"
 	"github.com/jkroepke/msi-builder/internal/builder"
 	"github.com/jkroepke/msi-builder/internal/cab"
 	"github.com/jkroepke/msi-builder/internal/cfb"
@@ -1363,5 +1366,56 @@ components:
 
 	if got, ok := cell(t, database, "Component", "Attributes", isRemember).(int); !ok || got&256 != 0 {
 		t.Errorf("Component attributes %v, want a 32-bit component", got)
+	}
+}
+
+// TestProductCodeFollowsWizardInputs checks that productCode: auto changes
+// with the content of the license, the translated license and the theme
+// pictures at an unchanged path: they change the installer as much as a
+// payload does.
+func TestProductCodeFollowsWizardInputs(t *testing.T) {
+	t.Parallel()
+
+	picture := func(img *image.RGBA, marked bool) []byte {
+		if marked {
+			img.Set(0, 0, color.RGBA{R: 1, G: 2, B: 3, A: 255})
+		}
+
+		return artwork.EncodeBMP(img)
+	}
+
+	build := func(inputs map[string][]byte) string {
+		files := map[string][]byte{
+			"viewer.exe":  testpe.Build(testpe.Options{FileVersion: "2.0.0.0", Languages: []int{1033}}),
+			"LICENSE.txt": []byte("License version one\n"),
+			"LIZENZ.txt":  []byte("Lizenz Version eins\n"),
+			"banner.bmp":  picture(artwork.Banner(artwork.Default()), false),
+			"dialog.bmp":  picture(artwork.Dialog(artwork.Default()), false),
+		}
+		maps.Copy(files, inputs)
+
+		cfg := example(t, "desktop", map[string]string{"VERSION": "2.0.0"}, files)
+		cfg.UI.Theme.Banner = "banner.bmp"
+		cfg.UI.Theme.Dialog = "dialog.bmp"
+		cfg.UI.Languages = map[string]*config.Language{"de": {License: "LIZENZ.txt"}}
+
+		return mustBuild(t, cfg).ProductCode
+	}
+
+	base := build(nil)
+
+	if again := build(nil); again != base {
+		t.Error("the product code is not stable")
+	}
+
+	for name, data := range map[string][]byte{
+		"LICENSE.txt": []byte("License version two\n"),
+		"LIZENZ.txt":  []byte("Lizenz Version zwei\n"),
+		"banner.bmp":  picture(artwork.Banner(artwork.Default()), true),
+		"dialog.bmp":  picture(artwork.Dialog(artwork.Default()), true),
+	} {
+		if build(map[string][]byte{name: data}) == base {
+			t.Errorf("the product code did not change with %s", name)
+		}
 	}
 }

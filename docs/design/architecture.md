@@ -270,7 +270,8 @@ Pipeline, each step a file of its own:
    the build.
 2. **Identities**: GUIDs normalized; `productCode: auto` from UUIDv5 over the
    upgrade code, platform, version and a digest of every input (payload
-   files, icons, binaries and binary cells of custom tables);
+   files, icons, binaries, binary cells of custom tables, and the wizard's
+   licenses and theme pictures);
    `packageCode: auto` from the finished database bytes; component GUIDs
    from UUIDv5 over the key path's canonical location.
 3. **Directories**: `TARGETDIR`/`SourceDir`, the standard folders, the tree,

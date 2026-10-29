@@ -112,3 +112,33 @@ func TestLanguageBuildDiagnostics(t *testing.T) {
 		t.Errorf("no error under ui.languages.fr.license:\n%s", res.Diagnostics)
 	}
 }
+
+// TestLanguageLicenseWithoutBaseLicense builds a package whose only license
+// belongs to a ui.languages entry: the base has an empty CheckBox table, so
+// that the language transform only adds rows.
+func TestLanguageLicenseWithoutBaseLicense(t *testing.T) {
+	t.Parallel()
+
+	cfg := desktop(t)
+	cfg.UI.License = ""
+	cfg.UI.Launch = nil
+	cfg.UI.Languages = map[string]*config.Language{"de": {License: "LICENSE.txt"}}
+
+	res := mustBuild(t, cfg)
+
+	if res.Database.Table("CheckBox") == nil {
+		t.Fatal("the base has no CheckBox table")
+	}
+
+	if got := rows(t, res.Database, "CheckBox"); len(got) != 0 {
+		t.Errorf("CheckBox rows %v, want none in the base", got)
+	}
+
+	if len(res.Database.Storages) != 1 || res.Database.Storages[0].Name != "1031" {
+		t.Fatalf("storages %v, want 1031", res.Database.Storages)
+	}
+
+	if got := transformTables(t, res.Database.Storages[0]); !slices.Contains(got, "Dialog") || !slices.Contains(got, "Control") {
+		t.Errorf("storage 1031 changes %v, want the license dialog and its controls", got)
+	}
+}

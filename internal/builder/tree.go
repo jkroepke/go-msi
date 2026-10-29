@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"strings"
 
@@ -190,6 +191,19 @@ func (b *build) deriveProductCode() error { //nolint:cyclop // one pass over the
 		b.hashInput(hasher, "binary:"+name, b.cfg.Binaries[name])
 	}
 
+	// Wizard pictures and licenses are shown, not installed, but a changed
+	// license or picture is a different installer all the same.
+	wizard := &b.cfg.UI
+	b.hashInput(hasher, "ui:license", wizard.License)
+	b.hashInput(hasher, "ui:banner", wizard.Theme.Banner)
+	b.hashInput(hasher, "ui:dialog", wizard.Theme.Dialog)
+
+	for _, name := range slices.Sorted(maps.Keys(wizard.Languages)) {
+		if entry := wizard.Languages[name]; entry != nil {
+			b.hashInput(hasher, "ui:license:"+name, entry.License)
+		}
+	}
+
 	for _, custom := range b.cfg.Tables {
 		for colIndex, col := range custom.Columns {
 			if typ, err := msidb.ParseType(col.Type); err != nil || typ.Kind != msidb.KindBinary {
@@ -219,6 +233,10 @@ func (b *build) deriveProductCode() error { //nolint:cyclop // one pass over the
 // only its label; the table loaders report the error with its YAML path
 // later.
 func (b *build) hashInput(hasher io.Writer, label, path string) {
+	if path == "" {
+		return
+	}
+
 	_, _ = io.WriteString(hasher, label+"\x00")
 
 	file, err := openSource(b.cfg, nil, path)
@@ -431,17 +449,27 @@ func (b *build) inputs() error { //nolint:cyclop // one pass over the format; sp
 }
 
 func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentInfo) *fileInfo {
-	if cached, ok := b.fileCache[cfgFile]; ok {
-		file := *cached
-		file.Component = comp
+	var file *fileInfo
 
-		return &file
+	if cached, ok := b.fileCache[cfgFile]; ok {
+		copied := *cached
+		copied.Component = comp
+		file = &copied
+	} else {
+		file = b.readPayload(diagPath, cfgFile, comp)
+		if file != nil && b.fileCache != nil {
+			cached := *file
+			b.fileCache[cfgFile] = &cached
+		}
 	}
 
-	file := b.readPayload(diagPath, cfgFile, comp)
-	if file != nil && b.fileCache != nil {
-		cached := *file
-		b.fileCache[cfgFile] = &cached
+	// Set here rather than in readPayload, so that a language build, which
+	// takes its files from the cache, has the property too: without it
+	// the language transform would delete it from the base (FILE-09).
+	// The engine verifies the attribute only while MSICHECKCRCS is set; a
+	// non-empty value from properties overrides it.
+	if file != nil && file.Attrs&fileChecksum != 0 {
+		b.properties["MSICHECKCRCS"] = "1"
 	}
 
 	return file
@@ -560,10 +588,7 @@ func (b *build) readPayload(diagPath string, cfgFile *config.File, comp *compone
 
 	if cfgFile.Checksum {
 		if file.isPE && info.HasChecksum {
-			file.Attrs |= fileChecksum
-			// The engine verifies the attribute only while MSICHECKCRCS is
-			// set (FILE-09); a non-empty value from properties overrides it.
-			b.properties["MSICHECKCRCS"] = "1"
+			file.Attrs |= fileChecksum // readFile sets MSICHECKCRCS
 		} else {
 			b.warnf(diagPath+".checksum", "%s has no PE checksum to verify; the checksum attribute is not set", file.LongName)
 		}

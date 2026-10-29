@@ -219,7 +219,14 @@ go test ./... -shuffle=on -race
   and `0` stay, because an explicit `secure: false` differs from the default.
   A new optional config field must therefore be a pointer, string, slice or
   map, or carry `yaml:",omitempty"`; a plain `bool` or `int` would change
-  the automatic ProductCode of every existing configuration.
+  the automatic ProductCode of every existing configuration. Every input
+  file the build reads (payloads, icons, binaries, wizard licenses and
+  pictures) also goes into the digest by content through `hashInput`, since
+  the config only holds its path.
+- A null list entry decodes to a nil pointer. `nullEntries`
+  (`pkg/config/nulls.go`) finds them by reflection over the YAML keys, in
+  `Parse` and in `Validate`, before the defaults dereference anything, so a
+  new list field is covered without listing it there.
 - The builder removes a partial output when a build fails; every spool or
   temporary file is cleaned up on every error path.
 - Reject at build time what Windows would accept and then install in a broken
