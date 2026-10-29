@@ -199,6 +199,13 @@ func (c *conformance) allocation() {
 		}
 	}
 
+	// Every sector of the file needs a FAT entry (2.3).
+	if len(c.fat) < c.sectors {
+		c.errorf("FAT has %d entries for %d sectors", len(c.fat), c.sectors)
+
+		return
+	}
+
 	c.markers()
 }
 
@@ -293,7 +300,13 @@ func (c *conformance) entry(rec []byte, sid int) dirEntry {
 	}
 
 	for i := range nameLen/2 - 1 {
-		ent.name = append(ent.name, order.Uint16(rec[2*i:]))
+		unit := order.Uint16(rec[2*i:])
+		switch unit {
+		case 0, '/', '\\', ':', '!':
+			c.errorf("entry %d: name contains %q", sid, rune(unit))
+		}
+
+		ent.name = append(ent.name, unit)
 	}
 
 	switch {
@@ -314,8 +327,15 @@ func (c *conformance) entry(rec []byte, sid int) dirEntry {
 	return ent
 }
 
-// tree checks the red-black rules of 2.6.4 and returns the in-order SIDs.
+// tree checks the red-black rules of 2.6.4 and that every stream is in
+// the tree exactly once.
 func (c *conformance) tree(entries []dirEntry, top uint32) {
+	if top != noStream && int(top) >= len(entries) {
+		c.errorf("tree: top node %d outside the directory", top)
+
+		return
+	}
+
 	if top != noStream && entries[top].colour != 1 {
 		c.errorf("tree: top node %d is red", top)
 	}
@@ -397,14 +417,40 @@ func (c *conformance) streams(entries []dirEntry) {
 		}
 	}
 
-	rootChain := c.chain(root.start, int((root.size+uint64(c.ss)-1)/uint64(c.ss)), "mini stream") //nolint:gosec // test sizes
+	if root.size > uint64(len(c.raw)) || len(c.errs) > 0 {
+		c.errorf("mini stream size %d is larger than the file", root.size)
+
+		return
+	}
+
+	rootChain := c.chain(root.start, int((root.size+uint64(c.ss)-1)/uint64(c.ss)), "mini stream") //nolint:gosec // checked against the file
+	if len(c.errs) > 0 {
+		return
+	}
+
 	mini := make([]byte, 0, len(rootChain)*c.ss)
 
 	for _, n := range rootChain {
 		mini = append(mini, c.sector(n)...)
 	}
 
+	if tail := mini[root.size:]; !bytes.Equal(tail, make([]byte, len(tail))) {
+		c.errorf("mini stream: bytes past its size are not zero")
+	}
+
 	miniOwner := make([]bool, root.size/miniSectorSize)
+
+	if len(c.miniFAT) < len(miniOwner) {
+		c.errorf("MiniFAT has %d entries for %d mini sectors", len(c.miniFAT), len(miniOwner))
+
+		return
+	}
+
+	for i, value := range c.miniFAT[len(miniOwner):] {
+		if value != freeSect {
+			c.errorf("MiniFAT[%d] past the mini stream is %#x, want FREESECT", len(miniOwner)+i, value)
+		}
+	}
 
 	for sid, ent := range entries {
 		if ent.typ != 2 {
@@ -442,20 +488,20 @@ func (c *conformance) streams(entries []dirEntry) {
 	}
 }
 
-func (c *conformance) miniChain(ent dirEntry, sid int, mini []byte, owner []bool) {
+func (c *conformance) miniChain(ent dirEntry, sid int, stream []byte, owner []bool) {
 	want := int((ent.size + miniSectorSize - 1) / miniSectorSize) //nolint:gosec // below 4096
 	count := 0
 	last := uint32(0)
 
-	for mini := ent.start; mini != endOfChain; mini = c.miniFAT[mini] {
-		if int(mini) >= len(owner) || int(mini) >= len(c.miniFAT) || owner[mini] {
-			c.errorf("entry %d: bad mini chain link %#x", sid, mini)
+	for sect := ent.start; sect != endOfChain; sect = c.miniFAT[sect] {
+		if int(sect) >= len(owner) || owner[sect] {
+			c.errorf("entry %d: bad mini chain link %#x", sid, sect)
 
 			return
 		}
 
-		owner[mini] = true
-		last = mini
+		owner[sect] = true
+		last = sect
 		count++
 	}
 
@@ -466,7 +512,7 @@ func (c *conformance) miniChain(ent dirEntry, sid int, mini []byte, owner []bool
 	}
 
 	if rem := int(ent.size % miniSectorSize); rem != 0 {
-		tail := mini[int(last)*miniSectorSize+rem : int(last+1)*miniSectorSize]
+		tail := stream[int(last)*miniSectorSize+rem : int(last+1)*miniSectorSize]
 		if !bytes.Equal(tail, make([]byte, len(tail))) {
 			c.errorf("entry %d: last mini sector is not zero-padded", sid)
 		}
@@ -474,7 +520,7 @@ func (c *conformance) miniChain(ent dirEntry, sid int, mini []byte, owner []bool
 }
 
 // TestConformance runs the [MS-CFB] checker over the writer's output for
-// every tree size up to a few hundred streams, both versions and both colour
+// every tree size up to 69 streams, both versions and both colour
 // strategies, and over the vector and DIFAT files.
 func TestConformance(t *testing.T) {
 	t.Parallel()
@@ -531,7 +577,8 @@ func TestConformanceDIFAT(t *testing.T) {
 	}
 }
 
-// The checker itself must catch the faults it claims to.
+// The checker itself must catch the faults it claims to, without panicking
+// on the broken files.
 func TestConformanceCatchesFaults(t *testing.T) {
 	t.Parallel()
 
@@ -546,6 +593,23 @@ func TestConformanceCatchesFaults(t *testing.T) {
 		"unsorted":       func(b []byte) { b[dirOff+entrySize] = 'Z' },
 		"padding":        func(b []byte) { b[len(b)-1] = 1 },
 		"free FAT entry": func(b []byte) { b[512+4*100] = 0 },
+		// The v3 vector: sector 0 FAT, 1 directory, 2 MiniFAT, 3 mini
+		// stream, 4 to 13 Large; SID 1 Large, 2 Small, 3 unused.
+		"shared sector":      func(b []byte) { binary.LittleEndian.PutUint32(b[512+4*12:], 3) },
+		"FATSECT marker":     func(b []byte) { binary.LittleEndian.PutUint32(b[512:], endOfChain) },
+		"DIFAT count":        func(b []byte) { b[0x48] = 1 },
+		"no FAT":             func(b []byte) { b[0x2C] = 0; binary.LittleEndian.PutUint32(b[0x4C:], freeSect) },
+		"unused entry":       func(b []byte) { b[dirOff+3*entrySize+0x50] = 1 },
+		"unreachable stream": func(b []byte) { binary.LittleEndian.PutUint32(b[dirOff+2*entrySize+0x44:], noStream) },
+		"black heights":      func(b []byte) { b[dirOff+entrySize+0x43] = 1 },
+		"duplicate name":     func(b []byte) { copy(b[dirOff+entrySize:], []byte("S\x00m\x00a\x00l\x00l\x00")) },
+		"forbidden name":     func(b []byte) { b[dirOff+entrySize] = '/' },
+		"top out of range":   func(b []byte) { binary.LittleEndian.PutUint32(b[dirOff+0x4C:], 50) },
+		"mini stream size":   func(b []byte) { binary.LittleEndian.PutUint64(b[dirOff+0x78:], 640) },
+		"huge mini stream":   func(b []byte) { binary.LittleEndian.PutUint64(b[dirOff+0x78:], 1<<50) },
+		"MiniFAT padding":    func(b []byte) { b[3*512+4*10] = 0 },
+		"mini stream tail":   func(b []byte) { b[4*512+200] = 1 },
+		"mini chain":         func(b []byte) { binary.LittleEndian.PutUint32(b[3*512:], 9) },
 	} {
 		bad := bytes.Clone(out)
 		mutate(bad)
