@@ -223,14 +223,14 @@ func env02Analyze(c *caseLog, path, installed string, payload []byte) *env02Pkg 
 				c.logf("  msitest reader: file %q, %d bytes, attrib %#x, payload match %v", cf.Name, len(cf.Data), cf.Attrib, bytes.Equal(cf.Data, payload))
 			}
 		}
-		cabPath, dir := c.path("payload.cab"), c.path("expanded")
+		cabPath, dir := c.path("cab1.cab"), c.path("expanded")
 		os.WriteFile(cabPath, cab, 0o644)
 		os.MkdirAll(dir, 0o755)
 		out, err := exec.Command("expand.exe", cabPath, "-F:*", dir).CombinedOutput()
 		if err != nil {
 			c.logf("  expand.exe: %v: %s", err, strings.TrimSpace(string(out)))
 		}
-		got, err := os.ReadFile(filepath.Join(dir, "hello.txt"))
+		got, err := readExpanded(dir, "hello.txt")
 		c.logf("  expand.exe: hello.txt payload match %v (err=%v)", err == nil && bytes.Equal(got, payload), err)
 	}
 
