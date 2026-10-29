@@ -2,11 +2,14 @@
 
 msi-builder reads one YAML file, usually `msi.yaml`, that says what your
 package installs. This page shows the smallest file and then one recipe per
-common task. Copy the recipe you need into your file and change the names.
+common task. A recipe shows only the keys it adds to the smallest file.
+When it shows `components`, that is the whole list: merge it with yours
+instead of adding a second `components` key. `hello.exe` is repeated only to
+show where the new keys go.
 
 Every key and rule is described in [YAML Schema Design](design/yaml-schema.md),
 which you only need for the unusual cases. A test builds every example on
-this page, so they work with the current release.
+this page with this version of msi-builder.
 
 ## The smallest package
 
@@ -44,7 +47,7 @@ Two values matter beyond the obvious ones:
   only compares the first three numbers.
 
 The first line is optional: it lets editors with the YAML language server
-(VS Code, JetBrains IDEs) complete and check the file as you type.
+complete and check the file as you type.
 
 `files[].source` is relative to the YAML file. A program (`.exe`, `.dll`)
 must have a version resource; msi-builder reads its version from it.
@@ -98,8 +101,10 @@ components:
         exclude: ['*.pdb']
 ```
 
-Keep that folder apart from the YAML file, so the built `.msi` does not end
-up in the next build.
+Use a separate output folder, not the folder of the YAML file or one above
+it, so the built `.msi` does not end up in the next build. The folder must be
+the component's only file: a file that needs a shortcut or a service goes in
+a component of its own and is left out of the folder with `exclude`.
 
 ### Choose the install folder
 
@@ -109,7 +114,9 @@ installDir:
   remember: true         # an upgrade keeps a folder the user picked
 ```
 
-Without `installDir` the folder is `C:\Program Files\<product name>`.
+Without `installDir` the folder is `<product name>` in the Program Files
+folder for the package's platform (`C:\Program Files (x86)` for x86 on 64-bit
+Windows), or in `%LOCALAPPDATA%\Programs` for a per-user package.
 
 ### Start menu and desktop shortcuts
 
@@ -145,9 +152,10 @@ components:
           restartDelay: 30s
 ```
 
-The service is started after the installation, stopped and removed on
-uninstall, and runs as LocalSystem unless `account` and `password` say
-otherwise.
+The service is started during the installation (unless `start: disabled`);
+if it does not start, the installation fails and is rolled back. It is
+stopped and removed on uninstall, and runs as LocalSystem unless `account`
+and `password` say otherwise.
 
 ### Add the program to PATH
 
@@ -161,9 +169,8 @@ components:
         action: append       # set, setIfAbsent, append, prepend or remove
 ```
 
-The entry is removed again on uninstall. Programs that are already running,
-including open command prompts, only see the new `PATH` after a restart of
-the program.
+The entry is removed again on uninstall. A command prompt that is already
+open keeps the old `PATH`; open a new one.
 
 ### Write registry values
 
@@ -188,17 +195,17 @@ The values are removed on uninstall.
 ### Open a firewall port
 
 ```yaml
-features:
-  - id: Main
-    title: Hello
-    components:
-      - files:
-          - source: hello.exe
-    firewall:
-      - name: Hello
-        program: '[#hello.exe]'
-        protocol: tcp
-        port: 8080
+components:
+  - id: Hello
+    files:
+      - source: hello.exe
+
+firewall:
+  - name: Hello
+    component: Hello            # the rule is installed with this component
+    program: '[#hello.exe]'
+    protocol: tcp
+    port: 8080
 ```
 
 The rule is added on install and removed on uninstall. `[#hello.exe]` is
@@ -219,12 +226,15 @@ components:
               - extension: hello            # without the dot
 ```
 
-Double-clicking a `.hello` file then opens it with `hello.exe "<file>"`.
+The package registers `hello.exe` as the default program for `.hello`
+files, with the file as its argument. A program the user picked under Open
+with still wins.
 
 ### Let the user pick optional parts
 
 Features are the parts a user can choose. A feature with `default: off` is
-installed only on request:
+installed only on request. With `features`, the components go inside the
+features, in place of the top-level `components` list:
 
 ```yaml
 features:
@@ -308,7 +318,9 @@ Fields can also be `type: password`, `checkbox` or `choice`.
 ### Keep a configuration file on upgrade
 
 A user's changes to a configuration file survive upgrades with `preserve`.
-Give the file a component of its own:
+The installer then never replaces that file once it exists, not even with a
+newer version of it; uninstall removes it. Give the file a component of its
+own:
 
 ```yaml
 components:
@@ -322,8 +334,9 @@ components:
 ### Delete program data on uninstall
 
 `purge` deletes a folder with everything the program wrote into it when the
-product is uninstalled, but not during an upgrade. Here only when the user
-asks for it with `msiexec /x hello.msi DELETE_DATA=1`:
+product is uninstalled; the default upgrade keeps it. Here only when the
+user asks for it with `msiexec /x hello.msi DELETE_DATA=1`. The folder must
+lie outside the install folder, for example below `CommonAppDataFolder`:
 
 ```yaml
 components:
@@ -351,7 +364,9 @@ customActions:
         when: install         # install, upgrade, uninstall or maintenance
 ```
 
-The command runs without a window, and its output goes into the
+`when: install` runs on a first installation only, not on an upgrade or a
+repair; add a second placement with `when: upgrade` for upgrades. The
+command runs without a window, and its output goes into the
 installation log (`msiexec /i hello.msi /l*v install.log`). Prefer the
 recipes above where one fits: they also undo themselves on uninstall.
 
@@ -378,8 +393,8 @@ components:
 The package then installs to `%LOCALAPPDATA%\Programs\Hello` and into
 the user's part of the registry, so it cannot install services or write to
 HKLM. Windows Installer wants each component in the user's profile to
-mark itself with an HKCU value (`keyPath`); without one msi-builder warns
-(ICE38). `perUserOrMachine` and `perMachineOrUser` let the user choose.
+mark itself with an HKCU value (`keyPath`); without one msi-builder warns.
+`perUserOrMachine` and `perMachineOrUser` let the user choose.
 
 ### Ask for a restart
 
@@ -420,15 +435,15 @@ The keys used most inside them:
 
 | Key | Default | Notes |
 |---|---|---|
-| `product.name` | required | Shown in Apps & Features |
-| `product.manufacturer` | required | Shown in Apps & Features |
+| `product.name` | required | Shown in Programs and Features |
+| `product.manufacturer` | required | Shown in Programs and Features |
 | `product.version` | required | `major.minor.build`, at most 255.255.65535 |
 | `product.upgradeCode` | required | A GUID that never changes |
 | `product.language` | `1033` (English) | A Windows language ID, such as 1031 for German |
-| `product.arp.icon` | none | An `icons` key shown in Apps & Features |
+| `product.arp.icon` | none | An `icons` key shown in Programs and Features |
 | `package.platform` | required | `x86`, `x64` or `arm64` |
 | `package.scope` | `perMachine` | `perUser`, `perUserOrMachine`, `perMachineOrUser` |
-| `package.compression` | `lzx` | `mszip` builds faster, `none` stores the files |
+| `package.compression` | `lzx` | `mszip` gives larger packages, `none` stores the files |
 | `installDir.name` | product name | `/` makes nested folders |
 | `installDir.remember` | `false` | Keep a custom folder on upgrade |
 | `components[].directory` | the install folder | A subfolder or a standard folder |

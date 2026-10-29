@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"maps"
 	"os"
 	"path"
@@ -25,11 +26,14 @@ const guidePage = "../../docs/YAML Schema.md"
 // yamlBlock matches a fenced YAML code block of the guide.
 var yamlBlock = regexp.MustCompile("(?ms)^```yaml\n(.*?)^```")
 
+// heading matches a heading line of the guide.
+var heading = regexp.MustCompile("(?m)^#+ (.+)$")
+
 // TestGuideExamples builds every YAML example of the user guide without a
 // warning. The first example is a whole file; every later one is a part of
 // a file, whose top-level keys replace those of the first. A part with
 // components or features replaces both, so its files are not installed
-// twice. Each file a source or license names is created: a versioned
+// twice. Subtests are named after the heading above the example. Each file a source or license names is created: a versioned
 // program for .exe and .dll, text otherwise, and a folder source gets a
 // program, a .pdb and a text file.
 func TestGuideExamples(t *testing.T) {
@@ -40,21 +44,29 @@ func TestGuideExamples(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	blocks := yamlBlock.FindAllSubmatch(page, -1)
-	if len(blocks) < 2 {
-		t.Fatalf("%s has %d YAML examples", guidePage, len(blocks))
+	// A Windows checkout may have turned the line ends into CRLF.
+	page = bytes.ReplaceAll(page, []byte("\r\n"), []byte("\n"))
+
+	blocks := yamlBlock.FindAllSubmatchIndex(page, -1)
+	if len(blocks) < 2 || len(blocks) != bytes.Count(page, []byte("```y")) {
+		t.Fatalf("%s has %d YAML examples of %d blocks fenced with ```y", guidePage, len(blocks), bytes.Count(page, []byte("```y")))
 	}
 
 	var base map[string]any
-	if err := yaml.Unmarshal(blocks[0][1], &base); err != nil {
+	if err := yaml.Unmarshal(page[blocks[0][2]:blocks[0][3]], &base); err != nil {
 		t.Fatal(err)
 	}
 
 	for i, block := range blocks {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
+		name := strconv.Itoa(i)
+		if titles := heading.FindAllSubmatch(page[:block[0]], -1); len(titles) > 0 {
+			name += " " + string(titles[len(titles)-1][1])
+		}
+
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			buildGuideExample(t, base, block[1])
+			buildGuideExample(t, base, page[block[2]:block[3]])
 		})
 	}
 }
@@ -71,6 +83,7 @@ func buildGuideExample(t *testing.T, base map[string]any, example []byte) {
 
 	if part["components"] != nil || part["features"] != nil {
 		delete(doc, "components")
+		delete(doc, "features")
 	}
 
 	maps.Copy(doc, part)
