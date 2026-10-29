@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -1207,7 +1208,7 @@ func TestNativeFDIMaxFiles(t *testing.T) { //nolint:paralleltest // the FDI call
 
 	t.Logf("CAB-09: cabinet.dll extracted all %d entries of a %d-byte cabinet", len(got), len(raw))
 
-	if _, err := cab.Write(append(files, cab.File{Name: "one-more", Time: when}), cab.Options{}); err == nil {
+	if _, err := cab.Write(append(slices.Clone(files), cab.File{Name: "one-more", Time: when}), cab.Options{}); err == nil {
 		t.Error("cab.Write accepted 65536 files")
 	}
 }

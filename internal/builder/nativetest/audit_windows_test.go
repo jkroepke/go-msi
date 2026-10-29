@@ -94,6 +94,7 @@ func TestMsiexecSearchesOSFileVersion(t *testing.T) {
 
 	system := filepath.Join(os.Getenv("SystemRoot"), "System32", "ucrtbase.dll")
 
+	//nolint:gosec // the path is SystemRoot's ucrtbase.dll
 	out, err := exec.CommandContext(t.Context(), "powershell.exe", "-NoProfile", "-Command",
 		fmt.Sprintf(`(Get-Item '%s').VersionInfo.FileVersionRaw.ToString()`, system)).Output()
 	if err != nil {
@@ -391,11 +392,11 @@ func TestMsiexecUpgradeVersions(t *testing.T) {
 			}
 
 			dir := t.TempDir()
-			v1 := buildConfig(t, mkdir(t, dir, "v1"), "v1", fmt.Sprintf(versionUpgradeConfig, tc.v1, tc.p1), map[string][]byte{"app.exe": app})
-			v2 := buildConfig(t, mkdir(t, dir, "v2"), "v2", fmt.Sprintf(versionUpgradeConfig, tc.v2, tc.p2), map[string][]byte{"app.exe": app})
+			older := buildConfig(t, mkdir(t, dir, "v1"), "v1", fmt.Sprintf(versionUpgradeConfig, tc.v1, tc.p1), map[string][]byte{"app.exe": app})
+			newer := buildConfig(t, mkdir(t, dir, "v2"), "v2", fmt.Sprintf(versionUpgradeConfig, tc.v2, tc.p2), map[string][]byte{"app.exe": app})
 
 			t.Cleanup(func() {
-				for _, path := range []string{v2, v1} {
+				for _, path := range []string{newer, older} {
 					_ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn").Run()
 				}
 
@@ -403,10 +404,10 @@ func TestMsiexecUpgradeVersions(t *testing.T) {
 				_ = os.RemoveAll(pf32)
 			})
 
-			msiexecQuiet(t, filepath.Join(dir, "v1.log"), "/i", v1)
+			msiexecQuiet(t, filepath.Join(dir, "v1.log"), "/i", older)
 
 			log := filepath.Join(dir, "v2.log")
-			code := msiexecCode(t, log, "/i", v2)
+			code := msiexecCode(t, log, "/i", newer)
 
 			for line := range strings.Lines(readLog(log)) {
 				if strings.Contains(line, "FindRelatedProducts: Found application") || strings.Contains(line, "Property(S): ProductVersion") {
@@ -431,9 +432,9 @@ func TestMsiexecUpgradeVersions(t *testing.T) {
 				t.Errorf("app.exe is still in %s: the other version was not removed", other)
 			}
 
-			last := v2
+			last := newer
 			if code != 0 {
-				last = v1
+				last = older
 			}
 
 			msiexecQuiet(t, filepath.Join(dir, "x.log"), "/x", last)
