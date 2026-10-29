@@ -774,6 +774,16 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    serviceControl: [{stopOnInstall: true}]\n    files:", 1),
 			sevError, "components[0].serviceControl[0].name", "required",
 		},
+		"anchor on a search action in the admin sequence": {
+			base + "properties:\n  RWDIR:\n    secure: true\n    search: [{registry: {root: HKLM, key: 'Software\\RW', name: Dir}}]\n" + appComponent +
+				"customActions:\n  - id: SetIt\n    setProperty: {name: RWX, value: '[RWDIR]'}\n    schedule: [{sequence: adminExecute, after: SearchApply_RWDIR}]\n",
+			sevError, "customActions[0].schedule[0]", "neither a standard action",
+		},
+		"anchor on a search action with a generated name": {
+			base + "properties:\n  PAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:\n    secure: true\n    search: [{registry: {root: HKLM, key: 'Software\\RW', name: Dir}}]\n" + appComponent +
+				"customActions:\n  - id: SetIt\n    setProperty: {name: RWX, value: '[PAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA]'}\n    schedule: [{sequence: execute, after: SearchApply_PAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA}]\n",
+			sevError, "customActions[0].schedule[0]", "neither a standard action",
+		},
 		"service control twice": {
 			base + strings.Replace(appComponent, "    files:", "    serviceControl: [{name: Old, stopOnInstall: true}, {name: old, deleteOnInstall: true}]\n    files:", 1),
 			sevError, "components[0].serviceControl[1].name", "already controls",

@@ -73,6 +73,7 @@ const (
 	actPublishProduct       = "PublishProduct"
 	actInstallFinalize      = "InstallFinalize"
 	actScheduleReboot       = "ScheduleReboot"
+	actDuplicateFiles       = "DuplicateFiles"
 
 	condNotInstalled = "NOT Installed"
 	condVersionNT    = "VersionNT"
@@ -155,7 +156,7 @@ var standardActions = map[string]standardAction{ //nolint:gochecknoglobals // lo
 	"InstallAdminPackage":      {aes: 3900},
 	actInstallFiles:            {ies: 4000, aes: 4000},
 	"PatchFiles":               {ies: 4090, aes: 4090},
-	"DuplicateFiles":           {ies: 4210},
+	actDuplicateFiles:          {ies: 4210},
 	"BindImage":                {ies: 4300},
 	"CreateShortcuts":          {ies: 4500, advt: 4500},
 	"RegisterClassInfo":        {ies: 4600, advt: 4600},
@@ -215,6 +216,8 @@ var tableActions = map[string][]string{ //nolint:gochecknoglobals // lookup tabl
 	"MsiServiceConfig": {"MsiConfigureServices"},
 	"Shortcut":         {"CreateShortcuts", "RemoveShortcuts"},
 	"IniFile":          {"WriteIniValues", "RemoveIniValues"},
+	"MoveFile":         {"MoveFiles"},
+	"DuplicateFile":    {actDuplicateFiles, "RemoveDuplicateFiles"},
 }
 
 // addAction registers a custom action. The CustomAction row is written by
@@ -318,7 +321,7 @@ func (b *build) anchorActions() {
 
 				// DuplicateFiles copies installed files (specification
 				// section 11.7).
-				if anchor == "DuplicateFiles" {
+				if anchor == actDuplicateFiles {
 					b.standardAt(table, actInstallFiles)
 				}
 

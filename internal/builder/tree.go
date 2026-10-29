@@ -860,6 +860,17 @@ func (b *build) componentGUID(path string, info *componentInfo) error { //nolint
 		}
 	default:
 		location = "directory|" + info.dir.canonical
+
+		// Components keyed on one folder would share a code. One that
+		// only registers event sources takes its first source instead,
+		// but only when an earlier component took the folder's code, so
+		// packages that built before keep their component codes.
+		if len(comp.EventLog) > 0 {
+			if _, taken := b.guids[uuid5(namespaceComponent, b.upgradeCode+"|"+bitness+"|"+location)]; taken {
+				e := comp.EventLog[0]
+				location = "eventlog|" + strings.ToLower(e.Log+"\\"+e.Source)
+			}
+		}
 	}
 
 	info.guid = uuid5(namespaceComponent, b.upgradeCode+"|"+bitness+"|"+location)

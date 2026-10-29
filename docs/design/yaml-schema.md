@@ -294,6 +294,7 @@ upgrade:
     - upgradeCode: 11111111-2222-3333-4444-555555555555
       minVersion: 0.0.0
       maxVersion: 1.0.0
+      includeMin: true            # default true
       includeMax: false
       onlyDetect: false
       property: OLDPRODUCTFOUND
@@ -764,7 +765,7 @@ files:
             contentType: application/x-exdoc     # optional Content Type value
           - extension: txt                       # only add the type to Open with
             openWithOnly: true
-        verbs:                                   # default: one open verb
+        verbs:                                   # default: one open verb; [] for none
           - id: open
             text: '&Open'                        # menu text; empty: the shell's text for the id
           - id: print
@@ -1044,7 +1045,11 @@ those of section 4.9.
 
 `control` becomes `ServiceControl` rows. `Wait` is a column of the row, so
 when `waitForStart` differs from `wait` the start gets a row of its own
-(`scs_<service>`) next to the stop and delete row (`sc_<service>`). With
+(`scs_<service>`) next to the stop and delete row (`sc_<service>`).
+Two components may install the same service, for example twins under
+opposite conditions that start it or leave it disabled; the rows of such a
+service get generated keys that include the component, so they do not
+collide. With
 `waitForStart: true`, StartServices waits for `SERVICE_RUNNING`, and a
 service that does not get there fails the install with error 1920 and rolls
 it back. With `false` the install succeeds and leaves such a service stopped;
@@ -1127,6 +1132,11 @@ eventLog:
 They write `EventMessageFile` (`REG_EXPAND_SZ`) and `TypesSupported`
 (`REG_DWORD`) under
 `HKLM\SYSTEM\CurrentControlSet\Services\EventLog\<log>\<source>`.
+A component with only event sources is keyed on its folder like any
+component without files or `registry` entries. When a component listed
+earlier already has that folder's component code, it derives its code from
+its first source instead, so several such components can share a folder;
+list them after any other component keyed on the folder.
 Nothing else was needed in REG-03: a key there with these two values was a
 registered source for `Write-EventLog`, `[EventLog]::SourceExists` and
 `Remove-EventLog`, and events showed their text through the generic `%1`
@@ -1367,7 +1377,9 @@ stays quiet) through an `AppSearch` row, and immediate type-51 actions after
 `AppSearch` in both sequences copy the results in order: `SearchApply_<NAME>`
 (`SearchApply2_<NAME>`, …) copies its result when the property is still
 empty, and `SearchDefault_<NAME>` sets `value` when it is still empty after
-all of them. A search straight into the property would override a
+all of them. A custom action can name these actions in `before` or `after`
+to run once a result is applied (only for names short enough to be used as
+written; a longer name gets a generated identifier). A search straight into the property would override a
 command-line value (SEARCH-03), and several `AppSearch` rows for one
 property leave the result of the last row that finds something, in an order
 the package does not control (SEARCH-05). `value` therefore has no
@@ -1683,8 +1695,10 @@ another option sets the property on the server (UI-05, observed on Windows). `af
 page the dialog follows: `WelcomeDlg`, `CustomizeDlg` or an added dialog.
 Without `wizard` no UI tables are written and msiexec shows its basic
 progress window; silent installs never depend on the UI in any mode.
-Without `chooseFeatures` `ARPNOMODIFY` is set. A feature tree page without
-the wizard is an error.
+Without `chooseFeatures` `ARPNOMODIFY` is set, whatever `product.arp.noModify`
+says: such a package has no page that Change could show, so `noModify: false`
+does not bring the button back. A feature tree page without the wizard is an
+error.
 
 #### License page
 
