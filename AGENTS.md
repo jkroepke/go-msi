@@ -166,6 +166,13 @@ go test ./... -shuffle=on -race
 - Changes that affect the generated packages need a Windows run. Use the
   `msitest` harness or the native tests on a Windows machine; state in the
   pull request which checks ran and which could not.
+- To learn what Windows does before writing a test, a temporary nativetest
+  that collects its observations and reports them with one `t.Errorf` runs
+  on the `windows-latest` runner: push the branch and start CI with
+  `workflow_dispatch` on it, then read the job log. Replace the probe with a
+  test that asserts the observed behavior before the pull request merges.
+  The runner does not let the Windows Firewall service stop (access denied),
+  so firewall behavior with the service stopped cannot be probed there.
 - Wizard changes need a full-UI run: `/qn` never shows a dialog, so dialog
   bugs (wrong event names, missing ErrorIcon) only appear with the full UI.
   `internal/builder/nativetest/fullui_windows_test.go` drives msiexec through
