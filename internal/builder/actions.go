@@ -293,7 +293,7 @@ func (b *build) anchorActions() {
 
 			if config.IsStandardAction(anchor) {
 				b.errorf("customActions", "%s: %s is scheduled relative to standard action %s, which has no default number there in msi-builder; "+
-					"schedule it with an absolute number", table, action.Name, anchor)
+					"schedule %s with an absolute number instead", table, action.Name, anchor, action.Name)
 			}
 		}
 	}
