@@ -280,7 +280,7 @@ func TestMsiexecGrants(t *testing.T) {
 		"file":            {"(A;;0x1200a9;;;BG)", "ID;"},
 		"data folder":     {"(A;OICI;0x1301bf;;;BG)", "ID;"},
 		"existing folder": {"(A;OICI;FA;;;LS)", "(A;OICI;0x1200a9;;;BG)", "ID;"},
-		"locked folder":   {"D:P(", "(A;OICI;FA;;;SY)", "(A;OICI;FA;;;BA)", "(A;OICI;0x1301bf;;;BG)"},
+		"locked folder":   {"D:P", "(A;OICI;FA;;;SY)", "(A;OICI;FA;;;BA)", "(A;OICI;0x1301bf;;;BG)"},
 		// The folder's ACEs reach what is in it already.
 		"file in the existing folder": {"(A;ID;FA;;;LS)", "(A;ID;0x1200a9;;;BG)"},
 		"service":                     {"(A;;RPWP;;;BU)"},
@@ -358,9 +358,14 @@ func rememberedAccounts(t *testing.T) string {
 
 // sameACEs compares two SDDL strings without the AI (auto-inherited) control
 // flag of the DACL, which a rollback and a repair that replaces the file
-// can drop while the ACEs stay the same (SEC-02).
+// can drop while the ACEs stay the same (SEC-02: D:PAI( after the grant on
+// a protected DACL, D:P( after the rollback of a failed repair).
 func sameACEs(a, b string) bool {
-	return strings.Replace(a, "D:AI(", "D:(", 1) == strings.Replace(b, "D:AI(", "D:(", 1)
+	return withoutAI(a) == withoutAI(b)
+}
+
+func withoutAI(sddl string) string {
+	return strings.Replace(strings.Replace(sddl, "D:AI(", "D:(", 1), "D:PAI(", "D:P(", 1)
 }
 
 // grepLog returns the lines of an installer log that contain one of the
