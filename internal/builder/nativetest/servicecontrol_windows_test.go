@@ -15,10 +15,12 @@ import (
 )
 
 // serviceConfig is a package with one service, MsiBuilderCtlSvc, whose
-// control settings are the format argument.
+// control settings are the format argument. The packages of this file are
+// stored uncompressed: compressing the test service under -race takes
+// minutes on a CI runner.
 const serviceConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderCtlSvc, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 9d2c4e61-3b7a-4f08-a5c1-7e9b0d3f2a48 }
-package: { platform: x64 }
+package: { platform: x64, compression: none }
 installDir: { name: MsiBuilderCtlSvc }
 components:
   - files: [{ source: svc.exe }]
@@ -167,7 +169,7 @@ func TestMsiexecDeletesServiceOnInstall(t *testing.T) {
 
 const foreignConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderForeignSvc, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 5e1f8a27-c94d-4b3e-8d60-2a7c9f1b4e85 }
-package: { platform: x64 }
+package: { platform: x64, compression: none }
 installDir: { name: MsiBuilderForeignSvc }
 components:
   - files: [{ source: app.exe }]
@@ -230,7 +232,7 @@ func TestMsiexecControlsForeignServices(t *testing.T) {
 
 const conditionalStartConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderCondSvc, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 2f6b8d13-a7c4-4e59-b1d0-8c3e5a9f7b26 }
-package: { platform: x64 }
+package: { platform: x64, compression: none }
 installDir: { name: MsiBuilderCondSvc }
 components:
   - files: [{ source: svc.exe }]
@@ -284,5 +286,7 @@ func TestICEServiceControl(t *testing.T) {
 	dir := t.TempDir()
 
 	requireCleanICE(t, buildForeign(t, dir), cub)
-	requireCleanICE(t, buildConfig(t, dir, "conditional", conditionalStartConfig, map[string][]byte{"svc.exe": testService(t)}), cub)
+	// ICE does not run the service, so a small PE file stands in for it.
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	requireCleanICE(t, buildConfig(t, dir, "conditional", conditionalStartConfig, map[string][]byte{"svc.exe": exe}), cub)
 }
