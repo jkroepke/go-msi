@@ -1835,10 +1835,12 @@
       "type": "object",
       "properties": {
         "name": {
-          "type": "string"
+          "type": "string",
+          "description": "Must not contain a double quote."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "Must not contain a double quote."
         },
         "component": {
           "type": "string",
@@ -1869,7 +1871,7 @@
         },
         "remoteAddresses": {
           "type": "string",
-          "description": "Empty means any."
+          "description": "netsh remoteip list, comma-separated without spaces or double quotes. Empty (or any, or *) means any; any and * cannot be combined with other entries."
         },
         "profiles": {
           "anyOf": [

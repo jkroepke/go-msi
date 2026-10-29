@@ -219,6 +219,7 @@ Silent-failure cases a producer has to guard against itself:
 | CA-01 | Contradicted | Per-user (`Assignment=0`), elevated administrator: a deferred EXE action failing [after PublishProduct](msitest/results/CA-01/fail-after-publishproduct/log.md) or [after InstallFiles](msitest/results/CA-01/fail-after-installfiles/log.md) rolls back completely (1603, no `Products` or `UserData` key left, state unknown); finding 7 |
 | CA-02 | Confirmed | EXE exit 1 fails unless Continue; [type-6 return 5](msitest/results/CA-02/vbs-binary-return-5-immediate/log.md) ends with 0 and skips the rest; [deferred](msitest/results/CA-02/vbs-binary-return-5-deferred/log.md) leaves files unregistered |
 | CA-03 | Confirmed | GitHub `windows-latest` (x64) and `windows-11-arm` runners, 2026-10-28, `TestMsiexecRunActions`: every stdout and stderr line of the seven run actions is in the verbose log as `GoMsiRun:`, `whoami` shows LocalSystem versus the user, brackets stay literal, OEM and UTF-8 output decode, exit 3 with `Continue` returns 1, exit 7 fails with 1603 and runs the rollback action with the hidden command absent; Arm64 package native and x64 package under emulation on Arm; repeated on SERVER2025 with the same result; [details](#embedded-custom-action-dll-ca-03) |
+| CA-04 | Confirmed | GitHub `windows-latest` runner, 2026-10-28, CI run 40787803798: netsh rejects `any` or `*` combined with other `remoteip=` entries (exit 1), accepts `ANY` and `*` alone and accepts `localsubnet,10.0.0.1`; quotes inside a quoted description are dropped; [details](#firewall-arguments-ca-04) |
 | SHORTCUT-01 | Confirmed | [hkcu-folder](msitest/results/SHORTCUT-01/hkcu-folder/log.md), [file-component](msitest/results/SHORTCUT-01/file-component/log.md), [file-component-folder](msitest/results/SHORTCUT-01/file-component-folder/log.md), [advertised](msitest/results/SHORTCUT-01/advertised/log.md), [per-user](msitest/results/SHORTCUT-01/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-shortcut-01) |
 | UI-01 | Confirmed | Wizard rendering on Windows Server 2025, go-msi packages driven by hand and by window messages, with PrintWindow and screen captures (2026-10-26); [details](#wizard-rendering-ui-01) |
 | UI-02 | Not run | Interactive full UI |
@@ -455,3 +456,33 @@ code 1603 but will be translated to success due to continue marking`, and
 - Not run: a 32-bit (`Intel`) package, a cancel from a UI handler, and
   Windows Server 2016.
 
+## Firewall arguments (CA-04)
+
+Run on 2026-10-28 in CI run 40787803798 of PR #77, `Build & Test
+(windows-latest)` job (Windows Server 2025 x64, elevated), by a temporary
+probe test that ran `netsh advfirewall firewall add rule name="MBProbeN"
+dir=in action=allow protocol=tcp localport=65001 …` with the arguments below,
+read each rule back with `show rule … verbose` and deleted it. The probe was
+removed from the pull request afterwards; its output is in
+[`msitest/results/CA-04/netsh/log.md`](msitest/results/CA-04/netsh/log.md).
+
+| Argument | Exit | Stored |
+| --- | --- | --- |
+| `remoteip=any,10.0.0.1` | 1, "A specified IP address or address keyword is not valid." | no rule |
+| `remoteip=10.0.0.1,any` | 1, same message | no rule |
+| `remoteip=*` | 0 | RemoteIP `Any` |
+| `remoteip=*,10.0.0.1` | 1, same message | no rule |
+| `remoteip=localsubnet,10.0.0.1` | 0 | RemoteIP `LocalSubnet,10.0.0.1/32` |
+| `remoteip=ANY` | 0 | RemoteIP `Any` |
+| `remoteip=LocalSubnet,dns` | 0 | RemoteIP `LocalSubnet,DNS` |
+| `description="say "hi" now"` | 0 | Description `say hi now` |
+| `description="plain text"` | 0 | Description `plain text` |
+
+- `any` and `*` are accepted alone and rejected in a list with any other
+  entry. The builder rejects such a list (`pkg/config`), because the add
+  action has no `Continue` and would fail the install (section 17.3, CA-02).
+- Quotes inside a quoted description disappear without an error, so the
+  builder rejects them like quotes in the name.
+- Not run: `*` after an address (`10.0.0.1,*`), other spellings of `any`
+  in a list, SERVER2025 (Remote Control did not start) and Windows Server
+  2016.

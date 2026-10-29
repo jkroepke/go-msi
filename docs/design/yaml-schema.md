@@ -77,6 +77,7 @@ closes each one.
 | Script custom actions (CA-02) | Inline JScript/VBScript actions (types 37/38) report success whatever they return; a Binary script returning 5 ends the install with 0 and leaves files unregistered | There are no script custom actions. Actions run an executable (`exec`), a DLL (`dll`), set a property or directory, or fail with an error. |
 | EXE exit codes (CA-02) | Any non-zero exit fails the install unless the action ignores it | `customActions[].return` is required for `exec` actions (`check` or `ignore`), so the author decides. |
 | Same ProductCode, new package (UPG-03) | Installing a rebuilt package over the installed one fails with 1638 | `product.productCode: auto` derives the code from the upgrade code, version, platform and a digest of every input. Changed content gives a new ProductCode (a major upgrade); unchanged content gives the same package byte for byte. A pinned ProductCode makes the validator warn. |
+| Quote in a firewall rule description (CA-04) | netsh drops the quote and stores the rest of the description | `firewall[].name` and `firewall[].description` must not contain a double quote. |
 | Versions that differ in the fourth field only (UPG-01) | Without an inclusive maximum both products stay installed side by side | `upgrade.allowSameVersion` defaults to `true` (maximum inclusive), so `0.32.0.5` replaces `0.32.0.4`. Four-field versions get a warning that Windows compares only three. |
 
 ### 2.3 Settled facts with a schema rule
@@ -729,7 +730,9 @@ environment:
 ```
 
 `append` and `prepend` build the `[~];` form, and a `PATH`-like value without
-them gets a warning, since `set` replaces the whole variable.
+them gets a warning, since `set` replaces the whole variable. A component may
+not list the same variable (names compared without case) twice with the same
+action and scope.
 
 **Top-level `files` shorthand.** Not in version 1. Every file belongs to an
 explicit component, so that its GUID and key path are visible in review.
@@ -906,6 +909,17 @@ install and reinstall it deletes by name and program, then adds, with a
 rollback that deletes; on removal it deletes, with a rollback that adds. The
 `component` is usually an empty component with its own GUID, in the feature
 that switches the rule.
+
+`remoteAddresses` is passed to netsh's `remoteip=` unquoted, so it has no
+spaces or double quotes. A value with property references goes through a
+property that falls back to `any` when any property it references is empty
+at runtime. `any` and `*` mean any address and cannot be combined with other
+entries: netsh rejects `any` before or after an address and `*` before one
+and, since the add action has no Continue flag, the install fails (MSISPEC
+CA-02), so the build reports an error. `*` after an address is rejected as
+well, although that case is not tested. Keywords such as `localsubnet` combine with addresses.
+Neither the name nor the description may contain a double quote; netsh drops
+quotes inside the quoted description (MSISPEC CA-04).
 
 A rule that a feature switches can be written under that feature instead,
 without `component`:
