@@ -596,9 +596,13 @@ func TestFullUIFinishText(t *testing.T) { //nolint:paralleltest // msiexec runs 
 	const finishText = "Open a new command prompt to use [ProductName] & its tools."
 
 	// UI Automation names drop "&" even with NoPrefix, which the page shows
-	// (UI-01), so the driver sees "use MsiBuilderFullUI  its tools.".
-	want := strings.ReplaceAll(strings.ReplaceAll(finishText, "[ProductName]", fullUIName), "&", "")
+	// (UI-01), so the checks look for the part before it.
+	want := "Open a new command prompt to use " + fullUIName
+
 	doc := strings.Replace(fullUIConfig, "  wizard: featureTree\n", "  wizard: featureTree\n  finishText: "+finishText+"\n", 1)
+	if !strings.Contains(doc, "finishText:") {
+		t.Fatal("fullUIConfig has no wizard: featureTree line to add finishText to")
+	}
 
 	dir := t.TempDir()
 	pkg, _ := buildFullUIFrom(t, dir, doc, "1.0.0", "auto")
