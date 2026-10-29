@@ -90,20 +90,21 @@ type build struct { //nolint:govet // grouped by build step
 	// shortcutCarrier maps a component to the generated component that
 	// holds the shortcuts to its files.
 	shortcutCarrier map[string]string
-	// shortcutNames are the short names taken per shortcut directory.
-	shortcutNames map[string]map[string]bool
-	fileByKey     map[string]*fileInfo
-	properties    map[string]string
-	upgradeCode   string
-	productCode   string
-	packageCode   string
-	files         []*fileInfo
-	actions       []*actionInfo
-	dirOrder      []*dirInfo
-	diags         config.Diagnostics
-	opts          Options
-	version       config.Version
-	is64          bool
+	// shortNames are the short names taken per directory key, shared by
+	// the directories, files and shortcuts in it (section 11.3).
+	shortNames  map[string]map[string]bool
+	fileByKey   map[string]*fileInfo
+	properties  map[string]string
+	upgradeCode string
+	productCode string
+	packageCode string
+	files       []*fileInfo
+	actions     []*actionInfo
+	dirOrder    []*dirInfo
+	diags       config.Diagnostics
+	opts        Options
+	version     config.Version
+	is64        bool
 	// summaryWarned holds the config paths already reported as made to fit
 	// the summary code page.
 	summaryWarned map[string]bool
@@ -114,6 +115,7 @@ type dirInfo struct {
 	parent    string
 	long      string // long name, "" for standard folders and TARGETDIR
 	canonical string // canonical path for GUIDs and sorting
+	path      string // config path, "" for directories the builder adds
 	standard  bool
 	used      bool
 }
@@ -188,7 +190,7 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 		secure:          make(map[string]bool),
 		hidden:          make(map[string]bool),
 		shortcutCarrier: make(map[string]string),
-		shortcutNames:   make(map[string]map[string]bool),
+		shortNames:      make(map[string]map[string]bool),
 		schedules:       make(map[string][]sequence.Action),
 		numbered:        make(map[string][]sequence.Numbered),
 		is64:            cfg.Package.Platform.Is64Bit(),
@@ -216,6 +218,7 @@ func (b *build) run(res *Result) error {
 		b.directories,
 		b.writeComponents,
 		b.inputs,
+		b.reserveShortNames,
 		b.sequenceFiles,
 		b.shortcuts,
 		b.features,

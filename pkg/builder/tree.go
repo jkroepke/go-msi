@@ -185,21 +185,23 @@ func sortedStringKeys(m map[string]string) []string {
 func (b *build) directories() error {
 	b.addDir(&dirInfo{id: targetDir, canonical: targetDir, standard: true})
 
-	var walk func(ds []*config.Directory, parent *dirInfo)
+	var walk func(ds []*config.Directory, parent *dirInfo, path string)
 
-	walk = func(ds []*config.Directory, parent *dirInfo) {
-		for _, dir := range ds {
+	walk = func(ds []*config.Directory, parent *dirInfo, path string) {
+		for i, dir := range ds {
+			dirPath := fmt.Sprintf("%s[%d]", path, i)
+
 			if existing, dup := b.dirs[dir.ID]; dup {
 				// A top-level TARGETDIR node only carries children for the
 				// root the builder already added.
 				if parent == nil && dir.ID == targetDir {
-					walk(dir.Children, existing)
+					walk(dir.Children, existing, dirPath+".children")
 				}
 
 				continue
 			}
 
-			info := &dirInfo{id: dir.ID}
+			info := &dirInfo{id: dir.ID, path: dirPath}
 
 			switch {
 			case parent == nil && config.IsStandardFolder(dir.ID):
@@ -221,11 +223,11 @@ func (b *build) directories() error {
 			}
 
 			b.addDir(info)
-			walk(dir.Children, info)
+			walk(dir.Children, info, dirPath+".children")
 		}
 	}
 
-	walk(b.cfg.Directories, nil)
+	walk(b.cfg.Directories, nil, "directories")
 
 	return nil
 }
@@ -257,7 +259,6 @@ func (b *build) ensureStandardDir(id string) {
 // directory is written: the engine resolves the whole chain.
 func (b *build) writeDirectoryTable() {
 	tbl := b.table("Directory")
-	taken := make(map[string]map[string]bool)
 
 	for _, dir := range b.dirOrder {
 		switch {
@@ -271,11 +272,7 @@ func (b *build) writeDirectoryTable() {
 
 			tbl.Add(dir.id, dir.parent, name)
 		default:
-			if taken[dir.parent] == nil {
-				taken[dir.parent] = make(map[string]bool)
-			}
-
-			tbl.Add(dir.id, dir.parent, filename(dir.parent, dir.long, true, taken[dir.parent], config.ValidShortName))
+			tbl.Add(dir.id, dir.parent, filename(dir.parent, dir.long, true, b.taken(dir.parent), config.ValidShortName))
 		}
 	}
 }
@@ -535,22 +532,11 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 		return strings.Compare(left.Key, right.Key)
 	})
 
-	taken := make(map[string]map[string]bool)
-
 	for i, file := range b.files {
 		file.Sequence = i + 1
 
 		dir := file.Component.dir.id
-		if taken[dir] == nil {
-			taken[dir] = make(map[string]bool)
-		}
-
-		name := file.cfg.Name
-		if name == "" {
-			name = file.LongName
-		}
-
-		file.FileName = filename(dir, name, false, taken[dir], config.ValidShortName)
+		file.FileName = filename(dir, b.fileName(file), false, b.taken(dir), config.ValidShortName)
 	}
 
 	if err := b.deriveProductCode(); err != nil {

@@ -101,17 +101,13 @@ func (b *build) shortcutComponent(info *componentInfo, dirID string) string {
 func (b *build) writeShortcut(path, carrier, fileKey string, shortcut *config.Shortcut) {
 	dirID := shortcut.Directory
 
-	if b.shortcutNames[dirID] == nil {
-		b.shortcutNames[dirID] = make(map[string]bool)
-	}
-
 	key := shortcut.ID
 	if key == "" {
 		key = generatedID("sc", "Shortcut", fileKey, dirID, strings.ToLower(longPart(shortcut.Name)))
 	}
 
 	// The column holds the generated short name too.
-	name := filename(dirID, shortcut.Name, false, b.shortcutNames[dirID], config.ValidShortName)
+	name := filename(dirID, shortcut.Name, false, b.taken(dirID), config.ValidShortName)
 	if n := utf8.RuneCountInString(name); n > maxShortcutNameColumn {
 		b.errorf(path+".name", "with its short name the shortcut name is %d characters, at most %d fit", n, maxShortcutNameColumn)
 	}
