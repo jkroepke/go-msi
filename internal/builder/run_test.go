@@ -175,3 +175,75 @@ func TestRunActionReservedBinary(t *testing.T) {
 		t.Errorf("error does not name the key: %s", msg)
 	}
 }
+
+// TestAnchorOnlyStandardAction checks that a standard action no table needs
+// is added at its default number when an action is scheduled relative to it,
+// and that DuplicateFiles brings InstallFiles into a package without files.
+func TestAnchorOnlyStandardAction(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Parse([]byte(`schema: msi-builder/v1
+product: { name: A, manufacturer: B, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+components:
+  - registry: [{ root: HKLM, key: 'SOFTWARE\A', name: v, value: "1" }]
+customActions:
+  - id: AfterDuplicates
+    setProperty: { name: A, value: "1" }
+    schedule: [{ sequence: execute, after: DuplicateFiles }]
+  - id: BeforeRemoveDuplicates
+    setProperty: { name: B, value: "1" }
+    schedule: [{ sequence: execute, before: RemoveDuplicateFiles }]
+`), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for name, want := range map[string]string{
+		"DuplicateFiles": "4210", "AfterDuplicates": "4211",
+		"RemoveDuplicateFiles": "3400", "BeforeRemoveDuplicates": "3399",
+		"InstallFiles": "4000",
+	} {
+		got := cell(t, database, "InstallExecuteSequence", "Sequence", func(r []any) bool { return r[0] == name })
+		if fmt.Sprint(got) != want {
+			t.Errorf("%s is at %v, want %s", name, got, want)
+		}
+	}
+}
+
+// TestAnchorWithoutDefaultNumber checks the error for a standard action
+// msi-builder has no default number for in that table.
+func TestAnchorWithoutDefaultNumber(t *testing.T) {
+	t.Parallel()
+
+	for _, anchor := range []string{"after: ScheduleReboot", "before: InstallFiles"} {
+		sequence := "execute"
+		if strings.Contains(anchor, "InstallFiles") {
+			sequence = "ui"
+		}
+
+		cfg, err := config.Parse(fmt.Appendf(nil, `schema: msi-builder/v1
+product: { name: A, manufacturer: B, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+components:
+  - registry: [{ root: HKLM, key: 'SOFTWARE\A', name: v, value: "1" }]
+customActions:
+  - id: Anchored
+    setProperty: { name: A, value: "1" }
+    schedule: [{ sequence: %s, %s }]
+`, sequence, anchor), config.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = builder.Build(cfg, builder.Options{})
+		if err == nil || !strings.Contains(err.Error(), "has no default number there") {
+			t.Errorf("%s: got %v, want the no-default-number error", anchor, err)
+		}
+	}
+}
