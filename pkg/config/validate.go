@@ -81,6 +81,12 @@ type refs struct {
 	inFeature  map[string]bool
 }
 
+// hasFile reports whether ref is a File key or the long name of a file
+// without an id.
+func (r *refs) hasFile(ref string) bool {
+	return r.fileIDs[ref] || r.fileNames[ref]
+}
+
 func newRefs(cfg *Config) *refs {
 	known := &refs{
 		dirs:       make(map[string]*Directory),
@@ -1031,7 +1037,7 @@ func versionedFile(f *File) bool {
 
 // fileVersion enforces the FILE-01 rule: a PE file is never unversioned by
 // accident, since an upgrade with early removal then deletes it.
-func (v *validator) fileVersion(filePath string, file *File, comp *Component) { //nolint:cyclop // a flat list of independent checks
+func (v *validator) fileVersion(filePath string, file *File, comp *Component) {
 	isPE := peExtensions[strings.ToLower(path.Ext(fileName(file)))]
 
 	switch file.Version {
@@ -1819,7 +1825,7 @@ func (v *validator) wizardOptions(cfg *Config, ids *refs) {
 		v.errorf("ui.launch", "a launch check box needs a wizard")
 	}
 
-	if v.required("ui.launch.file", launch.File) && !ids.fileIDs[launch.File] && !ids.fileNames[launch.File] {
+	if v.required("ui.launch.file", launch.File) && !ids.hasFile(launch.File) {
 		v.errorf("ui.launch.file", "file %q is not defined", launch.File)
 	}
 
