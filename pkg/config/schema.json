@@ -1433,7 +1433,7 @@
                   "string",
                   "number"
                 ],
-                "description": "auto, a four-field version, the id of another file (companion), or none. Never empty.",
+                "description": "auto, a four-field version, the id of another file (companion), or its name when it has no id, or none. Never empty.",
                 "minLength": 1,
                 "default": "auto"
               },

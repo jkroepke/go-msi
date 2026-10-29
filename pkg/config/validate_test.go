@@ -772,6 +772,16 @@ func TestGeneratedFileKey(t *testing.T) {
 	if err := validate(t, doc).Err(); err != nil {
 		t.Errorf("references by long name: %v", err)
 	}
+
+	// A file with an id is named by its id only.
+	doc = base + strings.Replace(appComponent, "      - source: app.exe\n",
+		"      - { source: my-app.exe, id: Main }\n      - { source: data.bin, version: my-app.exe }\n", 1) +
+		"ui: {wizard: minimal, launch: {file: my-app.exe}}\n"
+	ds := validate(t, doc)
+
+	if !find(ds, config.SeverityError, "components[0].files[1].version", "not auto") || !find(ds, config.SeverityError, "ui.launch.file", "not defined") {
+		t.Errorf("references by long name to a file with an id: %v", ds)
+	}
 }
 
 func TestHelpers(t *testing.T) {

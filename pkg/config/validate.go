@@ -1056,7 +1056,7 @@ func (v *validator) fileVersion(filePath string, file *File, comp *Component) {
 		}
 
 		if other := FileByRef(comp.Files, file.Version); other == nil || other == file {
-			v.errorf(filePath+".version", "%q is not auto, none, a version or the id of a file in this component", file.Version)
+			v.errorf(filePath+".version", "%q is not auto, none, a version or the id or name of another file in this component", file.Version)
 		}
 	}
 }

@@ -562,7 +562,7 @@ service must have the service executable as key file.
 | `source` | required | Path relative to the YAML file; `\` counts as `/` on every OS |
 | `name` | base name of `source` | The long name; the short name is generated |
 | `id` | the name, made into an identifier (see below) | File key, used in `[#id]` references |
-| `version` | `auto` | `auto`, a four-field version, the ID of another file (companion), or `none`; never empty (section 2.2) |
+| `version` | `auto` | `auto`, a four-field version, the ID of another file (companion) or its name when it has no `id`, or `none`; never empty (section 2.2) |
 | `language` | `auto` | From the PE resource; `none` for fonts |
 | `allowUnversionedExecutable` | `false` | Required to build a PE file with `version: none` or without a version resource |
 | `vital` | `true` | |
@@ -575,7 +575,7 @@ Without `id`, a name that is an identifier of at most 72 characters is the
 file key as it is. Any other name is made into one: every character other
 than letters, digits, `_` and `.` becomes `_`, a name that starts with a
 digit or `.` gets a leading `_`, and a result longer than 60 characters is
-cut and ends in `_` and eight hex digits of its SHA-256. So
+cut and ends in `_` and eight hex digits of the SHA-256 of the replaced name, so two long names that differ only in replaced characters need an `id`. So
 `fleetspeak-client.exe` is keyed `fleetspeak_client.exe`, which is the name
 to use in `[#fleetspeak_client.exe]`; give long names an explicit `id`.
 `version` (a companion) and `ui.launch.file` also accept the long name of a
