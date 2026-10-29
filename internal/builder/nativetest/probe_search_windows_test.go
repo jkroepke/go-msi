@@ -98,11 +98,11 @@ func TestProbeSearchLocators(t *testing.T) { //nolint:paralleltest,maintidx // m
 	nolang := testpe.Build(testpe.Options{FileVersion: "1.0.0.0"})
 
 	for name, data := range map[string][]byte{
-		`sub\app.exe`:              appExe,
-		`neutral.exe`:              neutral,
-		`nolang.exe`:               nolang,
-		`deep\a\b\deep.txt`:        []byte("deep"),
-		`plain.txt`:                []byte("x"),
+		`sub\app.exe`:             appExe,
+		`neutral.exe`:             neutral,
+		`nolang.exe`:              nolang,
+		`deep\a\b\deep.txt`:       []byte("deep"),
+		`plain.txt`:               []byte("x"),
 		`long file name here.txt`: []byte("long"),
 	} {
 		p := filepath.Join(root, name)
