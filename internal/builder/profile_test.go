@@ -116,14 +116,17 @@ func TestProfileKeyPathOtherKeys(t *testing.T) {
 		}
 	}
 
-	// An HKMU value is HKCU in a per-user package and stays the key path.
-	perUser := mustBuild(t, scopedShortcutConfig(t, "perUser", `
+	// An HKMU value is HKCU in a per-user package and stays the key path; a
+	// dual package writes it to HKLM per machine, so it gets the value.
+	for scope, own := range map[string]bool{"perUser": true, "perUserOrMachine": false, "perMachineOrUser": false} {
+		res := mustBuild(t, scopedShortcutConfig(t, scope, `
   - id: Mixed
     directory: AppDataFolder/Acme/u
     registry: [{ id: MixedValue, root: HKMU, key: Software\Acme, name: z, type: dword, value: 1 }]
 `))
-	if comp, _ := profileKey(t, perUser.Database, "Mixed"); comp[5] != "MixedValue" {
-		t.Errorf("per-user HKMU: key path %v", comp[5])
+		if comp, _ := profileKey(t, res.Database, "Mixed"); (comp[5] == "MixedValue") != own {
+			t.Errorf("%s HKMU: key path %v, want its own value = %v", scope, comp[5], own)
+		}
 	}
 
 	if strings.Contains(fmt.Sprint(res.Diagnostics), "ICE38") {
@@ -146,5 +149,32 @@ func TestProfileKeyPathFolderSource(t *testing.T) {
 
 	if n := len(rows(t, res.Database, "Component")); n < 3 || len(names) != n {
 		t.Errorf("%d components, %d value names", n, len(names))
+	}
+}
+
+// Components whose engine checks test the key path keep it, and the
+// validator warns: services need the executable, neverOverwrite (set by
+// preserve) and sharedDllRefCount test the key file.
+func TestProfileKeyPathKeptKeyFile(t *testing.T) {
+	t.Parallel()
+
+	for _, extra := range []string{"preserve: true", "neverOverwrite: true", "sharedDllRefCount: true", "services: [{ name: acme }]"} {
+		res := mustBuild(t, scopedShortcutConfig(t, "perMachine",
+			"  - { id: Kept, directory: AppDataFolder/Acme, files: [{ source: app.exe }], "+extra+" }\n"))
+
+		comp := rowWhere(t, res.Database, "Component", func(r []any) bool { return r[0] == "Kept" })
+		if comp[5] != "app.exe" {
+			t.Errorf("%s: key path %v, want app.exe", extra, comp[5])
+		}
+
+		for _, row := range rows(t, res.Database, "Registry") {
+			if row[5] == "Kept" {
+				t.Errorf("%s: registry row %v", extra, row)
+			}
+		}
+
+		if !strings.Contains(fmt.Sprint(res.Diagnostics), "ICE38") {
+			t.Errorf("%s: no ICE38 warning: %s", extra, res.Diagnostics)
+		}
 	}
 }

@@ -142,57 +142,24 @@ func TestMsiexecProfileKeyPath(t *testing.T) { //nolint:paralleltest // msiexec 
 		t.Skip("installing needs msiexec time and elevation")
 	}
 
-	t.Run("perUser upgrade and repair", func(t *testing.T) {
-		dir := t.TempDir()
-		old, oldRes := buildProfile(t, dir, "perUser", "1.0.0", true)
-		path, res := buildProfile(t, dir, "perUser", "2.0.0", false)
-		values := profileValues(t, res)
-
-		t.Cleanup(func() {
-			_, _ = runMsiexec([]string{"/x", path, "/qn"}, nil)
-			_, _ = runMsiexec([]string{"/x", old, "/qn"}, nil)
+	// The early removal removes the file-keyed product first; the late one
+	// installs the new key path while the old product still holds the
+	// same ComponentIds.
+	for _, removeOld := range []string{"afterInstallInitialize", "afterInstallExecute"} {
+		t.Run("perUser upgrade and repair "+removeOld, func(t *testing.T) {
+			profileUpgrade(t, "upgrade: { removeOld: "+removeOld+" }\n")
 		})
-
-		if len(values) != 2 || len(profileValues(t, oldRes)) != 0 {
-			t.Fatalf("generated values %v, old %v", values, profileValues(t, oldRes))
-		}
-
-		msiexecQuiet(t, filepath.Join(dir, "install-1.log"), "/i", old)
-		checkProfile(t, "after the file-keyed install", "perUser", nil, true)
-
-		msiexecQuiet(t, filepath.Join(dir, "upgrade.log"), "/i", path)
-		checkProfile(t, "after the upgrade", "perUser", values, true)
-
-		for _, file := range profileFiles("perUser") {
-			if err := os.Remove(file); err != nil {
-				t.Fatal(err)
-			}
-		}
-
-		msiexecQuiet(t, filepath.Join(dir, "repair.log"), "/f", path)
-		checkProfile(t, "after the repair", "perUser", values, true)
-
-		msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
-		checkProfile(t, "after the uninstall", "perUser", values, false)
-
-		for _, folder := range []string{
-			filepath.Join(os.Getenv("APPDATA"), "MsiBuilderProfile"),
-			filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs", "MsiBuilderProfile"),
-		} {
-			if exists(folder) {
-				t.Errorf("%s is still there after the uninstall", folder)
-			}
-		}
-	})
+	}
 
 	for _, tc := range []struct { //nolint:paralleltest // msiexec runs one installation at a time
-		name, scope string
-		args        []string
+		name, scope, context string
+		args                 []string
 	}{
-		{"perMachine", "perMachine", nil},
-		{"perUserOrMachine per user", "perUserOrMachine", nil},
-		{"perUserOrMachine per machine", "perUserOrMachine", []string{`MSIINSTALLPERUSER=""`}},
-		{"perMachineOrUser per user", "perMachineOrUser", []string{"MSIINSTALLPERUSER=1"}},
+		{"perMachine", "perMachine", "machine", nil},
+		{"perUserOrMachine per user", "perUserOrMachine", "user", nil},
+		{"perUserOrMachine per machine", "perUserOrMachine", "machine", []string{`MSIINSTALLPERUSER=""`}},
+		{"perMachineOrUser per machine", "perMachineOrUser", "machine", nil},
+		{"perMachineOrUser per user", "perMachineOrUser", "user", []string{"MSIINSTALLPERUSER=1"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -208,6 +175,12 @@ func TestMsiexecProfileKeyPath(t *testing.T) { //nolint:paralleltest // msiexec 
 			msiexecQuiet(t, filepath.Join(dir, "install.log"), append([]string{"/i", path}, tc.args...)...)
 			checkProfile(t, "after the install", tc.scope, values, true)
 
+			registered := where(regHas(t, "64", `HKCU\Software\Microsoft\Installer\Products\`+squash(res.ProductCode), ""),
+				regHas(t, "64", `HKLM\SOFTWARE\Classes\Installer\Products\`+squash(res.ProductCode), ""))
+			if registered != tc.context {
+				t.Errorf("registered %s, want %s", registered, tc.context)
+			}
+
 			msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
 			checkProfile(t, "after the uninstall", tc.scope, values, false)
 
@@ -218,9 +191,64 @@ func TestMsiexecProfileKeyPath(t *testing.T) { //nolint:paralleltest // msiexec 
 	}
 }
 
+// profileUpgrade installs the per-user package with file key paths,
+// upgrades it to the one with HKCU key paths, deletes the files, repairs
+// and uninstalls it.
+func profileUpgrade(t *testing.T, upgrade string) {
+	t.Helper()
+
+	dir := t.TempDir()
+	old, oldRes := buildProfileExtra(t, dir, "perUser", "1.0.0", true, upgrade)
+	path, res := buildProfileExtra(t, dir, "perUser", "2.0.0", false, upgrade)
+	values := profileValues(t, res)
+
+	t.Cleanup(func() {
+		_, _ = runMsiexec([]string{"/x", path, "/qn"}, nil)
+		_, _ = runMsiexec([]string{"/x", old, "/qn"}, nil)
+	})
+
+	if len(values) != 2 || len(profileValues(t, oldRes)) != 0 {
+		t.Fatalf("generated values %v, old %v", values, profileValues(t, oldRes))
+	}
+
+	msiexecQuiet(t, filepath.Join(dir, "install-1.log"), "/i", old)
+	checkProfile(t, "after the file-keyed install", "perUser", nil, true)
+
+	msiexecQuiet(t, filepath.Join(dir, "upgrade.log"), "/i", path)
+	checkProfile(t, "after the upgrade", "perUser", values, true)
+
+	for _, file := range profileFiles("perUser") {
+		if err := os.Remove(file); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	msiexecQuiet(t, filepath.Join(dir, "repair.log"), "/f", path)
+	checkProfile(t, "after the repair", "perUser", values, true)
+
+	msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
+	checkProfile(t, "after the uninstall", "perUser", values, false)
+
+	for _, folder := range []string{
+		filepath.Join(os.Getenv("APPDATA"), "MsiBuilderProfile"),
+		filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs", "MsiBuilderProfile"),
+	} {
+		if exists(folder) {
+			t.Errorf("%s is still there after the uninstall", folder)
+		}
+	}
+}
+
+// shellFolderFiles installs files to the desktop and a Start menu folder,
+// which are the all-users folders in a per-machine install.
+const shellFolderFiles = `  - { id: Desk, directory: DesktopFolder, files: [{ source: readme.txt, name: MsiBuilderProfile.txt }] }
+  - { id: Menu, directory: ProgramMenuFolder/MsiBuilderProfile, files: [{ source: readme.txt, name: about.txt }] }
+`
+
 // TestICEProfileKeyPath runs the ICE suite on the profile packages of every
-// scope: ICE38 and ICE64 report nothing and no ICE reports an error. The
-// file-keyed variant shows that ICE38 finds the old layout.
+// scope, with files on the desktop and in the Start menu in the per-user
+// and per-machine ones: ICE38 and ICE64 report nothing and no ICE reports
+// an error. The file-keyed variant shows that ICE38 finds the old layout.
 //
 //nolint:paralleltest // msi.dll's external UI handler is process-wide
 func TestICEProfileKeyPath(t *testing.T) {
@@ -233,7 +261,12 @@ func TestICEProfileKeyPath(t *testing.T) {
 		{"perUser", false}, {"perMachine", false}, {"perUserOrMachine", false}, {"perMachineOrUser", false}, {"perUser", true},
 	} {
 		t.Run(fmt.Sprintf("%s pinned=%t", tc.scope, tc.pinned), func(t *testing.T) {
-			path, _ := buildProfile(t, t.TempDir(), tc.scope, "1.0.0", tc.pinned)
+			extra := ""
+			if tc.scope == "perUser" || tc.scope == "perMachine" {
+				extra = shellFolderFiles
+			}
+
+			path, _ := buildProfileExtra(t, t.TempDir(), tc.scope, "1.0.0", tc.pinned, extra)
 
 			findings, err := ice.Run(path, cub)
 			if err != nil {
@@ -264,8 +297,8 @@ func TestICEProfileKeyPath(t *testing.T) {
 }
 
 // TestICEProfileHKMUKeyPath shows how ICE38 judges a component in the
-// profile whose own key path is an HKMU value (root -1), in a per-user and
-// a dual package.
+// profile whose own key path is an HKMU value (root -1) in a per-user
+// package, which keeps it; a dual package gets the HKCU value instead.
 //
 //nolint:paralleltest // msi.dll's external UI handler is process-wide
 func TestICEProfileHKMUKeyPath(t *testing.T) {
@@ -273,10 +306,10 @@ func TestICEProfileHKMUKeyPath(t *testing.T) {
 
 	const extra = `  - id: Settings
     directory: AppDataFolder/MsiBuilderProfile/settings
-    registry: [{ root: HKMU, key: Software\\MsiBuilderProfile, name: x, type: dword, value: 1 }]
+    registry: [{ root: HKMU, key: Software\MsiBuilderProfile, name: x, type: dword, value: 1 }]
 `
 
-	for _, scope := range []string{"perUser", "perUserOrMachine"} {
+	for _, scope := range []string{"perUser"} {
 		t.Run(scope, func(t *testing.T) {
 			path, _ := buildProfileExtra(t, t.TempDir(), scope, "1.0.0", false, extra)
 
@@ -286,7 +319,7 @@ func TestICEProfileHKMUKeyPath(t *testing.T) {
 			}
 
 			for _, finding := range findings {
-				if finding.ICE == "ICE38" || finding.ICE == "ICE57" {
+				if finding.Type != ice.Info {
 					t.Logf("PROBE %s: %v", scope, finding)
 				}
 			}

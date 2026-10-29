@@ -808,7 +808,6 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 		return
 	}
 
-	perUser := cfg.Package.Scope.MayBePerUser()
 	top := known.topFolder(comp.Directory)
 
 	// The component of a folder source reports these once, not once per
@@ -827,12 +826,16 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 	}
 
 	// Without a keyPath the builder writes an HKCU value as the key path
-	// (INST-04); services keep their executable.
+	// (INST-04), except where the key path must stay. HKMU is HKCU only in
+	// a per-user package; a dual one writes it to HKLM per machine.
 	switch {
-	case !profileFolders[top] || userRegistryKeyPath(comp, perUser):
+	case !profileFolders[top] || userRegistryKeyPath(comp, cfg.Package.Scope == ScopePerUser):
 	case len(comp.Services) > 0:
 		v.warnf(compPath+".directory", "a component with services in the user profile (%s) keeps the service "+
 			"executable as key path, but ICE38 asks for an HKCU registry value", top)
+	case comp.NeverOverwrite || comp.SharedDLLRefCount:
+		v.warnf(compPath+".directory", "a component in the user profile (%s) with neverOverwrite, preserve or "+
+			"sharedDllRefCount keeps its key path, which those test, but ICE38 asks for an HKCU registry value", top)
 	case comp.KeyPath != "":
 		v.warnf(compPath+".keyPath", "a component in the user profile (%s) needs an HKCU registry value "+
 			"as key path (ICE38); without keyPath the builder writes one", top)

@@ -181,6 +181,8 @@ func (b *build) deriveProductCode() error { //nolint:cyclop // one pass over the
 		hasher.Write(f.digest[:])
 	}
 
+	b.hashProfileKeyPaths(hasher)
+
 	// Icons, binaries (custom action DLLs) and binary cells of custom
 	// tables are installed content too: a changed DLL with the same
 	// ProductCode would be refused as "already installed" (error 1638).

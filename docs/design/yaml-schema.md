@@ -400,18 +400,22 @@ HKCU registry value as the key path of such components (ICE38) and
 RemoveFolder rows for their folders (ICE64). The builder writes both, for
 every component below a profile folder in every scope: the RemoveFolder
 rows (a `RemoveFile` row with no filename, at uninstall, for every folder
-from the component's up to the profile folder), and, unless the component
-sets `keyPath` or its key path already is an HKCU value (or an HKMU value
-in a package that may install per user), a `Registry` row
+from the component's up to the profile folder), and a `Registry` row
 `HKCU\Software\[Manufacturer]\[ProductName]` with a generated value name
-and the DWORD 1, as its key path (INST-04). The ComponentId is derived before that,
-from the key file, registry value or folder the component would have had,
-so a package built before keeps its component codes. A component with
-services keeps its executable as key path, and it and an explicit
-`keyPath` that is not an HKCU value get the ICE38 warning. A dual package's
-install dir is under Program Files in the package, so its components keep
-their key files; components in profile folders get the HKCU value in both
-contexts.
+and the DWORD 1 as its key path (INST-04). The value is left out when the
+key path already is an HKCU value, or an HKMU value in a `perUser` package
+(a dual package installed per machine writes HKMU to HKLM). The
+ComponentId is derived before that, from the key file, registry value or
+folder the component would have had, so a package built before keeps its
+component codes; the automatic ProductCode changes once, so a rebuild of
+an unchanged configuration does not collide with the package an older
+msi-builder made (error 1638). These components keep their key path and
+get the ICE38 warning instead: one with an explicit `keyPath`, one with
+services (the key path is the executable), and one with `neverOverwrite`,
+`preserve` or `sharedDllRefCount`, whose engine checks test the key path
+(UPG-05). A dual package's install dir is under Program Files in the
+package, so its components keep their key files; components in profile
+folders get the HKCU value in both contexts.
 
 A component's `directory` is a directory ID, a standard folder, or a folder
 path. A path starts at its first segment when that is a directory ID or a

@@ -491,6 +491,8 @@ func TestShorthandProfileKeyPath(t *testing.T) {
 		"{ directory: ProgramMenuFolder/Acme, createFolder: true }":                                      "",
 		"{ directory: ProgramMenuFolder/Acme, keyPath: a.txt, files: [{ source: a.txt }], " + reg + " }": "components[0].keyPath",
 		"{ directory: AppDataFolder/Acme, files: [{ source: a.exe }], services: [{ name: acme }] }":      "components[0].directory",
+		"{ directory: AppDataFolder/Acme, files: [{ source: a.txt }], preserve: true }":                  "components[0].directory",
+		"{ directory: AppDataFolder/Acme, files: [{ source: a.dll }], sharedDllRefCount: true }":         "components[0].directory",
 	} {
 		diags := validate(t, short+"components:\n  - "+comp+"\n")
 		if strings.Contains(fmt.Sprint(diags), "ICE38") != (ice38 != "") ||
