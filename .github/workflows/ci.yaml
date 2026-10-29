@@ -210,6 +210,13 @@ jobs:
         shell: bash
         run: go test -v -count=1 -run 'TestMsiexecEXEActions' ./internal/builder/nativetest/
 
+      # Print what the engine writes for folder, program and URL shortcuts
+      # (MSISPEC-RESULTS SHORTCUT-03, SHORTCUT-04).
+      - name: go test (shortcut target results)
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        shell: bash
+        run: go test -v -count=1 -run 'TestMsiexecShortcutTargets' ./internal/builder/nativetest/
+
       - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         if: runner.os == 'Linux'
         with:

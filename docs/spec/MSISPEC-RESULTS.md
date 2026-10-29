@@ -245,6 +245,8 @@ Silent-failure cases a producer has to guard against itself:
 | CA-05 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40893135210 (PR #106): the engine copies the `Binary` program to `C:\Windows\Installer\MSIxxxx.tmp`, runs it in `C:\Windows\system32` and deletes it; deferred no-impersonate runs as LocalSystem, the rest as the user; exit 7 and exit 3010 are both error 1722 and msiexec 1603; [details](#exe-actions-ca-05) |
 | SHORTCUT-01 | Confirmed | [hkcu-folder](msitest/results/SHORTCUT-01/hkcu-folder/log.md), [file-component](msitest/results/SHORTCUT-01/file-component/log.md), [file-component-folder](msitest/results/SHORTCUT-01/file-component-folder/log.md), [advertised](msitest/results/SHORTCUT-01/advertised/log.md), [per-user](msitest/results/SHORTCUT-01/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-shortcut-01) |
 | SHORTCUT-02 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40882369236 (PR #98): the engine converts `PropVariantValue` to the property's type and formats it; a CLSID needs braces; an unknown name or a bad value is warning 1946 and the install goes on; [details](#shortcut-properties-shortcut-02) |
+| SHORTCUT-03 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI runs 40900720903 and 40908162979 (PR #105): WriteIniValues writes the `.url` as ANSI with CRLF, the shell reads the address, the `RemoveFile` row deletes it at uninstall after the shell added a section; [details](#shortcut-targets-shortcut-03-shortcut-04) |
+| SHORTCUT-04 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI runs 40898943433, 40900720903 and 40908162979 (PR #105): folder and program `.lnk` targets as authored, `[SystemFolder]` is `SysWOW64` in an x64 package, a shortcut feature adds and removes only its shortcut, ICE69 rejects `[#file]` across features and accepts `[DIRECTORY]name`; [details](#shortcut-targets-shortcut-03-shortcut-04) |
 | UI-01 | Confirmed | Wizard rendering on Windows Server 2025, go-msi packages driven by hand and by window messages, with PrintWindow and screen captures (2026-10-26); [details](#wizard-rendering-ui-01) |
 | UI-02 | Not run | Interactive full UI |
 | UI-03 | Not run | Interactive full UI |
@@ -879,3 +881,36 @@ which `.gitignore` keeps out of the repository.
   instead of a failing action, and Windows Server 2016. WinRM as the
   non-administrator failed on this domain controller ("The WSMan service
   could not launch a host process"), so only the interactive logon was used.
+
+## Shortcut targets (SHORTCUT-03, SHORTCUT-04)
+
+Run on 2026-10-29 in the `Build & Test (windows-latest)` job (Windows Server
+2025 x64, elevated) of PR #105, by `TestMsiexecShortcutTargets` and
+`TestICEShortcutTargets` in `internal/builder/nativetest`. The x64
+per-machine package installs `app.exe` to `Program Files\MsiBuilderShortcutTargets`
+in feature `Main`, together with a component that lists three shortcuts in
+the Start menu folder `MsiBuilderShortcutTargets`, and a desktop shortcut to
+`app.exe` from a component in feature `DesktopShortcut` (`default: off`).
+
+| Shortcut | Rows | Read back after the install |
+| --- | --- | --- |
+| `Documentation.url` | `IniFile` `URL=https://example.com/docs?v=[ProductVersion]`, `IconFile=[#app.exe]`, `IconIndex=0`; `CreateFolder` for the Start menu folder; `RemoveFile` for the `.url` | the file holds `[InternetShortcut]\r\nURL=https://example.com/docs?v=1.2.3\r\nIconIndex=0\r\nIconFile=C:\Program Files\MsiBuilderShortcutTargets\app.exe\r\n` (ANSI; run 40908162979; run 40900720903 had `IconFile` before `IconIndex`, so the key order is not fixed); `System.Link.TargetUrl` through `Shell.Application` is the formatted address |
+| `Configuration.lnk` | `Shortcut` target `[<config dir>]`, no `WkDir`; `CreateFolder` for the folder | target `C:\Program Files\MsiBuilderShortcutTargets\config`, no arguments or working folder; the folder exists |
+| `Uninstall.lnk` | target `[SystemFolder]msiexec.exe`, arguments `/x [ProductCode]` | target `C:\Windows\SysWOW64\msiexec.exe`, arguments `/x {ProductCode}` |
+| desktop `MsiBuilderShortcutTargets.lnk` | target `[INSTALLDIR]app.exe` (runs 40900720903 and 40908162979) | absent after the default install; `ADDLOCAL=DesktopShortcut` adds it with target `app.exe` and working folder the install folder; `REMOVE=DesktopShortcut` removes it and leaves the rest |
+
+- Before the uninstall the test appended a
+  `[{000214A0-0000-0000-C000-000000000046}]` section, as the shell writes when
+  a user changes a `.url`. After `msiexec /x` the `.url`, the Start menu
+  folder, the `config` folder, the install folder and the desktop shortcut
+  were all gone.
+- `[SystemFolder]` is the 32-bit system folder on 64-bit Windows also in an
+  x64 package; `[System64Folder]` names `System32` there (reported, not run).
+- ICE suite, run 40898943433: with the desktop target `[#app.exe]`, ICE69
+  reported an error ("Components belong to different features"); the
+  `IniFile` value `[#app.exe]` of a component in the same feature was an ICE69
+  warning. With the target `[INSTALLDIR]app.exe` (runs 40900720903 and 40908162979) the suite
+  reported no error.
+- Not covered: a per-user install, repair, whether WriteIniValues creates a
+  missing folder by itself, whether RemoveIniValues deletes a `.url` it
+  emptied, the icon the shell shows for `IconFile`, Windows Server 2016.

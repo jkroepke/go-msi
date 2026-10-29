@@ -230,6 +230,10 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	KeyPath           string       `yaml:"keyPath"`
 	Bitness           string       `yaml:"bitness"`
 	FolderPermissions *Permissions `yaml:"folderPermissions"`
+	// Shortcuts are shortcuts that this component installs and that do not
+	// point at a file they are listed under: each names a file, a folder,
+	// a program or a URL.
+	Shortcuts []*Shortcut `yaml:"shortcuts"`
 
 	// ref marks a features[].components entry written as an id.
 	ref bool
@@ -350,12 +354,23 @@ type FileTypeVerb struct { //nolint:govet // field order is the YAML key order
 	Arguments *string `yaml:"arguments"`
 }
 
-// Shortcut is a non-advertised shortcut to the file it is listed under, in
-// the Start menu, on the desktop or in any other folder.
+// Shortcut is a non-advertised shortcut in the Start menu, on the desktop
+// or in any other folder. Under a file it points at that file; under a
+// component it points at exactly one of File, Folder, Program or URL.
 type Shortcut struct { //nolint:govet // field order is the YAML key order
 	ID string `yaml:"id"`
-	// Name is the shortcut's name without ".lnk", default product.name.
+	// Name is the shortcut's name without ".lnk" or ".url", default
+	// product.name.
 	Name string `yaml:"name"`
+	// File is the id or name of a packaged file, in any component.
+	File string `yaml:"file"`
+	// Folder is a directory ID, a standard folder or a folder path.
+	Folder string `yaml:"folder"`
+	// Program is the formatted path of a program outside the package,
+	// starting with a folder property such as [SystemFolder].
+	Program string `yaml:"program"`
+	// URL makes an internet shortcut, a .url file, instead of a .lnk.
+	URL string `yaml:"url"`
 	// Directory is a directory ID, a standard folder or a folder path,
 	// default ProgramMenuFolder.
 	Directory   string `yaml:"directory"`
@@ -364,7 +379,10 @@ type Shortcut struct { //nolint:govet // field order is the YAML key order
 	// WorkingDirectory is a directory ID, default the file's directory.
 	WorkingDirectory string `yaml:"workingDirectory"`
 	// Icon names an entry of Config.Icons; empty shows the target's icon.
-	Icon      string `yaml:"icon"`
+	Icon string `yaml:"icon"`
+	// IconFile is the id or name of a packaged file whose icon a url
+	// shortcut shows; .lnk shortcuts take Icon.
+	IconFile  string `yaml:"iconFile"`
 	IconIndex int    `yaml:"iconIndex"`
 	// Show is normal (default), maximized or minimized.
 	Show string `yaml:"show"`
