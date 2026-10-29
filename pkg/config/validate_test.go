@@ -742,6 +742,51 @@ func TestValidate(t *testing.T) {
 			pkg(`{platform: x64, scope: perUser}`) + strings.Replace(appComponent, "    files:", "    services: [{name: svc}]\n    files:", 1),
 			sevError, "components[0].services[0]", "ICE105",
 		},
+		"start condition without start": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, control: {startOnInstall: false, startCondition: GO}}]\n    files:", 1),
+			sevError, "components[0].services[0].control.startCondition", "needs startOnInstall",
+		},
+		"start condition syntax": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, control: {startCondition: 'A AND'}}]\n    files:", 1),
+			sevError, "components[0].services[0].control.startCondition", "",
+		},
+		"service control without event": {
+			base + strings.Replace(appComponent, "    files:", "    serviceControl: [{name: Old}]\n    files:", 1),
+			sevError, "components[0].serviceControl[0]", "no event",
+		},
+		"service control delete and start": {
+			base + strings.Replace(appComponent, "    files:", "    serviceControl: [{name: Old, deleteOnInstall: true, startOnInstall: true}]\n    files:", 1),
+			sevWarning, "components[0].serviceControl[0]", "same phase",
+		},
+		"service control long name": {
+			base + strings.Replace(appComponent, "    files:", "    serviceControl: [{name: S"+strings.Repeat("s", 255)+", stopOnInstall: true}]\n    files:", 1),
+			sevError, "components[0].serviceControl[0].name", "holds 255",
+		},
+		"service control without name": {
+			base + strings.Replace(appComponent, "    files:", "    serviceControl: [{stopOnInstall: true}]\n    files:", 1),
+			sevError, "components[0].serviceControl[0].name", "required",
+		},
+		"service control twice": {
+			base + strings.Replace(appComponent, "    files:", "    serviceControl: [{name: Old, stopOnInstall: true}, {name: old, deleteOnInstall: true}]\n    files:", 1),
+			sevError, "components[0].serviceControl[1].name", "already controls",
+		},
+		"service control of a service in another component": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: Svc}]\n    files:", 1) +
+				"  - id: Other\n    directory: INSTALLDIR\n    createFolder: true\n    serviceControl: [{name: svc, stopOnUninstall: true}]\n",
+			sevError, "components[1].serviceControl[0].name", "services[].control",
+		},
+		"start condition too long": {
+			base + strings.Replace(appComponent, "    files:", "    condition: A"+strings.Repeat("A", 200)+"\n    services: [{name: svc, control: {startCondition: B"+strings.Repeat("B", 100)+"}}]\n    files:", 1),
+			sevError, "components[0].services[0].control.startCondition", "at most 255",
+		},
+		"service control of own service": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc}]\n    serviceControl: [{name: svc, stopOnInstall: true}]\n    files:", 1),
+			sevError, "components[0].serviceControl[0].name", "services[].control",
+		},
+		"per-user service control": {
+			pkg(`{platform: x64, scope: perUser}`) + strings.Replace(appComponent, "    files:", "    serviceControl: [{name: Old, stopOnInstall: true}]\n    files:", 1),
+			sevError, "components[0].serviceControl[0]", "elevation",
+		},
 		"dword value": {
 			base + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\X, name: N, type: dword, value: abc}]\n    files:", 1),
 			sevError, "components[0].registry[0].value", "32-bit integer",

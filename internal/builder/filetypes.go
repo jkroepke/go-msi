@@ -120,7 +120,7 @@ func (b *build) extensionDefault(info *componentInfo, fileWriter classWriter, ex
 	guid := uuid5(namespaceComponent, b.upgradeCode+"|"+bitness+"|filetype|"+strconv.Itoa(writer.root)+"|"+lower)
 
 	b.table("Component").Add(carrier, guid, comp.Directory, attributes, nullable(comp.Condition), keyPath)
-	b.fileTypeCarrier[comp.ID] = append(b.fileTypeCarrier[comp.ID], carrier)
+	b.carriers[comp.ID] = append(b.carriers[comp.ID], carrier)
 }
 
 // scheduleAssocChanged places the DLL entry point that calls SHChangeNotify

@@ -505,6 +505,7 @@ components:
     removeRegistry: []
     removeFiles: []                  # RemoveFile rows, see "File removal" below
     services: []
+    serviceControl: []               # services the package does not install
     eventLog: []
     environment: []
     createFolder: false
@@ -1016,8 +1017,10 @@ services:
     control:
       startOnInstall: true
       stopOnInstall: true
+      deleteOnInstall: false     # replace a stale service of the same name
       stopOnUninstall: true
       deleteOnUninstall: true
+      startCondition: START_AFTER_INSTALL="1"   # start only when true
       wait: true                 # stop and delete wait for completion
       waitForStart: true         # defaults to wait
     recovery:
@@ -1049,6 +1052,28 @@ it back. With `false` the install succeeds and leaves such a service stopped;
 set to `true` there: StartServices cannot start a disabled service and ends
 the install with error 1920 (SVC-05).
 
+`deleteOnInstall` (default `false`) adds event 8: DeleteServices removes a
+service of the same name that is already registered, for example by an old
+installer or by hand, before InstallServices creates the package's own.
+Without it InstallServices reconfigures the existing registration: the
+binary path and display name become the package's, but a setting the
+package does not write, such as a description, stays (SVC-06). With it
+nothing of the old registration carries over. After a `/fa` repair the
+service was running (SVC-06); whether event 8 ran during the repair was not
+checked.
+
+`startCondition` starts the service at install only when the condition is
+true. `ServiceControl` has no condition column, so the start row goes to a
+generated component (`cmp…`) in the same folder and features, with the
+service component's condition and this one as its `Condition`, the
+component's `transitive` and `permanent` settings and an HKLM registry value
+as key path; together the two conditions must fit in 255 characters. Public
+properties in the condition become secure, so a value set in the wizard
+reaches the server. SVC-08 showed the start following the property at a
+first install. How a repair or a major upgrade treats the generated
+component (for example, whether a repair starts the service again) is not
+tested. It needs `startOnInstall`.
+
 `recovery` becomes a deferred, no-impersonate `sc.exe failure` action after
 InstallServices, with its exit code ignored (SVC-01). Each step is `restart`,
 `none` or `{restart: <delay>}`; a plain `restart` waits `restartDelay`
@@ -1056,6 +1081,37 @@ InstallServices, with its exit code ignored (SVC-01). Each step is `restart`,
 `resetAfter` is whole seconds, as `sc.exe` takes them (SVC-03); `resetAfter`
 and `resetAfterDays` exclude each other. A `password` is added
 to `MsiHiddenProperties` when it names a property.
+
+**Services the package does not install** are stopped, started or deleted
+with `serviceControl` entries, which become `ServiceControl` rows of the
+component (SVC-07). A typical use retires a service an older version
+installed under another name:
+
+```yaml
+components:
+  - files: [{ source: app.exe }]
+    serviceControl:
+      - name: app-old            # may hold [PROPERTY] references
+        stopOnInstall: true
+        deleteOnInstall: true
+        stopOnUninstall: true
+        deleteOnUninstall: true
+      - name: Spooler
+        stopOnInstall: true
+        startOnInstall: true     # starts again after InstallFiles
+        wait: false              # default true
+```
+
+Each event is off unless set, and an entry needs at least one. Install
+events run when the component is installed, uninstall events when it is
+removed; repairs were not tested. Stopping and deleting a service that does
+not exist is not an error (SVC-07); starting one is not tested. Deleting and
+starting a service in the same phase gives a warning, because DeleteServices
+runs before StartServices. A name longer than 255 characters is an error. A service the component installs is controlled with
+`services[].control` instead: naming any service of the package here is an
+error, because a row in another component would stop or delete it when that
+component is removed or repaired. A name listed twice in one component is an
+error too. A per-user package cannot control services.
 
 **Event log sources** become Registry rows of the component:
 
@@ -1121,7 +1177,7 @@ components:
 
 The folder must be the component's only file. Settings that name one file
 or one component cannot be copied to many: `guid` (other than `auto`),
-`keyPath`, `registry`, `removeRegistry`, `removeFiles`, `services`, `eventLog`,
+`keyPath`, `registry`, `removeRegistry`, `removeFiles`, `services`, `serviceControl`, `eventLog`,
 `environment`, `purge`, `createFolder` and `folderPermissions` on the
 component, and `name`, `id`, `version`, `language` and `shortcuts` on the
 file, are errors. Put them on a component of their own and exclude its file

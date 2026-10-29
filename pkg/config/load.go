@@ -176,10 +176,12 @@ func emptyComponents(cfg *Config) error { //nolint:cyclop // one pass in a fixed
 }
 
 // emptyFiles rejects null entries in a component's files, their
-// shortcuts and file types, its own shortcuts and its removeFiles.
+// shortcuts and file types, its own shortcuts, its removeFiles and its
+// serviceControl.
 func emptyFiles(compPath string, comp *Component) []error {
 	errs := nilEntries(compPath+".removeFiles", comp.RemoveFiles)
 	errs = append(errs, nilEntries(compPath+".shortcuts", comp.Shortcuts)...)
+	errs = append(errs, nilEntries(compPath+".serviceControl", comp.ServiceControl)...)
 
 	for j, file := range comp.Files {
 		filePath := fmt.Sprintf("%s.files[%d]", compPath, j)
