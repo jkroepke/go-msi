@@ -403,7 +403,7 @@ func TestValidate(t *testing.T) {
 		},
 		"fileTypes system extension": {
 			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, extensions: [{extension: txt}]}]\n", 1),
-			sevWarning, "components[0].files[0].fileTypes[0].extensions[0].extension", "without a handler",
+			sevWarning, "components[0].files[0].fileTypes[0].extensions[0].extension", "takes it over",
 		},
 		"fileTypes progId star": {
 			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: '*'}]\n", 1),

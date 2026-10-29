@@ -26,6 +26,16 @@ The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
   `<directory>|<command>` in `CustomActionData` (deferred, rollback, commit)
   or the `BuilderRun` property (immediate); `|` cannot occur in a path, so the
   first one ends the directory.
+- A second export, `BuilderAssocChanged` (`cadll.AssocChangedEntry`), takes
+  no data and calls `SHChangeNotify(SHCNE_ASSOCCHANGED)` for packages with
+  file types (`internal/builder/filetypes.go`, spec 17.6). It loads
+  `shell32.dll` with `LoadLibraryExW(..., LOAD_LIBRARY_SEARCH_SYSTEM32)` and
+  `GetProcAddress` at runtime instead of importing it, so the import table
+  stays kernel32, advapi32 and msi (`cadll_test.go` checks that), and it
+  always returns success. Its log line names the session it ran in. On
+  SERVER2025 it ran in the msiexec client's session and a listener there
+  received the notification (REG-05; `docs/spec/msitest/reg05` is the
+  probe, run it elevated in a session with Explorer).
 - The DLL starts the child with `CreateProcessAsUserW` and the thread's
   impersonation token when there is one, else `CreateProcessW`:
   `CreateProcessW` ignores an impersonation token. CA-03 showed no thread
@@ -43,7 +53,7 @@ The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
   65001` inside a `cmd /c` line does not make cmd.exe's `echo` write UTF-8
   on the pipe (CA-03 on the x64 and Arm64 runners: the line stayed OEM and
   `€` came out as `?`); PowerShell with `[Console]::OutputEncoding` does.
-- `cadll_test.go` checks the checksums, the PE machine, the export and that
+- `cadll_test.go` checks the checksums, the PE machine, the exports and that
   the imports are only kernel32, advapi32 and msi. `testdata/probe` is the
   CA-03 package that `internal/builder/nativetest` installs on Windows
   (`TestMsiexecRunActions`), natively on the x64 and arm64 runners. The x64

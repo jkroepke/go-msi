@@ -1,0 +1,24 @@
+# REG-05 probe: a file type written by msi-builder. Packages with fileTypes
+# carry the BuilderAssocChanged action, which calls SHChangeNotify.
+schema: msi-builder/v1
+
+product:
+  name: Reg05Probe
+  manufacturer: MsiSpecProbe
+  version: 1.0.0
+  upgradeCode: 3b1f6f0e-8c7d-4f0a-9a52-0d6e2c4b7a11
+
+package:
+  platform: x64
+
+ui:
+  wizard: none
+
+components:
+  - files:
+      - source: hello.exe
+        fileTypes:
+          - progId: MsiSpecReg05.Probe
+            description: REG-05 probe
+            extensions:
+              - extension: reg05p
