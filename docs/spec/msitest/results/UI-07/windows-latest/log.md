@@ -10,7 +10,7 @@ The test failed at that commit only because it expected the `&` in the UI
 Automation name; the names drop it, as they drop the access-key `&` of every
 button. Commit 5b2e3fd compares without it. The driver at that commit also
 logged every off-screen element with a name as a `HIDDEN:` line and logged
-none, so the hidden control is absent from the tree rather than reported
+none, so the hidden control is absent from the control view rather than reported
 off-screen; later commits dropped that logging.
 
 ```text
@@ -41,5 +41,6 @@ DRIVER: done
 
 After the install the finish page lists the paragraph with `[ProductName]`
 resolved. After the repair the `FinishText` control, hidden by
-`Installed OR ACTION = "ADMIN"`, is not in the UI Automation tree at all.
+`Installed OR ACTION = "ADMIN"`, is not in the UI Automation control view that the driver walks
+(`FindAll` on descendants without a cache request).
 The product was uninstalled by the test's cleanup.

@@ -849,7 +849,7 @@
         },
         "finishText": {
           "type": "string",
-          "description": "Formatted paragraph shown on the finish page below its standard text, unless the product was already installed (repair, change, removal) or for an administrative install."
+          "description": "Formatted paragraph shown on the finish page below its standard text; hidden by the condition Installed OR ACTION = \"ADMIN\"."
         },
         "launch": {
           "type": "object",

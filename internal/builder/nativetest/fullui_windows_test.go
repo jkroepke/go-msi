@@ -639,9 +639,9 @@ func TestFullUIFinishText(t *testing.T) { //nolint:paralleltest // msiexec runs 
 }
 
 // finishShows reports whether any finish page the driver saw shows s. The
-// driver logs a page again whenever its names change, so the first line may
-// predate a control. A control hidden by a ControlCondition is not in the UI
-// Automation tree (UI-07), so the WINDOW lines list only the shown texts.
+// driver logs the page once, then presses Finish. A control hidden by a
+// ControlCondition is not in the control view the driver walks (UI-07), so
+// the WINDOW line lists only the shown texts.
 func finishShows(seen, paragraph string) bool {
 	for line := range strings.SplitSeq(seen, "\n") {
 		if strings.HasPrefix(line, "WINDOW: ") && strings.Contains(line, "Completed the ") && strings.Contains(line, paragraph) {

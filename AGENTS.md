@@ -167,7 +167,7 @@ go test ./... -shuffle=on -race
   `fullUIBudget` is left, so a full-UI test runs in CI only when the shuffle
   starts it early. UI Automation names drop `&`, even on a NoPrefix Text
   control; a Text control hidden by its ControlCondition from the start was
-  absent from the UI Automation tree (UI-07). Each driver run starts with an
+  absent from the control view the driver walks (UI-07). Each driver run starts with an
   empty log.
 
 ## Implementation rules
