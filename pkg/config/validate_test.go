@@ -100,7 +100,7 @@ func TestValidateAccepted(t *testing.T) {
 		"dual scope machine first": pkg(`{platform: x64, scope: PerMachineOrUser}`) + appComponent,
 		// Only a dual package reserves the scope page's names.
 		"scope names in a perMachine package": pkg(`{platform: x64}`) + appComponent +
-			"properties:\n  MSIINSTALLPERUSER: {value: \"1\"}\n  InstallScope: {value: x}\n",
+			"properties:\n  BuilderInstallScope: {value: x}\n",
 	} {
 		if ds := validate(t, doc); len(ds) != 0 {
 			t.Errorf("%s: unexpected diagnostics: %v", name, ds)
@@ -806,6 +806,10 @@ components:
     schedule: [{sequence: execute, after: CostFinalize}]
 `,
 			sevError, "customActions[0].id", "scope page",
+		},
+		"MSIINSTALLPERUSER without a dual scope": {
+			pkg(`{platform: x64, scope: perUser}`) + appComponent + "properties:\n  MSIINSTALLPERUSER: {value: \"1\"}\n",
+			config.SeverityWarning, "properties.MSIINSTALLPERUSER", "only works with ALLUSERS=2",
 		},
 		"dual scope MSIINSTALLPERUSER": {
 			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + "properties:\n  MSIINSTALLPERUSER: {value: \"1\"}\n",

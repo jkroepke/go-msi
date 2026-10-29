@@ -450,6 +450,16 @@ func (v *validator) builderProperty(name string) bool {
 	return builderProperties[name] || v.scope.Dual() && (name == "MSIINSTALLPERUSER" || name == "BuilderInstallScope")
 }
 
+// installPerUser warns about MSIINSTALLPERUSER outside a dual package: the
+// engine ignores it unless ALLUSERS is 2 and deletes it at install, so a
+// condition on it is never true (spec section 8.2).
+func (v *validator) installPerUser(propPath, name string) {
+	if name == "MSIINSTALLPERUSER" && !v.scope.Dual() {
+		v.warnf(propPath, "MSIINSTALLPERUSER only works with ALLUSERS=2, and the installer deletes it otherwise; "+
+			"use scope perUserOrMachine for a package that installs per user or per machine")
+	}
+}
+
 // contextDirectory rejects a public directory of a dual package below a
 // shell folder that follows the context: the scope page moves only Program
 // Files and Common Files folders, and the client resolved this one for the
@@ -1461,6 +1471,8 @@ func (v *validator) properties(cfg *Config) {
 		if v.builderProperty(name) {
 			v.errorf(propPath, "%s is set by the builder or the installer; it cannot be defined here", name)
 		}
+
+		v.installPerUser(propPath, name)
 
 		public := IsPublicProperty(name)
 		if prop.Secure != nil && *prop.Secure && !public {
