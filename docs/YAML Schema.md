@@ -405,8 +405,9 @@ scheduleReboot:
   when: install
 ```
 
-Windows asks the user to restart at the end. Unattended installs pass
-`/norestart` and get exit code 3010 instead.
+With a UI, Windows asks the user to restart at the end. A silent install
+(`/qn`) may restart the machine without asking, so pass `/norestart`;
+msiexec then returns exit code 3010.
 
 ## Key reference
 
