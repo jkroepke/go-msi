@@ -6,14 +6,23 @@ run 40967817046, 2026-10-29, `TestFullUIRemoveDialog` at commit 3a4cb01
 
 The package has a `flow: remove` dialog `RemoveOptionsDlg` with a checkbox
 on `DELETE_CONFIGURATION` (declared in `properties`) and a component whose
-`purge.condition` is `DELETE_CONFIGURATION="1"`. The first removal runs the
-ARP entry's `ModifyPath` command with the box left clear: the folder and its
-`config.yaml` stay, and the server has no `DELETE_CONFIGURATION`. The last
-one runs `msiexec /i` on the package and checks the box: the server gets the
-value and `Purge_Config` deletes the folder. `TestICEFullUIRemove` ran the
-ICE suite on the same package without findings.
+`purge.condition` is `DELETE_CONFIGURATION="1"`. Each removal follows a
+quiet install that writes `config.yaml` into the purged folder. The test
+passed, so its assertions held:
+
+- keep: it ran the ARP entry's `ModifyPath`, checked to be exactly
+  `MsiExec.exe /I{ProductCode}` (the test reports an error otherwise), with
+  the box left clear. The product was removed, `config.yaml` was still
+  there, and the server's properties had no `DELETE_CONFIGURATION`.
+- delete: `msiexec /i` on the package, the box checked. The server's
+  properties held `DELETE_CONFIGURATION = 1` and the folder no longer
+  existed afterwards.
+- `TestICEFullUIRemove` (`requireCleanICE`) passed on the same package.
+
+The driver's view of both runs and the excerpt of the delete run's log:
 
 ```text
+keep:
 WINDOW: Next > | Cancel | < Back | DialogBmp | The Setup Wizard lets you change the way MsiBuilderRemoveUI features are installed on your computer or remove it from your computer. Click Next to continue or Cancel to exit the Setup Wizard. | Welcome to the MsiBuilderRemoveUI Setup Wizard
 PRESSED: Next >
 WINDOW: Repair | Remove | < Back | Cancel | BannerBmp | Select the operation you wish to perform. | Next > | Removes MsiBuilderRemoveUI from your computer. | Repairs errors in the most recent installation by fixing missing and corrupt files, shortcuts and registry entries. | Change, repair, or remove installation
@@ -42,10 +51,8 @@ DRIVER: done
 
 log excerpt:
 MSI (c) (34:D8) [22:57:36:956]: PROPERTY CHANGE: Adding DELETE_CONFIGURATION property. Its value is '1'.
-MSI (c) (34:E0) [22:57:38:837]: Switching to server: DELETE_CONFIGURATION="1" INSTALLDIR="C:\Program Files\MsiBuilderRemoveUI\" TARGETDIR="D:\" CURRENTDIRECTORY="D:\a\msi-builder\msi-builder\internal\builder
-ativetest" CLIENTUILEVEL="0" CLIENTPROCESSID="3892" PRODUCTLANGUAGE="1033" ACTION="INSTALL" EXECUTEACTION="INSTALL" ROOTDRIVE="D:\" INSTALLLEVEL="1" SECONDSEQUENCE="1"  REMOVE=MainFeature
-MSI (s) (34:88) [22:57:38:881]: Command Line: DELETE_CONFIGURATION=1 INSTALLDIR=C:\Program Files\MsiBuilderRemoveUI\ TARGETDIR=D:\ CURRENTDIRECTORY=D:\a\msi-builder\msi-builder\internal\builder
-ativetest CLIENTUILEVEL=0 CLIENTPROCESSID=3892 PRODUCTLANGUAGE=1033 ACTION=INSTALL EXECUTEACTION=INSTALL ROOTDRIVE=D:\ INSTALLLEVEL=1 SECONDSEQUENCE=1 REMOVE=MainFeature ACTION=INSTALL
+MSI (c) (34:E0) [22:57:38:837]: Switching to server: DELETE_CONFIGURATION="1" INSTALLDIR="C:\Program Files\MsiBuilderRemoveUI\" TARGETDIR="D:\" CURRENTDIRECTORY="D:\a\msi-builder\msi-builder\internal\builder\nativetest" CLIENTUILEVEL="0" CLIENTPROCESSID="3892" PRODUCTLANGUAGE="1033" ACTION="INSTALL" EXECUTEACTION="INSTALL" ROOTDRIVE="D:\" INSTALLLEVEL="1" SECONDSEQUENCE="1"  REMOVE=MainFeature
+MSI (s) (34:88) [22:57:38:881]: Command Line: DELETE_CONFIGURATION=1 INSTALLDIR=C:\Program Files\MsiBuilderRemoveUI\ TARGETDIR=D:\ CURRENTDIRECTORY=D:\a\msi-builder\msi-builder\internal\builder\nativetest CLIENTUILEVEL=0 CLIENTPROCESSID=3892 PRODUCTLANGUAGE=1033 ACTION=INSTALL EXECUTEACTION=INSTALL ROOTDRIVE=D:\ INSTALLLEVEL=1 SECONDSEQUENCE=1 REMOVE=MainFeature ACTION=INSTALL
 MSI (s) (34:88) [22:57:38:881]: PROPERTY CHANGE: Adding DELETE_CONFIGURATION property. Its value is '1'.
 MSI (s) (34:88) [22:57:38:981]: Doing action: Purge_Config
 Action 22:57:38: Purge_Config. 

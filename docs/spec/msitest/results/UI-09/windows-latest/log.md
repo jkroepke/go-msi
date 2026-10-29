@@ -44,7 +44,9 @@ Property(S): UILevel = 3
 ```
 
 The entry has no `NoModify`, and `ModifyPath` and `UninstallString` are the
-same `MsiExec.exe /I{ProductCode}` command; UI-08 ran that command and
-reached the remove page. `/x` showed only the confirmation box and ran the
-server at `UILevel` 3 (basic), with no wizard page. Which command the
+same `MsiExec.exe /I{ProductCode}` command; the keep run of UI-08 ran that
+command (the test checks the value before using it) and reached the remove
+page. During `/x` the driver, which polls every 500 ms, saw only the
+confirmation box, the verbose log has no `Dialog created` line (the excerpt
+filter included it), and the server ran at `UILevel` 3 (basic). Which command the
 Change and Uninstall buttons of Add or Remove Programs run was not tested.
