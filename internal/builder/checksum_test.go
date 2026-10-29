@@ -1,7 +1,9 @@
 package builder_test
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -75,5 +77,78 @@ components:
 				t.Errorf("File.Attributes = %#x", attrs)
 			}
 		})
+	}
+}
+
+// TestChecksumSurvivesLanguageTransform checks that a language build, which
+// takes its files from the base build's cache, keeps MSICHECKCRCS: the
+// Property changes of the German transform are the same with and without
+// a checksum, so the transform does not delete the property.
+func TestChecksumSurvivesLanguageTransform(t *testing.T) {
+	t.Parallel()
+
+	const yml = `schema: msi-builder/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+components:
+  - files: [{ source: hello.exe, checksum: true }]
+ui: { wizard: true, languages: { de: {} } }
+`
+
+	propertyChanges := func(checksum uint32) []byte {
+		dir := t.TempDir()
+		exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}, Checksum: checksum})
+
+		if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg, err := config.Parse([]byte(yml), config.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		cfg.BaseDir = dir
+
+		res := mustBuild(t, cfg)
+
+		name, err := msidb.EncodeStreamName("Property", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, storage := range res.Database.Storages {
+			if storage.Name != "1031" {
+				continue
+			}
+
+			for _, stream := range storage.Streams {
+				if stream.Name != name {
+					continue
+				}
+
+				reader, err := stream.Open()
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				data, err := io.ReadAll(reader)
+				_ = reader.Close()
+
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				return data
+			}
+		}
+
+		t.Fatal("no Property changes in storage 1031")
+
+		return nil
+	}
+
+	if with, without := propertyChanges(0x1234), propertyChanges(0); !bytes.Equal(with, without) {
+		t.Errorf("the transform changes Property differently with a checksum (%d bytes, %d without): it drops MSICHECKCRCS", len(with), len(without))
 	}
 }

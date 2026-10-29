@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"io"
 	"slices"
 	"testing"
 
@@ -186,5 +187,53 @@ func TestIsDLL(t *testing.T) {
 
 	if IsDLL(bytes.NewReader([]byte("MZ"))) {
 		t.Error("a truncated file reads as a DLL")
+	}
+}
+
+// countingReader counts the bytes read through it.
+type countingReader struct {
+	r    io.ReaderAt
+	read int64
+}
+
+func (c *countingReader) ReadAt(p []byte, off int64) (int, error) {
+	n, err := c.r.ReadAt(p, off)
+	c.read += int64(n)
+
+	return n, err
+}
+
+// TestLargeResourceRange parses a PE whose resource directory covers a
+// 32 MiB section: only the directory records and the version resource are
+// read, not the whole range.
+func TestLargeResourceRange(t *testing.T) {
+	t.Parallel()
+
+	const padding = 32 << 20
+
+	data := testpe.Build(testpe.Options{FileVersion: "1.2.3.4", Languages: []int{1033}, Padding: padding})
+	size := uint32(len(data) - testRsrcRaw) //nolint:gosec // 32 MiB
+
+	if string(data[testRsrcSection:testRsrcSection+5]) != ".rsrc" {
+		t.Fatal("section table offset is stale")
+	}
+
+	binary.LittleEndian.PutUint32(data[testRsrcSection+8:], size)  // virtual size
+	binary.LittleEndian.PutUint32(data[testRsrcSection+16:], size) // raw size
+	binary.LittleEndian.PutUint32(data[testResourceDir+4:], size)
+
+	rdr := &countingReader{r: bytes.NewReader(data)}
+
+	info, err := Parse(rdr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if info.FileVersion != "1.2.3.4" {
+		t.Errorf("version %q", info.FileVersion)
+	}
+
+	if rdr.read > 64<<10 {
+		t.Errorf("read %d bytes of a %d-byte resource directory", rdr.read, size)
 	}
 }

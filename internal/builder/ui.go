@@ -620,7 +620,10 @@ func (b *build) writeWizard(wiz *wizard) {
 
 	b.table("ListBox") // required with a Dialog table (ICE20), stays empty
 
-	if len(wiz.checkBoxes) > 0 {
+	// A ui.languages entry with a license adds the license page's check
+	// box to its build only; the transform writer adds no tables, so the base
+	// has the table too, empty if need be.
+	if len(wiz.checkBoxes) > 0 || b.anyLicense() {
 		boxes := b.table("CheckBox")
 		for _, property := range sortedStringKeys(wiz.checkBoxes) {
 			boxes.Add(property, wiz.checkBoxes[property])
@@ -713,6 +716,22 @@ func (b *build) isDialog(name string) bool {
 
 	for _, row := range tbl.Rows {
 		if row[0] == name {
+			return true
+		}
+	}
+
+	return false
+}
+
+// anyLicense reports whether the base or a ui.languages entry has a
+// license page.
+func (b *build) anyLicense() bool {
+	if b.cfg.UI.License != "" {
+		return true
+	}
+
+	for _, entry := range b.cfg.UI.Languages {
+		if entry != nil && entry.License != "" {
 			return true
 		}
 	}

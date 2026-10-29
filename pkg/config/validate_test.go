@@ -306,6 +306,14 @@ func TestValidate(t *testing.T) {
 			base + appComponent + "firewall: [{name: a, component: App, program: x, description: 'say \"hi\"'}]\n",
 			sevError, "firewall[0].description", "double quote",
 		},
+		"firewall name all": {
+			base + appComponent + "firewall: [{name: ' ALL', component: App, program: x}]\n",
+			sevError, "firewall[0].name", "reserved by netsh",
+		},
+		"firewall name property": {
+			base + appComponent + "firewall: [{name: '[RULE]', component: App, program: x}]\n",
+			sevError, "firewall[0].name", "literal text",
+		},
 		"firewall any with addresses": {
 			base + appComponent + "firewall: [{name: a, component: App, program: x, remoteAddresses: 'ANY,10.0.0.1'}]\n",
 			sevError, "firewall[0].remoteAddresses", "ANY cannot be combined",
