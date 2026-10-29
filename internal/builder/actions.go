@@ -39,6 +39,9 @@ const (
 	maxTargetLength = 255
 )
 
+// returnIgnore is the custom action return mode that never fails the install.
+const returnIgnore = "ignore"
+
 // Sequence table names.
 const (
 	seqInstallExecute = "InstallExecuteSequence"
@@ -352,7 +355,7 @@ func (b *build) customActions() error { //nolint:cyclop // one pass over the for
 		}
 
 		switch custom.Return {
-		case "ignore":
+		case returnIgnore:
 			action.typ |= caContinue
 		case "asyncWait":
 			action.typ |= caAsyncWait

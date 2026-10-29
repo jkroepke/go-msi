@@ -12,7 +12,6 @@ import (
 // remove the registration (1403, access denied), so the product stays
 // registered and a reinstall fails; a failure before PublishProduct leaves an
 // entry only an administrator can remove (CA-01, specification section 8.2).
-// asyncNoWait and ignore actions cannot fail the install.
 func (b *build) checkPerUserRollback() {
 	if b.cfg.Package.Scope != config.ScopePerUser {
 		return
@@ -26,7 +25,7 @@ func (b *build) checkPerUserRollback() {
 	}
 
 	for actionIndex, custom := range b.cfg.CustomActions {
-		if custom.Execute != "deferred" || custom.Return == "ignore" || custom.Return == "asyncNoWait" {
+		if !canFailInstall(custom) {
 			continue
 		}
 
@@ -44,4 +43,10 @@ func (b *build) checkPerUserRollback() {
 			}
 		}
 	}
+}
+
+// canFailInstall reports whether a custom action is deferred and its result
+// can fail the install: asyncNoWait and ignore actions never do.
+func canFailInstall(custom *config.CustomAction) bool {
+	return custom.Execute == "deferred" && custom.Return != returnIgnore && custom.Return != "asyncNoWait"
 }
