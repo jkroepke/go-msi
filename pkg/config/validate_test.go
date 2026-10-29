@@ -90,6 +90,10 @@ func TestValidateAccepted(t *testing.T) {
 		"remote property":     firewall("[REMOTE_ADDR]"),
 		"environment scopes":  environment("{name: FOO, value: a}, {name: FOO, value: b, scope: user}"),
 		"environment actions": environment("{name: FOO, value: a}, {name: FOO, value: b, action: append}"),
+		"property search": base + appComponent +
+			"properties: {P: {value: x, search: {registry: {root: HKLM, key: Software\\X, name: V, bitness: 32, type: directory}}}}\n",
+		"remove registry": base + strings.Replace(appComponent, "    files:",
+			"    removeRegistry: [{root: HKCU, key: Software\\Classes\\old}, {root: HKMU, key: Software\\X, name: Legacy}]\n    files:", 1),
 	} {
 		if ds := validate(t, doc); len(ds) != 0 {
 			t.Errorf("%s: unexpected diagnostics: %v", name, ds)
@@ -557,6 +561,67 @@ func TestValidate(t *testing.T) {
 		"multi string marker": {
 			base + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\X, name: N, value: 'a[~]b'}]\n    files:", 1),
 			sevError, "components[0].registry[0].value", "multiString",
+		},
+		"remove registry name dash": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X, name: '-'}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[0].name", "leave name out",
+		},
+		"remove registry twice": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X}, {root: HKLM, key: software\\x}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[1]", "already removed",
+		},
+		"remove registry twice with ids": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{id: A, root: HKLM, key: Software\\X}, {root: HKLM, key: Software\\X}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[1]", "already removed",
+		},
+		"remove registry twice id last": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X}, {id: B, root: HKLM, key: Software\\X}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[1]", "already removed",
+		},
+		"remove registry bad id": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{id: 'a b', root: HKLM, key: Software\\X}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[0].id", "not an identifier",
+		},
+		"remove registry id twice": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{id: A, root: HKLM, key: Software\\X}]\n    files:", 1) +
+				"  - id: Other\n    directory: INSTALLDIR\n    removeRegistry: [{id: A, root: HKLM, key: Software\\Y}]\n",
+			sevError, "components[1].removeRegistry[0].id", "defined twice",
+		},
+		"remove registry per user": {
+			pkg(`{platform: x64, scope: perUser}`) + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[0].root", "ICE105",
+		},
+		"remove registry key slash": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X\\}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[0].key", "backslash",
+		},
+		"search private property": {
+			base + appComponent + "properties: {lower: {search: {registry: {root: HKLM, key: Software\\X}}}}\n",
+			sevError, "properties.lower.search", "public",
+		},
+		"search not secure": {
+			base + appComponent + "properties: {P: {secure: false, search: {registry: {root: HKLM, key: Software\\X}}}}\n",
+			sevError, "properties.P.secure", "must be secure",
+		},
+		"search without registry": {
+			base + appComponent + "properties: {P: {search: {}}}\n",
+			sevError, "properties.P.search.registry", "required",
+		},
+		"search hkmu": {
+			base + appComponent + "properties: {P: {search: {registry: {root: HKMU, key: Software\\X}}}}\n",
+			sevError, "properties.P.search.registry.root", "not one of",
+		},
+		"search type": {
+			base + appComponent + "properties: {P: {search: {registry: {root: HKLM, key: Software\\X, type: file}}}}\n",
+			sevError, "properties.P.search.registry.type", "not one of",
+		},
+		"search 64 in x86": {
+			pkg(`{platform: x86}`) + appComponent + "properties: {P: {search: {registry: {root: HKLM, key: Software\\X, bitness: 64}}}}\n",
+			sevError, "properties.P.search.registry.bitness", "32-bit package",
+		},
+		"search found taken": {
+			base + appComponent + "properties: {P: {search: {registry: {root: HKLM, key: Software\\X}}}, P_FOUND: x}\n",
+			sevError, "properties.P.search", "P_FOUND",
 		},
 		// Properties.
 		"builder property": {

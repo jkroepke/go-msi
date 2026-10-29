@@ -116,9 +116,17 @@ func TestLaunchCheckBox(t *testing.T) {
 
 	res := mustBuild(t, desktop(t))
 
-	action := rows(t, res.Database, "CustomAction")
-	if len(action) != 1 || fmt.Sprint(action[0][:4]) != `[LaunchOnFinish 226 INSTALLDIR "[#viewer.exe]"]` {
-		t.Errorf("custom action %v", action)
+	// The example's searched property adds its own type-51 actions.
+	var launch []any
+
+	for _, row := range rows(t, res.Database, "CustomAction") {
+		if row[0] == "LaunchOnFinish" {
+			launch = row
+		}
+	}
+
+	if launch == nil || fmt.Sprint(launch[:4]) != `[LaunchOnFinish 226 INSTALLDIR "[#viewer.exe]"]` {
+		t.Errorf("custom action %v", launch)
 	}
 
 	if strings.Contains(fmt.Sprint(res.Diagnostics), "not scheduled") {

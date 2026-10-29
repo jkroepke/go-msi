@@ -597,6 +597,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 	fileIDs := make(map[string]string)
 	paths := newFolderPaths(cfg.Directories)
 	regIDs := make(map[string]bool)
+	removeIDs := make(map[string]bool)
 	perUser := cfg.Package.Scope == ScopePerUser
 
 	for i, comp := range cfg.Components {
@@ -622,6 +623,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 
 		files := v.componentFiles(cfg, p, comp, fileIDs, paths)
 		v.componentRegistry(p, comp, regIDs, perUser)
+		v.componentRemoveRegistry(p, comp, removeIDs, perUser)
 		keyFile := v.componentKeyFile(p, comp, files)
 
 		for j, svc := range comp.Services {
@@ -1051,17 +1053,7 @@ func (v *validator) componentRegistry(p string, c *Component, ids map[string]boo
 			ids[value.ID] = true
 		}
 
-		v.oneOf(valuePath+".root", value.Root, "HKLM", "HKCU", "HKCR", "HKU", "HKMU")
-
-		if perUser && (value.Root == "HKLM" || value.Root == "HKCR") {
-			v.errorf(valuePath+".root", "a per-user package cannot write %s (ICE105)", value.Root)
-		}
-
-		v.required(valuePath+".key", value.Key)
-
-		if strings.HasPrefix(value.Key, `\`) || strings.HasSuffix(value.Key, `\`) {
-			v.errorf(valuePath+".key", "no leading or trailing backslash")
-		}
+		v.registryLocation(valuePath, value.Root, value.Key, perUser)
 
 		v.oneOf(valuePath+".type", value.Type, "string", "expandString", "multiString", "dword", "binary", "key")
 
@@ -1095,6 +1087,56 @@ func (v *validator) componentRegistry(p string, c *Component, ids map[string]boo
 		if value.RemoveOnUninstall && value.Type != "key" {
 			v.errorf(valuePath+".removeOnUninstall", "only for type key; values are always removed with their component")
 		}
+	}
+}
+
+// registryLocation checks the root and key of a registry entry.
+func (v *validator) registryLocation(entryPath, root, key string, perUser bool) {
+	v.oneOf(entryPath+".root", root, "HKLM", "HKCU", "HKCR", "HKU", "HKMU")
+
+	if perUser && (root == "HKLM" || root == "HKCR") {
+		v.errorf(entryPath+".root", "a per-user package cannot change %s (ICE105)", root)
+	}
+
+	v.required(entryPath+".key", key)
+
+	if strings.HasPrefix(key, `\`) || strings.HasSuffix(key, `\`) {
+		v.errorf(entryPath+".key", "no leading or trailing backslash")
+	}
+}
+
+// componentRemoveRegistry checks the registry keys and values a component
+// deletes when it is installed.
+func (v *validator) componentRemoveRegistry(p string, c *Component, ids map[string]bool, perUser bool) {
+	seen := make(map[[3]string]bool)
+
+	for j, entry := range c.RemoveRegistry {
+		entryPath := fmt.Sprintf("%s.removeRegistry[%d]", p, j)
+
+		if entry.ID != "" {
+			if !IsIdentifier(entry.ID) || len(entry.ID) > MaxIdentifierLength {
+				v.errorf(entryPath+".id", "%q is not an identifier of at most %d characters", entry.ID, MaxIdentifierLength)
+			}
+
+			if ids[entry.ID] {
+				v.errorf(entryPath+".id", "removeRegistry id %s is defined twice", entry.ID)
+			}
+
+			ids[entry.ID] = true
+		}
+
+		v.registryLocation(entryPath, entry.Root, entry.Key, perUser)
+
+		if entry.Name == "-" {
+			v.errorf(entryPath+".name", "leave name out to delete the whole key")
+		}
+
+		key := [3]string{entry.Root, strings.ToLower(entry.Key), strings.ToLower(entry.Name)}
+		if seen[key] {
+			v.errorf(entryPath, "this key or value is already removed by this component")
+		}
+
+		seen[key] = true
 	}
 }
 
@@ -1250,6 +1292,65 @@ func (v *validator) properties(cfg *Config) {
 		if prop.Secure != nil && *prop.Secure && !public {
 			v.errorf(propPath+".secure", "only public (upper-case) properties can be secure")
 		}
+
+		if prop.Search != nil {
+			v.propertySearch(cfg, propPath, name, prop.Search)
+		}
+	}
+}
+
+// propertySearch checks the search of a property.
+func (v *validator) propertySearch(cfg *Config, propPath, name string, search *Search) {
+	searchPath := propPath + ".search"
+
+	if !IsPublicProperty(name) {
+		v.errorf(searchPath, "only a public (upper-case) property can be searched, so that a command-line value and "+
+			"the result reach the execute sequence")
+	}
+
+	if cfg.InstallDir.Remember && name == cfg.InstallDir.ID {
+		v.errorf(searchPath, "installDir.remember already searches %s", name)
+	}
+
+	if prop := cfg.Properties[name]; prop.Secure != nil && !*prop.Secure {
+		v.errorf(propPath+".secure", "a searched property must be secure: after a UI sequence the execute sequence "+
+			"does not search again and only receives secure properties")
+	}
+
+	if _, taken := cfg.Properties[SearchFoundProperty(name)]; taken {
+		v.errorf(searchPath, "%s holds the search result; it cannot also be defined in properties", SearchFoundProperty(name))
+	}
+
+	reg := search.Registry
+	if reg == nil {
+		v.errorf(searchPath+".registry", "required")
+
+		return
+	}
+
+	v.registrySearch(cfg, searchPath+".registry", reg)
+}
+
+// registrySearch checks the registry value a property search reads.
+func (v *validator) registrySearch(cfg *Config, regPath string, reg *RegistrySearch) {
+	// RegLocator has no HKMU root.
+	v.oneOf(regPath+".root", reg.Root, "HKLM", "HKCU", "HKCR", "HKU")
+	v.required(regPath+".key", reg.Key)
+
+	if strings.HasPrefix(reg.Key, `\`) || strings.HasSuffix(reg.Key, `\`) {
+		v.errorf(regPath+".key", "no leading or trailing backslash")
+	}
+
+	if reg.Bitness != "" {
+		v.oneOf(regPath+".bitness", reg.Bitness, "32", "64")
+	}
+
+	if reg.Bitness == "64" && !cfg.Package.Platform.Is64Bit() {
+		v.errorf(regPath+".bitness", "a 32-bit package cannot read the 64-bit registry view")
+	}
+
+	if reg.Type != "" {
+		v.oneOf(regPath+".type", reg.Type, SearchValue, SearchDirectory)
 	}
 }
 
