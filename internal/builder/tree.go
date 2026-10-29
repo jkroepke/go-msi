@@ -863,8 +863,8 @@ func (b *build) componentGUID(path string, info *componentInfo) error { //nolint
 
 		// Components keyed on one folder would share a code. One that
 		// only registers event sources takes its first source instead,
-		// but only when the folder's code is taken, so packages that
-		// built before keep their component codes.
+		// but only when an earlier component took the folder's code, so
+		// packages that built before keep their component codes.
 		if len(comp.EventLog) > 0 {
 			if _, taken := b.guids[uuid5(namespaceComponent, b.upgradeCode+"|"+bitness+"|"+location)]; taken {
 				e := comp.EventLog[0]

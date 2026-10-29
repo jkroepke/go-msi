@@ -1133,10 +1133,10 @@ They write `EventMessageFile` (`REG_EXPAND_SZ`) and `TypesSupported`
 (`REG_DWORD`) under
 `HKLM\SYSTEM\CurrentControlSet\Services\EventLog\<log>\<source>`.
 A component with only event sources is keyed on its folder like any
-component without files or `registry` entries. When another component of
-the package already has that folder's component code, it derives its code
-from its first source instead, so several such components can share a
-folder.
+component without files or `registry` entries. When a component listed
+earlier already has that folder's component code, it derives its code from
+its first source instead, so several such components can share a folder;
+list them after any other component keyed on the folder.
 Nothing else was needed in REG-03: a key there with these two values was a
 registered source for `Write-EventLog`, `[EventLog]::SourceExists` and
 `Remove-EventLog`, and events showed their text through the generic `%1`
