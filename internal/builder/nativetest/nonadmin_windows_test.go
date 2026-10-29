@@ -119,6 +119,49 @@ func (u nonAdminUser) msiexec(t *testing.T, log string, args ...string) int {
 	return u.run(t, fmt.Sprintf(`msiexec.exe %s /qn /norestart /l*v "%s"`, strings.Join(quoted, " "), log))
 }
 
+// policy runs reg.exe on the user's Installer policy key. A standard user
+// may not write its own HKCU\SOFTWARE\Policies, so the administrator does,
+// through HKU\<SID>; when the user's hive is not loaded, it loads
+// NTUSER.DAT for the change. A logon with profile first creates the profile.
+func (u nonAdminUser) policy(t *testing.T, action string, args ...string) error {
+	t.Helper()
+
+	if code := u.run(t, "cmd.exe /c exit 0"); code != 0 {
+		return fmt.Errorf("logon of %s returned %d", u.name, code)
+	}
+
+	sid, _, _, err := syscall.LookupSID("", u.name)
+	if err != nil {
+		return fmt.Errorf("security identifier of %s: %w", u.name, err)
+	}
+
+	hive, err := sid.String()
+	if err != nil {
+		return fmt.Errorf("security identifier of %s: %w", u.name, err)
+	}
+
+	hive = `HKU\` + hive
+	ctx := context.Background()
+	key := hive + `\SOFTWARE\Policies\Microsoft\Windows\Installer`
+
+	if exec.CommandContext(ctx, "reg.exe", "query", hive).Run() != nil {
+		profile := filepath.Join(os.Getenv("SystemDrive")+`\`, "Users", u.name, "NTUSER.DAT")
+		//nolint:gosec // the hive and profile path come from the test account
+		if out, err := exec.CommandContext(ctx, "reg.exe", "load", hive, profile).CombinedOutput(); err != nil {
+			return fmt.Errorf("reg load %s: %w\n%s", profile, err, out)
+		}
+
+		defer func() { _ = exec.CommandContext(ctx, "reg.exe", "unload", hive).Run() }()
+	}
+
+	//nolint:gosec // the test passes fixed reg.exe arguments
+	if out, err := exec.CommandContext(ctx, "reg.exe", append([]string{action, key}, args...)...).CombinedOutput(); err != nil {
+		return fmt.Errorf("reg %s %s: %w\n%s", action, key, err, out)
+	}
+
+	return nil
+}
+
 // nonAdminDir returns a fresh folder under nonAdminRoot for one test.
 func nonAdminDir(t *testing.T, name string) string {
 	t.Helper()
@@ -243,21 +286,20 @@ func TestNonAdminSecureProperties(t *testing.T) {
 	const policy = `HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer`
 
 	ctx := context.Background()
-	userPolicy := `reg.exe add HKCU\SOFTWARE\Policies\Microsoft\Windows\Installer /v AlwaysInstallElevated /t REG_DWORD /d 1 /f`
 
 	if out, err := exec.CommandContext(ctx, "reg.exe", "add", policy, "/v", "AlwaysInstallElevated", "/t", "REG_DWORD", "/d", "1", "/f").CombinedOutput(); err != nil {
 		t.Fatalf("reg add: %v\n%s", err, out)
 	}
 
 	t.Cleanup(func() {
-		_ = user.run(t, `reg.exe delete HKCU\SOFTWARE\Policies\Microsoft\Windows\Installer /v AlwaysInstallElevated /f`)
+		_ = user.policy(t, "delete", "/v", "AlwaysInstallElevated", "/f")
 		_ = exec.CommandContext(ctx, "reg.exe", "delete", policy, "/v", "AlwaysInstallElevated", "/f").Run()
 		_ = exec.CommandContext(ctx, "msiexec", "/x", path, "/qn").Run()
 		_ = os.RemoveAll(filepath.Join(os.Getenv("ProgramFiles"), "MsiBuilderSecure"))
 	})
 
-	if code := user.run(t, userPolicy); code != 0 {
-		t.Fatalf("%s returned %d", userPolicy, code)
+	if err := user.policy(t, "add", "/v", "AlwaysInstallElevated", "/t", "REG_DWORD", "/d", "1", "/f"); err != nil {
+		t.Fatal(err)
 	}
 
 	for _, tc := range []struct {
