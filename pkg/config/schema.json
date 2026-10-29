@@ -170,6 +170,10 @@
           "type": "string",
           "maxLength": 62
         },
+        "embedCabinets": {
+          "$ref": "#/$defs/bool",
+          "default": true
+        },
         "longFileNames": {
           "$ref": "#/$defs/bool",
           "default": true

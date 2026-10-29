@@ -162,6 +162,16 @@ jobs:
           go test -count=1 -run 'TestNative(FDI|Expand)Extracts/lzx|TestNativeLZXSystemBinaries|TestLZX' ./internal/cab/
           go test -count=1 -run 'BoundedMemory' ./internal/cab/ ./internal/builder/
 
+      # A package above 2 GB, its cabinets beside the .msi (MSISPEC section 5,
+      # CAB-10). It writes about 9 GB, so it runs on its own and without
+      # the race detector.
+      - name: go test (package above 2 GB)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          MSI_BUILDER_LARGE_PACKAGE: '1'
+        run: go test -v -count=1 -timeout 30m -run 'TestMsiexecInstallsLargePackage' ./internal/builder/nativetest/
+
       # Print the Windows signature experiments (MSISPEC-RESULTS SIG-01…06).
       - name: go test (signature results)
         if: runner.os == 'Windows'
