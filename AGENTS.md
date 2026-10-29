@@ -115,6 +115,14 @@ go test ./... -shuffle=on -race
   `pkg/builder/nativetest`, `pkg/cab/native_windows_test.go`) and the bounded-memory
   tests (`TestBoundedMemory`, `TestLargePayloadBoundedMemory`). CI runs
   `-short` on Linux and the full set on Windows.
+- Bounded-memory tests assert on the live heap that `memtest.PeakHeap` reads
+  from `/gc/heap/live:bytes`, not on `HeapAlloc`. `HeapAlloc` includes
+  uncollected garbage up to the collector's goal (about twice the live heap)
+  plus whatever is allocated during a concurrent mark, so it moved with
+  core count and runner load: `TestBoundedMemory/MSZIP` measured 9.6 MB
+  locally and 17.7 MB on a busy `windows-latest` runner for a live heap of
+  about 5 MB. Do not raise a limit to fix such a failure; check the live peak
+  in the log first.
 - Windows syscall helpers that forward `...uintptr` to `(*syscall.LazyProc).Call`
   need `//go:uintptrescapes`, and every `uintptr(unsafe.Pointer(...))` must be
   written inside the call's argument list. Without that, out-parameters stay on

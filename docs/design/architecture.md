@@ -336,8 +336,10 @@ generated from the command tree.
   `Buffer` satisfy, so the builder writes, patches and verifies the same way
   for a file and for `Result.Package`.
 - `internal/memtest`: a repeatable pattern reader and `PeakHeap`, which runs a
-  function under `debug.SetMemoryLimit` and samples the heap, for the
-  bounded-memory tests in `cab`, `cfb` and `builder` (skipped with `-short`).
+  function under `debug.SetMemoryLimit` and samples the live heap the
+  collector marked, for the bounded-memory tests in `cab`, `cfb` and `builder`
+  (skipped with `-short`). The heap in use (`HeapAlloc`) includes garbage up
+  to the collector's goal and was flaky as a limit; it is only logged.
 
 ## 2. Testing
 

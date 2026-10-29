@@ -6,6 +6,7 @@ import (
 	"io"
 	"runtime"
 	"runtime/debug"
+	"runtime/metrics"
 	"sync"
 	"time"
 )
@@ -59,33 +60,50 @@ func (p *PatternReader) Close() error { return nil }
 
 // Peak is what PeakHeap measured.
 type Peak struct {
-	// Before is the heap in use when fn started, after a collection.
+	// Before is the live heap when fn started, after a collection.
 	Before uint64
-	// Max is the largest heap in use observed while fn ran.
+	// Max is the largest live heap a collection marked while fn ran.
 	Max uint64
+	// Allocated is the largest heap in use observed while fn ran, garbage
+	// not yet collected included. It depends on collector pacing and the
+	// load of the machine, so it is only for logs.
+	Allocated uint64
 }
 
-// Used is the heap fn added at its peak.
+// Used is the live heap fn added at its peak.
 func (p Peak) Used() uint64 { return p.Max - p.Before }
 
-// PeakHeap runs the function under a soft memory limit and samples the heap
-// in use every millisecond while it runs. The limit makes the collector
-// reclaim garbage promptly, so Max reflects live data plus a small allocation
-// burst rather than collector pacing; code that holds more live data than the
-// limit still exceeds it.
+// sampleInterval is how often PeakHeap reads the heap metrics. A read does
+// not stop the world, so it is cheap also under the race detector.
+const sampleInterval = time.Millisecond
+
+const (
+	liveMetric      = "/gc/heap/live:bytes"
+	allocatedMetric = "/memory/classes/heap/objects:bytes"
+)
+
+// PeakHeap runs the function under a soft memory limit and samples the live
+// heap, as the last collection marked it, while it runs.
+//
+// The heap in use (HeapAlloc) is not a stable measure: between collections it
+// holds garbage up to the collector's goal, twice the live heap by default,
+// and while a collection marks concurrently the function keeps allocating, so
+// its peak moves with GOGC, the number of cores and how busy the machine is.
+// The live heap only counts what a collection found reachable. The limit
+// makes sure code that holds more than limit bytes is collected, and so
+// marked, while it does.
 func PeakHeap(limit int64, run func()) Peak {
 	previous := debug.SetMemoryLimit(limit)
 	defer debug.SetMemoryLimit(previous)
 
 	runtime.GC() //nolint:revive // a collection gives a baseline that holds only live data
 
-	var stats runtime.MemStats
+	samples := []metrics.Sample{{Name: liveMetric}, {Name: allocatedMetric}}
+	metrics.Read(samples)
 
-	runtime.ReadMemStats(&stats)
-
-	peak := Peak{Before: stats.HeapAlloc}
+	peak := Peak{Before: samples[0].Value.Uint64()}
 	stop := make(chan struct{})
-	result := make(chan uint64, 1)
+	result := make(chan Peak, 1)
 
 	var wg sync.WaitGroup
 
@@ -93,13 +111,13 @@ func PeakHeap(limit int64, run func()) Peak {
 		ticker := time.NewTicker(sampleInterval)
 		defer ticker.Stop()
 
-		var observed uint64
+		observed := peak
+		sample := []metrics.Sample{{Name: liveMetric}, {Name: allocatedMetric}}
 
 		for {
-			var sample runtime.MemStats
-
-			runtime.ReadMemStats(&sample)
-			observed = max(observed, sample.HeapAlloc)
+			metrics.Read(sample)
+			observed.Max = max(observed.Max, sample[0].Value.Uint64())
+			observed.Allocated = max(observed.Allocated, sample[1].Value.Uint64())
 
 			select {
 			case <-stop:
@@ -115,7 +133,8 @@ func PeakHeap(limit int64, run func()) Peak {
 	close(stop)
 	wg.Wait()
 
-	peak.Max = max(<-result, peak.Before)
+	peak = <-result
+	peak.Max = max(peak.Max, peak.Before)
 
 	return peak
 }
