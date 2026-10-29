@@ -234,6 +234,28 @@ jobs:
         shell: bash
         run: go test -v -count=1 -run 'TestMsiexecOSProperties|TestMsiexecSearchesOSFileVersion|TestMsiexecUsesMsiFileHash|TestMsiexecUpgradeVersions|TestMsiexecFirewallPortLists' ./internal/builder/nativetest/
 
+      # Install packages as a standard user (MSISPEC-RESULTS INST-02,
+      # PROP-01). The runner is thrown away after the job, so the step
+      # creates a local user with a random password and allows non-admin
+      # installs, which Windows Server turns off by default (DisableMsi).
+      - name: go test (non-admin)
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bytes = [byte[]]::new(24)
+          [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+          $password = [Convert]::ToBase64String($bytes) + 'aA1!'
+          "::add-mask::$password"
+          New-LocalUser -Name msitest -Password (ConvertTo-SecureString $password -AsPlainText -Force) -PasswordNeverExpires | Out-Null
+          $policy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer'
+          if (-not (Test-Path $policy)) { New-Item $policy -Force | Out-Null }
+          Set-ItemProperty $policy -Name DisableMsi -Value 0 -Type DWord
+          $env:MSI_BUILDER_NONADMIN_USER = 'msitest'
+          $env:MSI_BUILDER_NONADMIN_PASSWORD = $password
+          go test -v -count=1 -run 'TestNonAdmin' ./internal/builder/nativetest/
+          if ($LASTEXITCODE -ne 0) { throw "go test exited with $LASTEXITCODE" }
+
       - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         if: runner.os == 'Linux'
         with:
