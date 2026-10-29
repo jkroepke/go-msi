@@ -76,7 +76,7 @@ whole file system; an empty `root` is an error.
   `:`, a trailing dot or a device name like `nul.txt`. The folders of `root`
   itself are not installed; `root` only has to be a valid `fs.FS` path
   without `\` or `:`. On an error the config is unchanged.
-- `longFileNames: false` needs every file name to be a valid 8.3 name, which
+- `longFileNames: false` needs every filename to be a valid 8.3 name, which
   harvested names need not be, so `AddTree` refuses such a package.
 
 `AddTree` returns the new components, for example to set `Permissions` or
