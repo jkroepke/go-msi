@@ -106,6 +106,10 @@ func TestValidateAccepted(t *testing.T) {
 		"dual scope": pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:",
 			"    registry: [{root: HKCR, key: .app, value: App.File}, {root: HKMU, key: Software\\X, name: N, value: v}]\n    files:", 1),
 		"dual scope machine first": pkg(`{platform: x64, scope: PerMachineOrUser}`) + appComponent,
+		"language dialog texts": base + appComponent + "properties: {OPT: {}, NAME: {}}\nui:\n  enabled: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}, {property: NAME}]}\n" +
+			"  launch: {file: app.exe}\n" +
+			"  languages: {de: {launch: {text: '&Starten'}, dialogs: {ExtraDlg: {title: y, description: z, " +
+			"fields: {OPT: {label: Stufe, options: {b: '&Hoch'}}, NAME: null}}}}, fr: {dialogs: {ExtraDlg: null}}}\n",
 		// Only a dual package reserves the scope page's names.
 		"scope names in a perMachine package": pkg(`{platform: x64}`) + appComponent +
 			"properties:\n  BuilderInstallScope: {value: x}\n",
@@ -568,6 +572,43 @@ func TestValidate(t *testing.T) {
 		"checkbox with a default": {
 			base + appComponent + "properties: {OPT: '0'}\nui:\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: checkbox}]}\n",
 			sevWarning, "ui.dialogs[0].fields[0].property", "starts checked",
+		},
+		"language dialog unknown": {
+			base + appComponent + "ui:\n  enabled: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}, {property: NAME}]}\n" + "  languages: {de: {dialogs: {OtherDlg: {title: y}}}}\n",
+			sevError, "ui.languages.de.dialogs.OtherDlg", "not the id of a ui.dialogs page",
+		},
+		"language dialog blank title": {
+			base + appComponent + "ui:\n  enabled: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}, {property: NAME}]}\n" + "  languages: {de: {dialogs: {ExtraDlg: {title: ' '}}}}\n",
+			sevError, "ui.languages.de.dialogs.ExtraDlg.title", "blank",
+		},
+		"language field unknown": {
+			base + appComponent + "ui:\n  enabled: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}, {property: NAME}]}\n" + "  languages: {de: {dialogs: {ExtraDlg: {fields: {OTHER: {label: y}}}}}}\n",
+			sevError, "ui.languages.de.dialogs.ExtraDlg.fields.OTHER", "no field of ExtraDlg binds OTHER",
+		},
+		"language field shared property": {
+			base + appComponent + "ui:\n  enabled: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT}, {property: OPT, type: password}]}\n" +
+				"  languages: {de: {dialogs: {ExtraDlg: {fields: {OPT: {label: y}}}}}}\n",
+			sevError, "ui.languages.de.dialogs.ExtraDlg.fields.OPT", "cannot tell them apart",
+		},
+		"language options on text": {
+			base + appComponent + "ui:\n  enabled: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}, {property: NAME}]}\n" + "  languages: {de: {dialogs: {ExtraDlg: {fields: {NAME: {options: {a: y}}}}}}}\n",
+			sevError, "ui.languages.de.dialogs.ExtraDlg.fields.NAME.options", "only a choice",
+		},
+		"language option unknown": {
+			base + appComponent + "ui:\n  enabled: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}, {property: NAME}]}\n" + "  languages: {de: {dialogs: {ExtraDlg: {fields: {OPT: {options: {c: y}}}}}}}\n",
+			sevError, "ui.languages.de.dialogs.ExtraDlg.fields.OPT.options.c", "not an option",
+		},
+		"language option long label": {
+			base + appComponent + "ui:\n  enabled: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}, {property: NAME}]}\n" + "  languages: {de: {dialogs: {ExtraDlg: {fields: {OPT: {options: {a: " + strings.Repeat("y", 65) + "}}}}}}}\n",
+			sevError, "ui.languages.de.dialogs.ExtraDlg.fields.OPT.options.a", "at most 64",
+		},
+		"language launch without launch": {
+			base + appComponent + "ui:\n  enabled: true\n  languages: {de: {launch: {text: Starten}}}\n",
+			sevError, "ui.languages.de.launch", "no ui.launch",
+		},
+		"language launch blank": {
+			base + appComponent + "ui:\n  enabled: true\n  launch: {file: app.exe}\n  languages: {de: {launch: {text: ' '}}}\n",
+			sevError, "ui.languages.de.launch.text", "blank",
 		},
 		"schedule when": {
 			base + appComponent + "customActions:\n  - id: Set\n    setProperty: {name: A, value: b}\n    schedule: [{sequence: execute, after: CostFinalize, when: always}]\n",

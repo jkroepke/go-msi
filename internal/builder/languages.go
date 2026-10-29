@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"slices"
@@ -80,7 +81,8 @@ var entryPaths = []struct{ from, to string }{ //nolint:gochecknoglobals // looku
 }
 
 // languageBuild builds the tables of the package in language lcid: the
-// configuration with the entry's finish text and license, the base build's
+// configuration with the entry's finish text, license, launch and dialog
+// texts, the base build's
 // product code and its payload files. It adds the diagnostics that the
 // base build did not report, under the entry's path, and reports whether
 // the build succeeded.
@@ -96,6 +98,14 @@ func (b *build) languageBuild(lcid int, path string, entry *config.Language) (*m
 		if entry.License != "" {
 			cfg.UI.License = entry.License
 		}
+
+		if entry.Launch != nil && entry.Launch.Text != "" && cfg.UI.Launch != nil {
+			launch := *cfg.UI.Launch
+			launch.Text = entry.Launch.Text
+			cfg.UI.Launch = &launch
+		}
+
+		cfg.UI.Dialogs = translatedDialogs(cfg.UI.Dialogs, entry.Dialogs)
 	}
 
 	variant := newBuild(&cfg, b.opts, nil)
@@ -116,6 +126,54 @@ func (b *build) languageBuild(lcid int, path string, entry *config.Language) (*m
 	}
 
 	return database, err == nil
+}
+
+// translatedDialogs returns copies of dialogs with the texts that a
+// ui.languages entry replaces; the base configuration stays unchanged.
+func translatedDialogs(dialogs []*config.Dialog, texts map[string]*config.LanguageDialog) []*config.Dialog {
+	if len(texts) == 0 {
+		return dialogs
+	}
+
+	out := make([]*config.Dialog, len(dialogs))
+
+	for i, dialog := range dialogs {
+		entry := texts[dialog.ID]
+		if entry == nil {
+			out[i] = dialog
+
+			continue
+		}
+
+		translated := *dialog
+		translated.Title = cmp.Or(entry.Title, dialog.Title)
+		translated.Description = cmp.Or(entry.Description, dialog.Description)
+		translated.Fields = make([]config.DialogField, len(dialog.Fields))
+
+		for j, field := range dialog.Fields {
+			translated.Fields[j] = translatedField(field, entry.Fields[field.Property])
+		}
+
+		out[i] = &translated
+	}
+
+	return out
+}
+
+// translatedField returns field with the label and option labels of entry.
+func translatedField(field config.DialogField, entry *config.LanguageField) config.DialogField {
+	if entry == nil {
+		return field
+	}
+
+	field.Label = cmp.Or(entry.Label, field.Label)
+	field.Options = slices.Clone(field.Options)
+
+	for k, option := range field.Options {
+		field.Options[k].Label = cmp.Or(entry.Options[option.Value], option.Label)
+	}
+
+	return field
 }
 
 // addLanguageDiagnostics adds the diagnostics of the build of the

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Language is one entry of ui.languages: a further wizard language of the
@@ -16,10 +17,36 @@ type Language struct {
 	// Keys it leaves out take the built-in translation, if there is one,
 	// and otherwise the base language's text.
 	Strings map[string]string `yaml:"strings"`
+	// Dialogs replaces the texts of ui.dialogs pages, by dialog id.
+	Dialogs map[string]*LanguageDialog `yaml:"dialogs"`
+	// Launch replaces the texts of ui.launch.
+	Launch *LanguageLaunch `yaml:"launch"`
 	// FinishText replaces ui.finishText.
 	FinishText string `yaml:"finishText"`
 	// License replaces ui.license.
 	License string `yaml:"license"`
+}
+
+// LanguageLaunch holds the texts of the launch check box in one language.
+type LanguageLaunch struct {
+	// Text replaces ui.launch.text; "&" marks the access key.
+	Text string `yaml:"text"`
+}
+
+// LanguageDialog holds the texts of one ui.dialogs page in one language. A
+// text left out keeps the base language's.
+type LanguageDialog struct {
+	// Fields replaces the texts of the page's fields, by property.
+	Fields      map[string]*LanguageField `yaml:"fields"`
+	Title       string                    `yaml:"title"`
+	Description string                    `yaml:"description"`
+}
+
+// LanguageField holds the texts of one ui.dialogs field in one language.
+type LanguageField struct {
+	// Options replaces the labels of a choice field's options, by value.
+	Options map[string]string `yaml:"options"`
+	Label   string            `yaml:"label"`
 }
 
 // locale is a language tag with its LCID and ANSI code page; 0 marks a
@@ -188,5 +215,113 @@ func (v *validator) uiLanguages(cfg *Config) {
 
 		v.checkUIStrings(path+".strings", entry.Strings)
 		v.checkFinishText(path+".finishText", entry.FinishText)
+		v.languageLaunch(cfg, path+".launch", entry.Launch)
+		v.languageDialogs(cfg, path+".dialogs", entry.Dialogs)
+	}
+}
+
+// languageLaunch checks the launch texts of a ui.languages entry: they need
+// ui.launch, and a text that is set must not be blank.
+func (v *validator) languageLaunch(cfg *Config, path string, launch *LanguageLaunch) {
+	if launch == nil {
+		return
+	}
+
+	if cfg.UI.Launch == nil {
+		v.errorf(path, "there is no ui.launch check box to translate")
+	}
+
+	v.notBlank(path+".text", launch.Text)
+}
+
+// languageDialogs checks the dialog texts of a ui.languages entry: each key
+// names a ui.dialogs page, each field key a property that one field of
+// that page binds, and each option key a value of that choice field.
+func (v *validator) languageDialogs(cfg *Config, path string, dialogs map[string]*LanguageDialog) {
+	for _, dialogID := range slices.Sorted(maps.Keys(dialogs)) {
+		dialogPath := path + "." + dialogID
+
+		index := slices.IndexFunc(cfg.UI.Dialogs, func(d *Dialog) bool { return d != nil && d.ID == dialogID })
+		if index < 0 {
+			v.errorf(dialogPath, "%s is not the id of a ui.dialogs page", dialogID)
+
+			continue
+		}
+
+		entry := dialogs[dialogID]
+		if entry == nil {
+			continue
+		}
+
+		v.notBlank(dialogPath+".title", entry.Title)
+		v.notBlank(dialogPath+".description", entry.Description)
+
+		for _, property := range slices.Sorted(maps.Keys(entry.Fields)) {
+			v.languageField(fmt.Sprintf("%s.fields.%s", dialogPath, property), cfg.UI.Dialogs[index], property, entry.Fields[property])
+		}
+	}
+}
+
+// languageField checks the texts of a ui.languages entry for the field of
+// dialog that binds property.
+func (v *validator) languageField(path string, dialog *Dialog, property string, entry *LanguageField) {
+	var field *DialogField
+
+	for i := range dialog.Fields {
+		if dialog.Fields[i].Property != property {
+			continue
+		}
+
+		if field != nil {
+			v.errorf(path, "two fields of %s bind %s, so the key cannot tell them apart", dialog.ID, property)
+
+			return
+		}
+
+		field = &dialog.Fields[i]
+	}
+
+	if field == nil {
+		v.errorf(path, "no field of %s binds %s", dialog.ID, property)
+
+		return
+	}
+
+	if entry == nil {
+		return
+	}
+
+	v.notBlank(path+".label", entry.Label)
+	v.languageOptions(path+".options", field, entry.Options)
+}
+
+// languageOptions checks the option labels of a ui.languages entry for
+// field: keys that are values of a choice field, and labels that fit.
+func (v *validator) languageOptions(path string, field *DialogField, options map[string]string) {
+	if len(options) > 0 && field.Type != FieldChoice {
+		v.errorf(path, "only a choice field has options")
+
+		return
+	}
+
+	for _, value := range slices.Sorted(maps.Keys(options)) {
+		optionPath := path + "." + value
+
+		switch label := options[value]; {
+		case !slices.ContainsFunc(field.Options, func(o ChoiceOption) bool { return o.Value == value }):
+			v.errorf(optionPath, "%q is not an option of the field", value)
+		case label != "" && strings.TrimSpace(label) == "":
+			v.errorf(optionPath, "the text is blank; leave it out to keep the base language's")
+		case utf8.RuneCountInString(label) > maxChoiceText:
+			v.errorf(optionPath, "at most %d characters", maxChoiceText)
+		}
+	}
+}
+
+// notBlank reports a text at path that is set but only blanks. An empty
+// text is not set: the base language's text stays.
+func (v *validator) notBlank(at, text string) {
+	if text != "" && strings.TrimSpace(text) == "" {
+		v.errorf(at, "the text is blank; leave it out to keep the base language's")
 	}
 }

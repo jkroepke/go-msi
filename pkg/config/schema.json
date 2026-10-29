@@ -857,6 +857,74 @@
               "license": {
                 "type": "string",
                 "description": "Replaces ui.license in this language."
+              },
+              "launch": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "Replaces ui.launch.text in this language; & marks the access key."
+                  }
+                }
+              },
+              "dialogs": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "Texts of ui.dialogs pages in this language, by dialog id. A text left out keeps the base language's.",
+                "additionalProperties": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "fields": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "Texts of the page's fields, by the property the field binds.",
+                      "additionalProperties": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                          "label": {
+                            "type": "string"
+                          },
+                          "options": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "description": "Labels of a choice field's options, by option value; & marks the access key.",
+                            "additionalProperties": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "maxLength": 64
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
           }
