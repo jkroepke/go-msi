@@ -260,6 +260,17 @@ var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 		"Property|s72|K|Identifier||||||The property set to the path a search finds.",
 		"Signature_|s72|K|Identifier||||||The search: a key into Signature and the locator tables.",
 	},
+	"CompLocator": {
+		"Signature_|s72|K|Identifier||||||The search this component location belongs to.",
+		"ComponentId|s38||Guid||||||The component code whose key path is searched.",
+		"Type|I2|||||0|1||0: the key path is a directory; 1: a file.",
+	},
+	"DrLocator": {
+		"Signature_|s72|K|Identifier||||||The search this folder location belongs to.",
+		"Parent|S72|K|Identifier||||||The search that finds the folder Path is relative to.",
+		"Path|S255|K|AnyPath||||||A full path, or one relative to Parent; may name properties in brackets.",
+		"Depth|I2|||||0|32767||How many levels below Path are searched.",
+	},
 	"RegLocator": {
 		"Signature_|s72|K|Identifier||||||The search this registry location belongs to.",
 		"Root|i2|||||0|3||The predefined registry root.",
