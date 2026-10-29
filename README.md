@@ -19,7 +19,7 @@ Installer (MSI) package. Write down what to install, run one command, ship the
 msi.yaml + your files  ──▶  msi-builder build  ──▶  app.msi
 ```
 
-msi-builder is a single Go binary without cgo, so the same command builds the
+msi-builder is a single, self-contained binary, so the same command builds the
 package on Linux, macOS and Windows: on your laptop, in a container or in
 a CI job next to the rest of your release.
 
