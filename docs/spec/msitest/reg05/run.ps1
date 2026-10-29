@@ -46,31 +46,30 @@ Set-Content -Encoding utf8 "$work\listener.ps1" $listener
 $proc = Start-Process powershell.exe -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$work\listener.ps1" -PassThru -WindowStyle Hidden
 for ($i = 0; $i -lt 100 -and -not (Test-Path $events); $i++) { Start-Sleep -Milliseconds 200 }
 if (-not (Test-Path $events)) { throw 'listener did not start' }
-
-function Mark([string]$text) {
-  for ($i = 0; $i -lt 20; $i++) {
-    try { [IO.File]::AppendAllText($events, "$(Get-Date -Format 'HH:mm:ss.fff') --- $text`r`n"); return }
-    catch { Start-Sleep -Milliseconds 50 }
-  }
-}
-
-function Msiexec([string]$log, [string[]]$msiArgs) {
-  $p = Start-Process msiexec.exe -ArgumentList ($msiArgs + @('/qn', '/l*vx', $log)) -PassThru
-  if (-not $p.WaitForExit(240000)) { $p.Kill(); return -1 }
-  $p.ExitCode
-}
-
-Add-Type -Namespace Reg05 -Name Shell -MemberDefinition '[DllImport("shell32.dll")] public static extern void SHChangeNotify(int e, uint f, IntPtr a, IntPtr b);'
-Mark 'control: SHChangeNotify(SHCNE_ASSOCCHANGED) from run.ps1'
-[Reg05.Shell]::SHChangeNotify(0x08000000, 0x1000, [IntPtr]::Zero, [IntPtr]::Zero)
-Start-Sleep -Seconds 3
-
-$report = New-Object System.Collections.Generic.List[string]
-$id = [Security.Principal.WindowsIdentity]::GetCurrent()
-$report.Add("# REG-05 run $(Get-Date -Format s) on $env:COMPUTERNAME as $($id.Name), session $((Get-Process -Id $PID).SessionId)")
-$report.Add("OS $([Environment]::OSVersion.VersionString); msi.dll $((Get-Item "$env:windir\System32\msi.dll").VersionInfo.FileVersion)")
-$keys = @{ probe = '.reg05p'; baseline = '.reg05b'; native = '.reg05n' }
 try {
+  function Mark([string]$text) {
+    for ($i = 0; $i -lt 20; $i++) {
+      try { [IO.File]::AppendAllText($events, "$(Get-Date -Format 'HH:mm:ss.fff') --- $text`r`n"); return }
+      catch { Start-Sleep -Milliseconds 50 }
+    }
+  }
+
+  function Msiexec([string]$log, [string[]]$msiArgs) {
+    $p = Start-Process msiexec.exe -ArgumentList ($msiArgs + @('/qn', '/l*vx', $log)) -PassThru
+    if (-not $p.WaitForExit(240000)) { $p.Kill(); return -1 }
+    $p.ExitCode
+  }
+
+  Add-Type -Namespace Reg05 -Name Shell -MemberDefinition '[DllImport("shell32.dll")] public static extern void SHChangeNotify(int e, uint f, IntPtr a, IntPtr b);'
+  Mark 'control: SHChangeNotify(SHCNE_ASSOCCHANGED) from run.ps1'
+  [Reg05.Shell]::SHChangeNotify(0x08000000, 0x1000, [IntPtr]::Zero, [IntPtr]::Zero)
+  Start-Sleep -Seconds 3
+
+  $report = New-Object System.Collections.Generic.List[string]
+  $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $report.Add("# REG-05 run $(Get-Date -Format s) on $env:COMPUTERNAME as $($id.Name), session $((Get-Process -Id $PID).SessionId)")
+  $report.Add("OS $([Environment]::OSVersion.VersionString); msi.dll $((Get-Item "$env:windir\System32\msi.dll").VersionInfo.FileVersion)")
+  $keys = @{ probe = '.reg05p'; baseline = '.reg05b'; native = '.reg05n' }
   foreach ($p in 'probe', 'baseline', 'native') {
     $report.Add("$p before: HKCR\$($keys[$p]) exists=$(Test-Path "Registry::HKEY_CLASSES_ROOT\$($keys[$p])")")
     foreach ($step in 'install', 'uninstall') {
@@ -81,7 +80,8 @@ try {
       Mark "$p $step end (exit $rc)"
       $ext = Test-Path "Registry::HKEY_CLASSES_ROOT\$($keys[$p])"
       $report.Add("$p $step : exit $rc; HKCR\$($keys[$p]) exists=$ext")
-      $text = Get-Content $log -Raw
+      $text = Get-Content $log -Raw -ErrorAction SilentlyContinue
+      if (-not $text) { $report.Add('  no log'); continue }
       foreach ($m in [regex]::Matches($text, '[^\r\n]*(SHChangeNotify|Doing action: (RegisterExtensionInfo|RegisterProgIdInfo|UnregisterExtensionInfo|UnregisterProgIdInfo|BuilderAssocChanged\w*))[^\r\n]*')) {
         $report.Add("  log: $($m.Value.Trim())")
       }
@@ -94,7 +94,10 @@ try {
   # Its key path is the .reg05p default, held by the null product GUID.
   Get-ChildItem $comps | Where-Object {
     ($_.GetValue('00000000000000000000000000000000') -as [string]) -like '*\.reg05p*'
-  } | ForEach-Object { $report.Add("cleanup: removed permanent component $($_.PSChildName)"); Remove-Item -Recurse -Force -ErrorAction Continue $_.PSPath }
+  } | ForEach-Object {
+    Remove-Item -Recurse -Force -ErrorAction Continue $_.PSPath
+    $report.Add("cleanup: permanent component $($_.PSChildName) removed=$(-not (Test-Path $_.PSPath))")
+  }
 } finally {
   # Always stop the listener, also when a step above fails.
   New-Item -ItemType File -Force $stop | Out-Null
