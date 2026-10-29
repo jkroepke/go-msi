@@ -88,6 +88,13 @@ Contradicted claims:
    did not write. Section 8 reported that such a service is left alone. A
    `ServiceControl` delete at install (event 8) removes it first, so nothing
    of it carries over.
+10. **`WindowsBuild` is 9600 on current Windows (PROP-02).** On Windows
+   Server 2025 (build 26100) the engine sets `VersionNT` 603 and
+   `WindowsBuild` 9600, the values of Windows 8.1, so `WindowsBuild` does not
+   tell Windows 10, 11 or Server releases apart as section 19.2 said. A
+   registry search of `CurrentBuildNumber` does (section 8.6), and
+   msi-builder's warning for version-bounded searches of Windows' own files
+   now names it.
 
 Settled unverified items and new facts:
 
@@ -200,7 +207,7 @@ Silent-failure cases a producer has to guard against itself:
 | CAB-05 | Confirmed | [log](msitest/results/CAB-05/zero-byte-file/log.md); missing external cabinet 1603 |
 | CAB-06 | Confirmed | [log](msitest/results/CAB-06/two-cabinets/log.md); wrong `LastSequence` or cabinet name case 1603 |
 | CAB-07 | Not run | P2 |
-| CAB-09 | Not run | P2 |
+| CAB-09 | Partial | [ci](msitest/results/CAB-09/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40940932552: cabinet.dll's FDI extracts a cabinet of 65535 entries, and the writer refuses 65536; FCI and smart-cabbed duplicates not run |
 | CAB-10 | Confirmed (external) | [results](#packages-above-2-gb-cab-10-cab-13); embedded variant not run |
 | CAB-13 | Confirmed | [results](#packages-above-2-gb-cab-10-cab-13) |
 | CAB-11 | Not run | msi-rs regression case; test a candidate writer |
@@ -209,14 +216,14 @@ Silent-failure cases a producer has to guard against itself:
 | MSZIP-02 | Confirmed | Go's trailing empty block and makecab's stream both extract and install (CAB-01, MSZIP-01) |
 | LZX-01 | Not run | P2, needs an LZX reference set |
 | LZX-02 | Not run | msi-rs regression case; test a candidate writer |
-| BUILD-01 | Not run | msi-rs regression case; test a candidate writer |
-| BUILD-02 | Not run | msi-rs regression case; test a candidate writer |
+| BUILD-01 | Confirmed (msi-builder) | [ci](msitest/results/BUILD-02/ci/log.md); `TestMissingInput`: a missing source fails the build with a diagnostic naming it and no package |
+| BUILD-02 | Confirmed (msi-builder) | [ci](msitest/results/BUILD-02/ci/log.md); `TestDeterministicAcrossProcesses`: 20 fresh processes build one SHA-256, on Linux and Windows runners; the two hosts' hashes are not compared |
 | INST-01 | Confirmed | Labelled substitute (published `minimal.msi` not in the repository), [x64](msitest/results/INST-01/x64-substitute/log.md) and [Intel](msitest/results/INST-01/intel-substitute/log.md) |
 | INST-02 | Confirmed | [admin](msitest/results/INST-02/admin/log.md), [non-admin](msitest/results/INST-02/nonadmin/log.md); SERVER2025, 2026-10-29, `msitest/inst02/run.ps1`: `MSIINSTALLPERUSER` selects the context of an `ALLUSERS=2` package for admins and standard users, files, HKMU, HKCR, shortcuts and registration follow it, a standard user's per-user install needs no Word Count bit 3, a per-machine one fails with 1925; a context switch in the UI sequence leaves the client-resolved `INSTALLDIR` in the old context; a major upgrade does not cross contexts |
 | FILE-01 | Confirmed | [empty version, REP 1401](msitest/results/FILE-01/empty-version-rep1401/log.md) deletes the file |
 | FILE-02 | Confirmed | [log](msitest/results/FILE-02/file-hash/log.md) |
 | FILE-03 | Confirmed | [removefile-upgrade](msitest/results/FILE-03/removefile-upgrade/log.md), [purge-upgrade](msitest/results/FILE-03/purge-upgrade/log.md); `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
-| FILE-04 | Inconclusive | [log](msitest/results/FILE-04/msifilehash/log.md): a correct, a wrong and a misnamed hash table repair the same way (`/fo` and `/fe` restore, `/fc` does not) |
+| FILE-04 | Confirmed | [ci](msitest/results/FILE-04/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40940932552: over an identical unmodified file, the `MsiFileHash` row skips the copy ("hash matches source file"), a wrong hash and the same rows in a `FileHash` table copy it; the earlier [repair runs](msitest/results/FILE-04/msifilehash/log.md) could not tell the variants apart |
 | FILE-05 | Confirmed | Same as FILE-02 |
 | FILE-06 | Confirmed | [probe](msitest/results/FILE-06/probe/log.md); in a Word Count 3 package the target folder and an administrative image kept the long part of the `short\|long` directory, and `SHORTFILENAMES=1` installed to the short one; [details](#short-name-packages-file-06) |
 | FILE-07 | Confirmed | [probe](msitest/results/FILE-07/probe/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40833269994: ICE30 reports two files with one short name in a folder, not two directories or a directory and a file; a normal install is unaffected, with `SHORTFILENAMES=1` one file overwrites the other, two directories merge and a directory beside a file of its short name fails with 1312 and 1603; [details](#duplicate-short-names-file-07) |
@@ -231,7 +238,7 @@ Silent-failure cases a producer has to guard against itself:
 | ENVVAR-01 | Contradicted | [log](msitest/results/ENVVAR-01/environment/log.md); finding 4; segment removal on uninstall confirmed |
 | PROP-01 | Not run | Needs a non-administrator elevated install |
 | SEARCH-01 | Not run | Interactive full UI |
-| SEARCH-02 | Not run | |
+| SEARCH-02 | Confirmed | [ci](msitest/results/SEARCH-02/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40940932552: a `minVersion` search finds `ucrtbase.dll` 10.0.26100.33648 in `System64Folder` with `minVersion` 6.0 but not at its real version, and a copy in a private folder at its real version (shimmed versions of OS files) |
 | SEARCH-03 | Confirmed | [direct-cmdline](msitest/results/SEARCH-03/direct-cmdline/log.md), [guarded-cmdline](msitest/results/SEARCH-03/guarded-cmdline/log.md), [direct-nosignature](msitest/results/SEARCH-03/direct-nosignature/log.md); `AppSearch` into `INSTALLDIR` overrides the command line; the guarded type-51 form does not; no `Signature` table gives 2228/1603; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
 | SEARCH-04 | Confirmed | [log](msitest/results/SEARCH-04/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40863315162: command line > search > default holds; `REG_DWORD` gives `#394802`, `REG_EXPAND_SZ` comes back expanded without `#%` (contradicts Microsoft's documentation), brackets stay literal; directory search adds a trailing `\` and finds nothing for a file; `"#394802" >= "#1000000"` is true (string compare) |
 | SEARCH-05 | Confirmed | [probe](msitest/results/SEARCH-05/probe/log.md) (raw rows), [ci](msitest/results/SEARCH-05/ci/log.md) (msi-builder YAML); GitHub `windows-latest` runner, 2026-10-29, CI run 40912856615: folder, file and component searches, depth, version, size, date and language bounds, `short\|long` filenames, first hit wins, command line kept |
@@ -242,6 +249,8 @@ Silent-failure cases a producer has to guard against itself:
 | UPG-05 | Confirmed | [never-early](msitest/results/UPG-05/never-early/log.md), [never-late](msitest/results/UPG-05/never-late/log.md), [neverperm-early](msitest/results/UPG-05/neverperm-early/log.md); early removal: only `NeverOverwrite` + `Permanent` in both versions keeps an edit; `NeverOverwrite` alone loses the resource. Late removal: `NeverOverwrite` alone keeps it, also when added later; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
 | UPG-06 | Confirmed | Same as UPG-03 |
 | UPG-07 | Confirmed | [ci](msitest/results/UPG-07/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40881913820: a lower-versioned file is deleted by the upgrade with removal at 1401 and 1501, the old file stays at 6551, `REINSTALLMODE=amus` installs the new one, a `/fa` repair restores it; CI run 40885964831: `TestMsiexecDowngradedFile` passed, so an authored `File.Version` above the installed one installs the new file (asserted by the test, no log kept) |
+| UPG-08 | Confirmed | [ci](msitest/results/UPG-08/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40940932552: 1.010.0 upgrades 1.9.0, and 1.9.0 over 1.010.0 is refused with 1603: the fields compare as numbers |
+| UPG-09 | Confirmed | [ci](msitest/results/UPG-09/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40940932552: an x86 package removes the x64 product of its upgrade code and installs to `Program Files (x86)`, and the reverse |
 | SVC-01 | Confirmed | [failure-actions table](msitest/results/SVC-01/failureactions-table-restart/log.md) 1939; [sc.exe recipe](msitest/results/SVC-01/sc-failure-recipe/log.md) works; without event 128 the service stays |
 | SVC-03 | Confirmed | [per-step](msitest/results/SVC-03/per-step/log.md); per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
 | SVC-04 | Confirmed | SERVER2025, 2026-10-29, windows_exporter with `EXTRA_FLAGS=--no-such-flag`: split rows (start `Wait=0`), from msi-builder and from the WiX-built package, install with exit 0 in 1–2 s and leave the service stopped; one row with `Wait=1` fails with 1920 after about 247 s of start retries and rolls back; [details](#service-start-without-waiting-svc-04) |
@@ -255,6 +264,7 @@ Silent-failure cases a producer has to guard against itself:
 | CA-04 | Confirmed | GitHub `windows-latest` runner, 2026-10-28, CI run 40787803798: netsh rejects `any` or `*` combined with other `remoteip=` entries (exit 1), accepts `ANY` and `*` alone and accepts `localsubnet,10.0.0.1`; quotes inside a quoted description are dropped; [details](#firewall-arguments-ca-04) |
 | CA-05 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40893135210 (PR #106): the engine copies the `Binary` program to `C:\Windows\Installer\MSIxxxx.tmp`, runs it in `C:\Windows\system32` and deletes it; deferred no-impersonate runs as LocalSystem, the rest as the user; exit 7 and exit 3010 are both error 1722 and msiexec 1603; [details](#exe-actions-ca-05) |
 | CA-06 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40925575633 (PR #117): `add rule name=all` fails in any case and quoted; `delete rule name=all` deletes every rule the other filters select, `"all"` and `\"all\"` included; unscoped with `dir=in` it deleted every inbound rule (208, two of them probe rules); names with spaces around `all` are ordinary names; [details](#reserved-firewall-rule-name-ca-06) |
+| CA-07 | Confirmed | [ci](msitest/results/CA-07/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40940932552: `localport=80,443,8000-8010` from the package and from a property is stored as written; uninstall removes the rule |
 | SHORTCUT-01 | Confirmed | [hkcu-folder](msitest/results/SHORTCUT-01/hkcu-folder/log.md), [file-component](msitest/results/SHORTCUT-01/file-component/log.md), [file-component-folder](msitest/results/SHORTCUT-01/file-component-folder/log.md), [advertised](msitest/results/SHORTCUT-01/advertised/log.md), [per-user](msitest/results/SHORTCUT-01/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-shortcut-01) |
 | SHORTCUT-02 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40882369236 (PR #98): the engine converts `PropVariantValue` to the property's type and formats it; a CLSID needs braces; an unknown name or a bad value is warning 1946 and the install goes on; [details](#shortcut-properties-shortcut-02) |
 | SHORTCUT-03 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI runs 40900720903 and 40908162979 (PR #105): WriteIniValues writes the `.url` as ANSI with CRLF, the shell reads the address, the `RemoveFile` row deletes it at uninstall after the shell added a section; [details](#shortcut-targets-shortcut-03-shortcut-04) |
@@ -276,7 +286,8 @@ Silent-failure cases a producer has to guard against itself:
 | SIG-07 | Not run | msi-rs regression case; test a candidate writer |
 | SIG-08 | Confirmed | [Signed external cabinets](#signed-external-cabinets-sig-08-sig-09): WinVerifyTrust, `Get-AuthenticodeSignature` and `signtool` accept msi-builder cabinet signatures; `MsiGetFileSignatureInformation` reports the signature value |
 | SIG-09 | Confirmed | [Signed external cabinets](#signed-external-cabinets-sig-08-sig-09): msiexec refuses changed, swapped, re-signed and unsigned cabinets when Hash is the signature value; trust is not checked |
-| INT-01…03 | Not run | WiX 5.0.2 is on the machine and wixl 0.106 runs in a container since ENV-02 (2026-10-29); ENV-02 covers only one-file packages; INT-02 and INT-03 also need msitools' `msibuild` and `msiinfo`, which `build-wixl.sh` does not install |
+| INT-01 | Confirmed (one-file packages) | Covered by [ENV-02](#wix-and-msitools-one-file-packages-env-02): equivalent WiX 5.0.2 and wixl 0.106 packages compared and installed |
+| INT-02, INT-03 | Not run | They test msitools (a libmsi round trip, its bug reports), not a package msi-builder writes; they also need msitools' `msibuild` and `msiinfo`, which `build-wixl.sh` does not install |
 
 ## WiX and msitools one-file packages (ENV-02)
 
