@@ -1593,7 +1593,7 @@ func (v *validator) environment(envPath string, env *Environment, perUser bool) 
 	v.oneOf(envPath+".action", env.Action, "set", "setIfAbsent", "append", "prepend", "remove")
 	v.oneOf(envPath+".scope", env.Scope, "machine", "user")
 
-	if env.Scope == "machine" && perUser {
+	if env.Scope == envMachine && perUser {
 		v.errorf(envPath+".scope", "%s cannot change machine variables", v.perUserPackage())
 	}
 
@@ -2357,34 +2357,23 @@ func lateRemoval(cfg *Config) bool {
 	return cfg.Upgrade.RemoveOld == PreserveRemoveOld || cfg.Upgrade.RemoveOld == "afterInstallFinalize"
 }
 
-// machineRegistry reports whether a component writes a registry value to
-// a per-machine root: HKLM (also for event log sources) and HKU, and HKMU
-// and HKCR unless the package only installs per user.
+// machineRegistry reports whether a component writes or removes per-machine
+// registry data: HKLM and HKU values and removals, event log sources and
+// machine environment variables (HKLM values too), and HKMU and HKCR
+// values, removals and file types unless the package only installs per
+// user.
 func machineRegistry(cfg *Config, comp *Component) bool {
-	// Event log sources are HKLM values of the component too, and file
-	// types HKCR values outside a per-user package.
+	perUser := cfg.Package.Scope == ScopePerUser
+
 	if len(comp.EventLog) > 0 {
 		return true
 	}
 
-	for _, file := range comp.Files {
-		if len(file.FileTypes) > 0 && cfg.Package.Scope != ScopePerUser {
-			return true
-		}
-	}
+	roots := componentRoots(comp)
 
-	for _, reg := range comp.Registry {
-		switch reg.Root {
-		case rootHKLM, "HKU":
-			return true
-		case rootHKMU, "HKCR":
-			if cfg.Package.Scope != ScopePerUser {
-				return true
-			}
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(roots, func(root string) bool {
+		return root == rootHKLM || root == "HKU" || !perUser && (root == rootHKMU || root == "HKCR")
+	})
 }
 
 // rootHKLM and rootHKMU are the machine and the context-dependent registry
@@ -2392,4 +2381,34 @@ func machineRegistry(cfg *Config, comp *Component) bool {
 const (
 	rootHKLM = "HKLM"
 	rootHKMU = "HKMU"
+	// envMachine is the scope of a system environment variable.
+	envMachine = "machine"
 )
+
+// componentRoots lists the registry roots a component writes to or
+// removes from: its values and removals, HKCR for its file types and HKLM
+// for its machine environment variables.
+func componentRoots(comp *Component) []string {
+	roots := make([]string, 0, len(comp.Registry)+len(comp.RemoveRegistry)+len(comp.Files))
+	for _, reg := range comp.Registry {
+		roots = append(roots, reg.Root)
+	}
+
+	for _, entry := range comp.RemoveRegistry {
+		roots = append(roots, entry.Root)
+	}
+
+	for _, file := range comp.Files {
+		if len(file.FileTypes) > 0 {
+			roots = append(roots, "HKCR")
+		}
+	}
+
+	for _, env := range comp.Environment {
+		if env.Scope == envMachine {
+			roots = append(roots, rootHKLM)
+		}
+	}
+
+	return roots
+}

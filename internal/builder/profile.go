@@ -66,34 +66,23 @@ func (b *build) keepsKeyPath(comp *config.Component) bool {
 	return b.machineRegistry(comp)
 }
 
-// machineRegistry reports whether a component writes a registry value to a
-// per-machine root: HKLM (also for event log sources) and HKU, and HKMU
-// and HKCR unless the package only installs per user.
+// machineRegistry reports whether a component writes or removes
+// per-machine registry data, as the validator decides it: HKLM and HKU
+// values and removals, event log sources and machine environment
+// variables, and HKMU and HKCR values, removals and file types
+// (filetypes.go) unless the package only installs per user.
 func (b *build) machineRegistry(comp *config.Component) bool {
-	// Event log sources are HKLM values of the component too, and file
-	// types HKCR values outside a per-user package (filetypes.go).
+	perUser := b.cfg.Package.Scope == config.ScopePerUser
+
 	if len(comp.EventLog) > 0 {
 		return true
 	}
 
-	for _, file := range comp.Files {
-		if len(file.FileTypes) > 0 && b.cfg.Package.Scope != config.ScopePerUser {
-			return true
-		}
-	}
+	roots := componentRoots(comp)
 
-	for _, reg := range comp.Registry {
-		switch reg.Root {
-		case rootHKLM, rootHKU:
-			return true
-		case rootHKMU, rootHKCR:
-			if b.cfg.Package.Scope != config.ScopePerUser {
-				return true
-			}
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(roots, func(root string) bool {
+		return root == rootHKLM || root == rootHKU || !perUser && (root == rootHKMU || root == rootHKCR)
+	})
 }
 
 // hashProfileKeyPaths adds a marker to the ProductCode digest when a
@@ -113,4 +102,32 @@ func (b *build) lateRemoval() bool {
 	upg := b.cfg.Upgrade
 
 	return upg != nil && !upg.Disabled && (upg.RemoveOld == config.PreserveRemoveOld || upg.RemoveOld == "afterInstallFinalize")
+}
+
+// componentRoots lists the registry roots a component writes to or
+// removes from: its values and removals, HKCR for its file types and HKLM
+// for its machine environment variables.
+func componentRoots(comp *config.Component) []string {
+	roots := make([]string, 0, len(comp.Registry)+len(comp.RemoveRegistry)+len(comp.Files))
+	for _, reg := range comp.Registry {
+		roots = append(roots, reg.Root)
+	}
+
+	for _, entry := range comp.RemoveRegistry {
+		roots = append(roots, entry.Root)
+	}
+
+	for _, file := range comp.Files {
+		if len(file.FileTypes) > 0 {
+			roots = append(roots, rootHKCR)
+		}
+	}
+
+	for _, env := range comp.Environment {
+		if env.Scope == envMachine {
+			roots = append(roots, rootHKLM)
+		}
+	}
+
+	return roots
 }

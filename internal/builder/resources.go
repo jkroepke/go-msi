@@ -20,6 +20,8 @@ const (
 	rootHKCU = "HKCU"
 	rootHKLM = "HKLM"
 	rootHKU  = "HKU"
+	// envMachine is the scope of a system environment variable.
+	envMachine = "machine"
 )
 
 var registryRoots = map[string]int{rootHKMU: -1, rootHKCR: 0, rootHKCU: 1, rootHKLM: 2, rootHKU: 3} //nolint:gochecknoglobals // lookup table
@@ -169,7 +171,7 @@ func (b *build) writeEnvironment(info *componentInfo) {
 			prefix += "-"
 		}
 
-		if env.Scope == "machine" {
+		if env.Scope == envMachine {
 			prefix += "*"
 		}
 

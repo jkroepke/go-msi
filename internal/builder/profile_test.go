@@ -190,6 +190,8 @@ func TestProfileKeyPathKeptKeyFile(t *testing.T) {
 	for _, extra := range []string{
 		"preserve: true", "neverOverwrite: true", "sharedDllRefCount: true", "services: [{ name: acme }]",
 		`eventLog: [{ source: Acme, messageFile: "[#app.exe]" }]`,
+		`environment: [{ name: ACME_HOME, value: "[INSTALLDIR]" }]`,
+		`removeRegistry: [{ root: HKLM, key: Software\Acme }]`,
 	} {
 		res := mustBuild(t, scopedShortcutConfig(t, "perMachine",
 			"  - { id: Kept, directory: AppDataFolder/Acme, files: [{ source: app.exe }], "+extra+" }\n"))

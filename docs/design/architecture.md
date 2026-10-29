@@ -286,7 +286,10 @@ Pipeline, each step a file of its own:
    are taken before any is generated, once the files are read. Duplicates
    would break `SHORTFILENAMES=1` installs (FILE-07).
 4. **Components, features, files, media**: attributes (64-bit bit 256,
-   permanent, transitive, …), key paths, `CreateFolder` rows, file sequence
+   permanent, transitive, …), key paths (a component below a profile folder
+   gets a generated HKCU value as key path after its ComponentId is
+   derived, INST-04; `profile.go`, which also adds a marker to the automatic
+   ProductCode), `CreateFolder` rows, file sequence
    order (canonical directory, name, key), one `Media` row and one embedded
    cabinet, `File.Attributes` (vital, checksum, read-only, hidden, system),
    and the `Shortcut` and `MsiShortcutProperty` rows with the generated component that carries them
