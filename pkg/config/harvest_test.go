@@ -413,3 +413,78 @@ func TestHarvestWarnsAboutYAMLFolder(t *testing.T) {
 		}
 	}
 }
+
+func TestHarvestWarnsWithRelativeBaseDir(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	yamlDir := filepath.Join(root, "packaging")
+
+	if err := os.Mkdir(yamlDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(yamlDir, "msi.yaml"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Load sets BaseDir as the YAML path was given, often relative.
+	base, err := filepath.Rel(cwd, yamlDir)
+	if err != nil {
+		t.Skip("the temporary folder has no relative path from here")
+	}
+
+	for _, src := range []string{"..", root} {
+		cfg, err := config.Parse([]byte(harvestHeader+"harvest: [{ source: '"+src+"' }]\n"), config.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		cfg.BaseDir = base
+
+		diags := cfg.HarvestFiles()
+		if len(diags) != 1 || diags[0].Severity != config.SeverityWarning || diags[0].Path != "harvest[0].source" {
+			t.Errorf("source %s: diagnostics %s, want one warning at harvest[0].source", src, diags)
+		}
+	}
+}
+
+func TestHarvest32BitFolderWarnsOnce(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		bitness string
+		want    int
+	}{{"", 1}, {"32", 0}} {
+		section := "harvest: [{ source: dist/lib, directory: ProgramFilesFolder/Harvest"
+		if tc.bitness != "" {
+			section += ", bitness: '" + tc.bitness + "'"
+		}
+
+		cfg, diags, _ := harvest(t, harvestFS(), section+" }]\n")
+		if diags.Err() != nil {
+			t.Fatal(diags)
+		}
+
+		warnings := 0
+
+		for _, d := range config.Validate(cfg) {
+			if strings.Contains(d.Message, "ICE80") {
+				warnings++
+
+				if d.Path != "harvest[0].directory" {
+					t.Errorf("ICE80 warning at %s, want harvest[0].directory", d.Path)
+				}
+			}
+		}
+
+		if warnings != tc.want {
+			t.Errorf("bitness %q: %d ICE80 warnings, want %d", tc.bitness, warnings, tc.want)
+		}
+	}
+}

@@ -709,7 +709,8 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 	perUser := cfg.Package.Scope == ScopePerUser
 	top := known.topFolder(comp.Directory)
 
-	if cfg.Package.Platform.Is64Bit() && comp.Bitness != "32" && folders32[top] {
+	// A harvest entry reports this once, not once per file.
+	if cfg.Package.Platform.Is64Bit() && comp.Bitness != "32" && folders32[top] && !comp.harvested {
 		v.warnf(compPath+".directory", "%s is the 32-bit folder on 64-bit Windows (ICE80); "+
 			"use its 64-bit counterpart", top)
 	}

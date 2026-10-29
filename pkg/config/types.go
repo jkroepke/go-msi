@@ -232,6 +232,8 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	firewallFeature string
 	// carrierOf is that feature.
 	carrierOf *Feature
+	// harvested marks a component that a harvest entry added.
+	harvested bool
 }
 
 // FirewallFeature returns the feature whose firewall rules the component

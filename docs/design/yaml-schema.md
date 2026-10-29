@@ -849,9 +849,10 @@ when `source` is that folder or one above it.
   path below it, exactly as `Config.AddTree` derives them. They are stable
   between builds of the same input. A major upgrade presumably does not
   depend on them, since components are matched by GUID (inferred, not
-  tested). Diagnostics name a harvested file as `harvest[0]{bin/app.exe}`,
-  and a file's `source` (also in `builder.Result.Files`) is its path below
-  the entry's `source`.
+  tested). Diagnostics name a harvested file as `harvest[0]{bin/app.exe}`.
+  A harvested file's `source` (also in `builder.Result.Files`) is its path
+  below the entry's `source` when the folder is read from disk, and its
+  path in `Config.FS`, with the entry's `source` in front, when that is set.
 - **Patterns.** `include` and `exclude` take one pattern or a list, in the
   syntax of [doublestar](https://github.com/bmatcuk/doublestar): `*`, `?`,
   `[a-z]` and `{a,b}` within one name, and a `**` folder for any number of
@@ -867,10 +868,11 @@ when `source` is that folder or one above it.
   harvest without any file are errors, unless the patterns leave them out.
   So is a file that another component or harvest installs to the same path:
   exclude it here to give it a component of its own, for example one with
-  `permissions`, `preserve` or a shortcut. In an x64 package, a harvest into
-  a 32-bit folder such as `ProgramFilesFolder` needs `bitness: 32` (ICE80).
-  `longFileNames: false` cannot be
+  `permissions`, `preserve` or a shortcut. `longFileNames: false` cannot be
   combined with `harvest`, since harvested names need not be 8.3 names.
+- **32-bit folders.** In an x64 package, a harvest into a 32-bit folder
+  such as `ProgramFilesFolder` gets one warning (ICE80) unless it sets
+  `bitness: 32`, which makes every harvested component 32-bit.
 - **When.** `msi-builder validate` checks the entries but does not read the
   folders; `msi-builder build` and `builder.Build` expand them first and
   then validate the whole package. In Go, `Config.HarvestFiles` expands

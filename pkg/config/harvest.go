@@ -50,6 +50,7 @@ func (c *Config) HarvestFiles() Diagnostics {
 			// below its source.
 			comp.origin = fmt.Sprintf("%s{%s}", entryPath, rel)
 			comp.Bitness = entry.Bitness
+			comp.harvested = true
 			file.AllowUnversionedExecutable = entry.AllowUnversionedExecutable
 		}
 
@@ -130,7 +131,19 @@ func (c *Config) holdsYAMLFile(src string) bool {
 		dir = filepath.Join(c.BaseDir, dir)
 	}
 
-	rel, err := filepath.Rel(dir, c.BaseDir)
+	// Load leaves BaseDir relative ("." for msi.yaml), which Rel cannot
+	// compare with an absolute source.
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return false
+	}
+
+	base, err := filepath.Abs(c.BaseDir)
+	if err != nil {
+		return false
+	}
+
+	rel, err := filepath.Rel(dir, base)
 
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
@@ -171,9 +184,7 @@ func (v *validator) harvest(cfg *Config, known *refs) {
 			v.errorf(entryPath, "longFileNames is false, which needs 8.3 file names, but harvested files keep their own names")
 		}
 
-		if known.dirs[entry.Directory] == nil {
-			v.errorf(entryPath+".directory", "directory %q is not defined", entry.Directory)
-		}
+		v.harvestDirectory(cfg, known, entryPath, entry)
 
 		v.harvestFeature(cfg, entryPath, entry, features)
 
@@ -183,6 +194,21 @@ func (v *validator) harvest(cfg *Config, known *refs) {
 
 		v.harvestPatterns(entryPath+".include", entry.Include)
 		v.harvestPatterns(entryPath+".exclude", entry.Exclude)
+	}
+}
+
+// harvestDirectory checks the directory an entry installs to.
+func (v *validator) harvestDirectory(cfg *Config, known *refs, entryPath string, entry *Harvest) {
+	if known.dirs[entry.Directory] == nil {
+		v.errorf(entryPath+".directory", "directory %q is not defined", entry.Directory)
+
+		return
+	}
+
+	top := known.topFolder(entry.Directory)
+	if cfg.Package.Platform.Is64Bit() && entry.Bitness != "32" && folders32[top] {
+		v.warnf(entryPath+".directory", "%s is the 32-bit folder on 64-bit Windows (ICE80); "+
+			"set bitness: 32 for 32-bit files, or use its 64-bit counterpart", top)
 	}
 }
 

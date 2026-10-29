@@ -440,3 +440,67 @@ func TestBuildHarvestFromDisk(t *testing.T) {
 		}
 	}
 }
+
+// harvestGUIDs builds a harvest of source from fsys and returns each
+// file's ComponentId by its lower-case long name.
+func harvestGUIDs(t *testing.T, fsys fs.FS, source string) map[string]any {
+	t.Helper()
+
+	cfg := harvestConfig(t, fsys)
+	cfg.Harvest[0].Source = source
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, res.Diagnostics)
+	}
+
+	codes := make(map[any]any)
+	for _, row := range rows(t, res.Database, "Component") {
+		codes[row[0]] = row[1]
+	}
+
+	guids := make(map[string]any)
+
+	for _, row := range rows(t, res.Database, "File") {
+		name := fmt.Sprint(row[2])
+		if i := strings.IndexByte(name, '|'); i >= 0 {
+			name = name[i+1:]
+		}
+
+		guids[strings.ToLower(name)] = codes[row[1]]
+	}
+
+	for _, f := range res.Files {
+		if !strings.HasPrefix(f.Source, source+"/") {
+			t.Errorf("source %s with Config.FS, want it below %s/", f.Source, source)
+		}
+	}
+
+	return guids
+}
+
+func TestHarvestGUIDsFollowInstallPaths(t *testing.T) {
+	t.Parallel()
+
+	// The same install paths from a moved source folder whose names
+	// changed case: the components keep their codes.
+	before := harvestGUIDs(t, fstest.MapFS{
+		"dist/readme.txt":     {Data: []byte("v1")},
+		"dist/conf/Notes.txt": {Data: []byte("v1")},
+	}, "dist")
+	after := harvestGUIDs(t, fstest.MapFS{
+		"build/dist/README.txt":     {Data: []byte("v2")},
+		"build/dist/Conf/NOTES.txt": {Data: []byte("v2")},
+		"build/dist/new.txt":        {Data: []byte("new")},
+	}, "build/dist")
+
+	for _, name := range []string{"readme.txt", "notes.txt"} {
+		if before[name] == nil || before[name] != after[name] {
+			t.Errorf("%s: ComponentId %v before the move, %v after", name, before[name], after[name])
+		}
+	}
+
+	if after["new.txt"] == nil || after["new.txt"] == after["readme.txt"] {
+		t.Errorf("new.txt has ComponentId %v", after["new.txt"])
+	}
+}
