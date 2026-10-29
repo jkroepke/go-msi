@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -382,7 +383,7 @@ func TestWindowsExporter(t *testing.T) {
 	}
 
 	// Services.
-	if len(rows(t, database, "ServiceInstall")) != 1 || len(rows(t, database, "ServiceControl")) != 1 {
+	if len(rows(t, database, "ServiceInstall")) != 1 || len(rows(t, database, "ServiceControl")) != 2 {
 		t.Error("service rows")
 	}
 
@@ -812,6 +813,63 @@ func TestServiceRecoverySteps(t *testing.T) {
 	want := `failure "windows_exporter" reset= 86400 actions= restart/60000/restart/300000/none/0`
 	if !strings.HasSuffix(fmt.Sprint(target), want) {
 		t.Errorf("recovery command %q, want suffix %q", target, want)
+	}
+}
+
+// Wait is a column of the ServiceControl row, so a start that waits
+// differently from the stop and delete events gets a row of its own.
+func TestServiceControlWait(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "0.32.0.5", Languages: []int{1033}})
+	inputs := map[string][]byte{
+		"windows_exporter.exe": exe,
+		"icon.ico":             append([]byte{0, 0, 1, 0, 1, 0}, bytes.Repeat([]byte{0xAB}, 64)...),
+	}
+
+	for _, tc := range []struct {
+		name                       string
+		start, stop, wait, onStart bool
+		want                       string
+	}{
+		{name: "same wait", start: true, stop: true, wait: true, onStart: true, want: "sc_windows_exporter/163/1"},
+		{name: "start without wait", start: true, stop: true, wait: true, onStart: false, want: "sc_windows_exporter/162/1 scs_windows_exporter/1/0"},
+		{name: "only start waits", start: true, stop: true, wait: false, onStart: true, want: "sc_windows_exporter/162/0 scs_windows_exporter/1/1"},
+		{name: "start only", start: true, stop: false, wait: true, onStart: false, want: "sc_windows_exporter/1/0"},
+		{name: "no start", start: false, stop: true, wait: true, onStart: false, want: "sc_windows_exporter/162/1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := example(t, "windows_exporter", map[string]string{"VERSION": "0.32.0.5"}, inputs)
+
+			for _, comp := range cfg.Components {
+				for _, svc := range comp.Services {
+					svc.Control = config.ServiceControl{
+						StartOnInstall: new(tc.start), StopOnInstall: new(tc.stop), StopOnUninstall: new(tc.stop),
+						DeleteOnUninstall: new(tc.stop), Wait: new(tc.wait), WaitForStart: new(tc.onStart),
+					}
+				}
+			}
+
+			database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			controls := rows(t, database, "ServiceControl")
+			got := make([]string, 0, len(controls))
+
+			for _, row := range controls {
+				got = append(got, fmt.Sprintf("%v/%v/%v", row[0], row[2], row[4]))
+			}
+
+			slices.Sort(got)
+
+			if strings.Join(got, " ") != tc.want {
+				t.Errorf("ServiceControl rows %q, want %q", strings.Join(got, " "), tc.want)
+			}
+		})
 	}
 }
 

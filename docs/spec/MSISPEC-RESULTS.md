@@ -221,6 +221,7 @@ Silent-failure cases a producer has to guard against itself:
 | UPG-06 | Confirmed | Same as UPG-03 |
 | SVC-01 | Confirmed | [failure-actions table](msitest/results/SVC-01/failureactions-table-restart/log.md) 1939; [sc.exe recipe](msitest/results/SVC-01/sc-failure-recipe/log.md) works; without event 128 the service stays |
 | SVC-03 | Confirmed | [per-step](msitest/results/SVC-03/per-step/log.md); per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
+| SVC-04 | Confirmed | SERVER2025, 2026-10-29, windows_exporter with `EXTRA_FLAGS=--no-such-flag`: split rows (start `Wait=0`), from msi-builder and from the WiX-built package, install with exit 0 in 1–2 s and leave the service stopped; one row with `Wait=1` fails with 1920 after about 247 s of start retries and rolls back; [details](#service-start-without-waiting-svc-04) |
 | CA-01 | Contradicted | Per-user (`Assignment=0`), elevated administrator: a deferred EXE action failing [after PublishProduct](msitest/results/CA-01/fail-after-publishproduct/log.md) or [after InstallFiles](msitest/results/CA-01/fail-after-installfiles/log.md) rolls back completely (1603, no `Products` or `UserData` key left, state unknown); finding 7 |
 | CA-02 | Confirmed | EXE exit 1 fails unless Continue; [type-6 return 5](msitest/results/CA-02/vbs-binary-return-5-immediate/log.md) ends with 0 and skips the rest; [deferred](msitest/results/CA-02/vbs-binary-return-5-deferred/log.md) leaves files unregistered |
 | CA-03 | Confirmed | GitHub `windows-latest` (x64) and `windows-11-arm` runners, 2026-10-28, `TestMsiexecRunActions`: every stdout and stderr line of the seven run actions is in the verbose log as `GoMsiRun:`, `whoami` shows LocalSystem versus the user, brackets stay literal, OEM and UTF-8 output decode, exit 3 with `Continue` returns 1, exit 7 fails with 1603 and runs the rollback action with the hidden command absent; Arm64 package native and x64 package under emulation on Arm; repeated on SERVER2025 with the same result; [details](#embedded-custom-action-dll-ca-03) |
@@ -551,3 +552,35 @@ commands and outputs are in
   the log key exists to maintain.
 - Not run: other tools that might read `CustomSource`, a custom log
   instead of `Application`, `CategoryMessageFile`, and Windows Server 2016.
+
+## Service start without waiting (SVC-04)
+
+Run on 2026-10-29 on SERVER2025 (Windows Server 2025 10.0.26100.1742), as
+part of the windows_exporter real-world check. The same windows_exporter
+0.90.0 binary was packaged three ways and installed with
+`msiexec /i <msi> EXTRA_FLAGS=--no-such-flag /qn`. The exporter rejects the
+flag: the service reports running for a moment, then exits with an error. The
+service has recovery set to restart after 60 s, three times.
+
+| Package | `ServiceControl` rows | Exit | Duration | Result |
+| --- | --- | --- | --- | --- |
+| WiX-built | event 1 `Wait=0`; event 162 `Wait=1` | 0 | 1.0 s | Installed, service stopped |
+| msi-builder `3d7acd4` (`waitForStart: false`) | `scs_` event 1 `Wait=0`; `sc_` event 162 `Wait=1` | 0 | 2.1 s | Installed, service stopped (exit code 1066, service exit code 1) |
+| msi-builder `2e527f8` | event 163 `Wait=1` | 1603 | 248.9 s | Error 1920 at StartServices, rolled back |
+
+- With split rows, the System log shows one start and crash (7045, 7036
+  running, 7031, 7024, 7036 stopped) and the install completes. The 7031
+  entry announces a recovery restart in 60 s; the restart itself was not
+  recorded. Uninstall of that package exited 0, and `sc query` no longer
+  found the service. A default install of the `3d7acd4` package started the
+  service and answered `/health` with 200.
+- With one `Wait=1` row, StartServices began at 13:04:56.7 and logged 1920 at
+  13:09:03.8, about 247 s later. In that time the System log shows 18 × 7031
+  and 18 × 7024, a start-and-crash cycle every 12–24 s. Recovery allows only
+  three restarts 60 s apart, so the installer most likely retries the start;
+  the verbose log was not checked for retry lines, so this is an inference.
+  The documented 30 s limit does not describe this case.
+- After the uninstall of the `3d7acd4` package, an empty `config.yaml` that
+  windows_exporter's own `CreateConfigFile` action wrote at install time
+  stays in the install folder; the WiX-built package leaves it too.
+- Not run: a service without recovery actions, and Windows Server 2016.

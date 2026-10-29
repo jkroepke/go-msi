@@ -72,6 +72,11 @@ func TestWindowsExporterExample(t *testing.T) {
 		t.Errorf("service defaults: %+v", svc)
 	}
 
+	// waitForStart is set; wait keeps its default.
+	if !*svc.Control.Wait || svc.Control.WaitForStart == nil || *svc.Control.WaitForStart {
+		t.Errorf("service control: wait %v, waitForStart %v", *svc.Control.Wait, svc.Control.WaitForStart)
+	}
+
 	if cfg.Product.ProductCode != config.Auto || cfg.Product.Description != "windows_exporter 0.32.0 installer" {
 		t.Errorf("product defaults: %+v", cfg.Product)
 	}
