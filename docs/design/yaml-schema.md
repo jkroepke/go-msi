@@ -77,7 +77,7 @@ closes each one.
 | Corrupted cabinet data (MSZIP-01, CAB-04) | Wrong DEFLATE history, or a bit flip without a checksum, installs a corrupted file | Writer: every cabinet data block gets a checksum, and the builder re-extracts every cabinet after writing it and compares each file's SHA-256 with the source. Neither can be turned off, so the schema has no field for them. |
 | Script custom actions (CA-02) | Inline JScript/VBScript actions (types 37/38) report success whatever they return; a Binary script returning 5 ends the install with 0 and leaves files unregistered | There are no script custom actions. Actions run an executable (`exec`, `execProperty`, `exe`), a command through msi-builder's DLL (`run`), a DLL (`dll`), set a property or directory, or fail with an error. |
 | EXE exit codes (CA-02) | Any non-zero exit fails the install unless the action ignores it | `customActions[].return` is required for `exec`, `execProperty`, `exe` and `run` actions (`check` or `ignore`), so the author decides. |
-| Same ProductCode, new package (UPG-03) | Installing a rebuilt package over the installed one fails with 1638 | `product.productCode: auto` derives the code from the upgrade code, version, platform and a digest of every input, including the contents of the wizard's licenses and theme pictures; the release that added these derives a new code once for every configuration that uses them. Changed content gives a new ProductCode (a major upgrade); unchanged content gives the same package byte for byte. Keys whose value means the same as a missing key (null, `""`, `[]`, `{}`) are left out of the digest, so a key a later version adds to the schema (as a pointer, string, list or mapping, or left out when empty) does not change the code of a configuration that does not use it; `false` and `0` stay in, since an explicit `secure: false` is not the default. The release that introduced this pruning derives a new code once for every configuration, unchanged ones included. A pinned ProductCode makes the validator warn. |
+| Same ProductCode, new package (UPG-03) | Installing a rebuilt package over the installed one fails with 1638 | `product.productCode: auto` derives the code from the upgrade code, version, platform and a digest of every input, including the contents of the wizard's licenses and theme pictures; the release that added these derives a new code once for every configuration that uses them. Changed content gives a new ProductCode (a major upgrade); unchanged content gives the same package byte for byte. Keys whose value means the same as a missing key (null, `""`, `[]`, `{}`) are left out of the digest, so a key a later version adds to the schema (as a pointer, string, list or mapping, or left out when empty) does not change the code of a configuration that does not use it; `false` and `0` stay in, since an explicit `secure: false` is not the default. The release that introduced this pruning derives a new code once for every configuration, unchanged ones included, and so do the renames of `ui` keys (`wizard` to `enabled`, `installDirPage` to `chooseDirectory`) for every configuration that sets them. A pinned ProductCode makes the validator warn. |
 | Quote in a firewall rule description (CA-04) | netsh drops the quote and stores the rest of the description | `firewall[].name` and `firewall[].description` must not contain a double quote. |
 | Firewall rule named `all` (CA-06) | `add rule` refuses the name, `delete rule name=all dir=in` deletes every inbound rule, in lower or upper case and with or without double quotes (also `\"all\"` through `cmd`) | `firewall[].name` must not be `all` in any case (spaces around it included) and must not contain `[` or `]`. |
 | Versions that differ in the fourth field only (UPG-01) | Without an inclusive maximum both products stay installed side by side | `upgrade.allowSameVersion` defaults to `true` (maximum inclusive), so `0.32.0.5` replaces `0.32.0.4`. Four-field versions get a warning that Windows compares only three. |
@@ -1649,8 +1649,9 @@ ui:
 
 The wizards are written from scratch for msi-builder, including the bitmaps,
 which the `artwork` package draws from a colour palette at build time.
-`enabled: true` shows the wizard: welcome, ready, progress and finish; `chooseFeatures`
-adds the feature tree (`CustomizeDlg`) with Browse and disk usage. Browse
+`enabled: true` shows the wizard: welcome, ready, progress and finish;
+`chooseFeatures` adds the feature tree (`CustomizeDlg`) with Browse and
+disk usage. Browse
 changes the directory of the selected feature (`features[].directory`); the
 generated `MainFeature` has the install dir. Every wizard includes
 maintenance (Repair and Remove; Change with the feature tree), cancel, user
@@ -1681,7 +1682,7 @@ for the same reason, and so is a choice on a property that another field
 binds too. In the full UI the group starts on the default and selecting
 another option sets the property on the server (UI-05, observed on Windows). `after` names the
 page the dialog follows: `WelcomeDlg`, `CustomizeDlg` or an added dialog.
-Without `enabled` no UI tables are written and msiexec shows its basic
+With `enabled: false` (the default) no UI tables are written and msiexec shows its basic
 progress window; silent installs never depend on the UI in any mode.
 Without `chooseFeatures` `ARPNOMODIFY` is set. A feature tree page without
 the wizard is an error.

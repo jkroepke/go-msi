@@ -107,6 +107,7 @@ func TestParseErrors(t *testing.T) {
 		"bad step key":      {"schema: msi-builder/v1\ncomponents: [{services: [{recovery: {actions: [{reboot: 1m}]}}]}]\n", "{restart: <delay>}"},
 		"null step delay":   {"schema: msi-builder/v1\ncomponents: [{services: [{recovery: {actions: [{restart: ~}]}}]}]\n", "needs a delay"},
 		"former wizard key": {"schema: msi-builder/v1\nui: {wizard: true}\n", "wizard"},
+		"enabled value":     {"schema: msi-builder/v1\nui: {enabled: featureTree}\n", "into bool"},
 		"null option": {
 			"schema: msi-builder/v1\nui: {dialogs: [{id: D, title: T, after: X, fields: [{property: P, type: choice, options: [a, b, ~]}]}]}\n",
 			"an option cannot be empty",
