@@ -8,7 +8,8 @@
 // timestamps and state bits are zero, and an empty stream starts at
 // ENDOFCHAIN. Identical input gives identical bytes.
 //
-// Only root-level streams are supported, which is all a package needs.
+// Root-level streams and root-level storages that hold streams are
+// supported: a package with embedded transforms needs one level of storages.
 //
 // WriteTo streams: it needs every stream's size up front, lays the file out
 // from the sizes alone and then copies the large streams through, so a
@@ -75,9 +76,19 @@ type Source struct {
 	Size int64
 }
 
+// Storage is one named root-level storage, such as a transform embedded in a
+// package, holding streams. Its name follows the rules of a stream name.
+type Storage struct {
+	Name    string
+	Streams []Source
+	CLSID   [16]byte
+}
+
 // Layout reports where WriteTo put each stream.
 type Layout struct {
-	// Offsets maps each stream name to the file offset of its first byte.
+	// Offsets maps each stream name to the file offset of its first byte;
+	// a stream in a storage is named "storage/stream" (CFB names cannot
+	// contain "/").
 	// Every stream of this writer is contiguous, in the mini stream or in
 	// consecutive sectors, so the bytes at Offsets[name] through
 	// Offsets[name]+Size are the stream.
@@ -179,14 +190,20 @@ func Compare(a, b string) int {
 }
 
 type entry struct {
-	open  func() (io.ReadCloser, error)
-	name  []uint16
-	small []byte // the data of a stream below miniCutoff
-	size  int64
-	left  int // index into the sorted entries, -1 for none
-	right int
-	depth int
-	start uint32
+	open     func() (io.ReadCloser, error)
+	left     *entry
+	right    *entry
+	top      *entry // a storage's tree of children
+	path     string // the Layout key
+	name     []uint16
+	small    []byte // the data of a stream below miniCutoff
+	children []*entry
+	size     int64
+	sid      int
+	start    uint32
+	storage  bool
+	black    bool
+	clsid    [16]byte
 }
 
 // Source converts an in-memory stream into a Source.
@@ -320,10 +337,11 @@ func (s *sectorWriter) copyFrom(src Source) error {
 
 // plan is the sector layout computed from the stream sizes.
 type plan struct {
-	entries                                              []*entry
+	top                                                  *entry
+	entries                                              []*entry // every entry but the root, in SID order
 	mini                                                 []byte
 	fat                                                  []uint32
-	sectorSize, top, blackDepth, numEntries              int
+	sectorSize, numEntries                               int
 	fatSectors, difatSectors, dirSectors, miniFATSectors int
 	miniStreamSectors, largeSectors, total               int
 	fatStart, difatStart, dirStart, miniFATStart         int
@@ -343,79 +361,134 @@ func (p *plan) chain(start, count int) {
 	}
 }
 
-// newPlan sorts the sources, builds the directory tree and lays out the
-// sectors. Streams below miniCutoff are read into memory here.
-func newPlan(sources []Source, opts Options) (*plan, error) { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
+// newEntry checks one stream source and reads it into memory when it goes
+// into the mini stream.
+func newEntry(src Source, prefix string) (*entry, error) {
+	name, err := EncodeName(src.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	if src.Size < 0 || src.Open == nil {
+		return nil, fmt.Errorf("cfb: stream %q has no size or source", prefix+src.Name)
+	}
+
+	ent := &entry{name: name, size: src.Size, open: src.Open, path: prefix + src.Name}
+
+	if src.Size > 0 && src.Size < miniCutoff {
+		ent.small, err = readSource(src)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return ent, nil
+}
+
+// siblings sorts the entries of one storage, rejects duplicate names and
+// returns the top of their balanced red-black tree: the middle element is
+// the top node, recursively, and the nodes below the black depth are red.
+func siblings(entries []*entry, allBlack bool) (*entry, error) {
+	slices.SortStableFunc(entries, func(a, b *entry) int { return CompareUnits(a.name, b.name) })
+
+	for i := 1; i < len(entries); i++ {
+		if CompareUnits(entries[i-1].name, entries[i].name) == 0 {
+			return nil, fmt.Errorf("cfb: duplicate name %q", entries[i].path)
+		}
+	}
+
+	blackDepth := 0
+	for (1 << (blackDepth + 1)) <= len(entries)+1 {
+		blackDepth++
+	}
+
+	var build func(lo, hi, depth int) *entry
+
+	build = func(low, high, depth int) *entry {
+		if low >= high {
+			return nil
+		}
+
+		mid := low + (high-low)/2
+		e := entries[mid]
+		e.black = allBlack || depth < blackDepth
+		e.left = build(low, mid, depth+1)
+		e.right = build(mid+1, high, depth+1)
+
+		return e
+	}
+
+	return build(0, len(entries), 0), nil
+}
+
+// newPlan sorts the sources and storages, builds the directory trees and
+// lays out the sectors. Streams below miniCutoff are read into memory here.
+// SIDs number the root's children in sorted order from 1, then the children
+// of each storage in turn, so a file without storages is laid out as before.
+func newPlan(sources []Source, storages []Storage, opts Options) (*plan, error) { //nolint:cyclop,gocognit // one pass over the format
 	pln := &plan{sectorSize: 512}
 	if opts.Version == 4 {
 		pln.sectorSize = 4096
 	}
 
-	pln.entries = make([]*entry, 0, len(sources))
+	root := make([]*entry, 0, len(sources)+len(storages))
 
 	for _, src := range sources {
-		name, err := EncodeName(src.Name)
+		ent, err := newEntry(src, "")
 		if err != nil {
 			return nil, err
 		}
 
-		if src.Size < 0 || src.Open == nil {
-			return nil, fmt.Errorf("cfb: stream %q has no size or source", src.Name)
+		root = append(root, ent)
+	}
+
+	for _, stg := range storages {
+		name, err := EncodeName(stg.Name)
+		if err != nil {
+			return nil, err
 		}
 
-		ent := &entry{name: name, size: src.Size, open: src.Open, left: -1, right: -1}
+		ent := &entry{name: name, path: stg.Name, storage: true, clsid: stg.CLSID}
 
-		if src.Size > 0 && src.Size < miniCutoff {
-			ent.small, err = readSource(src)
+		for _, src := range stg.Streams {
+			child, err := newEntry(src, stg.Name+"/")
 			if err != nil {
 				return nil, err
 			}
+
+			ent.children = append(ent.children, child)
 		}
 
-		pln.entries = append(pln.entries, ent)
-	}
-
-	slices.SortStableFunc(pln.entries, func(a, b *entry) int { return CompareUnits(a.name, b.name) })
-
-	for i := 1; i < len(pln.entries); i++ {
-		if CompareUnits(pln.entries[i-1].name, pln.entries[i].name) == 0 {
-			return nil, fmt.Errorf("cfb: duplicate stream name %q", string(utf16.Decode(pln.entries[i].name)))
-		}
-	}
-
-	count := len(pln.entries)
-
-	// Balanced tree: the middle element is the top node, recursively.
-	var build func(lo, hi, depth int) int
-
-	build = func(low, high, depth int) int {
-		if low >= high {
-			return -1
+		if ent.top, err = siblings(ent.children, opts.AllBlack); err != nil {
+			return nil, err
 		}
 
-		mid := low + (high-low)/2
-		e := pln.entries[mid]
-		e.depth = depth
-		e.left = build(low, mid, depth+1)
-		e.right = build(mid+1, high, depth+1)
-
-		return mid
+		root = append(root, ent)
 	}
 
-	pln.top = build(0, count, 0)
-
-	for (1 << (pln.blackDepth + 1)) <= count+1 {
-		pln.blackDepth++
+	var err error
+	if pln.top, err = siblings(root, opts.AllBlack); err != nil {
+		return nil, err
 	}
 
-	// SID of sorted entry i is i+1; the root is SID 0.
-	pln.numEntries = count + 1
+	pln.entries = append(pln.entries, root...)
+
+	for _, ent := range root {
+		pln.entries = append(pln.entries, ent.children...)
+	}
+
+	for i, ent := range pln.entries {
+		ent.sid = i + 1
+	}
+
+	pln.numEntries = len(pln.entries) + 1
 	perSector := pln.sectorSize / entrySize
 	pln.dirSectors = (pln.numEntries + perSector - 1) / perSector
 
 	// Pack small streams into the mini stream in SID order.
 	for _, ent := range pln.entries {
 		switch {
+		case ent.storage:
 		case ent.size == 0:
 			ent.start = endOfChain
 		case ent.size < miniCutoff:
@@ -484,7 +557,7 @@ func newPlan(sources []Source, opts Options) (*plan, error) { //nolint:cyclop,go
 	cur := pln.largeStart
 
 	for _, e := range pln.entries {
-		if e.size >= miniCutoff {
+		if !e.storage && e.size >= miniCutoff {
 			c := int((e.size + int64(pln.sectorSize) - 1) / int64(pln.sectorSize))
 			e.start = uint32(cur) //nolint:gosec // bounded by the format limits checked earlier
 			pln.chain(cur, c)
@@ -596,12 +669,12 @@ func (p *plan) directory(opts Options) []byte {
 		order.PutUint64(rec[0x78:], size)
 	}
 
-	link := func(k int) uint32 {
-		if k < 0 {
+	link := func(e *entry) uint32 {
+		if e == nil {
 			return noStream
 		}
 
-		return uint32(k + 1) //nolint:gosec // bounded by the format limits checked earlier
+		return uint32(e.sid) //nolint:gosec // bounded by the format limits checked earlier
 	}
 
 	rootStart := uint32(endOfChain)
@@ -611,13 +684,20 @@ func (p *plan) directory(opts Options) []byte {
 
 	putEntry(0, utf16.Encode([]rune("Root Entry")), 5, 1, noStream, noStream, link(p.top), opts.CLSID[:], rootStart, uint64(len(p.mini)))
 
-	for i, ent := range p.entries {
-		colour := byte(1)
-		if !opts.AllBlack && ent.depth >= p.blackDepth {
-			colour = 0
+	for _, ent := range p.entries {
+		colour := byte(0)
+		if ent.black {
+			colour = 1
 		}
 
-		putEntry(i+1, ent.name, 2, colour, link(ent.left), link(ent.right), noStream, nil, ent.start, uint64(ent.size)) //nolint:gosec // sizes are non-negative
+		if ent.storage {
+			// A storage has no stream: start sector and size are 0.
+			putEntry(ent.sid, ent.name, 1, colour, link(ent.left), link(ent.right), link(ent.top), ent.clsid[:], 0, 0)
+
+			continue
+		}
+
+		putEntry(ent.sid, ent.name, 2, colour, link(ent.left), link(ent.right), noStream, nil, ent.start, uint64(ent.size)) //nolint:gosec // sizes are non-negative
 	}
 
 	for k := p.numEntries; k < p.dirSectors*perSector; k++ {
@@ -638,7 +718,7 @@ func (p *plan) miniFAT() []uint32 {
 	}
 
 	for _, e := range p.entries {
-		if e.size > 0 && e.size < miniCutoff {
+		if !e.storage && e.size > 0 && e.size < miniCutoff {
 			c := int((e.size + miniSectorSize - 1) / miniSectorSize)
 			startSector := int(e.start)
 
@@ -659,7 +739,13 @@ func (p *plan) miniFAT() []uint32 {
 // header, FAT, DIFAT, directory, MiniFAT, mini stream and then the large
 // streams, each copied from its source. Streams below 4096 bytes are read
 // into memory for the mini stream; everything else passes through.
-func WriteTo(dst io.Writer, sources []Source, opts Options) (*Layout, error) { //nolint:cyclop // one pass over the format
+func WriteTo(dst io.Writer, sources []Source, opts Options) (*Layout, error) {
+	return WriteStoragesTo(dst, sources, nil, opts)
+}
+
+// WriteStoragesTo is WriteTo for a file that also holds root-level storages,
+// each with its own streams.
+func WriteStoragesTo(dst io.Writer, sources []Source, storages []Storage, opts Options) (*Layout, error) { //nolint:cyclop // one pass over the format
 	switch opts.Version {
 	case 0:
 		opts.Version = 4
@@ -672,7 +758,7 @@ func WriteTo(dst io.Writer, sources []Source, opts Options) (*Layout, error) { /
 		opts.CLSID = CLSIDMSI
 	}
 
-	pln, err := newPlan(sources, opts)
+	pln, err := newPlan(sources, storages, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -714,9 +800,10 @@ func WriteTo(dst io.Writer, sources []Source, opts Options) (*Layout, error) { /
 	layout := &Layout{Offsets: make(map[string]int64, len(pln.entries))}
 
 	for _, ent := range pln.entries {
-		name := string(utf16.Decode(ent.name))
+		name := ent.path
 
 		switch {
+		case ent.storage:
 		case ent.size == 0:
 			layout.Offsets[name] = out.pos
 		case ent.size < miniCutoff:

@@ -133,6 +133,12 @@ type build struct { //nolint:govet // grouped by build step
 	opts          Options
 	version       config.Version
 	is64          bool
+	// language is the LCID this build writes: product.language, or a
+	// language of ui.languages in the build of its transform.
+	language int
+	// fileCache holds the payload files read by the base build, which the
+	// builds of the language transforms reuse instead of reading them again.
+	fileCache map[*config.File]*fileInfo
 	// summaryWarned holds the config paths already reported as made to fit
 	// the summary code page.
 	summaryWarned map[string]bool
@@ -217,24 +223,8 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 		opts.ToolName = "msi-builder"
 	}
 
-	bld := &build{
-		cfg:             cfg,
-		opts:            opts,
-		diags:           diags,
-		tables:          make(map[string]*msidb.Table),
-		dirs:            make(map[string]*dirInfo),
-		components:      make(map[string]*componentInfo),
-		fileByKey:       make(map[string]*fileInfo),
-		properties:      make(map[string]string),
-		secure:          make(map[string]bool),
-		hidden:          make(map[string]bool),
-		shortcutCarrier: make(map[string]string),
-		shortNames:      make(map[string]map[string]bool),
-		shortcutNames:   make(map[string]map[string]bool),
-		schedules:       make(map[string][]sequence.Action),
-		numbered:        make(map[string][]sequence.Numbered),
-		is64:            cfg.Package.Platform.Is64Bit(),
-	}
+	bld := newBuild(cfg, opts, diags)
+	bld.fileCache = make(map[*config.File]*fileInfo)
 
 	res := &Result{}
 
@@ -252,7 +242,62 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 	return res, nil
 }
 
+// newBuild returns the state of one build of cfg, in product.language.
+func newBuild(cfg *config.Config, opts Options, diags config.Diagnostics) *build {
+	return &build{
+		cfg:             cfg,
+		opts:            opts,
+		diags:           diags,
+		tables:          make(map[string]*msidb.Table),
+		dirs:            make(map[string]*dirInfo),
+		components:      make(map[string]*componentInfo),
+		fileByKey:       make(map[string]*fileInfo),
+		properties:      make(map[string]string),
+		secure:          make(map[string]bool),
+		hidden:          make(map[string]bool),
+		shortcutCarrier: make(map[string]string),
+		shortNames:      make(map[string]map[string]bool),
+		shortcutNames:   make(map[string]map[string]bool),
+		schedules:       make(map[string][]sequence.Action),
+		numbered:        make(map[string][]sequence.Numbered),
+		is64:            cfg.Package.Platform.Is64Bit(),
+		language:        *cfg.Product.Language,
+	}
+}
+
 func (b *build) run(res *Result) error {
+	if err := b.writeTables(); err != nil {
+		return err
+	}
+
+	database, err := b.finish(res)
+	if err != nil {
+		return err
+	}
+
+	res.Database = database
+	res.ProductCode = b.productCode
+	res.PackageCode = b.packageCode
+	res.Files = make([]File, 0, len(b.files))
+
+	for _, file := range b.files {
+		res.Files = append(res.Files, File{
+			Key:       file.Key,
+			Name:      file.LongName,
+			Source:    file.cfg.Source,
+			Component: file.Component.cfg.ID,
+			Version:   stringCell(file.Version),
+			Language:  stringCell(file.Language),
+			Size:      file.Size,
+			Sequence:  file.Sequence,
+		})
+	}
+
+	return nil
+}
+
+// writeTables runs the build steps that fill the tables.
+func (b *build) writeTables() error {
 	steps := []func() error{
 		b.identity,
 		b.directories,
@@ -286,29 +331,6 @@ func (b *build) run(res *Result) error {
 		if err := b.diags.Err(); err != nil {
 			return err //nolint:wrapcheck // the diagnostics carry their own paths
 		}
-	}
-
-	database, err := b.finish(res)
-	if err != nil {
-		return err
-	}
-
-	res.Database = database
-	res.ProductCode = b.productCode
-	res.PackageCode = b.packageCode
-	res.Files = make([]File, 0, len(b.files))
-
-	for _, file := range b.files {
-		res.Files = append(res.Files, File{
-			Key:       file.Key,
-			Name:      file.LongName,
-			Source:    file.cfg.Source,
-			Component: file.Component.cfg.ID,
-			Version:   stringCell(file.Version),
-			Language:  stringCell(file.Language),
-			Size:      file.Size,
-			Sequence:  file.Sequence,
-		})
 	}
 
 	return nil

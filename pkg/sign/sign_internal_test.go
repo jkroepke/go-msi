@@ -679,3 +679,98 @@ func TestLoadKeys(t *testing.T) {
 		t.Error("wrong password was accepted")
 	}
 }
+
+// storagePackage is the vector package with an embedded transform storage
+// holding data in its stream.
+func storagePackage(t *testing.T, data string, extra ...cfb.Stream) []byte {
+	t.Helper()
+
+	sources := make([]cfb.Source, 0, 2)
+	for _, s := range vectorStreams() {
+		sources = append(sources, s.Source())
+	}
+
+	storages := []cfb.Storage{{
+		Name:  "1031",
+		CLSID: cfb.CLSIDTransform,
+		Streams: []cfb.Source{
+			cfb.Stream{Name: "Inner", Data: []byte(data)}.Source(),
+			cfb.Stream{Name: "Empty"}.Source(),
+		},
+	}}
+	for _, s := range extra {
+		storages[0].Streams = append(storages[0].Streams, s.Source())
+	}
+
+	var buf bytes.Buffer
+
+	if _, err := cfb.WriteStoragesTo(&buf, sources, storages, cfb.Options{Version: 3, CLSID: cfb.CLSIDMSI}); err != nil {
+		t.Fatal(err)
+	}
+
+	return buf.Bytes()
+}
+
+func TestSignStorages(t *testing.T) {
+	t.Parallel()
+
+	keys := rsaKey(t)
+
+	// A stream named like the signature inside the storage is dropped.
+	decoy := cfb.Stream{Name: StreamSignature, Data: []byte("not a signature")}
+
+	signed, err := Sign(context.Background(), storagePackage(t, "transform", decoy), Options{Signer: keys.signer, Certificates: keys.certs})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Verify(signed); err != nil {
+		t.Fatal(err)
+	}
+
+	file := readFile(t, signed)
+
+	var storage *cfb.Entry
+
+	inner := map[string]string{}
+
+	for _, ent := range file.Entries {
+		if ent.Type == typeStorage && ent.Name == "1031" {
+			storage = ent
+		}
+	}
+
+	if storage == nil {
+		t.Fatal("storage 1031 dropped")
+	}
+
+	for _, ent := range file.Entries {
+		if ent.Type == typeStream && ent.Parent == storage.SID {
+			inner[ent.Name] = string(ent.Data)
+		}
+	}
+
+	if storage.CLSID != cfb.CLSIDTransform || len(inner) != 2 || inner["Inner"] != "transform" || inner["Empty"] != "" {
+		t.Errorf("storage after signing: CLSID %x, streams %q", storage.CLSID, inner)
+	}
+
+	// The signature covers the storage's streams: the same signature on a
+	// package whose storage differs does not verify.
+	sig, ok := file.Stream(StreamSignature)
+	if !ok {
+		t.Fatal("no signature stream")
+	}
+
+	if _, _, err := Attach(storagePackage(t, "tampered"), sig); err == nil {
+		t.Error("a signature verified over a changed storage stream")
+	}
+
+	unsigned, err := Unsign(signed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(unsigned, storagePackage(t, "transform")) {
+		t.Error("Unsign did not give back the unsigned package")
+	}
+}
