@@ -281,6 +281,19 @@ func (b *build) anchorActions() {
 			anchor := action.Before + action.After
 			if s, ok := standardActions[anchor]; ok && s.number(table) != 0 {
 				b.standardAt(table, anchor)
+
+				// DuplicateFiles copies installed files (specification
+				// section 11.7).
+				if anchor == "DuplicateFiles" {
+					b.standardAt(table, actInstallFiles)
+				}
+
+				continue
+			}
+
+			if config.IsStandardAction(anchor) {
+				b.errorf("customActions", "%s: %s is scheduled relative to standard action %s, which has no default number there in msi-builder; "+
+					"schedule it with an absolute number", table, action.Name, anchor)
 			}
 		}
 	}
