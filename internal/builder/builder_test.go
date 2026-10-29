@@ -815,7 +815,7 @@ func TestServiceRecoverySteps(t *testing.T) {
 
 		target := cell(t, database, "CustomAction", "Target", func(r []any) bool { return strings.HasPrefix(fmt.Sprint(r[0]), "ServiceRecovery") })
 		if !strings.HasSuffix(fmt.Sprint(target), want) {
-			t.Errorf("recovery command %q, want suffix %q", target, want)
+			t.Errorf("restartDelay %v: recovery command %q, want suffix %q", delay, target, want)
 		}
 	}
 }
