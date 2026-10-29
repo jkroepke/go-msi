@@ -895,8 +895,7 @@ func (b *build) features() error {
 
 // featureComponents lists a configured component with the components the
 // builder split off it (shortcut, file type and service start carriers),
-// which belong to
-// the same feature.
+// which belong to the same feature.
 func (b *build) featureComponents(compID string) []string {
 	ids := []string{compID}
 
