@@ -683,6 +683,43 @@ func TestTimestamp(t *testing.T) {
 	}
 }
 
+// TestTimestampBodyTimeout checks that a timeout while reading the reply
+// body, after the authority sent its headers, is reported as
+// ErrTimestampUnavailable like one before them (REVIEW1 #13).
+func TestTimestampBodyTimeout(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/timestamp-reply")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte{0x30})
+
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(release) })
+
+	client := srv.Client()
+	client.Timeout = 200 * time.Millisecond
+
+	keys := rsaKey(t)
+	opts := Options{Signer: keys.signer, Certificates: keys.certs, TimestampURL: srv.URL, HTTPClient: client}
+
+	_, err := Sign(context.Background(), vectorPackage(t), opts)
+	if !errors.Is(err, ErrTimestampUnavailable) {
+		t.Errorf("Sign = %v, want ErrTimestampUnavailable", err)
+	}
+}
+
 func TestParseTimestampResponse(t *testing.T) {
 	t.Parallel()
 
