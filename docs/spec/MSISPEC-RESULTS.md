@@ -701,15 +701,17 @@ probe was removed from the pull request afterwards; its output is in
 | `delete rule name='all' dir=in program=…` | 1, "No rules match the specified criteria." | nothing (the quotes are part of the name) |
 | `delete rule name=all dir=in` | 0, "Deleted 208 rule(s)." | every inbound rule (208 to 0), the 142 outbound rules kept |
 
-- `all` is a keyword of `delete rule`, compared without case, and no quoting
-  turns it into a literal name. The builder's delete action,
+- `all` is a keyword of `delete rule`, matched in lower and upper case
+  (mixed case tried on `add` only), and no quoting turns it into a literal
+  name. The builder's delete action,
   `delete rule name="<name>" dir=in`, would therefore remove every inbound
   rule for a rule named `all`, so `pkg/config` rejects that name (section
   17.3).
 - Netsh does not trim a leading or trailing space: ` all` and `all ` are
   ordinary names. The builder rejects them anyway when they trim to `all`.
 - Not run: `show rule`, `set rule`, outbound rules, SERVER2025 (an unscoped
-  delete runs on a throwaway runner only, never on a dev machine) and Windows Server 2016.
+  delete runs on a throwaway runner only, never on a dev machine) and
+  Windows Server 2016.
 
 ## Event log sources (REG-03)
 

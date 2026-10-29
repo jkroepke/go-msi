@@ -1530,8 +1530,8 @@ text without `[` or `]`, and `all` in any case is an error: netsh treats
 `name=all` as every rule, so the delete that runs before each add would
 remove every inbound rule on the machine, and a property in the name could
 resolve to `all` at runtime (MSISPEC section 17.3, CA-06: on a CI runner the
-unscoped delete removed all 208 inbound rules (206 of the runner's, two probe
-rules), and no quoting escapes it).
+unscoped delete removed all 208 inbound rules, 206 of them the runner's and
+two the probe's, and no quoting escapes it).
 
 A rule that a feature switches can be written under that feature instead,
 without `component`:
