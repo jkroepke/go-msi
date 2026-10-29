@@ -1735,13 +1735,13 @@ Remove in `MaintenanceTypeDlg` opens it, and its Next goes to
 remove pages cannot follow each other. The fields are the same as on install
 pages. A package with remove dialogs keeps `ARPNOMODIFY` unset, so Add or
 Remove Programs is expected to offer Change (unverified); its `ModifyPath` command,
-`MsiExec.exe /I{ProductCode}`, opens the maintenance menu (UI-09; which
+`MsiExec.exe /I{ProductCode}`, opens the maintenance menu (UI-10; which
 command the button runs is unverified); with `product.arp.noModify: true` the
 validator warns that only running the package again shows the page, and with
 `product.arp.noRemove: true`, which disables Remove in the menu, that no one
 can reach it.
 `msiexec /x` asks for confirmation and removes the product without the
-wizard (spec section 7.7, UI-09; what the Uninstall button shows is
+wizard (spec section 7.7, UI-10; what the Uninstall button shows is
 unverified), so the property is also the command-line switch:
 `msiexec /x hello.msi DELETE_CONFIGURATION=1`.
 

@@ -228,7 +228,7 @@ jobs:
         run: go test -v -count=1 -run 'TestMsiexecFileTypes' ./internal/builder/nativetest/
 
       # Print the windows of the remove page runs and the ARP entry
-      # (MSISPEC-RESULTS UI-08, UI-09).
+      # (MSISPEC-RESULTS UI-09, UI-10).
       - name: go test (remove page results)
         if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash

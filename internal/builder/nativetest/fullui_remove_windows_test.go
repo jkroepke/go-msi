@@ -64,8 +64,8 @@ ui:
 // with the remove dialog's box left clear keeps the purged folder, msiexec
 // /x shows neither the maintenance menu nor the page and keeps it too, and
 // the menu with the box checked deletes it, because the secure property
-// reaches the deferred purge on the server (UI-08). It also records what Add or Remove Programs is given
-// for a package whose ARPNOMODIFY stays unset (UI-09).
+// reaches the deferred purge on the server (UI-09). It also records what Add or Remove Programs is given
+// for a package whose ARPNOMODIFY stays unset (UI-10).
 func TestFullUIRemoveDialog(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
 	requireFullUI(t)
 	waitForMsiexec(t)
@@ -104,7 +104,7 @@ func TestFullUIRemoveDialog(t *testing.T) { //nolint:paralleltest // msiexec run
 		t.Errorf("the ARP entry has NoModify:\n%s", arp)
 	}
 
-	t.Logf("UI-09 ARP entry:\n%s", arp)
+	t.Logf("UI-10 ARP entry:\n%s", arp)
 
 	// The ModifyPath command, which Change in Add or Remove Programs is
 	// expected to run, the box left clear.
@@ -187,8 +187,8 @@ func TestFullUIRemoveDialog(t *testing.T) { //nolint:paralleltest // msiexec run
 		t.Error("the engine showed an unexpected error box")
 	}
 
-	t.Logf("UI-08 keep:\n%s\ndelete:\n%s\nlog excerpt:\n%s", keep, remove, excerpt(text, "DELETE_CONFIGURATION", "Purge_", "Error 28"))
-	t.Logf("UI-09 msiexec /x:\n%s\nlog excerpt:\n%s", removeX, excerpt(readLog(xLog), "UILevel", "Dialog created", "Note: 1: 2205"))
+	t.Logf("UI-09 keep:\n%s\ndelete:\n%s\nlog excerpt:\n%s", keep, remove, excerpt(text, "DELETE_CONFIGURATION", "Purge_", "Error 28"))
+	t.Logf("UI-10 msiexec /x:\n%s\nlog excerpt:\n%s", removeX, excerpt(readLog(xLog), "UILevel", "Dialog created", "Note: 1: 2205"))
 }
 
 // arpValue returns the data of a REG_SZ or REG_EXPAND_SZ value in reg.exe
