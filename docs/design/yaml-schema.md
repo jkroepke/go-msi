@@ -1,5 +1,10 @@
 # msi-builder YAML schema, version 1
 
+> [!TIP]
+> To write a package, start with the [YAML Schema](../YAML%20Schema.md)
+> guide: the smallest file and a recipe for each common task. This page is
+> the complete reference and the reasons behind each rule.
+
 This document defines the input format of msi-builder: one YAML file that describes
 an MSI package. The `config` package implements it (types, loading, defaults
 and validation). The MSI writer builds on that package and never reads YAML

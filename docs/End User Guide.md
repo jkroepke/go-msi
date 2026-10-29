@@ -292,4 +292,4 @@ Next to the link, list what this page cannot know about your package:
 - whether upgrades keep the feature choice (`upgrade.migrateFeatures`) and
   whether Repair, Change or Uninstall is hidden (`product.arp`).
 
-The [YAML Schema](design/yaml-schema.md) describes each of these settings.
+The [YAML Schema Design](design/yaml-schema.md) describes each of these settings.

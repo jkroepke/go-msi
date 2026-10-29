@@ -71,7 +71,7 @@ components:
 
 The file goes to `C:\Program Files\Hello`, which `INSTALLDIR=…` can change,
 and a newer version replaces an installed one. Every default can be spelled
-out; the [YAML schema](docs/design/yaml-schema.md) lists them. Validate and
+out; the [YAML schema design](docs/design/yaml-schema.md) lists them. Validate and
 build it on any operating system:
 
 ```shell
@@ -156,7 +156,8 @@ The documentation lives in the [wiki](https://github.com/jkroepke/msi-builder/wi
 - [Getting Started](https://github.com/jkroepke/msi-builder/wiki/Getting-Started)
 - [End user guide](https://github.com/jkroepke/msi-builder/wiki/End-User-Guide) for the people who install your packages
 - [Command-line reference](https://github.com/jkroepke/msi-builder/wiki/Command-Line)
-- [YAML schema](https://github.com/jkroepke/msi-builder/wiki/YAML-Schema)
+- [YAML schema](https://github.com/jkroepke/msi-builder/wiki/YAML-Schema): a recipe for each common task
+- [YAML schema design](https://github.com/jkroepke/msi-builder/wiki/YAML-Schema-Design): every key, default and rule
 - [Signing](https://github.com/jkroepke/msi-builder/wiki/Signing)
 - [Go API](https://github.com/jkroepke/msi-builder/wiki/Go-API)
 - [MSI specification](https://github.com/jkroepke/msi-builder/wiki/MSI-Specification) and its

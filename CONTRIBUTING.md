@@ -11,7 +11,7 @@ to discuss the proposal with the maintainer.
 
 Read these documents for an overview of the project and its requirements:
 
-- [YAML schema](docs/design/yaml-schema.md): the input format.
+- [YAML schema design](docs/design/yaml-schema.md): the input format.
 - [MSI specification](docs/spec/MSISPEC.md) and its
   [Windows test results](docs/spec/MSISPEC-RESULTS.md): the format msi-builder writes.
 

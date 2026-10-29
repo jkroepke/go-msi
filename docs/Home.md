@@ -23,8 +23,9 @@ of your release.
 
 ## Reference
 
-- [YAML Schema](design/yaml-schema.md) describes every section, default and
-  validation rule of the configuration file.
+- [YAML Schema](YAML%20Schema.md) shows the configuration file with a recipe
+  for each common task: services, shortcuts, `PATH`, firewall rules, the
+  setup wizard and more.
 - [Command Line](cli/msi-builder.md) lists every command and flag.
 - [Signing](signing.md) covers Authenticode signatures with PFX or PEM keys.
 - [Go API](go-api.md) builds packages from Go code without a YAML file.
@@ -34,4 +35,6 @@ of your release.
 - [MSI Specification](spec/MSISPEC.md) describes the format msi-builder writes.
 - [Windows Test Results](spec/MSISPEC-RESULTS.md) records what Windows
   accepted and rejected in the validation runs.
+- [YAML Schema Design](design/yaml-schema.md) describes every key, default
+  and validation rule, and the Windows test results behind them.
 - [Architecture](design/architecture.md) explains how the writer is built.
