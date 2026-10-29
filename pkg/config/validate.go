@@ -1813,14 +1813,16 @@ func (v *validator) placement(placementPath string, place Placement, inScript bo
 	v.placementWhen(placementPath, place, cfg)
 
 	for _, anchor := range []string{place.Before, place.After} {
-		if anchor == "" || standardActions[anchor] {
-			continue
-		}
-
-		if !hasCustomAction(cfg, anchor) && !hasDialog(cfg, anchor) {
+		if anchor != "" && !knownAnchor(cfg, anchor) {
 			v.errorf(placementPath, "anchor %q is neither a standard action nor a custom action", anchor)
 		}
 	}
+}
+
+// knownAnchor reports whether an action can be placed next to anchor: a
+// standard action, a custom action, a dialog or a generated search action.
+func knownAnchor(cfg *Config, anchor string) bool {
+	return standardActions[anchor] || hasCustomAction(cfg, anchor) || hasDialog(cfg, anchor) || hasSearchAction(cfg, anchor)
 }
 
 // placementPosition checks that a placement has exactly one of before,
@@ -1863,6 +1865,35 @@ func (v *validator) generatedArgument(action *CustomAction) {
 func hasCustomAction(cfg *Config, id string) bool {
 	for _, ca := range cfg.CustomActions {
 		if ca.ID == id {
+			return true
+		}
+	}
+
+	return false
+}
+
+// hasSearchAction reports whether action names an action generated for a
+// property search (SearchApply_<NAME>, SearchApply2_<NAME>, …,
+// SearchDefault_<NAME>), so a custom action can run after a search result
+// is applied.
+func hasSearchAction(cfg *Config, action string) bool {
+	for name, prop := range cfg.Properties {
+		if prop == nil || len(prop.Search) == 0 {
+			continue
+		}
+
+		for i := range prop.Search {
+			suffix := ""
+			if i > 0 {
+				suffix = strconv.Itoa(i + 1)
+			}
+
+			if action == "SearchApply"+suffix+"_"+name {
+				return true
+			}
+		}
+
+		if prop.Value != "" && action == "SearchDefault_"+name {
 			return true
 		}
 	}
