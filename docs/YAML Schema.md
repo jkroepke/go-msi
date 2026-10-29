@@ -356,8 +356,8 @@ A `flow: remove` dialog adds a page to the wizard's remove path, after
 Remove in the maintenance menu, for example a checkbox that the purge above
 reads. Users reach it by running the package again or, expected but not yet
 verified on Windows, through Change in Add or Remove Programs. `msiexec /x`
-and Uninstall are expected to remove the product without the maintenance
-pages, so the property also works on the command line:
+is expected to remove the product without the maintenance pages, so the
+property also works on the command line:
 `msiexec /x hello.msi DELETE_CONFIGURATION=1`.
 
 ```yaml

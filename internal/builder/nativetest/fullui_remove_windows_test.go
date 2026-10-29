@@ -62,7 +62,8 @@ ui:
 // TestFullUIRemoveDialog removes the product three times through the full
 // UI, reinstalling it quietly in between: the ARP entry's ModifyPath command
 // with the remove dialog's box left clear keeps the purged folder, msiexec
-// /x shows neither the maintenance menu nor the page and keeps it too, and the menu with the box checked
+// /x is expected to show neither the maintenance menu nor the page and to
+// keep it too, and the menu with the box checked
 // deletes it, because the secure property reaches the deferred purge on
 // the server (UI-08). It also records what Add or Remove Programs is given
 // for a package whose ARPNOMODIFY stays unset (UI-09).
@@ -104,16 +105,17 @@ func TestFullUIRemoveDialog(t *testing.T) { //nolint:paralleltest // msiexec run
 		t.Errorf("the ARP entry has NoModify:\n%s", arp)
 	}
 
-	// Change in Add or Remove Programs runs ModifyPath (unverified).
-	if !strings.Contains(arp, "/I"+res.ProductCode) {
-		t.Errorf("the ARP entry has no ModifyPath MsiExec.exe /I%s:\n%s", res.ProductCode, arp)
-	}
-
 	t.Logf("UI-09 ARP entry:\n%s", arp)
 
-	// The ModifyPath command, the box left clear.
+	// The ModifyPath command, which Change in Add or Remove Programs is
+	// expected to run, the box left clear.
+	modify := strings.Fields(arpValue(arp, "ModifyPath"))
+	if len(modify) < 2 || !strings.EqualFold(modify[0], "MsiExec.exe") {
+		t.Fatalf("ModifyPath %q is not an MsiExec.exe command", modify)
+	}
+
 	keepLog := filepath.Join(dir, "keep.log")
-	code, keep := fullUIDriven(t, dir, "", removeUIAdvance, "/i"+res.ProductCode, "/l*v", keepLog)
+	code, keep := fullUIDriven(t, dir, "", removeUIAdvance, append(modify[1:], "/l*v", keepLog)...)
 
 	if code != 0 {
 		t.Errorf("remove keeping the configuration: exit %d, want 0", code)
@@ -186,6 +188,19 @@ func TestFullUIRemoveDialog(t *testing.T) { //nolint:paralleltest // msiexec run
 
 	t.Logf("UI-08 keep:\n%s\ndelete:\n%s\nlog excerpt:\n%s", keep, remove, excerpt(text, "DELETE_CONFIGURATION", "Purge_", "Error 28"))
 	t.Logf("UI-09 msiexec /x:\n%s\nlog excerpt:\n%s", removeX, excerpt(readLog(xLog), "UILevel", "Dialog created", "Note: 1: 2205"))
+}
+
+// arpValue returns the data of a REG_SZ or REG_EXPAND_SZ value in reg.exe
+// query output, or "".
+func arpValue(out, name string) string {
+	for line := range strings.Lines(out) {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 && fields[0] == name && strings.HasPrefix(fields[1], "REG_") {
+			return strings.Join(fields[2:], " ")
+		}
+	}
+
+	return ""
 }
 
 // TestICEFullUIRemove runs the ICE suite on the package with a remove
