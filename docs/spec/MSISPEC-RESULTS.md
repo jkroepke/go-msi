@@ -206,12 +206,13 @@ Silent-failure cases a producer has to guard against itself:
 | FILE-07 | Confirmed | [probe](msitest/results/FILE-07/probe/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40833269994: ICE30 reports two files with one short name in a folder, not two directories or a directory and a file; a normal install is unaffected, with `SHORTFILENAMES=1` one file overwrites the other, two directories merge and a directory beside a file of its short name fails with 1312 and 1603; [details](#duplicate-short-names-file-07) |
 | REG-01 | Confirmed | [x64](msitest/results/REG-01/x64/log.md) and [Intel](msitest/results/REG-01/Intel/log.md) templates: bit 256 picks the view |
 | REG-02 | Not run | |
-| REG-03 | Confirmed | [powershell](msitest/results/REG-03/powershell/log.md); SERVER2025, 2026-10-29: any key under `EventLog\<Log>` is a source; `CustomSource` changes nothing; `New-EventLog` writes only `EventMessageFile`; [details](#event-log-sources-reg-03) |
+| REG-03 | Confirmed | [powershell](msitest/results/REG-03/powershell/log.md); SERVER2025, 2026-10-29: hand-made keys under `EventLog\Application` are sources with and without `CustomSource`, which changes nothing; `New-EventLog` writes only `EventMessageFile`; [details](#event-log-sources-reg-03) |
 | ENVVAR-01 | Contradicted | [log](msitest/results/ENVVAR-01/environment/log.md); finding 4; segment removal on uninstall confirmed |
 | PROP-01 | Not run | Needs a non-administrator elevated install |
 | SEARCH-01 | Not run | Interactive full UI |
 | SEARCH-02 | Not run | |
 | SEARCH-03 | Confirmed | [direct-cmdline](msitest/results/SEARCH-03/direct-cmdline/log.md), [guarded-cmdline](msitest/results/SEARCH-03/guarded-cmdline/log.md), [direct-nosignature](msitest/results/SEARCH-03/direct-nosignature/log.md); `AppSearch` into `INSTALLDIR` overrides the command line; the guarded type-51 form does not; no `Signature` table gives 2228/1603; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
+| SEARCH-04 | Not run | |
 | UPG-01 | Confirmed | [higher](msitest/results/UPG-01/higher/log.md) removes; equal, lower and fourth-field-only stay side by side |
 | UPG-02 | Confirmed | [LaunchCondition](msitest/results/UPG-02/launchcondition/log.md) and [type 19](msitest/results/UPG-02/type19/log.md): 1603, newer stays |
 | UPG-03 | Confirmed | [log](msitest/results/UPG-03/same-productcode/log.md); 1638 |
@@ -537,10 +538,10 @@ commands and outputs are in
 
 | Source | Values | `SourceExists` | Event text | `Remove-EventLog` |
 | --- | --- | --- | --- | --- |
-| A, `New-EventLog` | `EventMessageFile` = `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\EventLogMessages.dll` only | | | key removed |
+| A, `New-EventLog` | `EventMessageFile` = `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\EventLogMessages.dll` only | not run | not run | not recorded |
 | B | `EventMessageFile` `%SystemRoot%\System32\EventCreate.exe`, `TypesSupported` 7 | True | `probe` | key removed |
 | C | as B plus `CustomSource` 1 | True | `probe` | key removed |
-| D | `TypesSupported` 7 only | True | "The description for Event ID '1' … cannot be found", then `probe` | not run |
+| D | `TypesSupported` 7 only | True | `Get-EventLog`: "The description for Event ID '1' … cannot be found", then `probe`; `Get-WinEvent`: empty | not run |
 
 - `CustomSource` made no difference, and `New-EventLog` does not write it,
   so msi-builder has no option for it (spec chapter 16, "Decisions not

@@ -76,7 +76,7 @@ closes each one.
 | Corrupted cabinet data (MSZIP-01, CAB-04) | Wrong DEFLATE history, or a bit flip without a checksum, installs a corrupted file | Writer: every cabinet data block gets a checksum, and the builder re-extracts every cabinet after writing it and compares each file's SHA-256 with the source. Neither can be turned off, so the schema has no field for them. |
 | Script custom actions (CA-02) | Inline JScript/VBScript actions (types 37/38) report success whatever they return; a Binary script returning 5 ends the install with 0 and leaves files unregistered | There are no script custom actions. Actions run an executable (`exec`), a DLL (`dll`), set a property or directory, or fail with an error. |
 | EXE exit codes (CA-02) | Any non-zero exit fails the install unless the action ignores it | `customActions[].return` is required for `exec` actions (`check` or `ignore`), so the author decides. |
-| Same ProductCode, new package (UPG-03) | Installing a rebuilt package over the installed one fails with 1638 | `product.productCode: auto` derives the code from the upgrade code, version, platform and a digest of every input. Changed content gives a new ProductCode (a major upgrade); unchanged content gives the same package byte for byte. A pinned ProductCode makes the validator warn. |
+| Same ProductCode, new package (UPG-03) | Installing a rebuilt package over the installed one fails with 1638 | `product.productCode: auto` derives the code from the upgrade code, version, platform and a digest of every input. Changed content gives a new ProductCode (a major upgrade); unchanged content gives the same package byte for byte. Keys with an empty value (`""`, `false`, `0`, `[]`) are left out of the digest, so a key a later version adds to the schema does not change the code of a configuration that does not use it. A pinned ProductCode makes the validator warn. |
 | Quote in a firewall rule description (CA-04) | netsh drops the quote and stores the rest of the description | `firewall[].name` and `firewall[].description` must not contain a double quote. |
 | Versions that differ in the fourth field only (UPG-01) | Without an inclusive maximum both products stay installed side by side | `upgrade.allowSameVersion` defaults to `true` (maximum inclusive), so `0.32.0.5` replaces `0.32.0.4`. Four-field versions get a warning that Windows compares only three. |
 
@@ -681,15 +681,17 @@ removeRegistry:
 
 Each entry is a `RemoveRegistry` row of the component (name `-` for a whole
 key). The engine deletes it when the component is installed, in the
-component's registry view, and leaves it alone at uninstall (REG-02, which
-also records what a repair does). `RemoveRegistryValues` runs before
+component's registry view, and leaves it alone at uninstall (reported;
+REG-02 checks it on Windows). `RemoveRegistryValues` runs before
 `WriteRegistryValues`, so a key that is removed and also written by the
-package is reset to exactly the package's values: values the user added
-there are gone after the install (REG-02). A component that only removes
+package should end up with exactly the package's values, without values
+the user added there (REG-02). In a per-machine package an `HKCU` entry
+can only reach the profile of the user who runs the install; other users'
+profiles are not touched (not tested). A component that only removes
 registry entries has its directory as key path. Removing the default value
 of a key is not supported. The same root, key and name twice in one
-component is an error, and so is a per-user package that removes from HKLM
-or HKCR.
+component is an error, with or without `id`, and so is a per-user package
+that removes from HKLM or HKCR.
 
 **Services** (only in a component whose key file is the service executable):
 
@@ -756,10 +758,10 @@ eventLog:
 They write `EventMessageFile` (`REG_EXPAND_SZ`) and `TypesSupported`
 (`REG_DWORD`) under
 `HKLM\SYSTEM\CurrentControlSet\Services\EventLog\<log>\<source>`.
-Nothing else is needed: a key there is a registered source for
-`Write-EventLog`, `[EventLog]::SourceExists` and `Remove-EventLog`, and
-events show their text through a generic `%1` message file such as
-`EventCreate.exe` (REG-03). There is no `customSource` option: a
+Nothing else was needed in REG-03: a key there with these two values was a
+registered source for `Write-EventLog`, `[EventLog]::SourceExists` and
+`Remove-EventLog`, and events showed their text through the generic `%1`
+message file `EventCreate.exe`. There is no `customSource` option: a
 `CustomSource` value made no difference to any of these in REG-03, and
 `New-EventLog` itself does not write it. A package that wants it anyway can
 add it as a `registry` entry.
@@ -799,11 +801,53 @@ properties:
 | `value` | none | Written to the Property table; an empty value writes no row |
 | `secure` | `true` for public names | Listed in `SecureCustomProperties` |
 | `hidden` | `false` | Listed in `MsiHiddenProperties` |
+| `search` | none | Fills the property from the registry; see below |
 
 Public names have no lower-case letter. `secure: true` on a private name is
 an error. The request properties (`ADDLOCAL`, `REMOVE`, `REINSTALL`, …) and
 the properties the builder owns (`ProductCode`, `ProductVersion`, `ALLUSERS`,
 `SecureCustomProperties`, …) cannot be set here (ICE87).
+
+**Search.** `search` fills a property from the registry of the target
+machine before the install:
+
+```yaml
+properties:
+  NETFX_RELEASE:
+    search:
+      registry:
+        root: HKLM                     # HKLM | HKCU | HKCR | HKU
+        key: SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full
+        name: Release                  # empty: the key's default value
+        bitness: 64                    # 32 | 64; default: the package's
+        type: value                    # value (default) | directory
+  DATA_DIR:
+    value: C:\Data                     # used when the search finds nothing
+    search:
+      registry: { root: HKLM, key: SOFTWARE\Example, name: DataDir, type: directory }
+```
+
+`value` returns the registry data the way the engine formats it: a
+`REG_SZ` as it is, a `REG_DWORD` as `#` and the number, a `REG_EXPAND_SZ`
+as `#%` and the unexpanded text (SEARCH-04 has the exact results).
+Conditions compare such a value as a string, so `NETFX_RELEASE >=
+"#394802"` only works while both numbers have the same number of digits
+(SEARCH-04). `directory` returns the folder the data names, and nothing when
+it does not exist.
+
+The precedence is: a value from the command line, then the search result,
+then `value`. The builder writes an `AppSearch` row into `<NAME>_FOUND`
+(public, so ICE52 stays quiet) and two immediate type-51 actions after
+`AppSearch` in both sequences: `SearchApply_<NAME>` copies the result when
+the property is still empty, and `SearchDefault_<NAME>` sets `value` when it
+is still empty after that. A search straight into the property would
+override a command-line value (SEARCH-03). `value` therefore has no
+`Property` row; it is written as a literal, with `[`, `]`, `{` and `}`
+escaped. A searched property must be public and secure, because after a
+UI sequence the engine does not run `AppSearch` again in the execute
+sequence (Microsoft documents this; not tested) and only secure properties
+reach it. `<NAME>_FOUND` cannot be defined in `properties`, and
+`installDir.remember` already searches the install dir.
 
 ### 4.8 `launchConditions`
 

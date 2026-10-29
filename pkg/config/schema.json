@@ -385,6 +385,78 @@
               },
               "hidden": {
                 "$ref": "#/$defs/bool"
+              },
+              "search": {
+                "type": "object",
+                "description": "Fills the property from the target machine before the install. A command-line value wins; value is the fallback when nothing is found.",
+                "properties": {
+                  "registry": {
+                    "type": "object",
+                    "properties": {
+                      "root": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "HKLM",
+                              "HKCU",
+                              "HKCR",
+                              "HKU"
+                            ]
+                          },
+                          {
+                            "$ref": "#/$defs/var"
+                          }
+                        ]
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string",
+                        "description": "Empty reads the key's default value."
+                      },
+                      "bitness": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "32",
+                              "64",
+                              32,
+                              64
+                            ]
+                          },
+                          {
+                            "$ref": "#/$defs/var"
+                          }
+                        ],
+                        "description": "Registry view; default: the package's."
+                      },
+                      "type": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "value",
+                              "directory"
+                            ]
+                          },
+                          {
+                            "$ref": "#/$defs/var"
+                          }
+                        ],
+                        "description": "value: the data with the engine's type prefix (#n for a DWORD); directory: the folder the data names, if it exists."
+                      }
+                    },
+                    "required": [
+                      "root",
+                      "key"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "registry"
+                ],
+                "additionalProperties": false
               }
             },
             "additionalProperties": false

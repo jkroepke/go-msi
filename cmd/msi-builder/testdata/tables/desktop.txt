@@ -6,7 +6,7 @@ summary  4: Example
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install Example Viewer.
 summary  7: x64;1033
-summary  9: {F1F6C0AF-0A41-521C-BA38-83885C23761B}
+summary  9: {4A015CE3-0211-5A6B-8825-797280A5AA7D}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500
@@ -435,7 +435,7 @@ DefaultUIFont	DefaultFont
 ErrorDialog	ErrorDlg
 LaunchOnFinish	1
 Manufacturer	Example
-ProductCode	{B7AAA0C3-3761-51FF-94F2-81887761D8CA}
+ProductCode	{475BEEAF-601B-56AC-87FF-02C4F3DBD07A}
 ProductLanguage	1033
 ProductName	Example Viewer
 ProductVersion	2.0.0

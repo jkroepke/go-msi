@@ -198,7 +198,7 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	Files     []*File          `yaml:"files"`
 	Registry  []*RegistryValue `yaml:"registry"`
 	// RemoveRegistry deletes registry keys or values when the component is
-	// installed (REG-02).
+	// installed.
 	RemoveRegistry []*RemoveRegistry `yaml:"removeRegistry"`
 	Services       []*Service        `yaml:"services"`
 	EventLog       []*EventSource    `yaml:"eventLog"`

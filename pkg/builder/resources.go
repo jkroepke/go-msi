@@ -88,7 +88,7 @@ func (b *build) writeRegistry(info *componentInfo) {
 	}
 
 	// RemoveRegistryValues runs before WriteRegistryValues, so a key that is
-	// removed and written again is reset to the package's values (REG-02).
+	// removed and written again ends up with only the package's values.
 	for _, entry := range comp.RemoveRegistry {
 		key := entry.ID
 		if key == "" {

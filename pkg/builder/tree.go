@@ -89,6 +89,59 @@ func (b *build) identity() error {
 	return nil
 }
 
+// pruneEmpty removes the mapping entries whose value is empty (null, "",
+// false, 0, an empty list or mapping, or a mapping that only held such
+// entries) and reports whether node itself ends up empty. List items are
+// kept, because their position is part of the configuration.
+func pruneEmpty(node *yaml.Node) bool {
+	switch node.Kind {
+	case yaml.DocumentNode:
+		for _, child := range node.Content {
+			pruneEmpty(child)
+		}
+
+		return false
+	case yaml.MappingNode:
+		kept := node.Content[:0]
+
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			if !pruneEmpty(node.Content[i+1]) {
+				kept = append(kept, node.Content[i], node.Content[i+1])
+			}
+		}
+
+		node.Content = kept
+
+		return len(kept) == 0
+	case yaml.SequenceNode:
+		for _, child := range node.Content {
+			pruneEmpty(child)
+		}
+
+		return len(node.Content) == 0
+	case yaml.ScalarNode:
+		return emptyScalar(node)
+	case yaml.AliasNode:
+		return false
+	}
+
+	return false
+}
+
+// emptyScalar reports whether a scalar is null, "", false or 0.
+func emptyScalar(node *yaml.Node) bool {
+	switch node.Tag {
+	case "!!null":
+		return true
+	case "!!bool":
+		return node.Value == "false"
+	case "!!int", "!!float":
+		return node.Value == "0"
+	default:
+		return node.Value == ""
+	}
+}
+
 // deriveProductCode computes productCode: auto from the upgrade code, the
 // platform, the version and a digest of the configuration and every input
 // file, so that changed content gives a new code (UPG-03) and unchanged
@@ -101,7 +154,16 @@ func (b *build) deriveProductCode() error { //nolint:cyclop // one pass over the
 	cfgCopy := *b.cfg
 	cfgCopy.BaseDir = ""
 
-	yamlBytes, err := yaml.Marshal(&cfgCopy)
+	var tree yaml.Node
+	if err := tree.Encode(&cfgCopy); err != nil {
+		return fmt.Errorf("digest of the configuration: %w", err)
+	}
+
+	// Keys with an empty value are left out, so that a new optional key in
+	// a later msi-builder keeps the code of an unchanged configuration.
+	pruneEmpty(&tree)
+
+	yamlBytes, err := yaml.Marshal(&tree)
 	if err != nil {
 		return fmt.Errorf("digest of the configuration: %w", err)
 	}

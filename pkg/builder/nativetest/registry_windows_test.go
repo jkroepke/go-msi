@@ -3,6 +3,7 @@
 package nativetest_test
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,6 +32,7 @@ components:
     files: [{ source: app.exe }]
     removeRegistry:
       - { root: HKLM, key: 'SOFTWARE\MsiBuilderTest\RemoveRegistry\Old' }
+      - { root: HKLM, key: 'SOFTWARE\MsiBuilderTest\RemoveRegistry\Only64' }
       - { root: HKLM, key: 'SOFTWARE\MsiBuilderTest\RemoveRegistry\Keep', name: Legacy }
       - { root: HKMU, key: 'SOFTWARE\MsiBuilderTest\RemoveRegistry\Mu' }
       - { root: HKCU, key: 'SOFTWARE\MsiBuilderTest\RemoveRegistry\User' }
@@ -44,6 +46,7 @@ components:
     bitness: "32"
     removeRegistry:
       - { root: HKLM, key: 'SOFTWARE\MsiBuilderTest\RemoveRegistry\Old' }
+      - { root: HKLM, key: 'SOFTWARE\MsiBuilderTest\RemoveRegistry\Only32' }
 `
 
 // buildRemoveRegistry writes the RemoveRegistry test package.
@@ -82,7 +85,7 @@ func buildRemoveRegistry(t *testing.T) string {
 func reg(t *testing.T, args ...string) string {
 	t.Helper()
 
-	out, _ := exec.CommandContext(t.Context(), "reg.exe", args...).CombinedOutput() //nolint:errcheck // a failed query is a result
+	out, _ := exec.CommandContext(t.Context(), "reg.exe", args...).CombinedOutput()
 
 	return string(out)
 }
@@ -110,11 +113,12 @@ func regHas(t *testing.T, view, key, name string) bool {
 	return exec.CommandContext(t.Context(), "reg.exe", args...).Run() == nil
 }
 
-// regData returns the data of a REG_SZ value, or "<absent>".
-func regData(t *testing.T, view, key, name string) string {
+// regData returns the data of a REG_SZ value in the 64-bit view, or
+// "<absent>".
+func regData(t *testing.T, key, name string) string {
 	t.Helper()
 
-	for line := range strings.Lines(reg(t, "query", key, "/v", name, "/reg:"+view)) {
+	for line := range strings.Lines(reg(t, "query", key, "/v", name, "/reg:64")) {
 		fields := strings.Fields(line)
 		if len(fields) >= 3 && strings.EqualFold(fields[0], name) {
 			return strings.Join(fields[2:], " ")
@@ -138,10 +142,11 @@ func TestMsiexecRemovesRegistry(t *testing.T) { //nolint:paralleltest // msiexec
 	hklm, hkcu := `HKLM\`+registryTestKey, `HKCU\`+registryTestKey
 
 	cleanup := func() {
-		_ = exec.Command("msiexec", "/x", path, "/qn").Run()
-		_ = exec.Command("reg.exe", "delete", `HKLM\SOFTWARE\MsiBuilderTest`, "/f", "/reg:64").Run()
-		_ = exec.Command("reg.exe", "delete", `HKLM\SOFTWARE\MsiBuilderTest`, "/f", "/reg:32").Run()
-		_ = exec.Command("reg.exe", "delete", `HKCU\SOFTWARE\MsiBuilderTest`, "/f").Run()
+		ctx := context.Background()
+		_ = exec.CommandContext(ctx, "msiexec", "/x", path, "/qn").Run()
+		_ = exec.CommandContext(ctx, "reg.exe", "delete", `HKLM\SOFTWARE\MsiBuilderTest`, "/f", "/reg:64").Run()
+		_ = exec.CommandContext(ctx, "reg.exe", "delete", `HKLM\SOFTWARE\MsiBuilderTest`, "/f", "/reg:32").Run()
+		_ = exec.CommandContext(ctx, "reg.exe", "delete", `HKCU\SOFTWARE\MsiBuilderTest`, "/f").Run()
 	}
 
 	cleanup()
@@ -151,6 +156,8 @@ func TestMsiexecRemovesRegistry(t *testing.T) { //nolint:paralleltest // msiexec
 		for _, view := range []string{"64", "32"} {
 			regSet(t, view, hklm+`\Old`, "Value", "old")
 			regSet(t, view, hklm+`\Old\Sub`, "Value", "old")
+			regSet(t, view, hklm+`\Only64`, "Value", "old")
+			regSet(t, view, hklm+`\Only32`, "Value", "old")
 		}
 
 		regSet(t, "64", hklm+`\Keep`, "Legacy", "old")
@@ -174,17 +181,28 @@ func TestMsiexecRemovesRegistry(t *testing.T) { //nolint:paralleltest // msiexec
 		{"64", hklm + `\Mu`, ""},
 		{"64", hkcu + `\User`, ""},
 		{"64", hklm + `\Reset`, "Stale"},
+		{"64", hklm + `\Only64`, ""},
+		{"32", hklm + `\Only32`, ""},
 	} {
 		if regHas(t, gone.view, gone.key, gone.name) {
 			t.Errorf("%s %s (view %s) is still there after the install", gone.key, gone.name, gone.view)
 		}
 	}
 
-	if got := regData(t, "64", hklm+`\Keep`, "Other"); got != "kept" {
+	// Each component removes only in its own view.
+	if !regHas(t, "32", hklm+`\Only64`, "") {
+		t.Errorf(`the 64-bit component also removed Only64 from the 32-bit view`)
+	}
+
+	if !regHas(t, "64", hklm+`\Only32`, "") {
+		t.Errorf(`the 32-bit component also removed Only32 from the 64-bit view`)
+	}
+
+	if got := regData(t, hklm+`\Keep`, "Other"); got != "kept" {
 		t.Errorf(`Keep\Other is %q after the install, want kept`, got)
 	}
 
-	if got := regData(t, "64", hklm+`\Reset`, "Value"); got != "new" {
+	if got := regData(t, hklm+`\Reset`, "Value"); got != "new" {
 		t.Errorf(`Reset\Value is %q after the install, want new`, got)
 	}
 
@@ -195,15 +213,15 @@ func TestMsiexecRemovesRegistry(t *testing.T) { //nolint:paralleltest // msiexec
 	code := msiexecCode(t, repairLog, "/fomus", path)
 	t.Logf("REG-02 repair /fomus: exit %d, Old(64) present=%v, Old(32) present=%v, Keep\\Legacy present=%v, User present=%v, Reset\\Stale present=%v, Reset\\Value=%q",
 		code, regHas(t, "64", hklm+`\Old`, ""), regHas(t, "32", hklm+`\Old`, ""), regHas(t, "64", hklm+`\Keep`, "Legacy"),
-		regHas(t, "64", hkcu+`\User`, ""), regHas(t, "64", hklm+`\Reset`, "Stale"), regData(t, "64", hklm+`\Reset`, "Value"))
+		regHas(t, "64", hkcu+`\User`, ""), regHas(t, "64", hklm+`\Reset`, "Stale"), regData(t, hklm+`\Reset`, "Value"))
 
 	seed()
 
 	uninstallLog := filepath.Join(filepath.Dir(path), "uninstall.log")
 	code = msiexecCode(t, uninstallLog, "/x", path)
 	t.Logf("REG-02 uninstall: exit %d, Old(64) present=%v, Keep\\Legacy present=%v, Keep\\Other=%q, Reset\\Stale present=%v, Reset\\Value=%q",
-		code, regHas(t, "64", hklm+`\Old`, ""), regHas(t, "64", hklm+`\Keep`, "Legacy"), regData(t, "64", hklm+`\Keep`, "Other"),
-		regHas(t, "64", hklm+`\Reset`, "Stale"), regData(t, "64", hklm+`\Reset`, "Value"))
+		code, regHas(t, "64", hklm+`\Old`, ""), regHas(t, "64", hklm+`\Keep`, "Legacy"), regData(t, hklm+`\Keep`, "Other"),
+		regHas(t, "64", hklm+`\Reset`, "Stale"), regData(t, hklm+`\Reset`, "Value"))
 }
 
 // TestICERemoveRegistry runs the full ICE suite against the RemoveRegistry
