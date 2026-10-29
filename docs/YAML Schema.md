@@ -346,7 +346,7 @@ ui:
   languages:
     de:
       strings:
-        WelcomeText: Hello ist ein kleiner Webserver. Klicken Sie auf Weiter.
+        WelcomeText: Hello, der kleine Webserver. Klicken Sie auf Weiter.
       launch:
         text: 'Hello jetzt &starten'
       dialogs:

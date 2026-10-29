@@ -1947,7 +1947,7 @@ ui:
       dialogs:
         ServerDlg:              # a ui.dialogs id
           title: Serververbindung
-          description: Woher das Programm seine Daten liest.
+          description: Woher die Anwendung ihre Daten liest.
           fields:
             SERVER_URL: {label: 'Serveradresse:'}   # the property a field binds
             LOG_LEVEL:
@@ -1965,7 +1965,7 @@ that is not a choice, an option label longer than 64 characters,
 `launch` without `ui.launch`, and a text that is only blanks. Values,
 properties, conditions and the page order stay those of `ui.dialogs`; only
 texts change. The texts are formatted and `&` marks the access key on the
-same controls as in `ui.dialogs` (check boxes and radio buttons). A full-UI
+same controls as in `ui.dialogs` (checkboxes and radio buttons). A full-UI
 install of a German transform on the CI runner showed the translated title,
 label and option and set the chosen option's value (LANG-04).
 

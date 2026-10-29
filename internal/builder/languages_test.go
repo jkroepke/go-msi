@@ -198,9 +198,9 @@ func TestLanguageDialogTexts(t *testing.T) {
 		"fr": {
 			Launch: &config.LanguageLaunch{Text: "&Ouvrir le visionneur"},
 			Dialogs: map[string]*config.LanguageDialog{"ServerDlg": {
-				Title: "Connexion au serveur",
+				Title: "Serveur distant",
 				Fields: map[string]*config.LanguageField{
-					"SERVER_URL": {Label: "Adresse du serveur :"},
+					"SERVER_URL": {Label: "Nom du serveur :"},
 					"LOG_LEVEL":  {Options: map[string]string{"debug": "&Detaille"}},
 				},
 			}},
@@ -214,7 +214,7 @@ func TestLanguageDialogTexts(t *testing.T) {
 	}
 
 	texts := storageStrings(t, res.Database.Storages[0])
-	for _, want := range []string{"&Ouvrir le visionneur", "Connexion au serveur", "Adresse du serveur :", "&Detaille"} {
+	for _, want := range []string{"&Ouvrir le visionneur", "Serveur distant", "Nom du serveur :", "&Detaille"} {
 		if !strings.Contains(texts, want) {
 			t.Errorf("the French transform does not hold %q", want)
 		}
