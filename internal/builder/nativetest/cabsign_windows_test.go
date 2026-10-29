@@ -329,8 +329,8 @@ func checkInstall(t *testing.T, path string, files []probeFile, label string, wa
 // TestMsiexecChecksSignedCabinets installs a package whose three external
 // cabinets are signed and listed in MsiDigitalSignature (SIG-09), then
 // checks that Windows Installer refuses a changed cabinet, a cabinet signed
-// by the same certificate for other content, an unsigned cabinet and a
-// certificate it does not trust. Packages with a null Hash and with the
+// by the same certificate for other content and an unsigned cabinet, and
+// that it does not ask for a trusted certificate. Packages with a null Hash and with the
 // content digest as Hash show why Hash holds the signature value.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
@@ -428,7 +428,9 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 	}
 
 	t.Run("untrusted", func(t *testing.T) {
-		// A self-signed certificate that no store trusts.
+		// A self-signed certificate that no store trusts installs: the
+		// package pins the certificate in MsiDigitalCertificate, and the
+		// package's own signature is what a user trusts.
 		key := rsaLeafKey(t)
 		tmpl := &x509.Certificate{
 			SerialNumber: big.NewInt(time.Now().UnixNano()),
@@ -446,7 +448,8 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 		code := msiexecCode(t, log, "/i", untrustedPath)
 		if code == 0 {
 			msiexecQuiet(t, filepath.Join(t.TempDir(), "uninstall.log"), "/x", untrustedPath)
-			t.Error("msiexec installed cabinets signed by an untrusted certificate")
+		} else {
+			t.Errorf("msiexec exit %d for cabinets signed by the certificate the package lists", code)
 		}
 
 		t.Logf("SIG-09: cabinets signed by an untrusted self-signed certificate: msiexec exit %d\n%s", code, logLines(log))

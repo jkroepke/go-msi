@@ -1357,12 +1357,47 @@ This confirms SigOrder for ordinary names, the CLSID-last walk, the v4 pre-hash,
 
 A Windows CI job with a self-signed test certificate settles the rest (chapter 11 §11). On the Windows Server 2025 runner (observed, SIG-01…06): `signtool` writes DSE by default for SHA-1 and SHA-256; a proper prefix sorts first; DSE is hashed at its sorted position; the `SpcSipInfo` layout above is accepted; RSA with SHA-1/256/384/512, ECDSA P-256 and P-384, and RFC 3161 timestamps verify; a changed root CLSID gives `0x800B0003`. The independently calculated digest can be compared to that of `signtool sign /fd SHA256`, and `signtool verify /pa /v` must pass. `Get-AuthenticodeSignature` must report `Valid`, and `HashMismatch` once a single byte is flipped.
 
+### Signed external cabinets
+
+A package can require that its external cabinets are signed: Windows Installer then checks each cabinet's Authenticode signature before it extracts files from it (observed, SIG-09). The cabinet signature is an ordinary Authenticode PKCS#7, the same `SignerInfo` and attributes as above, embedded in the cabinet itself (observed with `signtool` and WinVerifyTrust, SIG-08):
+
+| Item | Value |
+|---|---|
+| Header | flag `0x0004` (reserve present); after the 36-byte header `cbCFHeader` = 20, `cbCFFolder` = 0, `cbCFData` = 0; the CFFOLDER records start at offset 60 |
+| Signature header (offset 40, 20 bytes) | `0x00100000`; `cbCabinet`; the signature size, padded to 8; 0; 0 (u32 each). Zero in an unsigned cabinet with the reserve |
+| Signature | the DER PKCS#7 at offset `cbCabinet`, zero-padded to 8 bytes; `cbCabinet` does not count it |
+| Digest | H(bytes 0–3 ‖ bytes 8–33 ‖ bytes 56–59 ‖ bytes 60 to `cbCabinet`): the header without `reserved1` (0x04) and `iCabinet` (0x22), the last signature-header field, then everything from the folder records on |
+| `SpcIndirectDataContent` | msi-builder writes `SpcCabImageData` 1.3.6.1.4.1.311.2.1.25 with an empty `SpcPeImageData` (BIT STRING with no bits, `[0] { [2] { [0] "" } }`), which WinVerifyTrust accepts. `signtool` writes `SpcLink` 1.3.6.1.4.1.311.2.1.28 with an `SpcSerializedObject` (class `a6b586d5-b4a1-2466-ae05-a217da8e60d6`) that carries a page hash (1.3.6.1.4.1.311.2.5.1); both verify |
+
+- The digest needs the CFFILE records right after the folders (`coffFiles` = 60 + 8·cFolders) and no per-folder or per-data reserve.
+- `signtool sign` on a cabinet without the reserve inserts the 24 bytes and shifts the rest of the file (observed, SIG-08: a 337-byte cabinet became 361 bytes before the signature). msi-builder writes the reserve when it writes the cabinet, so signing a 2 GB cabinet only appends the PKCS#7.
+- WinVerifyTrust rejects a changed data byte with `0x80096010` (TRUST_E_BAD_DIGEST), and accepts changes to `reserved1` and `iCabinet` (SIG-08).
+
+The package lists the cabinets to check in two tables:
+
+| Table | Row msi-builder writes |
+|---|---|
+| `MsiDigitalCertificate` (DigitalCertificate s72 key, CertData v0) | `CabinetSigner`, the DER signing certificate |
+| `MsiDigitalSignature` (Table s32 key, SignObject s72 key, DigitalCertificate_ s72, Hash V0 nullable) | `Media`, the cabinet's DiskId as text, `CabinetSigner`, the signer's signature value |
+
+What Windows Installer does (observed, Windows Server 2025, SIG-09): it logs "Validating digital signature of file", checks the cabinet's signature with WinVerifyTrust, compares the signing certificate with `CertData`, and, when Hash is not null, compares Hash with what `MsiGetFileSignatureInformation` returns for the cabinet. That function returns the signer's **signature value** (the `SignerInfo` encryptedDigest, 256 bytes for RSA-2048), not the content digest; a call without a buffer returns 0 and leaves the size at 0. A Hash of another size fails with "Hash of signed file … differs in size with the hash of the file authored in the installation package" and error 1330, exit 1603.
+
+| Second cabinet | Hash = signature value | Hash null | Hash = content digest |
+|---|---|---|---|
+| as built | installs | installs | refused (1330) |
+| one data byte changed | refused | refused | refused |
+| another build signed with the same certificate | refused | **installs** (other files) | refused |
+| unsigned | refused | refused | refused |
+
+Trust is not part of the check: cabinets signed with a self-signed certificate that no store trusts install (exit 0) when `CertData` holds that certificate. The tables pin the certificate and the signature, so they protect the cabinets only as far as the package itself is protected: sign the package too, or an attacker who replaces the cabinets can replace the tables as well. A null Hash only binds the cabinet to the signer, so msi-builder always writes the signature value. A timestamp lives in the unauthenticated attributes and leaves the signature value unchanged. Embedded cabinets are covered by the package signature and are not listed in `MsiDigitalSignature`; ICE81 checks the tables (clean, SIG-09).
+
 ### Unverified
 
 - Whether `rsaEncryption`, SpcSpOpusInfo and SpcStatementType are required; UAC display of programName; nested signatures with DSE.
 - ECDSA keys and SHA-384/512 on Windows Server 2016 (they pass on Server 2025, SIG-06).
 - Signature-stream exclusion at the root only or at every level (conflict). The writer strips them from sub-storages, so both rules agree.
-- Low-dword sizes for streams ≥ 4 GiB; layout independence on Windows; `MsiDigitalSignature.Hash` content; the signed-cabinet reserve layout.
+- Low-dword sizes for streams ≥ 4 GiB; layout independence on Windows.
+- Signed external cabinets with ECDSA keys, on Windows Server 2016, from a network share, and with a timestamp (SIG-09 used RSA-2048 with SHA-256 on Server 2025, without a timestamp).
 
 ### Signatures and edit or rewrite operations
 
@@ -1636,6 +1671,11 @@ Behavior seen in other toolchains is not adopted just because another toolchain 
 - **Spanned cabinets.** A cabinet set may continue a folder, and so a file, into the next cabinet (`iFolder` 0xFFFD–0xFFFF, header flags 0x1 and 0x2, section 5); it exists to fill removable media of a fixed size. It does not raise any limit an msi-builder package meets: a file is at most 0x7FFFFFFF bytes by `File.FileSize` (`i4`) whether or not it spans, and splitting at file boundaries already lifts the 2 GiB and 65535-file limits per cabinet. The one gain is a file between 0x7FFF8000 and 0x7FFFFFFF bytes, 32 KiB of range, which no target package has. The cost is real: the engine needs consecutive `DiskId` values in order or fails with 2350 (reported, section 5), the writer and the reader would need the continuation records and a folder whose blocks are counted per cabinet, and none of it would be tested by the packages msi-builder builds. Packages above 2 GB use several external cabinets with no file split instead (CAB-10).
 - **Embedding more than 2 GB.** A compound file above 2 GB needs v4 with the range lock sector (section 2), and a package whose embedded cabinets add up to more than 2 GB is reported not to install, even when it holds several of them (section 5; CAB-10's embedded variant was not run). Building it would cost a writer path that no installable package uses, so the builder refuses such a package and names `package.embedCabinets: false` instead.
 - **Choosing external cabinets automatically.** The builder could write cabinets beside the package whenever the embedded ones would exceed 2 GB. A build whose output changes from one file to several when the payload grows would break a release pipeline that uploads only the `.msi`, without any error, so the choice stays explicit and the error says which key to set.
+- **Signing a cabinet that has no reserve.** `signtool` inserts the 24-byte reserve into a finished cabinet and moves everything after the header (section 12, SIG-08). For a 2 GB cabinet that is a second copy of the whole file. msi-builder writes the reserve when it writes the cabinet instead, and `sign.SignCabinet` refuses a cabinet without one.
+- **A null `MsiDigitalSignature.Hash`.** Hash is optional, and without it Windows Installer only checks that the cabinet is signed by the listed certificate, so a cabinet of another build signed with the same certificate installs (SIG-09). The signature value binds each cabinet to this package, and costs one row value.
+- **Signing embedded cabinets.** An embedded cabinet is a stream of the package, so the package signature already covers it; a signature of its own would only add bytes, and `MsiDigitalSignature` would list a cabinet that cannot be replaced. Cabinets are signed only with `embedCabinets: false`.
+- **Signing the cabinets in `msi-builder sign`.** Cabinet signatures change `MsiDigitalSignature.Hash`, so they must exist before the package is signed. `msi-builder sign` signs a finished package and leaves it otherwise unchanged; the cabinets are signed while building (`msi-builder build` with signing options, or `builder.Options.SignCabinets`).
+- **`signtool`'s `SpcLink` indirect data with page hashes.** WinVerifyTrust and Windows Installer accept the shorter `SpcCabImageData` form (SIG-08, SIG-09), so the page hash would be a second structure to keep right without a check that needs it.
 - **A cabinet size option in YAML.** WiX's media template starts a new cabinet every 200 MB (section 11.6). Smaller cabinets bring nothing to an embedded package and only more files to an external one, so the YAML has no such key. Go callers can set `builder.Options.CabinetSize`, which the tests use to split small payloads.
 - **An LZX search beyond 512 KiB.** A 2 MiB search is 1.4 % (windows_exporter) and 4 % (Alloy) smaller, but the writer's memory would grow with the window instead of staying at about 10 MB (section 5).
 - **Harvesting: a top-level `harvest` list.** A first draft added folders through their own list beside `components`, with its own `directory`, `feature` and `bitness` keys. Those keys repeat what a component already has, and a reader has to learn a second place where files come from. A folder is a file `source` that ends in `/` instead (section 4.6 of the YAML schema): its component takes the place of one component per file, keeps its `directory`, `condition`, `bitness` and features, and settings that name a single file or component (`guid`, `keyPath`, `name`, `shortcuts` and the like) are errors on it.
@@ -2278,6 +2318,8 @@ Until 2026-10-26 the cases used other IDs: `RUN-` for most installation and runt
 | SIG-04 | P1 | S/A | Prefix-related stream names and names before/after DSE | Use valid signed fixtures; compute candidate stream sort orders and compare with Windows signature verification. | Confirmed (Server 2025) |
 | SIG-05 | P1 | S/A | Nested storage containing a signature-named stream; CLSID mutation | Vary nested data, name and CLSID independently; check the signed digest and exclusion scope with the native verifier. | Partly confirmed (Server 2025; CLSID only, no nested storages) |
 | SIG-06 | P2 | S/A | RSA SHA-256/384/512, ECDSA where supported | Sign and verify each combination; document Windows build, certificate and algorithm-specific failures. | Confirmed (Server 2025) |
+| SIG-08 | P1 | S/A | MSZIP cabinet written with the 20-byte signature reserve, signed by msi-builder (RSA, SHA-256 and SHA-1) and by `signtool` (from a cabinet without the reserve) | WinVerifyTrust, `Get-AuthenticodeSignature` and `signtool verify /pa`; flip a data byte; compare `MsiGetFileSignatureInformation` with the signature value; decode `signtool`'s reserve, indirect data and digest. (`internal/builder/nativetest/cabsign_windows_test.go`) | Confirmed ([results](MSISPEC-RESULTS.md#signed-external-cabinets-sig-08-sig-09)) |
+| SIG-09 | P1 | S/A/I | Three signed external cabinets listed in `MsiDigitalSignature`, with Hash = signature value, null and the content digest | Install each with the second cabinet as built, with a changed byte, from another build by the same signer, and unsigned; then cabinets by an untrusted certificate; ICE suite. | Confirmed ([results](MSISPEC-RESULTS.md#signed-external-cabinets-sig-08-sig-09)) |
 | INT-01 | P0 | S/A/I | Equivalent WiX and msitools packages | Pin version or commit; diff normalized table semantics, native open, install/uninstall and raw stream hashing. Identify producer-only decisions. | Blocked ([results](MSISPEC-RESULTS.md)) |
 | INT-02 | P1 | S/A | WiX MSI round-tripped by libmsi and then a native commit | Compare raw streams and decoded tables and native file extraction after each round trip; note semantic vs incidental changes. | Blocked ([results](MSISPEC-RESULTS.md)) |
 | INT-03 | P1 | S/A | Minimized failures from the msitools bug tracker (section 16) | Run identical malformed input through the native MSI API, msitools and an independent CFB/CAB reader; distinguish tool bugs from Windows rejection. | Blocked ([results](MSISPEC-RESULTS.md)) |
