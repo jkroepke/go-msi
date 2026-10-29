@@ -270,7 +270,7 @@ Pipeline, each step a file of its own:
    short names from the §11.3 hash, `DefaultDir` values. The configuration
    gives long names only; every short name is generated. Directories and
    files in one folder share one set of short names, also when several
-   directory ids name that folder; long names that are valid short names
+   directory IDs name that folder; long names that are valid short names
    are taken before any is generated, once the files are read. Duplicates
    would break `SHORTFILENAMES=1` installs (FILE-07).
 4. **Components, features, files, media**: attributes (64-bit bit 256,

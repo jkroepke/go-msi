@@ -371,7 +371,7 @@ directories:
   A hand-written `short|long` name is an error: short names matter only
   with `SHORTFILENAMES=1`, on a volume without long names and in `[!file]`
   references (specification sections 8.3 and 8.9; reported, the last two
-  not tested), and generating them keeps them unique. Directory ids that
+  not tested), and generating them keeps them unique. Directory IDs that
   name one folder (the same long names from the same root) get the same
   short name; with two, `SHORTFILENAMES=1` would presumably split the
   folder (inferred, not tested).
