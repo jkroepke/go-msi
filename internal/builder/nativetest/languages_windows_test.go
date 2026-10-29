@@ -98,7 +98,8 @@ func TestFullUILanguages(t *testing.T) { //nolint:paralleltest // msiexec runs o
 
 // TestLanguageOnlyLicenseInstall installs, with the German transform, a
 // package whose license page only the German entry has. The base carries
-// an empty CheckBox table so that the transform adds rows, not a table.
+// an empty CheckBox table, since msi-builder's transform writer adds rows,
+// not tables.
 func TestLanguageOnlyLicenseInstall(t *testing.T) { //nolint:paralleltest // one msiexec at a time
 	if testing.Short() {
 		t.Skip("msiexec install")

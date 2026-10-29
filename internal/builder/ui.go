@@ -619,7 +619,7 @@ func (b *build) writeWizard(wiz *wizard) {
 	b.table("ListBox") // required with a Dialog table (ICE20), stays empty
 
 	// A ui.languages entry with a license adds the license page's check
-	// box to its build only; a transform cannot add a table, so the base
+	// box to its build only; the transform writer adds no tables, so the base
 	// has the table too, empty if need be.
 	if len(wiz.checkBoxes) > 0 || b.anyLicense() {
 		boxes := b.table("CheckBox")

@@ -18,7 +18,7 @@ func transformTables(t *testing.T, storage cfb.Storage) []string {
 
 	var out []string
 
-	for _, name := range []string{"Property", "Control", "Dialog", "UIText", "RadioButton", "File", "Component", "_Validation"} {
+	for _, name := range []string{"Property", "Control", "Dialog", "UIText", "RadioButton", "CheckBox", "File", "Component", "_Validation"} {
 		encoded, err := msidb.EncodeStreamName(name, true)
 		if err != nil {
 			t.Fatal(err)
@@ -115,7 +115,7 @@ func TestLanguageBuildDiagnostics(t *testing.T) {
 
 // TestLanguageLicenseWithoutBaseLicense builds a package whose only license
 // belongs to a ui.languages entry: the base has an empty CheckBox table, so
-// that the language transform only adds rows.
+// that the language transform, whose writer adds no tables, only adds rows.
 func TestLanguageLicenseWithoutBaseLicense(t *testing.T) {
 	t.Parallel()
 
@@ -138,7 +138,7 @@ func TestLanguageLicenseWithoutBaseLicense(t *testing.T) {
 		t.Fatalf("storages %v, want 1031", res.Database.Storages)
 	}
 
-	if got := transformTables(t, res.Database.Storages[0]); !slices.Contains(got, "Dialog") || !slices.Contains(got, "Control") {
-		t.Errorf("storage 1031 changes %v, want the license dialog and its controls", got)
+	if got := transformTables(t, res.Database.Storages[0]); !slices.Contains(got, "Dialog") || !slices.Contains(got, "Control") || !slices.Contains(got, "CheckBox") {
+		t.Errorf("storage 1031 changes %v, want the license dialog, its controls and its check box", got)
 	}
 }
