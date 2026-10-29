@@ -203,7 +203,7 @@ func (w *wizard) modalBoxes() {
 	restart.control(text("Text", margin, 55, dlgWidth-2*margin, 20, "The following applications are using files that need to be updated by this setup."))
 	restart.control(&uiControl{name: "List", typ: typListBox, property: propFilesUse, x: margin, y: 77, w: dlgWidth - 2*margin, h: 90, attrs: ctlList, ring: true})
 	restart.control(&uiControl{
-		name: "Options", typ: "RadioButtonGroup", property: propRMOption, x: margin, y: 175, w: dlgWidth - 2*margin, h: 45, attrs: ctlActive, ring: true,
+		name: "Options", typ: typRadioGroup, property: propRMOption, x: margin, y: 175, w: dlgWidth - 2*margin, h: 45, attrs: ctlActive, ring: true,
 	})
 	restart.control(strip())
 	restart.control(button("OK", nextX, buttonY, "&OK")).

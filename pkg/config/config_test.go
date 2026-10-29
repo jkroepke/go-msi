@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -100,11 +101,36 @@ func TestParseErrors(t *testing.T) {
 		"bad step delay":   {"schema: msi-builder/v1\ncomponents: [{services: [{recovery: {actions: [{restart: soon}]}}]}]\n", "duration"},
 		"bad step key":     {"schema: msi-builder/v1\ncomponents: [{services: [{recovery: {actions: [{reboot: 1m}]}}]}]\n", "{restart: <delay>}"},
 		"null step delay":  {"schema: msi-builder/v1\ncomponents: [{services: [{recovery: {actions: [{restart: ~}]}}]}]\n", "needs a delay"},
+		"null option": {
+			"schema: msi-builder/v1\nui: {dialogs: [{id: D, title: T, after: X, fields: [{property: P, type: choice, options: [a, b, ~]}]}]}\n",
+			"an option cannot be empty",
+		},
+		"option key": {
+			"schema: msi-builder/v1\nui: {dialogs: [{id: D, title: T, after: X, fields: [{property: P, type: choice, options: [{valeu: a}]}]}]}\n",
+			"valeu",
+		},
 	} {
 		_, err := config.Parse([]byte(tc.yaml), config.Options{})
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: err = %v, want %q", name, err, tc.want)
 		}
+	}
+}
+
+func TestChoiceOptionForms(t *testing.T) {
+	t.Parallel()
+
+	const doc = "schema: msi-builder/v1\nui: {dialogs: [{id: D, title: T, after: X, fields: [{property: P, type: choice, " +
+		"options: [warn, 1, {value: debug, label: '&Debug'}]}]}]}\n"
+
+	cfg, err := config.Parse([]byte(doc), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := fmt.Sprint(cfg.UI.Dialogs[0].Fields[0].Options)
+	if want := "[{warn } {1 } {debug &Debug}]"; got != want {
+		t.Errorf("options = %s, want %s", got, want)
 	}
 }
 

@@ -970,10 +970,50 @@
                       "enum": [
                         "text",
                         "password",
-                        "checkbox"
+                        "checkbox",
+                        "choice"
                       ],
                       "default": "text",
-                      "description": "text: a label and an edit field. password: the same with the characters hidden; the property is added to MsiHiddenProperties. checkbox: a check box with the label as its text."
+                      "description": "text: a label and an edit field. password: the same with the characters hidden; the property is added to MsiHiddenProperties. checkbox: a check box with the label as its text. choice: a label and one radio button per option."
+                    },
+                    "options": {
+                      "type": "array",
+                      "minItems": 2,
+                      "description": "choice only: the values the property can take, in display order. A string is a value shown as is.",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
+                            "maxLength": 64
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "type": [
+                                  "string",
+                                  "number",
+                                  "boolean"
+                                ],
+                                "maxLength": 64
+                              },
+                              "label": {
+                                "type": "string",
+                                "maxLength": 64,
+                                "description": "The radio button text; & marks the access key. Default: the value."
+                              }
+                            },
+                            "required": [
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
                     },
                     "value": {
                       "type": "string",
@@ -983,6 +1023,21 @@
                   "required": [
                     "property"
                   ],
+                  "if": {
+                    "properties": {
+                      "type": {
+                        "const": "choice"
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "options"
+                    ]
+                  },
                   "additionalProperties": false
                 }
               }
