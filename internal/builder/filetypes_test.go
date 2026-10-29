@@ -10,8 +10,10 @@ import (
 )
 
 // TestFileTypes writes a file type as HKCR Registry rows in the file's
-// component: the ProgID, its icon and verbs, and the extensions that point
-// at it.
+// component: the ProgID, its icon and verbs, the extensions that point at
+// it and its entry in their OpenWithProgids lists. An openWithOnly
+// extension gets only the list entry, also for an extension another type
+// owns.
 func TestFileTypes(t *testing.T) {
 	t.Parallel()
 
@@ -31,8 +33,16 @@ func TestFileTypes(t *testing.T) {
               - { id: print, arguments: '/p "%1"' }
               - { id: run, arguments: '' }
           - progId: Acme.Plain
+            extensions:
+              - { extension: acmedoc, openWithOnly: true }
+              - { extension: txt, openWithOnly: true }
 `)
-	database := mustBuild(t, cfg).Database
+	res := mustBuild(t, cfg)
+	database := res.Database
+
+	if len(res.Diagnostics) != 0 {
+		t.Errorf("diagnostics: %v", res.Diagnostics)
+	}
 
 	got := make(map[string]string)
 
@@ -58,6 +68,10 @@ func TestFileTypes(t *testing.T) {
 		`.acmedoc|<nil>`:                          "Acme.Document",
 		`.acmedoc|Content Type`:                   "application/x-acme",
 		`.acmd|<nil>`:                             "Acme.Document",
+		`.acmedoc\OpenWithProgids|Acme.Document`:  "<nil>",
+		`.acmd\OpenWithProgids|Acme.Document`:     "<nil>",
+		`.acmedoc\OpenWithProgids|Acme.Plain`:     "<nil>",
+		`.txt\OpenWithProgids|Acme.Plain`:         "<nil>",
 		`Acme.Plain\shell\open\command|<nil>`:     `"[#app.exe]" "%1"`,
 	}
 

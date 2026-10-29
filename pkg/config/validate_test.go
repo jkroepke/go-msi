@@ -387,7 +387,7 @@ func TestValidate(t *testing.T) {
 		},
 		"fileTypes extension dot": {
 			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, extensions: [{extension: .acme}]}]\n", 1),
-			sevError, "components[0].files[0].fileTypes[0].extensions[0].extension", "without its dot",
+			sevError, "components[0].files[0].fileTypes[0].extensions[0].extension", "without it",
 		},
 		"fileTypes extension twice": {
 			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, extensions: [{extension: acme}]}, {progId: Acme.Other, extensions: [{extension: ACME}]}]\n", 1),
@@ -396,6 +396,18 @@ func TestValidate(t *testing.T) {
 		"fileTypes system extension": {
 			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, extensions: [{extension: txt}]}]\n", 1),
 			sevWarning, "components[0].files[0].fileTypes[0].extensions[0].extension", "without a handler",
+		},
+		"fileTypes progId star": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: '*'}]\n", 1),
+			sevError, "components[0].files[0].fileTypes[0].progId", "not a ProgID",
+		},
+		"fileTypes extension twice in one type": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, extensions: [{extension: acme}, {extension: Acme, openWithOnly: true}]}]\n", 1),
+			sevError, "components[0].files[0].fileTypes[0].extensions[1].extension", "listed twice",
+		},
+		"fileTypes openWithOnly contentType": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, extensions: [{extension: txt, openWithOnly: true, contentType: text/plain}]}]\n", 1),
+			sevError, "components[0].files[0].fileTypes[0].extensions[0].contentType", "openWithOnly",
 		},
 		"fileTypes verb twice": {
 			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, verbs: [{id: open}, {id: Open}]}]\n", 1),

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -101,7 +102,8 @@ func expandShorthands(cfg *Config) { //nolint:cyclop // one pass in a fixed orde
 }
 
 // shortcutDirectories resolves the folder of every shortcut, the Start
-// menu by default, the way a component's directory is resolved.
+// menu by default, and the target of a folder shortcut, the way a
+// component's directory is resolved.
 func shortcutDirectories(cfg *Config, tree *dirTree) {
 	for i, comp := range cfg.Components {
 		for fileIndex, file := range comp.Files {
@@ -116,6 +118,25 @@ func shortcutDirectories(cfg *Config, tree *dirTree) {
 
 				tree.origin = fmt.Sprintf("%s.files[%d].shortcuts[%d].directory", comp.Path(i), fileIndex, index)
 				shortcut.Directory = tree.resolve(shortcut.Directory)
+			}
+		}
+
+		for index, shortcut := range comp.Shortcuts {
+			if shortcut == nil {
+				continue // reported by the validator
+			}
+
+			if shortcut.Directory == "" {
+				shortcut.Directory = DefaultShortcutDirectory
+			}
+
+			scPath := fmt.Sprintf("%s.shortcuts[%d]", comp.Path(i), index)
+			tree.origin = scPath + ".directory"
+			shortcut.Directory = tree.resolve(shortcut.Directory)
+
+			if shortcut.Folder != "" {
+				tree.origin = scPath + ".folder"
+				shortcut.Folder = tree.resolve(shortcut.Folder)
 			}
 		}
 	}
@@ -368,23 +389,34 @@ func componentIDs(cfg *Config) {
 			continue
 		}
 
-		base := "Component"
-
-		switch {
-		case comp.firewallFeature != "":
-			base = comp.firewallFeature + "_Firewall"
-		case keyFileByRef(comp, comp.KeyPath) != nil:
-			base = fileName(keyFileByRef(comp, comp.KeyPath))
-		case len(comp.Files) > 0:
-			base = fileName(comp.Files[0])
-		case len(comp.Services) > 0:
-			base = comp.Services[0].Name
-		case comp.Directory != "":
-			base = comp.Directory
-		}
-
-		comp.ID = uniqueID(identifier(base), used)
+		comp.ID = uniqueID(identifier(componentBase(comp, cfg.Product.Name)), used)
 	}
+}
+
+// componentBase is the name a component without an id is named after.
+// product is the product name, which a shortcut without a name defaults to.
+func componentBase(comp *Component, product string) string {
+	base := "Component"
+
+	switch {
+	case comp.firewallFeature != "":
+		base = comp.firewallFeature + "_Firewall"
+	case keyFileByRef(comp, comp.KeyPath) != nil:
+		base = fileName(keyFileByRef(comp, comp.KeyPath))
+	case len(comp.Files) > 0:
+		base = fileName(comp.Files[0])
+	case len(comp.Services) > 0:
+		base = comp.Services[0].Name
+	case shortcutsOnly(comp) && comp.Shortcuts[0] != nil && cmp.Or(comp.Shortcuts[0].Name, product) != "":
+		// Named after its first shortcut, so that the id, and the
+		// ComponentId of its shortcuts, do not move with the order. The
+		// shortcut's name is not defaulted yet.
+		base = cmp.Or(comp.Shortcuts[0].Name, product) + " Shortcuts"
+	case comp.Directory != "":
+		base = comp.Directory
+	}
+
+	return base
 }
 
 // RememberComponentID is the component that installDir.remember adds.

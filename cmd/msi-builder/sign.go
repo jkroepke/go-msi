@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/jkroepke/msi-builder/pkg/config"
 	"github.com/jkroepke/msi-builder/pkg/sign"
 )
 
@@ -171,6 +172,26 @@ func (s *signFlags) signBuild(ctx context.Context, pkg []byte, product string) (
 	}
 
 	return s.sign(ctx, pkg)
+}
+
+// cabinetOptions are the options that sign the cabinets of cfg written
+// beside the package, or nil when nothing is signed or the cabinets are
+// embedded. The program name defaults to the product name.
+func (s *signFlags) cabinetOptions(cfg *config.Config) (*sign.Options, error) {
+	if !s.enabled() || cfg.Package.CabinetsEmbedded() {
+		return nil, nil //nolint:nilnil // nil means unsigned cabinets
+	}
+
+	opts, err := s.options()
+	if err != nil {
+		return nil, err
+	}
+
+	if opts.Description == "" {
+		opts.Description = cfg.Product.Name
+	}
+
+	return &opts, nil
 }
 
 func (s *signFlags) sign(ctx context.Context, pkg []byte) ([]byte, error) {

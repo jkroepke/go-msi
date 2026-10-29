@@ -48,7 +48,17 @@ const (
 	fileEntrySize = 16
 	// cbCabinetOffset is where the header holds the cabinet size.
 	cbCabinetOffset = 8
+	// flagReserve is the CFHEADER flag of the reserve fields.
+	flagReserve = 0x4
+	// signatureHeaderSize is the per-cabinet reserve an Authenticode
+	// signature header fills (section 12).
+	signatureHeaderSize = 20
 )
+
+// SignatureReserve is what Options.SignatureReserve adds to a cabinet: the
+// cbCFHeader, cbCFFolder and cbCFData fields and a per-cabinet reserve of 20
+// bytes that a signature header fills later (section 12).
+const SignatureReserve = 4 + signatureHeaderSize
 
 // Limits of one cabinet (section 5).
 const (
@@ -65,7 +75,9 @@ const (
 // names hold nameBytes bytes in all and whose sizes add up to folderBytes,
 // whatever the data: every compressed block taking the most bytes its
 // compression allows. It is exact for None. A cabinet of entries that fits
-// MaxSize by Bound can always be written.
+// MaxSize by Bound can always be written; Options.SignatureReserve adds
+// SignatureReserve bytes to it. A signature appended after cbCabinet is not
+// counted.
 func Bound(files int, nameBytes, folderBytes int64, comp Compression) int64 {
 	blocks := (folderBytes + blockSize - 1) / blockSize
 	header := headerSize + folderSize + int64(files)*(fileEntrySize+1) + nameBytes + blocks*recordHeaderSize
@@ -126,6 +138,10 @@ type Options struct {
 
 	Compression Compression
 	SetID       uint16
+	// SignatureReserve writes a zeroed 20-byte per-cabinet reserve, the
+	// space sign.SignCabinet fills with the Authenticode signature header,
+	// so that signing never moves the cabinet's data.
+	SignatureReserve bool
 }
 
 // maxWorkers caps the default number of MSZIP workers. Each one adds about
@@ -407,7 +423,13 @@ func WriteTo(dst io.WriteSeeker, entries []Entry, opts Options) (int64, error) {
 // a zero cabinet size, which WriteTo patches at the end.
 func writeHeader(out *countingWriter, entries []Entry, folderBytes int64, opts Options) error {
 	order := binary.LittleEndian
-	coffFiles := headerSize + folderSize
+
+	start := headerSize
+	if opts.SignatureReserve {
+		start += SignatureReserve
+	}
+
+	coffFiles := start + folderSize
 	dataStart := coffFiles
 
 	for _, ent := range entries {
@@ -416,22 +438,28 @@ func writeHeader(out *countingWriter, entries []Entry, folderBytes int64, opts O
 
 	numBlocks := int((folderBytes + blockSize - 1) / blockSize)
 
-	hdr := make([]byte, headerSize+folderSize)
+	hdr := make([]byte, coffFiles)
 	copy(hdr, "MSCF")
 	order.PutUint32(hdr[16:], uint32(coffFiles))
 	hdr[0x18], hdr[0x19] = 3, 1
 	order.PutUint16(hdr[0x1A:], 1)
 	order.PutUint16(hdr[0x1C:], uint16(len(entries))) //nolint:gosec // the file count was checked against MaxFiles
 	order.PutUint16(hdr[0x20:], opts.SetID)
-	order.PutUint32(hdr[headerSize:], uint32(dataStart))
-	order.PutUint16(hdr[headerSize+4:], uint16(numBlocks)) //nolint:gosec // at most 65535 blocks by the folder limit
+
+	if opts.SignatureReserve {
+		order.PutUint16(hdr[0x1E:], flagReserve)
+		order.PutUint16(hdr[headerSize:], signatureHeaderSize)
+	}
+
+	order.PutUint32(hdr[start:], uint32(dataStart))
+	order.PutUint16(hdr[start+4:], uint16(numBlocks)) //nolint:gosec // at most 65535 blocks by the folder limit
 
 	typeCompress := uint16(opts.Compression)
 	if opts.Compression == LZX {
 		typeCompress |= uint16(opts.lzxWindow()) << 8 //nolint:gosec // 15 to 21
 	}
 
-	order.PutUint16(hdr[headerSize+6:], typeCompress)
+	order.PutUint16(hdr[start+6:], typeCompress)
 
 	if _, err := out.Write(hdr); err != nil {
 		return err
@@ -778,6 +806,32 @@ type fileRecord struct {
 	folder int
 }
 
+// reserveEnd returns where the CFFOLDER records start: after the header and,
+// with flagReserve, after the reserve fields and the per-cabinet reserve,
+// which holds a signature header in a signed cabinet. Per-folder and
+// per-block reserves are not supported.
+func reserveEnd(src io.ReaderAt, size int64, flags uint16) (int64, error) {
+	if flags&flagReserve == 0 {
+		return headerSize, nil
+	}
+
+	var fields [4]byte
+
+	if size < headerSize+int64(len(fields)) {
+		return 0, errors.New("cab: truncated header")
+	}
+
+	if err := readAt(src, fields[:], headerSize); err != nil {
+		return 0, fmt.Errorf("cab: header: %w", err)
+	}
+
+	if fields[2] != 0 || fields[3] != 0 {
+		return 0, errors.New("cab: per-folder and per-block reserves are not supported")
+	}
+
+	return headerSize + int64(len(fields)) + int64(binary.LittleEndian.Uint16(fields[:])), nil
+}
+
 // parseHeader reads the header, folders and file records of a cabinet.
 func parseHeader(src io.ReaderAt, size int64) (*header, error) { //nolint:cyclop // one pass over the format
 	order := binary.LittleEndian
@@ -804,22 +858,23 @@ func parseHeader(src io.ReaderAt, size int64) (*header, error) { //nolint:cyclop
 		return nil, errors.New("cab: cabinet sets (previous/next cabinet) are not supported")
 	}
 
-	if flags&0x4 != 0 {
-		return nil, errors.New("cab: reserve areas are not supported")
+	start, err := reserveEnd(src, size, flags)
+	if err != nil {
+		return nil, err
 	}
 
 	numFolders := int(order.Uint16(raw[0x1A:]))
 	numFiles := int(order.Uint16(raw[0x1C:]))
 	coffFiles := int64(order.Uint32(raw[0x10:]))
 
-	if int64(headerSize+folderSize*numFolders) > size || coffFiles > size {
+	if start+int64(folderSize*numFolders) > size || coffFiles > size {
 		return nil, errors.New("cab: truncated header")
 	}
 
 	hdr := &header{size: size, folders: make([]folderInfo, 0, numFolders)}
 	folderRaw := make([]byte, folderSize*numFolders)
 
-	if err := readAt(src, folderRaw, headerSize); err != nil {
+	if err := readAt(src, folderRaw, start); err != nil {
 		return nil, fmt.Errorf("cab: folders: %w", err)
 	}
 
