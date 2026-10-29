@@ -420,7 +420,7 @@ would mix with per-user data (ICE57). With `upgrade.removeOld`
 no component gets the value: an upgrade from a file key path to the HKCU
 value with that removal lost the component's files (INST-04). Turning the
 late removal on in a later version (or adding `preserve`, which does)
-changes those key paths back; INST-04 tests that upgrade too. Event log sources count as per-machine registry
+changes those key paths back; that upgrade kept the files (INST-04). Event log sources count as per-machine registry
 values, and so do machine environment variables, HKLM and HKU
 `removeRegistry` entries, and file types and HKMU or HKCR removals outside
 a `perUser` package. A firewall carrier in the profile
