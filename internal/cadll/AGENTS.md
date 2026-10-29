@@ -46,8 +46,8 @@ The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
 - `cadll_test.go` checks the checksums, the PE machine, the export and that
   the imports are only kernel32, advapi32 and msi. `testdata/probe` is the
   CA-03 package that `internal/builder/nativetest` installs on Windows
-  (`TestMsiexecRunActions`), natively on x64 and arm64 runners and under
-  x64 emulation on arm64.
+  (`TestMsiexecRunActions`), natively on the x64 and arm64 runners. The x64
+  package under emulation on arm64 passed once (CA-03) and is not rerun.
 - Never take code from another installer toolkit's custom action library;
   the Windows Installer custom action contract is documented by Microsoft
   and the spec (section 9.4).

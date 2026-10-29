@@ -149,9 +149,8 @@ jobs:
         run: go test ./... ${{ runner.os != 'Windows' && '-short' || '' }} -shuffle=on -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./...
 
       # Windows on Arm installs the run action probe natively (Arm64 package
-      # with the arm64 DLL) and under x64 emulation. msiexec under emulation
-      # is slow: these two tests alone take about seven minutes, so the rest
-      # of the native suite stays on x64, where it runs natively.
+      # with the arm64 DLL). msiexec is slow on this runner, so the rest of
+      # the native suite stays on x64.
       - name: go test (Windows on Arm)
         if: runner.os == 'Windows' && runner.arch == 'ARM64'
         shell: bash
