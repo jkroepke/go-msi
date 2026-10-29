@@ -178,19 +178,8 @@ func emptyComponents(cfg *Config) error { //nolint:cyclop // one pass in a fixed
 // emptyFiles rejects null entries in a component's files, their
 // shortcuts, its removeFiles and its serviceControl.
 func emptyFiles(compPath string, comp *Component) []error {
-	var errs []error
-
-	for j, entry := range comp.RemoveFiles {
-		if entry == nil {
-			errs = append(errs, fmt.Errorf("%s.removeFiles[%d]: empty entry", compPath, j))
-		}
-	}
-
-	for j, entry := range comp.ServiceControl {
-		if entry == nil {
-			errs = append(errs, fmt.Errorf("%s.serviceControl[%d]: empty entry", compPath, j))
-		}
-	}
+	errs := nilEntries(compPath+".removeFiles", comp.RemoveFiles)
+	errs = append(errs, nilEntries(compPath+".serviceControl", comp.ServiceControl)...)
 
 	for j, file := range comp.Files {
 		filePath := fmt.Sprintf("%s.files[%d]", compPath, j)
@@ -210,6 +199,19 @@ func emptyFiles(compPath string, comp *Component) []error {
 			if fileType == nil {
 				errs = append(errs, fmt.Errorf("%s.fileTypes[%d]: empty entry", filePath, k))
 			}
+		}
+	}
+
+	return errs
+}
+
+// nilEntries reports the null entries of a list.
+func nilEntries[T any](listPath string, list []*T) []error {
+	var errs []error
+
+	for j, entry := range list {
+		if entry == nil {
+			errs = append(errs, fmt.Errorf("%s[%d]: empty entry", listPath, j))
 		}
 	}
 
