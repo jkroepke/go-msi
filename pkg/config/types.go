@@ -580,6 +580,10 @@ type UI struct {
 	// Strings replaces built-in wizard texts by key, for example to build
 	// the wizard in another language (UIStrings lists the keys).
 	Strings map[string]string `yaml:"strings"`
+	// Languages adds wizard languages by LCID or language tag, each built
+	// as an embedded language transform that msiexec picks by the user's
+	// language (spec section 7.6).
+	Languages map[string]*Language `yaml:"languages"`
 	// FinishText is a formatted paragraph shown on the finish page below
 	// its standard text; hidden by Installed OR ACTION = "ADMIN".
 	FinishText string    `yaml:"finishText"`

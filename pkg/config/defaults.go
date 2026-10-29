@@ -73,7 +73,7 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 	}
 
 	if pkg.Codepage == 0 {
-		pkg.Codepage = DefaultCodepage
+		pkg.Codepage = defaultCodepage(cfg)
 	}
 
 	if pkg.Compression == "" {

@@ -178,7 +178,21 @@ func (b *build) customTables() error { //nolint:cyclop,gocognit // one pass over
 
 // finish assembles the database, packs the cabinet, derives the package code
 // and verifies the package by reading it back.
-func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop // one pass over the format; splitting would scatter it
+func (b *build) finish(res *Result) (*msidb.Database, error) {
+	database, err := b.assemble()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := b.languageTransforms(database); err != nil {
+		return nil, err
+	}
+
+	return b.write(res, database)
+}
+
+// assemble collects the tables into a database with its _Validation table.
+func (b *build) assemble() (*msidb.Database, error) {
 	// Written last: custom actions, firewall rules and service recovery add
 	// standard folders such as System64Folder after the tree is walked.
 	b.writeDirectoryTable()
@@ -207,6 +221,12 @@ func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop /
 
 	slices.SortFunc(database.Tables, func(a, b *msidb.Table) int { return strings.Compare(a.Name, b.Name) })
 
+	return database, nil
+}
+
+// write packs the cabinets, derives the package code, writes the package
+// and verifies it by reading it back.
+func (b *build) write(res *Result, database *msidb.Database) (*msidb.Database, error) { //nolint:cyclop // one pass over the format; splitting would scatter it
 	// A symlink to an existing file at Output is written through: the
 	// temporary files go next to its target so that the final rename stays
 	// on one file system. A dangling symlink is replaced by the package.
@@ -401,7 +421,7 @@ func (b *build) summaryProperties() []summary.Property {
 		{ID: summary.PIDAuthor, Value: pkg.Summary.Author},
 		{ID: summary.PIDKeywords, Value: pkg.Summary.Keywords},
 		{ID: summary.PIDComments, Value: comments},
-		{ID: summary.PIDTemplate, Value: fmt.Sprintf("%s;%d", pkg.Platform, *product.Language)},
+		{ID: summary.PIDTemplate, Value: b.template()},
 		{ID: summary.PIDRevision, Value: b.packageCode},
 		{ID: summary.PIDCreated, Value: b.opts.BuildTime},
 		{ID: summary.PIDLastSaved, Value: b.opts.BuildTime},

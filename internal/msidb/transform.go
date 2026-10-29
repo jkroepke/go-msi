@@ -41,6 +41,38 @@ type transformRecord struct {
 // binary cells are refused, since no transform that needs them has been
 // observed yet.
 func MarshalTransform(base, variant *Database, opts TransformOptions) ([]byte, error) {
+	streams, err := transformAll(base, variant, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := cfb.Write(streams, cfb.Options{Version: opts.CFBVersion, CLSID: cfb.CLSIDTransform})
+	if err != nil {
+		return nil, fmt.Errorf("msidb: transform: %w", err)
+	}
+
+	return out, nil
+}
+
+// TransformStorage returns the transform that turns base into variant as a
+// storage named name, to embed in the base package: a language transform
+// is named by its decimal LCID (MSISPEC section 7.6).
+func TransformStorage(name string, base, variant *Database, opts TransformOptions) (cfb.Storage, error) {
+	streams, err := transformAll(base, variant, opts)
+	if err != nil {
+		return cfb.Storage{}, err
+	}
+
+	storage := cfb.Storage{Name: name, CLSID: cfb.CLSIDTransform}
+	for _, s := range streams {
+		storage.Streams = append(storage.Streams, s.Source())
+	}
+
+	return storage, nil
+}
+
+// transformAll returns the streams of the transform from base to variant.
+func transformAll(base, variant *Database, opts TransformOptions) ([]cfb.Stream, error) {
 	// msi.dll applies a code page change to a neutral base only (MSIDB-12).
 	if base.Codepage != 0 && base.Codepage != variant.Codepage {
 		return nil, fmt.Errorf("msidb: transform: code page %d differs from the base's %d; only a neutral base can change it", variant.Codepage, base.Codepage)
@@ -75,12 +107,7 @@ func MarshalTransform(base, variant *Database, opts TransformOptions) ([]byte, e
 		streams = append(streams, cfb.Stream{Name: summary.StreamName, Data: data})
 	}
 
-	out, err := cfb.Write(streams, cfb.Options{Version: opts.CFBVersion, CLSID: cfb.CLSIDTransform})
-	if err != nil {
-		return nil, fmt.Errorf("msidb: transform: %w", err)
-	}
-
-	return out, nil
+	return streams, nil
 }
 
 // transformStreams encodes the string pool and the changed tables.

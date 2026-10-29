@@ -268,25 +268,23 @@ func TestJSONSchemaMatchesTypes(t *testing.T) {
 }
 
 // TestJSONSchemaUIStrings keeps the keys the schema offers for ui.strings
-// equal to the built-in wizard texts.
+// and ui.languages.*.strings equal to the built-in wizard texts.
 func TestJSONSchemaUIStrings(t *testing.T) {
 	t.Parallel()
 
 	var doc struct {
-		Properties map[string]struct {
-			Properties map[string]struct {
-				PropertyNames struct {
-					Enum []string `json:"enum"`
-				} `json:"propertyNames"`
-			} `json:"properties"`
-		} `json:"properties"`
+		Defs map[string]struct {
+			PropertyNames struct {
+				Enum []string `json:"enum"`
+			} `json:"propertyNames"`
+		} `json:"$defs"`
 	}
 
 	if err := json.Unmarshal(config.JSONSchema(), &doc); err != nil {
 		t.Fatal(err)
 	}
 
-	got := doc.Properties["ui"].Properties["strings"].PropertyNames.Enum
+	got := doc.Defs["uiStrings"].PropertyNames.Enum
 	want := slices.Sorted(maps.Keys(config.UIStrings()))
 
 	if !slices.Equal(got, want) {

@@ -226,25 +226,31 @@ func (u *UI) UIString(key string) string {
 	return text
 }
 
-// uiStrings checks ui.strings: known keys, and no empty text where the
-// built-in one is not empty, since a blank button or title is a mistake.
+// uiStrings checks ui.strings.
 func (v *validator) uiStrings(cfg *Config) {
 	if len(cfg.UI.Strings) > 0 && cfg.UI.Wizard == None {
 		v.errorf("ui.strings", "wizard texts need a wizard")
 	}
 
-	for _, key := range slices.Sorted(maps.Keys(cfg.UI.Strings)) {
+	v.checkUIStrings("ui.strings", cfg.UI.Strings)
+}
+
+// checkUIStrings checks wizard texts at path: known keys, and no empty text
+// where the built-in one is not empty, since a blank button or title is a
+// mistake.
+func (v *validator) checkUIStrings(path string, texts map[string]string) {
+	for _, key := range slices.Sorted(maps.Keys(texts)) {
 		builtIn, known := uiStrings[key]
 
 		switch {
 		case !known:
-			v.errorf("ui.strings."+key, "%s is not a wizard text", key)
-		case cfg.UI.Strings[key] == "" && builtIn != "":
-			v.errorf("ui.strings."+key, "the text is empty; leave the key out to keep the built-in text")
+			v.errorf(path+"."+key, "%s is not a wizard text", key)
+		case texts[key] == "" && builtIn != "":
+			v.errorf(path+"."+key, "the text is empty; leave the key out to keep the built-in text")
 		default:
 			if width := uiStringWidth(key); width > 0 {
-				if n := utf8.RuneCountInString(cfg.UI.Strings[key]); n > width {
-					v.warnf("ui.strings."+key, "%d characters exceed the column width of %d (ICE03)", n, width)
+				if n := utf8.RuneCountInString(texts[key]); n > width {
+					v.warnf(path+"."+key, "%d characters exceed the column width of %d (ICE03)", n, width)
 				}
 			}
 		}

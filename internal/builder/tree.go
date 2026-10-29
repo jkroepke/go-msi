@@ -430,7 +430,25 @@ func (b *build) inputs() error { //nolint:cyclop // one pass over the format; sp
 	return b.diags.Err() //nolint:wrapcheck // the diagnostics carry their own paths
 }
 
-func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentInfo) *fileInfo { //nolint:cyclop,gocognit // one pass over the format
+func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentInfo) *fileInfo {
+	if cached, ok := b.fileCache[cfgFile]; ok {
+		file := *cached
+		file.Component = comp
+
+		return &file
+	}
+
+	file := b.readPayload(diagPath, cfgFile, comp)
+	if file != nil && b.fileCache != nil {
+		cached := *file
+		b.fileCache[cfgFile] = &cached
+	}
+
+	return file
+}
+
+// readPayload reads a payload file: its size, hashes and version resource.
+func (b *build) readPayload(diagPath string, cfgFile *config.File, comp *componentInfo) *fileInfo { //nolint:cyclop,gocognit // one pass over the format
 	src, err := openSource(b.cfg, cfgFile.FS, cfgFile.Source)
 	if err != nil {
 		// The path error names the file.

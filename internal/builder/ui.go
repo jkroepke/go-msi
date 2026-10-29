@@ -298,7 +298,7 @@ func (b *build) ui() error {
 		return nil
 	}
 
-	wiz := &wizard{byName: make(map[string]*uiDialog), checkBoxes: make(map[string]string), ui: &b.cfg.UI}
+	wiz := &wizard{byName: make(map[string]*uiDialog), checkBoxes: make(map[string]string), ui: b.languageUI()}
 	tree := b.cfg.UI.Wizard == "featureTree"
 
 	wiz.commonDialogs(tree, b.hasRows("Component"))
