@@ -110,8 +110,8 @@ func TestFullUIRemoveDialog(t *testing.T) { //nolint:paralleltest // msiexec run
 	// The ModifyPath command, which Change in Add or Remove Programs is
 	// expected to run, the box left clear.
 	modify := strings.Fields(arpValue(arp, "ModifyPath"))
-	if len(modify) < 2 || !strings.EqualFold(modify[0], "MsiExec.exe") {
-		t.Errorf("ModifyPath %q is not an MsiExec.exe command; running the package instead", modify)
+	if len(modify) != 2 || !strings.EqualFold(modify[0], "MsiExec.exe") || !strings.EqualFold(modify[1], "/I"+res.ProductCode) {
+		t.Errorf("ModifyPath %q is not MsiExec.exe /I%s; running the package instead", res.ProductCode, modify)
 
 		modify = []string{"msiexec", "/i", pkg}
 	}

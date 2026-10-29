@@ -1736,7 +1736,9 @@ remove pages cannot follow each other. The fields are the same as on install
 pages. A package with remove dialogs keeps `ARPNOMODIFY` unset, so Add or
 Remove Programs offers Change, which is expected to open the maintenance
 menu through `ModifyPath` (unverified); with `product.arp.noModify: true` the
-validator warns that only running the package again shows the page.
+validator warns that only running the package again shows the page, and with
+`product.arp.noRemove: true`, which disables Remove in the menu, that no one
+can reach it.
 `msiexec /x` is expected to remove the product without the maintenance pages
 (spec section 7.7, UI-09; what the Uninstall button shows is unverified), so
 the property is also the command-line switch:
