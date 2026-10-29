@@ -12,7 +12,7 @@ package:
   platform: x64
 
 ui:
-  wizard: none
+  wizard: false
 
 components:
   - files:

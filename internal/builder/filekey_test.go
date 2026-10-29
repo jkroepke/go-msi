@@ -19,7 +19,7 @@ func TestGeneratedFileKeys(t *testing.T) {
       - source: app.ico
         name: my-data.ico
         version: my-app.exe
-ui: { wizard: minimal, launch: { file: my-app.exe } }
+ui: { wizard: true, launch: { file: my-app.exe } }
 `)
 	database := mustBuild(t, cfg).Database
 

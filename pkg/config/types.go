@@ -665,7 +665,6 @@ func (r *FirewallRule) Path(index int) string {
 
 // UI selects the built-in wizard and adds dialogs to it.
 type UI struct {
-	Wizard string `yaml:"wizard"`
 	// License is a license file shown on a page with an accept check box
 	// after the welcome page: RTF, or plain text that is converted to RTF.
 	License string `yaml:"license"`
@@ -684,9 +683,16 @@ type UI struct {
 	FinishText string    `yaml:"finishText"`
 	Theme      Theme     `yaml:"theme"`
 	Dialogs    []*Dialog `yaml:"dialogs"`
-	// InstallDirPage adds a page after the welcome and license pages that
+	// Wizard shows the setup wizard: welcome, ready, progress and finish
+	// pages plus maintenance, cancel and error dialogs. Without it msiexec
+	// shows only its basic progress window.
+	Wizard bool `yaml:"wizard,omitempty"`
+	// ChooseFeatures adds the feature tree page after the welcome and
+	// license pages, with Browse for a feature's directory.
+	ChooseFeatures bool `yaml:"chooseFeatures,omitempty"`
+	// ChooseDirectory adds a page after the welcome and license pages that
 	// shows the install folder and lets the user change it.
-	InstallDirPage bool `yaml:"installDirPage"`
+	ChooseDirectory bool `yaml:"chooseDirectory,omitempty"`
 }
 
 // Launch is the finish page's check box that starts an installed program.

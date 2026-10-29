@@ -191,10 +191,6 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 			rule.Profiles = StringList{"all"}
 		}
 	}
-
-	if cfg.UI.Wizard == "" {
-		cfg.UI.Wizard = None
-	}
 }
 
 // defaultShortcut names a shortcut after the product and starts it in its

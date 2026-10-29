@@ -1037,7 +1037,7 @@ func TestStreamCollision(t *testing.T) {
 		}
 
 		if tc.wizard {
-			cfg.UI.Wizard = "minimal"
+			cfg.UI.Wizard = true
 		}
 
 		res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
