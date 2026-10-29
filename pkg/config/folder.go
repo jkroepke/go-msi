@@ -35,8 +35,26 @@ func folderComponent(comp *Component) bool {
 	return false
 }
 
+// isFolderComponentID reports whether id names a component with a folder
+// source, before or after ExpandFolders replaced it.
+func isFolderComponentID(cfg *Config, compID string) bool {
+	for _, folder := range cfg.folders {
+		if folder.comp.ID == compID {
+			return true
+		}
+	}
+
+	for _, comp := range cfg.Components {
+		if comp != nil && comp.ID == compID && folderComponent(comp) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // ExpandFolders replaces every component whose file is a folder source
-// (a source that ends in "/") with one component per file below the
+// (a source that ends in "/" or "\\") with one component per file below the
 // folder, as AddTree adds them: subfolders become directories below the
 // component's directory, and each file gets its own component, key path and
 // GUID. The include and exclude patterns of the file pick the files. The
@@ -51,9 +69,10 @@ func folderComponent(comp *Component) bool {
 //
 // A relative source is read from the file's FS, else Config.FS, else the
 // folder of the YAML file (BaseDir); an absolute one from the file system.
-// It applies the defaults first. The builder calls it after a first
-// Validate and validates the expanded config again; call it yourself to see
-// the components a build would add. A folder that fails is reported and its
+// A firewall rule cannot name such a component. It applies the defaults
+// first. The builder calls it after a first Validate and validates the
+// expanded config again; call it yourself to see the components a build
+// would add. A folder that fails is reported and its
 // component stays; the others are expanded.
 func (c *Config) ExpandFolders() Diagnostics {
 	ApplyDefaults(c)
@@ -161,7 +180,11 @@ func (c *Config) expandFolder(comp *Component, compPath string) ([]*Component, e
 		prefix = prefix[:MaxTreePrefixLength]
 	}
 
-	fsys, root := c.folderFS(file)
+	fsys, root, err := c.folderFS(file)
+	if err != nil {
+		return nil, err
+	}
+
 	idRoot := folderIDRoot(file.Source)
 
 	added, err := c.walkTree(fsys, root, idRoot, comp.Directory, prefix, filter)
@@ -207,26 +230,46 @@ func copyFolderSettings(generated, comp *Component) {
 }
 
 // folderFS returns the file system and the root in it that a folder source
-// is read from. A relative source on disk is opened as a folder of its own,
-// so that it may lie outside the YAML file's folder.
-func (c *Config) folderFS(file *File) (fs.FS, string) {
+// is read from, in the order the builder opens files: an absolute source
+// from the disk, a relative one from the file's FS, Config.FS or BaseDir. A
+// folder on disk is opened as a file system of its own, so that a relative
+// one may lie outside the YAML file's folder.
+func (c *Config) folderFS(file *File) (fs.FS, string, error) {
+	var dir string
+
 	switch src := file.Source; {
-	case file.FS != nil:
-		return file.FS, folderIDRoot(src)
 	case filepath.IsAbs(src):
-		return os.DirFS(src), "."
+		dir = src
+	case file.FS != nil:
+		return file.FS, folderIDRoot(src), nil
 	case c.FS != nil:
-		return c.FS, folderIDRoot(src)
+		return c.FS, folderIDRoot(src), nil
 	default:
-		return os.DirFS(filepath.Join(c.BaseDir, filepath.FromSlash(folderIDRoot(src)))), "."
+		dir = filepath.Join(c.BaseDir, filepath.FromSlash(folderIDRoot(src)))
 	}
+
+	// The walk would name the folder ".", so check it here by name.
+	info, err := os.Stat(dir)
+
+	switch {
+	case err != nil:
+		if pathErr := (*fs.PathError)(nil); errors.As(err, &pathErr) {
+			err = pathErr.Err
+		}
+
+		return nil, "", fmt.Errorf("folder %s: %w", file.Source, err)
+	case !info.IsDir():
+		return nil, "", fmt.Errorf("%s is not a folder", file.Source)
+	}
+
+	return os.DirFS(dir), ".", nil
 }
 
 // holdsYAMLFile reports whether a folder source read from disk is the YAML
 // file's folder or one above it.
 func (c *Config) holdsYAMLFile(file *File) bool {
 	src := file.Source
-	if c.BaseDir == "" || file.FS != nil || (c.FS != nil && !filepath.IsAbs(src)) {
+	if c.BaseDir == "" || !filepath.IsAbs(src) && (file.FS != nil || c.FS != nil) {
 		return false
 	}
 
@@ -285,6 +328,7 @@ func (v *validator) folderComponent(cfg *Config, compPath string, comp *Componen
 	}
 
 	v.folderComponentFields(compPath, comp)
+	v.preserve(cfg, compPath, comp)
 
 	for j, file := range comp.Files {
 		if file != nil && isFolderSource(file.Source) {

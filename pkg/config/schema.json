@@ -1418,7 +1418,7 @@
             "properties": {
               "source": {
                 "type": "string",
-                "description": "Path relative to the YAML file, or absolute. A source that ends in / is a folder: the component becomes one component per file below it, with subfolders as directories below the component's directory (see the YAML schema doc)."
+                "description": "Path relative to the YAML file, or absolute. A source that ends in / (or \\) is a folder: the component becomes one component per file below it, with subfolders as directories below the component's directory (see the YAML schema doc)."
               },
               "name": {
                 "type": "string",

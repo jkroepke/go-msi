@@ -655,7 +655,11 @@ func (v *validator) components(cfg *Config, known *refs) {
 		v.filePatterns(p, comp)
 
 		v.oneOf(p+".bitness", comp.Bitness, Auto, "32", "64")
-		v.preserve(cfg, p, comp)
+
+		if !comp.fromFolder {
+			v.preserve(cfg, p, comp)
+		}
+
 		v.purge(cfg, known, p, comp)
 
 		if comp.Bitness == "64" && !cfg.Package.Platform.Is64Bit() {
@@ -717,9 +721,13 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 	perUser := cfg.Package.Scope == ScopePerUser
 	top := known.topFolder(comp.Directory)
 
-	// The component of a folder source reported this once, not once per
+	// The component of a folder source reports these once, not once per
 	// file.
-	if cfg.Package.Platform.Is64Bit() && comp.Bitness != "32" && folders32[top] && !comp.fromFolder {
+	if comp.fromFolder {
+		return
+	}
+
+	if cfg.Package.Platform.Is64Bit() && comp.Bitness != "32" && folders32[top] {
 		v.warnf(compPath+".directory", "%s is the 32-bit folder on 64-bit Windows (ICE80); "+
 			"use its 64-bit counterpart, or bitness: 32 for 32-bit files", top)
 	}
@@ -1709,7 +1717,12 @@ func (v *validator) firewall(cfg *Config, known *refs) { //nolint:cyclop // a fl
 			}
 		}
 
-		if v.required(p+".component", rule.Component) && known.components[rule.Component] == nil {
+		switch {
+		case !v.required(p+".component", rule.Component):
+		case isFolderComponentID(cfg, rule.Component):
+			v.errorf(p+".component", "component %s has a folder source, which becomes one component per file; "+
+				"put the program on a component of its own and exclude it from the folder", rule.Component)
+		case known.components[rule.Component] == nil:
 			v.errorf(p+".component", "component %q is not defined", rule.Component)
 		}
 

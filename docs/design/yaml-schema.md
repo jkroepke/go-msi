@@ -191,7 +191,7 @@ way:
 | no `upgrade` | the standard policy of section 4.3, as `upgrade: {}`; `upgrade: false` writes no Upgrade rows |
 | `features[].default: on`, `off` or `disabled` | `level: 1`, `2` or `0` (section 4.5) |
 | `features[].firewall` | the rules in `firewall`, following an empty component `<feature>_Firewall` that the feature holds (section 4.11) |
-| a file `source` that ends in `/` | in place of its component, a directory per folder that holds a file and a component per file, as `Config.AddTree` adds them; the builder expands it before it validates (section 4.6, "Adding a folder") |
+| a file `source` that ends in `/` (or `\`) | in place of its component, a directory per folder that holds a file and a component per file, as `Config.AddTree` adds them; the builder expands it after a first validation and validates the result again (section 4.6, "Adding a folder") |
 | a service argument with a `condition` | a private property set by an immediate `setProperty` action before InstallServices under that condition (section 4.6) |
 
 Generated IDs are stable: the same file gives the same IDs. Component GUIDs
@@ -809,7 +809,7 @@ review. A whole folder is added with a folder source instead.
 
 #### Adding a folder (folder sources)
 
-A file `source` that ends in `/` is a folder of the build machine. Its
+A file `source` that ends in `/` (or `\`) is a folder of the build machine. Its
 component becomes one component per file below it, so a package does not
 list each file of a build output:
 
@@ -835,7 +835,8 @@ or one component cannot be copied to many: `guid` (other than `auto`),
 component, and `name`, `id`, `version`, `language` and `shortcuts` on the
 file, are errors. Put them on a component of their own and exclude its file
 from the folder. `include` and `exclude` on a file that is not a folder are
-errors too. The generated components take the component's place in
+errors too, and so is a `firewall` rule whose `component` is a folder
+component. The generated components take the component's place in
 `components` and in the features that hold it.
 
 Add a separate output folder, not the YAML file's own: a package built next
@@ -862,7 +863,9 @@ the folder is the YAML file's folder or one above it.
   50 characters), `_`, a kind letter and 20 hex digits, derived from the
   directory, `source` as written and the path below it, exactly as
   `Config.AddTree` derives them. They are stable between builds of the same
-  input. A major upgrade presumably does not depend on them, since
+  input; an absolute `source` puts the build machine's path into them, and
+  with it into the automatic ProductCode, so prefer a relative one. A major
+  upgrade presumably does not depend on them, since
   components are matched by GUID (inferred, not tested). Diagnostics name a
   generated component as `components[0]{bin/app.exe}`. A generated file's
   `source` (also in `builder.Result.Files`) is its path below the folder

@@ -555,3 +555,99 @@ func TestFolderTakesTheComponentsPlace(t *testing.T) {
 		t.Errorf("validate after expanding: %s", diags)
 	}
 }
+
+// bothPasses validates a config, expands its folders and validates it
+// again, as the builder does, and returns every diagnostic.
+func bothPasses(t *testing.T, text string) (config.Diagnostics, config.Diagnostics) {
+	t.Helper()
+
+	cfg, err := config.Parse([]byte(text), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.FS = sampleFS()
+
+	first := config.Validate(cfg)
+	if expanded := cfg.ExpandFolders(); expanded.Err() != nil {
+		t.Fatal(expanded)
+	}
+
+	return first, config.Validate(cfg)
+}
+
+func TestFolderReportsOncePerComponent(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, text, path, want string
+	}{
+		{
+			"firewall rule on the folder",
+			folderHeader + "components: [{ id: App, files: [{ source: dist/conf/ }] }]\n" +
+				"firewall: [{ name: r, component: App, program: '[#x]', port: '80' }]\n",
+			"firewall[0].component", "folder source",
+		},
+		{
+			"preserve with an early removal",
+			folderHeader + "upgrade: { removeOld: afterInstallValidate }\n" +
+				"components: [{ preserve: true, files: [{ source: dist/lib/ }] }]\n",
+			"components[0].preserve", "needs removeOld afterInstallExecute",
+		},
+		{
+			"user profile",
+			folderHeader + "components: [{ directory: AppDataFolder/Sample, files: [{ source: dist/lib/ }] }]\n",
+			"components[0].directory", "user profile",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			first, second := bothPasses(t, tc.text)
+
+			for pass, diags := range []config.Diagnostics{first, second} {
+				count := 0
+
+				for _, d := range diags {
+					if strings.Contains(d.Message, tc.want) {
+						count++
+
+						if d.Path != tc.path {
+							t.Errorf("pass %d: %q at %s, want %s", pass+1, tc.want, d.Path, tc.path)
+						}
+					}
+				}
+
+				if count != 1 {
+					t.Errorf("pass %d: %d diagnostics mentioning %q, want 1\n%s", pass+1, count, tc.want, diags)
+				}
+			}
+		})
+	}
+}
+
+func TestFolderOnDiskNamesTheFolder(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct{ source, want string }{
+		{"nothere/", "folder nothere/: "},
+		{"file.txt/", "file.txt/ is not a folder"},
+	} {
+		cfg, err := config.Parse([]byte(folderHeader+"components: [{ files: [{ source: '"+tc.source+"' }] }]\n"), config.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		cfg.BaseDir = dir
+
+		diags := cfg.ExpandFolders()
+		if len(diags) != 1 || !strings.HasPrefix(diags[0].Message, tc.want) {
+			t.Errorf("%s: diagnostics %s, want one starting with %q", tc.source, diags, tc.want)
+		}
+	}
+}

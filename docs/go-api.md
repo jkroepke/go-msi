@@ -88,7 +88,7 @@ whole file system; an empty `root` is an error.
 each file: an executable without a version resource is an error unless it
 is marked as allowed (FILE-01).
 
-YAML files add a folder with a file `source` that ends in `/`, which uses
+YAML files add a folder with a file `source` that ends in `/` (or `\`), which uses
 the same rules and IDs (see the
 [YAML schema](design/yaml-schema.md#adding-a-folder-folder-sources)). A
 `Config` that Go code builds can hold such a component too: `builder.Build`
