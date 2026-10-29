@@ -1548,7 +1548,7 @@
                     },
                     "verbs": {
                       "type": "array",
-                      "description": "Shell verbs; default one open verb.",
+                      "description": "Shell verbs; default one open verb, [] for none.",
                       "items": {
                         "type": "object",
                         "properties": {

@@ -335,7 +335,9 @@ type FileType struct {
 	// writes no DefaultIcon.
 	IconIndex  *int                 `yaml:"iconIndex"`
 	Extensions []*FileTypeExtension `yaml:"extensions"`
-	Verbs      []*FileTypeVerb      `yaml:"verbs"`
+	// Verbs are the shell verbs. nil gets one open verb; an empty,
+	// non-nil list writes none.
+	Verbs []*FileTypeVerb `yaml:"verbs"`
 }
 
 // FileTypeExtension is a file name extension that opens with a FileType.
