@@ -134,7 +134,7 @@ func PeakHeap(limit int64, run func()) Peak {
 			case <-stop:
 				// A last collection ends the series, so that the cycle
 				// before it has a successor.
-				runtime.GC() //nolint:revive // see above
+				runtime.GC()
 
 				done = true
 			case <-ticker.C:
