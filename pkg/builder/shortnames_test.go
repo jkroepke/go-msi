@@ -218,3 +218,35 @@ components:
 		t.Errorf("Directory.DefaultDir %s takes the file's short name %s", defaultDir, dirShort)
 	}
 }
+
+// TestSameNamedDirectoriesShareShortName checks that two directory ids with
+// one long name under one parent, which install to one folder, get one short
+// name, so that SHORTFILENAMES=1 does not split them.
+func TestSameNamedDirectoriesShareShortName(t *testing.T) {
+	t.Parallel()
+
+	res := mustBuild(t, shortNameConfig(t, `        children:
+          - id: DATADIR
+            name: Data Files
+          - id: DATADIR2
+            name: data files
+components:
+  - directory: DATADIR
+    files:
+      - { source: one.txt }
+  - directory: DATADIR2
+    files:
+      - { source: two.txt }
+`))
+
+	short := func(id string) string {
+		value := fmt.Sprint(cell(t, res.Database, "Directory", "DefaultDir", func(row []any) bool { return row[0] == id }))
+		s, _, _ := strings.Cut(value, "|")
+
+		return strings.ToLower(s)
+	}
+
+	if short("DATADIR") != short("DATADIR2") {
+		t.Errorf("DATADIR short name %s, DATADIR2 %s, want one", short("DATADIR"), short("DATADIR2"))
+	}
+}

@@ -435,6 +435,15 @@ func TestValidate(t *testing.T) {
 				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1),
 			sevError, "components[0].purge", "has a %",
 		},
+		"purge tilde in name": {
+			strings.Replace(base, "        configurable: true\n", "        children: [{id: DataDir, name: 'PROGRA~1'}]\n", 1) +
+				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1),
+			sevError, "components[0].purge", "8.3 alias",
+		},
+		"short|long source base name": {
+			base + strings.Replace(appComponent, "source: app.exe", "source: 'APP.EXE|app.exe'", 1),
+			sevError, "components[0].files[0].source", "short names are generated",
+		},
 		"purge below a standard folder set by setDirectory": {
 			base + "components:\n  - id: Data\n    directory: CommonAppDataFolder/Example\n    createFolder: true\n    purge: true\n" +
 				"customActions:\n  - id: SetIt\n    setDirectory: {directory: CommonAppDataFolder, value: '[DATAROOT]'}\n" +

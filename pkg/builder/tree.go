@@ -246,9 +246,12 @@ func (b *build) ensureStandardDir(id string) {
 }
 
 // writeDirectoryTable emits the rows with generated short names. Every
-// directory is written: the engine resolves the whole chain.
+// directory is written: the engine resolves the whole chain. Directories
+// with one long name under one parent are one folder, so they get one short
+// name; otherwise SHORTFILENAMES=1 would split them into two folders.
 func (b *build) writeDirectoryTable() {
 	tbl := b.table("Directory")
+	names := make(map[string]string)
 
 	for _, dir := range b.dirOrder {
 		switch {
@@ -262,7 +265,12 @@ func (b *build) writeDirectoryTable() {
 
 			tbl.Add(dir.id, dir.parent, name)
 		default:
-			tbl.Add(dir.id, dir.parent, filename(dir.parent, dir.long, true, b.taken(dir.parent), config.ValidShortName))
+			key := dir.parent + "\x1f" + strings.ToLower(dir.long)
+			if _, ok := names[key]; !ok {
+				names[key] = filename(dir.parent, dir.long, true, b.taken(dir.parent), config.ValidShortName)
+			}
+
+			tbl.Add(dir.id, dir.parent, names[key])
 		}
 	}
 }

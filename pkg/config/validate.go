@@ -932,15 +932,15 @@ func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component
 
 		v.required(filePath+".source", file.Source)
 
-		name := file.Name
+		name, nameField := file.Name, filePath+".name"
 		if name == "" {
-			name = fileName(file)
+			name, nameField = fileName(file), filePath+".source"
 		}
 
 		if problem := nameProblem(name, "file name"); problem != "" {
-			v.errorf(filePath+".name", "%s", problem)
+			v.errorf(nameField, "%s", problem)
 		} else if !*cfg.Package.LongFileNames && !isShortName(name) {
-			v.errorf(filePath+".name", "longFileNames is false, so %q must be a valid 8.3 name", name)
+			v.errorf(nameField, "longFileNames is false, so %q must be a valid 8.3 name", name)
 		}
 
 		fileKey := fileID(file)

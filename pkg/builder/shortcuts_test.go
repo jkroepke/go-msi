@@ -163,7 +163,7 @@ func TestShortcutOptions(t *testing.T) {
 	database := res.Database
 
 	console := rowWhere(t, database, "Shortcut", func(r []any) bool { return r[0] == "AppMenu" })
-	if !strings.HasSuffix(fmt.Sprint(console[scName]), "|Acme Console") || console[scArguments] != "--user [LogonUser]" || console[scIcon] != "app.ico" ||
+	if short, long, _ := strings.Cut(fmt.Sprint(console[scName]), "|"); !config.ValidShortName(short) || long != "Acme Console" || console[scArguments] != "--user [LogonUser]" || console[scIcon] != "app.ico" ||
 		console[scIconIndex] != 2 || console[scShowCmd] != 7 || console[scWkDir] != "ProgramMenuFolder" {
 		t.Errorf("shortcut row %v", console)
 	}

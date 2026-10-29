@@ -133,7 +133,7 @@ func configuredFileName(file *fileInfo) string {
 
 // reserveShortNames takes the long names that are themselves valid short
 // names first, so that no generated short name can take one of them,
-// whichever row comes first (section 11.3, FILE-07).
+// whichever row comes first (section 11.3).
 func (b *build) reserveShortNames() error {
 	for _, dir := range b.dirOrder {
 		if !dir.standard {

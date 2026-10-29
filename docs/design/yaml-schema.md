@@ -368,9 +368,11 @@ directories:
   format needs from a hash of the parent key and the long name
   (specification section 11.3), unique among the directories and files of
   its parent; a long name that is itself a valid short name is used as is.
-  A hand-written `short|long` name is an error: short names only matter
-  with `SHORTFILENAMES=1` or on a volume without long names, and generating
-  them keeps them unique.
+  A hand-written `short|long` name is an error: short names matter only
+  with `SHORTFILENAMES=1`, on a volume without long names and in `[!file]`
+  references (specification sections 8.3 and 8.9; reported, the last two
+  not tested), and generating them keeps them unique. Directories with the
+  same long name under one parent get the same short name.
 - File and directory names must be valid on Windows: no `\/:*?"<>|` or
   control characters, no trailing dot or space, and no device name such as
   `CON`, `CONIN$`, `nul.txt` or `COM1`.
@@ -529,7 +531,8 @@ product's folders. Whether the installer ignores a private directory ID
 given on the command line was not tested. A standard folder nested below
 another folder is rejected too, because the installer resolves its path
 itself, and so is a `%` in any folder name, because `cmd.exe` expands
-`%NAME%` as an environment variable. A permanent component in the purged folder or below it
+`%NAME%` as an environment variable, and a `~`, because a name such as
+`PROGRA~1` can resolve to another folder's 8.3 alias (not tested). A permanent component in the purged folder or below it
 is an error: the component would outlive the product, but its folder would
 not. Data below the install dir therefore cannot be purged;
 use a path below a fixed standard folder other than TARGETDIR (public, and
