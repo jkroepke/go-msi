@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"testing"
 )
@@ -319,6 +321,23 @@ func TestShortLastSector(t *testing.T) {
 
 		if _, err := Read(short[:len(short)-1]); err == nil {
 			t.Errorf("v%d: a cut into the stream data was accepted", version)
+		}
+
+		// The lazy path reports the cut too instead of returning zeros.
+		cut := short[:len(short)-1]
+
+		lazy, err := Open(bytes.NewReader(cut), int64(len(cut)))
+		if err != nil {
+			t.Fatalf("v%d: %v", version, err)
+		}
+
+		stream, err := lazy.Reader("Large")
+		if err != nil {
+			t.Fatalf("v%d: %v", version, err)
+		}
+
+		if _, err := io.ReadAll(stream); !errors.Is(err, io.ErrUnexpectedEOF) {
+			t.Errorf("v%d: lazy read of a cut stream: %v, want io.ErrUnexpectedEOF", version, err)
 		}
 	}
 }
