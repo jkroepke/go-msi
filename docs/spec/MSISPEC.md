@@ -969,7 +969,7 @@ Numbers are Microsoft's suggested ones; where the reference toolchain differs, t
 
 | Actions | IES | IUS | Note |
 |---|---|---|---|
-| FindRelatedProducts, AppSearch, LaunchConditions | 25, 50, 100 | 25, 50, 100 | WiX numbers; Microsoft has 200 and 400 for the first two |
+| FindRelatedProducts, AppSearch, LaunchConditions | 25, 50, 100 | 25, 50, 100 | WiX numbers; Microsoft has 200 and 400 for the first two. When the actions that apply search results do not fit between 50 and 100, msi-builder schedules LaunchConditions right after the last of them instead |
 | CCPSearch, RMCCPSearch | 500, 600 | 500, 600 | `NOT Installed` |
 | ValidateProductID, CostInitialize, FileCost, CostFinalize | 700, 800, 900, 1000 | same | Always |
 | MigrateFeatureStates | 1200 | 1200 | Right after CostFinalize |
