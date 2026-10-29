@@ -54,9 +54,10 @@ Contradicted claims:
    the pool: every one of 32768 or 65536 rows then reads back as NULL. Reading
    ignores the stored refcount (0, 32768 and 65535 all read fine), but a native
    commit keeps it masked to 15 bits and drops the string when that is 0. Section
-   3 says "Fail above 65535" and "refcount MUST equal the stored references";
-   neither holds for what Windows writes or survives. A writer whose output may
-   be edited by `msi.dll` should keep every refcount in 1…32767.
+   3 said "Fail above 65535" until 2026-10-29; its "refcount MUST equal the
+   stored references" holds only up to 32767 for what Windows writes or
+   survives. A writer whose output may be edited by `msi.dll` should keep every
+   refcount in 1…32767.
 4. **`*` does not imply removal (ENVVAR-01).** `=*MSISPEC_PERM` (machine scope,
    no `-`) survives uninstall. Section 8.13 says `*` "also implies removal at
    uninstall"; the other environment claims hold (below).
@@ -202,6 +203,7 @@ Silent-failure cases a producer has to guard against itself:
 | FILE-04 | Inconclusive | [log](msitest/results/FILE-04/msifilehash/log.md): a correct, a wrong and a misnamed hash table repair the same way (`/fo` and `/fe` restore, `/fc` does not) |
 | FILE-05 | Confirmed | Same as FILE-02 |
 | FILE-06 | Confirmed | [probe](msitest/results/FILE-06/probe/log.md); in a Word Count 3 package the target folder and an administrative image kept the long part of the `short\|long` directory, and `SHORTFILENAMES=1` installed to the short one; [details](#short-name-packages-file-06) |
+| FILE-07 | Confirmed | [probe](msitest/results/FILE-07/probe/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40833269994: ICE30 reports two files with one short name in a folder, not two directories or a directory and a file; a normal install is unaffected, with `SHORTFILENAMES=1` one file overwrites the other, two directories merge and a directory beside a file of its short name fails with 1312 and 1603; [details](#duplicate-short-names-file-07) |
 | REG-01 | Confirmed | [x64](msitest/results/REG-01/x64/log.md) and [Intel](msitest/results/REG-01/Intel/log.md) templates: bit 256 picks the view |
 | ENVVAR-01 | Contradicted | [log](msitest/results/ENVVAR-01/environment/log.md); finding 4; segment removal on uninstall confirmed |
 | PROP-01 | Not run | Needs a non-administrator elevated install |
@@ -455,6 +457,34 @@ code 1603 but will be translated to success due to continue marking`, and
   `NOT REMOVE~="ALL"`.
 - Not run: a 32-bit (`Intel`) package, a cancel from a UI handler, and
   Windows Server 2016.
+
+## Duplicate short names (FILE-07)
+
+Run on 2026-10-29 in CI run 40833269994 of PR #78, `Build & Test
+(windows-latest)` job (Windows Server 2025 x64, elevated), by a temporary
+probe test that built four packages with msi-builder before it checked short
+names, ran the ICE suite on each, installed it silently, listed the folder,
+removed it, and repeated the install with `SHORTFILENAMES=1`. The probe was
+removed from the pull request afterwards; its output is in
+[`msitest/results/FILE-07/probe/log.md`](msitest/results/FILE-07/probe/log.md).
+
+Every package also had the two sibling directories of case c, so cases a, b
+and d did not test their files alone.
+
+| Case | ICE | Install | `SHORTFILENAMES=1` |
+| --- | --- | --- | --- |
+| a: `PROG~1.TXT\|Program One.txt` and `PROG~1.TXT\|Program Two.txt`, one component | ICE30 error for each file | Both long names; Windows gives them its own short names `PROGRA~1.TXT` and `PROGRA~2.TXT` | One `PROG~1.TXT` holding the second file ("Overwrite … hash doesn't match"); after the uninstall the folder is still there |
+| b: the same two files, one component each | ICE30 error ("by two different components on an SFN system") | Both long names | Same as a |
+| c: sibling directories `DATA~1\|Data One` and `DATA~1\|Data Two` | None about short names (ICE61 only, as in every case) | `Data One` and `Data Two` | Both resolve to `DATA~1`, which holds the files of both; the uninstall removes everything |
+| d: a file `DATA~1\|Data Three` beside the directory `DATA~1\|Data One` | None about short names | Both long names | Error 1312 "Cannot create the directory … A file with this name already exists", 1603 |
+
+- The `short` part is ignored by a normal install on an NTFS volume: the file
+  system assigns its own 8.3 names (`PROGRA~1.TXT`, `DATAON~1`), not the
+  package's.
+- ICE30 reported only the file cases; the directory cases passed the suite.
+  msi-builder's check (section 11.3) covers directories and files.
+- Not run: an administrative image, a volume without long names, a duplicate
+  shortcut short name, Windows Server 2016.
 
 ## Firewall arguments (CA-04)
 

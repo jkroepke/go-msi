@@ -186,7 +186,7 @@ Every string in every table is stored as a string ID; ID 0 is NULL. `_StringPool
 - `_StringData` concatenates non-free strings in ID order, without terminators. Lengths are bytes in the database code page and MUST sum to its size.
 - The long entry is exactly `0, refcount, low16(length), high16(length)` as u16 words. One open-source writer emitted `0, high16(length), low16(length), refcount` instead, and its packages with a string over 65535 bytes do not load (reported). A license RTF above 64 KiB is enough to need a long entry; a test vector MUST cover one.
 - No empty strings (empty equals NULL) and no duplicates. Canonical writers SHOULD leave no free slots. Readers MUST accept them: WiX-built packages have free slots (reported), so a string added later can get an ID below existing keys.
-- A refcount MUST equal the stored references in all table streams, `_Tables` and `_Columns` included (observed exact in native output). Fail above 65535.
+- A refcount MUST equal the stored references in all table streams, `_Tables` and `_Columns` included (observed exact in native output). msi.dll keeps only 15 bits of it (observed, MSIDB-05), so fail above 32767 rather than saturate or wrap.
 - IDs are 2 bytes, or 3 (u16 low, u8 high) with the flag. Writers set it when the highest ID is ≥ 65535; readers MUST honour it. On Windows the flag is set exactly when the highest ID, free slots included, reaches 65535 (observed, MSIDB-06).
 - Code page 0 allows ASCII only; otherwise use an ANSI code page or 65001, which a WiX 5-built package used (observed). Never 1200/1201; fail rather than substitute `?`.
 
@@ -247,9 +247,8 @@ A transform (`.mst`) is a compound file with CLSID `{000C1082-…}` whose table 
 
 Unverified:
 
-- Native storage of refcounts above 65535, and its long-reference threshold (65535 or 65536).
 - The oldest engine accepting a UTF-8 database code page (the observed package needs 5.0).
-- Transform encoding of dropped tables, columns and wide masks; `MergeModule.CABinet` as a plain `_Streams` entry. (Sorted rows are required: "Columns and tables" above.)
+- Transform encoding of dropped tables, columns and wide masks; `MergeModule.CABinet` as a plain `_Streams` entry. (Sorted rows are required: "Columns and tables" above.) One writer sends a full row instead of a partial update when a changed column lies beyond the 16 bits of the mask (reported, digitalxero/go-msi commit message).
 
 ### Lossless database serialization
 
@@ -312,6 +311,7 @@ Unverified:
 - Acceptance of summary code page 1200 and of VT_LPWSTR (65001 fails: above); minimum Page Count for `Arm`.
 - Page Count for versions 1.0–1.2 and 4.0, and for values below 100; patch Word Count above 5.
 - Transform and patch formats (Revision Number spacing, `:` in transform lists, absent Word or Page Count, platform flag 0x0004); merge-module GUID format.
+- Transforms inside a patch (reported from Windows CI runs in digitalxero/go-msi commit messages, not run here, SUM-09): the patch sequencer rejects a transform without Page Count (PID 14) with 2758 "Transform doesn't contain an MSI version", and one without Last Saved By (PID 8) with 1648 ("last author info property is missing"); PID 8 of a transform holds the platform and language the database has after the transform. In Character Count (PID 16) the high word holds the validation flags and the low word the error-condition flags. Validation flags of 0 left a patch not applicable (1642); validating the product code (0x2) bound it. The metadata transform needs the error-condition flags for an existing table, an existing row and a missing row, or the engine stops with 2252 on the `Patch` table it creates itself. A patch's own Media rows need `DiskId` 100 or higher and its files `Sequence` 10000 or higher.
 
 ## 5. Cabinets
 
@@ -1144,7 +1144,7 @@ A valid short name has 1–8 characters, optionally `.` and 1–3 more, with at 
 4. `short = base` + `"." + ext` if any. Stop at the first value unique in the scope.
 
 - `parentKey`: a file's component directory, a directory's parent, a shortcut's `Directory_`, or a `RemoveFile`/`IniFile` directory.
-- Scope: all names in the same directory, case-insensitive, including long names that are valid short names.
+- Scope: all names in the same directory, case-insensitive, including long names that are valid short names. msi-builder takes the literal short names of a directory (explicit `short|long` parts and long names that are valid short names) before it generates any, so a generated name never takes one whatever the row order, and draws directories and files from one set per directory. Two different names with the same literal short name are a build error: with `SHORTFILENAMES=1` one file overwrites the other and the folder is left behind at uninstall, two directories merge, and a directory beside a file of its short name fails with 1312; ICE30 reports only the file case (observed, FILE-07). Shortcuts keep a set of their own per directory, filled in row order as before, because a shortcut is written as `name.lnk` (reported, section 8.13) and so presumably does not compete with a folder; neither that nor two shortcuts, or a shortcut and a file `NAME.LNK`, with one short name was tested. Not checked either: a top-level directory against the fixed names of the standard folders, and a file and a directory with the same long name.
 - Observed shapes: `ab3x9_qz.go|averylongname.go`, `k2-fm0qw|Uninstall App`, `h7xq0d4m.dll|LongLibraryName.dll`. `FileSearch` names never get one.
 - WiX's algorithm (reported), which a producer that must reproduce WiX's names byte for byte would use instead of steps 1–4; msi-builder does not (section 16, "Decisions not adopted"): `data = lower(longName) + "|" + arg₁ + "|" + arg₂ …` with the arguments `File` and the directory key for a file, `Directory` and the parent key for a directory, `Shortcut`, the component and the directory for a shortcut, and `RemoveFile`, `IniFile`, `MoveFile` or `CopyFile` plus their component (and file) keys. `short = base64(SHA-1(UTF-8(data)))[0:8]` with `+` → `-` and `/` → `_`, lower-cased, plus the long name's extension cut to a dot and 3 characters; the extension is dropped when the result is not a valid short name, and never added for directories. Two files hashing to one short name only produce a warning.
 - The example reference profile gives every standard folder a fixed, distinct 8.3 name, so administrative layouts cannot collide. WiX's names (reported): `Admin`, `AppData`, `CommApp`, `CFiles`, `CFiles64`, `Desktop`, `Favs`, `Fonts`, `LocalApp`, `Pictures`, `NetHood`, `Personal`, `Programs` (PerUserProgramFilesFolder), `Printers`, `PFiles`, `PFiles64`, `PMenu`, `Recent`, `SendTo`, `StrtMenu`, `StartUp`, `System`, `System16`, `System64`, `Temp`, `Template`, `Windows`; the three `…6432Folder` aliases are `.`.
@@ -1561,6 +1561,27 @@ The GNOME msitools commits whose message mentions a fix were reviewed on 2026-10
 | `Upgrade` VersionMin/VersionMax NULL handling; crash without `Feature/@Level` | Already covered: NULL columns are written as NULL, and `Level` has a default. |
 | Summary information date parsing | Already covered: FILETIME is written from `SOURCE_DATE_EPOCH` and checked by the summary test vectors (section 4). |
 | Stable component GUIDs | Already covered: GUIDs are derived from the upgrade code and stable names (section 11.4). |
+
+### Reviewed digitalxero/go-msi fixes (2026-10-29)
+
+digitalxero/go-msi is an MIT-licensed Go library that writes packages, transforms and patches. Its source cites projects the clean-room rule (`AGENTS.md`) excludes, so only its commit messages were read: all 27 commits up to 2026-10-26, no diff and no source. Its issue tracker was not reachable from the review environment. Numbers in the table are its pull requests; the issues they close are #4 (shortcut working directory, closed by pull request #5) and #8 to #11, which this project reported from MSIDB-05, MSIDB-07 and FILE-01 (closed by pull requests #13, #14, #15 and #17). Each fix was checked against this spec and msi-builder:
+
+| digitalxero/go-msi fix (commit subject, abridged) | msi-builder |
+| --- | --- |
+| Count only stored string references (#13); keep refcounts within 15 bits (#14) | Already covered (section 3, MSIDB-05). That library saturates a count at 32767; msi-builder fails the build instead, because a saturated count is not the stored count section 3 requires ("Lossless database serialization"). |
+| Enforce the 31-column limit (#15) | Already covered (section 3, MSIDB-07, `msidb.MaxColumns`). Its fallback for wide transform updates concerns transforms, which msi-builder does not write; recorded in section 3 as reported. |
+| Detect file versions and languages from PE resources; a PE without a version resource fails (#17) | Already covered (section 11.5, FILE-01): `version: auto` reads `VS_FIXEDFILEINFO`, `language: auto` the translations, and a PE without a version resource is an error unless `allowUnversionedExecutable` is set. |
+| ICE03 mistook numeric versions for companion-file keys | Not applicable: that is its own ICE code. msi-builder runs Microsoft's suite (VAL-01), treats a value that parses as a version as a version, and file IDs are identifiers, which cannot start with a digit. |
+| `Shortcut.Name` in `short\|long` form; shortcuts in any directory; default working directory (#5) | Already covered (section 11.3; `directory`, default `ProgramMenuFolder`; `workingDirectory`, default the file's directory; SHORTCUT-01). |
+| Release-stable component GUIDs, distinct for x86 and x64 | Already covered (section 11.4): the GUID hashes the upgrade code, the bitness and the location, never the ProductCode. |
+| Registry key path without the registry key path bit | Already covered: a registry key path sets 0x4 (section 11.4). |
+| ICE18, ICE92 and ICE80 rule fixes | Not applicable to msi-builder's code: Microsoft's suite runs in CI. A 64-bit component in `ProgramFilesFolder`, `CommonFilesFolder` or `SystemFolder` already warns (ICE80). |
+| Sibling directories got the same short name; shortcuts and files share one namer per directory | **Adopted** for the gap that remained here. Generated short names were already unique per kind, but files and directories in one directory had separate sets, a generated name could take a literal short name written later, and two explicit `short\|long` names with the same short part were accepted. msi-builder now uses one set per directory for both, takes literal names first and rejects duplicates (section 11.3, FILE-07). Shortcuts keep their own set: a shortcut is written as `name.lnk` (reported), so it presumably does not compete with a folder or with a file of that short name without `.lnk` (not tested). |
+| Properties that collide with builder-owned rows fail with the key named | Already covered: those properties are a validation error. |
+| Reject bad versions; let the platform be set | Already covered: `product.version` is checked against the ProductVersion limits; `package.platform`. |
+| Authenticode: `SpcSipInfo` without an `[0] EXPLICIT` wrapper; ECDSA `signatureAlgorithm` as `ecdsa-with-SHA*` (#3) | Already covered (section 12): the bare form, whose digest SIG-01 recomputes for a `signtool` package, and ECDSA P-256 and P-384, which pass WinVerifyTrust (SIG-06). |
+| Patch fixes: product validation (1642), PID 14 (2758) and PID 8 (1648) in transform summaries, PID 16 word order, error-condition flags (2252), patch `DiskId` and `Sequence` ranges | Not applicable: msi-builder writes no transforms or patches. The claims are recorded as reported in section 4 for when it does (SUM-09). |
+| Set the install directory; CI and MSIX tooling; the ICE job (#6, #18) | Nothing to compare: the install-directory commit has no message body, the rest is their CI. |
 
 ### Decisions not adopted
 
@@ -2153,6 +2174,7 @@ Until 2026-10-26 the cases used other IDs: `RUN-` for most installation and runt
 | SUM-06 | P2 | S/A | Fixed UTC FILETIME and malformed Revision Number GUID | Verify native parsing of PID 12/13/9, time zones and invalid type/GUID behaviour. Preserve raw bytes. | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | SUM-07 | P1 | S/A/I | Summary SystemIdentifier 0x00020005 vs 0x00020006 | Change only the property-set header; native open and install both. Settles W14's first half (section 4). | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | SUM-08 | P1 | S/A/I | Template `Intel,x64;1033`, `x64,Intel;1033` and `Intel64,x64;1033` against the SUM-02 control | Native open and install on x64; Microsoft documents `Intel,x64` and `Intel64,x64` as invalid and the two-platform syntax as unsupported, while SUM-02 opened a list with one recognised token (sections 4, 19.4). | Not run |
+| SUM-09 | P2 | S/A/I | A minor-upgrade patch whose transforms vary PID 14 (absent, 200), PID 8 (absent, the target's Template) and the two PID 16 words | Apply each with `msiexec /p` and a verbose log; record 2758, 1648, 1642 and 2252 against the reported claims (section 4). msi-builder writes no patches, so this waits until it does. | Not run |
 | CAB-01 | P0 | S/A/I | Same file: no cabinet, stored CAB and MSZIP CAB | Extract with native FDI and an independent tool, then install through MSI. Compare installed SHA-256 and media handling. | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | CAB-04 | P1 | S/A | Alter CAB minor version, cbCabinet, checksum and reserve data individually | Call `FDIIsCabinet` and `FDICopy` for each mutation; capture exact acceptance and errors. | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | CAB-05 | P1 | S/A/I | Zero-byte file, zero-file folder, embedded/external CAB | Check native extraction and the actual installed directory and file state against CAB and Media metadata. | Confirmed ([results](MSISPEC-RESULTS.md)) |
@@ -2170,6 +2192,7 @@ Until 2026-10-26 the cases used other IDs: `RUN-` for most installation and runt
 | FILE-02 | P1 | A | Known empty and non-empty files; raw MD5 comparison | Call `MsiGetFileHashW`; compare the four signed 32-bit parts with the raw 128-bit hash and `MsiFileHash` rows (section 6.5). | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | FILE-03 | P1 | I | Data folder filled at runtime with files and a subfolder; `RemoveFile` rows `*` and the folder itself, and a deferred `cmd.exe /c rmdir /s /q` action conditioned on `REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE` (optionally `AND DELETE_DATA="1"`) | What is left after a real uninstall and after a major upgrade with `RemoveExistingProducts` at 1401? | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | FILE-06 | P2 | I | Word Count 3 package with `INSTALLDIR` as `short\|long` and one file in an embedded cabinet: plain install, administrative install, and install with `SHORTFILENAMES=1` | Which folder names do the target and the administrative image get (section 8.3)? | Confirmed ([results](MSISPEC-RESULTS.md)) |
+| FILE-07 | P2 | S/I | Two names with the same explicit short name in one folder: two files in one component, in two components, two sibling directories, a directory and a file; ICE suite, plain install and `SHORTFILENAMES=1` | Does ICE report it, and what lands on disk (section 11.3)? | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | REG-01 | P1 | A/I | 32-bit vs bit-0x100 components (x64; Arm64 optional) | Install a disposable registry-value component; inspect native and WOW6432Node views and logs for each variant. | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | ENVVAR-01 | P1 | A/I | Environment name flags `=-*`, `+-`, `=-`, PATH `[~]` | Snapshot user and machine environment; install, repair and uninstall; compare exact values, removal and permanence. Observe whether a running Explorer sees the change without a broadcast (W16). | Contradicted ([results](MSISPEC-RESULTS.md)) |
 | PROP-01 | P1 | A/I | Public property with/without SecureCustomProperties and deferred use | Run an elevated install with a distinct property value; inspect execute-sequence visibility and verbose logs, not just UI output. | Not run |
