@@ -323,8 +323,9 @@ Pipeline, each step a file of its own:
     cabinet, stream or spool, and compare every file's SHA-256 (computed once while
     hashing the source for `MsiFileHash`) with its source. Memory stays
     bounded by the tables plus a few compression blocks, whatever the payload
-    size. External cabinets are renamed into the output's folder first, then the
-    verified package onto `Options.Output`; a failed
+    size. The external cabinets and the verified package are then renamed into
+    place together by `spool.Commit`, which backs up what they replace and
+    restores it when a later rename fails; a failed
     build leaves an existing package untouched and no temporary files behind.
 
 Static ICE-style checks live next to the step that has the data (ICE03/06/32
@@ -413,8 +414,8 @@ generated from the command tree.
 | 8 | `ui`: built-in wizards (`minimal`, `featureTree`), generated dialogs, `artwork` bitmaps | PR 2 |
 | 9 | ICE-style checks that still need the UI tables; `_Validation` for UI | PR 2 |
 | 10 | External cabinets and several media (`package.embedCabinets`, packages above 2 GB) | done |
-| 12 | Uncompressed files beside the package | later |
 | 11 | `sign`: Authenticode signing, verification and RFC 3161 timestamps (MSISPEC §12) | done |
+| 12 | Uncompressed files beside the package | later |
 
 Out of scope for good: MSIX (nfpm), patches, transforms, merge modules,
 bundles, advertised installs and shortcuts, script custom actions.

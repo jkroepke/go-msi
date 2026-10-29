@@ -19,6 +19,9 @@ import (
 // stops below it.
 const maxEmbedded = 0x7FFFFE00
 
+// maxDiskID is the largest Media.DiskId, an i2 column.
+const maxDiskID = 32767
+
 // cabinetInfo is one cabinet: a run of payload files in sequence order with
 // a Media row of its own (section 5).
 type cabinetInfo struct {
@@ -76,6 +79,10 @@ func (b *build) splitCabinets() {
 		current.files = append(current.files, file)
 		nameBytes += int64(len(file.Key))
 		folderBytes += file.Size
+	}
+
+	if len(b.cabinets) > maxDiskID {
+		b.errorf("package.cabinet", "the payload needs %d cabinets, but Media.DiskId holds at most %d", len(b.cabinets), maxDiskID)
 	}
 
 	if !b.cfg.Package.CabinetsEmbedded() {

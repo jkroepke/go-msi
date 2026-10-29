@@ -229,3 +229,33 @@ func TestCabinetNameTooLong(t *testing.T) {
 		t.Errorf("diagnostics %s", res.Diagnostics)
 	}
 }
+
+// TestExternalCabinetNames checks the names an external cabinet cannot
+// take: the package's own, in any case, and names Windows cannot create.
+func TestExternalCabinetNames(t *testing.T) {
+	t.Parallel()
+
+	cfg := splitConfig(t)
+	cfg.Package.EmbedCabinets = new(false)
+	cfg.Package.Cabinet = "Hello.MSI"
+
+	out := filepath.Join(t.TempDir(), "hello.msi")
+
+	if _, err := builder.Build(cfg, builder.Options{BuildTime: buildTime, Output: out}); err == nil || !strings.Contains(err.Error(), "would replace the package") {
+		t.Errorf("a cabinet named like the package gave %v", err)
+	}
+
+	if left, _ := os.ReadDir(filepath.Dir(out)); len(left) != 0 {
+		t.Errorf("the failed build left %d entries", len(left))
+	}
+
+	for _, name := range []string{"NUL.cab", "a.cab.", "..", "a.cab "} {
+		cfg := splitConfig(t)
+		cfg.Package.EmbedCabinets = new(false)
+		cfg.Package.Cabinet = name
+
+		if !slices.ContainsFunc(config.Validate(cfg), func(d config.Diagnostic) bool { return d.Path == "package.cabinet" }) {
+			t.Errorf("cabinet %q passed validation", name)
+		}
+	}
+}

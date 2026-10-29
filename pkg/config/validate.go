@@ -283,6 +283,8 @@ func (v *validator) pkg(cfg *Config) { //nolint:cyclop // a flat list of indepen
 	switch {
 	case !plainFileName(pkg.Cabinet):
 		v.errorf("package.cabinet", "%q is not a plain file name", pkg.Cabinet)
+	case !pkg.CabinetsEmbedded() && !validLongName(pkg.Cabinet):
+		v.errorf("package.cabinet", "%q cannot be a file name on Windows (a device name, a trailing dot or space, or . or ..)", pkg.Cabinet)
 	case !pkg.CabinetsEmbedded():
 		// An external cabinet is a file beside the package, not a stream.
 	case msidb.CheckStreamName(pkg.Cabinet) != nil:

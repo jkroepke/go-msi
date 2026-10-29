@@ -201,8 +201,9 @@ func TestMsiexecInstallsSeveralCabinets(t *testing.T) {
 }
 
 // TestMsiexecInstallsLargePackage installs a package of about 2.9 GB in two
-// cabinets beside the .msi, and checks that the same files embedded are
-// refused (CAB-10). It writes about 9 GB, so it runs only with
+// cabinets beside the .msi, and checks that msi-builder refuses to embed the
+// same files (CAB-10; whether Windows would install such a package is not
+// tested). It writes about 9 GB, so it runs only with
 // MSI_BUILDER_LARGE_PACKAGE=1.
 func TestMsiexecInstallsLargePackage(t *testing.T) {
 	if testing.Short() || os.Getenv("MSI_BUILDER_LARGE_PACKAGE") != "1" {

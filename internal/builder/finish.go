@@ -258,19 +258,13 @@ func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop /
 	switch out := target.(type) {
 	case *spool.Buffer:
 		res.Package = out.Bytes()
-		res.Cabinets = b.externalCabinets(true)
+		res.Cabinets = b.externalCabinets("")
 	case *os.File:
-		// The cabinets go first, so that a package never names cabinets
-		// that are not there.
-		if err := b.commitCabinets(output); err != nil {
+		if err := b.commit(out, output); err != nil {
 			return nil, err
 		}
 
-		if err := commitOutput(out, output); err != nil {
-			return nil, err
-		}
-
-		res.Cabinets = b.externalCabinets(false)
+		res.Cabinets = b.externalCabinets(filepath.Dir(output))
 
 		// The cabinet spool is removed when finish returns; the returned
 		// database keeps the cabinet's name and size only.
@@ -338,7 +332,7 @@ func (b *build) newTarget(kind, output string) (spool.Target, func(), error) {
 		return nil, nil, fmt.Errorf("create a temporary %s file: %w", kind, err)
 	}
 
-	// After commitOutput the package has moved and there is nothing to
+	// After commit the package has moved and there is nothing to
 	// remove; a failed build leaves no file behind.
 	return file, func() {
 		_ = file.Close()
@@ -346,10 +340,10 @@ func (b *build) newTarget(kind, output string) (spool.Target, func(), error) {
 	}, nil
 }
 
-// commitOutput moves the finished package from its temporary file to dest
-// (a symlink already resolved), so that an existing package is replaced only
-// by a verified one. An existing file keeps its mode.
-func commitOutput(file *os.File, dest string) error {
+// prepareOutput sets the mode of the finished file and closes it for the
+// move onto dest (a symlink already resolved). An existing file keeps its
+// mode.
+func prepareOutput(file *os.File, dest string) (spool.Move, error) {
 	mode := os.FileMode(0o644)
 
 	if info, err := os.Stat(dest); err == nil && info.Mode().IsRegular() {
@@ -357,18 +351,14 @@ func commitOutput(file *os.File, dest string) error {
 	}
 
 	if err := file.Chmod(mode); err != nil {
-		return fmt.Errorf("set the mode of %s: %w", dest, err)
+		return spool.Move{}, fmt.Errorf("set the mode of %s: %w", dest, err)
 	}
 
 	if err := file.Close(); err != nil {
-		return fmt.Errorf("close %s: %w", file.Name(), err)
+		return spool.Move{}, fmt.Errorf("close %s: %w", file.Name(), err)
 	}
 
-	if err := os.Rename(file.Name(), dest); err != nil {
-		return fmt.Errorf("move the package to %s: %w", dest, err)
-	}
-
-	return nil
+	return spool.Move{From: file.Name(), To: dest}, nil
 }
 
 func sortedTableNames(m map[string]*msidb.Table) []string {
@@ -488,6 +478,10 @@ func (b *build) writeCabinets(database *msidb.Database, output string) (func(), 
 		}
 	}
 
+	if err := b.checkCabinetNames(output); err != nil {
+		return closeAll, err
+	}
+
 	for _, cabinet := range b.cabinets {
 		target, closeSpool, err := b.newTarget("cabinet", output)
 		if err != nil {
@@ -518,30 +512,60 @@ func (b *build) writeCabinets(database *msidb.Database, output string) (func(), 
 	return closeAll, nil
 }
 
-// commitCabinets moves the external cabinets from their spools into the
-// folder of output.
-func (b *build) commitCabinets(output string) error {
-	if b.cfg.Package.CabinetsEmbedded() {
+// checkCabinetNames refuses an external cabinet that would take the place of
+// the package itself; Windows compares names without case.
+func (b *build) checkCabinetNames(output string) error {
+	if b.cfg.Package.CabinetsEmbedded() || b.opts.Output == "" {
 		return nil
 	}
 
 	for _, cabinet := range b.cabinets {
-		file, ok := cabinet.target.(*os.File)
-		if !ok {
-			return fmt.Errorf("cabinet %s has no file", cabinet.name)
-		}
-
-		if err := commitOutput(file, filepath.Join(filepath.Dir(output), cabinet.name)); err != nil {
-			return err
+		if strings.EqualFold(cabinet.name, filepath.Base(output)) || strings.EqualFold(cabinet.name, filepath.Base(b.opts.Output)) {
+			return fmt.Errorf("the cabinet %s would replace the package; choose another package.cabinet or output name", cabinet.name)
 		}
 	}
 
 	return nil
 }
 
-// externalCabinets lists the cabinets written beside the package, with their
-// bytes when withData is set.
-func (b *build) externalCabinets(withData bool) []Cabinet {
+// commit moves the external cabinets into the folder of output and the
+// verified package onto output, all or none, so that an existing package is
+// replaced only by a verified one and never ends up beside cabinets of
+// another build.
+func (b *build) commit(pkg *os.File, output string) error {
+	var moves []spool.Move
+
+	if !b.cfg.Package.CabinetsEmbedded() {
+		for _, cabinet := range b.cabinets {
+			file, ok := cabinet.target.(*os.File)
+			if !ok {
+				return fmt.Errorf("cabinet %s has no file", cabinet.name)
+			}
+
+			move, err := prepareOutput(file, filepath.Join(filepath.Dir(output), cabinet.name))
+			if err != nil {
+				return err
+			}
+
+			moves = append(moves, move)
+		}
+	}
+
+	move, err := prepareOutput(pkg, output)
+	if err != nil {
+		return err
+	}
+
+	if err := spool.Commit(append(moves, move)); err != nil {
+		return fmt.Errorf("write the package: %w", err)
+	}
+
+	return nil
+}
+
+// externalCabinets lists the cabinets written beside the package: with their
+// bytes for an in-memory build (dir ""), else with their path in dir.
+func (b *build) externalCabinets(dir string) []Cabinet {
 	if b.cfg.Package.CabinetsEmbedded() {
 		return nil
 	}
@@ -551,8 +575,10 @@ func (b *build) externalCabinets(withData bool) []Cabinet {
 	for _, cabinet := range b.cabinets {
 		entry := Cabinet{Name: cabinet.name, Size: cabinet.size}
 
-		if buf, ok := cabinet.target.(*spool.Buffer); ok && withData {
+		if buf, ok := cabinet.target.(*spool.Buffer); ok && dir == "" {
 			entry.Data = buf.Bytes()
+		} else {
+			entry.Path = filepath.Join(dir, cabinet.name)
 		}
 
 		out = append(out, entry)
