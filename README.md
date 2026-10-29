@@ -20,7 +20,7 @@ msi.yaml + your files  ──▶  msi-builder build  ──▶  app.msi
 ```
 
 msi-builder is a single Go binary without cgo, so the same command builds the
-same package on Linux, macOS and Windows: on your laptop, in a container or in
+package on Linux, macOS and Windows: on your laptop, in a container or in
 a CI job next to the rest of your release.
 
 - **Easy to write.** Say what you want: files, whole folders, shortcuts,

@@ -5,8 +5,8 @@ Installer (MSI) package: write down what to install, run one command, ship the
 `.msi`. There is no XML to write and no Windows machine needed to build on.
 
 msi-builder is a single Go binary without cgo, so the same command builds the
-same package on Linux, macOS and Windows, for example in a CI job next to the
-rest of your release.
+package on Linux, macOS and Windows, for example in a CI job next to the rest
+of your release.
 
 > [!NOTE]
 > msi-builder is under active development and has not reached 1.0 yet, so the
