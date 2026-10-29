@@ -243,6 +243,7 @@ func profileUpgrade(t *testing.T, oldUpgrade, newUpgrade string, oldPinned, gene
 
 	msiexecQuiet(t, filepath.Join(dir, "upgrade.log"), "/i", path)
 	checkProfile(t, "after the upgrade", "perUser", values, true)
+	logOldValues(t, "after the upgrade", oldValues)
 
 	for _, file := range profileFiles("perUser") {
 		if err := os.Remove(file); err != nil {
@@ -255,6 +256,14 @@ func profileUpgrade(t *testing.T, oldUpgrade, newUpgrade string, oldPinned, gene
 
 	msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
 	checkProfile(t, "after the uninstall", "perUser", values, false)
+
+	// No package removes the old version's values when the new one has none
+	// of its own; the uninstall must still leave none behind.
+	for comp, name := range oldValues {
+		if regHas(t, "64", profileKey, name) {
+			t.Errorf("after the uninstall: the HKCU value %s of %s from version 1 is still there", name, comp)
+		}
+	}
 
 	for _, folder := range []string{
 		filepath.Join(os.Getenv("APPDATA"), "MsiBuilderProfile"),
@@ -325,8 +334,8 @@ func TestICEProfileKeyPath(t *testing.T) {
 
 // TestICEProfileHKMUKeyPath checks that ICE38 accepts a component in the
 // profile whose own key path is an HKMU value (root -1) in a per-user
-// package, which keeps it as key path. A dual package keeps it too, with
-// the validator's ICE57 warning, since it is HKLM per machine.
+// package, which keeps it as key path (dual packages: see
+// TestProfileKeyPathMachineRegistry).
 //
 //nolint:paralleltest // msi.dll's external UI handler is process-wide
 func TestICEProfileHKMUKeyPath(t *testing.T) {
@@ -356,5 +365,14 @@ func TestICEProfileHKMUKeyPath(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// logOldValues logs which HKCU values of the first version are still there.
+func logOldValues(t *testing.T, when string, values map[string]string) {
+	t.Helper()
+
+	for comp, name := range values {
+		t.Logf("INST-04 %s: HKCU value %s of %s from version 1 present = %v", when, name, comp, regHas(t, "64", profileKey, name))
 	}
 }

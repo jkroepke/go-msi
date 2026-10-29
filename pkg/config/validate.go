@@ -753,11 +753,13 @@ func (v *validator) components(cfg *Config, known *refs) {
 			v.errorf(p+".bitness", "64-bit components need an x64 or arm64 package")
 		}
 
-		files := v.componentFiles(cfg, p, comp, fileIDs, paths)
+		// The builder replaces the key file of a profile component.
+		generated := profileKeyPath(cfg, known, comp)
+		files := v.componentFiles(cfg, p, comp, fileIDs, paths, generated)
 		v.componentRegistry(p, comp, regIDs, perUser)
 		v.componentRemoveRegistry(p, comp, removeIDs, perUser)
 		v.componentRemoveFiles(cfg, p, comp, known, removeFileIDs)
-		keyFile := v.componentKeyFile(p, comp, files, profileKeyPath(cfg, known, comp))
+		keyFile := v.componentKeyFile(p, comp, files, generated)
 
 		for j, svc := range comp.Services {
 			svcPath := fmt.Sprintf("%s.services[%d]", p, j)
@@ -1079,10 +1081,11 @@ func exclusiveComponents(a, b *Component) bool {
 	return a.Directory != b.Directory && a.Condition != "" && b.Condition != ""
 }
 
-// componentFiles validates the files of c and returns its default key file.
+// componentFiles validates the files of c and returns its default key file;
+// generated says that the builder replaces it with an HKCU value.
 //
 //nolint:cyclop // flat checks
-func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component, ids map[string]string, paths *folderPaths) *File {
+func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component, ids map[string]string, paths *folderPaths, generated bool) *File {
 	versioned := 0
 
 	for j, file := range comp.Files {
@@ -1133,7 +1136,7 @@ func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component
 		}
 	}
 
-	if comp.GUID == Auto && versioned > 1 && len(comp.Files) > 1 {
+	if comp.GUID == Auto && versioned > 1 && len(comp.Files) > 1 && !generated {
 		v.warnf(compPath+".files", "more than one versioned file in a component: only the key file decides "+
 			"whether the others are replaced")
 	}

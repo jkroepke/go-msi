@@ -161,6 +161,16 @@ func TestProfileKeyPathUnversionedFirstFile(t *testing.T) {
 	if strings.Contains(fmt.Sprint(res.Diagnostics), "unversioned") {
 		t.Errorf("unversioned key file warning: %s", res.Diagnostics)
 	}
+
+	// Two versioned files get no "only the key file decides" warning either.
+	res = mustBuild(t, scopedShortcutConfig(t, "perMachine",
+		"  - { id: Two, directory: AppDataFolder/Acme, files: [{ source: app.exe }, { source: tool.exe }] }\n"))
+
+	profileKey(t, res.Database, "Two")
+
+	if strings.Contains(fmt.Sprint(res.Diagnostics), "only the key file decides") {
+		t.Errorf("key file warning: %s", res.Diagnostics)
+	}
 }
 
 // Every component of a folder source in the profile gets its own value.
