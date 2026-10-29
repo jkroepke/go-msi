@@ -817,7 +817,8 @@ generated component as the shortcuts of the component's files, so they
 need no file, registry value or key path of their own. A component that
 lists nothing but shortcuts is that generated component itself: it gets no
 row of its own in its `directory`, so it raises no ICE38 in a per-user
-package, and without an `id` it is named after its first shortcut
+package, and without an `id` it is named after its first shortcut (or the
+product, when that shortcut has no `name`)
 (`Docs_Shortcuts`), so that its ComponentId does not depend on the order of
 the components. Its `guid`, `condition`, `permanent` and `transitive`
 apply to that component; its `directory` is not used. A component with a
