@@ -15,10 +15,12 @@ import (
 	"fmt"
 )
 
-// Key is the Binary table key of the DLL and Entry its exported entry point.
+// Key is the Binary table key of the DLL, Entry the exported entry point of
+// run actions and GrantEntry the one of permission grants.
 const (
-	Key   = "BuilderRun"
-	Entry = "BuilderRun"
+	Key        = "BuilderRun"
+	Entry      = "BuilderRun"
+	GrantEntry = "BuilderGrant"
 
 	// DataProperty is the property an immediate action reads its command
 	// from; deferred actions read CustomActionData, which the engine takes
@@ -55,6 +57,26 @@ func Binary(platform string) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+// Grant kinds: the object of a grant is a file or folder path, or a
+// service name.
+const (
+	GrantFile    = 'f'
+	GrantService = 's'
+)
+
+// GrantData encodes one grant (revoke for the rollback) for BuilderGrant:
+// the access mask, the ACE inheritance flags, the account and the object.
+// An account name cannot contain the separator, so the object, which may,
+// comes last.
+func GrantData(revoke bool, kind byte, mask, flags uint32, account, object string) string {
+	op := "+"
+	if revoke {
+		op = "-"
+	}
+
+	return fmt.Sprintf("%s%c|%x|%x|%s|%s", op, kind, mask, flags, account, object)
 }
 
 // Data encodes the working directory and command line the DLL expects.

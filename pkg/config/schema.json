@@ -1396,18 +1396,53 @@
     },
     "permissions": {
       "type": "object",
-      "description": "An MsiLockPermissionsEx row: the SDDL replaces the inherited ACL of the object (SEC-01).",
+      "description": "Permissions of the object: sddl writes an MsiLockPermissionsEx row that replaces its ACL (SEC-01); grant adds ACEs and keeps the ones there (SEC-02).",
       "properties": {
         "sddl": {
           "type": "string",
           "description": "SDDL text. <DOMAIN\\\\account> forms are resolved at install time; [Property] references are not."
         },
+        "grant": {
+          "type": "array",
+          "description": "Access-allowed ACEs added to the DACL of a file, folder or service after it is installed; inherited and other explicit ACEs stay. Not for registry values.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "account": {
+                "type": "string",
+                "description": "Formatted at install time: a [Property], a name such as NT AUTHORITY\\\\NetworkService or .\\\\name, LocalSystem, a SID string or an SDDL alias such as NS."
+              },
+              "rights": {
+                "$ref": "#/$defs/stringList",
+                "description": "Files and folders: full, modify, readExecute, read, write. Services: full, read, start, stop, pauseContinue. Or a hexadecimal mask (0x...)."
+              },
+              "inherit": {
+                "type": "boolean",
+                "description": "Folders only: the ACE also applies to subfolders and files (OICI). Default true."
+              }
+            },
+            "required": [
+              "account",
+              "rights"
+            ],
+            "additionalProperties": false
+          }
+        },
         "condition": {
           "$ref": "#/$defs/condition"
         }
       },
-      "required": [
-        "sddl"
+      "anyOf": [
+        {
+          "required": [
+            "sddl"
+          ]
+        },
+        {
+          "required": [
+            "grant"
+          ]
+        }
       ],
       "additionalProperties": false
     },

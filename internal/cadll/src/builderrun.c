@@ -57,6 +57,27 @@ typedef struct {
     DWORD dwProcessId, dwThreadId;
 } PROCESS_INFORMATION;
 
+// ACL, ACE_HEADER and ACCESS_ALLOWED_ACE as winnt.h documents them.
+typedef struct {
+    BYTE AclRevision;
+    BYTE Sbz1;
+    unsigned short AclSize;
+    unsigned short AceCount;
+    unsigned short Sbz2;
+} ACL;
+
+typedef struct {
+    BYTE AceType;
+    BYTE AceFlags;
+    unsigned short AceSize;
+} ACE_HEADER;
+
+typedef struct {
+    ACE_HEADER Header;
+    DWORD Mask;
+    DWORD SidStart;
+} ACCESS_ALLOWED_ACE;
+
 // kernel32.dll
 BOOL WINAPI CreatePipe(HANDLE *, HANDLE *, SECURITY_ATTRIBUTES *, DWORD);
 BOOL WINAPI SetHandleInformation(HANDLE, DWORD, DWORD);
@@ -73,11 +94,24 @@ BOOL WINAPI HeapFree(HANDLE, DWORD, void *);
 DWORD WINAPI GetLastError(void);
 int WINAPI MultiByteToWideChar(UINT, DWORD, const char *, int, WCHAR *, int);
 BOOL WINAPI TerminateProcess(HANDLE, UINT);
+void *WINAPI LocalFree(void *);
 
 // advapi32.dll
 BOOL WINAPI OpenThreadToken(HANDLE, DWORD, BOOL, HANDLE *);
 BOOL WINAPI DuplicateTokenEx(HANDLE, DWORD, SECURITY_ATTRIBUTES *, int, int, HANDLE *);
 BOOL WINAPI CreateProcessAsUserW(HANDLE, const WCHAR *, WCHAR *, SECURITY_ATTRIBUTES *, SECURITY_ATTRIBUTES *, BOOL, DWORD, void *, const WCHAR *, STARTUPINFOW *, PROCESS_INFORMATION *);
+
+BOOL WINAPI ConvertStringSidToSidW(const WCHAR *, void **);
+BOOL WINAPI LookupAccountNameW(const WCHAR *, const WCHAR *, void *, DWORD *, WCHAR *, DWORD *, int *);
+DWORD WINAPI GetNamedSecurityInfoW(const WCHAR *, int, DWORD, void **, void **, ACL **, ACL **, void **);
+DWORD WINAPI SetNamedSecurityInfoW(WCHAR *, int, DWORD, void *, void *, ACL *, ACL *);
+BOOL WINAPI GetSecurityDescriptorControl(void *, unsigned short *, DWORD *);
+BOOL WINAPI InitializeAcl(ACL *, DWORD, DWORD);
+BOOL WINAPI GetAce(ACL *, DWORD, void **);
+BOOL WINAPI AddAce(ACL *, DWORD, DWORD, void *, DWORD);
+BOOL WINAPI AddAccessAllowedAceEx(ACL *, DWORD, DWORD, DWORD, void *);
+BOOL WINAPI EqualSid(void *, void *);
+DWORD WINAPI GetLengthSid(void *);
 
 // msi.dll
 UINT WINAPI MsiGetPropertyW(MSIHANDLE, const WCHAR *, WCHAR *, DWORD *);
@@ -92,6 +126,7 @@ enum {
     ERROR_NO_TOKEN = 1008,
     ERROR_INSTALL_USEREXIT = 1602,
     ERROR_INSTALL_FAILURE = 1603,
+    ERROR_INSUFFICIENT_BUFFER = 122,
 
     HANDLE_FLAG_INHERIT = 1,
     STARTF_USESTDHANDLES = 0x100,
@@ -113,6 +148,18 @@ enum {
     INSTALLMESSAGE_ERROR = 0x01000000,
     INSTALLMESSAGE_INFO = 0x04000000,
     IDCANCEL = 2,
+
+    SE_FILE_OBJECT = 1,
+    SE_SERVICE = 2,
+    DACL_SECURITY_INFORMATION = 4,
+    PROTECTED_DACL_SECURITY_INFORMATION = 0x80000000,
+    UNPROTECTED_DACL_SECURITY_INFORMATION = 0x20000000,
+    SE_DACL_PROTECTED = 0x1000,
+    ACL_REVISION = 2,
+    ACCESS_ALLOWED_ACE_TYPE = 0,
+    INHERITED_ACE = 0x10,
+    VALID_INHERIT_FLAGS = 0x1F,
+    MAXDWORD_ = 0xFFFFFFFF,
 };
 
 // The compiler may lower struct copies and zeroing to these.
@@ -166,12 +213,15 @@ static void wappendnum(WCHAR *dst, SIZE_T *pos, DWORD value)
     dst[*pos] = 0;
 }
 
-// logw writes one informational line to the installer log. The text goes into
-// field 1 and the template is fixed, so brackets in the process output are
-// not formatted as properties.
-static int logw(MSIHANDLE install, const WCHAR *text)
+// Log templates: the text goes into field 1 and the template is fixed, so
+// brackets in process output or object names are not formatted as
+// properties.
+static const WCHAR tmplRun[] = {'B', 'u', 'i', 'l', 'd', 'e', 'r', 'R', 'u', 'n', ':', ' ', '[', '1', ']', 0};
+static const WCHAR tmplGrant[] = {'B', 'u', 'i', 'l', 'd', 'e', 'r', 'G', 'r', 'a', 'n', 't', ':', ' ', '[', '1', ']', 0};
+
+// logt writes one informational line to the installer log.
+static int logt(MSIHANDLE install, const WCHAR *template, const WCHAR *text)
 {
-    static const WCHAR template[] = {'B', 'u', 'i', 'l', 'd', 'e', 'r', 'R', 'u', 'n', ':', ' ', '[', '1', ']', 0};
     MSIHANDLE rec = MsiCreateRecord(1);
     if (!rec) {
         return 0;
@@ -183,8 +233,13 @@ static int logw(MSIHANDLE install, const WCHAR *text)
     return ret;
 }
 
-// logf writes "<what>: <detail> (error <code>)" without the code when it is 0.
-static void logf(MSIHANDLE install, const WCHAR *what, const WCHAR *detail, DWORD code)
+static int logw(MSIHANDLE install, const WCHAR *text)
+{
+    return logt(install, tmplRun, text);
+}
+
+// logft writes "<what>: <detail> (error <code>)" without the code when it is 0.
+static void logft(MSIHANDLE install, const WCHAR *template, const WCHAR *what, const WCHAR *detail, DWORD code)
 {
     static const WCHAR sep[] = {':', ' ', 0};
     static const WCHAR errOpen[] = {' ', '(', 'e', 'r', 'r', 'o', 'r', ' ', 0};
@@ -205,8 +260,13 @@ static void logf(MSIHANDLE install, const WCHAR *what, const WCHAR *detail, DWOR
         wappendnum(buf, &pos, code);
         wappend(buf, &pos, errClose);
     }
-    logw(install, buf);
+    logt(install, template, buf);
     HeapFree(GetProcessHeap(), 0, buf);
+}
+
+static void logf(MSIHANDLE install, const WCHAR *what, const WCHAR *detail, DWORD code)
+{
+    logft(install, tmplRun, what, detail, code);
 }
 
 // property reads a property into a heap buffer, or returns 0 when it is
@@ -457,6 +517,293 @@ __declspec(dllexport) UINT WINAPI BuilderRun(MSIHANDLE install)
 done:
     HeapFree(GetProcessHeap(), 0, cmd);
     HeapFree(GetProcessHeap(), 0, data);
+    return result;
+}
+
+// BuilderGrant adds an access-allowed ACE to the DACL of a file, folder or
+// service and keeps every ACE that is already there, the inherited ones
+// included; with the `-` operation it takes the rights away again, for the
+// rollback. The input is CustomActionData:
+//
+//     <op><kind>|<mask>|<flags>|<account>|<object>
+//
+// op is `+` (grant) or `-` (revoke), kind `f` (file or folder) or `s`
+// (service), mask and flags are hexadecimal access rights and ACE flags, the
+// account is a SID string, an SDDL alias such as NS, LocalSystem or a name
+// for LookupAccountNameW (`.\name` means a local account), and the object
+// is a path or a service name. An account name cannot contain `|`, so the
+// object is what follows the fourth one. Log lines read `BuilderGrant: ...`.
+
+static const WCHAR msgGrantData[] = u"malformed grant data";
+static const WCHAR msgNoAccount[] = u"no account to grant rights to";
+static const WCHAR msgSid[] = u"cannot resolve the account";
+static const WCHAR msgGetSec[] = u"cannot read the permissions of";
+static const WCHAR msgSetSec[] = u"cannot write the permissions of";
+static const WCHAR msgNoDacl[] = u"has no DACL, so everyone has full access; left as it is";
+static const WCHAR msgAlready[] = u"already granted, left as it is";
+static const WCHAR msgNotGranted[] = u"nothing to revoke";
+static const WCHAR msgGranted[] = u"granted";
+static const WCHAR msgRevoked[] = u"revoked";
+static const WCHAR msgAcl[] = u"cannot build the new DACL";
+static const WCHAR localSystem[] = u"LocalSystem";
+static const WCHAR localSystemSid[] = u"S-1-5-18";
+
+static WCHAR wlower(WCHAR c)
+{
+    return c >= 'A' && c <= 'Z' ? (WCHAR)(c - 'A' + 'a') : c;
+}
+
+static int wieq(const WCHAR *a, const WCHAR *b)
+{
+    while (*a && wlower(*a) == wlower(*b)) {
+        a++;
+        b++;
+    }
+    return *a == *b;
+}
+
+// hexfield parses hexadecimal digits up to the next `|`, which it replaces
+// with 0, and returns the text after it, or 0 when the field is malformed.
+static WCHAR *hexfield(WCHAR *p, DWORD *value)
+{
+    DWORD v = 0;
+    int digits = 0;
+    for (; *p && *p != '|'; p++, digits++) {
+        WCHAR c = wlower(*p);
+        if (digits == 8) {
+            return 0;
+        }
+        if (c >= '0' && c <= '9') {
+            v = v << 4 | (DWORD)(c - '0');
+        } else if (c >= 'a' && c <= 'f') {
+            v = v << 4 | (DWORD)(c - 'a' + 10);
+        } else {
+            return 0;
+        }
+    }
+    if (*p != '|' || digits == 0) {
+        return 0;
+    }
+    *value = v;
+    return p + 1;
+}
+
+// resolveSid returns the account's SID in a heap buffer.
+static void *resolveSid(MSIHANDLE install, const WCHAR *account)
+{
+    HANDLE heap = GetProcessHeap();
+    if (wieq(account, localSystem)) {
+        account = localSystemSid;
+    }
+    SIZE_T n = wlen(account);
+    void *converted = 0;
+    if (((n > 2 && account[0] == 'S' && account[1] == '-') || n == 2) && ConvertStringSidToSidW(account, &converted)) {
+        DWORD size = GetLengthSid(converted);
+        void *sid = HeapAlloc(heap, 0, size);
+        if (sid) {
+            memcpy(sid, converted, size);
+        }
+        LocalFree(converted);
+        return sid;
+    }
+    // LookupAccountNameW searches the local accounts first for a name
+    // without a domain, which is what `.\name` means.
+    const WCHAR *name = account;
+    if (name[0] == '.' && name[1] == '\\') {
+        name += 2;
+    }
+    DWORD sidSize = 0, domainSize = 0;
+    int use = 0;
+    LookupAccountNameW(0, name, 0, &sidSize, 0, &domainSize, &use);
+    DWORD err = GetLastError();
+    if (err != ERROR_INSUFFICIENT_BUFFER || !sidSize) {
+        logft(install, tmplGrant, msgSid, account, err);
+        return 0;
+    }
+    void *sid = HeapAlloc(heap, 0, sidSize);
+    WCHAR *domain = HeapAlloc(heap, 0, ((SIZE_T)domainSize + 1) * sizeof(WCHAR));
+    if (!sid || !domain || !LookupAccountNameW(0, name, sid, &sidSize, domain, &domainSize, &use)) {
+        logft(install, tmplGrant, msgSid, account, GetLastError());
+        HeapFree(heap, 0, sid);
+        sid = 0;
+    }
+    HeapFree(heap, 0, domain);
+    return sid;
+}
+
+// rebuild copies dacl into a new ACL with the rights changed: on grant the
+// rights are added to the account's explicit allow ACE with these flags, or a
+// new ACE goes after the last explicit ACE, where the canonical order puts
+// explicit allow ACEs; on revoke they are taken from that ACE, which goes away
+// once it has no rights left. *changed is 0 when there is nothing to do.
+static ACL *rebuild(ACL *dacl, void *sid, DWORD mask, DWORD flags, int grant, int *changed)
+{
+    long found = -1;
+    DWORD insertAt = dacl->AceCount;
+    for (DWORD i = 0; i < dacl->AceCount; i++) {
+        ACE_HEADER *ace;
+        if (!GetAce(dacl, i, (void **)&ace)) {
+            return 0;
+        }
+        if (ace->AceFlags & INHERITED_ACE) {
+            if (insertAt == dacl->AceCount) {
+                insertAt = i;
+            }
+            continue;
+        }
+        if (found < 0 && ace->AceType == ACCESS_ALLOWED_ACE_TYPE && (ace->AceFlags & VALID_INHERIT_FLAGS) == flags &&
+            EqualSid(&((ACCESS_ALLOWED_ACE *)ace)->SidStart, sid)) {
+            found = (long)i;
+        }
+    }
+    DWORD have = 0;
+    if (found >= 0) {
+        ACCESS_ALLOWED_ACE *ace;
+        GetAce(dacl, (DWORD)found, (void **)&ace);
+        have = ace->Mask;
+    }
+    *changed = grant ? (have & mask) != mask : (have & mask) != 0;
+    if (!*changed) {
+        return 0;
+    }
+    DWORD size = dacl->AclSize + (found < 0 ? sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(sid) : 0);
+    DWORD revision = dacl->AclRevision > ACL_REVISION ? dacl->AclRevision : ACL_REVISION;
+    ACL *acl = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size);
+    if (!acl || !InitializeAcl(acl, size, revision)) {
+        HeapFree(GetProcessHeap(), 0, acl);
+        return 0;
+    }
+    int ok = 1;
+    for (DWORD i = 0; ok && i <= dacl->AceCount; i++) {
+        if (found < 0 && i == insertAt) {
+            ok = AddAccessAllowedAceEx(acl, revision, flags, mask, sid);
+        }
+        if (!ok || i == dacl->AceCount) {
+            break;
+        }
+        ACE_HEADER *ace;
+        GetAce(dacl, i, (void **)&ace);
+        if ((long)i != found) {
+            ok = AddAce(acl, revision, MAXDWORD_, ace, ace->AceSize);
+            continue;
+        }
+        DWORD rights = grant ? have | mask : have & ~mask;
+        if (rights == 0) {
+            continue;
+        }
+        ok = AddAce(acl, revision, MAXDWORD_, ace, ace->AceSize);
+        ACCESS_ALLOWED_ACE *copy;
+        if (ok && GetAce(acl, acl->AceCount - 1, (void **)&copy)) {
+            copy->Mask = rights;
+        }
+    }
+    if (!ok) {
+        HeapFree(GetProcessHeap(), 0, acl);
+        return 0;
+    }
+    return acl;
+}
+
+__declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
+{
+    HANDLE heap = GetProcessHeap();
+    WCHAR *data = property(install, propData);
+    if (!data) {
+        logft(install, tmplGrant, msgGrantData, 0, 0);
+        return ERROR_INSTALL_FAILURE;
+    }
+    DWORD mask = 0, flags = 0;
+    WCHAR *account = 0, *object = 0, *p = 0;
+    int grant = data[0] == '+';
+    int type = data[1] == 's' ? SE_SERVICE : SE_FILE_OBJECT;
+    if ((data[0] == '+' || data[0] == '-') && (data[1] == 'f' || data[1] == 's') && data[2] == '|') {
+        p = hexfield(data + 3, &mask);
+    }
+    if (p) {
+        p = hexfield(p, &flags);
+    }
+    if (p) {
+        account = p;
+        while (*p && *p != '|') {
+            p++;
+        }
+        if (*p == '|') {
+            *p = 0;
+            object = p + 1;
+        }
+    }
+    if (!object || !*object || !mask || (flags & ~VALID_INHERIT_FLAGS)) {
+        logft(install, tmplGrant, msgGrantData, 0, 0);
+        HeapFree(heap, 0, data);
+        return ERROR_INSTALL_FAILURE;
+    }
+    // A folder comes as [DIRECTORY], which ends in a backslash; a drive root
+    // such as C:\ keeps it.
+    SIZE_T objLen = wlen(object);
+    if (objLen > 3 && object[objLen - 1] == '\\') {
+        object[objLen - 1] = 0;
+    }
+    if (!*account) {
+        logft(install, tmplGrant, msgNoAccount, object, 0);
+        HeapFree(heap, 0, data);
+        return grant ? ERROR_INSTALL_FAILURE : ERROR_SUCCESS;
+    }
+
+    UINT result = ERROR_INSTALL_FAILURE;
+    void *sid = resolveSid(install, account);
+    void *sd = 0;
+    ACL *dacl = 0, *acl = 0;
+    if (!sid) {
+        // A rollback has nothing to undo when the grant never resolved.
+        result = grant ? ERROR_INSTALL_FAILURE : ERROR_SUCCESS;
+        goto done;
+    }
+    DWORD err = GetNamedSecurityInfoW(object, type, DACL_SECURITY_INFORMATION, 0, 0, &dacl, 0, &sd);
+    if (err) {
+        logft(install, tmplGrant, msgGetSec, object, err);
+        result = grant ? ERROR_INSTALL_FAILURE : ERROR_SUCCESS;
+        goto done;
+    }
+    if (!dacl) {
+        logft(install, tmplGrant, object, msgNoDacl, 0);
+        result = ERROR_SUCCESS;
+        goto done;
+    }
+    int changed = 0;
+    acl = rebuild(dacl, sid, mask, flags, grant, &changed);
+    if (!changed) {
+        logft(install, tmplGrant, object, grant ? msgAlready : msgNotGranted, 0);
+        result = ERROR_SUCCESS;
+        goto done;
+    }
+    if (!acl) {
+        logft(install, tmplGrant, msgAcl, object, GetLastError());
+        goto done;
+    }
+    // A file or folder keeps its protection state: a protected DACL stays
+    // protected, and an unprotected one keeps inheriting from its parent.
+    DWORD info = DACL_SECURITY_INFORMATION;
+    if (type == SE_FILE_OBJECT) {
+        unsigned short control = 0;
+        DWORD revision = 0;
+        info |= GetSecurityDescriptorControl(sd, &control, &revision) && (control & SE_DACL_PROTECTED) ? PROTECTED_DACL_SECURITY_INFORMATION
+                                                                                                      : UNPROTECTED_DACL_SECURITY_INFORMATION;
+    }
+    err = SetNamedSecurityInfoW(object, type, info, 0, 0, acl, 0);
+    if (err) {
+        logft(install, tmplGrant, msgSetSec, object, err);
+        goto done;
+    }
+    logft(install, tmplGrant, grant ? msgGranted : msgRevoked, account, 0);
+    logft(install, tmplGrant, object, grant ? msgGranted : msgRevoked, 0);
+    result = ERROR_SUCCESS;
+done:
+    if (sd) {
+        LocalFree(sd);
+    }
+    HeapFree(heap, 0, acl);
+    HeapFree(heap, 0, sid);
+    HeapFree(heap, 0, data);
     return result;
 }
 
