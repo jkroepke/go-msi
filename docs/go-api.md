@@ -3,7 +3,7 @@
 msi-builder can build a package from Go without a YAML file. The YAML file and
 the Go API share one model: `config.Config` is what `config.Load` returns,
 and `builder.Build` validates it the same way, so every rule of the
-[YAML schema](design/yaml-schema.md) also applies to a config that Go code
+[YAML Schema Design](design/yaml-schema.md) also applies to a config that Go code
 builds.
 
 The importable packages are `github.com/jkroepke/msi-builder/pkg/config` (the
@@ -90,7 +90,7 @@ is marked as allowed (FILE-01).
 
 YAML files add a folder with a file `source` that ends in `/` (or `\`), which uses
 the same rules and IDs (see the
-[YAML schema](design/yaml-schema.md#adding-a-folder-folder-sources)). A
+[YAML Schema Design](design/yaml-schema.md#adding-a-folder-folder-sources)). A
 `Config` that Go code builds can hold such a component too: `builder.Build`
 expands it before it validates, and `Config.ExpandFolders` does so on its
 own, for example to adjust the new components first.

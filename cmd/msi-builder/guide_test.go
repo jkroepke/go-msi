@@ -33,9 +33,10 @@ var heading = regexp.MustCompile("(?m)^#+ (.+)$")
 // warning. The first example is a whole file; every later one is a part of
 // a file, whose top-level keys replace those of the first. A part with
 // components or features replaces both, so its files are not installed
-// twice. Subtests are named after the heading above the example. Each file a source or license names is created: a versioned
-// program for .exe and .dll, text otherwise, and a folder source gets a
-// program, a .pdb and a text file.
+// twice. Subtests are named after the heading above the example. Each file
+// a source or license names is created: a versioned program for .exe and
+// .dll, text otherwise, and a folder source gets a program, a .pdb and a
+// text file.
 func TestGuideExamples(t *testing.T) {
 	t.Parallel()
 

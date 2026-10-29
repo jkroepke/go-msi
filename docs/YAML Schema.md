@@ -2,10 +2,10 @@
 
 msi-builder reads one YAML file, usually `msi.yaml`, that says what your
 package installs. This page shows the smallest file and then one recipe per
-common task. A recipe shows only the keys it adds to the smallest file.
-When it shows `components`, that is the whole list: merge it with yours
-instead of adding a second `components` key. `hello.exe` is repeated only to
-show where the new keys go.
+common task. Copy a recipe's keys into your file. A key your file already
+has (`product`, `package`, `components`, `ui`, ...) must not appear twice:
+replace yours with the recipe's, or merge the two. `hello.exe` is repeated
+in the recipes only to show where the new keys go.
 
 Every key and rule is described in [YAML Schema Design](design/yaml-schema.md),
 which you only need for the unusual cases. A test builds every example on
@@ -153,7 +153,8 @@ components:
 ```
 
 The service is started during the installation (unless `start: disabled`);
-if it does not start, the installation fails and is rolled back. It is
+in a silent install, a service that does not start fails the
+installation, which is rolled back. It is
 stopped and removed on uninstall, and runs as LocalSystem unless `account`
 and `password` say otherwise.
 
@@ -263,7 +264,7 @@ From the command line, `ADDLOCAL=ALL` installs every feature and
 
 Without `ui`, the installer shows only a progress window. `ui.enabled`
 turns on a wizard with welcome, ready, progress and finish pages; the other
-keys add pages to it:
+keys add pages or change the finish page:
 
 ```yaml
 ui:
@@ -287,8 +288,8 @@ own logo and colours go in `ui.theme`. Both are described in
 ### Ask for a setting during installation
 
 Public properties, with upper-case names, can be set on the command line
-(`msiexec /i hello.msi PORT=9090`) and used in brackets anywhere a value is
-formatted. `ui.dialogs` adds a wizard page to ask for them:
+(`msiexec /i hello.msi PORT=9090`) and used as `[PORT]` in most text values,
+such as service arguments, registry values and shortcut arguments. `ui.dialogs` adds a wizard page to ask for them:
 
 ```yaml
 properties:
@@ -334,8 +335,9 @@ components:
 ### Delete program data on uninstall
 
 `purge` deletes a folder with everything the program wrote into it when the
-product is uninstalled; the default upgrade keeps it. Here only when the
-user asks for it with `msiexec /x hello.msi DELETE_DATA=1`. The folder must
+product is uninstalled, but not when an upgrade replaces it. The example
+deletes it only when the user asks for it with
+`msiexec /x hello.msi DELETE_DATA=1`. The folder must
 lie outside the install folder, for example below `CommonAppDataFolder`:
 
 ```yaml
@@ -464,7 +466,7 @@ The keys used most inside them:
 | `ui.finishText` | none | A paragraph on the finish page |
 
 Unknown keys are errors, so a typo never drops a setting silently. Every
-error names the place in the file, such as `components[0].files[1].source`.
+error names the line or the key, such as `components[0].files[1].source`.
 `msi-builder validate msi.yaml` checks a file without building it.
 
 ## More

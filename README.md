@@ -71,7 +71,7 @@ components:
 
 The file goes to `C:\Program Files\Hello`, which `INSTALLDIR=…` can change,
 and a newer version replaces an installed one. Every default can be spelled
-out; the [YAML schema](docs/design/yaml-schema.md) lists them. Validate and
+out; the [YAML schema design](docs/design/yaml-schema.md) lists them. Validate and
 build it on any operating system:
 
 ```shell
