@@ -53,13 +53,23 @@ func (b *build) needsProfileKeyPath(comp *config.Component) bool {
 // configuration or resolveKeyPath makes it: an explicit keyPath (a
 // firewall carrier's is generated), services, which need their
 // executable, neverOverwrite (also set by preserve) and sharedDllRefCount,
-// which test the key path (reported), and per-machine registry values,
-// which an HKCU key path would mix with per-user data (ICE57).
+// which test the key path (reported), per-machine registry values, which
+// an HKCU key path would mix with per-user data (ICE57), and a late
+// removeOld, with which an upgrade that changed the key path lost the
+// files (INST-04).
 func (b *build) keepsKeyPath(comp *config.Component) bool {
-	if comp.KeyPath != "" && comp.FirewallFeature() == "" || len(comp.Services) > 0 || comp.NeverOverwrite || comp.SharedDLLRefCount {
+	explicit := comp.KeyPath != "" && comp.FirewallFeature() == ""
+	if explicit || len(comp.Services) > 0 || comp.NeverOverwrite || comp.SharedDLLRefCount || b.lateRemoval() {
 		return true
 	}
 
+	return b.machineRegistry(comp)
+}
+
+// machineRegistry reports whether a component writes a registry value to a
+// per-machine root: HKLM and HKU, and HKMU and HKCR unless the package
+// only installs per user.
+func (b *build) machineRegistry(comp *config.Component) bool {
 	for _, reg := range comp.Registry {
 		switch reg.Root {
 		case rootHKLM, rootHKU:
@@ -83,4 +93,12 @@ func (b *build) hashProfileKeyPaths(hasher io.Writer) {
 	if slices.ContainsFunc(b.cfg.Components, b.needsProfileKeyPath) {
 		_, _ = hasher.Write([]byte("keypath:profile-hkcu"))
 	}
+}
+
+// lateRemoval reports whether a major upgrade removes the old product
+// after the new one has installed its files, as the validator decides it.
+func (b *build) lateRemoval() bool {
+	upg := b.cfg.Upgrade
+
+	return upg != nil && !upg.Disabled && (upg.RemoveOld == config.PreserveRemoveOld || upg.RemoveOld == "afterInstallFinalize")
 }

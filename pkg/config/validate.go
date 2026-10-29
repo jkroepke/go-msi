@@ -840,6 +840,10 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 		v.warnf(compPath+".directory", "a component in the user profile (%s) that writes per-machine registry "+
 			"values keeps its key path (ICE57), but ICE38 asks for an HKCU registry value; "+
 			"move the values to a component of their own", top)
+	case lateRemoval(cfg):
+		v.warnf(compPath+".directory", "a component in the user profile (%s) keeps its key path with removeOld %s, "+
+			"since an upgrade that changed it lost the files (INST-04), but ICE38 asks for an HKCU registry value",
+			top, cfg.Upgrade.RemoveOld)
 	case comp.KeyPath != "" && comp.FirewallFeature() == "":
 		v.warnf(compPath+".keyPath", "a component in the user profile (%s) needs an HKCU registry value "+
 			"as key path (ICE38); without keyPath the builder writes one", top)
@@ -2334,11 +2338,23 @@ func profileKeyPath(cfg *Config, known *refs, comp *Component) bool {
 // keepsKeyPath reports whether a component's key path stays as configured:
 // an explicit keyPath (a firewall carrier's is generated), services, which
 // need their executable, neverOverwrite and sharedDllRefCount, which test
-// the key path, and per-machine registry values, which an HKCU key path
-// would mix with per-user data (ICE57).
+// the key path, per-machine registry values, which an HKCU key path would
+// mix with per-user data (ICE57), and a late removeOld.
 func keepsKeyPath(cfg *Config, comp *Component) bool {
 	return comp.KeyPath != "" && comp.FirewallFeature() == "" || len(comp.Services) > 0 ||
-		comp.NeverOverwrite || comp.SharedDLLRefCount || machineRegistry(cfg, comp)
+		comp.NeverOverwrite || comp.SharedDLLRefCount || machineRegistry(cfg, comp) || lateRemoval(cfg)
+}
+
+// lateRemoval reports whether a major upgrade removes the old product
+// after the new one has installed its files. An upgrade from a version
+// with file key paths to one with HKCU key paths and the same ComponentIds
+// lost the files then (INST-04), so components keep their key paths.
+func lateRemoval(cfg *Config) bool {
+	if cfg.Upgrade == nil || cfg.Upgrade.Disabled {
+		return false
+	}
+
+	return cfg.Upgrade.RemoveOld == PreserveRemoveOld || cfg.Upgrade.RemoveOld == "afterInstallFinalize"
 }
 
 // machineRegistry reports whether a component writes a registry value to

@@ -224,3 +224,25 @@ func TestProfileKeyPathFolderPermissions(t *testing.T) {
 		return fmt.Sprint(r[1]) == "AppDataFolder_Acme" || strings.Contains(fmt.Sprint(r[1]), "Acme")
 	})
 }
+
+// With a late removeOld the components keep their key paths: an upgrade
+// that changed the key path with the same ComponentId lost the files
+// (INST-04).
+func TestProfileKeyPathLateRemoval(t *testing.T) {
+	t.Parallel()
+
+	for removeOld, kept := range map[string]bool{
+		"afterInstallValidate": false, "afterInstallInitialize": false, "afterInstallExecute": true, "afterInstallFinalize": true,
+	} {
+		cfg := scopedShortcutConfig(t, "perUser", "  - { id: App, files: [{ source: app.exe }] }\n")
+		cfg.Upgrade.RemoveOld = removeOld
+		res := mustBuild(t, cfg)
+
+		comp := rowWhere(t, res.Database, "Component", func(r []any) bool { return r[0] == "App" })
+		warned := strings.Contains(fmt.Sprint(res.Diagnostics), "ICE38")
+
+		if (comp[5] == "app.exe") != kept || warned != kept {
+			t.Errorf("%s: key path %v, warning %v, want kept = %v", removeOld, comp[5], warned, kept)
+		}
+	}
+}
