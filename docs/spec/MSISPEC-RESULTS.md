@@ -558,7 +558,7 @@ Run on 2026-10-29 on SERVER2025 (Windows Server 2025 10.0.26100.1742), as
 part of the windows_exporter real-world check. The same windows_exporter
 0.90.0 binary was packaged three ways and installed with
 `msiexec /i <msi> EXTRA_FLAGS=--no-such-flag /qn`. The exporter rejects the
-flag and exits at once, so the service never reaches `SERVICE_RUNNING`. The
+flag: the service reports running for a moment, then exits with an error. The
 service has recovery set to restart after 60 s, three times.
 
 | Package | `ServiceControl` rows | Exit | Duration | Result |
@@ -570,13 +570,14 @@ service has recovery set to restart after 60 s, three times.
 - With split rows, the System log shows one start and crash (7045, 7036
   running, 7031, 7024, 7036 stopped) and the install completes; recovery then
   restarts the service on its own schedule. Uninstall of that package exited
-  0 and removed the service. A default install of the `3d7acd4` package
+  0, and `sc query` no longer found the service. A default install of the `3d7acd4` package
   started the service and answered `/health` with 200.
 - With one `Wait=1` row, StartServices began at 13:04:56.7 and logged 1920 at
   13:09:03.8, about 247 s later. In that time the System log shows 18 × 7031
-  and 18 × 7024, a start-and-crash cycle every 12–24 s: the installer retries
-  the start, and the 60 s recovery delay does not set the pace. The
-  documented 30 s limit does not describe this case.
+  and 18 × 7024, a start-and-crash cycle every 12–24 s. Recovery allows only
+  three restarts 60 s apart, so the installer most likely retries the start;
+  the verbose log was not checked for retry lines, so this is an inference.
+  The documented 30 s limit does not describe this case.
 - After the uninstall of the `3d7acd4` package, an empty `config.yaml` that
   windows_exporter's own `CreateConfigFile` action wrote at install time
   stays in the install folder; the WiX-built package leaves it too.
