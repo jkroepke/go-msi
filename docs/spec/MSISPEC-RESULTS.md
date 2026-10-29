@@ -422,6 +422,11 @@ runners (the user lines show `jkroepke\administrator`). The engine notes the
 code 1603 but will be translated to success due to continue marking`, and
 `ProbeFails` as `returned actual error code 1603`, followed by
 `InstallFinalize. Return value 3`. The product was removed afterwards.
+Repeated once more on SERVER2025 on 2026-10-29 at 252d5a7, after the
+rename to msi-builder rebuilt the DLL as `BuilderRun`: test PASS, install
+0, uninstall 0, `FAILPROBE=1` 1603, the same lines with the `BuilderRun:`
+prefix, and the log names the entry point (`Invoking remote custom action.
+DLL: C:\WINDOWS\Installer\MSIxxxx.tmp, Entrypoint: BuilderRun`).
 
 | Action | Kind | Logged |
 | --- | --- | --- |
