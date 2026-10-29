@@ -52,12 +52,18 @@ func caseCA01() {
 	admin := elevated()
 	variants := []struct {
 		name, seq string
-		dual      bool
+		dual, lad bool
 	}{
-		{"fail-after-publishproduct", "6450", false},
-		{"fail-after-installfiles", "4001", false},
+		{"fail-after-publishproduct", "6450", false, false},
+		{"fail-after-installfiles", "4001", false, false},
 		// The shape of WiX issue 8574: ALLUSERS=2 with MSIINSTALLPERUSER=1.
-		{"dual-fail-after-publishproduct", "6450", true},
+		{"dual-fail-after-publishproduct", "6450", true, false},
+		{"dual-fail-after-installfiles", "4001", true, false},
+		// msi-builder's perUser scope: no ALLUSERS, INSTALLDIR under
+		// LocalAppDataFolder, so a non-administrator can run it.
+		{"lad-fail-after-publishproduct", "6450", false, true},
+		{"lad-fail-after-registerproduct", "6150", false, true},
+		{"lad-fail-after-installfiles", "4001", false, true},
 	}
 	for _, v := range variants {
 		name := v.name
@@ -70,7 +76,10 @@ func caseCA01() {
 		if v.dual {
 			p.ExtraProps = [][]string{{"ALLUSERS", "2"}, {"MSIINSTALLPERUSER", "1"}}
 		}
-		if v.dual || !admin {
+		if v.lad {
+			p.ParentDir = "LocalAppDataFolder"
+		}
+		if v.dual || v.lad || !admin {
 			// Word Count bit 3: no elevation needed, as a per-user package declares it.
 			p.WordCount = 10
 		}
