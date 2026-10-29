@@ -681,11 +681,11 @@ removeRegistry:
 
 Each entry is a `RemoveRegistry` row of the component (name `-` for a whole
 key). The engine deletes it when the component is installed, in the
-component's registry view, and leaves it alone at uninstall (reported;
-REG-02 checks it on Windows). `RemoveRegistryValues` runs before
+component's registry view only, again on a repair, and leaves it alone at
+uninstall (REG-02, observed on Windows). `RemoveRegistryValues` runs before
 `WriteRegistryValues`, so a key that is removed and also written by the
-package should end up with exactly the package's values, without values
-the user added there (REG-02). In a per-machine package an `HKCU` entry
+package ends up with exactly the package's values, without values the user
+added there (REG-02). `HKMU` in a per-machine package is `HKLM`. In a per-machine package an `HKCU` entry
 can only reach the profile of the user who runs the install; other users'
 profiles are not touched (not tested). A component that only removes
 registry entries has its directory as key path. Removing the default value
@@ -828,12 +828,16 @@ properties:
 ```
 
 `value` returns the registry data the way the engine formats it: a
-`REG_SZ` as it is, a `REG_DWORD` as `#` and the number, a `REG_EXPAND_SZ`
-as `#%` and the unexpanded text (SEARCH-04 has the exact results).
-Conditions compare such a value as a string, so `NETFX_RELEASE >=
-"#394802"` only works while both numbers have the same number of digits
-(SEARCH-04). `directory` returns the folder the data names, and nothing when
-it does not exist.
+`REG_SZ` as it is (brackets stay literal), a `REG_DWORD` as `#` and the
+number, a `REG_EXPAND_SZ` already expanded (observed, SEARCH-04; Microsoft
+documents a `#%` prefix that the engine does not add). Conditions compare
+such a value as a string: `NETFX_RELEASE >= 394802` is false and
+`NETFX_RELEASE >= "#394802"` only works while both numbers have the same
+number of digits (SEARCH-04). Do not search a `REG_MULTI_SZ` value: the
+property starts and ends with a NUL, which is reported to break the full UI
+(specification section 8.7). `directory` returns the folder the data names
+with a trailing backslash, and nothing when it names a file or a missing
+folder (SEARCH-04).
 
 The precedence is: a value from the command line, then the search result,
 then `value`. The builder writes an `AppSearch` row into `<NAME>_FOUND`

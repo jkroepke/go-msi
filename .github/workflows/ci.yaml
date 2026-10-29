@@ -168,12 +168,6 @@ jobs:
         shell: bash
         run: go test -v -count=1 -run 'TestSignature' ./pkg/builder/nativetest/
 
-      # Print the registry removal and search results (MSISPEC-RESULTS REG-02, SEARCH-04).
-      - name: go test (registry results)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: go test -v -count=1 -run 'TestMsiexecRemovesRegistry|TestMsiexecSearchesRegistry' ./pkg/builder/nativetest/
-
       - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         if: runner.os == 'Linux'
         with:

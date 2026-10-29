@@ -155,34 +155,38 @@ func TestMsiexecSearchesRegistry(t *testing.T) { //nolint:paralleltest // msiexe
 	}
 
 	props := serverProperties(readLog(log))
+	root := os.Getenv("SystemRoot")
 
-	for _, name := range []string{
-		"P_STR", "P_DWORD", "P_EXPAND", "P_MULTI", "P_KEYDEFAULT", "P_BRACKETS", "P_32", "P_64MISS", "P_DEFAULT",
-		"P_NODEFAULT", "P_CMD", "P_CMDDEFAULT", "P_DIR", "P_DIRFILE", "P_DIRMISSING", "C_NUMBER", "C_STRING", "C_LONGER",
-	} {
-		value, ok := props[name]
-		if !ok {
-			value = "<unset>"
-		}
-
-		t.Logf("SEARCH-04 %s = %q", name, value)
-	}
-
+	// The verbose log shows the NULs of a multi-string as [~]. A DWORD
+	// compares as the string "#394802": not with a number, and before
+	// "#1000000" (SEARCH-04).
 	for name, want := range map[string]string{
 		"P_STR":        "hello",
+		"P_DWORD":      "#394802",
+		"P_EXPAND":     root + `\x`,
+		"P_MULTI":      "[~]a[~]b[~]",
+		"P_KEYDEFAULT": "keydefault",
+		"P_BRACKETS":   "a[ProductName]b{c}",
 		"P_32":         "from32",
 		"P_64MISS":     "none",
 		"P_CMD":        "cmd",
 		"P_CMDDEFAULT": "cmd",
 		"P_DEFAULT":    "fallback [x] {y} {{z}}",
+		"P_DIR":        root + `\`,
+		"P_DIRFILE":    "none",
+		"P_DIRMISSING": "none",
+		"C_STRING":     "1",
+		"C_LONGER":     "1",
 	} {
-		if got := props[name]; got != want {
+		if got := props[name]; !strings.EqualFold(got, want) {
 			t.Errorf("%s = %q, want %q", name, got, want)
 		}
 	}
 
-	if _, ok := props["P_NODEFAULT"]; ok {
-		t.Errorf("P_NODEFAULT is set to %q, want it unset", props["P_NODEFAULT"])
+	for _, name := range []string{"P_NODEFAULT", "C_NUMBER"} {
+		if value, ok := props[name]; ok {
+			t.Errorf("%s is set to %q, want it unset", name, value)
+		}
 	}
 
 	if code := msiexecCode(t, filepath.Join(filepath.Dir(path), "uninstall.log"), "/x", path); code != 0 {

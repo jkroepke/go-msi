@@ -191,11 +191,11 @@ func TestMsiexecRemovesRegistry(t *testing.T) { //nolint:paralleltest // msiexec
 
 	// Each component removes only in its own view.
 	if !regHas(t, "32", hklm+`\Only64`, "") {
-		t.Errorf(`the 64-bit component also removed Only64 from the 32-bit view`)
+		t.Error(`the 64-bit component also removed Only64 from the 32-bit view`)
 	}
 
 	if !regHas(t, "64", hklm+`\Only32`, "") {
-		t.Errorf(`the 32-bit component also removed Only32 from the 64-bit view`)
+		t.Error(`the 32-bit component also removed Only32 from the 64-bit view`)
 	}
 
 	if got := regData(t, hklm+`\Keep`, "Other"); got != "kept" {
@@ -206,22 +206,54 @@ func TestMsiexecRemovesRegistry(t *testing.T) { //nolint:paralleltest // msiexec
 		t.Errorf(`Reset\Value is %q after the install, want new`, got)
 	}
 
-	// Repair and uninstall: what happens to keys that exist again.
+	// Repair and uninstall over keys that exist again: a repair removes
+	// them again, an uninstall leaves them and removes only what the
+	// package wrote (REG-02).
 	seed()
 
-	repairLog := filepath.Join(filepath.Dir(path), "repair.log")
-	code := msiexecCode(t, repairLog, "/fomus", path)
-	t.Logf("REG-02 repair /fomus: exit %d, Old(64) present=%v, Old(32) present=%v, Keep\\Legacy present=%v, User present=%v, Reset\\Stale present=%v, Reset\\Value=%q",
-		code, regHas(t, "64", hklm+`\Old`, ""), regHas(t, "32", hklm+`\Old`, ""), regHas(t, "64", hklm+`\Keep`, "Legacy"),
-		regHas(t, "64", hkcu+`\User`, ""), regHas(t, "64", hklm+`\Reset`, "Stale"), regData(t, hklm+`\Reset`, "Value"))
+	if code := msiexecCode(t, filepath.Join(filepath.Dir(path), "repair.log"), "/fomus", path); code != 0 {
+		t.Fatalf("msiexec /fomus returned %d", code)
+	}
+
+	for _, gone := range []struct{ view, key, name string }{
+		{"64", hklm + `\Old`, ""},
+		{"32", hklm + `\Old`, ""},
+		{"64", hklm + `\Keep`, "Legacy"},
+		{"64", hkcu + `\User`, ""},
+		{"64", hklm + `\Reset`, "Stale"},
+	} {
+		if regHas(t, gone.view, gone.key, gone.name) {
+			t.Errorf("%s %s (view %s) is still there after the repair", gone.key, gone.name, gone.view)
+		}
+	}
+
+	if got := regData(t, hklm+`\Reset`, "Value"); got != "new" {
+		t.Errorf(`Reset\Value is %q after the repair, want new`, got)
+	}
 
 	seed()
 
-	uninstallLog := filepath.Join(filepath.Dir(path), "uninstall.log")
-	code = msiexecCode(t, uninstallLog, "/x", path)
-	t.Logf("REG-02 uninstall: exit %d, Old(64) present=%v, Keep\\Legacy present=%v, Keep\\Other=%q, Reset\\Stale present=%v, Reset\\Value=%q",
-		code, regHas(t, "64", hklm+`\Old`, ""), regHas(t, "64", hklm+`\Keep`, "Legacy"), regData(t, hklm+`\Keep`, "Other"),
-		regHas(t, "64", hklm+`\Reset`, "Stale"), regData(t, hklm+`\Reset`, "Value"))
+	if code := msiexecCode(t, filepath.Join(filepath.Dir(path), "uninstall.log"), "/x", path); code != 0 {
+		t.Fatalf("msiexec /x returned %d", code)
+	}
+
+	for _, kept := range []struct{ view, key, name string }{
+		{"64", hklm + `\Old`, ""},
+		{"64", hklm + `\Keep`, "Legacy"},
+		{"64", hklm + `\Reset`, "Stale"},
+	} {
+		if !regHas(t, kept.view, kept.key, kept.name) {
+			t.Errorf("%s %s (view %s) was removed by the uninstall", kept.key, kept.name, kept.view)
+		}
+	}
+
+	if got := regData(t, hklm+`\Keep`, "Other"); got != "kept" {
+		t.Errorf(`Keep\Other is %q after the uninstall, want kept`, got)
+	}
+
+	if got := regData(t, hklm+`\Reset`, "Value"); got != "<absent>" {
+		t.Errorf(`Reset\Value is %q after the uninstall, want it removed with the package`, got)
+	}
 }
 
 // TestICERemoveRegistry runs the full ICE suite against the RemoveRegistry
