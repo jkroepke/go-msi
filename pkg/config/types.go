@@ -48,6 +48,9 @@ type Config struct { //nolint:govet // field order is the YAML key order
 	// Paths in it use forward slashes. It is for Go callers and is never
 	// read from YAML.
 	FS fs.FS `yaml:"-"`
+
+	// folders are the components that ExpandFolders replaced.
+	folders []folderSource
 }
 
 // Product holds the product's identity.
@@ -238,6 +241,9 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	firewallFeature string
 	// carrierOf is that feature.
 	carrierOf *Feature
+	// folder is the component with a folder source that this one was
+	// generated from.
+	folder *Component
 }
 
 // FirewallFeature returns the feature whose firewall rules the component
@@ -292,6 +298,10 @@ type File struct { //nolint:govet // field order is the YAML key order
 	System                     bool         `yaml:"system"`
 	Permissions                *Permissions `yaml:"permissions"`
 	Shortcuts                  []*Shortcut  `yaml:"shortcuts"`
+	// Include and Exclude are glob patterns over the paths below a folder
+	// source (one that ends in a slash); see Config.ExpandFolders.
+	Include StringList `yaml:"include"`
+	Exclude StringList `yaml:"exclude"`
 
 	// FS, when set, is where Source is read from, overriding Config.FS for
 	// this file. AddTree sets it. It is never read from YAML.

@@ -1422,7 +1422,7 @@
             "properties": {
               "source": {
                 "type": "string",
-                "description": "Path relative to the YAML file."
+                "description": "Path relative to the YAML file, or absolute. A source that ends in / (or \\) is a folder: the component becomes one component per file below it, with subfolders as directories below the component's directory (see the YAML schema doc)."
               },
               "name": {
                 "type": "string",
@@ -1527,6 +1527,14 @@
                   },
                   "additionalProperties": false
                 }
+              },
+              "include": {
+                "$ref": "#/$defs/stringList",
+                "description": "Folder sources only: doublestar glob patterns of the files to add, default all. A pattern without / matches a name in any folder; ** matches any number of folders; a trailing / matches folders only. Case is ignored."
+              },
+              "exclude": {
+                "$ref": "#/$defs/stringList",
+                "description": "Folder sources only: glob patterns of files and folders to leave out, like include; exclude wins."
               }
             },
             "required": [
