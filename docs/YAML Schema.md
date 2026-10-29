@@ -316,6 +316,55 @@ ui:
 
 Fields can also be `type: password`, `checkbox` or `choice`.
 
+### Change or translate the wizard's texts
+
+`ui.strings` replaces single texts of the built-in wizard by key, and
+`ui.languages` adds languages to the same package. An entry there
+translates the texts your configuration brings too: the pages of
+`ui.dialogs` by their `id`, their fields by property, and the launch
+checkbox:
+
+```yaml
+properties:
+  PORT: "8080"
+
+ui:
+  enabled: true
+  strings:
+    WelcomeText: Hello is a small web server. Click Next to install it.
+    Finish: '&Done'
+  launch:
+    file: hello.exe
+    text: '&Start Hello now'
+  dialogs:
+    - id: SettingsDlg
+      title: Settings
+      after: WelcomeDlg
+      fields:
+        - property: PORT
+          label: Port to listen on
+  languages:
+    de:
+      strings:
+        WelcomeText: Hello ist ein kleiner Webserver. Klicken Sie auf Weiter.
+      launch:
+        text: 'Hello jetzt &starten'
+      dialogs:
+        SettingsDlg:
+          title: Einstellungen
+          fields:
+            PORT: {label: Port für Anfragen}
+```
+
+The keys of `strings` are the names in `pkg/config/schema.json`, such as
+`Next`, `WelcomeTitle` or `ExitText`. A text you leave out keeps the
+built-in one, or its built-in translation in another language; a page
+text you leave out of a language keeps your own. `[ProductName]` and
+other properties work in every text, and `&` marks the access key on
+buttons, checkboxes and radio buttons. Quote a text that starts with `&`,
+`[` or `<`. msiexec shows the language that matches the user's regional
+format, and `msiexec /i hello.msi ProductLanguage=1031` picks one.
+
 ### Keep a configuration file on upgrade
 
 A user's changes to a configuration file survive upgrades with `preserve`.
@@ -465,6 +514,8 @@ The keys used most inside them:
 | `ui.chooseFeatures` | `false` | Feature tree page |
 | `ui.launch.file` | none | "Launch" checkbox on the finish page |
 | `ui.finishText` | none | A paragraph on the finish page |
+| `ui.strings` | none | Your own texts for the built-in wizard |
+| `ui.languages` | none | More wizard languages in the same package |
 
 Unknown keys are errors, so a typo never drops a setting silently. Every
 error names the line or the key, such as `components[0].files[1].source`.

@@ -10,7 +10,8 @@ import (
 )
 
 // languagesConfig is the full UI configuration with German and French as
-// further wizard languages, in the code page they share.
+// further wizard languages, in the code page they share. The German entry
+// translates the added ChoiceDlg page too (LANG-04).
 func languagesConfig(t *testing.T) string {
 	t.Helper()
 
@@ -20,7 +21,15 @@ func languagesConfig(t *testing.T) string {
 		t.Fatalf("the full UI configuration no longer holds %q once", anchor)
 	}
 
-	return strings.Replace(fullUIConfig, anchor, anchor+"  languages:\n    de: {finishText: 'Viel Spaß mit [ProductName].'}\n    fr: {}\n", 1)
+	return strings.Replace(fullUIConfig, anchor, anchor+"  languages:\n"+
+		"    de:\n"+
+		"      finishText: 'Viel Spaß mit [ProductName].'\n"+
+		"      dialogs:\n"+
+		"        ChoiceDlg:\n"+
+		"          title: Protokollstufe\n"+
+		"          fields:\n"+
+		"            LOG_LEVEL: {label: 'Welche Meldungen protokolliert werden', options: {debug: '&Ausführlich'}}\n"+
+		"    fr: {}\n", 1)
 }
 
 // TestLanguagesInstallLANG03 installs a package with embedded language
@@ -66,7 +75,8 @@ func TestLanguagesInstallLANG03(t *testing.T) { //nolint:paralleltest // one msi
 
 // TestFullUILanguages runs the German wizard of a package whose German
 // texts come from the built-in translation, selected by ProductLanguage on
-// an English system (LANG-03).
+// an English system (LANG-03), and picks an option of the added dialog by
+// its translated label (LANG-04).
 func TestFullUILanguages(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
 	requireFullUI(t)
 	waitForMsiexec(t)
@@ -77,16 +87,26 @@ func TestFullUILanguages(t *testing.T) { //nolint:paralleltest // msiexec runs o
 	cleanupFullUI(t, pkg)
 
 	log := filepath.Join(dir, "install.log")
-	code, seen := fullUIDriven(t, dir, "", "^(Weiter|Installieren|Fertig stellen)$", "/i", pkg, "ProductLanguage=1031", "/l*v", log)
+	code, seen := fullUIDriven(t, dir, "^Ausf.hrlich$", "^(Weiter|Installieren|Fertig stellen)$", "/i", pkg, "ProductLanguage=1031", "/l*v", log)
 
 	if code != 0 {
 		t.Errorf("full UI install: exit %d, want 0", code)
 	}
 
-	for _, want := range []string{"Willkommen beim Setup-Assistenten für MsiBuilderFullUI", "Zurück", "Viel Spaß mit MsiBuilderFullUI."} {
+	for _, want := range []string{
+		"Willkommen beim Setup-Assistenten für MsiBuilderFullUI", "Zurück", "Viel Spaß mit MsiBuilderFullUI.",
+		"Protokollstufe", "Welche Meldungen protokolliert werden", "Ausführlich",
+	} {
 		if !strings.Contains(seen, want) {
 			t.Errorf("no window showed %q", want)
 		}
+	}
+
+	// LANG-04: the translated radio button still sets its option's value.
+	if !strings.Contains(seen, "CHOSE: ") {
+		t.Error("LANG-04: the driver found no translated radio button")
+	} else if text := readLog(log); !strings.Contains(text, "LOG_LEVEL = debug") {
+		t.Errorf("LANG-04: LOG_LEVEL is not debug after choosing Ausführlich\n%s", excerpt(text, "LOG_LEVEL"))
 	}
 
 	if !productInstalled(t, res.ProductCode) {

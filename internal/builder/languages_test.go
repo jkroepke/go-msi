@@ -1,6 +1,7 @@
 package builder_test
 
 import (
+	"io"
 	"slices"
 	"strings"
 	"testing"
@@ -140,5 +141,99 @@ func TestLanguageLicenseWithoutBaseLicense(t *testing.T) {
 
 	if got := transformTables(t, res.Database.Storages[0]); !slices.Contains(got, "Dialog") || !slices.Contains(got, "Control") || !slices.Contains(got, "CheckBox") {
 		t.Errorf("storage 1031 changes %v, want the license dialog, its controls and its check box", got)
+	}
+}
+
+// storageStrings returns the string data of a language transform storage.
+func storageStrings(t *testing.T, storage cfb.Storage) string {
+	t.Helper()
+
+	encoded, err := msidb.EncodeStreamName(msidb.TableStringData, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, stream := range storage.Streams {
+		if stream.Name != encoded {
+			continue
+		}
+
+		reader, err := stream.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		data, err := io.ReadAll(reader)
+		_ = reader.Close()
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return string(data)
+	}
+
+	t.Fatalf("storage %s has no string data", storage.Name)
+
+	return ""
+}
+
+// TestLanguageDialogTexts translates the texts of an added dialog and of
+// the launch check box in a ui.languages entry: the transform carries them,
+// and the base keeps the configuration's own.
+func TestLanguageDialogTexts(t *testing.T) {
+	t.Parallel()
+
+	cfg := desktop(t)
+	cfg.UI.Dialogs = []*config.Dialog{{
+		ID: "ServerDlg", Title: "Server connection", Description: "Where the viewer reads its data.", After: "WelcomeDlg",
+		Fields: []config.DialogField{
+			{Property: "SERVER_URL", Label: "Server address:"},
+			{Property: "LOG_LEVEL", Label: "Log level:", Type: config.FieldChoice, Options: []config.ChoiceOption{
+				{Value: "warn", Label: "&Warnings"}, {Value: "debug"},
+			}},
+		},
+	}}
+	cfg.UI.Languages = map[string]*config.Language{
+		"fr": {
+			Launch: &config.LanguageLaunch{Text: "&Ouvrir le visionneur"},
+			Dialogs: map[string]*config.LanguageDialog{"ServerDlg": {
+				Title: "Connexion au serveur",
+				Fields: map[string]*config.LanguageField{
+					"SERVER_URL": {Label: "Adresse du serveur :"},
+					"LOG_LEVEL":  {Options: map[string]string{"debug": "&Detaille"}},
+				},
+			}},
+		},
+	}
+
+	res := mustBuild(t, cfg)
+
+	if len(res.Database.Storages) != 1 {
+		t.Fatalf("%d storages, want one for fr", len(res.Database.Storages))
+	}
+
+	texts := storageStrings(t, res.Database.Storages[0])
+	for _, want := range []string{"&Ouvrir le visionneur", "Connexion au serveur", "Adresse du serveur :", "&Detaille"} {
+		if !strings.Contains(texts, want) {
+			t.Errorf("the French transform does not hold %q", want)
+		}
+	}
+
+	// Texts the entry leaves out keep the base language's, so the
+	// transform does not need them.
+	for _, kept := range []string{"Where the viewer reads its data.", "Log level:", "&Warnings"} {
+		if strings.Contains(texts, kept) {
+			t.Errorf("the French transform holds the untranslated %q", kept)
+		}
+	}
+
+	title := cell(t, res.Database, "Control", "Text", func(r []any) bool { return r[0] == "ServerDlg" && r[1] == "Title" })
+	if s, ok := title.(string); !ok || !strings.Contains(s, "Server connection") {
+		t.Errorf("the base title is %v, want the configuration's", title)
+	}
+
+	if cfg.UI.Dialogs[0].Title != "Server connection" || cfg.UI.Launch.Text != "" {
+		t.Error("the language build changed the configuration")
 	}
 }
