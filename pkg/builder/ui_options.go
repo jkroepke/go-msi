@@ -5,6 +5,8 @@ import (
 	"path"
 	"slices"
 	"strings"
+
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 const (
@@ -97,8 +99,19 @@ func (b *build) launch(wiz *wizard) {
 }
 
 // launchFile returns the program ui.launch starts, or nil after an error.
+// key is a File key or the long name of a file without an id.
 func (b *build) launchFile(key string) *fileInfo {
 	file := b.fileByKey[key]
+	if file == nil {
+		for _, fi := range b.files {
+			if fi.cfg.ID == "" && config.FileLongName(fi.cfg) == key {
+				file = fi
+
+				break
+			}
+		}
+	}
+
 	if file == nil {
 		b.errorf("ui.launch.file", "file %q is not defined", key)
 

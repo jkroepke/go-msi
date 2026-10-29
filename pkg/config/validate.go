@@ -77,7 +77,14 @@ type refs struct {
 	dirParent  map[string]string
 	components map[string]*Component
 	fileIDs    map[string]bool
+	fileNames  map[string]bool // long names of files without an id
 	inFeature  map[string]bool
+}
+
+// hasFile reports whether ref is a File key or the long name of a file
+// without an id.
+func (r *refs) hasFile(ref string) bool {
+	return r.fileIDs[ref] || r.fileNames[ref]
 }
 
 func newRefs(cfg *Config) *refs {
@@ -86,6 +93,7 @@ func newRefs(cfg *Config) *refs {
 		dirParent:  make(map[string]string),
 		components: make(map[string]*Component),
 		fileIDs:    make(map[string]bool),
+		fileNames:  make(map[string]bool),
 		inFeature:  make(map[string]bool),
 	}
 
@@ -108,6 +116,10 @@ func newRefs(cfg *Config) *refs {
 
 		for _, f := range c.Files {
 			known.fileIDs[fileID(f)] = true
+
+			if f.ID == "" {
+				known.fileNames[fileName(f)] = true
+			}
 		}
 	}
 
@@ -129,13 +141,33 @@ func fileName(f *File) string {
 	return path.Base(strings.ReplaceAll(f.Source, `\`, "/"))
 }
 
-// fileID returns the File key: the explicit id, else the long name.
+// FileByRef returns the file that ref names: its key, or the long name of a
+// file without an id, so that "fleetspeak-client.exe" finds the file keyed
+// "fleetspeak_client.exe". It returns nil when no file matches.
+func FileByRef(files []*File, ref string) *File {
+	for _, f := range files {
+		if fileID(f) == ref || f.ID == "" && fileName(f) == ref {
+			return f
+		}
+	}
+
+	return nil
+}
+
+// fileID returns the File key: the explicit id, else the long name, with
+// every character that an identifier cannot hold replaced by "_" (so
+// "fleetspeak-client.exe" becomes "fleetspeak_client.exe").
 func fileID(f *File) string {
 	if f.ID != "" {
 		return f.ID
 	}
 
-	return fileName(f)
+	name := fileName(f)
+	if IsIdentifier(name) && len(name) <= MaxIdentifierLength {
+		return name
+	}
+
+	return identifier(name)
 }
 
 // topFolder returns the standard folder at the root of a directory's chain.
@@ -947,7 +979,7 @@ func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component
 
 		fileKey := fileID(file)
 		if !IsIdentifier(fileKey) || len(fileKey) > MaxIdentifierLength {
-			v.errorf(filePath+".id", "file key %q is not an identifier; set id", fileKey)
+			v.errorf(filePath+".id", "%q is not an identifier of at most %d characters", fileKey, MaxIdentifierLength)
 		}
 
 		if other, dup := ids[fileKey]; dup {
@@ -1005,7 +1037,7 @@ func versionedFile(f *File) bool {
 
 // fileVersion enforces the FILE-01 rule: a PE file is never unversioned by
 // accident, since an upgrade with early removal then deletes it.
-func (v *validator) fileVersion(filePath string, file *File, comp *Component) { //nolint:cyclop // a flat list of independent checks
+func (v *validator) fileVersion(filePath string, file *File, comp *Component) {
 	isPE := peExtensions[strings.ToLower(path.Ext(fileName(file)))]
 
 	switch file.Version {
@@ -1023,16 +1055,8 @@ func (v *validator) fileVersion(filePath string, file *File, comp *Component) { 
 			return
 		}
 
-		companion := false
-
-		for _, other := range comp.Files {
-			if other != file && fileID(other) == file.Version {
-				companion = true
-			}
-		}
-
-		if !companion {
-			v.errorf(filePath+".version", "%q is not auto, none, a version or the id of a file in this component", file.Version)
+		if other := FileByRef(comp.Files, file.Version); other == nil || other == file {
+			v.errorf(filePath+".version", "%q is not auto, none, a version or the id or name of another file in this component", file.Version)
 		}
 	}
 }
@@ -1811,7 +1835,7 @@ func (v *validator) wizardOptions(cfg *Config, ids *refs) {
 		v.errorf("ui.launch", "a launch check box needs a wizard")
 	}
 
-	if v.required("ui.launch.file", launch.File) && !ids.fileIDs[launch.File] {
+	if v.required("ui.launch.file", launch.File) && !ids.hasFile(launch.File) {
 		v.errorf("ui.launch.file", "file %q is not defined", launch.File)
 	}
 
