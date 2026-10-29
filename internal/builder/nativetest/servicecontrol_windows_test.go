@@ -50,6 +50,10 @@ func createService(t *testing.T, name, binPath string, start bool) {
 		t.Fatalf("sc create %s: %v\n%s", name, err, out)
 	}
 
+	if out, err := exec.CommandContext(t.Context(), "sc", "description", name, "stale description").CombinedOutput(); err != nil {
+		t.Fatalf("sc description %s: %v\n%s", name, err, out)
+	}
+
 	if start {
 		if out, err := exec.CommandContext(t.Context(), "sc", "start", name).CombinedOutput(); err != nil {
 			t.Fatalf("sc start %s: %v\n%s", name, err, out)
@@ -57,24 +61,25 @@ func createService(t *testing.T, name, binPath string, start bool) {
 	}
 }
 
-// serviceBinary returns the BINARY_PATH_NAME of sc qc.
-func serviceBinary(t *testing.T, name string) string {
+// scField returns the value of a field in the output of sc query, qc or
+// qdescription for a service.
+func scField(t *testing.T, command, name, field string) string {
 	t.Helper()
 
-	out, err := exec.CommandContext(t.Context(), "sc", "qc", name).CombinedOutput()
+	out, err := exec.CommandContext(t.Context(), "sc", command, name).CombinedOutput()
 	if err != nil {
-		t.Fatalf("sc qc %s: %v\n%s", name, err, out)
+		t.Fatalf("sc %s %s: %v\n%s", command, name, err, out)
 	}
 
 	for line := range strings.SplitSeq(string(out), "\n") {
-		if _, value, ok := strings.Cut(line, "BINARY_PATH_NAME"); ok {
+		if _, value, ok := strings.Cut(line, field); ok {
 			_, value, _ = strings.Cut(value, ":")
 
 			return strings.TrimSpace(value)
 		}
 	}
 
-	t.Fatalf("sc qc %s has no BINARY_PATH_NAME line:\n%s", name, out)
+	t.Fatalf("sc %s %s has no %s line:\n%s", command, name, field, out)
 
 	return ""
 }
@@ -93,10 +98,12 @@ func uninstallOnCleanup(t *testing.T, path, service, installDir string) {
 }
 
 // TestMsiexecDeletesServiceOnInstall installs a service whose name is
-// already registered by something else (SVC-06). Without deleteOnInstall
-// InstallServices leaves the registered service alone, so the package's
-// service runs the old binary; with it, DeleteServices removes the old
-// registration first and InstallServices creates the package's own.
+// already registered by something else, with another binary, display name
+// and a description (SVC-06). Without deleteOnInstall InstallServices
+// reconfigures the registered service: binary path and display name become
+// the package's, and the description the package does not set stays. With
+// it, DeleteServices removes the old registration first, so nothing of it
+// carries over.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestMsiexecDeletesServiceOnInstall(t *testing.T) {
@@ -122,8 +129,17 @@ func TestMsiexecDeletesServiceOnInstall(t *testing.T) {
 			t.Fatalf("install failed with %d\n%s", code, readLog(filepath.Join(dir, "install.log")))
 		}
 
-		if got := serviceBinary(t, ctlService); !strings.Contains(strings.ToLower(got), "notepad.exe") {
-			t.Errorf("binary path %q, want the stale registration left alone", got)
+		want := strings.ToLower(filepath.Join(installDir, "svc.exe"))
+		if got := scField(t, "qc", ctlService, "BINARY_PATH_NAME"); !strings.Contains(strings.ToLower(got), want) {
+			t.Errorf("binary path %q, want %q", got, want)
+		}
+
+		if got := scField(t, "qc", ctlService, "DISPLAY_NAME"); got != ctlService {
+			t.Errorf("display name %q, want %q", got, ctlService)
+		}
+
+		if got := scField(t, "qdescription", ctlService, "DESCRIPTION"); got != "stale description" {
+			t.Errorf("description %q, want the stale one kept", got)
 		}
 
 		msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
@@ -143,8 +159,12 @@ func TestMsiexecDeletesServiceOnInstall(t *testing.T) {
 		msiexecQuiet(t, filepath.Join(dir, "install.log"), "/i", path)
 
 		want := strings.ToLower(filepath.Join(installDir, "svc.exe"))
-		if got := serviceBinary(t, ctlService); !strings.Contains(strings.ToLower(got), want) {
+		if got := scField(t, "qc", ctlService, "BINARY_PATH_NAME"); !strings.Contains(strings.ToLower(got), want) {
 			t.Errorf("binary path %q, want %q", got, want)
+		}
+
+		if got := scField(t, "qdescription", ctlService, "DESCRIPTION"); got != "" {
+			t.Errorf("description %q, want none", got)
 		}
 
 		if state := serviceState(t, ctlService); !strings.Contains(state, "RUNNING") {
