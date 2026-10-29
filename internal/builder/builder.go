@@ -127,8 +127,7 @@ type build struct { //nolint:govet // grouped by build step
 	components map[string]*componentInfo
 	hidden     map[string]bool
 	// carriers maps a component to the generated components that install
-	// with it: the one that holds the shortcuts to its files, the permanent
-	// ones that hold the extension defaults of its file types and those that
+	// with it: the one that holds the shortcuts to its files and those that
 	// start its services under a condition.
 	carriers map[string][]string
 	// removedFolders are the folders that generated RemoveFile rows remove
@@ -137,9 +136,6 @@ type build struct { //nolint:govet // grouped by build step
 	// guids maps each ComponentId to the component that has it, to report
 	// duplicates (ICE08).
 	guids map[any]string
-	// assocChange is set when the package registers file types and so
-	// notifies the shell (scheduleAssocChanged).
-	assocChange bool
 	// shortNames are the short names taken per folder (canonical path),
 	// shared by the directories and files in it and by every directory key
 	// that names it (section 11.3).
@@ -362,7 +358,6 @@ func (b *build) writeTables() error {
 		b.searchProperties,
 		b.customActions,
 		b.firewall,
-		b.scheduleAssocChanged,
 		b.permissions,
 		b.streams,
 		b.customTables,

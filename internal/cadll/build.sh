@@ -48,8 +48,7 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
   imports kernel32 CreatePipe:16 SetHandleInformation:12 CreateProcessW:40 ReadFile:20 \
     WaitForSingleObject:8 GetExitCodeProcess:8 CloseHandle:4 GetCurrentThread:0 \
     GetProcessHeap:0 HeapAlloc:12 HeapReAlloc:16 HeapFree:12 GetLastError:0 \
-    MultiByteToWideChar:24 TerminateProcess:8 LoadLibraryExW:12 GetProcAddress:8 FreeLibrary:4 \
-    GetCurrentProcessId:0 ProcessIdToSessionId:8 >"$tmp/$out/kernel32.def"
+    MultiByteToWideChar:24 TerminateProcess:8 >"$tmp/$out/kernel32.def"
   imports advapi32 OpenThreadToken:16 DuplicateTokenEx:24 CreateProcessAsUserW:44 >"$tmp/$out/advapi32.def"
   imports msi MsiGetPropertyW:16 MsiCreateRecord:4 MsiRecordSetStringW:12 MsiProcessMessage:12 \
     MsiCloseHandle:4 >"$tmp/$out/msi.def"
@@ -64,7 +63,6 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     -o "builderrun-$out.dll" "$tmp/$out/builderrun.obj" \
     "$tmp/$out/kernel32.lib" "$tmp/$out/advapi32.lib" "$tmp/$out/msi.lib" \
     -Wl,/Brepro -Wl,/nodefaultlib -Wl,/entry:_DllMainCRTStartup -Wl,/export:BuilderRun \
-    -Wl,/export:BuilderAssocChanged \
     -Wl,/release -Wl,/opt:ref -Wl,/opt:icf -Wl,/subsystem:windows
 done
 sha256sum builderrun-x86.dll builderrun-x64.dll builderrun-arm64.dll >SHA256SUMS

@@ -17,12 +17,6 @@
 //
 // The directory may be empty; `|` cannot occur in a Windows path, so the
 // first one ends it. A log line reads `BuilderRun: ...`.
-//
-// The second entry point, BuilderAssocChanged, tells the shell that file
-// associations changed (SHChangeNotify with SHCNE_ASSOCCHANGED), which
-// Microsoft asks for after a program registers or removes a file type. It
-// loads shell32.dll from System32 at run time, so run actions keep their
-// three imports, and it never fails the installation.
 
 typedef unsigned int UINT;
 typedef unsigned long DWORD;
@@ -79,14 +73,6 @@ BOOL WINAPI HeapFree(HANDLE, DWORD, void *);
 DWORD WINAPI GetLastError(void);
 int WINAPI MultiByteToWideChar(UINT, DWORD, const char *, int, WCHAR *, int);
 BOOL WINAPI TerminateProcess(HANDLE, UINT);
-HANDLE WINAPI LoadLibraryExW(const WCHAR *, HANDLE, DWORD);
-void *WINAPI GetProcAddress(HANDLE, const char *);
-BOOL WINAPI FreeLibrary(HANDLE);
-DWORD WINAPI GetCurrentProcessId(void);
-BOOL WINAPI ProcessIdToSessionId(DWORD, DWORD *);
-
-// shell32.dll, loaded at run time
-typedef void(WINAPI *SHChangeNotifyFunc)(long, UINT, const void *, const void *);
 
 // advapi32.dll
 BOOL WINAPI OpenThreadToken(HANDLE, DWORD, BOOL, HANDLE *);
@@ -123,11 +109,6 @@ enum {
     CP_OEMCP = 1,
     CP_UTF8 = 65001,
     MB_ERR_INVALID_CHARS = 8,
-
-    LOAD_LIBRARY_SEARCH_SYSTEM32 = 0x800,
-    SHCNE_ASSOCCHANGED = 0x08000000,
-    SHCNF_IDLIST = 0,
-    SHCNF_FLUSH = 0x1000,
 
     INSTALLMESSAGE_ERROR = 0x01000000,
     INSTALLMESSAGE_INFO = 0x04000000,
@@ -477,45 +458,6 @@ done:
     HeapFree(GetProcessHeap(), 0, cmd);
     HeapFree(GetProcessHeap(), 0, data);
     return result;
-}
-
-static const WCHAR msgShell32[] = {'s', 'h', 'e', 'l', 'l', '3', '2', '.', 'd', 'l', 'l', 0};
-static const WCHAR msgNoShell[] = {'S', 'H', 'C', 'h', 'a', 'n', 'g', 'e', 'N', 'o', 't', 'i', 'f', 'y', ' ', 'n', 'o', 't', ' ', 'c', 'a', 'l', 'l', 'e', 'd', 0};
-static const WCHAR msgNotified[] = {'S', 'H', 'C', 'h', 'a', 'n', 'g', 'e', 'N', 'o', 't', 'i', 'f', 'y', '(', 'S', 'H', 'C', 'N', 'E', '_', 'A', 'S', 'S', 'O', 'C', 'C', 'H', 'A', 'N', 'G', 'E', 'D', ')', ' ', 'i', 'n', ' ', 's', 'e', 's', 's', 'i', 'o', 'n', ' ', 0};
-
-// BuilderAssocChanged notifies the shell that file associations changed.
-// Microsoft defines SHCNF_FLUSH as not returning before the notification
-// has been delivered, so unloading shell32 or the custom action server
-// ending right after presumably cannot drop it. The log line names the
-// session the call ran in, since the notification presumably reaches only
-// the shell of that session.
-__declspec(dllexport) UINT WINAPI BuilderAssocChanged(MSIHANDLE install)
-{
-    HANDLE shell = LoadLibraryExW(msgShell32, 0, LOAD_LIBRARY_SEARCH_SYSTEM32);
-    if (!shell) {
-        logf(install, msgNoShell, msgShell32, GetLastError());
-        return ERROR_SUCCESS;
-    }
-    SHChangeNotifyFunc notify = (SHChangeNotifyFunc)GetProcAddress(shell, "SHChangeNotify");
-    if (!notify) {
-        logf(install, msgNoShell, msgShell32, GetLastError());
-        FreeLibrary(shell);
-        return ERROR_SUCCESS;
-    }
-    notify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST | SHCNF_FLUSH, 0, 0);
-    FreeLibrary(shell);
-    DWORD session = 0;
-    WCHAR line[96];
-    SIZE_T pos = 0;
-    wappend(line, &pos, msgNotified);
-    if (ProcessIdToSessionId(GetCurrentProcessId(), &session)) {
-        wappendnum(line, &pos, session);
-    } else {
-        static const WCHAR unknown[] = {'?', 0};
-        wappend(line, &pos, unknown);
-    }
-    logw(install, line);
-    return ERROR_SUCCESS;
 }
 
 BOOL WINAPI _DllMainCRTStartup(HANDLE instance, DWORD reason, void *reserved)
