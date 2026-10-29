@@ -1085,13 +1085,13 @@ folder (SEARCH-04).
 |---|---|---|
 | `directory` | `path` | A full path (a drive, a share or a property in brackets such as `[ProgramFiles64Folder]`), or with `under` a path relative to the folder that search finds. Returns the folder with a trailing backslash, and nothing for a file or a missing folder |
 | | `under` | A search that finds a folder: `registry` (its `type` defaults to `directory` there, `value` is an error), `directory` or `component`. Up to eight searches in one chain |
-| | `depth` | Default 0. How many levels of subfolders may lie between the path's parent and its last folder: `C:\a\b` with depth 3 also finds `C:\a\x\y\b` |
+| | `depth` | Default 0. How many folders may lie between the path's parent and its last folder: `C:\a\b` with depth 2 also finds `C:\a\x\y\b` |
 | `file` | `name` | The filename, without a folder. The result is the folder plus `name` as written here, in this case, not the case on disk |
 | | `path`, `under` | The folder to look in, as for `directory` |
 | | `depth` | Default 0. How many levels of subfolders below the folder are searched as well |
-| | `minVersion`, `maxVersion` | Inclusive bounds, one to four fields. A bound rules out files without a version |
+| | `minVersion`, `maxVersion` | Inclusive bounds, one to four fields. A `minVersion` rules out files without a version (SEARCH-05) |
 | | `minSize`, `maxSize` | Inclusive bounds in bytes, up to 2147483647 |
-| | `minDate`, `maxDate` | Inclusive bounds on the modification date, `YYYY-MM-DD` from 1980-01-01 to 2043-12-31 |
+| | `minDate`, `maxDate` | Inclusive bounds on the modification date, `YYYY-MM-DD` from 1980-01-01 to 2043-12-31: `minDate` starts at 00:00:00 and `maxDate` ends at 23:59:58, since the engine compares the time of day too (SEARCH-05). Whether it compares local time or UTC is not tested |
 | | `languages` | Language IDs the file's version resource must list; compared only when the file's version equals `minVersion` |
 | `component` | `guid` | The component code of an installed component, of this or another product. Returns the folder of its key file |
 
@@ -1104,12 +1104,17 @@ every file; the one difference is a file of exactly that lower version
 without any language, which is found too. With `languages` the bound is
 written as given. Versions of Windows' own files are unreliable to a search
 (reported shims on Windows 10 and later; no version-bounded search of
-`kernel32.dll` found it in SEARCH-05), so the builder warns about version bounds in
+`kernel32.dll` found it in SEARCH-05, for reasons not yet known), so the builder warns about version bounds in
 `[SystemFolder]`, `[System64Folder]`, `[WindowsFolder]` and `C:\Windows`;
 test `VersionNT` or `WindowsBuild` instead. A path that names a folder of the
 package itself (`[INSTALLDIR]`) gets a warning: `AppSearch` runs before
-`CostFinalize` resolves those folders. The standard folder properties are
-set before it and work (SEARCH-05). A component search finds components
+`CostFinalize` resolves those folders. A path that names a searched
+property is an error, since its result is set only after `AppSearch`; use
+`under` instead. A path that starts with another property that is not a
+standard folder gets a warning: if that property is empty, the path is
+relative and the engine searches every fixed drive. The standard folder
+properties are set before `AppSearch` (`[WindowsFolder]` and
+`[ProgramFiles64Folder]` work, SEARCH-05). A component search finds components
 whose key path is a file; a component with a registry or folder key path
 was not tested.
 

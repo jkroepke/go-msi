@@ -68,8 +68,10 @@ const maxSearchNesting = 8
 
 // Limits of the Signature and DrLocator columns.
 const (
-	maxSearchDepth = 32767
-	maxSearchSize  = 2147483647
+	maxSearchText    = 255
+	maxSearchVersion = 20
+	maxSearchDepth   = 32767
+	maxSearchSize    = 2147483647
 )
 
 // The years a Signature row can hold: MinDate and MaxDate are positive
@@ -91,8 +93,11 @@ func IsFullSearchPath(p string) bool {
 }
 
 // SearchDate converts a minDate or maxDate (YYYY-MM-DD) to the packed
-// MS-DOS date and time of a Signature row (time 00:00:00).
-func SearchDate(text string) (int, error) {
+// MS-DOS date and time of a Signature row. The engine compares the time of
+// day too (SEARCH-05), so a minDate starts at 00:00:00 and a maxDate
+// (endOfDay) ends at 23:59:58, the last time the format holds, and both
+// bounds include the day they name.
+func SearchDate(text string, endOfDay bool) (int, error) {
 	date, err := time.Parse(time.DateOnly, text)
 	if err != nil {
 		return 0, fmt.Errorf("%q is not a date (YYYY-MM-DD)", text)
@@ -102,7 +107,13 @@ func SearchDate(text string) (int, error) {
 		return 0, fmt.Errorf("%s is outside 1980-01-01 to 2043-12-31, the dates a Signature row can hold", text)
 	}
 
-	return ((date.Year()-1980)*512 + int(date.Month())*32 + date.Day()) << 16, nil
+	packed := ((date.Year()-1980)*512 + int(date.Month())*32 + date.Day()) << 16
+	if endOfDay {
+		// 23 hours, 59 minutes and 58 seconds in two-second units.
+		packed |= 23<<11 | 59<<5 | 29
+	}
+
+	return packed, nil
 }
 
 // SearchVersion checks a minVersion or maxVersion: one to four numbers of
@@ -128,8 +139,8 @@ func SearchVersion(text string) error {
 // version equals MinVersion only when Signature.Languages lists the file's
 // languages (SEARCH-05), so without languages the bound is lowered by one
 // in the last field: 1.2.3.4 becomes 1.2.3.3, 1.2 becomes 1.1.65535.65535.
-// 0.0.0.0 stays: it cannot go lower, and like every MinVersion it still
-// rules out files without a version (SEARCH-05).
+// 0.0.0.0 stays, as it cannot go lower; SEARCH-05 saw a MinVersion of
+// 0.0.0.1 rule out a file without a version.
 func SearchMinVersion(text string, languages []int) string {
 	if len(languages) > 0 {
 		return text
@@ -286,9 +297,17 @@ func (v *validator) searchFolder(cfg *Config, field, folder string, under *Searc
 	v.searchPathProperties(cfg, field+".path", folder)
 }
 
-// searchPathProperties warns about folders of this package in a search
-// path: AppSearch runs before CostFinalize resolves them.
+// searchPathProperties checks the properties a search path names.
+// AppSearch formats the path when it runs: the package's own folders are
+// resolved only later by CostFinalize, and a searched property only after
+// AppSearch, by its apply action. A path that starts with an empty
+// property is relative, and a relative DrLocator path without a parent
+// searches every fixed drive (Microsoft documents this; not tested).
 func (v *validator) searchPathProperties(cfg *Config, field, folder string) {
+	if len(folder) > maxSearchText {
+		v.errorf(field, "at most %d characters (DrLocator.Path)", maxSearchText)
+	}
+
 	dirs := map[string]bool{cfg.InstallDir.ID: true}
 
 	var walk func([]*Directory)
@@ -301,10 +320,21 @@ func (v *validator) searchPathProperties(cfg *Config, field, folder string) {
 	}
 	walk(cfg.Directories)
 
-	for _, match := range bracketProperty.FindAllStringSubmatch(folder, -1) {
-		if dirs[match[1]] && !IsStandardFolder(match[1]) {
+	for i, match := range bracketProperty.FindAllStringSubmatchIndex(folder, -1) {
+		name := folder[match[2]:match[3]]
+		leading := i == 0 && match[0] == 0
+
+		switch prop := cfg.Properties[name]; {
+		case IsStandardFolder(name):
+		case prop != nil && len(prop.Search) > 0:
+			v.errorf(field, "[%s] is searched itself, and its result is set only after AppSearch; "+
+				"search below it with under instead", name)
+		case dirs[name]:
 			v.warnf(field, "[%s] is a folder of this package; AppSearch runs before CostFinalize resolves it, "+
-				"so the path is resolved without it", match[1])
+				"so the path is resolved without it unless the command line sets it", name)
+		case leading:
+			v.warnf(field, "[%s] is not a standard folder property; when it is empty as AppSearch runs, the path is "+
+				"relative and the engine searches every fixed drive", name)
 		}
 	}
 }
@@ -338,6 +368,10 @@ func (v *validator) fileSearch(cfg *Config, field string, file *FileSearch) {
 		v.errorf(field+".name", "%q is not a file name: no folder and none of \\ / : * ? \" < > |", file.Name)
 	}
 
+	if len(file.Name) > maxSearchText {
+		v.errorf(field+".name", "at most %d characters (Signature.FileName)", maxSearchText)
+	}
+
 	v.searchFolder(cfg, field, file.Path, file.Under, 0)
 	v.searchDepth(field, file.Depth)
 	v.fileSearchBounds(field, file)
@@ -345,8 +379,14 @@ func (v *validator) fileSearch(cfg *Config, field string, file *FileSearch) {
 
 // fileSearchBounds checks the version, size, date and language bounds of a
 // file search.
-func (v *validator) fileSearchBounds(field string, file *FileSearch) { //nolint:cyclop // a flat list of independent checks
-	if (file.MinVersion != "" || file.MaxVersion != "") && file.Under == nil && systemFolders.MatchString(file.Path) {
+func (v *validator) fileSearchBounds(field string, file *FileSearch) {
+	v.fileSearchVersions(field, file)
+	v.fileSearchSizesAndDates(field, file)
+}
+
+// fileSearchVersions checks the version and language bounds of a file search.
+func (v *validator) fileSearchVersions(field string, file *FileSearch) { //nolint:cyclop // a flat list of independent checks
+	if (file.MinVersion != "" || file.MaxVersion != "") && systemFolders.MatchString(searchBasePath(file.Path, file.Under)) {
 		v.warnf(field, "the versions of Windows' own files are unreliable to a search: the engine reports shimmed "+
 			"versions on Windows 10 and later (reported), and no version-bounded search found kernel32.dll in SEARCH-05; "+
 			"test VersionNT or WindowsBuild in a condition instead")
@@ -354,7 +394,26 @@ func (v *validator) fileSearchBounds(field string, file *FileSearch) { //nolint:
 
 	if len(file.Languages) > 0 && file.MinVersion == "" {
 		v.warnf(field+".languages", "has no effect without minVersion: the engine compares languages only "+
-			"when the file's version equals minVersion")
+			"when the file's version equals minVersion (Microsoft documents this; observed with minVersion, SEARCH-05)")
+	}
+
+	if file.MinVersion != "" && SearchVersion(file.MinVersion) == nil &&
+		len(SearchMinVersion(file.MinVersion, file.Languages)) > maxSearchVersion {
+		v.errorf(field+".minVersion", "%s is written as %s, longer than the %d characters of Signature.MinVersion",
+			file.MinVersion, SearchMinVersion(file.MinVersion, file.Languages), maxSearchVersion)
+	}
+
+	if len(file.MaxVersion) > maxSearchVersion {
+		v.errorf(field+".maxVersion", "at most %d characters (Signature.MaxVersion)", maxSearchVersion)
+	}
+
+	langs := make([]string, 0, len(file.Languages))
+	for _, lang := range file.Languages {
+		langs = append(langs, strconv.Itoa(lang))
+	}
+
+	if text := strings.Join(langs, ","); len(text) > maxSearchText {
+		v.errorf(field+".languages", "at most %d characters as a list (Signature.Languages)", maxSearchText)
 	}
 
 	for key, text := range map[string]string{"minVersion": file.MinVersion, "maxVersion": file.MaxVersion} {
@@ -365,6 +424,15 @@ func (v *validator) fileSearchBounds(field string, file *FileSearch) { //nolint:
 		}
 	}
 
+	for i, lang := range file.Languages {
+		if lang < 0 || lang > 0xFFFF {
+			v.errorf(fmt.Sprintf("%s.languages[%d]", field, i), "%d is not a language ID", lang)
+		}
+	}
+}
+
+// fileSearchSizesAndDates checks the size and date bounds of a file search.
+func (v *validator) fileSearchSizesAndDates(field string, file *FileSearch) { //nolint:cyclop // a flat list of independent checks
 	for key, size := range map[string]*int64{"minSize": file.MinSize, "maxSize": file.MaxSize} {
 		if size != nil && (*size < 0 || *size > maxSearchSize) {
 			v.errorf(field+"."+key, "must be 0 to %d", maxSearchSize)
@@ -377,7 +445,7 @@ func (v *validator) fileSearchBounds(field string, file *FileSearch) { //nolint:
 
 	for key, text := range map[string]string{"minDate": file.MinDate, "maxDate": file.MaxDate} {
 		if text != "" {
-			if _, err := SearchDate(text); err != nil {
+			if _, err := SearchDate(text, key == "maxDate"); err != nil {
 				v.errorf(field+"."+key, "%v", err)
 			}
 		}
@@ -386,12 +454,20 @@ func (v *validator) fileSearchBounds(field string, file *FileSearch) { //nolint:
 	if file.MinDate != "" && file.MaxDate != "" && file.MaxDate < file.MinDate {
 		v.errorf(field+".maxDate", "is before minDate")
 	}
+}
 
-	for i, lang := range file.Languages {
-		if lang < 0 || lang > 0xFFFF {
-			v.errorf(fmt.Sprintf("%s.languages[%d]", field, i), "%d is not a language ID", lang)
-		}
+// searchBasePath returns the full path a folder chain starts from: path
+// itself, or the path of the innermost directory search under it.
+func searchBasePath(path string, under *Search) string {
+	for under != nil && under.Directory != nil {
+		path, under = under.Directory.Path, under.Directory.Under
 	}
+
+	if under != nil {
+		return ""
+	}
+
+	return path
 }
 
 // componentSearch checks a component search.

@@ -471,8 +471,21 @@ func (a *Argument) UnmarshalYAML(unmarshal func(any) error) error {
 	return publicTypeNames(unmarshal((*rawArgument)(a)))
 }
 
-// UnmarshalYAML accepts one search or a list of them.
+// UnmarshalYAML accepts one search or a list of them. The decoder reuses
+// its error between attempts, so the list attempt's message is kept as text
+// before the single search is tried.
 func (s *Searches) UnmarshalYAML(unmarshal func(any) error) error {
+	var list []*Search
+
+	listErr := unmarshal(&list)
+	if listErr == nil {
+		*s = list
+
+		return nil
+	}
+
+	listMsg := listErr.Error()
+
 	var one Search
 
 	err := unmarshal(&one)
@@ -482,16 +495,13 @@ func (s *Searches) UnmarshalYAML(unmarshal func(any) error) error {
 		return nil
 	}
 
-	var list []*Search
-	if listErr := unmarshal(&list); listErr == nil {
-		*s = list
-
-		return nil
-	} else if strings.Contains(err.Error(), "!!seq") {
-		return listErr
+	// A mapping fails the list attempt as a whole; anything else is a
+	// list whose entries the list attempt describes.
+	if strings.Contains(listMsg, "!!map into []") {
+		return publicTypeNames(err)
 	}
 
-	return err
+	return errors.New(strings.TrimPrefix(listMsg, "yaml: ")) //nolint:err113 // the decoder's own message, kept as text
 }
 
 // MarshalYAML writes a single search as a mapping, so that the product code

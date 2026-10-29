@@ -383,11 +383,11 @@ func (b *build) fileSignature(signature string, file *config.FileSearch) {
 	var minDate, maxDate any
 
 	if file.MinDate != "" {
-		minDate, _ = config.SearchDate(file.MinDate)
+		minDate, _ = config.SearchDate(file.MinDate, false)
 	}
 
 	if file.MaxDate != "" {
-		maxDate, _ = config.SearchDate(file.MaxDate)
+		maxDate, _ = config.SearchDate(file.MaxDate, true)
 	}
 
 	langs := make([]string, 0, len(file.Languages))

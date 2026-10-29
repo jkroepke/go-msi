@@ -869,6 +869,34 @@ func TestValidate(t *testing.T) {
 			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', languages: [1033]}}}}\n",
 			sevWarning, "properties.P.search.file.languages", "no effect",
 		},
+		"search searched property in path": {
+			base + appComponent + "properties: {DATA: {search: {directory: {path: 'C:\\data'}}}, P: {search: {directory: {path: '[DATA]logs'}}}}\n",
+			sevError, "properties.P.search.directory.path", "under",
+		},
+		"search unknown property in path": {
+			base + appComponent + "properties: {P: {search: {directory: {path: '[SOMEWHERE]logs'}}}}\n",
+			sevWarning, "properties.P.search.directory.path", "every fixed drive",
+		},
+		"search path length": {
+			base + appComponent + "properties: {P: {search: {directory: {path: 'C:\\" + strings.Repeat("a", 260) + "'}}}}\n",
+			sevError, "properties.P.search.directory.path", "255",
+		},
+		"search name length": {
+			base + appComponent + "properties: {P: {search: {file: {name: " + strings.Repeat("a", 260) + ", path: 'C:\\a'}}}}\n",
+			sevError, "properties.P.search.file.name", "255",
+		},
+		"search lowered min version length": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', minVersion: '1000.0'}}}}\n",
+			sevError, "properties.P.search.file.minVersion", "999.65535.65535.65535",
+		},
+		"search max version length": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.exe, path: 'C:\\a', maxVersion: 65535.65535.65535.65535}}}}\n",
+			sevError, "properties.P.search.file.maxVersion", "20",
+		},
+		"search system file under": {
+			base + appComponent + "properties: {P: {search: {file: {name: a.dll, under: {directory: {path: '[SystemFolder]'}}, maxVersion: 1.0}}}}\n",
+			sevWarning, "properties.P.search.file", "VersionNT",
+		},
 		"search component guid": {
 			base + appComponent + "properties: {P: {search: {component: {guid: nope}}}}\n",
 			sevError, "properties.P.search.component.guid", "not a GUID",
@@ -1258,12 +1286,16 @@ func TestSearchDate(t *testing.T) {
 	t.Parallel()
 
 	// (year - 1980) × 512 + month × 32 + day in the high word.
-	if got, err := config.SearchDate("2020-01-02"); err != nil || got != (40*512+32+2)<<16 {
+	if got, err := config.SearchDate("2020-01-02", false); err != nil || got != (40*512+32+2)<<16 {
 		t.Errorf("SearchDate(2020-01-02) = %d, %v", got, err)
 	}
 
+	if got, err := config.SearchDate("2020-01-02", true); err != nil || got != (40*512+32+2)<<16|0xBF7D {
+		t.Errorf("SearchDate(2020-01-02, end of day) = %#x, %v", got, err)
+	}
+
 	for _, bad := range []string{"1979-12-31", "2044-01-01", "2020-1-2", "2020-02-30"} {
-		if _, err := config.SearchDate(bad); err == nil {
+		if _, err := config.SearchDate(bad, true); err == nil {
 			t.Errorf("SearchDate(%q) accepted", bad)
 		}
 	}
@@ -1278,6 +1310,26 @@ func TestIsFullSearchPath(t *testing.T) {
 	} {
 		if got := config.IsFullSearchPath(path); got != want {
 			t.Errorf("IsFullSearchPath(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
+
+func TestSearchDecodeErrors(t *testing.T) {
+	t.Parallel()
+
+	const head = "schema: msi-builder/v1\nproperties:\n  P:\n    search: "
+
+	for doc, want := range map[string]string{
+		"{directory: {path: 'C:\\a', bogus: 1}}":     "field bogus not found",
+		"{reg: {root: HKLM, key: X}}":                "field reg not found",
+		"{file: {name: [a, b], path: 'C:\\a'}}":      "cannot unmarshal !!seq into string",
+		"[{directory: {path: 'C:\\a'}}, {bogus: 1}]": "field bogus not found",
+		"[{file: {name: {x: 1}, path: 'C:\\a'}}]":    "cannot unmarshal !!map into string",
+		"x": "cannot unmarshal",
+	} {
+		_, err := config.Parse([]byte(head+doc+"\n"), config.Options{})
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("search %s: error %v, want one containing %q", doc, err, want)
 		}
 	}
 }

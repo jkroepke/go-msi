@@ -2501,11 +2501,12 @@
               "description": "How many levels of subfolders below the folder are searched too."
             },
             "minVersion": {
-              "type": "string",
+              "$ref": "#/$defs/searchVersion",
               "description": "Lowest version, inclusive, in any language unless languages is set."
             },
             "maxVersion": {
-              "type": "string"
+              "$ref": "#/$defs/searchVersion",
+              "description": "Highest version, inclusive."
             },
             "minSize": {
               "anyOf": [
@@ -2540,7 +2541,7 @@
             "languages": {
               "type": "array",
               "items": {
-                "type": "integer"
+                "$ref": "#/$defs/int"
               },
               "description": "Language IDs the file must have; compared only when its version equals minVersion."
             }
@@ -2564,7 +2565,24 @@
           "additionalProperties": false
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "minProperties": 1,
+      "maxProperties": 1
+    },
+    "searchVersion": {
+      "anyOf": [
+        {
+          "type": [
+            "string",
+            "number"
+          ],
+          "description": "One to four numbers",
+          "pattern": "^\\d+(\\.\\d+){0,3}$"
+        },
+        {
+          "$ref": "#/$defs/var"
+        }
+      ]
     }
   }
 }

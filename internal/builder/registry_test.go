@@ -215,7 +215,7 @@ properties:
 	}
 
 	// 2020-01-02 is ((40 × 512) + (1 × 32) + 2) << 16.
-	want := []any{"Search_TOOL", "tool.exe", "1.2", "2.0.0.0", 10, 20, (40*512 + 32 + 2) << 16, (63*512 + 12*32 + 31) << 16, "0,1033"}
+	want := []any{"Search_TOOL", "tool.exe", "1.2", "2.0.0.0", 10, 20, (40*512 + 32 + 2) << 16, (63*512+12*32+31)<<16 | 0xBF7D, "0,1033"}
 	if !slices.Equal(signature[0], want) {
 		t.Errorf("Signature row %v, want %v", signature[0], want)
 	}

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jkroepke/msi-builder/internal/builder"
 	"github.com/jkroepke/msi-builder/internal/exampletest"
@@ -47,6 +48,8 @@ properties:
   D_PROP: { search: { directory: { path: '[WindowsFolder]System32' } } }
   D_UNDER_REG: { search: { directory: { path: sub, under: { registry: { root: HKLM, key: 'SOFTWARE\MsiBuilderTest\Locator', name: Dir } } } } }
   D_DEPTH: { search: { directory: { path: '%[1]s\b', depth: 3 } } }
+  D_DEPTH_MISS: { value: none, search: { directory: { path: '%[1]s\b', depth: 1 } } }
+  D_PF64: { search: { directory: { path: '[ProgramFiles64Folder]MsiBuilderLocatorBase' } } }
   D_MISSING: { value: none, search: { directory: { path: 'C:\MsiBuilderNoSuchFolder' } } }
   F_ABS: { search: { file: { name: app.exe, path: '%[1]s\sub' } } }
   F_DEPTH: { search: { file: { name: app.exe, path: '%[1]s', depth: 1 } } }
@@ -61,6 +64,7 @@ properties:
   F_SIZE: { search: { file: { name: app.exe, path: '%[1]s\sub', minSize: %[2]d, maxSize: %[2]d } } }
   F_SIZE_BELOW: { value: none, search: { file: { name: app.exe, path: '%[1]s\sub', maxSize: %[3]d } } }
   F_DATE: { search: { file: { name: app.exe, path: '%[1]s\sub', minDate: 2000-01-01, maxDate: 2043-12-31 } } }
+  F_DATE_TODAY: { search: { file: { name: app.exe, path: '%[1]s\sub', maxDate: %[5]s } } }
   F_DATE_FUTURE: { value: none, search: { file: { name: app.exe, path: '%[1]s\sub', minDate: 2043-01-01 } } }
   F_UNVERSIONED: { value: none, search: { file: { name: plain.txt, path: '%[1]s', minVersion: 0.0.0.1 } } }
   F_UNDER_REG: { search: { file: { name: app.exe, path: sub, under: { registry: { root: HKLM, key: 'SOFTWARE\MsiBuilderTest\Locator', name: Dir } } } } }
@@ -78,7 +82,7 @@ properties:
   OS_PLAIN: { value: none, search: { file: { name: kernel32.dll, path: '[System64Folder]' } } }
   OS_WINDOWS: { value: none, search: { file: { name: kernel32.dll, path: '[WindowsFolder]System32' } } }
   OS_MIN: { value: none, search: { file: { name: kernel32.dll, path: '[WindowsFolder]System32', minVersion: 6.0 } } }
-`, locatorRoot, size, size-1, locatorGUID)
+`, locatorRoot, size, size-1, locatorGUID, time.Now().Format(time.DateOnly))
 }
 
 // buildLocatorPackage writes a package from yaml with the given input files.
@@ -200,6 +204,8 @@ func TestMsiexecSearchesFiles(t *testing.T) { //nolint:paralleltest // msiexec r
 		"D_PROP":            filepath.Join(os.Getenv("SystemRoot"), "System32") + `\`,
 		"D_UNDER_REG":       sub,
 		"D_DEPTH":           locatorRoot + `\deep\a\b\`,
+		"D_DEPTH_MISS":      "none",
+		"D_PF64":            baseFolder,
 		"D_MISSING":         "none",
 		"F_ABS":             sub + "app.exe",
 		"F_DEPTH":           sub + "app.exe",
@@ -214,6 +220,7 @@ func TestMsiexecSearchesFiles(t *testing.T) { //nolint:paralleltest // msiexec r
 		"F_SIZE":            sub + "app.exe",
 		"F_SIZE_BELOW":      "none",
 		"F_DATE":            sub + "app.exe",
+		"F_DATE_TODAY":      sub + "app.exe",
 		"F_DATE_FUTURE":     "none",
 		"F_UNVERSIONED":     "none",
 		"F_UNDER_REG":       sub + "app.exe",
