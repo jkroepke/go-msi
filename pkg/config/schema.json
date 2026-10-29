@@ -1663,6 +1663,35 @@
             "additionalProperties": false
           }
         },
+        "removeFiles": {
+          "type": "array",
+          "description": "Files or empty folders deleted when the component is installed or removed (RemoveFile rows). A pattern matches the files of one folder only; uninstall rows also run on the uninstall half of a major upgrade.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/identifier"
+              },
+              "name": {
+                "type": "string",
+                "description": "A filename that may hold * and ?. Leave it out to remove the folder itself when it is empty."
+              },
+              "directory": {
+                "type": "string",
+                "description": "A directory ID, default the component's directory."
+              },
+              "on": {
+                "enum": [
+                  "install",
+                  "uninstall",
+                  "both"
+                ],
+                "default": "uninstall"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
         "services": {
           "type": "array",
           "items": {

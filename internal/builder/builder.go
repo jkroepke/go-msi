@@ -249,6 +249,7 @@ func (b *build) run(res *Result) error {
 		b.reserveShortNames,
 		b.sequenceFiles,
 		b.shortcuts,
+		b.removeFiles,
 		b.features,
 		b.writeProperties,
 		b.upgrade,

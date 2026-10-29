@@ -204,9 +204,12 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	// RemoveRegistry deletes registry keys or values when the component is
 	// installed.
 	RemoveRegistry []*RemoveRegistry `yaml:"removeRegistry"`
-	Services       []*Service        `yaml:"services"`
-	EventLog       []*EventSource    `yaml:"eventLog"`
-	Environment    []*Environment    `yaml:"environment"`
+	// RemoveFiles deletes files or empty folders when the component is
+	// installed or removed (RemoveFile rows).
+	RemoveFiles []*RemoveFile  `yaml:"removeFiles"`
+	Services    []*Service     `yaml:"services"`
+	EventLog    []*EventSource `yaml:"eventLog"`
+	Environment []*Environment `yaml:"environment"`
 	// Purge deletes the component's directory with everything in it when
 	// the product is uninstalled, but not on a major upgrade (FILE-03).
 	Purge          *Purge `yaml:"purge"`
@@ -339,6 +342,26 @@ type RemoveRegistry struct {
 	// and subkeys.
 	Name string `yaml:"name"`
 }
+
+// RemoveFile is one RemoveFile row: the files of one folder that match a
+// pattern, or the folder itself when it is empty.
+type RemoveFile struct {
+	ID string `yaml:"id"`
+	// Name is a filename that may hold * and ?; empty removes the folder
+	// itself, if it is empty.
+	Name string `yaml:"name"`
+	// Directory is a directory ID, default the component's.
+	Directory string `yaml:"directory"`
+	// On is install, uninstall (default) or both.
+	On string `yaml:"on"`
+}
+
+// Values of RemoveFile.On.
+const (
+	RemoveOnInstall   = "install"
+	RemoveOnUninstall = "uninstall"
+	RemoveOnBoth      = "both"
+)
 
 // Service is a Windows service installed from the component's key file.
 type Service struct { //nolint:govet // field order is the YAML key order
