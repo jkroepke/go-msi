@@ -336,8 +336,8 @@ func TestSignedExternalCabinets(t *testing.T) {
 		}
 
 		row := signatures[i]
-		if row[0] != "Media" || row[1] != strconv.Itoa(i+1) || row[2] != "CabinetSigner" || !bytes.Equal(row[3].([]byte), sig.Digest) { //nolint:forcetypeassert // a V0 column
-			t.Errorf("MsiDigitalSignature row %v, want the digest of %s", row[:3], cabinet.Name)
+		if row[0] != "Media" || row[1] != strconv.Itoa(i+1) || row[2] != "CabinetSigner" || !bytes.Equal(row[3].([]byte), sig.Value) { //nolint:forcetypeassert // a V0 column
+			t.Errorf("MsiDigitalSignature row %v, want the signature value of %s", row[:3], cabinet.Name)
 		}
 
 		if int64(len(cabinet.Data)) != cabinet.Size {

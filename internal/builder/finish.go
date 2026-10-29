@@ -641,8 +641,8 @@ func (b *build) verifyCabinet(file *cfb.File, cabinet *cabinetInfo) error {
 			return err //nolint:wrapcheck // the caller names the cabinet
 		}
 
-		if !bytes.Equal(sig.Digest, cabinet.digest) {
-			return errors.New("the signature covers another digest than MsiDigitalSignature.Hash")
+		if !bytes.Equal(sig.Value, cabinet.signature) {
+			return errors.New("the signature is not the one MsiDigitalSignature.Hash holds")
 		}
 	}
 

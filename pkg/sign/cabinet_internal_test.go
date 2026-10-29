@@ -54,13 +54,9 @@ func TestSignCabinet(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			digest, err := SignCabinet(context.Background(), buf, Options{Signer: keys.signer, Certificates: keys.certs})
+			value, err := SignCabinet(context.Background(), buf, Options{Signer: keys.signer, Certificates: keys.certs})
 			if err != nil {
 				t.Fatal(err)
-			}
-
-			if !bytes.Equal(digest, before) {
-				t.Error("SignCabinet returned another digest than CabinetDigest")
 			}
 
 			signed := buf.Bytes()
@@ -79,12 +75,12 @@ func TestSignCabinet(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !sig.Signer.Equal(keys.certs[0]) || !bytes.Equal(sig.Digest, digest) || sig.Hash != crypto.SHA256 {
+			if !sig.Signer.Equal(keys.certs[0]) || !bytes.Equal(sig.Digest, before) || !bytes.Equal(sig.Value, value) || sig.Hash != crypto.SHA256 {
 				t.Errorf("signature %+v", sig)
 			}
 
 			after, err := CabinetDigest(buf, crypto.SHA256)
-			if err != nil || !bytes.Equal(after, digest) {
+			if err != nil || !bytes.Equal(after, before) {
 				t.Errorf("CabinetDigest of the signed cabinet = %x, %v; want the signed digest", after, err)
 			}
 

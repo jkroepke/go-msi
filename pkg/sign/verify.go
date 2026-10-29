@@ -28,6 +28,9 @@ type Signature struct {
 	Certificates []*x509.Certificate
 	// Digest is the content digest D the signature covers.
 	Digest []byte
+	// Value is the signer's signature value, the SignerInfo encryptedDigest.
+	// For a cabinet it is what MsiDigitalSignature.Hash holds (SIG-09).
+	Value []byte
 	// Hash is the digest algorithm.
 	Hash crypto.Hash
 	// Extended reports a MsiDigitalSignatureEx stream, whose pre-hash was
@@ -245,7 +248,7 @@ func Verify(pkg []byte) (*Signature, error) {
 		return nil, fmt.Errorf("sign: signer uses %v but the content digest is %v", signerHash, algo)
 	}
 
-	sig := &Signature{Signer: cert, Certificates: sdata.certs, Hash: algo, Digest: signed}
+	sig := &Signature{Signer: cert, Certificates: sdata.certs, Hash: algo, Digest: signed, Value: sdata.signer.EncryptedDigest}
 
 	if sig.Extended, err = checkContent(file, algo, signed); err != nil {
 		return nil, err

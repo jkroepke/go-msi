@@ -136,8 +136,8 @@ func (hdr *cabinetHeader) digest(src io.ReaderAt, algo crypto.Hash) ([]byte, err
 }
 
 // CabinetDigest returns the digest of the cabinet in src as its Authenticode
-// signature covers it, ignoring any existing signature. It is the value of
-// MsiDigitalSignature.Hash. The cabinet needs a signature reserve.
+// signature covers it, ignoring any existing signature. The cabinet needs a
+// signature reserve.
 func CabinetDigest(src io.ReaderAt, algo crypto.Hash) ([]byte, error) {
 	hdr, err := readCabinetHeader(src)
 	if err != nil {
@@ -167,8 +167,10 @@ func cabIndirectData(algo crypto.Hash, digest []byte) ([]byte, error) {
 
 // SignCabinet signs the unsigned cabinet in file, which must have been
 // written with a signature reserve: it appends the PKCS #7 at cbCabinet and
-// fills the signature header. It returns the cabinet digest the signature
-// covers, the value of MsiDigitalSignature.Hash.
+// fills the signature header. It returns the signer's signature value, which
+// MsiDigitalSignature.Hash holds: Windows Installer compares it with what
+// MsiGetFileSignatureInformation reports for the cabinet (SIG-09), not with
+// the content digest.
 func SignCabinet(ctx context.Context, file CabinetFile, opts Options) ([]byte, error) {
 	if err := opts.check(); err != nil {
 		return nil, err
@@ -198,6 +200,11 @@ func SignCabinet(ctx context.Context, file CabinetFile, opts Options) ([]byte, e
 		return nil, err
 	}
 
+	sdata, err := parseSignedData(signature)
+	if err != nil {
+		return nil, fmt.Errorf("sign: %w", err)
+	}
+
 	padded := make([]byte, (len(signature)+cabSigAlign-1)/cabSigAlign*cabSigAlign)
 	copy(padded, signature)
 
@@ -215,7 +222,7 @@ func SignCabinet(ctx context.Context, file CabinetFile, opts Options) ([]byte, e
 		return nil, fmt.Errorf("sign: write the signature header: %w", err)
 	}
 
-	return digest, nil
+	return sdata.signer.EncryptedDigest, nil
 }
 
 // VerifyCabinet checks the Authenticode signature of the cabinet in src
@@ -261,7 +268,7 @@ func VerifyCabinet(src io.ReaderAt) (*Signature, error) {
 		return nil, errors.New("sign: the cabinet content does not match its signature")
 	}
 
-	sig := &Signature{Signer: cert, Certificates: sdata.certs, Hash: algo, Digest: digest}
+	sig := &Signature{Signer: cert, Certificates: sdata.certs, Hash: algo, Digest: digest, Value: sdata.signer.EncryptedDigest}
 
 	if sig.Timestamp, err = checkUnsigned(sdata); err != nil {
 		return nil, err

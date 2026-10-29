@@ -5,8 +5,6 @@ package nativetest_test
 import (
 	"bytes"
 	"crypto"
-	"crypto/sha1" //nolint:gosec // compared with what Windows reports
-	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/binary"
@@ -35,29 +33,18 @@ var (
 
 // fileSignatureHash returns the hash MsiGetFileSignatureInformation reports
 // for the signed file at path, the value MsiDigitalSignature.Hash compares.
-// The size call does not always report the size, so it tries growing
-// buffers.
+// A call without a buffer returns 0 and leaves the size 0 (SIG-08), so it
+// tries growing buffers.
 func fileSignatureHash(t *testing.T, path string) ([]byte, error) {
 	t.Helper()
 
-	var size uint32
+	var r uintptr
 
-	r := signatureInformation(t, path, nil, &size)
-	t.Logf("SIG-08: MsiGetFileSignatureInformation size call: HRESULT %#x, size %d", r, size)
-
-	sizes := []uint32{20, 32, 48, 64, 128, 256, 512, 1024, 4096, 65536}
-	if size != 0 {
-		sizes = append([]uint32{size}, sizes...)
-	}
-
-	for _, want := range sizes {
+	for _, want := range []uint32{64, 256, 1024, 4096, 65536} {
 		hash := make([]byte, want)
-		size = want
+		size := want
 
-		r = signatureInformation(t, path, hash, &size)
-		if r == 0 {
-			t.Logf("SIG-08: MsiGetFileSignatureInformation filled %d bytes of a %d-byte buffer", size, want)
-
+		if r = signatureInformation(t, path, hash, &size); r == 0 {
 			return hash[:size], nil
 		}
 	}
@@ -146,7 +133,7 @@ func TestCabinetSignatureFormat(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		digest, err := sign.SignCabinet(t.Context(), file, pki.options(algo))
+		value, err := sign.SignCabinet(t.Context(), file, pki.options(algo))
 		_ = file.Close()
 
 		if err != nil {
@@ -162,16 +149,18 @@ func TestCabinetSignatureFormat(t *testing.T) {
 		}
 
 		if pki.trusted {
-			// Recorded, not asserted, until the Hash format is known.
+			// The hash Windows reports is the signer's signature value, not
+			// the content digest.
 			hash, err := fileSignatureHash(t, path)
-			if err != nil {
-				t.Logf("SIG-08: %v: %v", algo, err)
-			}
 
-			whole, _ := os.ReadFile(path)
-			fileSHA1, fileSHA256 := sha1.Sum(whole), sha256.Sum256(whole) //nolint:gosec // compared with what Windows reports
-			t.Logf("SIG-08: %v: MsiGetFileSignatureInformation hash (%d bytes) %x, equals the digest %v, inside the signature %v, msi-builder digest %x, file SHA-1 %x, file SHA-256 %x",
-				algo, len(hash), hash, bytes.Equal(hash, digest), len(hash) > 0 && bytes.Contains(whole[len(reserved):], hash), digest, fileSHA1, fileSHA256)
+			switch {
+			case err != nil:
+				t.Errorf("%v: %v", algo, err)
+			case !bytes.Equal(hash, value):
+				t.Errorf("%v: MsiGetFileSignatureInformation hash %x, want the signature value %x", algo, hash, value)
+			default:
+				t.Logf("SIG-08: %v: MsiGetFileSignatureInformation reports the %d-byte signature value", algo, len(hash))
+			}
 		}
 
 		// A changed data byte breaks the signature for Windows too.
@@ -291,9 +280,11 @@ func withHash(t *testing.T, path, name string, hash func(i int) []byte) string {
 	return out
 }
 
-// recordInstall installs the package at path, logs the outcome for the
-// results (SIG-09), checks the files when it installed, and removes it.
-func recordInstall(t *testing.T, path string, files []probeFile, label string) {
+// checkInstall installs the package at path, logs the outcome for the
+// results (SIG-09) and removes it again. It fails the test unless msiexec
+// installed (want true) or refused it without a trace (want false), and
+// reports whether the installed files are the package's own.
+func checkInstall(t *testing.T, path string, files []probeFile, label string, want bool) bool {
 	t.Helper()
 
 	log := filepath.Join(t.TempDir(), "install.log")
@@ -303,33 +294,44 @@ func recordInstall(t *testing.T, path string, files []probeFile, label string) {
 	if code != 0 {
 		t.Logf("SIG-09: %s: refused, msiexec exit %d\n%s", label, code, logLines(log))
 
+		if want {
+			t.Errorf("%s: msiexec exit %d, want an installation", label, code)
+		}
+
 		if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("%s: the failed install left %s: %v", label, dir, err)
 		}
 
-		return
+		return false
 	}
 
 	same := true
 
 	for _, file := range files {
 		installed, err := os.ReadFile(filepath.Join(dir, file.name))
-		want, _ := io.ReadAll(file.data())
+		source, _ := io.ReadAll(file.data())
 
-		if err != nil || !bytes.Equal(installed, want) {
+		if err != nil || !bytes.Equal(installed, source) {
 			same = false
 		}
 	}
 
 	t.Logf("SIG-09: %s: installed, files match the package's sources: %v", label, same)
 	msiexecQuiet(t, filepath.Join(t.TempDir(), "uninstall.log"), "/x", path)
+
+	if !want {
+		t.Errorf("%s: installed, want it refused", label)
+	}
+
+	return same
 }
 
 // TestMsiexecChecksSignedCabinets installs a package whose three external
 // cabinets are signed and listed in MsiDigitalSignature (SIG-09), then
 // checks that Windows Installer refuses a changed cabinet, a cabinet signed
-// by the same certificate for other content, and an unsigned cabinet, and
-// records what it does for a certificate it does not trust.
+// by the same certificate for other content, an unsigned cabinet and a
+// certificate it does not trust. Packages with a null Hash and with the
+// content digest as Hash show why Hash holds the signature value.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestMsiexecChecksSignedCabinets(t *testing.T) {
@@ -357,21 +359,16 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 	}
 
 	// The same package with MsiDigitalSignature.Hash null, so only the
-	// certificate is compared, and with the hash MsiGetFileSignatureInformation
-	// reports for each cabinet.
+	// certificate is compared, and with the content digest as Hash.
 	noHash := withHash(t, path, "probe-nohash.msi", func(int) []byte { return nil })
-
-	apiHashes := make([][]byte, len(res.Cabinets))
-	for i, cabinet := range res.Cabinets {
-		hash, err := fileSignatureHash(t, cabinet.Path)
+	digestHash := withHash(t, path, "probe-digest.msi", func(i int) []byte {
+		digest, err := sign.CabinetDigest(bytes.NewReader(readFile(t, res.Cabinets[i].Path)), crypto.SHA256)
 		if err != nil {
-			t.Logf("SIG-09: %s: %v", cabinet.Name, err)
+			t.Fatal(err)
 		}
 
-		apiHashes[i] = hash
-	}
-
-	apiHash := withHash(t, path, "probe-apihash.msi", func(i int) []byte { return apiHashes[i] })
+		return digest
+	})
 
 	second := filepath.Join(dir, res.Cabinets[1].Name)
 
@@ -392,13 +389,24 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 	changed := bytes.Clone(original)
 	changed[binary.LittleEndian.Uint32(changed[8:])-1] ^= 1
 
+	// want: the signed, changed, swapped and unsigned second cabinet
+	// install. A null Hash only checks the certificate, so a cabinet of
+	// another build by the same signer installs; the content digest is not
+	// what Windows Installer compares, so it refuses everything.
 	for _, pkg := range []struct {
 		label, path string
-	}{{"hash", path}, {"no hash", noHash}, {"api hash", apiHash}} {
+		want        [4]bool
+	}{
+		{"signature value", path, [4]bool{true, false, false, false}},
+		{"no hash", noHash, [4]bool{true, false, true, false}},
+		{"content digest", digestHash, [4]bool{false, false, false, false}},
+	} {
 		t.Run(pkg.label, func(t *testing.T) {
-			recordInstall(t, pkg.path, files, pkg.label+": signed cabinets")
+			if checkInstall(t, pkg.path, files, pkg.label+": signed cabinets", pkg.want[0]) != pkg.want[0] {
+				t.Error("the installed files are not the package's sources")
+			}
 
-			for _, tc := range []struct {
+			for i, tc := range []struct {
 				label string
 				data  func() []byte
 			}{
@@ -410,7 +418,7 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				recordInstall(t, pkg.path, files, pkg.label+": "+tc.label)
+				_ = checkInstall(t, pkg.path, files, pkg.label+": "+tc.label, pkg.want[i+1])
 
 				if err := os.WriteFile(second, original, 0o600); err != nil {
 					t.Fatal(err)
@@ -420,8 +428,7 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 	}
 
 	t.Run("untrusted", func(t *testing.T) {
-		// A self-signed certificate that no store trusts: recorded, not
-		// asserted.
+		// A self-signed certificate that no store trusts.
 		key := rsaLeafKey(t)
 		tmpl := &x509.Certificate{
 			SerialNumber: big.NewInt(time.Now().UnixNano()),
@@ -439,6 +446,7 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 		code := msiexecCode(t, log, "/i", untrustedPath)
 		if code == 0 {
 			msiexecQuiet(t, filepath.Join(t.TempDir(), "uninstall.log"), "/x", untrustedPath)
+			t.Error("msiexec installed cabinets signed by an untrusted certificate")
 		}
 
 		t.Logf("SIG-09: cabinets signed by an untrusted self-signed certificate: msiexec exit %d\n%s", code, logLines(log))

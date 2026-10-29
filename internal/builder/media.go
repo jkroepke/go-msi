@@ -35,9 +35,10 @@ type cabinetInfo struct {
 	target spool.Target
 	name   string
 	files  []*fileInfo
-	// digest is what the cabinet's signature covers, once it is signed.
-	digest []byte
-	size   int64
+	// signature is the signer's signature value, MsiDigitalSignature.Hash,
+	// once the cabinet is signed.
+	signature []byte
+	size      int64
 }
 
 // cabOptions are the cabinet writer options of package.compression.
@@ -178,12 +179,12 @@ func (b *build) writeSignatures() {
 	}
 }
 
-// signCabinet signs the external cabinet in its spool and records its digest
-// as the Hash of its MsiDigitalSignature row, the index-th.
+// signCabinet signs the external cabinet in its spool and records the
+// signature value as the Hash of its MsiDigitalSignature row, the index-th.
 func (b *build) signCabinet(cabinet *cabinetInfo, index int) error {
 	// The build has no context; a timestamp request is bounded by the
 	// HTTP client's timeout.
-	digest, err := sign.SignCabinet(context.Background(), cabinet.target, *b.opts.SignCabinets)
+	signature, err := sign.SignCabinet(context.Background(), cabinet.target, *b.opts.SignCabinets)
 	if err != nil {
 		return fmt.Errorf("cabinet %s: %w", cabinet.name, err)
 	}
@@ -193,8 +194,8 @@ func (b *build) signCabinet(cabinet *cabinetInfo, index int) error {
 		return fmt.Errorf("cabinet %s: %w", cabinet.name, err)
 	}
 
-	cabinet.digest, cabinet.size = digest, size
-	b.tables["MsiDigitalSignature"].Rows[index][3] = digest
+	cabinet.signature, cabinet.size = signature, size
+	b.tables["MsiDigitalSignature"].Rows[index][3] = signature
 
 	return nil
 }
