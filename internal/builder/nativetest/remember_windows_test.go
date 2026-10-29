@@ -3,14 +3,11 @@
 package nativetest_test
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/jkroepke/msi-builder/internal/msidb"
 )
 
 // rememberConfig is a package with installDir.remember. ${SCOPE},
@@ -160,21 +157,21 @@ func TestMsiexecRememberInstallDir(t *testing.T) { //nolint:paralleltest // msie
 			tc.skipOtherArch(t)
 
 			dir := t.TempDir()
-			v1, v2 := buildRemember(t, dir, tc, "1.0.0"), buildRemember(t, dir, tc, "2.0.0")
+			oldPkg, newPkg := buildRemember(t, dir, tc, "1.0.0"), buildRemember(t, dir, tc, "2.0.0")
 			custom := filepath.Join(rememberRoot(), "custom") + `\`
 
-			defer cleanRemember(t, v2, v1)
+			defer cleanRemember(t, newPkg, oldPkg)
 
 			cleanRemember(t)
 
 			log1 := filepath.Join(dir, "v1.log")
-			msiexecQuiet(t, log1, append([]string{"/i", v1, "INSTALLDIR=" + custom}, tc.args...)...)
+			msiexecQuiet(t, log1, append([]string{"/i", oldPkg, "INSTALLDIR=" + custom}, tc.args...)...)
 
 			other := map[string]string{"64": "32", "32": "64"}[tc.view]
 			stored, elsewhere := rememberedValue(t, tc.root, tc.view), rememberedValue(t, tc.root, other)
 
 			log2 := filepath.Join(dir, "v2.log")
-			msiexecQuiet(t, log2, append([]string{"/i", v2}, tc.args...)...)
+			msiexecQuiet(t, log2, append([]string{"/i", newPkg}, tc.args...)...)
 
 			props := serverProperties(readLog(log2))
 			t.Logf("SEARCH-06 %s: v1 stored %q in %s view %s (%q in view %s); v2 INSTALLDIR=%q, ALLUSERS=%q, in custom=%v, in default=%v",
@@ -185,7 +182,8 @@ func TestMsiexecRememberInstallDir(t *testing.T) { //nolint:paralleltest // msie
 				t.Errorf("v1 stored %q in %s view %s, want %q", stored, tc.root, tc.view, custom)
 			}
 
-			if elsewhere != "<absent>" {
+			// HKCU\Software is shared by both views; HKLM\Software is not.
+			if tc.root == "HKLM" && elsewhere != "<absent>" {
 				t.Errorf("v1 also stored %q in view %s", elsewhere, other)
 			}
 
@@ -217,30 +215,12 @@ func missingDrive(t *testing.T) string {
 	return ""
 }
 
-// directoryLocator turns the remember RegLocator into a directory search
-// (Type 0, plus 16 for the 64-bit view), which only finds a folder that
-// exists.
-func directoryLocator(t *testing.T, database *msidb.Database) {
-	t.Helper()
-
-	tbl := database.Table("RegLocator")
-	if tbl == nil {
-		t.Fatal("the package has no RegLocator table")
-	}
-
-	col := tbl.Column("Type")
-	for _, row := range tbl.Rows {
-		if typ, ok := row[col].(int); ok {
-			row[col] = typ &^ 0xf
-		}
-	}
-}
-
 // TestMsiexecRememberMissingFolder installs the package while the registry
 // remembers a folder that does not exist (SEARCH-07): one on the system
-// drive, one on a drive that is not mounted, and an existing one for
-// control, each with the raw registry search the builder writes and with a
-// directory search.
+// drive and one on a drive that is not mounted, and an existing one for
+// control. The directory search finds only the existing folder, so the
+// others install into the default folder; a raw search applied the folder
+// on the missing drive, and the install failed with 1327 and 1603.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestMsiexecRememberMissingFolder(t *testing.T) {
@@ -252,47 +232,46 @@ func TestMsiexecRememberMissingFolder(t *testing.T) {
 	tc.skipOtherArch(t)
 
 	dir := t.TempDir()
-	raw := buildRemember(t, dir, tc, "1.0.0")
-	locators := map[string]string{"raw": raw, "directory": editPackage(t, raw, directoryLocator)}
-	gone := missingDrive(t)
+	pkg := buildRemember(t, dir, tc, "1.0.0")
 
-	var report strings.Builder
-
-	for _, folder := range []struct{ name, path string }{
-		{"existing", filepath.Join(rememberRoot(), "existing") + `\`},
-		{"missing", filepath.Join(rememberRoot(), "missing") + `\`},
-		{"missing drive", gone + rememberName + `\`},
+	for _, folder := range []struct {
+		name, path string
+		found      bool
+	}{
+		{"existing", filepath.Join(rememberRoot(), "existing") + `\`, true},
+		{"missing", filepath.Join(rememberRoot(), "missing") + `\`, false},
+		{"missing drive", missingDrive(t) + rememberName + `\`, false},
 	} {
-		for _, locator := range []string{"raw", "directory"} {
-			pkg := locators[locator]
+		t.Run(folder.name, func(t *testing.T) {
+			defer cleanRemember(t, pkg)
 
-			func() {
-				defer cleanRemember(t, pkg)
+			cleanRemember(t)
 
-				cleanRemember(t)
-
-				if folder.name == "existing" {
-					if err := os.MkdirAll(folder.path, 0o755); err != nil {
-						t.Fatal(err)
-					}
+			if folder.found {
+				if err := os.MkdirAll(folder.path, 0o755); err != nil {
+					t.Fatal(err)
 				}
+			}
 
-				regSet(t, tc.view, tc.root+`\`+rememberKey, "InstallDir", folder.path)
+			regSet(t, tc.view, tc.root+`\`+rememberKey, "InstallDir", folder.path)
 
-				log := filepath.Join(dir, strings.ReplaceAll(folder.name, " ", "-")+"-"+locator+".log")
-				code := msiexec(t, "/i", pkg, "/qn", "/l*v", log)
-				text := readLog(log)
-				props := serverProperties(text)
+			log := filepath.Join(dir, strings.ReplaceAll(folder.name, " ", "-")+".log")
+			msiexecQuiet(t, log, "/i", pkg)
 
-				fmt.Fprintf(&report, "%s folder (%s), %s search: exit %d, INSTALLDIR_REMEMBERED=%q, INSTALLDIR=%q, in remembered=%v, in default=%v\n%s",
-					folder.name, folder.path, locator, code, props["INSTALLDIR_REMEMBERED"], props["INSTALLDIR"],
-					exists(folder.path+"tool.exe"), exists(filepath.Join(tc.defaultDir(), "tool.exe")),
-					excerpt(text, "Error ", "AppSearch: Property", "RestoreInstallDir", "Note: 1:"))
-			}()
-		}
+			props := serverProperties(readLog(log))
+			t.Logf("SEARCH-07 %s folder %s: INSTALLDIR_REMEMBERED=%q, INSTALLDIR=%q", folder.name, folder.path,
+				props["INSTALLDIR_REMEMBERED"], props["INSTALLDIR"])
+
+			want := tc.defaultDir() + `\`
+			if folder.found {
+				want = folder.path
+			}
+
+			if !exists(want + "tool.exe") {
+				t.Errorf("tool.exe is not in %s", want)
+			}
+		})
 	}
-
-	t.Errorf("SEARCH-07 probe:\n%s", report.String())
 }
 
 // TestFullUIRememberInstallDir installs version 1 silently into a custom
@@ -311,17 +290,17 @@ func TestFullUIRememberInstallDir(t *testing.T) { //nolint:paralleltest // msiex
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			v1, v2 := buildRemember(t, dir, tc, "1.0.0"), buildRemember(t, dir, tc, "2.0.0")
+			oldPkg, newPkg := buildRemember(t, dir, tc, "1.0.0"), buildRemember(t, dir, tc, "2.0.0")
 			custom := filepath.Join(rememberRoot(), "custom") + `\`
 
-			defer cleanRemember(t, v2, v1)
+			defer cleanRemember(t, newPkg, oldPkg)
 
 			cleanRemember(t)
 
-			msiexecQuiet(t, filepath.Join(dir, "v1.log"), "/i", v1, "INSTALLDIR="+custom)
+			msiexecQuiet(t, filepath.Join(dir, "v1.log"), "/i", oldPkg, "INSTALLDIR="+custom)
 
 			log := filepath.Join(dir, "v2.log")
-			exit, seen := fullUI(t, dir, "/i", v2, "/l*v", log)
+			exit, seen := fullUI(t, dir, "/i", newPkg, "/l*v", log)
 			text := readLog(log)
 
 			t.Logf("UI-08 %s: exit %d, in custom=%v, in default=%v\nUI:\n%s\nlog excerpt:\n%s", tc.name, exit,
@@ -336,7 +315,8 @@ func TestFullUIRememberInstallDir(t *testing.T) { //nolint:paralleltest // msiex
 				t.Errorf("the wizard did not install into the remembered folder %s", custom)
 			}
 
-			if strings.Contains(tc.ui, "chooseDirectory") && !strings.Contains(strings.ToLower(seen), "value: "+strings.ToLower(custom)) {
+			// The page's PathEdit shows up among the window's names.
+			if strings.Contains(tc.ui, "chooseDirectory") && !strings.Contains(seen, "| "+custom+" |") {
 				t.Errorf("the install folder page did not show %s", custom)
 			}
 		})
@@ -357,20 +337,20 @@ func TestNonAdminRememberInstallDir(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := nonAdminDir(t, "remember-"+tc.name)
-			v1, v2 := buildRemember(t, dir, tc, "1.0.0"), buildRemember(t, dir, tc, "2.0.0")
+			oldPkg, newPkg := buildRemember(t, dir, tc, "1.0.0"), buildRemember(t, dir, tc, "2.0.0")
 			custom := filepath.Join(dir, "custom") + `\`
 
 			defer func() {
-				_ = user.msiexec(t, filepath.Join(dir, "cleanup2.log"), "/x", v2)
-				_ = user.msiexec(t, filepath.Join(dir, "cleanup1.log"), "/x", v1)
+				_ = user.msiexec(t, filepath.Join(dir, "cleanup2.log"), "/x", newPkg)
+				_ = user.msiexec(t, filepath.Join(dir, "cleanup1.log"), "/x", oldPkg)
 			}()
 
-			if code := user.msiexec(t, filepath.Join(dir, "v1.log"), "/i", v1, "INSTALLDIR="+custom); code != 0 {
+			if code := user.msiexec(t, filepath.Join(dir, "v1.log"), "/i", oldPkg, "INSTALLDIR="+custom); code != 0 {
 				t.Fatalf("v1 install returned %d\n%s", code, readLog(filepath.Join(dir, "v1.log")))
 			}
 
 			log := filepath.Join(dir, "v2.log")
-			code := user.msiexec(t, log, "/i", v2)
+			code := user.msiexec(t, log, "/i", newPkg)
 			props := serverProperties(readLog(log))
 
 			t.Logf("SEARCH-06 %s as %s: v2 exit %d, INSTALLDIR_REMEMBERED=%q, INSTALLDIR_REMEMBERED_USER=%q, INSTALLDIR=%q, in custom=%v",

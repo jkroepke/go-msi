@@ -242,15 +242,17 @@ const (
 // into the install dir only when the command line did not set one: SEARCH-03
 // showed that searching straight into the install dir overrides a command
 // line value, and that AppSearch fails with 2228 without a Signature table,
-// even for a registry search. Both run in the UI and the execute sequence,
-// so that a full-UI install shows the remembered folder (not tested).
+// even for a registry search. It is a directory search, which finds only a
+// folder that exists: a raw search applied a folder on a drive that is gone,
+// and the install failed with 1327 and 1603 (SEARCH-07). Both run in the UI
+// and the execute sequence, so the wizard shows the remembered folder (UI-08).
 func (b *build) rememberInstallDir() error {
 	install := b.cfg.InstallDir
 	if !install.Remember {
 		return nil
 	}
 
-	typ := regLocatorRaw
+	typ := regLocatorDirectory
 	if b.is64 && !remember32Bit(b.cfg) {
 		typ |= regLocator64Bit
 	}

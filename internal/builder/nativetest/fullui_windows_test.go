@@ -118,8 +118,7 @@ ui:
 
 // fullUIDriver answers the wizard through UIAutomation: the -Choose radio
 // button once, the -Advance buttons (Next, Install and Finish), "Close the applications" and OK on MsiRMFilesInUse, OK on ErrorDlg
-// and on any unexpected error box. It writes every window it sees to -Out,
-// and the text of every field with a value as VALUE lines.
+// and on any unexpected error box. It writes every window it sees to -Out.
 const fullUIDriver = `param([int]$MsiPid, [string]$Out, [string]$ErrorText, [string]$Choose = '', [string]$Advance = '^(Next|Install|Finish)$', [int]$Seconds = 110)
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type -Namespace MsiBuilder -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);'
@@ -148,14 +147,6 @@ while ((Get-Date) -lt $deadline -and (Get-Process -Id $MsiPid -ErrorAction Silen
     $names = @($els | ForEach-Object { $_.Current.Name } | Where-Object { $_ })
     $text = $names -join ' | '
     if (-not $seen.ContainsKey($text)) { $seen[$text] = 1; Note "WINDOW: $text" }
-    # Edit fields (the install folder) show their text through ValuePattern.
-    foreach ($e in $els) {
-      $p = $null
-      if ($e.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$p) -and $p.Current.Value) {
-        $v = 'VALUE: ' + $p.Current.Value
-        if (-not $seen.ContainsKey($v)) { $seen[$v] = 1; Note $v }
-      }
-    }
     if ($text -match 'need to be updated by this setup') {
       Note ('RMDIALOG: radio ' + (Press $els '^Close the applications'))
       Start-Sleep -Milliseconds 300
