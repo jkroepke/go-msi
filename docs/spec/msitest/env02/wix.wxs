@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ENV-02 one-file package for WiX 5 (wix build -arch x64). -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="MsiSpec ENV-02 WiX" Manufacturer="MsiSpec" Version="1.0.0" Language="1033"
+           ProductCode="{777A7C99-BD8F-4678-B757-60713E587C66}"
+           UpgradeCode="{F96131A9-2707-4B9F-915F-517BD8D818DA}"
+           Scope="perMachine" InstallerVersion="500" Compressed="yes">
+    <Media Id="1" Cabinet="payload.cab" EmbedCab="yes" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="MsiSpecEnv02Wix">
+        <Component Id="Payload" Guid="{FC8D7D0E-C451-4563-88ED-D16C726E6E4E}" Bitness="always64">
+          <File Id="hello.txt" Name="hello.txt" Source="hello.txt" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Level="1">
+      <ComponentRef Id="Payload" />
+    </Feature>
+  </Package>
+</Wix>

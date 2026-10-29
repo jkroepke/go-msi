@@ -481,6 +481,7 @@ type CustomAction struct { //nolint:govet // field order is the YAML key order
 	Exec         *Exec         `yaml:"exec"`
 	ExecProperty *ExecProperty `yaml:"execProperty"`
 	DLL          *DLL          `yaml:"dll"`
+	EXE          *EXE          `yaml:"exe"`
 	Run          *Run          `yaml:"run"`
 	Execute      string        `yaml:"execute"`
 	Impersonate  *bool         `yaml:"impersonate"`
@@ -529,6 +530,13 @@ type Run struct {
 type DLL struct {
 	Binary string `yaml:"binary"`
 	Entry  string `yaml:"entry"`
+}
+
+// EXE is a type 2 action: the engine writes the program from the Binary
+// table to a temporary file, runs it with the arguments and deletes it.
+type EXE struct {
+	Binary    string `yaml:"binary"`
+	Arguments string `yaml:"arguments"`
 }
 
 // Placement puts an action into one sequence table.
