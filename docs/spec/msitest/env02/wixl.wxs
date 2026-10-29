@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ENV-02 one-file package for msitools wixl (wixl -a x64). -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="{0105246E-4D3A-4741-8061-6E5A7DBCBE42}" Name="MsiSpec ENV-02 wixl" Language="1033"
+           Version="1.0.0" Manufacturer="MsiSpec" UpgradeCode="{4E72965B-6375-48E7-93A6-A65B0CE630CA}">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
+    <Media Id="1" Cabinet="payload.cab" EmbedCab="yes" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="MsiSpecEnv02Wixl">
+          <Component Id="Payload" Guid="{820E3071-DA44-43F3-AA51-6FB1A1CC58F8}" Win64="yes">
+            <File Id="hello.txt" Name="hello.txt" Source="hello.txt" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+    <Feature Id="Main" Level="1">
+      <ComponentRef Id="Payload" />
+    </Feature>
+  </Product>
+</Wix>

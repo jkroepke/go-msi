@@ -4,7 +4,9 @@
 // It builds every fixture itself: packages through msi.dll's own importer
 // (MsiDatabaseImportW), container and cabinet variants through the CFB,
 // cabinet and table code in this directory, which is written from the text of
-// MSISPEC.md only. It needs no WiX or msitools.
+// MSISPEC.md only. It needs no WiX or msitools, except ENV-02, which
+// compares their output: it runs wix.exe from PATH and reads a wixl package
+// built by env02/build-wixl.sh from the path in ENV02_WIXL.
 //
 // Run it elevated on a disposable Windows machine; the installation cases
 // (INST, FILE, UPG, SVC and others) install and uninstall throwaway products,

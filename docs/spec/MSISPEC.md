@@ -500,7 +500,7 @@ Other groups (COM, ODBC, security, signatures, patching, merge modules) are in c
 
 ### 6.3 `_Validation` and the table definitions
 
-Validators (ICE03, ICE06, ICE32) read `_Validation`, the installer does not, and a complete database SHOULD include it. Its key is `Table s32` + `Column s32`. The other columns are `Nullable s4`, `MinValue I4`, `MaxValue I4`, `KeyTable S255`, `KeyColumn I2`, `Category S32`, `Set S255` and `Description S255`.
+Validators (ICE03, ICE06, ICE32) read `_Validation`, the installer does not (observed, MSIDB-10 and ENV-02), and a complete database SHOULD include it. Its key is `Table s32` + `Column s32`. The other columns are `Nullable s4`, `MinValue I4`, `MaxValue I4`, `KeyTable S255`, `KeyColumn I2`, `Category S32`, `Set S255` and `Description S255`.
 
 - Write one row per column of every table present, including its own ten, and none for absent columns (ICE06). Toolchain packages add two rows for the pseudo-table `_SummaryInformation` (observed).
 - `Nullable` is `Y` or `N`; `KeyTable` may name several tables, separated by `;`. `KeyColumn` is 1-based (1..32). `Category` is null for integers and `Binary` for streams.
@@ -1400,7 +1400,7 @@ Evidence: WiX documentation (no source code), WiX 3.11 packages, and a WiX 5.0.2
 | Generated keys | prefix + 32 hex digits | prefix + 27 chars of `[A-Za-z0-9._]` (`reg`, `fls`, `d`, `scp`); harvested component key = file key (obs) |
 | Short names | 8 chars `[a-z0-9_-]` + extension | same; directories never get an extension (both) |
 | File sequence | File key, case-insensitive | directory path case-insensitive, then filename ordinal, then key (obs) |
-| Major upgrade | none by default; `Upgrade.Language` NULL | added automatically, downgrades blocked (v5, docs); `Language` = ProductLanguage (obs) |
+| Major upgrade | none by default; `Upgrade.Language` NULL | added automatically, downgrades blocked (v5, docs); `Upgrade` rows and a downgrade `LaunchCondition` present in 5.0.2 without any upgrade element (observed, ENV-02; blocking not tested); `Language` = ProductLanguage (obs) |
 | Sequencing | unverified | LaunchConditions omitted without rows; anchor-only standard actions added (BindImage 4300); `SecureCustomProperties` sorted (obs) |
 | Codes | ProductCode authored (`*` = new); UpgradeCode a GUID | random version-4 ProductCode and package code per build (obs); v6 may derive UpgradeCode from a package ID (docs) |
 | PID 3 / 5 / 18 | authored / unverified / `Windows Installer XML Toolset (3.x.y.z)` | product name / `Installer` / `WiX Toolset (5.0.2.0)` (obs) |
@@ -1566,7 +1566,7 @@ Inputs are exact strings; ␟ is U+001F and hex is upper case.
 
 ## 16. Independent implementation comparison
 
-GNOME msitools and WiX are comparative implementations, not authorities for all Windows Installer semantics. Compare them black-box (Appendix C, `ENV-02` and `INT-*`) with pinned versions before promoting a difference to a format assertion.
+GNOME msitools and WiX are comparative implementations, not authorities for all Windows Installer semantics. Compare them black-box (Appendix C, `ENV-02` and `INT-*`) with pinned versions before promoting a difference to a format assertion. ENV-02 compared WiX 5.0.2 and wixl 0.106 one-file packages on 2026-10-29: `msiexec` accepted every difference; wixl's string refcounts and its `DefaultDir` without a short name break rules of sections 3 and 6.4 that msi-builder keeps ([results](MSISPEC-RESULTS.md#wix-and-msitools-one-file-packages-env-02)).
 
 ### Interoperability reports
 
@@ -1811,7 +1811,7 @@ Both recipes use EXE custom actions on `sc.exe` and `netsh.exe`, so a package ne
 
 ### 17.4 wixl, a toolchain without custom-action code
 
-msitools' `wixl` writes exactly these tables (reported), and its packages install, upgrade and uninstall on current Windows (reported): the five sequence tables, `Directory`, `Media`, `Property`, `Icon`, `Binary`, `Component`, `Feature`, `FeatureComponents`, `RemoveFile`, `Registry`, `Condition`, `ServiceControl`, `ServiceInstall`, `File`, `IniFile`, `RemoveIniFile`, `_Streams`, `Shortcut`, `Upgrade`, `LaunchCondition`, `AppSearch`, `Signature`, `CustomAction`, `ActionText`, `RegLocator`, `CreateFolder`, `MsiFileHash`, `Environment`, `DuplicateFile`, `MoveFile`, `Error`, `_Validation`, and with its UI extension `CheckBox`, `Control`, `ControlCondition`, `ControlEvent`, `Dialog`, `EventMapping`, `ListBox`, `RadioButton`, `TextStyle` and `UIText`. Its custom actions are type 19, 35, 51, EXE and script rows; it has never shipped a DLL.
+msitools' `wixl` writes exactly these tables (reported), and its packages install, upgrade and uninstall on current Windows (reported): the five sequence tables, `Directory`, `Media`, `Property`, `Icon`, `Binary`, `Component`, `Feature`, `FeatureComponents`, `RemoveFile`, `Registry`, `Condition`, `ServiceControl`, `ServiceInstall`, `File`, `IniFile`, `RemoveIniFile`, `_Streams`, `Shortcut`, `Upgrade`, `LaunchCondition`, `AppSearch`, `Signature`, `CustomAction`, `ActionText`, `RegLocator`, `CreateFolder`, `MsiFileHash`, `Environment`, `DuplicateFile`, `MoveFile`, `Error`, `_Validation`, and with its UI extension `CheckBox`, `Control`, `ControlCondition`, `ControlEvent`, `Dialog`, `EventMapping`, `ListBox`, `RadioButton`, `TextStyle` and `UIText`. wixl 0.106 listed 33 of them in `_Tables` for a one-file package (none of `_Validation`, `DuplicateFile`, `MoveFile` or the UI tables; `_Streams` held the embedded cabinet), and that package installed and uninstalled on Windows Server 2025 (observed, ENV-02). Its custom actions are type 19, 35, 51, EXE and script rows; it has never shipped a DLL.
 
 ### 17.5 "This installation package could not be opened" (1620)
 
@@ -2252,7 +2252,7 @@ Until 2026-10-26 the cases used other IDs: `RUN-` for most installation and runt
 | ID | Priority | Levels | Controlled fixture / variants | Steps and question to settle | Result |
 | --- | :---: | :---: | --- | --- | --- |
 | ENV-01 | P0 | S/A | Verified unsigned one-file MSI | Inventory exact OS build, locale, privilege, `msi.dll`/`cabinet.dll` versions and SHA-256; query all database tables via native APIs. Verify source MSI hash and control fixture validity. | Confirmed ([results](MSISPEC-RESULTS.md)) |
-| ENV-02 | P0 | S/A/I | Equivalent WiX and msitools one-file packages | Produce both with pinned tool versions; compare streams, SummaryInformation, tables and CAB content. Open and install/uninstall both; separate producer differences from format constraints. | Blocked ([results](MSISPEC-RESULTS.md)) |
+| ENV-02 | P0 | S/A/I | Equivalent WiX and msitools one-file packages | Produce both with pinned tool versions; compare streams, SummaryInformation, tables and CAB content. Open and install/uninstall both; separate producer differences from format constraints. | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | CFB-01 | P0 | S/A | Same logical MSI in CFB v3 vs v4 containers | Hold every logical stream byte constant; validate with a CFB reader, call `MsiOpenDatabaseW` on both, compare tables and native return codes. | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | CFB-02 | P1 | S/A | Correct, zero and one-byte-mutated root CLSID | Change only the root directory CLSID and record generic-CFB versus native-MSI acceptance or error. | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | CFB-03 | P1 | S/A | Empty stream start = ENDOFCHAIN, FREESECT, sector 0 | Keep size zero. Test CFB enumeration and native open/query/commit; determine the start-sector rule (section 2). | Confirmed ([results](MSISPEC-RESULTS.md)) |
@@ -2344,9 +2344,9 @@ Until 2026-10-26 the cases used other IDs: `RUN-` for most installation and runt
 | SIG-04 | P1 | S/A | Prefix-related stream names and names before/after DSE | Use valid signed fixtures; compute candidate stream sort orders and compare with Windows signature verification. | Confirmed (Server 2025) |
 | SIG-05 | P1 | S/A | Nested storage containing a signature-named stream; CLSID mutation | Vary nested data, name and CLSID independently; check the signed digest and exclusion scope with the native verifier. | Partly confirmed (Server 2025; CLSID only, no nested storages) |
 | SIG-06 | P2 | S/A | RSA SHA-256/384/512, ECDSA where supported | Sign and verify each combination; document Windows build, certificate and algorithm-specific failures. | Confirmed (Server 2025) |
-| INT-01 | P0 | S/A/I | Equivalent WiX and msitools packages | Pin version or commit; diff normalized table semantics, native open, install/uninstall and raw stream hashing. Identify producer-only decisions. | Blocked ([results](MSISPEC-RESULTS.md)) |
-| INT-02 | P1 | S/A | WiX MSI round-tripped by libmsi and then a native commit | Compare raw streams and decoded tables and native file extraction after each round trip; note semantic vs incidental changes. | Blocked ([results](MSISPEC-RESULTS.md)) |
-| INT-03 | P1 | S/A | Minimized failures from the msitools bug tracker (section 16) | Run identical malformed input through the native MSI API, msitools and an independent CFB/CAB reader; distinguish tool bugs from Windows rejection. | Blocked ([results](MSISPEC-RESULTS.md)) |
+| INT-01 | P0 | S/A/I | Equivalent WiX and msitools packages | Pin version or commit; diff normalized table semantics, native open, install/uninstall and raw stream hashing. Identify producer-only decisions. | Not run ([results](MSISPEC-RESULTS.md)) |
+| INT-02 | P1 | S/A | WiX MSI round-tripped by libmsi and then a native commit | Compare raw streams and decoded tables and native file extraction after each round trip; note semantic vs incidental changes. | Not run ([results](MSISPEC-RESULTS.md)) |
+| INT-03 | P1 | S/A | Minimized failures from the msitools bug tracker (section 16) | Run identical malformed input through the native MSI API, msitools and an independent CFB/CAB reader; distinguish tool bugs from Windows rejection. | Not run ([results](MSISPEC-RESULTS.md)) |
 
 ### msi-rs regression cases
 
