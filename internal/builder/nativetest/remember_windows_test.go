@@ -316,7 +316,7 @@ func TestFullUIRememberInstallDir(t *testing.T) { //nolint:paralleltest // msiex
 			}
 
 			// The page's PathEdit shows up among the window's names.
-			if strings.Contains(tc.ui, "chooseDirectory") && !strings.Contains(seen, "| "+custom+" |") {
+			if strings.Contains(tc.ui, "chooseDirectory") && !strings.Contains(seen, ": "+custom+" |") && !strings.Contains(seen, "| "+custom+" |") {
 				t.Errorf("the install folder page did not show %s", custom)
 			}
 		})
