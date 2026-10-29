@@ -222,20 +222,11 @@ func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop /
 
 	defer closeTarget()
 
-	if len(b.files) > 0 {
-		cabSpool, closeSpool, err := b.newTarget("cabinet", output)
-		if err != nil {
-			return nil, err
-		}
+	closeCabinets, err := b.writeCabinets(database, output)
+	defer closeCabinets()
 
-		defer closeSpool()
-
-		source, err := b.cabinet(cabSpool)
-		if err != nil {
-			return nil, err
-		}
-
-		database.Sources = append(database.Sources, source)
+	if err != nil {
+		return nil, err
 	}
 
 	auto := b.packageCode == ""
@@ -267,10 +258,13 @@ func (b *build) finish(res *Result) (*msidb.Database, error) { //nolint:cyclop /
 	switch out := target.(type) {
 	case *spool.Buffer:
 		res.Package = out.Bytes()
+		res.Cabinets = b.externalCabinets("")
 	case *os.File:
-		if err := commitOutput(out, output); err != nil {
+		if err := b.commit(out, output); err != nil {
 			return nil, err
 		}
+
+		res.Cabinets = b.externalCabinets(filepath.Dir(output))
 
 		// The cabinet spool is removed when finish returns; the returned
 		// database keeps the cabinet's name and size only.
@@ -338,7 +332,7 @@ func (b *build) newTarget(kind, output string) (spool.Target, func(), error) {
 		return nil, nil, fmt.Errorf("create a temporary %s file: %w", kind, err)
 	}
 
-	// After commitOutput the package has moved and there is nothing to
+	// After commit the package has moved and there is nothing to
 	// remove; a failed build leaves no file behind.
 	return file, func() {
 		_ = file.Close()
@@ -346,10 +340,10 @@ func (b *build) newTarget(kind, output string) (spool.Target, func(), error) {
 	}, nil
 }
 
-// commitOutput moves the finished package from its temporary file to dest
-// (a symlink already resolved), so that an existing package is replaced only
-// by a verified one. An existing file keeps its mode.
-func commitOutput(file *os.File, dest string) error {
+// prepareOutput sets the mode of the finished file and closes it for the
+// move onto dest (a symlink already resolved). An existing file keeps its
+// mode.
+func prepareOutput(file *os.File, dest string) (spool.Move, error) {
 	mode := os.FileMode(0o644)
 
 	if info, err := os.Stat(dest); err == nil && info.Mode().IsRegular() {
@@ -357,18 +351,14 @@ func commitOutput(file *os.File, dest string) error {
 	}
 
 	if err := file.Chmod(mode); err != nil {
-		return fmt.Errorf("set the mode of %s: %w", dest, err)
+		return spool.Move{}, fmt.Errorf("set the mode of %s: %w", dest, err)
 	}
 
 	if err := file.Close(); err != nil {
-		return fmt.Errorf("close %s: %w", file.Name(), err)
+		return spool.Move{}, fmt.Errorf("close %s: %w", file.Name(), err)
 	}
 
-	if err := os.Rename(file.Name(), dest); err != nil {
-		return fmt.Errorf("move the package to %s: %w", dest, err)
-	}
-
-	return nil
+	return spool.Move{From: file.Name(), To: dest}, nil
 }
 
 func sortedTableNames(m map[string]*msidb.Table) []string {
@@ -380,43 +370,6 @@ func sortedTableNames(m map[string]*msidb.Table) []string {
 	slices.Sort(out)
 
 	return out
-}
-
-// cabinet packs every payload file in sequence order (section 11.6) into
-// spool, streaming each file from disk, and returns the cabinet as a source
-// for the package.
-func (b *build) cabinet(target spool.Target) (cfb.Source, error) {
-	entries := make([]cab.Entry, 0, len(b.files))
-
-	for _, entry := range b.files {
-		entries = append(entries, cab.Entry{
-			Name:       entry.Key,
-			Size:       entry.Size,
-			Time:       b.opts.BuildTime,
-			Attributes: cab.AttrArchive,
-			Open:       entry.open,
-		})
-	}
-
-	opts := cab.Options{Compression: cab.MSZIP}
-
-	switch window, ok := config.LZXWindow(b.cfg.Package.Compression); {
-	case ok:
-		opts = cab.Options{Compression: cab.LZX, Window: window}
-	case b.cfg.Package.Compression == "none":
-		opts.Compression = cab.None
-	}
-
-	size, err := cab.WriteTo(target, entries, opts)
-	if err != nil {
-		return cfb.Source{}, fmt.Errorf("cabinet: %w", err)
-	}
-
-	return cfb.Source{
-		Name: b.cfg.Package.Cabinet,
-		Size: size,
-		Open: func() (io.ReadCloser, error) { return io.NopCloser(io.NewSectionReader(target, 0, size)), nil },
-	}, nil
 }
 
 // summaryProperties builds the summary information (sections 4 and 11.1).
@@ -500,53 +453,199 @@ func (b *build) verify(target spool.Target, size int64, want *msidb.Database) er
 		return fmt.Errorf("summary package code %q, want %q", code, b.packageCode)
 	}
 
-	if len(b.files) == 0 {
+	for _, cabinet := range b.cabinets {
+		if err := b.verifyCabinet(file, cabinet); err != nil {
+			return fmt.Errorf("cabinet %s: %w", cabinet.name, err)
+		}
+	}
+
+	return nil
+}
+
+// writeCabinets packs the cabinets, each into a spool of its own next to
+// output, and adds the embedded ones to database. The returned function
+// closes and removes the spools; a spool committed beside the package is
+// already gone from where it would remove it.
+func (b *build) writeCabinets(database *msidb.Database, output string) (func(), error) {
+	var (
+		embedded int64
+		closers  []func()
+	)
+
+	closeAll := func() {
+		for _, closeSpool := range closers {
+			closeSpool()
+		}
+	}
+
+	if err := b.checkCabinetNames(output); err != nil {
+		return closeAll, err
+	}
+
+	for _, cabinet := range b.cabinets {
+		target, closeSpool, err := b.newTarget("cabinet", output)
+		if err != nil {
+			return closeAll, err
+		}
+
+		closers = append(closers, closeSpool)
+
+		if err := b.writeCabinet(target, cabinet); err != nil {
+			return closeAll, err
+		}
+
+		if !b.cfg.Package.CabinetsEmbedded() {
+			continue
+		}
+
+		embedded += cabinet.size
+		database.Sources = append(database.Sources, cabinet.source())
+
+		// Stop at the first cabinet that crosses the limit rather than
+		// compress the rest.
+		if embedded > maxEmbedded {
+			return closeAll, fmt.Errorf("the embedded cabinets add up to more than %d bytes, but a package cannot exceed 2 GB; "+
+				"set package.embedCabinets to false to write them beside the package", maxEmbedded)
+		}
+	}
+
+	return closeAll, nil
+}
+
+// checkCabinetNames refuses an external cabinet that would take the place of
+// the package itself; Windows compares names without case.
+func (b *build) checkCabinetNames(output string) error {
+	if b.cfg.Package.CabinetsEmbedded() || b.opts.Output == "" {
 		return nil
 	}
 
-	encoded, err := msidb.EncodeStreamName(b.cfg.Package.Cabinet, false)
-	if err != nil {
-		return fmt.Errorf("cabinet stream: %w", err)
+	for _, cabinet := range b.cabinets {
+		if strings.EqualFold(cabinet.name, filepath.Base(output)) || strings.EqualFold(cabinet.name, filepath.Base(b.opts.Output)) {
+			return fmt.Errorf("the cabinet %s would replace the package; choose another package.cabinet or output name", cabinet.name)
+		}
 	}
 
-	stream, err := file.Reader(encoded)
+	return nil
+}
+
+// commit moves the external cabinets into the folder of output and the
+// verified package onto output, all or none, so that an existing package is
+// replaced only by a verified one and never ends up beside cabinets of
+// another build.
+func (b *build) commit(pkg *os.File, output string) error {
+	var moves []spool.Move
+
+	if !b.cfg.Package.CabinetsEmbedded() {
+		for _, cabinet := range b.cabinets {
+			file, ok := cabinet.target.(*os.File)
+			if !ok {
+				return fmt.Errorf("cabinet %s has no file", cabinet.name)
+			}
+
+			move, err := prepareOutput(file, filepath.Join(filepath.Dir(output), cabinet.name))
+			if err != nil {
+				return err
+			}
+
+			moves = append(moves, move)
+		}
+	}
+
+	move, err := prepareOutput(pkg, output)
 	if err != nil {
-		return fmt.Errorf("cabinet stream %q is missing: %w", b.cfg.Package.Cabinet, err)
+		return err
+	}
+
+	if err := spool.Commit(append(moves, move)); err != nil {
+		return fmt.Errorf("write the package: %w", err)
+	}
+
+	return nil
+}
+
+// externalCabinets lists the cabinets written beside the package: with their
+// bytes for an in-memory build (dir ""), else with their path in dir.
+func (b *build) externalCabinets(dir string) []Cabinet {
+	if b.cfg.Package.CabinetsEmbedded() {
+		return nil
+	}
+
+	out := make([]Cabinet, 0, len(b.cabinets))
+
+	for _, cabinet := range b.cabinets {
+		entry := Cabinet{Name: cabinet.name, Size: cabinet.size}
+
+		if buf, ok := cabinet.target.(*spool.Buffer); ok && dir == "" {
+			entry.Data = buf.Bytes()
+		} else {
+			entry.Path = filepath.Join(dir, cabinet.name)
+		}
+
+		out = append(out, entry)
+	}
+
+	return out
+}
+
+// verifyCabinet reads cabinet back, from its stream in file or, when it is
+// external, from its spool, and compares every entry with its source.
+func (b *build) verifyCabinet(file *cfb.File, cabinet *cabinetInfo) error {
+	var (
+		src  io.ReaderAt = cabinet.target
+		size             = cabinet.size
+	)
+
+	if b.cfg.Package.CabinetsEmbedded() {
+		encoded, err := msidb.EncodeStreamName(cabinet.name, false)
+		if err != nil {
+			return fmt.Errorf("stream name: %w", err)
+		}
+
+		stream, err := file.Reader(encoded)
+		if err != nil {
+			return fmt.Errorf("the stream is missing: %w", err)
+		}
+
+		src, size = stream, stream.Size()
 	}
 
 	index := 0
 
-	err = cab.Walk(stream, stream.Size(), func(entry cab.File, data io.Reader) error {
-		if index >= len(b.files) {
-			return fmt.Errorf("cabinet holds more than %d files", len(b.files))
+	err := cab.Walk(src, size, func(entry cab.File, data io.Reader) error {
+		if index >= len(cabinet.files) {
+			return fmt.Errorf("holds more than %d files", len(cabinet.files))
 		}
 
-		want := b.files[index]
 		index++
 
-		if entry.Name != want.Key {
-			return fmt.Errorf("cabinet entry %d is %q, want %q", index-1, entry.Name, want.Key)
-		}
-
-		hasher := sha256.New()
-
-		n, err := io.Copy(hasher, data)
-		if err != nil {
-			return fmt.Errorf("cabinet entry %s: %w", want.Key, err)
-		}
-
-		if n != want.Size || !bytes.Equal(hasher.Sum(nil), want.digest[:]) {
-			return fmt.Errorf("cabinet entry %s differs from its source", want.Key)
-		}
-
-		return nil
+		return compareEntry(entry, data, cabinet.files[index-1], index-1)
 	})
 	if err != nil {
-		return fmt.Errorf("cabinet: %w", err)
+		return err //nolint:wrapcheck // the caller names the cabinet
 	}
 
-	if index != len(b.files) {
-		return fmt.Errorf("cabinet holds %d files, want %d", index, len(b.files))
+	if index != len(cabinet.files) {
+		return fmt.Errorf("holds %d files, want %d", index, len(cabinet.files))
+	}
+
+	return nil
+}
+
+// compareEntry compares the index-th cabinet entry with the file it holds.
+func compareEntry(entry cab.File, data io.Reader, want *fileInfo, index int) error {
+	if entry.Name != want.Key {
+		return fmt.Errorf("entry %d is %q, want %q", index, entry.Name, want.Key)
+	}
+
+	hasher := sha256.New()
+
+	n, err := io.Copy(hasher, data)
+	if err != nil {
+		return fmt.Errorf("entry %s: %w", want.Key, err)
+	}
+
+	if n != want.Size || !bytes.Equal(hasher.Sum(nil), want.digest[:]) {
+		return fmt.Errorf("entry %s differs from its source", want.Key)
 	}
 
 	return nil

@@ -90,8 +90,12 @@ type Package struct { //nolint:govet // field order is the YAML key order
 	Codepage         int      `yaml:"codepage"`
 	Compression      string   `yaml:"compression"`
 	Cabinet          string   `yaml:"cabinet"`
-	LongFileNames    *bool    `yaml:"longFileNames"`
-	Summary          Summary  `yaml:"summary"`
+	// EmbedCabinets false writes the cabinets beside the package instead
+	// of into it; nil means true. It has no default so that the
+	// ProductCode of an unchanged configuration stays the same.
+	EmbedCabinets *bool   `yaml:"embedCabinets"`
+	LongFileNames *bool   `yaml:"longFileNames"`
+	Summary       Summary `yaml:"summary"`
 }
 
 // Summary overrides Summary Information strings.
@@ -409,7 +413,7 @@ type ServiceRecovery struct { //nolint:govet // field order is the YAML key orde
 	ResetAfterDays int              `yaml:"resetAfterDays"`
 	ResetAfter     *Duration        `yaml:"resetAfter"`
 	Actions        []RecoveryAction `yaml:"actions"`
-	RestartDelay   Duration         `yaml:"restartDelay"`
+	RestartDelay   *Duration        `yaml:"restartDelay"`
 }
 
 // RecoveryAction is one failure step: "restart", "none", or
@@ -652,4 +656,10 @@ type Column struct {
 	Name string `yaml:"name"`
 	Type string `yaml:"type"`
 	Key  bool   `yaml:"key"`
+}
+
+// CabinetsEmbedded reports whether the cabinets go into the package, which
+// they do unless EmbedCabinets is false.
+func (p *Package) CabinetsEmbedded() bool {
+	return p.EmbedCabinets == nil || *p.EmbedCabinets
 }

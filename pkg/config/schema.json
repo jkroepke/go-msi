@@ -170,6 +170,10 @@
           "type": "string",
           "maxLength": 62
         },
+        "embedCabinets": {
+          "$ref": "#/$defs/bool",
+          "default": true
+        },
         "longFileNames": {
           "$ref": "#/$defs/bool",
           "default": true
@@ -1845,7 +1849,7 @@
                   },
                   "restartDelay": {
                     "type": "string",
-                    "description": "A Go duration such as 60s or 1m.",
+                    "description": "A Go duration such as 60s or 1m; 0s restarts at once.",
                     "default": "1m"
                   }
                 },

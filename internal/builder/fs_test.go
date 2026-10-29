@@ -506,3 +506,35 @@ func TestFolderGUIDsFollowInstallPaths(t *testing.T) {
 		t.Errorf("new.txt has ComponentId %v", after["new.txt"])
 	}
 }
+
+// TestBuildFolderInSeveralCabinets checks that the files of a folder source
+// are split into cabinets beside the package like any other files, as a
+// build output above 2 GB needs (CAB-10, CAB-13).
+func TestBuildFolderInSeveralCabinets(t *testing.T) {
+	t.Parallel()
+
+	fsys := fstest.MapFS{
+		"dist/app.exe":      {Data: testpe.Build(testpe.Options{FileVersion: "1.2.3.4"})},
+		"dist/a.txt":        {Data: []byte("a")},
+		"dist/data/b.bin":   {Data: bytes.Repeat([]byte{1}, 1000)},
+		"dist/data/c/d.bin": {Data: bytes.Repeat([]byte{2}, 1000)},
+	}
+
+	cfg := folderConfig(t, fsys)
+	cfg.Package.EmbedCabinets = new(false)
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime, CabinetSize: 1})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, res.Diagnostics)
+	}
+
+	if len(res.Files) != 4 || len(res.Cabinets) != 4 {
+		t.Fatalf("%d files in %d cabinets, want one cabinet per file", len(res.Files), len(res.Cabinets))
+	}
+
+	for _, cabinet := range res.Cabinets {
+		if strings.HasPrefix(cabinet.Name, "#") || int64(len(cabinet.Data)) != cabinet.Size {
+			t.Errorf("cabinet %s: %d bytes, size %d", cabinet.Name, len(cabinet.Data), cabinet.Size)
+		}
+	}
+}

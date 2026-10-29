@@ -12,14 +12,15 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/jkroepke/msi-builder/internal/cab"
 	"github.com/jkroepke/msi-builder/internal/msidb"
 	"github.com/jkroepke/msi-builder/internal/pe"
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
-// maxFileSize is the largest payload file: the cabinet stores sizes in 32
-// bits and a package cannot exceed 2 GB.
-const maxFileSize = 0x7FFFFFFF
+// maxFileSize is the largest payload file: a file lies in one cabinet
+// folder, which holds at most 65535 blocks of 32 KiB (section 5).
+const maxFileSize = cab.MaxFolder
 
 // Component attribute bits (section 8.4).
 const (
@@ -454,7 +455,7 @@ func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentI
 	}
 
 	if stat.Size() > maxFileSize {
-		b.errorf(diagPath+".source", "%s is larger than 2 GB", cfgFile.Source)
+		b.errorf(diagPath+".source", "%s is larger than %d bytes (2 GiB - 32 KiB), the most one cabinet holds", cfgFile.Source, maxFileSize)
 
 		return nil
 	}
@@ -661,12 +662,8 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 		}
 	}
 
-	media := b.table("Media")
-	if len(b.files) > 0 {
-		media.Add(1, len(b.files), nil, "#"+b.cfg.Package.Cabinet, nil, nil)
-	} else {
-		media.Add(1, 0, nil, nil, nil, nil)
-	}
+	b.splitCabinets()
+	b.writeMedia()
 
 	return nil
 }
@@ -698,8 +695,10 @@ func (b *build) resolveKeyPath(path string, info *componentInfo) error { //nolin
 	case keyPath == "directory":
 		info.keyPath = nil
 	case keyPath == "":
+		// The first file in the configuration, not in sequence order: the
+		// validator checks that one, and a service names its executable.
 		if len(files) > 0 {
-			info.keyFile = files[0]
+			info.keyFile = files[max(0, slices.IndexFunc(files, func(f *fileInfo) bool { return f.cfg == comp.Files[0] }))]
 		} else if len(comp.Registry) > 0 {
 			info.keyPath = b.registryID(info, comp.Registry[0])
 			info.attributes |= compRegistryKeyPath

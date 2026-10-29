@@ -161,8 +161,10 @@ func (b *build) checkStreams(tables []*msidb.Table) {
 		}
 	}
 
-	if len(b.files) > 0 {
-		b.claimStream(owners, b.cfg.Package.Cabinet, "package.cabinet")
+	if b.cfg.Package.CabinetsEmbedded() {
+		for _, cabinet := range b.cabinets {
+			b.claimStream(owners, cabinet.name, "package.cabinet")
+		}
 	}
 }
 

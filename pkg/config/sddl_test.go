@@ -17,11 +17,24 @@ func TestCheckSDDL(t *testing.T) {
 	}{
 		{sddl: "D:PAI(A;;FA;;;BA)(A;;FRFX;;;BU)"},
 		{sddl: "O:BAG:BAD:(A;OICI;FA;;;SY)(A;OICI;0x1200a9;;;BU)"},
-		{sddl: "D:(A;;FA;;;S-1-5-21-1-2-3-500)"},
-		{sddl: "D:(A;;FA;;;<BUILTIN\\Users>)"},
-		{sddl: "D:(A;;FA;;;<[%USERDOMAIN]\\[%USERNAME]>)"},
+		{sddl: "D:(A;;FA;;;S-1-5-21-1-2-3-500)", warn: true},
+		{sddl: "D:(A;;FA;;;<BUILTIN\\Users>)", warn: true},
+		{sddl: "D:(A;;FA;;;<[%USERDOMAIN]\\[%USERNAME]>)", warn: true},
 		{sddl: "D:(A;;KA;;;BA)S:(AU;SAFA;FA;;;WD)"},
 		{sddl: "D:(A;;FA;;;BA)(D;;FW;;;BU)", warn: true},
+		// The engine runs as SYSTEM: a DACL without SYSTEM or Administrators
+		// locked a folder against its own installer.
+		{sddl: "D:AI(A;OICI;FA;;;NS)", warn: true},
+		{sddl: "D:(A;;FA;;;<NT AUTHORITY\\NETWORK SERVICE>)", warn: true},
+		{sddl: "D:(A;OICI;FA;;;<NT AUTHORITY\\SYSTEM>)(A;OICI;FA;;;NS)"},
+		{sddl: "D:(A;OICI;FA;;;<Administrators>)"},
+		{sddl: "D:(A;;FA;;;S-1-5-32-544)"},
+		{sddl: "D:NO_ACCESS_CONTROL"},
+		{sddl: "O:SYG:SY"},
+		// Inherit-only grants nothing on the object; other domains are other accounts.
+		{sddl: "D:(A;OICIIO;FA;;;SY)(A;;FA;;;NS)", warn: true},
+		{sddl: "D:(A;;FA;;;<CONTOSO\\SYSTEM>)", warn: true},
+		{sddl: "D:(A;;FA;;;<BUILTIN\\Administrators>)"},
 		{sddl: "", wantErr: "empty"},
 		{sddl: "D:(A;;FA;;;[PERMSID])", wantErr: "1943"},
 		{sddl: "D:(A;;FA;;;<[PERMSID]>)", wantErr: "<account>"},
@@ -43,11 +56,11 @@ func TestCheckSDDL(t *testing.T) {
 		{sddl: "D:(XA;;FX;;;WD)", wantErr: "condition"},
 		{sddl: "S:(FL;;FA;;;BA)", wantErr: "condition"},
 		{sddl: "S:(RA;;FA;;;BA)", wantErr: "resource attribute"},
-		{sddl: "D:(A;;FA;;;S-1-5-21-1-2-3-4-5-6-7-8-9-10-11-12-13-14)"},
+		{sddl: "D:(A;;FA;;;S-1-5-21-1-2-3-4-5-6-7-8-9-10-11-12-13-14)", warn: true},
 		{sddl: "D:(A;;FA;;;S-1-5-21-1-2-3-4-5-6-7-8-9-10-11-12-13-14-15)", wantErr: "not a SID"},
 		{sddl: "D:(A;;FA;;;S-1-5-4294967296)", wantErr: "not a SID"},
 		{sddl: "D:(A;;FA;;;S-1-281474976710656-1)", wantErr: "not a SID"},
-		{sddl: "D:(OA;;CR;ab721a53-1e2f-11d0-9819-00aa0040529b;;BA)"},
+		{sddl: "D:(OA;;CR;ab721a53-1e2f-11d0-9819-00aa0040529b;;BA)", warn: true},
 	} {
 		warnings, err := config.CheckSDDL(tc.sddl)
 

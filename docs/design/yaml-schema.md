@@ -227,7 +227,8 @@ them braced and upper case.
 | `installerVersion` | string | `"5.0"` | Page Count = major × 100 + minor. x86: 1.0 to 5.0, x64: 2.0 to 5.0, arm64: 5.0 |
 | `codepage` | int | `1252` | Database code page, section 2.3 |
 | `compression` | enum | `lzx` | `lzx` (LZX with a 2 MB window), `lzx:15` … `lzx:21` (a window of 2^N bytes), `mszip` or `none` (stored blocks) |
-| `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters (fewer outside `0-9A-Za-z._`). ICE03 wants an identifier (letters, digits, `_` and `.`, not starting with a digit), so the default keeps only those characters of `<name>`, and an explicit name that is no identifier warns. The default is `product.cab` when that is no identifier, cannot be a stream name or `<name>` has non-ASCII characters |
+| `cabinet` | string | `<name>.cab` | Name of the first cabinet; further cabinets insert their number before the extension (`Hello2.cab`, `Hello3.cab`). Embedded, it is a stream name of at most 62 characters (fewer outside `0-9A-Za-z._`). ICE03 wants an identifier (letters, digits, `_` and `.`, not starting with a digit), so the default keeps only those characters of `<name>`, and an explicit name that is no identifier warns. The default is `product.cab` when that is no identifier, cannot be a stream name or `<name>` has non-ASCII characters. Beside the package (`embedCabinets: false`) it is a plain filename and need not be a stream name |
+| `embedCabinets` | bool | `true` | `false` writes the cabinets as files beside the `.msi` (`Media.Cabinet` without `#`), which the package needs at install time. A package cannot exceed 2 GB, so a payload whose cabinets add up to more needs `false`; an embedded build above that fails with an error that says so. The payload is split into cabinets at file boundaries either way: a cabinet holds at most 65535 files and 2 GiB, counted with every block at the largest size its compression allows, so with LZX one cabinet takes about 1.8 GB of files whatever they compress to. A single file is at most 2 GiB − 32 KiB (section 5, CAB-10) |
 | `longFileNames` | bool | `true` | `false` sets Word Count bit 1 (short source paths). Each listed filename must itself be a valid 8.3 name, and a folder source is refused; directories and shortcuts get a generated `short\|long` when their name is not a valid 8.3 name. Installed folders still get the long names unless `SHORTFILENAMES=1` is set (FILE-06) |
 | `summary` | map | | `title` (`Installation Database`), `keywords` (`Installer`), `author` (manufacturer) |
 
@@ -656,6 +657,12 @@ the engine resolves (including `[%ENV]` inside it), is replaced by a
 placeholder SID. `[Property]` references are not expanded by the engine and
 are rejected. A deny ACE gets a warning, because SEC-01 saw a deny for
 `BUILTIN\Users` lock the installer out of its own file on uninstall. A
+DACL with no allow ACE for SYSTEM or Administrators on the object itself
+(`SY`, `BA`, their SIDs, `<SYSTEM>`, `<NT AUTHORITY\SYSTEM>`,
+`<Administrators>` or `<BUILTIN\Administrators>`; localized or
+machine-qualified names are not recognized) gets a
+warning too: the engine runs as SYSTEM, and a folder locked to
+`NetworkService` alone failed its install and the rollback of an upgrade. A
 `LockPermissions` custom table cannot coexist with it (ICE104, error 1941).
 
 **Registry values.**
@@ -761,9 +768,9 @@ it back. With `false` the install succeeds and leaves such a service stopped;
 `recovery` becomes a deferred, no-impersonate `sc.exe failure` action after
 InstallServices, with its exit code ignored (SVC-01). Each step is `restart`,
 `none` or `{restart: <delay>}`; a plain `restart` waits `restartDelay`
-(default 60s). Delays are whole milliseconds and `resetAfter` is whole
-seconds, as `sc.exe` takes them (SVC-03); `resetAfter` and `resetAfterDays`
-exclude each other. A `password` is added
+(default 60s; `0s` restarts at once). Delays are whole milliseconds and
+`resetAfter` is whole seconds, as `sc.exe` takes them (SVC-03); `resetAfter`
+and `resetAfterDays` exclude each other. A `password` is added
 to `MsiHiddenProperties` when it names a property.
 
 **Event log sources** become Registry rows of the component:

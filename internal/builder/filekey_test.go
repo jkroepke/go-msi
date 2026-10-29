@@ -43,3 +43,24 @@ ui: { wizard: minimal, launch: { file: my-app.exe } }
 		t.Errorf("shortcut target %v", shortcut[scTarget])
 	}
 }
+
+// TestKeyFileIsFirstConfiguredFile keeps the first file of the
+// configuration as key path, although the files are sequenced by name: a
+// service component lists its executable first.
+func TestKeyFileIsFirstConfiguredFile(t *testing.T) {
+	t.Parallel()
+
+	cfg := shortcutConfig(t, `
+  - files:
+      - source: app.exe
+        name: z-app.exe
+      - source: app.ico
+        name: a-config.ico
+`)
+	database := mustBuild(t, cfg).Database
+
+	comp := rowWhere(t, database, "Component", func(r []any) bool { return r[5] != nil })
+	if comp[5] != "z_app.exe" {
+		t.Errorf("Component row %v, want key path z_app.exe", comp)
+	}
+}

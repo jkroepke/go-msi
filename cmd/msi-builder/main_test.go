@@ -384,3 +384,88 @@ func TestFlagsAfterArguments(t *testing.T) {
 		t.Errorf("table completion: exit %d, stdout %q", code, stdout.String())
 	}
 }
+
+// TestSignExternalCabinets checks a signed build whose cabinets go beside
+// the package: they arrive with the signed package, and a signing that
+// fails touches neither the existing package nor its cabinets.
+func TestSignExternalCabinets(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	src, err := os.ReadFile(filepath.Join("..", "..", "examples", "minimal", "msi.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A Windows checkout may have CRLF line endings, so keep the line end.
+	src = bytes.Replace(src, []byte("  platform: x64"), []byte("  platform: x64\n  embedCabinets: false"), 1)
+	if !bytes.Contains(src, []byte("embedCabinets")) {
+		t.Fatal("the minimal example has no platform line")
+	}
+
+	yaml := filepath.Join(dir, "msi.yaml")
+	if err := os.WriteFile(yaml, src, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	keys := writeTestKey(t, dir)
+	out := filepath.Join(dir, "out")
+
+	if err := os.Mkdir(out, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+
+	signed := filepath.Join(out, "signed.msi")
+	cabinet := filepath.Join(out, "Hello.cab")
+
+	if code := run([]string{"build", "-o", signed, "--pfx", keys.pfx, yaml}, &stdout, &stderr); code != 0 {
+		t.Fatalf("build --pfx: exit %d: %s", code, stderr.String())
+	}
+
+	if !strings.Contains(stdout.String(), cabinet+": ") {
+		t.Errorf("build output %q does not name %s", stdout.String(), cabinet)
+	}
+
+	if code := run([]string{"verify", signed}, &stdout, &stderr); code != 0 {
+		t.Errorf("verify: exit %d: %s", code, stderr.String())
+	}
+
+	before := map[string][]byte{}
+
+	for _, path := range []string{signed, cabinet} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		before[path] = data
+	}
+
+	// A changed payload with a signing that fails at the timestamp server.
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), append(exe, 0), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if code := run([]string{"build", "-q", "-o", signed, "--pfx", keys.pfx, "--timestamp-url", "http://127.0.0.1:1", yaml}, &stdout, &stderr); code == 0 {
+		t.Fatal("build with an unreachable timestamp server succeeded")
+	}
+
+	for path, data := range before {
+		if kept, err := os.ReadFile(path); err != nil || !bytes.Equal(kept, data) {
+			t.Errorf("the failed signing build changed %s: %v", path, err)
+		}
+	}
+
+	left, _ := os.ReadDir(out)
+	if len(left) != 2 {
+		t.Errorf("the output folder holds %d entries, want the package and its cabinet", len(left))
+	}
+}

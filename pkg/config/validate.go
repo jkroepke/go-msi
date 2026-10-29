@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -34,6 +35,14 @@ const (
 
 // cabinetForbidden are the characters a cabinet file name cannot hold.
 const cabinetForbidden = `\/:*?"<>|#`
+
+// numberedName is the name of the second cabinet when the first is named
+// first, as the builder derives it.
+func numberedName(first string) string {
+	ext := filepath.Ext(first)
+
+	return strings.TrimSuffix(first, ext) + "2" + ext
+}
 
 // plainFileName reports whether name holds none of cabinetForbidden and no
 // control characters, which also keeps the cabinet off the streams that
@@ -281,11 +290,18 @@ func (v *validator) pkg(cfg *Config) { //nolint:cyclop // a flat list of indepen
 
 	v.oneOf("package.compression", pkg.Compression, Compressions()...)
 
-	if !plainFileName(pkg.Cabinet) {
+	switch {
+	case !plainFileName(pkg.Cabinet):
 		v.errorf("package.cabinet", "%q is not a plain file name", pkg.Cabinet)
-	} else if err := msidb.CheckStreamName(pkg.Cabinet); err != nil {
-		v.errorf("package.cabinet", "not a valid stream name (MSIDB-11): %v", err)
-	} else if !IsIdentifier(pkg.Cabinet) {
+	// Further cabinets insert their number before the extension, so a
+	// base name of COM or LPT turns into the device COM2.
+	case !pkg.CabinetsEmbedded() && (!validLongName(pkg.Cabinet) || !validLongName(numberedName(pkg.Cabinet))):
+		v.errorf("package.cabinet", "%q cannot be a file name on Windows (a device name, a trailing dot or space, or . or ..)", pkg.Cabinet)
+	case !pkg.CabinetsEmbedded():
+		// An external cabinet is a file beside the package, not a stream.
+	case msidb.CheckStreamName(pkg.Cabinet) != nil:
+		v.errorf("package.cabinet", "not a valid stream name (MSIDB-11): %v", msidb.CheckStreamName(pkg.Cabinet))
+	case !IsIdentifier(pkg.Cabinet):
 		v.warnf("package.cabinet", "ICE03 reports bad cabinet syntax: an embedded cabinet name must be an identifier")
 	}
 }
@@ -1254,13 +1270,14 @@ const secondsPerDay = 86400
 
 // recoveryDuration checks a delay or reset period that sc.exe takes as a
 // whole number of units (milliseconds or seconds) in a 32-bit value.
-func (v *validator) recoveryDuration(field string, value Duration, unit time.Duration) {
+func (v *validator) recoveryDuration(field string, value *Duration, unit time.Duration) {
 	switch {
-	case value < 0:
+	case value == nil:
+	case *value < 0:
 		v.errorf(field, "must not be negative")
-	case time.Duration(value)%unit != 0:
+	case time.Duration(*value)%unit != 0:
 		v.errorf(field, "must be a whole number of %s", map[time.Duration]string{time.Millisecond: "milliseconds", time.Second: "seconds"}[unit])
-	case int64(time.Duration(value)/unit) > math.MaxInt32:
+	case int64(time.Duration(*value)/unit) > math.MaxInt32:
 		v.errorf(field, "is too long for sc.exe")
 	}
 }
@@ -1280,7 +1297,7 @@ func (v *validator) recovery(recPath string, rec *ServiceRecovery) {
 				v.errorf(step+".restart", "a delay is only allowed on a restart action")
 			}
 
-			v.recoveryDuration(step+".restart", *recAction.Restart, time.Millisecond)
+			v.recoveryDuration(step+".restart", recAction.Restart, time.Millisecond)
 		}
 	}
 
@@ -1299,7 +1316,7 @@ func (v *validator) recovery(recPath string, rec *ServiceRecovery) {
 			v.errorf(recPath+".resetAfter", "set resetAfter or resetAfterDays, not both")
 		}
 
-		v.recoveryDuration(recPath+".resetAfter", *rec.ResetAfter, time.Second)
+		v.recoveryDuration(recPath+".resetAfter", rec.ResetAfter, time.Second)
 	}
 }
 

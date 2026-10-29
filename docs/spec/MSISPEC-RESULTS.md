@@ -186,7 +186,8 @@ Silent-failure cases a producer has to guard against itself:
 | CAB-06 | Confirmed | [log](msitest/results/CAB-06/two-cabinets/log.md); wrong `LastSequence` or cabinet name case 1603 |
 | CAB-07 | Not run | P2 |
 | CAB-09 | Not run | P2 |
-| CAB-10 | Not run | P2, needs 2.1 GB fixtures |
+| CAB-10 | Confirmed (external) | [results](#packages-above-2-gb-cab-10-cab-13); embedded variant not run |
+| CAB-13 | Confirmed | [results](#packages-above-2-gb-cab-10-cab-13) |
 | CAB-11 | Not run | msi-rs regression case; test a candidate writer |
 | CAB-12 | Not run | msi-rs regression case; test a candidate writer |
 | MSZIP-01 | Confirmed | [wrong history](msitest/results/MSZIP-01/go-wrongdict/log.md): 69170 of 102400 bytes differ, exit 0 |
@@ -585,3 +586,30 @@ service has recovery set to restart after 60 s, three times.
   windows_exporter's own `CreateConfigFile` action wrote at install time
   stays in the install folder; the WiX-built package leaves it too.
 - Not run: a service without recovery actions, and Windows Server 2016.
+
+## Packages above 2 GB (CAB-10, CAB-13)
+
+Run on 2026-10-29 by the `windows-latest` CI runner (Windows Server 2025
+Datacenter 10.0.26100, image windows-2025-vs2026 20261021.278.1), elevated,
+for msi-builder PR #93 (workflow run 40876843472, commit 87fd473):
+`TestMsiexecInstallsLargePackage` and `TestMsiexecInstallsSeveralCabinets`
+in `internal/builder/nativetest/media_windows_test.go`.
+
+- CAB-10: three files of 1 GiB, 1 GiB and 900 MiB (2.9 GB), stored
+  (`compression: none`) with `embedCabinets: false`, gave a 32768-byte
+  `.msi` and two cabinets beside it, `CabinetProbe.cab` (1074004037 bytes,
+  the first file) and `CabinetProbe2.cab` (2017952862 bytes, the other two).
+  The build took 47 s. `msiexec /i … /qn` installed it in 19 s with exit 0,
+  every installed file had its source's size and SHA-256, and `msiexec /x`
+  removed the folder. The same configuration embedded is refused by
+  msi-builder before anything is written; whether Windows Installer would
+  install such a package was not tested.
+- CAB-13: three 40000-byte files, one per cabinet (`CabinetSize: 1`),
+  installed with exit 0 and the right hashes, and were removed, both
+  embedded (`#CabinetProbe.cab`, `#CabinetProbe2.cab`, `#CabinetProbe3.cab`)
+  and external with the long names `Cabinet Probe Long Name.cab`,
+  `Cabinet Probe Long Name2.cab` and `Cabinet Probe Long Name3.cab`. `/qn`
+  fails rather than prompting when a disk is missing (CAB-05), so neither
+  install needed one.
+- Not run: Windows Server 2016, a single file near 0x7FFF8000 bytes, LZX or
+  MSZIP at this size, an install from a network share.

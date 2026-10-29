@@ -66,6 +66,8 @@ jobs:
         os:
           - ubuntu-26.04
           - windows-latest
+          # Only the run action tests, see go test (Windows on Arm).
+          - windows-11-arm
     permissions:
       contents: read
       # Codecov upload without a token.
@@ -89,7 +91,7 @@ jobs:
       # tools feature is installed, and it ships the MsiVal2 package. The
       # ICE runner needs nothing but darice.cub, so only that file is cached.
       - name: Cache the ICE suite
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         id: ice-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -97,7 +99,7 @@ jobs:
           key: ice-Microsoft.WindowsSDK.10.0.28000-10.0.28000.2526-v1
 
       - name: Install the ICE suite
-        if: runner.os == 'Windows' && steps.ice-cache.outputs.cache-hit != 'true'
+        if: runner.os == 'Windows' && runner.arch == 'X64' && steps.ice-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -124,7 +126,7 @@ jobs:
           Copy-Item (Join-Path ${env:ProgramFiles(x86)} 'MsiVal2\darice.cub') C:\ice\darice.cub
 
       - name: Use the ICE suite
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: pwsh
         run: |
           if (-not (Test-Path C:\ice\darice.cub)) { throw 'C:\ice\darice.cub is missing' }
@@ -140,13 +142,22 @@ jobs:
       # The install snapshots that differ from testdata are saved to
       # MSI_BUILDER_SNAPSHOT_DIR and uploaded below.
       - name: go test
+        if: runner.arch == 'X64'
         shell: bash
         env:
           MSI_BUILDER_SNAPSHOT_DIR: ${{ runner.temp }}/install-snapshots
         run: go test ./... ${{ runner.os != 'Windows' && '-short' || '' }} -shuffle=on -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./...
 
+      # Windows on Arm installs the run action probe natively (Arm64 package
+      # with the arm64 DLL). msiexec is slow on this runner, so the rest of
+      # the native suite stays on x64.
+      - name: go test (Windows on Arm)
+        if: runner.os == 'Windows' && runner.arch == 'ARM64'
+        shell: bash
+        run: go test ./internal/cadll/ ./internal/builder/nativetest/ -run 'TestBinaries|TestMsiexecRunActions' -v -shuffle=on
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: failure() && runner.os == 'Windows'
+        if: failure() && runner.os == 'Windows' && runner.arch == 'X64'
         with:
           name: install-snapshots
           path: ${{ runner.temp }}/install-snapshots/
@@ -155,16 +166,26 @@ jobs:
       # The race detector slows the LZX encoder down about fifty times, so the
       # race run above shrinks the large LZX cases; run them at full size.
       - name: go test (LZX at full size)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
         run: |
           go test -count=1 ./internal/lzx/
           go test -count=1 -run 'TestNative(FDI|Expand)Extracts/lzx|TestNativeLZXSystemBinaries|TestLZX' ./internal/cab/
           go test -count=1 -run 'BoundedMemory' ./internal/cab/ ./internal/builder/
 
+      # A package above 2 GB, its cabinets beside the .msi (MSISPEC section 5,
+      # CAB-10). It writes about 9 GB, so it runs on its own and without
+      # the race detector.
+      - name: go test (package above 2 GB)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          MSI_BUILDER_LARGE_PACKAGE: '1'
+        run: go test -v -count=1 -timeout 30m -run 'TestMsiexecInstallsLargePackage' ./internal/builder/nativetest/
+
       # Print the Windows signature experiments (MSISPEC-RESULTS SIG-01…06).
       - name: go test (signature results)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
         run: go test -v -count=1 -run 'TestSignature' ./internal/builder/nativetest/
 
@@ -332,30 +353,6 @@ jobs:
           internal/cadll/build.sh
           diff /tmp/committed-SHA256SUMS internal/cadll/SHA256SUMS
 
-  # Windows on Arm installs the run action probe natively (Arm64 package with
-  # the arm64 DLL) and under x64 emulation; the x64 runner in build covers
-  # x64 natively.
-  arm64:
-    name: Run actions on Windows Arm64
-    needs: detect-changes
-    if: needs.detect-changes.outputs.changed != '0'
-    runs-on: windows-11-arm
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: 'false'
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: 'go.mod'
-          cache: "${{ github.actor != 'renovate[bot]' }}"
-
-      - name: go test
-        shell: bash
-        run: go test ./internal/cadll/ ./internal/builder/nativetest/ -run 'TestBinaries|TestMsiexecRunActions' -v -shuffle=on
-
   # The one job to mark as required in branch protection. It only runs, and
   # fails, when a needed job failed or was cancelled; GitHub counts the
   # skipped job as passed. Add every new check job to needs.
@@ -366,7 +363,6 @@ jobs:
       - detect-changes
       - build
       - ca-dll
-      - arm64
       - goreleaser
       - lint
       - super-lint
@@ -380,8 +376,13 @@ jobs:
   # Tags a new version from the conventional commit titles on main. A tag
   # created with GITHUB_TOKEN does not trigger the tag push run of CI, but a
   # workflow_dispatch does, so dispatch CI on the new tag like tag.yaml.
+  #
+  # Runs only while the repository variable RELEASE_ENABLED is 'true'
+  # (Settings > Secrets and variables > Actions > Variables; the comparison
+  # ignores case). Unset pauses automatic releases. The Create Tag workflow
+  # still publishes a release by hand.
   release:
-    if: github.repository_owner == 'jkroepke' && github.ref_name == 'main'
+    if: vars.RELEASE_ENABLED == 'true' && github.repository_owner == 'jkroepke' && github.ref_name == 'main'
     name: Release
     runs-on: ubuntu-26.04
     environment: "Create Release Tag"

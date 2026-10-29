@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/jkroepke/msi-builder/internal/spool"
 	"github.com/jkroepke/msi-builder/pkg/builder"
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
@@ -161,15 +162,18 @@ func (f *buildFlags) run(cmd *cobra.Command, path string) error {
 
 	// Signing works on the whole package, so a signed build streams to a
 	// temporary file first and the signed bytes replace out atomically; a
-	// package already at out survives a failed signing.
+	// package already at out survives a failed signing. Cabinets beside the
+	// package go to a temporary folder with it and move only together with
+	// the signed package.
 	target := out
 
 	if f.signing.enabled() {
-		if target, err = tempPackage(out); err != nil {
+		var cleanup func()
+		if target, cleanup, err = tempPackage(out, !cfg.Package.CabinetsEmbedded()); err != nil {
 			return err
 		}
 
-		defer func() { _ = os.Remove(target) }()
+		defer cleanup()
 	}
 
 	res, err := builder.Build(cfg, builder.Options{
@@ -190,17 +194,26 @@ func (f *buildFlags) run(cmd *cobra.Command, path string) error {
 	}
 
 	if f.signing.enabled() {
-		if res.Size, err = f.signInto(cmd.Context(), target, out, cfg.Product.Name); err != nil {
+		if res.Size, err = f.signInto(cmd.Context(), target, out, cfg.Product.Name, res.Cabinets); err != nil {
 			return err
 		}
 	}
 
 	if !f.quiet {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s: %d bytes, %d files, ProductCode %s, PackageCode %s\n",
-			out, res.Size, len(res.Files), res.ProductCode, res.PackageCode)
+		printResult(cmd.OutOrStdout(), out, res)
 	}
 
 	return nil
+}
+
+// printResult reports the package at out and the cabinets beside it.
+func printResult(w io.Writer, out string, res *builder.Result) {
+	_, _ = fmt.Fprintf(w, "%s: %d bytes, %d files, ProductCode %s, PackageCode %s\n",
+		out, res.Size, len(res.Files), res.ProductCode, res.PackageCode)
+
+	for _, cabinet := range res.Cabinets {
+		_, _ = fmt.Fprintf(w, "%s: %d bytes, cabinet beside the package\n", cabinet.Path, cabinet.Size)
+	}
 }
 
 // check refuses flag values before any file is read.
@@ -222,21 +235,41 @@ func (f *buildFlags) output(cfg *config.Config) string {
 	return filepath.Join(cfg.BaseDir, cfg.Product.Name+"-"+cfg.Product.Version+".msi")
 }
 
-// tempPackage creates an empty temporary file next to out.
-func tempPackage(out string) (string, error) {
+// tempPackage returns a temporary path next to out for the unsigned
+// package, in a temporary folder of its own when cabinets are written beside
+// it, and the function that removes what is left there.
+func tempPackage(out string, withCabinets bool) (string, func(), error) {
+	if withCabinets {
+		// The cabinets move next to the package's real file, so the
+		// temporary folder goes there too, on the same file system, and
+		// the package keeps that file's name for the builder's name check.
+		if resolved, err := filepath.EvalSymlinks(out); err == nil {
+			out = resolved
+		}
+
+		dir, err := os.MkdirTemp(filepath.Dir(out), ".msi-builder-*")
+		if err != nil {
+			return "", nil, fmt.Errorf("create a temporary folder: %w", err)
+		}
+
+		return filepath.Join(dir, filepath.Base(out)), func() { _ = os.RemoveAll(dir) }, nil
+	}
+
 	tmp, err := os.CreateTemp(filepath.Dir(out), ".msi-builder-*.unsigned")
 	if err != nil {
-		return "", fmt.Errorf("create a temporary file: %w", err)
+		return "", nil, fmt.Errorf("create a temporary file: %w", err)
 	}
 
 	_ = tmp.Close()
 
-	return tmp.Name(), nil
+	return tmp.Name(), func() { _ = os.Remove(tmp.Name()) }, nil
 }
 
 // signInto signs the unsigned package at target, writes the result to out and
-// returns its size.
-func (f *buildFlags) signInto(ctx context.Context, target, out, product string) (int64, error) {
+// returns its size. Cabinets built beside target move next to out together
+// with the signed package, all or none, and their paths in cabinets are
+// updated.
+func (f *buildFlags) signInto(ctx context.Context, target, out, product string, cabinets []builder.Cabinet) (int64, error) {
 	pkg, err := os.ReadFile(target)
 	if err != nil {
 		return 0, fmt.Errorf("read %s: %w", target, err)
@@ -247,9 +280,59 @@ func (f *buildFlags) signInto(ctx context.Context, target, out, product string) 
 		return 0, err
 	}
 
-	if err := writeAtomic(out, signed); err != nil {
+	if len(cabinets) == 0 {
+		if err := writeAtomic(out, signed); err != nil {
+			return 0, err
+		}
+
+		return int64(len(signed)), nil
+	}
+
+	if err := commitSigned(target, out, signed, cabinets); err != nil {
 		return 0, err
 	}
 
 	return int64(len(signed)), nil
+}
+
+// commitSigned writes the signed package over target, which is alone in its
+// temporary folder with the cabinets, and moves them all next to out at
+// once.
+func commitSigned(target, out string, signed []byte, cabinets []builder.Cabinet) error {
+	if err := writeAtomic(target, signed); err != nil {
+		return err
+	}
+
+	link := filepath.Base(out)
+	if resolved, err := filepath.EvalSymlinks(out); err == nil {
+		out = resolved
+	}
+
+	// The builder saw the name of the symlink's target; a cabinet must not
+	// replace the symlink either.
+	for _, cabinet := range cabinets {
+		if strings.EqualFold(cabinet.Name, link) {
+			return fmt.Errorf("the cabinet %s would replace the package; choose another package.cabinet or output name", cabinet.Name)
+		}
+	}
+
+	if info, err := os.Stat(out); err == nil && info.Mode().IsRegular() {
+		if err := os.Chmod(target, info.Mode().Perm()); err != nil {
+			return fmt.Errorf("set the mode of %s: %w", out, err)
+		}
+	}
+
+	moves := make([]spool.Move, 0, len(cabinets)+1)
+
+	for i, cabinet := range cabinets {
+		dest := filepath.Join(filepath.Dir(out), cabinet.Name)
+		moves = append(moves, spool.Move{From: cabinet.Path, To: dest})
+		cabinets[i].Path = dest
+	}
+
+	if err := spool.Commit(append(moves, spool.Move{From: target, To: out})); err != nil {
+		return fmt.Errorf("write %s: %w", out, err)
+	}
+
+	return nil
 }
