@@ -36,9 +36,9 @@ func (v *validator) shortcuts(cfg *Config, known *refs) {
 
 				// The engine writes [Directory_]Name.lnk: two shortcuts of
 				// one name in one folder overwrite each other.
-				target := shortcut.Directory + "\x1f" + strings.ToLower(longPart(shortcut.Name))
+				target := shortcut.Directory + "\x1f" + strings.ToLower(shortcut.Name)
 				if other, dup := targets[target]; dup {
-					v.errorf(scPath+".name", "%s also creates %q in %s", other, longPart(shortcut.Name), shortcut.Directory)
+					v.errorf(scPath+".name", "%s also creates %q in %s", other, shortcut.Name, shortcut.Directory)
 				}
 
 				targets[target] = scPath
@@ -73,13 +73,13 @@ func (v *validator) shortcutID(scPath string, shortcut *Shortcut, ids map[string
 
 func (v *validator) shortcut(cfg *Config, scPath string, shortcut *Shortcut, known *refs) { //nolint:cyclop // a flat list of independent checks
 	if v.required(scPath+".name", shortcut.Name) {
-		switch {
-		case !validName(shortcut.Name):
-			v.errorf(scPath+".name", "%q is not a valid file name or short|long pair", shortcut.Name)
+		switch problem := nameProblem(shortcut.Name, "file name"); {
+		case problem != "":
+			v.errorf(scPath+".name", "%s", problem)
 		case utf8.RuneCountInString(shortcut.Name) > maxShortcutName:
 			v.errorf(scPath+".name", "at most %d characters", maxShortcutName)
-		case strings.HasSuffix(strings.ToLower(longPart(shortcut.Name)), ".lnk"):
-			v.warnf(scPath+".name", "Windows adds .lnk to the name; %q becomes %s.lnk", shortcut.Name, longPart(shortcut.Name))
+		case strings.HasSuffix(strings.ToLower(shortcut.Name), ".lnk"):
+			v.warnf(scPath+".name", "Windows adds .lnk to the name; %q becomes %s.lnk", shortcut.Name, shortcut.Name)
 		}
 	}
 

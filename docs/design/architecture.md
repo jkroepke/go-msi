@@ -267,11 +267,12 @@ Pipeline, each step a file of its own:
    `packageCode: auto` from the finished database bytes; component GUIDs
    from UUIDv5 over the key path's canonical location.
 3. **Directories**: `TARGETDIR`/`SourceDir`, the standard folders, the tree,
-   short names from the §11.3 hash, `DefaultDir` values. Directories and
-   files in one directory share one set of short names; the literal ones
-   (`short|long` parts and long names that are valid short names) are taken
-   before any is generated, and two different names with one literal short
-   name are an error (FILE-07); that check runs once the files are read.
+   short names from the §11.3 hash, `DefaultDir` values. The configuration
+   gives long names only; every short name is generated. Directories and
+   files in one folder share one set of short names, also when several
+   directory IDs name that folder; long names that are valid short names
+   are taken before any is generated, once the files are read. Duplicates
+   would break `SHORTFILENAMES=1` installs (FILE-07).
 4. **Components, features, files, media**: attributes (64-bit bit 256,
    permanent, transitive, …), key paths, `CreateFolder` rows, file sequence
    order (canonical directory, name, key), one `Media` row and one embedded

@@ -502,6 +502,10 @@ func TestShorthandGeneratedFolderErrors(t *testing.T) {
 		}
 	}
 
+	if diags := validate(t, short+"installDir: 'ACME~1|Acme App'\n"+comp); !find(diags, config.SeverityError, "installDir.name", "short names are generated") {
+		t.Errorf("no short name error at installDir.name: %v", diags)
+	}
+
 	// A case typo of the install dir is reported while the dir is not yet in
 	// the tree.
 	tree := strings.Replace(short, "package:\n  platform: x64\n", "package:\n  platform: x64\n"+

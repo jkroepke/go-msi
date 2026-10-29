@@ -843,10 +843,8 @@ func (t *dirTree) top(folder string) *Directory {
 // child returns parent's child folder called name, adding it if needed. A
 // new node gets dirID, or one generated from the parent and the name.
 func (t *dirTree) child(parent *Directory, name, dirID string) *Directory {
-	long := longPart(name)
-
 	for _, existing := range parent.Children {
-		if strings.EqualFold(longPart(existing.Name), long) && (dirID == "" || existing.ID == dirID) {
+		if strings.EqualFold(existing.Name, name) && (dirID == "" || existing.ID == dirID) {
 			return existing
 		}
 	}
@@ -857,7 +855,7 @@ func (t *dirTree) child(parent *Directory, name, dirID string) *Directory {
 			used[key] = true
 		}
 
-		dirID = uniqueID(identifier(parent.ID+"_"+long), used)
+		dirID = uniqueID(identifier(parent.ID+"_"+name), used)
 	}
 
 	dir := &Directory{ID: dirID, Name: name, origin: t.origin}
@@ -865,15 +863,6 @@ func (t *dirTree) child(parent *Directory, name, dirID string) *Directory {
 	t.byID[dirID] = dir
 
 	return dir
-}
-
-// longPart returns the long name of "long" or "short|long".
-func longPart(name string) string {
-	if _, long, ok := strings.Cut(name, "|"); ok {
-		return long
-	}
-
-	return name
 }
 
 // splitPath splits a folder path at "/" and "\", dropping "." and empty

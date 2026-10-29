@@ -185,23 +185,21 @@ func sortedStringKeys(m map[string]string) []string {
 func (b *build) directories() error {
 	b.addDir(&dirInfo{id: targetDir, canonical: targetDir, standard: true})
 
-	var walk func(ds []*config.Directory, parent *dirInfo, path string)
+	var walk func(ds []*config.Directory, parent *dirInfo)
 
-	walk = func(ds []*config.Directory, parent *dirInfo, path string) {
-		for i, dir := range ds {
-			dirPath := fmt.Sprintf("%s[%d]", path, i)
-
+	walk = func(ds []*config.Directory, parent *dirInfo) {
+		for _, dir := range ds {
 			if existing, dup := b.dirs[dir.ID]; dup {
 				// A top-level TARGETDIR node only carries children for the
 				// root the builder already added.
 				if parent == nil && dir.ID == targetDir {
-					walk(dir.Children, existing, dirPath+".children")
+					walk(dir.Children, existing)
 				}
 
 				continue
 			}
 
-			info := &dirInfo{id: dir.ID, namePath: dir.NamePath(dirPath)}
+			info := &dirInfo{id: dir.ID}
 
 			switch {
 			case parent == nil && config.IsStandardFolder(dir.ID):
@@ -211,11 +209,11 @@ func (b *build) directories() error {
 			case parent == nil:
 				info.parent = targetDir
 				info.long = dir.Name
-				info.canonical = "TARGETDIR\\" + strings.ToLower(longPart(dir.Name))
+				info.canonical = "TARGETDIR\\" + strings.ToLower(dir.Name)
 			default:
 				info.parent = parent.id
 				info.long = dir.Name
-				info.canonical = parent.canonical + "\\" + strings.ToLower(longPart(dir.Name))
+				info.canonical = parent.canonical + "\\" + strings.ToLower(dir.Name)
 			}
 
 			if dir.Configurable {
@@ -223,21 +221,13 @@ func (b *build) directories() error {
 			}
 
 			b.addDir(info)
-			walk(dir.Children, info, dirPath+".children")
+			walk(dir.Children, info)
 		}
 	}
 
-	walk(b.cfg.Directories, nil, "directories")
+	walk(b.cfg.Directories, nil)
 
 	return nil
-}
-
-func longPart(name string) string {
-	if _, long, ok := strings.Cut(name, "|"); ok {
-		return long
-	}
-
-	return name
 }
 
 func (b *build) addDir(d *dirInfo) {
@@ -256,9 +246,13 @@ func (b *build) ensureStandardDir(id string) {
 }
 
 // writeDirectoryTable emits the rows with generated short names. Every
-// directory is written: the engine resolves the whole chain.
+// directory is written: the engine resolves the whole chain. Directories
+// with one long name in one folder, at any depth, are one folder, so they
+// get one short name; with two, SHORTFILENAMES=1 would presumably split them
+// (inferred from FILE-06 and FILE-07, not tested).
 func (b *build) writeDirectoryTable() {
 	tbl := b.table("Directory")
+	names := make(map[string]string)
 
 	for _, dir := range b.dirOrder {
 		switch {
@@ -272,7 +266,12 @@ func (b *build) writeDirectoryTable() {
 
 			tbl.Add(dir.id, dir.parent, name)
 		default:
-			tbl.Add(dir.id, dir.parent, filename(dir.parent, dir.long, true, b.taken(dir.parent), config.ValidShortName))
+			key := b.folderKey(dir.parent) + "\x1f" + strings.ToLower(dir.long)
+			if _, ok := names[key]; !ok {
+				names[key] = filename(dir.parent, dir.long, true, b.taken(dir.parent), config.ValidShortName)
+			}
+
+			tbl.Add(dir.id, dir.parent, names[key])
 		}
 	}
 }
@@ -532,11 +531,22 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 		return strings.Compare(left.Key, right.Key)
 	})
 
+	// Files with one long name in one folder, from two directory keys or
+	// two conditional components, are one file and get one short name.
+	names := make(map[string]string)
+
 	for i, file := range b.files {
 		file.Sequence = i + 1
 
 		dir := file.Component.dir.id
-		file.FileName = filename(dir, configuredFileName(file), false, b.taken(dir), config.ValidShortName)
+		long := configuredFileName(file)
+
+		key := b.folderKey(dir) + "\x1f" + strings.ToLower(long)
+		if _, ok := names[key]; !ok {
+			names[key] = filename(dir, long, false, b.taken(dir), config.ValidShortName)
+		}
+
+		file.FileName = names[key]
 	}
 
 	if err := b.deriveProductCode(); err != nil {

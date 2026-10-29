@@ -482,7 +482,10 @@ and d did not test their files alone.
   system assigns its own 8.3 names (`PROGRA~1.TXT`, `DATAON~1`), not the
   package's.
 - ICE30 reported only the file cases; the directory cases passed the suite.
-  msi-builder's check (section 11.3) covers directories and files.
+  msi-builder no longer accepts hand-written short names and generates
+  unique ones per folder for directories and files (section 11.3), so it
+  cannot produce these cases from different long names; a file and a
+  directory with the same long name are not checked (section 11.3).
 - Not run: an administrative image, a volume without long names, a duplicate
   shortcut short name, Windows Server 2016.
 

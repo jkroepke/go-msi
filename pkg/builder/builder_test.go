@@ -136,7 +136,7 @@ func TestMinimal(t *testing.T) {
 		t.Errorf("problems: %v", database.Problems)
 	}
 
-	// File row: versioned x64 executable, short|long name, sequence 1.
+	// File row: versioned x64 executable, its 8.3 name as is, sequence 1.
 	fileRows := rows(t, database, "File")
 	if len(fileRows) != 1 {
 		t.Fatalf("File rows: %d", len(fileRows))

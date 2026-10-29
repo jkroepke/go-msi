@@ -107,7 +107,7 @@ func (b *build) writeShortcut(path, carrier, fileKey string, shortcut *config.Sh
 
 	key := shortcut.ID
 	if key == "" {
-		key = generatedID("sc", "Shortcut", fileKey, dirID, strings.ToLower(longPart(shortcut.Name)))
+		key = generatedID("sc", "Shortcut", fileKey, dirID, strings.ToLower(shortcut.Name))
 	}
 
 	// The column holds the generated short name too.

@@ -154,17 +154,6 @@ type Directory struct { //nolint:govet // field order is the YAML key order
 	origin string
 }
 
-// NamePath returns the YAML path that names the directory: the value a
-// generated node comes from, else path + ".name", path being the node's
-// place in Config.Directories.
-func (d *Directory) NamePath(path string) string {
-	if d.origin != "" {
-		return d.origin
-	}
-
-	return path + ".name"
-}
-
 // Feature is a node of the feature tree.
 type Feature struct { //nolint:govet // field order is the YAML key order
 	ID          string `yaml:"id"`

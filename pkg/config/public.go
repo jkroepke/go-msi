@@ -1,7 +1,7 @@
 package config
 
-// FileLongName returns the long name of a file: the long part of a
-// short|long name, else the name, else the base name of the source path.
+// FileLongName returns the long name of a file: its name, else the base name
+// of the source path.
 func FileLongName(f *File) string { return fileName(f) }
 
 // FileKey returns the File table key: the explicit id, else the long name.

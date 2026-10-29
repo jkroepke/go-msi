@@ -49,9 +49,9 @@ func (v *validator) purgeFolder(cfg *Config, known *refs, field string, comp *Co
 	case dir.Name == "" || dir.Name == ".":
 		v.errorf(field+".purge", "%s is its parent folder; purge a folder with its own name", comp.Directory)
 	case unsafeNameInPath(known, comp.Directory) != "":
-		v.errorf(field+".purge", "%s has a %% or a short name (|) in its name: cmd.exe expands %%NAME%% as an "+
-			"environment variable, and with SHORTFILENAMES a short name can be another folder's 8.3 alias; purge "+
-			"a folder whose path has neither", unsafeNameInPath(known, comp.Directory))
+		v.errorf(field+".purge", "%s has a %% or ~ in its name: cmd.exe expands %%NAME%% as an environment variable, "+
+			"and a name such as PROGRA~1 can be another folder's 8.3 alias; purge a folder whose path has neither",
+			unsafeNameInPath(known, comp.Directory))
 	default:
 		if movable := movableAncestor(cfg, known, comp.Directory); movable != "" {
 			v.errorf(field+".purge", "%s can be pointed at any folder (a public id, configurable, or set by an action, "+
@@ -127,10 +127,10 @@ func movableAncestor(cfg *Config, known *refs, dirID string) string {
 
 // unsafeNameInPath returns the first directory from dirID up to its root
 // folder whose name has a %, which cmd.exe expands in the purge command line,
-// or a hand-written short name, which SHORTFILENAMES selects.
+// or a ~, which can make it another folder's 8.3 alias.
 func unsafeNameInPath(known *refs, dirID string) string {
 	for range 64 {
-		if dir := known.dirs[dirID]; dir != nil && strings.ContainsAny(dir.Name, "%|") {
+		if dir := known.dirs[dirID]; dir != nil && strings.ContainsAny(dir.Name, "%~") {
 			return dirID
 		}
 
