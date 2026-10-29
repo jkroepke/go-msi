@@ -30,7 +30,7 @@ The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
   no data and calls `SHChangeNotify(SHCNE_ASSOCCHANGED)` for packages with
   file types (`internal/builder/filetypes.go`, spec 17.6). It loads
   `shell32.dll` with `LoadLibraryExW(..., LOAD_LIBRARY_SEARCH_SYSTEM32)` and
-  `GetProcAddress` at run time instead of importing it, so the import table
+  `GetProcAddress` at runtime instead of importing it, so the import table
   stays kernel32, advapi32 and msi (`cadll_test.go` checks that), and it
   always returns success. Its log line names the session it ran in, since
   the notification presumably reaches only the shell of that session (not
