@@ -209,6 +209,14 @@ func env02Analyze(c *caseLog, path, installed string, payload []byte) *env02Pkg 
 			continue
 		}
 		cab := e.Data
+		if len(cab) < 36 || string(cab[:4]) != "MSCF" {
+			c.logf("cabinet %s: %d bytes, no cabinet header", m[0], len(cab))
+			continue
+		}
+		if le.Uint16(cab[0x1E:])&4 != 0 {
+			c.logf("cabinet %s: reserved header fields present, not decoded", m[0])
+			continue
+		}
 		c.logf("cabinet %s: %d bytes, header %q, set %d/%d, %d folders, %d files, flags %#x",
 			m[0], len(cab), cab[:4], le.Uint16(cab[0x22:]), le.Uint16(cab[0x20:]), le.Uint16(cab[0x1A:]), le.Uint16(cab[0x1C:]), le.Uint16(cab[0x1E:]))
 		for fi := 0; fi < int(le.Uint16(cab[0x1A:])); fi++ {
@@ -224,8 +232,13 @@ func env02Analyze(c *caseLog, path, installed string, payload []byte) *env02Pkg 
 			}
 		}
 		cabPath, dir := c.path("cab1.cab"), c.path("expanded")
-		os.WriteFile(cabPath, cab, 0o644)
-		os.MkdirAll(dir, 0o755)
+		os.RemoveAll(dir) // never read an earlier run's output
+		if err := os.WriteFile(cabPath, cab, 0o644); err != nil {
+			c.logf("  write %s: %v", cabPath, err)
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			c.logf("  mkdir %s: %v", dir, err)
+		}
 		out, err := exec.Command("expand.exe", cabPath, "-F:*", dir).CombinedOutput()
 		if err != nil {
 			c.logf("  expand.exe: %v: %s", err, strings.TrimSpace(string(out)))

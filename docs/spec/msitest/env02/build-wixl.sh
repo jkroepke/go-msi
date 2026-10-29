@@ -7,5 +7,5 @@ docker run --rm -v "$PWD:/w" -w /w mirror.gcr.io/library/debian:trixie bash -c '
   apt-get update -qq >/dev/null
   apt-get install -y -qq --no-install-recommends wixl=0.106+repack-1 >/dev/null
   dpkg-query -W wixl
-  SOURCE_DATE_EPOCH=0 wixl -a x64 -o wixl.msi wixl.wxs
+  wixl -a x64 -o wixl.msi wixl.wxs
   sha256sum wixl.msi'

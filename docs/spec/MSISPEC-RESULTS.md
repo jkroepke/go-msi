@@ -142,7 +142,7 @@ Silent-failure cases a producer has to guard against itself:
 | ID | Result | Evidence and notes |
 | --- | --- | --- |
 | ENV-01 | Confirmed | [inventory](msitest/results/ENV-01/inventory/log.md); control package opens and queries natively |
-| ENV-02 | Confirmed | [WiX](msitest/results/ENV-02/wix/log.md), [wixl](msitest/results/ENV-02/wixl/log.md), [compare](msitest/results/ENV-02/compare/log.md); run 2026-10-29, see [ENV-02](#env-02-wix-and-msitools-one-file-packages) |
+| ENV-02 | Confirmed | [WiX](msitest/results/ENV-02/wix/log.md), [wixl](msitest/results/ENV-02/wixl/log.md), [compare](msitest/results/ENV-02/compare/log.md); run 2026-10-29, see [ENV-02](#wix-and-msitools-one-file-packages-env-02) |
 | CFB-01 | Confirmed | [log](msitest/results/CFB-01/v3-vs-v4/log.md); native writes v4 (finding 6) |
 | CFB-02 | Confirmed | [log](msitest/results/CFB-02/root-clsid/log.md); wrong CLSID: 110 / 1620 |
 | CFB-03 | Confirmed | [log](msitest/results/CFB-03/empty-stream-start/log.md); native uses ENDOFCHAIN |
@@ -243,7 +243,7 @@ Silent-failure cases a producer has to guard against itself:
 | SIG-07 | Not run | msi-rs regression case; test a candidate writer |
 | INT-01…03 | Not run | WiX 5.0.2 is on the machine and wixl 0.106 runs in a container since ENV-02 (2026-10-29); ENV-02 covers only one-file packages |
 
-## ENV-02: WiX and msitools one-file packages
+## WiX and msitools one-file packages (ENV-02)
 
 Run on 2026-10-29 on the ENV-01 machine. Both packages install the same
 24-byte `hello.txt` per machine into their own folder under
@@ -252,19 +252,21 @@ from the sources in [`msitest/env02`](msitest/env02):
 
 - **WiX 5.0.2** (`wix --version` 5.0.2+aa65968c, installed system-wide):
   `wix build -arch x64`, run by `msitest ENV-02`.
-- **msitools wixl 0.106** (`0.106+repack-1`, Debian trixie container):
-  `wixl -a x64`, run by [`build-wixl.sh`](msitest/env02/build-wixl.sh).
-  Two builds of the same source differ (the package code is random), so the
-  log names the SHA-256 of the package that ran.
+- **msitools wixl 0.106** (PID 18 `msitools 0.106`; Debian package
+  `0.106+repack-1` in a trixie container): `wixl -a x64`, run by
+  [`build-wixl.sh`](msitest/env02/build-wixl.sh). Two builds of the same
+  source on 2026-10-29 had different SHA-256 values (outside the logs), so
+  the log names the hash of the package that ran.
 
 Both tools were used as black boxes; no source of either was read. Both
 packages open with `MsiOpenDatabaseW`, answer every `_Tables` query, carry the
 same `MsiFileHash` row, embed one single-folder cabinet that `expand.exe`
-extracts to the payload, and install and uninstall with exit 0, leaving
-nothing behind. The two agree on the root CLSID, every table column type they
-share, the sequence numbers of every action they share, and summary PIDs 1, 2,
-4, 5, 7, 14, 15 and 19 (code page 1252, `x64;1033`, Page Count 500, Word Count
-2, Security 2).
+extracts to the payload, and install and uninstall with exit 0; `hello.txt`
+is gone after the uninstall (other leftovers were checked by hand: no
+uninstall entry and no folder remained). The two agree on the root CLSID,
+every table column type they share, the sequence numbers of every action
+they share, and summary PIDs 1, 2, 4, 5, 7, 14, 15 and 19 (code page 1252,
+`x64;1033`, Page Count 500, Word Count 2, Security 2).
 
 Producer differences, none of which kept either package from installing:
 
@@ -272,23 +274,31 @@ Producer differences, none of which kept either package from installing:
 | --- | --- | --- |
 | Container | CFB v4, 4096-byte sectors, 32 KB | CFB v3, 512-byte sectors, 9.5 KB |
 | Database code page | 65001 (all-ASCII text) | 0 |
-| String refcounts | all equal to the counted references | 51 of 208 differ, e.g. `CostInitialize` stored 1, used 5 |
-| Tables | 16, every one with rows, plus `_Validation` (77 rows) | 33 in `_Tables`; 19 have no rows and no stream; no `_Validation` |
+| String refcounts | all equal to the counted references | 51 of 208 differ; the five logged are all too low, e.g. `CostInitialize` stored 1, used 5 |
+| Tables | 16 including `_Validation` (77 rows), every one with rows | 33 in `_Tables`; 20 have no rows and no stream; no `_Validation` |
 | Cabinet | LZX, `typeCompress` 0x1203 (2¹⁸ window) | MSZIP |
-| Upgrade handling | `Upgrade` rows for older and newer versions, `LaunchCondition` blocking downgrades, `SecureCustomProperties`, `FindRelatedProducts`, `MigrateFeatureStates`, `RemoveExistingProducts` 1401, without any upgrade element in the source | none |
+| Upgrade handling | `Upgrade` rows for older and newer versions, a `LaunchCondition` `NOT WIX_DOWNGRADE_DETECTED`, `SecureCustomProperties`, `FindRelatedProducts`, `MigrateFeatureStates`, `RemoveExistingProducts` 1401, without any upgrade element in the source (no upgrade or downgrade was run) | none |
 | Other actions | `LaunchConditions`, `CreateFolders`, `RemoveFolders` | none of those |
 | `Directory.DefaultDir` | `PFiles64` for `ProgramFiles64Folder`; `iugsytnf\|MsiSpecEnv02Wix` | `.`; `MsiSpecEnv02Wixl` (a 16-character long name without a short part) |
 | PID 18 | `WiX Toolset (5.0.2.0)` | `msitools 0.106` |
 
-What this settles: an under-counted string refcount, a code page 0
-database, catalog entries for empty tables with no data stream, a missing
-`_Validation` table and a long `DefaultDir` without a short part are all
-accepted by `msiexec` for a normal install and uninstall (they match findings
-MSIDB-05 and MSIDB-09 and section 3). msi-builder's own choices are unchanged:
-it keeps exact refcounts, writes `_Validation` and short names, and section 13
-records WiX's defaults; the cabinet window WiX picked here (2¹⁸, one tiny
-file, no compression level set) differs from the 2²¹ seen in the larger WiX
-package of section 13, and what decides it was not tested.
+What the wixl package adds to the findings, each for a normal install and
+uninstall:
+
+- Wrong string refcounts are accepted, as finding 3 (MSIDB-05) found for
+  reading; section 3 still requires exact ones from a writer.
+- Code page 0 is accepted for all-ASCII text (section 3).
+- Tables listed in the catalog without a data stream are accepted (MSIDB-09).
+- New: a package without `_Validation` installs.
+- New: a `DefaultDir` long name without a short part installs, although
+  sections 8.12 and 10.2 have a writer emit an 8.3 short name for every long
+  name.
+
+msi-builder's own choices are unchanged: it keeps exact refcounts and writes
+`_Validation` and short names. WiX's 2¹⁸ window fits `medium`, the
+v4+ default compression (section 11.6), which section 11 reports as LZX 2¹⁸;
+the source set no compression level. Section 13's larger WiX package used
+2²¹.
 
 ## Wizard rendering (UI-01)
 

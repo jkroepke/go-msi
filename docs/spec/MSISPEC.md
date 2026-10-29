@@ -1398,7 +1398,7 @@ Evidence: WiX documentation (no source code), WiX 3.11 packages, and a WiX 5.0.2
 | Generated keys | prefix + 32 hex digits | prefix + 27 chars of `[A-Za-z0-9._]` (`reg`, `fls`, `d`, `scp`); harvested component key = file key (obs) |
 | Short names | 8 chars `[a-z0-9_-]` + extension | same; directories never get an extension (both) |
 | File sequence | File key, case-insensitive | directory path case-insensitive, then filename ordinal, then key (obs) |
-| Major upgrade | none by default; `Upgrade.Language` NULL | added automatically, downgrades blocked (v5, docs; observed in 5.0.2 without any upgrade element, ENV-02); `Language` = ProductLanguage (obs) |
+| Major upgrade | none by default; `Upgrade.Language` NULL | added automatically, downgrades blocked (v5, docs); `Upgrade` rows and a downgrade `LaunchCondition` present in 5.0.2 without any upgrade element (ENV-02, blocking not tested); `Language` = ProductLanguage (obs) |
 | Sequencing | unverified | LaunchConditions omitted without rows; anchor-only standard actions added (BindImage 4300); `SecureCustomProperties` sorted (obs) |
 | Codes | ProductCode authored (`*` = new); UpgradeCode a GUID | random version-4 ProductCode and package code per build (obs); v6 may derive UpgradeCode from a package ID (docs) |
 | PID 3 / 5 / 18 | authored / unverified / `Windows Installer XML Toolset (3.x.y.z)` | product name / `Installer` / `WiX Toolset (5.0.2.0)` (obs) |
@@ -1564,7 +1564,7 @@ Inputs are exact strings; ␟ is U+001F and hex is upper case.
 
 ## 16. Independent implementation comparison
 
-GNOME msitools and WiX are comparative implementations, not authorities for all Windows Installer semantics. Compare them black-box (Appendix C, `ENV-02` and `INT-*`) with pinned versions before promoting a difference to a format assertion. ENV-02 compared WiX 5.0.2 and wixl 0.106 one-file packages on 2026-10-29: every difference was a producer choice that `msiexec` accepted ([results](MSISPEC-RESULTS.md#env-02-wix-and-msitools-one-file-packages)).
+GNOME msitools and WiX are comparative implementations, not authorities for all Windows Installer semantics. Compare them black-box (Appendix C, `ENV-02` and `INT-*`) with pinned versions before promoting a difference to a format assertion. ENV-02 compared WiX 5.0.2 and wixl 0.106 one-file packages on 2026-10-29: every difference was a producer choice that `msiexec` accepted ([results](MSISPEC-RESULTS.md#wix-and-msitools-one-file-packages-env-02)).
 
 ### Interoperability reports
 
