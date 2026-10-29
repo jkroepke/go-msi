@@ -265,14 +265,14 @@ install per user without elevation; a silent per-machine install by a
 standard user fails with 1925. The ICE105 checks of `perUser` apply, except
 that Program Files, Common Files and HKCR are allowed because they follow
 the context. Directories below the Start menu, the desktop, the startup
-and template folders need private (mixed-case) ids: the scope page can only
+and template folders need private (mixed-case) IDs: the scope page can only
 move public folders under Program Files and Common Files, so the install
 folder stays there too. `purge` is rejected under Program Files, Common
-Files and those shell folders, because ICE105 keeps the action unelevated. Custom action ids starting with `SetInstallScope`,
-`SetScope` or `RestoreInstallDir` are taken by the scope page. Like every
-per-user package, a dual one needs its deferred actions that can fail
-before RegisterProduct (section 8.2). A major
-upgrade only finds a product installed in the same context, so a product
+Files and those shell folders, because ICE105 keeps the action unelevated.
+Custom action IDs starting with `SetInstallScope`, `SetScope` or
+`RestoreInstallDir` are taken by the scope page. Like every per-user
+package, a dual one needs its deferred actions that can fail before
+RegisterProduct (section 8.2). A major upgrade only finds a product installed in the same context, so a product
 installed per user and then per machine is installed twice; offer one
 scope as the default and keep upgrades in it.
 
