@@ -251,13 +251,14 @@ Run on 2026-10-29 on the ENV-01 machine. Both packages install the same
 `ProgramFiles64Folder`, with fixed ProductCode, UpgradeCode and component GUID,
 from the sources in [`msitest/env02`](msitest/env02):
 
-- **WiX 5.0.2** (`wix --version` 5.0.2+aa65968c, installed system-wide):
-  `wix build -arch x64`, run by `msitest ENV-02`.
-- **msitools wixl 0.106** (PID 18 `msitools 0.106`; Debian package
-  `0.106+repack-1` in a trixie container): `wixl -a x64`, run by
-  [`build-wixl.sh`](msitest/env02/build-wixl.sh). Two builds of the same
-  source on 2026-10-29 had different SHA-256 values (outside the logs), so
-  the log names the hash of the package that ran.
+- **WiX 5.0.2** (`wix --version` 5.0.2+aa65968c): `wix build -arch x64`,
+  run by `msitest ENV-02`.
+- **msitools wixl 0.106** (PID 18 `msitools 0.106`): `wixl -a x64`, run by
+  [`build-wixl.sh`](msitest/env02/build-wixl.sh), which pins the Debian
+  trixie package `0.106+repack-1`. Two builds of the same source on
+  2026-10-29 had different SHA-256 values, so the log names the hash of the
+  package that ran. The package pin and the two hashes come from the build
+  setup, not from the logs.
 
 Both tools were used as black boxes; no source of either was read. Both
 packages open with `MsiOpenDatabaseW`, answer every `_Tables` query, carry the
@@ -269,7 +270,8 @@ every table column type they share, the sequence numbers of every action
 they share, and summary PIDs 1, 2, 4, 5, 7, 14, 15 and 19 (code page 1252,
 `x64;1033`, Page Count 500, Word Count 2, Security 2).
 
-Producer differences, none of which kept either package from installing:
+Differences, none of which kept either package from installing (two of
+wixl's break spec rules, see below):
 
 | | WiX 5.0.2 | wixl 0.106 |
 | --- | --- | --- |
@@ -283,17 +285,20 @@ Producer differences, none of which kept either package from installing:
 | `Directory.DefaultDir` | `PFiles64` for `ProgramFiles64Folder`; `iugsytnf\|MsiSpecEnv02Wix` | `.`; `MsiSpecEnv02Wixl` (a 16-character long name without a short part) |
 | PID 18 | `WiX Toolset (5.0.2.0)` | `msitools 0.106` |
 
-What the wixl package adds to the findings, each for a normal install and
-uninstall:
+How the wixl package lines up with earlier findings, each for a normal
+install and uninstall:
 
 - Wrong string refcounts are accepted, as finding 3 (MSIDB-05) found for
-  reading; section 3 still requires exact ones from a writer.
+  reading; section 3 still requires exact ones from a writer, so this is a
+  rule wixl breaks, not a producer choice.
 - Code page 0 is accepted for all-ASCII text (section 3).
 - Tables listed in the catalog without a data stream are accepted (MSIDB-09).
-- A package without `_Validation` installs, as section 6.3 states (first
-  observation).
-- New: a `DefaultDir` long name without a short part installs, although
-  sections 6.4 and 8.12 require an 8.3 short name for every long name.
+- A package without `_Validation` installs, as section 6.3 states and
+  MSIDB-10 confirmed.
+- A `DefaultDir` long name without a short part installs, now also in a
+  compressed package after CAB-01
+  [`uncompressed-longonly-dir`](msitest/results/CAB-01/uncompressed-longonly-dir/log.md);
+  sections 6.4 and 8.12 still require an 8.3 short name for every long name.
 
 msi-builder's own choices are unchanged: it keeps exact refcounts and writes
 `_Validation` and short names. WiX's 2¹⁸ window fits `medium`, the
