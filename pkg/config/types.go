@@ -35,6 +35,7 @@ type Config struct { //nolint:govet // field order is the YAML key order
 	Icons            map[string]string `yaml:"icons"`
 	Binaries         map[string]string `yaml:"binaries"`
 	Firewall         []*FirewallRule   `yaml:"firewall"`
+	ScheduleReboot   *ScheduleReboot   `yaml:"scheduleReboot"`
 	UI               UI                `yaml:"ui"`
 	Tables           []*Table          `yaml:"tables"`
 
@@ -586,6 +587,21 @@ type Placement struct { //nolint:govet // field order is the YAML key order
 	// When is install, upgrade, uninstall or maintenance: a condition that
 	// is ANDed with Condition (see Placement.FullCondition).
 	When string `yaml:"when"`
+}
+
+// ScheduleReboot asks for a restart at the end of the installation: the
+// ScheduleReboot action after InstallFinalize. With /norestart or
+// REBOOT=ReallySuppress msiexec returns 3010 instead of restarting; a quiet
+// install without them may restart without asking.
+type ScheduleReboot struct {
+	// When is install, upgrade, uninstall or maintenance, as in a schedule.
+	When      string `yaml:"when"`
+	Condition string `yaml:"condition"`
+}
+
+// Placement returns the reboot's placement in the execute sequence.
+func (r *ScheduleReboot) Placement() *Placement {
+	return &Placement{Sequence: "execute", After: "InstallFinalize", Condition: r.Condition, When: r.When}
 }
 
 // FirewallRule is an inbound rule that follows a component's state.

@@ -854,6 +854,26 @@
         ]
       }
     },
+    "scheduleReboot": {
+      "type": "object",
+      "description": "Ask for a restart at the end of the installation: ScheduleReboot after InstallFinalize. With /norestart or REBOOT=ReallySuppress msiexec returns 3010 instead of restarting; a quiet install without them may restart without asking.",
+      "properties": {
+        "when": {
+          "enum": [
+            "install",
+            "upgrade",
+            "uninstall",
+            "maintenance"
+          ],
+          "description": "The case it runs in, ANDed with condition."
+        },
+        "condition": {
+          "type": "string",
+          "description": "Condition of the ScheduleReboot row."
+        }
+      },
+      "additionalProperties": false
+    },
     "ui": {
       "type": "object",
       "properties": {
