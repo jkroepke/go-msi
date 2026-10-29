@@ -183,7 +183,7 @@ way:
 
 | Short form | Expands to |
 |---|---|
-| no `installDir` | `INSTALLDIR`, configurable, named after the product, under `ProgramFiles64Folder` (`ProgramFilesFolder` on x86, `LocalAppDataFolder\Programs` for `perUser`). Not added when `directories` already defines that ID (section 4.4); added next to a tree with other upper-case directory IDs, it warns, since components without `directory` go there. |
+| no `installDir` | `INSTALLDIR`, configurable, named after the product, under `ProgramFiles64Folder` (`ProgramFilesFolder` on x86, `LocalAppDataFolder\Programs` for `perUser`). Not added when `directories` already defines that ID (section 4.4); added next to a tree with a configurable directory, or an upper-case one below Program Files, it warns, since components without `directory` go there. |
 | component without `directory` | the install dir |
 | `directory: bin` or `directory: CommonAppDataFolder/Hello/logs` | directory nodes for the path, with generated IDs such as `INSTALLDIR_bin` (section 4.4) |
 | component without `id` | an ID from the key file's name (`hello.exe`), else the first service name, else the directory ID |
@@ -280,12 +280,12 @@ detection row.
 | `afterInstallExecute` (default when a component has `preserve: true`) | right after InstallExecute | new first, then old, one transaction; strict component rules |
 | `afterInstallFinalize` | after InstallFinalize | separate transaction; a failed removal leaves both |
 
-"Strict component rules" bites when a package moves from another toolset.
-In the round-4 real-world check (podman, 2026-10-29), WiX's harvested docs
-and the msi-builder folder source installed the same files under different
-component GUIDs. With `afterInstallExecute`, the new product skipped the
-files that were already there ("hash matches"), and removing the old
-product then deleted them. A component that kept WiX's GUID through
+"Strict component rules" bite when a package moves from another toolset
+whose components install the same files under different GUIDs, for example
+harvested components replaced by a folder source. With
+`afterInstallExecute`, the new product skips the files that are already
+there ("hash matches"), and removing the old product then deletes them
+(observed on Windows Server 2025). A component that kept WiX's GUID through
 `guid` survived. Early removal keeps all of them; for a folder source,
 which cannot take a `guid`, it is the only way.
 
@@ -302,7 +302,8 @@ installDir:
   id: APPLICATIONFOLDER               # Directory key and property, default INSTALLDIR
   name: Example/windows_exporter      # "/" nests folders, default product.name
   parent: ProgramFiles64Folder        # a standard folder, default by platform and scope;
-                                      # perUser: LocalAppDataFolder, with Programs/ before name
+                                      # perUser: LocalAppDataFolder\Programs; a name written
+                                      # next to an explicit parent is used as written
   remember: true                      # reuse the folder of the last install, default false
 ```
 

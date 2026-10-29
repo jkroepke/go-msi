@@ -85,7 +85,7 @@ func TestRemoveFiles(t *testing.T) {
 
 // TestRemoveFilesDuplicateFolder warns about a hand-written folder entry for
 // a folder that a generated row already removes (round 4: renderdoc,
-// rakudo), and not about one that removes the folder on install.
+// rakudo), and not about one that also removes the folder on install.
 func TestRemoveFilesDuplicateFolder(t *testing.T) {
 	t.Parallel()
 
@@ -95,7 +95,7 @@ func TestRemoveFilesDuplicateFolder(t *testing.T) {
         shortcuts: [{ directory: ProgramMenuFolder/Acme }]
   - directory: ProgramMenuFolder/Acme
     registry: [{ root: HKCU, key: Software\Acme, name: menu, type: dword, value: 1 }]
-    removeFiles: [{}, { on: install }]
+    removeFiles: [{}, { on: install }, { on: both }]
 `)
 
 	var warned []string

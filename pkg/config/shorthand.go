@@ -593,23 +593,40 @@ type dirTree struct {
 	installOrigin string
 	// installDefaulted is set when the file sets no installDir.
 	installDefaulted bool
+	// installCandidates are the directories of the file's own tree that
+	// could be meant as the install dir.
+	installCandidates []string
 }
 
 func newDirTree(cfg *Config) *dirTree {
 	tree := &dirTree{cfg: cfg, byID: make(map[string]*Directory)}
 
-	var walk func([]*Directory)
+	var walk func([]*Directory, string)
 
-	walk = func(dirs []*Directory) {
+	walk = func(dirs []*Directory, top string) {
 		for _, dir := range dirs {
 			if _, dup := tree.byID[dir.ID]; !dup {
 				tree.byID[dir.ID] = dir
 			}
 
-			walk(dir.Children)
+			if top == "" && standardFolders[dir.ID] && dir.ID != targetDir {
+				walk(dir.Children, dir.ID)
+
+				continue
+			}
+
+			// A configurable directory, or one below Program Files, may be
+			// the install dir the file meant.
+			if !standardFolders[dir.ID] && IsPublicProperty(dir.ID) && (dir.Configurable || programFilesFolders[top]) {
+				tree.installCandidates = append(tree.installCandidates, dir.ID)
+			}
+
+			walk(dir.Children, top)
 		}
 	}
-	walk(cfg.Directories)
+	walk(cfg.Directories, "")
+
+	slices.Sort(tree.installCandidates)
 
 	return tree
 }
@@ -682,29 +699,13 @@ func (t *dirTree) ensureInstallDir() *Directory {
 	}
 
 	if t.installDefaulted {
-		t.cfg.InstallDir.besides = strings.Join(t.publicIDs(), ", ")
+		t.cfg.InstallDir.besides = strings.Join(t.installCandidates, ", ")
 	}
 
 	dir := t.child(parent, names[len(names)-1], install.ID)
 	dir.Configurable = true
 
 	return dir
-}
-
-// publicIDs returns the upper-case ids of the directories in the tree
-// other than standard folders such as TARGETDIR.
-func (t *dirTree) publicIDs() []string {
-	var ids []string
-
-	for id := range t.byID {
-		if IsPublicProperty(id) && !standardFolders[id] {
-			ids = append(ids, id)
-		}
-	}
-
-	slices.Sort(ids)
-
-	return ids
 }
 
 // installNames returns the folders of the install dir's path. A name taken

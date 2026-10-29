@@ -593,9 +593,9 @@ type Placement struct { //nolint:govet // field order is the YAML key order
 	When string `yaml:"when"`
 }
 
-// RegistryTypeKey is the registry type of an entry that creates a key
+// registryTypeKey is the registry type of an entry that creates a key
 // without a value.
-const RegistryTypeKey = "key"
+const registryTypeKey = "key"
 
 // ScheduleReboot asks for a restart at the end of the installation: the
 // ScheduleReboot action after InstallFinalize. With /norestart or

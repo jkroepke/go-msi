@@ -1126,3 +1126,22 @@ func TestRemoveFilesEmptyEntry(t *testing.T) {
 		t.Errorf("parse: %v", err)
 	}
 }
+
+// TestInstallDirBesideDataFolder does not warn about a default install dir
+// next to an upper-case data folder, which is no install dir.
+func TestInstallDirBesideDataFolder(t *testing.T) {
+	t.Parallel()
+
+	doc := strings.Replace(base, "  - id: ProgramFiles64Folder\n    children:\n      - id: INSTALLDIR\n        name: App\n        configurable: true\n",
+		"  - id: CommonAppDataFolder\n    children:\n      - id: DATADIR\n        name: App\n", 1) +
+		"components:\n  - files: [{ source: app.exe }]\n  - { directory: DATADIR, createFolder: true }\n"
+	if !strings.Contains(doc, "DATADIR") {
+		t.Fatal("base changed; update the test")
+	}
+
+	for _, d := range validate(t, doc) {
+		if strings.Contains(d.Message, "next to") {
+			t.Errorf("unexpected warning: %s: %s", d.Path, d.Message)
+		}
+	}
+}

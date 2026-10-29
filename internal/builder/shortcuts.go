@@ -180,7 +180,7 @@ func (b *build) removeFiles() error {
 			dirID := cmp.Or(entry.Directory, comp.Directory)
 			b.dirs[dirID].used = true
 
-			if entry.Name == "" && entry.On != config.RemoveOnInstall && b.removedFolders[dirID] {
+			if entry.Name == "" && entry.On == config.RemoveOnUninstall && b.removedFolders[dirID] {
 				b.warnf(fmt.Sprintf("%s.removeFiles[%d]", comp.Path(i), j),
 					"the builder already removes this folder on uninstall, for a shortcut or a component in the user profile; this entry adds a second row")
 			}
