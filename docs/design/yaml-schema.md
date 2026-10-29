@@ -739,8 +739,9 @@ writes only the `OpenWithProgids` entry: the program shows up under Open
 with and the extension keeps its default program and content type
 (`contentType` is then an error). Uninstalling removes only that entry and
 keeps other programs' entries (REG-04). Any number of ProgIDs may list an
-extension with `openWithOnly`; the default may be registered once. Explorer's "Open with" choice of the user
-(`UserChoice`) still wins over the package's default.
+extension with `openWithOnly`; the default may be registered once.
+Explorer's "Open with" choice of the user (`UserChoice`) still wins over the
+package's default.
 
 **Permissions.** A file, registry value, service or the component's folder
 can carry a `permissions` block (`folderPermissions` on the component, which
