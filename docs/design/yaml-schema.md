@@ -1655,8 +1655,8 @@ disk usage. Browse changes the directory of the selected feature
 (`features[].directory`); the generated `MainFeature` has the install dir.
 Every wizard includes maintenance (Repair and Remove; Change with the
 feature tree), cancel, user exit, fatal error, files in use, Restart
-Manager and the error dialog. Added dialogs are laid out automatically: one label and one edit field per
-property, Back, Next and Cancel. The fields of one dialog must fit in 160
+Manager and the error dialog. Added dialogs are laid out automatically:
+one label and one edit field per property, Back, Next and Cancel. The fields of one dialog must fit in 160
 dialog units (four text fields); the error names the height they need. A `password`
 field is an edit field with the Password attribute (0x200000), and its
 property is added to `MsiHiddenProperties`. A `checkbox` field is a
