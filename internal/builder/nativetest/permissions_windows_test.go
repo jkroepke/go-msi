@@ -152,7 +152,7 @@ components:
     directory: CommonAppDataFolder/MsiBuilderGrant/existing
     createFolder: true
     folderPermissions:
-      grant: [{ account: S-1-5-19, rights: full }]
+      grant: [{ account: 'NT AUTHORITY\LocalService', rights: full }]
 customActions:
   - id: FailNow
     run: { command: '"[System64Folder]cmd.exe" /c exit 1' }

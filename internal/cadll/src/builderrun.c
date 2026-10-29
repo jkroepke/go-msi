@@ -545,8 +545,17 @@ static const WCHAR msgNotGranted[] = u"nothing to revoke";
 static const WCHAR msgGranted[] = u"granted";
 static const WCHAR msgRevoked[] = u"revoked";
 static const WCHAR msgAcl[] = u"cannot build the new DACL";
-static const WCHAR localSystem[] = u"LocalSystem";
-static const WCHAR localSystemSid[] = u"S-1-5-18";
+
+// The service control manager's names of the built-in service accounts,
+// which ServiceInstall.StartName uses: an account in a property that also
+// names a service account comes in this form. LookupAccountNameW knows
+// these accounts as NT AUTHORITY\LOCAL SERVICE and NETWORK SERVICE.
+static const WCHAR *const serviceAccounts[][2] = {
+    {u"LocalSystem", u"S-1-5-18"},
+    {u".\\LocalSystem", u"S-1-5-18"},
+    {u"NT AUTHORITY\\LocalService", u"S-1-5-19"},
+    {u"NT AUTHORITY\\NetworkService", u"S-1-5-20"},
+};
 
 static WCHAR wlower(WCHAR c)
 {
@@ -592,8 +601,11 @@ static WCHAR *hexfield(WCHAR *p, DWORD *value)
 static void *resolveSid(MSIHANDLE install, const WCHAR *account)
 {
     HANDLE heap = GetProcessHeap();
-    if (wieq(account, localSystem)) {
-        account = localSystemSid;
+    for (SIZE_T i = 0; i < sizeof serviceAccounts / sizeof serviceAccounts[0]; i++) {
+        if (wieq(account, serviceAccounts[i][0])) {
+            account = serviceAccounts[i][1];
+            break;
+        }
     }
     SIZE_T n = wlen(account);
     void *converted = 0;
