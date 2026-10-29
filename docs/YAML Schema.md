@@ -161,31 +161,28 @@ and `password` say otherwise.
 ### Give a service account access to a folder
 
 `grant` adds rights for an account to the folder and keeps the permissions
-it already has, including the ones it inherits from `ProgramData`. The
-account can come from a property, for example one set on the command line
-(`msiexec /i hello.msi SERVICE_ACCOUNT=CONTOSO\svc-hello`):
+it already has, including the ones it inherits from `ProgramData`:
 
 ```yaml
-properties:
-  SERVICE_ACCOUNT: NT AUTHORITY\NetworkService
-
 components:
   - files:
       - source: hello.exe
     services:
       - name: Hello
-        account: '[SERVICE_ACCOUNT]'
+        account: NT AUTHORITY\NetworkService
   - directory: CommonAppDataFolder/Hello/data
     createFolder: true
     folderPermissions:
       grant:
-        - account: '[SERVICE_ACCOUNT]'
+        - account: NT AUTHORITY\NetworkService
           rights: modify        # full, modify, readExecute, read or write
 ```
 
 The rights apply to the subfolders and files too. Files and services take
-`grant` in their `permissions` block. To replace the permissions instead,
-write an SDDL string in `sddl`.
+`grant` in their `permissions` block. The account can also be a property,
+`account: '[SERVICE_ACCOUNT]'`; a property set on the command line is not
+remembered, so pass it again to a repair. To replace the permissions
+instead of adding to them, write an SDDL string in `sddl`.
 
 ### Add the program to PATH
 

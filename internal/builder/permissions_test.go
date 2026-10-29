@@ -127,6 +127,9 @@ func TestPermissionGrants(t *testing.T) {
 			{Account: `.\svc`, Rights: config.StringList{"read"}, Inherit: &noInherit},
 		},
 	}
+	comp.Services = []*config.Service{{Name: "HelloSvc", Permissions: &config.Permissions{
+		Grant: []*config.Grant{{Account: "BU", Rights: config.StringList{"start", "stop"}}},
+	}}}
 
 	res := mustBuild(t, cfg)
 	database := res.Database
@@ -135,10 +138,17 @@ func TestPermissionGrants(t *testing.T) {
 		t.Errorf("MsiLockPermissionsEx rows %v, want the folder SDDL only", locks)
 	}
 
-	want := map[string]string{
-		"+f|1300a9|0|[SVC_ACCOUNT]|[#hello.exe]":     "$" + comp.ID + "=3",
-		"+f|1301bf|3|NS|[" + comp.Directory + "]":    "$" + comp.ID + "=3 AND (DATA=1)",
-		`+f|120089|0|.\svc|[` + comp.Directory + "]": "$" + comp.ID + "=3 AND (DATA=1)",
+	installed := "$" + comp.ID + "=3"
+	dir := "[" + comp.Directory + "]"
+	want := strings.Join([]string{
+		installed + " AND (DATA=1)\x1ff|1301bf|3\x1fNS\x1f" + dir,
+		installed + " AND (DATA=1)\x1ff|120089|0\x1f.\\svc\x1f" + dir,
+		installed + "\x1fs|30|0\x1fBU\x1fHelloSvc",
+		installed + "\x1ff|1300a9|0\x1f[SVC_ACCOUNT]\x1f[#hello.exe]",
+	}, "\n")
+
+	if got := cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "BuilderGrants" }); got != want {
+		t.Errorf("BuilderGrants\n%q\nwant\n%q", got, want)
 	}
 
 	seq := make(map[string]int)
@@ -149,56 +159,31 @@ func TestPermissionGrants(t *testing.T) {
 		}
 	}
 
-	found := 0
+	prev := "InstallServices"
 
-	for _, row := range rows(t, database, "CustomAction") {
-		data := fmt.Sprint(row[3])
-
-		cond, ok := want[data]
-		if !ok || fmt.Sprint(row[1]) != "51" {
-			continue
+	for _, action := range []struct {
+		name, entry string
+		typ         int
+	}{
+		{"BuilderGrantSchedule", "BuilderGrantSchedule", 1},
+		{"BuilderGrantRollback", "BuilderGrant", 1 | 0x500 | 0x800}, // DLL, rollback, no impersonation
+		{"BuilderGrantExec", "BuilderGrant", 1 | 0x400 | 0x800},     // deferred
+		{"BuilderGrantCommit", "BuilderGrant", 1 | 0x600 | 0x800},   // commit
+	} {
+		r := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == action.name })
+		if fmt.Sprint(r[1]) != strconv.Itoa(action.typ) || r[2] != "BuilderRun" || r[3] != action.entry {
+			t.Errorf("%s row %v", action.name, r)
 		}
 
-		found++
-		deferred := fmt.Sprint(row[2])
-		rollback := deferred + "Rollback"
-
-		if got := cell(t, database, "CustomAction", "Target", func(r []any) bool { return r[0] == rollback+".Data" }); got != "-"+data[1:] {
-			t.Errorf("%s data %v, want %s", rollback, got, "-"+data[1:])
+		if seq[action.name] <= seq[prev] {
+			t.Errorf("%s at %d is not after %s at %d", action.name, seq[action.name], prev, seq[prev])
 		}
 
-		for _, action := range []struct {
-			name string
-			typ  int
-		}{{rollback, 1 | 0x500 | 0x800}, {deferred, 1 | 0x400 | 0x800}} { // DLL, rollback or deferred, no impersonation
-			r := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == action.name })
-			if fmt.Sprint(r[1]) != strconv.Itoa(action.typ) || r[2] != "BuilderRun" || r[3] != "BuilderGrant" {
-				t.Errorf("%s row %v", action.name, r)
-			}
-		}
-
-		order := []string{deferred + ".Data", rollback + ".Data", rollback, deferred}
-		prev := ""
-
-		for _, name := range order {
-			if got := cell(t, database, "InstallExecuteSequence", "Condition", func(r []any) bool { return r[0] == name }); got != cond {
-				t.Errorf("%s condition %v, want %s", name, got, cond)
-			}
-
-			if prev != "" && seq[name] <= seq[prev] {
-				t.Errorf("%s at %d is not after %s at %d", name, seq[name], prev, seq[prev])
-			}
-
-			prev = name
-		}
-
-		if seq[deferred+".Data"] <= seq["InstallFiles"] || seq[deferred] >= seq["InstallFinalize"] {
-			t.Errorf("%s runs at %d..%d, InstallFiles at %d", deferred, seq[deferred+".Data"], seq[deferred], seq["InstallFiles"])
-		}
+		prev = action.name
 	}
 
-	if found != len(want) {
-		t.Errorf("found %d of %d grants", found, len(want))
+	if seq[prev] >= seq["StartServices"] {
+		t.Errorf("%s at %d is not before StartServices at %d", prev, seq[prev], seq["StartServices"])
 	}
 }
 
@@ -228,6 +213,15 @@ func TestPermissionGrantErrors(t *testing.T) {
 		"inherit on a file": {func(c *config.Component) {
 			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "NS", Rights: config.StringList{"read"}, Inherit: &yes}}}
 		}, "folders only"},
+		"generic mask": {func(c *config.Component) {
+			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "NS", Rights: config.StringList{"0x10000000"}}}}
+		}, "generic"},
+		"pipe in account": {func(c *config.Component) {
+			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "a|b", Rights: config.StringList{"read"}}}}
+		}, "cannot contain |"},
+		"line break in condition": {func(c *config.Component) {
+			c.Files[0].Permissions = &config.Permissions{Condition: "A=1\nOR B=1", Grant: []*config.Grant{{Account: "NS", Rights: config.StringList{"read"}}}}
+		}, "line breaks"},
 		"zero mask": {func(c *config.Component) {
 			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "NS", Rights: config.StringList{"0x0"}}}}
 		}, "non-zero"},

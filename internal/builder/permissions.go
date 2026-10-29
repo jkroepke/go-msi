@@ -1,9 +1,10 @@
 package builder
 
 import (
-	"strconv"
+	"strings"
 
 	"github.com/jkroepke/msi-builder/internal/cadll"
+	"github.com/jkroepke/msi-builder/internal/rights"
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
@@ -96,16 +97,43 @@ func (b *build) grant(component, object string, kind byte, flags uint32, perm *c
 	}
 }
 
-// grantActions turns every grant into a deferred BuilderGrant action that
-// runs as the installer (not impersonated) when the component is installed
-// or repaired, after the object exists and before StartServices, with a
-// rollback that takes the rights away again; a type-51 action before each
-// formats its CustomActionData. Nothing runs on removal: the objects the
-// package created go with it.
+// grantActions writes the grants into the BuilderGrants property, one line
+// per grant with its condition (the component is installed or repaired, and
+// the block's condition), and adds the actions on the embedded DLL that
+// apply them (specification section 17.7): BuilderGrantSchedule evaluates the
+// conditions and formats accounts and objects, then the deferred
+// BuilderGrantExec grants as the installer (not impersonated), its rollback
+// takes away what it added and the commit action drops the record of that.
+// They run after the objects exist and before StartServices. Nothing runs
+// on removal: the objects the package created go with it.
 func (b *build) grantActions() {
 	if len(b.grants) == 0 || !b.useRunDLL() {
 		return
 	}
+
+	if _, ok := b.cfg.Properties[cadll.GrantProperty]; ok {
+		b.errorf("properties."+cadll.GrantProperty, "the property %s is reserved for permission grants", cadll.GrantProperty)
+
+		return
+	}
+
+	lines := make([]string, 0, len(b.grants))
+
+	for _, grant := range b.grants {
+		mask, err := rights.Mask(grant.cfg.Rights, grant.kind == cadll.GrantService)
+		if err != nil {
+			continue // reported by validation
+		}
+
+		cond := "$" + grant.component + "=3"
+		if grant.condition != "" {
+			cond += " AND (" + grant.condition + ")"
+		}
+
+		lines = append(lines, cadll.GrantEntry(cond, grant.kind, mask, grant.flags, grant.cfg.Account, grant.object))
+	}
+
+	b.properties[cadll.GrantProperty] = strings.Join(lines, "\n")
 
 	anchor := actInstallFiles
 	if b.hasRows("ServiceInstall") {
@@ -114,33 +142,15 @@ func (b *build) grantActions() {
 
 	b.standardAt(seqInstallExecute, anchor)
 
-	for _, grant := range b.grants {
-		mask, err := config.GrantMask(grant.cfg.Rights, grant.kind == cadll.GrantService)
-		if err != nil {
-			continue // reported by validation
-		}
+	actions := []*actionInfo{
+		{name: cadll.GrantSchedule, typ: caDLL, source: cadll.Key, target: cadll.GrantSchedule},
+		{name: cadll.GrantRollback, typ: caDLL | caRollback | caNoImpersonate, source: cadll.Key, target: cadll.GrantEntryPoint},
+		{name: cadll.GrantExec, typ: caDLL | caDeferred | caNoImpersonate, source: cadll.Key, target: cadll.GrantEntryPoint},
+		{name: cadll.GrantCommit, typ: caDLL | caCommit | caNoImpersonate, source: cadll.Key, target: cadll.GrantEntryPoint},
+	}
 
-		name := generatedID("Grant", string(grant.kind), grant.object, grant.cfg.Account,
-			strconv.FormatUint(uint64(mask), 16), strconv.FormatUint(uint64(grant.flags), 16))
-		if b.action(name) != nil {
-			continue // the same grant twice
-		}
-
-		cond := "$" + grant.component + "=3"
-		if grant.condition != "" {
-			cond += " AND (" + grant.condition + ")"
-		}
-
-		rollback := name + "Rollback"
-		b.addAction(&actionInfo{name: name + ".Data", typ: caSetProperty, source: name,
-			target: cadll.GrantData(false, grant.kind, mask, grant.flags, grant.cfg.Account, grant.object)})
-		b.addAction(&actionInfo{name: rollback + ".Data", typ: caSetProperty, source: rollback,
-			target: cadll.GrantData(true, grant.kind, mask, grant.flags, grant.cfg.Account, grant.object)})
-		b.addAction(&actionInfo{name: rollback, typ: caDLL | caRollback | caNoImpersonate, source: cadll.Key, target: cadll.GrantEntry})
-		b.addAction(&actionInfo{name: name, typ: caDLL | caDeferred | caNoImpersonate, source: cadll.Key, target: cadll.GrantEntry})
-
-		for _, action := range []string{name + ".Data", rollback + ".Data", rollback, name} {
-			b.schedule(seqInstallExecute, action, cond, "", anchor, 0)
-		}
+	for _, action := range actions {
+		b.addAction(action)
+		b.schedule(seqInstallExecute, action.name, `NOT REMOVE~="ALL"`, "", anchor, 0)
 	}
 }

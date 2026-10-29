@@ -57,8 +57,10 @@ versioning after 1.0.
   (SIG-09). `nativetest/cabsign_windows_test.go` probes it with growing
   buffers, because a call without a buffer returns 0 and size 0.
 - [`internal/cadll`](internal/cadll): the custom action DLL that `run`
-  actions embed, built from C by `build.sh` with clang and lld and committed
-  for x86, x64 and arm64; see its `AGENTS.md` before touching it.
+  actions and permission grants embed, built from C by `build.sh` with
+  clang and lld and committed for x86, x64 and arm64; see its `AGENTS.md`
+  before touching it. [`internal/rights`](internal/rights) maps grant
+  rights names to access masks for `pkg/config` and the builder.
 - [`internal/schema`](internal/schema), [`internal/pe`](internal/pe),
   [`internal/condition`](internal/condition), [`internal/sequence`](internal/sequence),
   [`internal/codepage`](internal/codepage), [`internal/artwork`](internal/artwork):

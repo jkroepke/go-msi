@@ -165,8 +165,10 @@ customActions:
 // TestMsiexecGrants installs grantConfig (SEC-02): each grant adds one
 // explicit ACE, the inherited ACEs and the explicit ACE the test put on the
 // existing folder stay, a repair adds no second ACE, the rollback of a
-// failed install takes the rights away again, and an empty account fails
-// the install.
+// failed install takes the rights away again, the rollback of a failed
+// repair keeps the rights the install granted, an empty account fails the
+// install, and uninstalling leaves the ACE on the folder that existed
+// before.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestMsiexecGrants(t *testing.T) {
@@ -181,6 +183,11 @@ func TestMsiexecGrants(t *testing.T) {
 	app := filepath.Join(installDir, "app.exe")
 
 	if err := os.MkdirAll(existing, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	// A file of its own keeps the folder when the package is removed.
+	if err := os.WriteFile(filepath.Join(existing, "keep.txt"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -263,8 +270,27 @@ func TestMsiexecGrants(t *testing.T) {
 		}
 	}
 
+	// A repair that fails after the grants keeps the rights that were there.
+	if code := msiexecCode(t, filepath.Join(dir, "repair-rollback.log"), "/fa", path, account, "FAILNOW=1"); code != 1603 {
+		t.Fatalf("repair with FAILNOW=1 returned %d, want 1603", code)
+	}
+
+	for name, object := range map[string]string{"data folder": data, "existing folder": existing} {
+		if got := objectSDDL(t, object); got != installed[name] {
+			t.Errorf("%s after a failed repair:\n%s\nwant\n%s", name, got, installed[name])
+		}
+	}
+
+	if got := serviceSDDL(t, "MsiBuilderGrantSvc"); got != installed["service"] {
+		t.Errorf("service after a failed repair: %s, want %s", got, installed["service"])
+	}
+
 	msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
-	t.Logf("SEC-02: after uninstall, existing folder: %s", objectSDDL(t, existing))
+
+	// Uninstalling leaves the ACE on the folder that outlives the package.
+	if got := objectSDDL(t, existing); got != installed["existing folder"] {
+		t.Errorf("existing folder after uninstall:\n%s\nwant\n%s", got, installed["existing folder"])
+	}
 }
 
 // serviceSDDL returns the security descriptor of a service.

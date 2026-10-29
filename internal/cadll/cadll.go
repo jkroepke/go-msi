@@ -13,14 +13,14 @@ package cadll
 import (
 	"embed"
 	"fmt"
+	"strings"
 )
 
-// Key is the Binary table key of the DLL, Entry the exported entry point of
-// run actions and GrantEntry the one of permission grants.
+// Key is the Binary table key of the DLL and Entry the exported entry point
+// of run actions.
 const (
-	Key        = "BuilderRun"
-	Entry      = "BuilderRun"
-	GrantEntry = "BuilderGrant"
+	Key   = "BuilderRun"
+	Entry = "BuilderRun"
 
 	// DataProperty is the property an immediate action reads its command
 	// from; deferred actions read CustomActionData, which the engine takes
@@ -59,24 +59,31 @@ func Binary(platform string) ([]byte, error) {
 	return data, nil
 }
 
-// Grant kinds: the object of a grant is a file or folder path, or a
-// service name.
+// Permission grants: the property the builder lists them in, the actions
+// that apply them (named like their entry points where they have their own)
+// and the kinds of object.
 const (
+	GrantProperty   = "BuilderGrants"
+	GrantSchedule   = "BuilderGrantSchedule"
+	GrantEntryPoint = "BuilderGrant"
+	GrantExec       = "BuilderGrantExec"
+	GrantRollback   = "BuilderGrantRollback"
+	GrantCommit     = "BuilderGrantCommit"
+
 	GrantFile    = 'f'
 	GrantService = 's'
+
+	// grantSeparator separates the fields of a BuilderGrants line: the
+	// condition, the rights, the account and the object.
+	grantSeparator = "\x1f"
 )
 
-// GrantData encodes one grant (revoke for the rollback) for BuilderGrant:
-// the access mask, the ACE inheritance flags, the account and the object.
-// An account name cannot contain the separator, so the object, which may,
-// comes last.
-func GrantData(revoke bool, kind byte, mask, flags uint32, account, object string) string {
-	op := "+"
-	if revoke {
-		op = "-"
-	}
-
-	return fmt.Sprintf("%s%c|%x|%x|%s|%s", op, kind, mask, flags, account, object)
+// GrantEntry encodes one line of the BuilderGrants property: the condition
+// under which it applies, the kind of object, the access mask, the ACE
+// inheritance flags, and the account and object, which BuilderGrantSchedule
+// formats. None of the texts may contain a line break or U+001F.
+func GrantEntry(condition string, kind byte, mask, flags uint32, account, object string) string {
+	return strings.Join([]string{condition, fmt.Sprintf("%c|%x|%x", kind, mask, flags), account, object}, grantSeparator)
 }
 
 // Data encodes the working directory and command line the DLL expects.

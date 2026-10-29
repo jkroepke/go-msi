@@ -1410,11 +1410,11 @@
             "properties": {
               "account": {
                 "type": "string",
-                "description": "Formatted at install time: a [Property], a name such as NT AUTHORITY\\\\NetworkService or .\\\\name, LocalSystem, a SID string or an SDDL alias such as NS."
+                "description": "Formatted at install time: a [Property], a SID string, an SDDL alias such as NS, LocalSystem, NT AUTHORITY\\\\LocalService, NT AUTHORITY\\\\NetworkService, .\\\\name for a local account, or another account name."
               },
               "rights": {
                 "$ref": "#/$defs/stringList",
-                "description": "Files and folders: full, modify, readExecute, read, write. Services: full, read, start, stop, pauseContinue. Or a hexadecimal mask (0x...)."
+                "description": "Files and folders: full, modify, readExecute, read, write. Services: full, read, start, stop, pauseContinue. Or a hexadecimal mask (0x...) without generic bits."
               },
               "inherit": {
                 "type": "boolean",
