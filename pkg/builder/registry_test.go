@@ -192,13 +192,23 @@ components:
 	}
 
 	plain := productCode(src)
-	explicit := productCode(src + "    removeRegistry: []\n    createFolder: false\n    condition: ''\n")
+	explicit := productCode(src + "    removeRegistry: []\n    condition: ''\n")
 
 	if plain != explicit {
 		t.Errorf("ProductCode %v with empty keys, %v without", explicit, plain)
 	}
 
-	if changed := productCode(src + "    createFolder: true\n"); changed == plain {
-		t.Errorf("ProductCode %v did not change with createFolder: true", changed)
+	// An explicit value, false included, is not the same as a missing key.
+	for _, extra := range []string{
+		"    createFolder: true\n",
+	} {
+		if changed := productCode(src + extra); changed == plain {
+			t.Errorf("ProductCode %v did not change with %q", changed, extra)
+		}
+	}
+
+	secure := productCode(src + "properties:\n  FOO: { value: x }\n")
+	if insecure := productCode(src + "properties:\n  FOO: { value: x, secure: false }\n"); insecure == secure {
+		t.Errorf("ProductCode %v is the same with and without secure: false", secure)
 	}
 }

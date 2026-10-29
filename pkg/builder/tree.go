@@ -89,10 +89,13 @@ func (b *build) identity() error {
 	return nil
 }
 
-// pruneEmpty removes the mapping entries whose value is empty (null, "",
-// false, 0, an empty list or mapping, or a mapping that only held such
-// entries) and reports whether node itself ends up empty. List items are
-// kept, because their position is part of the configuration.
+// pruneEmpty removes the mapping entries whose value means the same as an
+// absent key (null, "", an empty list or mapping) and reports whether node
+// itself is such a value. false and 0 stay: an explicit false or 0 can mean
+// something else than a missing key (secure: false, checked: false), and a
+// mapping that only becomes empty by pruning stays too (purge: true is
+// {condition: ""}). List items are kept, because their position is part of
+// the configuration.
 func pruneEmpty(node *yaml.Node) bool {
 	switch node.Kind {
 	case yaml.DocumentNode:
@@ -102,17 +105,7 @@ func pruneEmpty(node *yaml.Node) bool {
 
 		return false
 	case yaml.MappingNode:
-		kept := node.Content[:0]
-
-		for i := 0; i+1 < len(node.Content); i += 2 {
-			if !pruneEmpty(node.Content[i+1]) {
-				kept = append(kept, node.Content[i], node.Content[i+1])
-			}
-		}
-
-		node.Content = kept
-
-		return len(kept) == 0
+		return pruneMapping(node)
 	case yaml.SequenceNode:
 		for _, child := range node.Content {
 			pruneEmpty(child)
@@ -120,7 +113,7 @@ func pruneEmpty(node *yaml.Node) bool {
 
 		return len(node.Content) == 0
 	case yaml.ScalarNode:
-		return emptyScalar(node)
+		return node.Tag == "!!null" || node.Tag == "!!str" && node.Value == ""
 	case yaml.AliasNode:
 		return false
 	}
@@ -128,18 +121,21 @@ func pruneEmpty(node *yaml.Node) bool {
 	return false
 }
 
-// emptyScalar reports whether a scalar is null, "", false or 0.
-func emptyScalar(node *yaml.Node) bool {
-	switch node.Tag {
-	case "!!null":
-		return true
-	case "!!bool":
-		return node.Value == "false"
-	case "!!int", "!!float":
-		return node.Value == "0"
-	default:
-		return node.Value == ""
+// pruneMapping drops the entries of a mapping whose value pruneEmpty
+// reports as empty, and reports whether the mapping was empty to begin with.
+func pruneMapping(node *yaml.Node) bool {
+	empty := len(node.Content) == 0
+	kept := node.Content[:0]
+
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if !pruneEmpty(node.Content[i+1]) {
+			kept = append(kept, node.Content[i], node.Content[i+1])
+		}
 	}
+
+	node.Content = kept
+
+	return empty
 }
 
 // deriveProductCode computes productCode: auto from the upgrade code, the

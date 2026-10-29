@@ -29,6 +29,17 @@ components:
           # Start menu > Programs > Example Viewer.
           - description: View example files
           - directory: DesktopFolder
+    # Version 1 kept its settings under another key; drop them on install.
+    removeRegistry:
+      - { root: HKLM, key: SOFTWARE\Example\Viewer 1 }
+
+properties:
+  # The theme an earlier install recorded, "light" when there is none; a
+  # command-line THEME=... wins over both.
+  THEME:
+    value: light
+    search:
+      registry: { root: HKLM, key: SOFTWARE\Example\Viewer, name: Theme }
 
 ui:
   wizard: minimal

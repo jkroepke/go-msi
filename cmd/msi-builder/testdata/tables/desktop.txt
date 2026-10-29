@@ -6,7 +6,7 @@ summary  4: Example
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install Example Viewer.
 summary  7: x64;1033
-summary  9: {4A015CE3-0211-5A6B-8825-797280A5AA7D}
+summary  9: {0BF8F78D-3661-50AA-9761-7627A38E48B0}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500
@@ -49,6 +49,11 @@ InstallInitialize		1500
 InstallValidate		1400
 PublishFeatures		6300
 PublishProduct		6400
+
+== AppSearch (1 rows)
+Property	Signature_
+s72!	s72!
+THEME_FOUND	Search_THEME
 
 == Binary (3 rows)
 Name	Data
@@ -300,10 +305,12 @@ WelcomeDlg	Cancel	SpawnDialog	CancelDlg	1	1
 WelcomeDlg	Next	NewDialog	LicenseAgreementDlg	1	2
 WelcomeDlg	Next	SpawnWaitDialog	WaitForCostingDlg	CostingComplete = 1	1
 
-== CustomAction (1 rows)
+== CustomAction (3 rows)
 Action	Type	Source	Target	ExtendedType
 s72!	i2	S72	S255	I4
 LaunchOnFinish	226	INSTALLDIR	"[#viewer.exe]"	
+SearchApply_THEME	51	THEME	[THEME_FOUND]	
+SearchDefault_THEME	51	THEME	light	
 
 == Dialog (19 rows)
 Dialog	HCentering	VCentering	Width	Height	Attributes	Title	Control_First	Control_Default	Control_Cancel
@@ -363,10 +370,11 @@ File	Component_	FileName	FileSize	Version	Language	Attributes	Sequence
 s72!	s72	l255	i4	S72	S20	I2	i4
 viewer.exe	viewer.exe	viewer.exe	2048	2.0.0.0	1033	512	1
 
-== InstallExecuteSequence (26 rows)
+== InstallExecuteSequence (29 rows)
 Action	Condition	Sequence
 s72!	S255	I2
 AllocateRegistrySpace	NOT Installed	1550
+AppSearch		50
 CostFinalize		1000
 CostInitialize		800
 CreateFolders		3700
@@ -389,13 +397,16 @@ RemoveFiles		3500
 RemoveFolders		3600
 RemoveRegistryValues		2600
 RemoveShortcuts		3200
+SearchApply_THEME	THEME_FOUND AND NOT THEME	51
+SearchDefault_THEME	NOT THEME	52
 UnpublishFeatures		1800
 ValidateProductID		700
 WriteRegistryValues		5000
 
-== InstallUISequence (15 rows)
+== InstallUISequence (18 rows)
 Action	Condition	Sequence
 s72!	S255	I2
+AppSearch		50
 CostFinalize		1000
 CostInitialize		800
 ExecuteAction		1300
@@ -408,6 +419,8 @@ MaintenanceWelcomeDlg	Installed AND NOT RESUME AND NOT Preselected AND NOT PATCH
 MigrateFeatureStates		1200
 ProgressDlg		1280
 ResumeDlg	Installed AND (RESUME OR Preselected)	1240
+SearchApply_THEME	THEME_FOUND AND NOT THEME	51
+SearchDefault_THEME	NOT THEME	52
 UserExitDlg		-2
 ValidateProductID		700
 WelcomeDlg	NOT Installed	1230
@@ -435,12 +448,12 @@ DefaultUIFont	DefaultFont
 ErrorDialog	ErrorDlg
 LaunchOnFinish	1
 Manufacturer	Example
-ProductCode	{475BEEAF-601B-56AC-87FF-02C4F3DBD07A}
+ProductCode	{C18F935F-B714-52C0-AB3D-B22A7689BC08}
 ProductLanguage	1033
 ProductName	Example Viewer
 ProductVersion	2.0.0
 RMOPTION	UseRM
-SecureCustomProperties	INSTALLDIR;NEWERVERSIONDETECTED;OLDERVERSIONBEINGUPGRADED
+SecureCustomProperties	INSTALLDIR;NEWERVERSIONDETECTED;OLDERVERSIONBEINGUPGRADED;THEME
 UpgradeCode	{7C1E4B52-93A0-4D6F-8E25-B4F0A9D3C871}
 
 == RadioButton (2 rows)
@@ -449,16 +462,30 @@ s72!	i2!	s64	i2	i2	i2	i2	L64	L50
 RMOPTION	1	UseRM	0	0	330	16	Close the applications and attempt to restart them.	
 RMOPTION	2	DontUseRM	0	22	330	16	Do not close applications. A reboot will be required to complete the setup.	
 
+== RegLocator (1 rows)
+Signature_	Root	Key	Name	Type
+s72!	i2	s255	S255	I2
+Search_THEME	2	SOFTWARE\Example\Viewer	Theme	18
+
 == Registry (1 rows)
 Registry	Root	Key	Name	Value	Component_
 s72!	i2	l255	L255	L0	s72
 regDC7F075D4854A7F87FB831277DA6373D	1	Software\[Manufacturer]\[ProductName]	cmpDC7F075D4854A7F87FB831277DA6373D	#1	cmpDC7F075D4854A7F87FB831277DA6373D
+
+== RemoveRegistry (1 rows)
+RemoveRegistry	Root	Key	Name	Component_
+s72!	i2	l255	L255	s72
+rreg445BD156A57C921626AE8AE707DDA88A	2	SOFTWARE\Example\Viewer 1	-	viewer.exe
 
 == Shortcut (2 rows)
 Shortcut	Directory_	Name	Component_	Target	Arguments	Description	Hotkey	Icon_	IconIndex	ShowCmd	WkDir	DisplayResourceDLL	DisplayResourceId	DescriptionResourceDLL	DescriptionResourceId
 s72!	s72	l128	s72	s72	S255	L255	I2	S72	I2	I2	S72	S255	I2	S255	I2
 sc2BD3DDFC6BE890B78630576BDE764915	ProgramMenuFolder	hqra4yll|Example Viewer	cmpDC7F075D4854A7F87FB831277DA6373D	[#viewer.exe]		View example files					INSTALLDIR				
 scDD9046AA093F4C2C75FEB03510A4E184	DesktopFolder	v112se6s|Example Viewer	cmpDC7F075D4854A7F87FB831277DA6373D	[#viewer.exe]							INSTALLDIR				
+
+== Signature (0 rows)
+Signature	FileName	MinVersion	MaxVersion	MinSize	MaxSize	MinDate	MaxDate	Languages
+s72!	s255	S20	S20	I4	I4	I4	I4	S255
 
 == TextStyle (3 rows)
 TextStyle	FaceName	Size	Color	StyleBits
@@ -529,7 +556,7 @@ s38!	S20!	S20!	S255!	i4!	S255	s72
 {7C1E4B52-93A0-4D6F-8E25-B4F0A9D3C871}		2.0.0		513		OLDERVERSIONBEINGUPGRADED
 {7C1E4B52-93A0-4D6F-8E25-B4F0A9D3C871}	2.0.0			2		NEWERVERSIONDETECTED
 
-== _Validation (162 rows)
+== _Validation (183 rows)
 Table	Column	Nullable	MinValue	MaxValue	KeyTable	KeyColumn	Category	Set	Description
 s32!	s32!	s4	I4	I4	S255	I2	S32	S255	S255
 AdminExecuteSequence	Action	N					Identifier		Name of action to invoke, either in the engine or the handler DLL.
@@ -541,6 +568,8 @@ AdminUISequence	Sequence	Y	-4	32767					Number that determines the sort order in
 AdvtExecuteSequence	Action	N					Identifier		Name of action to invoke, either in the engine or the handler DLL.
 AdvtExecuteSequence	Condition	Y					Condition		Optional expression which skips the action if evaluates to expFalse.
 AdvtExecuteSequence	Sequence	Y	-4	32767					Number that determines the sort order in which the actions are to be executed.  Leave blank to suppress action.
+AppSearch	Property	N					Identifier		The property set to the path a search finds.
+AppSearch	Signature_	N					Identifier		The search: a key into Signature and the locator tables.
 Binary	Data	N					Binary		The unformatted binary data.
 Binary	Name	N					Identifier		Unique key identifying the binary data.
 CheckBox	Property	N					Identifier		A named property to be tied to the item.
@@ -646,12 +675,22 @@ RadioButton	Value	N					Formatted		The value string associated with this button.
 RadioButton	Width	N	0	32767					The width of the button.
 RadioButton	X	N	0	32767					The horizontal coordinate of the upper left corner of the bounding rectangle of the radio button.
 RadioButton	Y	N	0	32767					The vertical coordinate of the upper left corner of the bounding rectangle of the radio button.
+RegLocator	Key	N					RegPath		The registry key.
+RegLocator	Name	Y					Formatted		The registry value name; empty for the default value.
+RegLocator	Root	N	0	3					The predefined registry root.
+RegLocator	Signature_	N					Identifier		The search this registry location belongs to.
+RegLocator	Type	Y	0	18					What the value names (file, directory or raw), plus 16 for the 64-bit view.
 Registry	Component_	N			Component	1	Identifier		Foreign key into the Component table referencing component that controls the installing of the registry value.
 Registry	Key	N					RegPath		The key for the registry value.
 Registry	Name	Y					Formatted		The registry value name.
 Registry	Registry	N					Identifier		Primary key, non-localized token.
 Registry	Root	N	-1	3					The predefined root key for the registry value, one of rrkEnum.
 Registry	Value	Y					Formatted		The registry value.
+RemoveRegistry	Component_	N			Component	1	Identifier		Foreign key into the Component table referencing component that controls the deletion of the registry value.
+RemoveRegistry	Key	N					RegPath		The key for the registry value.
+RemoveRegistry	Name	Y					Formatted		The registry value name.
+RemoveRegistry	RemoveRegistry	N					Identifier		Primary key, non-localized token.
+RemoveRegistry	Root	N	-1	3					The predefined root key for the registry value, one of rrkEnum
 Shortcut	Arguments	Y					Formatted		The command-line arguments for the shortcut.
 Shortcut	Component_	N			Component	1	Identifier		Foreign key into the Component table denoting the component whose selection gates the shortcut creation/deletion.
 Shortcut	Description	Y					Text		The description for the shortcut.
@@ -668,6 +707,15 @@ Shortcut	Shortcut	N					Identifier		Primary key, non-localized token.
 Shortcut	ShowCmd	Y						1;3;7	The show command for the application window.
 Shortcut	Target	N					Shortcut		The shortcut target: a Feature key for an advertised shortcut, otherwise a formatted path.
 Shortcut	WkDir	Y					Identifier		Name of the property that has the path of the working directory for the shortcut.
+Signature	FileName	N					Filename		The file name.
+Signature	Languages	Y					Language		The languages.
+Signature	MaxDate	Y	0	2147483647					The latest modification time.
+Signature	MaxSize	Y	0	2147483647					The largest size.
+Signature	MaxVersion	Y					Text		The highest version.
+Signature	MinDate	Y	0	2147483647					The earliest modification time.
+Signature	MinSize	Y	0	2147483647					The smallest size.
+Signature	MinVersion	Y					Text		The lowest version.
+Signature	Signature	N					Identifier		The file signature a search compares.
 TextStyle	Color	Y	0	16777215					A long integer indicating the color of the string in the RGB format (Red, Green, Blue each 0-255, RGB = R + 256*G + 256^2*B).
 TextStyle	FaceName	N					Text		A string indicating the name of the font used. Required. The string must be at most 31 characters long.
 TextStyle	Size	N	0	32767					The size of the font used. This size is given in our units (1/12 of the system font height). Assuming that the system font is set to 12 point size, this is equivalent to the point size.

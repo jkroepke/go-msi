@@ -163,7 +163,6 @@ func TestMsiexecSearchesRegistry(t *testing.T) { //nolint:paralleltest // msiexe
 	for name, want := range map[string]string{
 		"P_STR":        "hello",
 		"P_DWORD":      "#394802",
-		"P_EXPAND":     root + `\x`,
 		"P_MULTI":      "[~]a[~]b[~]",
 		"P_KEYDEFAULT": "keydefault",
 		"P_BRACKETS":   "a[ProductName]b{c}",
@@ -172,12 +171,18 @@ func TestMsiexecSearchesRegistry(t *testing.T) { //nolint:paralleltest // msiexe
 		"P_CMD":        "cmd",
 		"P_CMDDEFAULT": "cmd",
 		"P_DEFAULT":    "fallback [x] {y} {{z}}",
-		"P_DIR":        root + `\`,
 		"P_DIRFILE":    "none",
 		"P_DIRMISSING": "none",
 		"C_STRING":     "1",
 		"C_LONGER":     "1",
 	} {
+		if got := props[name]; got != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+
+	// %SystemRoot% may differ in case from what the engine expands.
+	for name, want := range map[string]string{"P_EXPAND": root + `\x`, "P_DIR": root + `\`} {
 		if got := props[name]; !strings.EqualFold(got, want) {
 			t.Errorf("%s = %q, want %q", name, got, want)
 		}
