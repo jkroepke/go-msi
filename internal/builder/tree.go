@@ -345,7 +345,10 @@ func (b *build) writeComponents() error { //nolint:cyclop // one pass over the f
 			return fmt.Errorf("%s: directory %s is not defined", comp.Path(i), comp.Directory)
 		}
 
-		info.dir.used = true
+		// A component of shortcuts only installs nothing in its directory.
+		if !shortcutsOnly(comp) {
+			info.dir.used = true
+		}
 
 		switch comp.Bitness {
 		case "64":
@@ -648,6 +651,11 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 			return err
 		}
 
+		// The carrier of its shortcuts is the component (shortcuts.go).
+		if shortcutsOnly(comp) {
+			continue
+		}
+
 		if err := b.componentGUID(path, info); err != nil {
 			return err
 		}
@@ -852,7 +860,7 @@ func (b *build) features() error {
 		for _, c := range feature.Components {
 			featureComps.Add(feature.ID, c.ID)
 
-			if carrier, ok := b.shortcutCarrier[c.ID]; ok {
+			if carrier, ok := b.shortcutCarrier[c.ID]; ok && carrier != c.ID {
 				featureComps.Add(feature.ID, carrier)
 			}
 		}

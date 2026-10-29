@@ -286,6 +286,16 @@ var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 		"Value|L0||Formatted||||||The registry value.",
 		"Component_|s72||Identifier|Component|1||||Foreign key into the Component table referencing component that controls the installing of the registry value.",
 	},
+	"IniFile": {
+		"IniFile|s72|K|Identifier||||||Primary key, non-localized token.",
+		"FileName|l255||Filename||||||The .ini file name in its directory.",
+		"DirProperty|S72||Identifier||||||Name of a property whose value resolves to the folder of the .ini file.",
+		"Section|l96||Formatted||||||The .ini file Section.",
+		"Key|l128||Formatted||||||The .ini file key below Section.",
+		"Value|l255||Formatted||||||The value to be written.",
+		"Action|i2|||||||0;1;3|The type of modification to be made, one of iifEnum",
+		"Component_|s72||Identifier|Component|1||||Foreign key into the Component table referencing component that controls the installing of the .ini value.",
+	},
 	"RemoveFile": {
 		"FileKey|s72|K|Identifier||||||Primary key used to identify a particular file entry",
 		"Component_|s72||Identifier|Component|1||||Foreign key referencing Component that controls the file to be removed.",

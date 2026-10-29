@@ -285,7 +285,9 @@ Pipeline, each step a file of its own:
    order (canonical directory, name, key), one `Media` row and one embedded
    cabinet, `File.Attributes` (vital, checksum, read-only, hidden, system),
    and the `Shortcut` and `MsiShortcutProperty` rows with the generated component that carries them
-   (HKCU key path, `RemoveFile` rows for profile folders; `shortcuts.go`).
+   (HKCU key path, `RemoveFile` rows for profile folders; `shortcuts.go`),
+   including a component's own shortcuts to files, folders and programs and
+   its `.url` files as `IniFile` rows.
 5. **Registry, event log, environment, services**: value encodings
    (`#`, `#x`, `#%`, `##`, `[~]`), `=-*`-style environment names with an
    explicit `-` (ENVVAR-01), `ServiceInstall`, `ServiceControl`,

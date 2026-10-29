@@ -154,6 +154,12 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 				}
 			}
 		}
+
+		for _, shortcut := range comp.Shortcuts {
+			if shortcut != nil {
+				defaultComponentShortcut(shortcut, product)
+			}
+		}
 	}
 
 	for _, action := range cfg.CustomActions {
@@ -200,6 +206,19 @@ func defaultShortcut(shortcut *Shortcut, product *Product, comp *Component) {
 
 	if shortcut.WorkingDirectory == "" {
 		shortcut.WorkingDirectory = comp.Directory
+	}
+
+	if shortcut.Show == "" {
+		shortcut.Show = ShowNormal
+	}
+}
+
+// defaultComponentShortcut names a component's shortcut after the product.
+// Its working directory stays empty: the builder starts a file shortcut in
+// the file's folder and leaves the others without one.
+func defaultComponentShortcut(shortcut *Shortcut, product *Product) {
+	if shortcut.Name == "" {
+		shortcut.Name = product.Name
 	}
 
 	if shortcut.Show == "" {
