@@ -336,10 +336,12 @@ which cannot take a `guid`, it is the only way.
 `ignoreRemoveFailure: true` sets the IgnoreRemoveFailure bit (4) on every
 Upgrade row that removes products, `related` rows included. When the
 removal of an old product fails, the install goes on instead of failing
-with 1603, and the old product stays registered next to the new one, in
-every `removeOld` window (observed, UPG-10, section 8.10 of the
-specification). It is meant for a release
-whose own uninstall is known to fail; the user removes that product by hand.
+(1603 with the default `afterInstallInitialize`), and the old product
+stays registered next to the new one, in every `removeOld` window
+(observed, UPG-10, section 8.10 of the specification). It is meant for a
+release whose own uninstall is known to fail. That uninstall still fails
+afterwards; removing the old product needs whatever its uninstall offers
+to get past the failure, or a fixed package (not tested).
 
 Every property named here must be public, is added to
 `SecureCustomProperties` and must not appear in `properties`.
