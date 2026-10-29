@@ -219,11 +219,8 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 		return &Result{Diagnostics: diags}, err //nolint:wrapcheck // the diagnostics carry their own paths
 	}
 
-	if opts.SignCabinets != nil && !cfg.Package.CabinetsEmbedded() {
-		// Before the first cabinet is compressed.
-		if err := opts.SignCabinets.Check(); err != nil {
-			return &Result{Diagnostics: diags}, fmt.Errorf("builder: SignCabinets: %w", err)
-		}
+	if err := checkSigning(cfg, &opts); err != nil {
+		return &Result{Diagnostics: diags}, err
 	}
 
 	if opts.BuildTime.IsZero() {
@@ -269,6 +266,20 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 	}
 
 	return res, nil
+}
+
+// checkSigning checks the cabinet signing options before the first cabinet
+// is compressed; embedded cabinets are not signed.
+func checkSigning(cfg *config.Config, opts *Options) error {
+	if opts.SignCabinets == nil || cfg.Package.CabinetsEmbedded() {
+		return nil
+	}
+
+	if err := opts.SignCabinets.Check(); err != nil {
+		return fmt.Errorf("builder: SignCabinets: %w", err)
+	}
+
+	return nil
 }
 
 func (b *build) run(res *Result) error {

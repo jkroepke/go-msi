@@ -57,6 +57,17 @@ type Options struct {
 	Hash crypto.Hash
 }
 
+// Check reports whether the options can sign: a signer, its certificate,
+// and a key the format supports. Sign and SignCabinet check the same, so a
+// caller can find a bad key before it does the work that comes first.
+func (o *Options) Check() error {
+	if o.Signer == nil || len(o.Certificates) == 0 {
+		return errors.New("sign: a signer and its certificate are required")
+	}
+
+	return checkKey(o.Signer, o.Certificates[0])
+}
+
 func (o *Options) hash() crypto.Hash {
 	if o.Hash == 0 {
 		return crypto.SHA256
@@ -148,7 +159,7 @@ func Attach(pkg, signature []byte) ([]byte, *Signature, error) {
 // Sign returns pkg with a fresh basic-mode signature, replacing any
 // existing one.
 func Sign(ctx context.Context, pkg []byte, opts Options) ([]byte, error) {
-	if err := opts.check(); err != nil {
+	if err := opts.Check(); err != nil {
 		return nil, err
 	}
 
@@ -170,22 +181,6 @@ func Sign(ctx context.Context, pkg []byte, opts Options) ([]byte, error) {
 	out, _, err := Attach(pkg, p7)
 
 	return out, err
-}
-
-// check refuses options without a usable key and certificate.
-// Check reports whether the options can sign: a signer, its certificate,
-// and a key the format supports. Sign and SignCabinet check the same, so a
-// caller can find a bad key before it does the work that comes first.
-func (o *Options) Check() error {
-	return o.check()
-}
-
-func (o *Options) check() error {
-	if o.Signer == nil || len(o.Certificates) == 0 {
-		return errors.New("sign: a signer and its certificate are required")
-	}
-
-	return checkKey(o.Signer, o.Certificates[0])
 }
 
 // checkKey makes sure the key belongs to the certificate and is one the

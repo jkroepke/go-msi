@@ -500,16 +500,16 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 			{"RSA with SHA-1", sha1},
 			{"RSA with SHA-256 and a timestamp", stamped},
 		} {
-			if tc.opts.TimestampURL != "" && !timestampAvailable(t, tc.opts) {
-				t.Logf("SIG-09: %s: timestamp authority unavailable, skipped", tc.label)
+			t.Run(tc.label, func(t *testing.T) {
+				if tc.opts.TimestampURL != "" && !timestampAvailable(t, tc.opts) {
+					t.Skipf("SIG-09: %s: timestamp authority unavailable", tc.label)
+				}
 
-				continue
-			}
-
-			probe, _ := signedProbe(t, files, tc.opts)
-			if !checkInstall(t, probe, files, tc.label, true) {
-				t.Errorf("%s: the installed files are not the package's sources", tc.label)
-			}
+				probe, _ := signedProbe(t, files, tc.opts)
+				if !checkInstall(t, probe, files, tc.label, true) {
+					t.Errorf("%s: the installed files are not the package's sources", tc.label)
+				}
+			})
 		}
 	})
 }

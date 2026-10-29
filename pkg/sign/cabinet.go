@@ -178,7 +178,7 @@ func cabIndirectData(algo crypto.Hash, digest []byte) ([]byte, error) {
 // MsiGetFileSignatureInformation reports for the cabinet (SIG-09), not with
 // the content digest.
 func SignCabinet(ctx context.Context, file CabinetFile, opts Options) ([]byte, error) {
-	if err := opts.check(); err != nil {
+	if err := opts.Check(); err != nil {
 		return nil, err
 	}
 
@@ -212,6 +212,10 @@ func SignCabinet(ctx context.Context, file CabinetFile, opts Options) ([]byte, e
 	}
 
 	padded := make([]byte, (len(signature)+cabSigAlign-1)/cabSigAlign*cabSigAlign)
+	if len(padded) > cabSigMax {
+		return nil, fmt.Errorf("sign: the cabinet signature takes %d bytes, more than %d", len(padded), cabSigMax)
+	}
+
 	copy(padded, signature)
 
 	var sig [cabSigHeaderSize]byte
