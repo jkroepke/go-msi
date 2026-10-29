@@ -686,7 +686,9 @@ components:
 ```
 
 **Key path.** Default: the first file, else the first registry value, else
-the directory, which gets a `CreateFolder` row (ICE18). A component with a
+the directory, which gets a `CreateFolder` row (ICE18). A component below a
+profile folder gets a generated HKCU value instead, with the exceptions in
+section 4.4. A component with a
 service must have the service executable as key file.
 
 **Files.**
@@ -1020,7 +1022,8 @@ package ends up with exactly the package's values, without values the user
 added there (REG-02). `HKMU` in a per-machine package is `HKLM`. In a per-machine package an `HKCU` entry
 can only reach the profile of the user who runs the install; other users'
 profiles are not touched (not tested). A component that only removes
-registry entries has its directory as key path. Removing the default value
+registry entries has its directory as key path (in the user profile the
+HKCU value of section 4.4, unless it removes per-machine entries). Removing the default value
 of a key is not supported. The same root, key and name twice in one
 component is an error, with or without `id`, and so is a per-user package
 that removes from HKLM or HKCR.
@@ -1237,7 +1240,7 @@ the folder is the YAML file's folder or one above it.
   left out; give a component `createFolder: true` for an empty one. The
   `source` folder itself is not installed, only its content.
 - **One component per file.** Every file is the key path of its own
-  component with an `auto` GUID. That GUID comes from the upgrade code,
+  component (below a profile folder the HKCU value of section 4.4 is) with an `auto` GUID. That GUID comes from the upgrade code,
   the bitness and the install path in lower case (see GUIDs above), not
   from the source path or the generated IDs, so a file that stays at its
   install path keeps its component in every later build, also when the

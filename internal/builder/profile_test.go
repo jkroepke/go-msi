@@ -272,3 +272,24 @@ func TestProfileKeyPathFileTypes(t *testing.T) {
 		}
 	}
 }
+
+// The automatic ProductCode of a package with a profile component carries
+// the marker of the HKCU key paths, so a rebuild with this msi-builder does
+// not reuse the code an older one derived for the file-keyed package
+// (error 1638): without the marker the per-user code would be
+// {10F2FD9A-13FB-59D8-AA6B-2900690C1CC3}. The per-machine package has no
+// profile component and keeps its code. The golden codes change with any
+// change to the digest.
+func TestProfileKeyPathProductCode(t *testing.T) {
+	t.Parallel()
+
+	for scope, want := range map[string]string{
+		"perUser":    "{6077413F-6CEF-5DE9-8AFD-493E1E61B4B6}",
+		"perMachine": "{2DA868B6-26AC-55FC-8F58-DFA6664FC441}",
+	} {
+		res := mustBuild(t, scopedShortcutConfig(t, scope, "  - { id: App, files: [{ source: app.exe }] }\n"))
+		if res.ProductCode != want {
+			t.Errorf("%s: ProductCode %s, want %s", scope, res.ProductCode, want)
+		}
+	}
+}
