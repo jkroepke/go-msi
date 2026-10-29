@@ -181,7 +181,7 @@ Silent-failure cases a producer has to guard against itself:
 | SUM-06 | Confirmed | [log](msitest/results/SUM-06/revision-and-times/log.md) |
 | SUM-07 | Confirmed | [log](msitest/results/SUM-07/summary-system-identifier/log.md); field ignored |
 | LANG-01 | Confirmed | [CI log](msitest/results/LANG-01/embedded-language-transform/log.md), [SERVER2025 log](msitest/results/LANG-01/embedded-language-transform/log-server2025.md); the user's default language ID (format, not display language) picks the transform; the first Template language is the database's own |
-| LANG-03 | Pending | `TestLanguagesInstallLANG03` (CI runner) and `TestFullUILanguages` (SERVER2025 full UI) |
+| LANG-03 | Confirmed | [CI log](msitest/results/LANG-03/builder-languages/log.md); the CI runner (en-US) installed the builder's package with `ProductLanguage=1036` and `1031` and registered each, and its full-UI run showed the German wizard from the built-in translation with the `de` entry's finish text |
 | LANG-02 | Confirmed | SERVER2025: msi.dll applies MarshalTransform's transform; embedded as storage 1031 it installs as "Minimal Beispiel Zurück" with Language 1031 |
 | CAB-01 | Confirmed | Uncompressed, makecab stored/MSZIP and spec-writer stored/MSZIP install byte-identical ([go-mszip](msitest/results/CAB-01/go-mszip/log.md)) |
 | CAB-04 | Confirmed | [log](msitest/results/CAB-04/header-mutations/log.md); version ≠ 1.3 and bad checksum 1603, `cbCabinet` ignored |
