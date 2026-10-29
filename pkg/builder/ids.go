@@ -156,14 +156,14 @@ func (b *build) reserveShortNames() error {
 		info := b.components[comp.ID]
 		path := info.cfg.Path(info.index)
 
-		for j, cfgFile := range comp.Files {
+		for fileIndex, cfgFile := range comp.Files {
 			field := "name"
 			if cfgFile.Name == "" {
 				field = "source"
 			}
 
 			file := b.fileByKey[config.FileKey(cfgFile)]
-			b.reserveShortName(owners, info.dir.id, configuredFileName(file), fmt.Sprintf("%s.files[%d].%s", path, j, field))
+			b.reserveShortName(owners, info.dir.id, configuredFileName(file), fmt.Sprintf("%s.files[%d].%s", path, fileIndex, field))
 		}
 	}
 
