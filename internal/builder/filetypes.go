@@ -78,9 +78,9 @@ func (w classWriter) value(key, name, value string) {
 }
 
 // emptyValue writes a named value with a Null Value column, which the
-// engine is expected to store as an empty REG_SZ; Microsoft documents a
-// Null Value only for the names +, - and *, so REG-04 checks it. Shell
-// lists such as OpenWithProgids name their entries this way.
+// engine stores as an empty REG_SZ (REG-04; Microsoft documents a Null
+// Value only for the names +, - and *). Shell lists such as
+// OpenWithProgids name their entries this way.
 func (w classWriter) emptyValue(key, name string) {
 	w.add(key, escapeFormatted(name), nil)
 }
