@@ -243,6 +243,7 @@ Silent-failure cases a producer has to guard against itself:
 | CA-03 | Confirmed | GitHub `windows-latest` (x64) and `windows-11-arm` runners, 2026-10-28, `TestMsiexecRunActions`: every stdout and stderr line of the seven run actions is in the verbose log as `GoMsiRun:`, `whoami` shows LocalSystem versus the user, brackets stay literal, OEM and UTF-8 output decode, exit 3 with `Continue` returns 1, exit 7 fails with 1603 and runs the rollback action with the hidden command absent; Arm64 package native and x64 package under emulation on Arm; repeated on SERVER2025 with the same result; [details](#embedded-custom-action-dll-ca-03) |
 | CA-04 | Confirmed | GitHub `windows-latest` runner, 2026-10-28, CI run 40787803798: netsh rejects `any` or `*` combined with other `remoteip=` entries (exit 1), accepts `ANY` and `*` alone and accepts `localsubnet,10.0.0.1`; quotes inside a quoted description are dropped; [details](#firewall-arguments-ca-04) |
 | CA-05 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40893135210 (PR #106): the engine copies the `Binary` program to `C:\Windows\Installer\MSIxxxx.tmp`, runs it in `C:\Windows\system32` and deletes it; deferred no-impersonate runs as LocalSystem, the rest as the user; exit 7 and exit 3010 are both error 1722 and msiexec 1603; [details](#exe-actions-ca-05) |
+| CA-06 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40925575633 (PR #117): `add rule name=all` fails in any case and quoted; `delete rule name=all` deletes every rule the other filters select, `"all"` and `\"all\"` included; unscoped with `dir=in` it deleted all 208 inbound rules; names with spaces around `all` are ordinary names; [details](#reserved-firewall-rule-name-ca-06) |
 | SHORTCUT-01 | Confirmed | [hkcu-folder](msitest/results/SHORTCUT-01/hkcu-folder/log.md), [file-component](msitest/results/SHORTCUT-01/file-component/log.md), [file-component-folder](msitest/results/SHORTCUT-01/file-component-folder/log.md), [advertised](msitest/results/SHORTCUT-01/advertised/log.md), [per-user](msitest/results/SHORTCUT-01/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-shortcut-01) |
 | SHORTCUT-02 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40882369236 (PR #98): the engine converts `PropVariantValue` to the property's type and formats it; a CLSID needs braces; an unknown name or a bad value is warning 1946 and the install goes on; [details](#shortcut-properties-shortcut-02) |
 | SHORTCUT-03 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI runs 40900720903 and 40908162979 (PR #105): WriteIniValues writes the `.url` as ANSI with CRLF, the shell reads the address, the `RemoveFile` row deletes it at uninstall after the shell added a section; [details](#shortcut-targets-shortcut-03-shortcut-04) |
@@ -677,6 +678,36 @@ user SID and its working folder to a marker file.
 - Not covered: whether the engine waits for the program before deleting the
   copy under `asyncNoWait`, and the 1618 failure of a program that starts
   `msiexec` itself (section 8.11, reported, not tested).
+
+## Reserved firewall rule name (CA-06)
+
+Run on 2026-10-29 in CI run 40925575633 of PR #117 (commit ceeeb6f),
+`Build & Test (windows-latest)` job (Windows Server 2025 x64, elevated), by
+a temporary probe test. Every delete but the last was scoped to two throwaway
+rules with `program="C:\msi-builder-probe\probe.exe"`. The last one was
+unscoped and ran only on this throwaway runner, never on a dev machine. The
+probe was removed from the pull request afterwards; its output is in
+[`msitest/results/CA-06/netsh/log.md`](msitest/results/CA-06/netsh/log.md).
+
+| Command | Exit | Effect |
+| --- | --- | --- |
+| `add rule name=all`, `name="all"`, `name=ALL`, `name="All"` | 1, "The string 'all' cannot be used as the name of a rule." | no rule |
+| `add rule name=" all"`, `name="all "` | 0 | rules ` all` and `all ` (spaces kept) |
+| `delete rule name=" all" dir=in program=…` | 0 | deleted only ` all` (same for `all `) |
+| `delete rule name="all" dir=in program=…` | 0 | deleted both probe rules |
+| `delete rule name=ALL …`, `name=\"all\" …` (through `cmd`), `name=all program=…` without `dir` | 0 | deleted both probe rules |
+| `delete rule name='all' dir=in program=…` | 1, "No rules match the specified criteria." | nothing (the quotes are part of the name) |
+| `delete rule name=all dir=in` | 0, "Deleted 208 rule(s)." | every inbound rule (208 to 0), the 142 outbound rules kept |
+
+- `all` is a keyword of `delete rule`, compared without case, and no quoting
+  turns it into a literal name. The builder's delete action,
+  `delete rule name="<name>" dir=in`, would therefore remove every inbound
+  rule for a rule named `all`, so `pkg/config` rejects that name (section
+  17.3).
+- Netsh trims nothing: names with a leading or trailing space are ordinary
+  names. The builder rejects them anyway when they trim to `all`.
+- Not run: `show rule`, `set rule`, outbound rules, SERVER2025 (Joe:
+  never on the dev box) and Windows Server 2016.
 
 ## Event log sources (REG-03)
 

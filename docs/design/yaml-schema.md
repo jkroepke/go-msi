@@ -79,6 +79,7 @@ closes each one.
 | EXE exit codes (CA-02) | Any non-zero exit fails the install unless the action ignores it | `customActions[].return` is required for `exec`, `execProperty`, `exe` and `run` actions (`check` or `ignore`), so the author decides. |
 | Same ProductCode, new package (UPG-03) | Installing a rebuilt package over the installed one fails with 1638 | `product.productCode: auto` derives the code from the upgrade code, version, platform and a digest of every input, including the contents of the wizard's licenses and theme pictures; the release that added these derives a new code once for every configuration that uses them. Changed content gives a new ProductCode (a major upgrade); unchanged content gives the same package byte for byte. Keys whose value means the same as a missing key (null, `""`, `[]`, `{}`) are left out of the digest, so a key a later version adds to the schema (as a pointer, string, list or mapping, or left out when empty) does not change the code of a configuration that does not use it; `false` and `0` stay in, since an explicit `secure: false` is not the default. The release that introduced this pruning derives a new code once for every configuration, unchanged ones included. A pinned ProductCode makes the validator warn. |
 | Quote in a firewall rule description (CA-04) | netsh drops the quote and stores the rest of the description | `firewall[].name` and `firewall[].description` must not contain a double quote. |
+| Firewall rule named `all` (CA-06) | `add rule` refuses the name, `delete rule name=all dir=in` deletes every inbound rule, in any case and with any quoting | `firewall[].name` must not be `all` in any case (spaces around it included) and must not contain `[` or `]`. |
 | Versions that differ in the fourth field only (UPG-01) | Without an inclusive maximum both products stay installed side by side | `upgrade.allowSameVersion` defaults to `true` (maximum inclusive), so `0.32.0.5` replaces `0.32.0.4`. Four-field versions get a warning that Windows compares only three. |
 
 ### 2.3 Settled facts with a schema rule
@@ -1442,7 +1443,8 @@ quotes inside the quoted description (MSISPEC CA-04). The name is literal
 text without `[` or `]`, and `all` in any case is an error: netsh treats
 `name=all` as every rule, so the delete that runs before each add would
 remove every inbound rule on the machine, and a property in the name could
-resolve to `all` at runtime (MSISPEC section 17.3).
+resolve to `all` at runtime (MSISPEC section 17.3, CA-06: on a CI runner the
+unscoped delete removed all 208 inbound rules, and no quoting escapes it).
 
 A rule that a feature switches can be written under that feature instead,
 without `component`:
