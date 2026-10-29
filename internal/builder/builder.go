@@ -205,6 +205,18 @@ func Build(cfg *config.Config, opts Options) (*Result, error) {
 		return &Result{Diagnostics: diags}, err //nolint:wrapcheck // the diagnostics carry their own paths
 	}
 
+	// Folder sources are expanded once they are known to be valid, and
+	// the config is checked again with their files.
+	expanded := cfg.ExpandFolders()
+	if err := expanded.Err(); err != nil {
+		return &Result{Diagnostics: append(diags, expanded...)}, err //nolint:wrapcheck // the diagnostics carry their own paths
+	}
+
+	diags = append(config.Validate(cfg), expanded...)
+	if err := diags.Err(); err != nil {
+		return &Result{Diagnostics: diags}, err //nolint:wrapcheck // the diagnostics carry their own paths
+	}
+
 	if opts.BuildTime.IsZero() {
 		opts.BuildTime = defaultBuildTime()
 	}
@@ -259,6 +271,7 @@ func (b *build) run(res *Result) error {
 		b.reserveShortNames,
 		b.sequenceFiles,
 		b.shortcuts,
+		b.removeFiles,
 		b.features,
 		b.writeProperties,
 		b.upgrade,

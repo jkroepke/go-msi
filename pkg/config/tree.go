@@ -49,45 +49,24 @@ const MaxTreePrefixLength = MaxIdentifierLength - 22
 // returns the new components in walk order, for example to set permissions
 // or allowUnversionedExecutable on some of them.
 func (c *Config) AddTree(fsys fs.FS, root, dirID string, opts TreeOptions) ([]*Component, error) {
-	if opts.Prefix == "" {
-		opts.Prefix = "tree"
-	}
-
 	if root == "" {
 		return nil, errors.New("add tree: root is empty; use \".\" for the whole file system")
 	}
 
 	root = path.Clean(root)
 
-	parent, feature, err := c.treeTarget(fsys, root, dirID, opts)
+	if opts.Prefix == "" {
+		opts.Prefix = "tree"
+	}
+
+	feature, err := c.treeFeature(opts.Feature)
 	if err != nil {
 		return nil, err
 	}
 
-	harvest := &tree{root: root, prefix: opts.Prefix, base: dirID + "\x1f" + root, dirs: map[string]*Directory{".": parent}}
-
-	err = fs.WalkDir(fsys, root, harvest.visit)
+	added, err := c.walkTree(fsys, root, root, dirID, opts.Prefix, nil)
 	if err != nil {
-		return nil, fmt.Errorf("add tree: %w", err)
-	}
-
-	if len(harvest.files) == 0 {
-		return nil, errors.New("add tree: no files under " + root)
-	}
-
-	added := make([]*Component, 0, len(harvest.files))
-
-	for _, rel := range harvest.files {
-		added = append(added, &Component{
-			ID:        harvest.id("c", rel),
-			Directory: harvest.directory(path.Dir(rel)).ID,
-			Files: []*File{{
-				Source: path.Join(root, rel),
-				ID:     harvest.id("f", rel),
-				Name:   path.Base(rel),
-				FS:     fsys,
-			}},
-		})
+		return nil, err
 	}
 
 	c.Components = append(c.Components, added...)
@@ -101,32 +80,71 @@ func (c *Config) AddTree(fsys fs.FS, root, dirID string, opts TreeOptions) ([]*C
 	return added, nil
 }
 
-// treeTarget checks the arguments of AddTree and returns the directory and
-// the feature that the tree joins.
-func (c *Config) treeTarget(fsys fs.FS, root, dirID string, opts TreeOptions) (*Directory, *Feature, error) {
-	if !IsIdentifier(opts.Prefix) || len(opts.Prefix) > MaxTreePrefixLength {
-		return nil, nil, fmt.Errorf("add tree: prefix %q is not an identifier of at most %d characters", opts.Prefix, MaxTreePrefixLength)
+// walkTree returns a component for every file under root that filter, when
+// set, keeps, and adds the folders they need below dirID. The ids are
+// derived from prefix, dirID, idRoot and the path below root; a folder
+// source takes idRoot from its source as written instead of the fs.FS root.
+// The components are not added to the config.
+func (c *Config) walkTree(fsys fs.FS, root, idRoot, dirID, prefix string, filter *folderFilter) ([]*Component, error) {
+	parent, err := c.treeTarget(fsys, root, dirID, prefix)
+	if err != nil {
+		return nil, err
+	}
+
+	walk := &tree{root: root, prefix: prefix, base: dirID + "\x1f" + idRoot, dirs: map[string]*Directory{".": parent}, filter: filter}
+
+	err = fs.WalkDir(fsys, root, walk.visit)
+	if err != nil {
+		return nil, fmt.Errorf("add tree: %w", err)
+	}
+
+	if len(walk.files) == 0 {
+		if filter != nil {
+			return nil, errors.New("add tree: no file under " + idRoot + " matches the include and exclude patterns")
+		}
+
+		return nil, errors.New("add tree: no files under " + idRoot)
+	}
+
+	added := make([]*Component, 0, len(walk.files))
+
+	for _, rel := range walk.files {
+		added = append(added, &Component{
+			ID:        walk.id("c", rel),
+			Directory: walk.directory(path.Dir(rel)).ID,
+			Files: []*File{{
+				Source: path.Join(root, rel),
+				ID:     walk.id("f", rel),
+				Name:   path.Base(rel),
+				FS:     fsys,
+			}},
+		})
+	}
+
+	return added, nil
+}
+
+// treeTarget checks the arguments of AddTree and returns the directory
+// the tree goes below.
+func (c *Config) treeTarget(fsys fs.FS, root, dirID, prefix string) (*Directory, error) {
+	if !IsIdentifier(prefix) || len(prefix) > MaxTreePrefixLength {
+		return nil, fmt.Errorf("add tree: prefix %q is not an identifier of at most %d characters", prefix, MaxTreePrefixLength)
 	}
 
 	if c.Package.LongFileNames != nil && !*c.Package.LongFileNames {
-		return nil, nil, errors.New("add tree: package.longFileNames is false, which needs 8.3 file names, but harvested files keep their own names")
+		return nil, errors.New("add tree: package.longFileNames is false, which needs 8.3 file names, but files of a folder keep their own names")
 	}
 
 	if err := checkTreeRoot(fsys, root); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	parent := findDirectory(c.Directories, dirID)
 	if parent == nil {
-		return nil, nil, fmt.Errorf("add tree: directory %s is not defined; with installDir, call ApplyDefaults first", dirID)
+		return nil, fmt.Errorf("add tree: directory %s is not defined; with installDir, call ApplyDefaults first", dirID)
 	}
 
-	feature, err := c.treeFeature(opts.Feature)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return parent, feature, nil
+	return parent, nil
 }
 
 // treeFeature returns the feature that AddTree's components join, or nil
@@ -198,6 +216,7 @@ func checkTreeName(rel string) error {
 // tree collects the files of one AddTree call and creates their directories.
 type tree struct {
 	dirs   map[string]*Directory
+	filter *folderFilter
 	root   string
 	prefix string
 	base   string
@@ -211,17 +230,23 @@ func (t *tree) visit(filePath string, entry fs.DirEntry, err error) error {
 		return err
 	}
 
-	if entry.IsDir() {
-		return nil
+	rel := filePath
+	if t.root != "." {
+		rel = strings.TrimPrefix(filePath, t.root+"/")
+	}
+
+	// The patterns run first, so that they can leave out a special file
+	// or a name Windows does not allow.
+	if skip := t.skip(filePath, rel, entry); skip != nil || entry.IsDir() {
+		if errors.Is(skip, errLeaveOut) {
+			return nil
+		}
+
+		return skip
 	}
 
 	if !entry.Type().IsRegular() {
 		return fmt.Errorf("%s is not a regular file", filePath)
-	}
-
-	rel := filePath
-	if t.root != "." {
-		rel = strings.TrimPrefix(filePath, t.root+"/")
 	}
 
 	if err := checkTreeName(rel); err != nil {
@@ -229,6 +254,31 @@ func (t *tree) visit(filePath string, entry fs.DirEntry, err error) error {
 	}
 
 	t.files = append(t.files, rel)
+
+	return nil
+}
+
+// errLeaveOut tells visit that the patterns leave a file out.
+var errLeaveOut = errors.New("left out")
+
+// skip applies the include and exclude patterns to an entry: fs.SkipDir for an excluded
+// folder, errLeaveOut for a file that is not included, else nil.
+func (t *tree) skip(filePath, rel string, entry fs.DirEntry) error {
+	if t.filter == nil || filePath == t.root {
+		return nil
+	}
+
+	if entry.IsDir() {
+		if t.filter.excluded(rel, true) {
+			return fs.SkipDir
+		}
+
+		return nil
+	}
+
+	if !t.filter.included(rel) {
+		return errLeaveOut
+	}
 
 	return nil
 }

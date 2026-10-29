@@ -69,8 +69,19 @@ msi-builder verify hello.msi
 
 See [Signing](docs/signing.md) for PEM keys, `msi-builder sign` and the Go API.
 
-Packages can also be built from Go without a YAML file, including a whole
-folder tree; see the [Go API](docs/go-api.md).
+A whole build output can be added without listing each file: a `source`
+that ends in `/` is a folder, and every file below it gets a component of
+its own:
+
+```yaml
+components:
+  - files:
+      - source: dist/
+        exclude: '*.pdb'
+```
+
+Packages can also be built from Go without a YAML file; see the
+[Go API](docs/go-api.md).
 
 A complete package with a Windows service, a firewall rule, an event log source
 and custom actions is in
@@ -96,9 +107,6 @@ agent with a service. These are not supported:
 - **Editing existing packages and WiX XML input.** `msi-builder inspect` only
   reads packages to help debugging.
 - **Advertised installs and advertised shortcuts.**
-- **File harvesting in YAML.** List each file of a component; a YAML file
-  cannot add a whole directory. Not in schema v1. Go callers can use
-  `Config.AddTree` ([Go API](docs/go-api.md)).
 - **Hand-built dialogs.** The UI is a built-in wizard plus optional form
   pages that ask for properties; there is no free control layout.
 
