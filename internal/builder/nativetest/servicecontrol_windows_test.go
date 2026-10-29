@@ -61,10 +61,12 @@ func createService(t *testing.T, name, binPath string, start bool) {
 	}
 }
 
-// scField returns the value of a field in the output of sc query, qc or
-// qdescription for a service.
-func scField(t *testing.T, command, name, field string) string {
+// scField returns the value of a field in the output of sc qc or
+// qdescription for MsiBuilderCtlSvc.
+func scField(t *testing.T, command, field string) string {
 	t.Helper()
+
+	name := ctlService
 
 	out, err := exec.CommandContext(t.Context(), "sc", command, name).CombinedOutput()
 	if err != nil {
@@ -84,17 +86,13 @@ func scField(t *testing.T, command, name, field string) string {
 	return ""
 }
 
-// uninstallOnCleanup removes the package, the service and the install
-// folder when the test ends.
-func uninstallOnCleanup(t *testing.T, path, service, installDir string) {
-	t.Helper()
-
-	t.Cleanup(func() {
-		_, _ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn").CombinedOutput()
-		_, _ = exec.CommandContext(context.Background(), "sc", "stop", service).CombinedOutput()
-		_, _ = exec.CommandContext(context.Background(), "sc", "delete", service).CombinedOutput()
-		_ = os.RemoveAll(installDir)
-	})
+// uninstall removes the package, the service and the install folder. Tests
+// defer it, as AGENTS.md asks for uninstalls.
+func uninstall(path, service, installDir string) {
+	_, _ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn").CombinedOutput()
+	_, _ = exec.CommandContext(context.Background(), "sc", "stop", service).CombinedOutput()
+	_, _ = exec.CommandContext(context.Background(), "sc", "delete", service).CombinedOutput()
+	_ = os.RemoveAll(installDir)
 }
 
 // TestMsiexecDeletesServiceOnInstall installs a service whose name is
@@ -120,7 +118,7 @@ func TestMsiexecDeletesServiceOnInstall(t *testing.T) {
 		path := buildConfig(t, dir, "keep", fmt.Sprintf(serviceConfig, "{ startOnInstall: false }"), map[string][]byte{"svc.exe": svc})
 
 		createService(t, ctlService, stale, false)
-		uninstallOnCleanup(t, path, ctlService, installDir)
+		defer uninstall(path, ctlService, installDir)
 
 		code := msiexecCode(t, filepath.Join(dir, "install.log"), "/i", path)
 		t.Logf("install exit code %d", code)
@@ -130,15 +128,15 @@ func TestMsiexecDeletesServiceOnInstall(t *testing.T) {
 		}
 
 		want := strings.ToLower(filepath.Join(installDir, "svc.exe"))
-		if got := scField(t, "qc", ctlService, "BINARY_PATH_NAME"); !strings.Contains(strings.ToLower(got), want) {
+		if got := scField(t, "qc", "BINARY_PATH_NAME"); !strings.Contains(strings.ToLower(got), want) {
 			t.Errorf("binary path %q, want %q", got, want)
 		}
 
-		if got := scField(t, "qc", ctlService, "DISPLAY_NAME"); got != ctlService {
+		if got := scField(t, "qc", "DISPLAY_NAME"); got != ctlService {
 			t.Errorf("display name %q, want %q", got, ctlService)
 		}
 
-		if got := scField(t, "qdescription", ctlService, "DESCRIPTION"); got != "stale description" {
+		if got := scField(t, "qdescription", "DESCRIPTION"); got != "stale description" {
 			t.Errorf("description %q, want the stale one kept", got)
 		}
 
@@ -154,16 +152,16 @@ func TestMsiexecDeletesServiceOnInstall(t *testing.T) {
 		path := buildConfig(t, dir, "replace", fmt.Sprintf(serviceConfig, "{ deleteOnInstall: true }"), map[string][]byte{"svc.exe": svc})
 
 		createService(t, ctlService, stale, false)
-		uninstallOnCleanup(t, path, ctlService, installDir)
+		defer uninstall(path, ctlService, installDir)
 
 		msiexecQuiet(t, filepath.Join(dir, "install.log"), "/i", path)
 
 		want := strings.ToLower(filepath.Join(installDir, "svc.exe"))
-		if got := scField(t, "qc", ctlService, "BINARY_PATH_NAME"); !strings.Contains(strings.ToLower(got), want) {
+		if got := scField(t, "qc", "BINARY_PATH_NAME"); !strings.Contains(strings.ToLower(got), want) {
 			t.Errorf("binary path %q, want %q", got, want)
 		}
 
-		if got := scField(t, "qdescription", ctlService, "DESCRIPTION"); got != "" {
+		if got := scField(t, "qdescription", "DESCRIPTION"); got != "" {
 			t.Errorf("description %q, want none", got)
 		}
 
@@ -171,8 +169,7 @@ func TestMsiexecDeletesServiceOnInstall(t *testing.T) {
 			t.Errorf("service state %q, want RUNNING", state)
 		}
 
-		// The service still runs after a repair, which reinstalls the
-		// component with its event 8.
+		// The service still runs after a repair.
 		msiexecQuiet(t, filepath.Join(dir, "repair.log"), "/fa", path)
 
 		if state := serviceState(t, ctlService); !strings.Contains(state, "RUNNING") {
@@ -231,7 +228,8 @@ func TestMsiexecControlsForeignServices(t *testing.T) {
 
 	createService(t, "MsiBuilderOldSvc", exe, true)
 	createService(t, "MsiBuilderOtherSvc", exe, false)
-	uninstallOnCleanup(t, path, "MsiBuilderMissingSvc", filepath.Join(os.Getenv("ProgramFiles"), "MsiBuilderForeignSvc"))
+
+	defer uninstall(path, "MsiBuilderMissingSvc", filepath.Join(os.Getenv("ProgramFiles"), "MsiBuilderForeignSvc"))
 
 	msiexecQuiet(t, filepath.Join(dir, "install.log"), "/i", path)
 
@@ -275,7 +273,7 @@ func TestMsiexecStartsServiceOnCondition(t *testing.T) {
 	dir := t.TempDir()
 	path := buildConfig(t, dir, "conditional", conditionalStartConfig, map[string][]byte{"svc.exe": svc})
 
-	uninstallOnCleanup(t, path, ctlService, installDir)
+	defer uninstall(path, ctlService, installDir)
 
 	msiexecQuiet(t, filepath.Join(dir, "install.log"), "/i", path)
 
