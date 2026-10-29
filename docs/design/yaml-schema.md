@@ -1077,6 +1077,7 @@ Kinds, exactly one per action:
 | `execProperty` | 50 | `property` holds the executable, `arguments` the rest |
 | `run` | 1 + 51 | `command` and an optional `directory`; see below |
 | `dll` | 1 | `binary` (a `binaries` key) and `entry` |
+| `exe` | 2 | `binary` (a `binaries` key holding a program) and optional `arguments`; see below |
 
 **`run`.** The engine runs `exec` and `execProperty` commands with a visible
 console window and keeps none of their output (specification section
@@ -1098,9 +1099,21 @@ Output is decoded as UTF-8 when it is valid UTF-8 and in the OEM code page
 otherwise, which covers Go programs, cmd.exe and PowerShell. Specification
 section 17.6 and case CA-03 (Appendix C) hold the Windows evidence.
 
+**`exe`.** The engine writes the program from the `Binary` table to a
+temporary file, runs it with the formatted `arguments` and deletes it. Unlike
+an `exec` of an installed file, it works before `InstallFiles` and after
+`RemoveFiles`, for example a prerequisite installer or a cleanup tool that is
+not part of the product. Like `exec`, it shows a console program's window
+and keeps none of its output, so pass the program's own silent and log
+switches. `return` is required, and any exit code but 0 fails the install
+unless it is `ignore`, including 3010 (CA-05). The program must not start
+`msiexec`: the engine allows one installation at a time, and a nested one
+fails with 1618 while this one runs its execute sequence. The builder warns
+when the binary is a Windows Installer package, a DLL or no Windows program.
+
 Options: `execute` (default `immediate`), `impersonate` (default `true`;
 `false` needs a deferred action), `return` (required for `exec`,
-`execProperty` and `run`, default `check` otherwise), `hideTarget`, `once`
+`execProperty`, `exe` and `run`, default `check` otherwise), `hideTarget`, `once`
 (`firstSequence`, `oncePerProcess`, `clientRepeat`).
 
 **Schedule.** A list of placements, one per sequence table: `execute`, `ui`,

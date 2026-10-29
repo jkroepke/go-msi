@@ -17,6 +17,7 @@ import (
 	"github.com/jkroepke/msi-builder/internal/cab"
 	"github.com/jkroepke/msi-builder/internal/cfb"
 	"github.com/jkroepke/msi-builder/internal/msidb"
+	"github.com/jkroepke/msi-builder/internal/pe"
 	"github.com/jkroepke/msi-builder/internal/schema"
 	"github.com/jkroepke/msi-builder/internal/spool"
 	"github.com/jkroepke/msi-builder/internal/summary"
@@ -86,7 +87,7 @@ func (b *build) streams() error {
 	for _, section := range []struct {
 		src   map[string]string
 		table string
-	}{{table: "Icon", src: b.cfg.Icons}, {table: "Binary", src: b.cfg.Binaries}} {
+	}{{table: "Icon", src: b.cfg.Icons}, {table: tableBinary, src: b.cfg.Binaries}} {
 		for _, name := range sortedStringKeys(section.src) {
 			data, err := b.readInput(section.src[name])
 			if err != nil {
@@ -101,11 +102,46 @@ func (b *build) streams() error {
 				continue
 			}
 
+			if section.table == tableBinary {
+				b.checkEXEBinary(name, data)
+			}
+
 			b.table(section.table).Add(name, data)
 		}
 	}
 
 	return nil
+}
+
+// tableBinary is the table of custom action and UI binaries.
+const tableBinary = "Binary"
+
+// cfbSignature starts every compound file, and so every .msi.
+const cfbSignature = "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"
+
+// checkEXEBinary warns when an exe action runs a binary that is no program.
+// The engine writes the stream to a temporary .exe and starts it, so a DLL
+// or another file fails only at install time.
+func (b *build) checkEXEBinary(name string, data []byte) {
+	for i, custom := range b.cfg.CustomActions {
+		if custom.EXE == nil || custom.EXE.Binary != name {
+			continue
+		}
+
+		cfgPath := fmt.Sprintf("customActions[%d].exe.binary", i)
+		reader := bytes.NewReader(data)
+
+		switch {
+		case strings.HasPrefix(string(data), cfbSignature):
+			// An .msi needs msiexec, and a second msiexec cannot start
+			// while this install runs its execute sequence (1618).
+			b.warnf(cfgPath, "binary %s is a Windows Installer package, not a program; a nested install from a custom action fails with 1618", name)
+		case !pe.IsPE(reader):
+			b.warnf(cfgPath, "binary %s is not a Windows program (no PE header); the engine cannot start it", name)
+		case pe.IsDLL(reader):
+			b.warnf(cfgPath, "binary %s is a DLL; use a dll action to call it", name)
+		}
+	}
 }
 
 // customTables copies the tables section into the database. A string in a

@@ -200,7 +200,7 @@ func (b *build) builderRowPath(table, key string, owners map[string]string) stri
 	switch table {
 	case "Icon":
 		return "icons." + key
-	case "Binary":
+	case tableBinary:
 		path := "binaries." + key
 		if b.cfg.Binaries[key] != "" && owners["Binary."+key] != path {
 			return path
