@@ -1,0 +1,175 @@
+//go:build windows
+
+package nativetest_test
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+const (
+	removeUIName  = "MsiBuilderRemoveUI"
+	removeUILabel = "Delete the configuration"
+	// removeUIAdvance presses through the maintenance welcome page, Remove
+	// in the menu and on the confirmation page, the remove dialog's Next,
+	// Finish, and Yes on the box msiexec /x asks first.
+	removeUIAdvance = "^(Next|Remove|Finish|Yes)$"
+)
+
+const removeUIConfig = `schema: msi-builder/v1
+
+product:
+  name: MsiBuilderRemoveUI
+  manufacturer: msi-builder tests
+  version: ${VERSION}
+  language: 1033
+  upgradeCode: 2d7c1b94-6e3a-4f05-8b21-9a4c3e7f0d58
+
+package:
+  platform: x64
+  scope: perMachine
+  installerVersion: "5.0"
+
+components:
+  - files:
+      - source: ${SOURCE}
+        name: tool.exe
+  - id: Config
+    directory: CommonAppDataFolder/MsiBuilderRemoveUI
+    createFolder: true
+    purge:
+      condition: DELETE_CONFIGURATION="1"
+
+properties:
+  DELETE_CONFIGURATION: {}
+
+ui:
+  enabled: true
+  dialogs:
+    - id: RemoveOptionsDlg
+      flow: remove
+      title: Remove options
+      description: What to remove with [ProductName].
+      fields:
+        - property: DELETE_CONFIGURATION
+          type: checkbox
+          label: '&Delete the configuration'
+`
+
+// TestFullUIRemoveDialog removes the product three times through the full
+// UI, reinstalling it quietly in between: the maintenance menu with the
+// remove dialog's box left clear keeps the purged folder, msiexec /x shows
+// no wizard page and keeps it too, and the menu with the box checked
+// deletes it, because the secure property reaches the deferred purge on
+// the server (UI-08). It also records what Add or Remove Programs is given
+// for a package whose ARPNOMODIFY stays unset (UI-09).
+func TestFullUIRemoveDialog(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
+	requireFullUI(t)
+	waitForMsiexec(t)
+
+	dir := t.TempDir()
+	pkg, res := buildFullUIFrom(t, dir, removeUIConfig, "1.0.0", "auto")
+	data := filepath.Join(os.Getenv("ProgramData"), removeUIName)
+
+	cleanupFullUI(t, pkg)
+	t.Cleanup(func() {
+		_ = os.RemoveAll(data)
+		_ = os.RemoveAll(filepath.Join(os.Getenv("ProgramFiles"), removeUIName))
+	})
+
+	install := func(name string) {
+		t.Helper()
+
+		log := filepath.Join(dir, name+".log")
+		if code := msiexec(t, "/i", pkg, "/qn", "/l*v", log); code != 0 {
+			t.Fatalf("installing: exit %d\n%s", code, readLog(log))
+		}
+
+		if err := os.WriteFile(filepath.Join(data, "config.yaml"), []byte("listen: 9182\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	install("install1")
+
+	arp := reg(t, "query", `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\`+res.ProductCode, "/reg:64")
+	if strings.Contains(arp, "NoModify") {
+		t.Errorf("the ARP entry has NoModify:\n%s", arp)
+	}
+
+	t.Logf("UI-09 ARP entry:\n%s", arp)
+
+	// The maintenance menu, the box left clear.
+	keepLog := filepath.Join(dir, "keep.log")
+	code, keep := fullUIDriven(t, dir, "", removeUIAdvance, "/i", pkg, "/l*v", keepLog)
+
+	if code != 0 {
+		t.Errorf("remove keeping the configuration: exit %d, want 0", code)
+	}
+
+	if !strings.Contains(keep, "Remove options") || !strings.Contains(keep, removeUILabel) {
+		t.Error("the maintenance remove did not show RemoveOptionsDlg")
+	}
+
+	if productInstalled(t, res.ProductCode) {
+		t.Error("the product is still installed after the remove keeping the configuration")
+	}
+
+	if _, err := os.Stat(filepath.Join(data, "config.yaml")); err != nil {
+		t.Errorf("the configuration is gone with the box clear: %v", err)
+	}
+
+	// msiexec /x: no wizard page.
+	install("install2")
+
+	xLog := filepath.Join(dir, "x.log")
+	code, removeX := fullUIDriven(t, dir, "", removeUIAdvance, "/x", pkg, "/l*v", xLog)
+
+	if code != 0 {
+		t.Errorf("msiexec /x: exit %d, want 0", code)
+	}
+
+	if strings.Contains(removeX, "Remove options") {
+		t.Error("msiexec /x showed RemoveOptionsDlg")
+	}
+
+	if productInstalled(t, res.ProductCode) {
+		t.Error("the product is still installed after msiexec /x")
+	}
+
+	if _, err := os.Stat(filepath.Join(data, "config.yaml")); err != nil {
+		t.Errorf("the configuration is gone after msiexec /x: %v", err)
+	}
+
+	// The maintenance menu, the box checked.
+	install("install3")
+
+	deleteLog := filepath.Join(dir, "delete.log")
+	code, remove := fullUIDriven(t, dir, "^"+removeUILabel+"$", removeUIAdvance, "/i", pkg, "/l*v", deleteLog)
+	text := readLog(deleteLog)
+
+	if code != 0 {
+		t.Errorf("remove deleting the configuration: exit %d, want 0", code)
+	}
+
+	if !strings.Contains(remove, "CHOSE: ") {
+		t.Error("the driver found no Delete the configuration box")
+	}
+
+	if got := serverProperties(text)["DELETE_CONFIGURATION"]; got != "1" {
+		t.Errorf("DELETE_CONFIGURATION on the server = %q, want 1", got)
+	}
+
+	if _, err := os.Stat(data); !os.IsNotExist(err) {
+		t.Errorf("the configuration folder is still there after the remove with the box checked: %v", err)
+	}
+
+	if strings.Contains(keep+removeX+remove, "UNEXPECTED:") {
+		t.Error("the engine showed an unexpected error box")
+	}
+
+	t.Logf("UI-08 keep:\n%s\ndelete:\n%s\nlog excerpt:\n%s", keep, remove, excerpt(text, "DELETE_CONFIGURATION", "Purge_", "Error 28"))
+	t.Logf("UI-09 msiexec /x:\n%s\nlog excerpt:\n%s", removeX, excerpt(readLog(xLog), "UILevel", "Dialog created", "Note: 1: 2205"))
+}

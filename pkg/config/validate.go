@@ -2091,7 +2091,11 @@ func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independ
 		}
 
 		v.required(dialogPath+".title", dialog.Title)
-		v.required(dialogPath+".after", dialog.After)
+		v.oneOf(dialogPath+".flow", dialog.Flow, "", FlowInstall, FlowRemove)
+
+		if !dialog.Removal() {
+			v.required(dialogPath+".after", dialog.After)
+		}
 
 		if len(dialog.Fields) == 0 {
 			v.errorf(dialogPath+".fields", "at least one field")
@@ -2112,6 +2116,25 @@ func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independ
 	}
 
 	v.choiceProperties(cfg)
+	v.removeDialogs(cfg)
+}
+
+// removeDialogs warns when Add or Remove Programs cannot reach the remove
+// flow: only Change opens the maintenance menu, since Uninstall runs
+// without the wizard (UI-09).
+func (v *validator) removeDialogs(cfg *Config) {
+	if !cfg.Product.ARP.NoModify {
+		return
+	}
+
+	for i, dialog := range cfg.UI.Dialogs {
+		if dialog != nil && dialog.Removal() {
+			v.warnf(fmt.Sprintf("ui.dialogs[%d].flow", i), "product.arp.noModify hides Change in Add or Remove Programs, "+
+				"which opens the maintenance menu; without it this page shows only when the package runs again")
+
+			return
+		}
+	}
 }
 
 // launchProperty is the property of the ui.launch check box.
