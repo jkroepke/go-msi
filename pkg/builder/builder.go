@@ -90,8 +90,9 @@ type build struct { //nolint:govet // grouped by build step
 	// shortcutCarrier maps a component to the generated component that
 	// holds the shortcuts to its files.
 	shortcutCarrier map[string]string
-	// shortNames are the short names taken per directory key, shared by
-	// the directories and files in it (section 11.3).
+	// shortNames are the short names taken per folder (canonical path),
+	// shared by the directories and files in it and by every directory key
+	// that names it (section 11.3).
 	shortNames map[string]map[string]bool
 	// shortcutNames are the short names taken per shortcut directory: a
 	// shortcut is written as name.lnk, so it has a set of its own.

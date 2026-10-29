@@ -286,3 +286,37 @@ components:
 		t.Errorf("File.FileName %s takes the short name %s of a file in the same folder", name, generated)
 	}
 }
+
+// TestSameNamedFilesShareShortName checks that two files with one long name
+// in one folder, here in exclusive components of two directory IDs that
+// name that folder, get one short name.
+func TestSameNamedFilesShareShortName(t *testing.T) {
+	t.Parallel()
+
+	res := mustBuild(t, shortNameConfig(t, `        children:
+          - { id: DATADIR, name: Data Files }
+          - { id: DATADIR2, name: Data Files }
+components:
+  - directory: DATADIR
+    condition: VersionNT64
+    guid: 3f2504e0-4f89-41d3-9a0c-0305e82c3401
+    files:
+      - { source: one.txt, id: One, name: Readme Long.txt }
+  - directory: DATADIR2
+    condition: NOT VersionNT64
+    guid: 3f2504e0-4f89-41d3-9a0c-0305e82c3402
+    files:
+      - { source: two.txt, id: Two, name: Readme Long.txt }
+`))
+
+	short := func(key string) string {
+		value := fmt.Sprint(cell(t, res.Database, "File", "FileName", func(row []any) bool { return row[0] == key }))
+		s, _, _ := strings.Cut(value, "|")
+
+		return s
+	}
+
+	if short("One") != short("Two") {
+		t.Errorf("One short name %s, Two %s, want one", short("One"), short("Two"))
+	}
+}

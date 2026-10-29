@@ -531,11 +531,22 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 		return strings.Compare(left.Key, right.Key)
 	})
 
+	// Files with one long name in one folder, from two directory keys or
+	// two conditional components, are one file and get one short name.
+	names := make(map[string]string)
+
 	for i, file := range b.files {
 		file.Sequence = i + 1
 
 		dir := file.Component.dir.id
-		file.FileName = filename(dir, configuredFileName(file), false, b.taken(dir), config.ValidShortName)
+		long := configuredFileName(file)
+
+		key := b.folderKey(dir) + "\x1f" + strings.ToLower(long)
+		if _, ok := names[key]; !ok {
+			names[key] = filename(dir, long, false, b.taken(dir), config.ValidShortName)
+		}
+
+		file.FileName = names[key]
 	}
 
 	if err := b.deriveProductCode(); err != nil {
