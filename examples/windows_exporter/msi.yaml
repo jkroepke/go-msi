@@ -138,9 +138,10 @@ customActions:
 
   # config.yaml is not owned by a component, so it survives upgrades and
   # uninstall. Only while the executable is installed or reinstalled: on
-  # removal, RemoveFiles may already have removed the folder, starting the
-  # command there fails with error 267 and the uninstall rolls back
-  # (MSISPEC-RESULTS, run 40334482129).
+  # removal, CONFIG_FILE falls back to its default, and when config.yaml was
+  # never created (a custom CONFIG_FILE) or was deleted, the empty folder is
+  # already gone. Starting the command there fails with error 267
+  # (MSISPEC-RESULTS, run 40334482129) and fails the uninstall.
   - id: CreateConfigFile
     run:
       command: '"[%ComSpec]" /c TYPE NUL >>"[APPLICATIONFOLDER]config.yaml"'
