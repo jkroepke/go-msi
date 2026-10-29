@@ -398,7 +398,11 @@ func TestSignExternalCabinets(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	src = bytes.Replace(src, []byte("  platform: x64\n"), []byte("  platform: x64\n  embedCabinets: false\n"), 1)
+	// A Windows checkout may have CRLF line endings, so keep the line end.
+	src = bytes.Replace(src, []byte("  platform: x64"), []byte("  platform: x64\n  embedCabinets: false"), 1)
+	if !bytes.Contains(src, []byte("embedCabinets")) {
+		t.Fatal("the minimal example has no platform line")
+	}
 
 	yaml := filepath.Join(dir, "msi.yaml")
 	if err := os.WriteFile(yaml, src, 0o600); err != nil {
