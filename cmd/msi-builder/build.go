@@ -136,7 +136,7 @@ Diagnostics go to stderr; on success one summary line goes to stdout.`,
 	}
 
 	flags.load.register(cmd)
-	cmd.Flags().StringVarP(&flags.out, "output", "o", "", "output file (default: <product name>-<version>.msi next to the YAML file)")
+	cmd.Flags().StringVarP(&flags.out, "output", "o", "", "output file (default: <product name>-<version>.msi next to the YAML file, with characters a file name cannot hold replaced by _)")
 	cmd.Flags().IntVar(&flags.cfbVersion, "cfb", 4, "compound file version, 3 (512-byte sectors) or 4 (4096-byte sectors)")
 	cmd.Flags().BoolVar(&flags.skipVerify, "skip-verify", false, "do not read the finished package back")
 	cmd.Flags().BoolVarP(&flags.quiet, "quiet", "q", false, "print nothing on success")
@@ -232,7 +232,29 @@ func (f *buildFlags) output(cfg *config.Config) string {
 		return f.out
 	}
 
-	return filepath.Join(cfg.BaseDir, cfg.Product.Name+"-"+cfg.Product.Version+".msi")
+	return filepath.Join(cfg.BaseDir, defaultFileName(cfg.Product.Name+"-"+cfg.Product.Version)+".msi")
+}
+
+// defaultFileName turns a product name into a file name in the YAML file's
+// folder: a display name may hold path separators or characters Windows
+// does not allow in a file name, and must neither pick another folder nor
+// fail the build. Leading dots and spaces go too, so that the name is never
+// "." or "..", nor hidden.
+func defaultFileName(name string) string {
+	safe := strings.Map(func(r rune) rune {
+		if r < 0x20 || strings.ContainsRune(`<>:"/\|?*`, r) {
+			return '_'
+		}
+
+		return r
+	}, name)
+
+	safe = strings.TrimLeft(safe, ". ")
+	if safe == "" {
+		return "package"
+	}
+
+	return safe
 }
 
 // tempPackage returns a temporary path next to out for the unsigned
