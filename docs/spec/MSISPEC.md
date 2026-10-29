@@ -1389,6 +1389,7 @@ What Windows Installer does (observed, Windows Server 2025, SIG-09): it logs "Va
 | as built | installs | installs | refused (1330) |
 | one data byte changed | refused | refused | refused |
 | another build signed with the same certificate | refused | **installs** (other files) | refused |
+| the same content signed by another certificate | refused | refused | refused |
 | unsigned | refused | refused | refused |
 
 Trust is not part of the check: cabinets signed with a self-signed certificate that no store trusts install (exit 0) when `CertData` holds that certificate. The tables pin the certificate and the signature, so they protect the cabinets only as far as the package itself is protected: sign the package too, or an attacker who replaces the cabinets can replace the tables as well. A null Hash only binds the cabinet to the signer, so msi-builder always writes the signature value. A timestamp lives in the unauthenticated attributes and leaves the signature value unchanged. Embedded cabinets are covered by the package signature and are not listed in `MsiDigitalSignature`; ICE81 checks the tables (clean, SIG-09).
@@ -1399,7 +1400,7 @@ Trust is not part of the check: cabinets signed with a self-signed certificate t
 - ECDSA keys and SHA-384/512 on Windows Server 2016 (they pass on Server 2025, SIG-06).
 - Signature-stream exclusion at the root only or at every level (conflict). The writer strips them from sub-storages, so both rules agree.
 - Low-dword sizes for streams ≥ 4 GiB; layout independence on Windows.
-- Signed external cabinets with ECDSA keys, on Windows Server 2016, from a network share, and with a timestamp (SIG-09 used RSA-2048 with SHA-256 on Server 2025, without a timestamp).
+- Signed external cabinets on Windows Server 2016 and from a network share (SIG-09 installed RSA-2048 with SHA-1, SHA-256 and SHA-384, ECDSA P-256 and an RFC 3161 timestamp on Server 2025).
 
 ### Signatures and edit or rewrite operations
 
@@ -2384,8 +2385,8 @@ Until 2026-10-26 the cases used other IDs: `RUN-` for most installation and runt
 | SIG-04 | P1 | S/A | Prefix-related stream names and names before/after DSE | Use valid signed fixtures; compute candidate stream sort orders and compare with Windows signature verification. | Confirmed (Server 2025) |
 | SIG-05 | P1 | S/A | Nested storage containing a signature-named stream; CLSID mutation | Vary nested data, name and CLSID independently; check the signed digest and exclusion scope with the native verifier. | Partly confirmed (Server 2025; CLSID only, no nested storages) |
 | SIG-06 | P2 | S/A | RSA SHA-256/384/512, ECDSA where supported | Sign and verify each combination; document Windows build, certificate and algorithm-specific failures. | Confirmed (Server 2025) |
-| SIG-08 | P1 | S/A | MSZIP cabinet written with the 20-byte signature reserve, signed by msi-builder (RSA, SHA-256 and SHA-1) and by `signtool` (from a cabinet without the reserve) | WinVerifyTrust, `Get-AuthenticodeSignature` and `signtool verify /pa`; flip a data byte; compare `MsiGetFileSignatureInformation` with the signature value; decode `signtool`'s reserve, indirect data and digest. (`internal/builder/nativetest/cabsign_windows_test.go`) | Confirmed ([results](MSISPEC-RESULTS.md#signed-external-cabinets-sig-08-sig-09)) |
-| SIG-09 | P1 | S/A/I | Three signed external cabinets listed in `MsiDigitalSignature`, with Hash = signature value, null and the content digest | Install each with the second cabinet as built, with a changed byte, from another build by the same signer, and unsigned; then cabinets by an untrusted certificate; ICE suite. | Confirmed ([results](MSISPEC-RESULTS.md#signed-external-cabinets-sig-08-sig-09)) |
+| SIG-08 | P1 | S/A | MSZIP cabinet written with the 20-byte signature reserve, signed by msi-builder (RSA, SHA-256 and SHA-1) and by `signtool` (from a cabinet without the reserve) | WinVerifyTrust, `Get-AuthenticodeSignature` and `signtool verify /pa`; flip a data byte, `reserved1` and `iCabinet`; compare `MsiGetFileSignatureInformation` with the signature value; decode `signtool`'s reserve, indirect data and digest. (`internal/builder/nativetest/cabsign_windows_test.go`) | Confirmed ([results](MSISPEC-RESULTS.md#signed-external-cabinets-sig-08-sig-09)) |
+| SIG-09 | P1 | S/A/I | Three signed external cabinets listed in `MsiDigitalSignature`, with Hash = signature value, null and the content digest | Install each with the second cabinet as built, with a changed byte, from another build by the same signer, signed by another certificate, and unsigned; then cabinets by an untrusted certificate, ECDSA P-256, SHA-1, SHA-384 and a timestamp; ICE suite. | Confirmed ([results](MSISPEC-RESULTS.md#signed-external-cabinets-sig-08-sig-09)) |
 | INT-01 | P0 | S/A/I | Equivalent WiX and msitools packages | Pin version or commit; diff normalized table semantics, native open, install/uninstall and raw stream hashing. Identify producer-only decisions. | Not run ([results](MSISPEC-RESULTS.md)) |
 | INT-02 | P1 | S/A | WiX MSI round-tripped by libmsi and then a native commit | Compare raw streams and decoded tables and native file extraction after each round trip; note semantic vs incidental changes. | Not run ([results](MSISPEC-RESULTS.md)) |
 | INT-03 | P1 | S/A | Minimized failures from the msitools bug tracker (section 16) | Run identical malformed input through the native MSI API, msitools and an independent CFB/CAB reader; distinguish tool bugs from Windows rejection. | Not run ([results](MSISPEC-RESULTS.md)) |

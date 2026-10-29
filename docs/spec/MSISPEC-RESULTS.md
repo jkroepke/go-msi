@@ -718,8 +718,8 @@ in `internal/builder/nativetest/media_windows_test.go`.
 
 Run on 2026-10-29 by the `windows-latest` CI runner (Windows Server 2025
 Datacenter 10.0.26100, image windows-2025-vs2026 20261021.278.1), elevated,
-for msi-builder PR #103 (workflow runs 40892925093, commit 2cbd01f, and
-40895190291, commit b947afb): `TestCabinetSignatureFormat` and
+for msi-builder PR #103 (workflow runs 40892925093, commit 2cbd01f,
+40895190291, commit b947afb, and 40900782153, commit aa54bd3): `TestCabinetSignatureFormat` and
 `TestMsiexecChecksSignedCabinets` in
 `internal/builder/nativetest/cabsign_windows_test.go`, with a test CA added
 to the machine's root store and an RSA-2048 leaf.
@@ -727,7 +727,9 @@ to the machine's root store and an RSA-2048 leaf.
 - SIG-08: a two-file MSZIP cabinet written with the signature reserve and
   signed by msi-builder verified with WinVerifyTrust,
   `Get-AuthenticodeSignature` (`Valid`) and `signtool verify /pa`, for
-  SHA-256 and SHA-1. A changed data byte gave `0x80096010`.
+  SHA-256 and SHA-1. A changed data byte gave `0x80096010`. A changed
+  `reserved1` (0x04) still verified; a changed `iCabinet` (0x22) gave
+  `0x80096010` although the digest leaves it out.
   `MsiGetFileSignatureInformation` returned 0 with size 0 for a call without
   a buffer, then filled 256 bytes: the signer's signature value, found
   inside the PKCS#7, and neither the content digest nor a hash of the file.
@@ -748,14 +750,20 @@ to the machine's root store and an RSA-2048 leaf.
   | null | installs | 1603 | installs, other files | 1603 |
   | content digest (32 bytes) | 1603, error 1330 | 1603 | 1603 | 1603 |
 
+  The same second cabinet signed by another (self-signed) certificate was
+  refused (1603) with every Hash, so the certificate is compared with
+  `CertData` (run 40900782153).
+
   With the content digest, the log said "Hash of signed file … differs in
   size with the hash of the file authored in the installation package", then
   error 1330 ("… invalid digital signature … Error 0 was returned by
   WinVerifyTrust"). Every refused install left no install folder.
 - SIG-09, trust: cabinets signed with a self-signed certificate that is in
-  no store installed with exit 0 (run 40895190291); with the content digest
-  as Hash the same package was refused for the hash (run 40892925093). The
-  ICE suite, ICE81 among it, reported nothing for a package with signed
-  cabinets.
-- Not run: ECDSA keys, a timestamp, Windows Server 2016, an install from a
-  network share.
+  no store installed with exit 0 (runs 40895190291, 40900782153); with the
+  content digest as Hash the same package was refused for the hash (run
+  40892925093). Cabinets signed with ECDSA P-256 (SHA-256), RSA with SHA-384,
+  RSA with SHA-1, and RSA with an RFC 3161 timestamp from DigiCert each
+  installed with the right files (run 40900782153). The ICE suite, ICE81
+  among it, reported nothing for a package with signed cabinets.
+- Not run: Windows Server 2016, an install from a network share, a signed
+  cabinet near 2 GiB.
