@@ -313,6 +313,11 @@ func (s *StreamReader) readChain(buf []byte, off int64) (int, error) {
 		total += read
 
 		if err != nil && (!errors.Is(err, io.EOF) || read != want) {
+			// A file that ends inside the stream is not the stream's end.
+			if errors.Is(err, io.EOF) {
+				err = io.ErrUnexpectedEOF
+			}
+
 			return total, fmt.Errorf("cfb: read: %w", err)
 		}
 	}
@@ -356,20 +361,28 @@ type reader struct {
 	ss      int
 }
 
+// sectorOffset returns the file offset of a sector that starts inside the
+// file. The last sector may be short: other build tools write packages that
+// end with the last byte of their last stream (MSISPEC section 2), and
+// stream reads past the end of the file still fail in readChain.
 func (r *reader) sectorOffset(n uint32) (int64, error) {
 	off := (int64(n) + 1) * int64(r.ss)
-	if n >= 0xFFFFFFFA || off+int64(r.ss) > r.size {
+	if n >= 0xFFFFFFFA || off >= r.size {
 		return 0, fmt.Errorf("cfb: sector %#x out of range", n)
 	}
 
 	return off, nil
 }
 
-// sector reads one sector.
+// sector reads one whole sector of the FAT, DIFAT, MiniFAT or directory.
 func (r *reader) sector(index uint32) ([]byte, error) {
 	off, err := r.sectorOffset(index)
 	if err != nil {
 		return nil, err
+	}
+
+	if off+int64(r.ss) > r.size {
+		return nil, fmt.Errorf("cfb: sector %#x is cut off by the end of the file", index)
 	}
 
 	buf := make([]byte, r.ss)
