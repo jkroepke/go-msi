@@ -126,18 +126,17 @@ type build struct { //nolint:govet // grouped by build step
 	schedules  map[string][]sequence.Action
 	components map[string]*componentInfo
 	hidden     map[string]bool
-	// shortcutCarrier maps a component to the generated component that
-	// holds the shortcuts to its files.
-	shortcutCarrier map[string]string
+	// carriers maps a component to the generated components that install
+	// with it: the one that holds the shortcuts to its files, the permanent
+	// ones that hold the extension defaults of its file types and those that
+	// start its services under a condition.
+	carriers map[string][]string
 	// removedFolders are the folders that generated RemoveFile rows remove
 	// on uninstall.
 	removedFolders map[string]bool
 	// guids maps each ComponentId to the component that has it, to report
 	// duplicates (ICE08).
 	guids map[any]string
-	// fileTypeCarrier maps a component to the generated permanent
-	// components that hold the extension defaults of its file types.
-	fileTypeCarrier map[string][]string
 	// assocChange is set when the package registers file types and so
 	// notifies the shell (scheduleAssocChanged).
 	assocChange bool
@@ -291,25 +290,24 @@ func checkSigning(cfg *config.Config, opts *Options) error {
 // newBuild returns the state of one build of cfg, in product.language.
 func newBuild(cfg *config.Config, opts Options, diags config.Diagnostics) *build {
 	return &build{
-		cfg:             cfg,
-		opts:            opts,
-		diags:           diags,
-		tables:          make(map[string]*msidb.Table),
-		dirs:            make(map[string]*dirInfo),
-		components:      make(map[string]*componentInfo),
-		fileByKey:       make(map[string]*fileInfo),
-		properties:      make(map[string]string),
-		secure:          make(map[string]bool),
-		hidden:          make(map[string]bool),
-		shortcutCarrier: make(map[string]string),
-		fileTypeCarrier: make(map[string][]string),
-		removedFolders:  make(map[string]bool),
-		shortNames:      make(map[string]map[string]bool),
-		shortcutNames:   make(map[string]map[string]bool),
-		schedules:       make(map[string][]sequence.Action),
-		numbered:        make(map[string][]sequence.Numbered),
-		is64:            cfg.Package.Platform.Is64Bit(),
-		language:        *cfg.Product.Language,
+		cfg:            cfg,
+		opts:           opts,
+		diags:          diags,
+		tables:         make(map[string]*msidb.Table),
+		dirs:           make(map[string]*dirInfo),
+		components:     make(map[string]*componentInfo),
+		fileByKey:      make(map[string]*fileInfo),
+		properties:     make(map[string]string),
+		secure:         make(map[string]bool),
+		hidden:         make(map[string]bool),
+		carriers:       make(map[string][]string),
+		removedFolders: make(map[string]bool),
+		shortNames:     make(map[string]map[string]bool),
+		shortcutNames:  make(map[string]map[string]bool),
+		schedules:      make(map[string][]sequence.Action),
+		numbered:       make(map[string][]sequence.Numbered),
+		is64:           cfg.Package.Platform.Is64Bit(),
+		language:       *cfg.Product.Language,
 	}
 }
 

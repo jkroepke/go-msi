@@ -718,6 +718,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 	removeIDs := make(map[string]bool)
 	removeFileIDs := make(map[string]bool)
 	perUser := cfg.Package.Scope.MayBePerUser()
+	services := packageServices(cfg)
 
 	for i, comp := range cfg.Components {
 		p := comp.Path(i) //nolint:varnamelen // the YAML path, named p throughout this file
@@ -761,9 +762,11 @@ func (v *validator) components(cfg *Config, known *refs) {
 		for j, svc := range comp.Services {
 			svcPath := fmt.Sprintf("%s.services[%d]", p, j)
 			v.service(svcPath, svc, keyFile, perUser)
+			v.startConditionLength(svcPath+".control.startCondition", comp.Condition, svc.Control.StartCondition)
 			v.permissions(svcPath+".permissions", svc.Permissions)
 		}
 
+		v.componentServiceControl(p, comp, services, perUser)
 		v.componentPermissions(p, comp)
 		v.componentEvents(p, comp, perUser)
 	}
@@ -1405,8 +1408,106 @@ func (v *validator) serviceControl(ctlPath string, ctl *ServiceControl, start st
 		v.warnf(ctlPath+".deleteOnUninstall", "without it the service stays registered after uninstall (SVC-01)")
 	}
 
+	if ctl.StartCondition != "" {
+		if !*ctl.StartOnInstall {
+			v.errorf(ctlPath+".startCondition", "needs startOnInstall")
+		} else if err := condition.Check(ctl.StartCondition); err != nil {
+			v.errorf(ctlPath+".startCondition", "%v", err)
+		}
+	}
+
 	if ctl.WaitForStart != nil && !*ctl.StartOnInstall {
 		v.warnf(ctlPath+".waitForStart", "has no effect without startOnInstall")
+	}
+}
+
+// packageServices returns the lower-case names of the services the package
+// installs.
+func packageServices(cfg *Config) map[string]bool {
+	names := make(map[string]bool)
+
+	for _, comp := range cfg.Components {
+		for _, svc := range comp.Services {
+			names[strings.ToLower(svc.Name)] = true
+		}
+	}
+
+	return names
+}
+
+// maxServiceName is the length of ServiceControl.Name.
+const maxServiceName = 255
+
+// maxComponentCondition is the length of Component.Condition.
+const maxComponentCondition = 255
+
+// startConditionLength rejects a start condition that does not fit the
+// Condition column of the generated component, which also holds the
+// condition of the service's component.
+func (v *validator) startConditionLength(field, compCondition, startCondition string) {
+	if startCondition == "" {
+		return
+	}
+
+	length := len("(" + startCondition + ")")
+	if compCondition != "" {
+		length += len("(" + compCondition + ") AND ")
+	}
+
+	if length > maxComponentCondition {
+		v.errorf(field, "with the component's condition it is %d characters, at most %d fit in Component.Condition", length, maxComponentCondition)
+	}
+}
+
+// componentServiceControl checks the services a component stops, starts or
+// deletes without installing them. A service the package installs is
+// controlled by its services[].control: a row in another component would
+// stop or delete it when that component is removed or repaired.
+func (v *validator) componentServiceControl(compPath string, comp *Component, services map[string]bool, perUser bool) {
+	seen := make(map[string]bool)
+
+	for j, ctl := range comp.ServiceControl {
+		ctlPath := fmt.Sprintf("%s.serviceControl[%d]", compPath, j)
+
+		if perUser {
+			v.errorf(ctlPath, "%s cannot control services, which needs elevation", v.perUserPackage())
+		}
+
+		if !v.required(ctlPath+".name", ctl.Name) {
+			continue
+		}
+
+		key := strings.ToLower(ctl.Name)
+
+		switch {
+		case services[key]:
+			v.errorf(ctlPath+".name", "the package installs %s; set its events in services[].control", ctl.Name)
+		case seen[key]:
+			v.errorf(ctlPath+".name", "this component already controls %s; list each service once", ctl.Name)
+		}
+
+		seen[key] = true
+
+		v.controlledService(ctlPath, ctl)
+	}
+}
+
+// controlledService checks the events of one serviceControl entry.
+func (v *validator) controlledService(ctlPath string, ctl *ControlledService) {
+	if len(ctl.Name) > maxServiceName {
+		v.errorf(ctlPath+".name", "is %d characters, ServiceControl.Name holds %d", len(ctl.Name), maxServiceName)
+	}
+
+	// The outcome is not tested; the sequence order alone makes it a
+	// start of a service that was just deleted.
+	if (ctl.DeleteOnInstall && ctl.StartOnInstall) || (ctl.DeleteOnUninstall && ctl.StartOnUninstall) {
+		v.warnf(ctlPath, "deletes and starts %s in the same phase; DeleteServices runs before StartServices, "+
+			"so the start looks for a service that is gone", ctl.Name)
+	}
+
+	if !ctl.anyEvent() {
+		v.errorf(ctlPath, "names no event; set at least one of stopOnInstall, startOnInstall, deleteOnInstall, "+
+			"stopOnUninstall, startOnUninstall and deleteOnUninstall")
 	}
 }
 
