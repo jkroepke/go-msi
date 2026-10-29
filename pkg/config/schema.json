@@ -1492,6 +1492,46 @@
             "additionalProperties": false
           }
         },
+        "removeRegistry": {
+          "type": "array",
+          "description": "Registry keys or values deleted when the component is installed, before its own values are written.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/identifier"
+              },
+              "root": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "HKLM",
+                      "HKCU",
+                      "HKCR",
+                      "HKU",
+                      "HKMU"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/var"
+                  }
+                ]
+              },
+              "key": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string",
+                "description": "The value to delete. Leave it out to delete the key with all its values and subkeys."
+              }
+            },
+            "required": [
+              "root",
+              "key"
+            ],
+            "additionalProperties": false
+          }
+        },
         "services": {
           "type": "array",
           "items": {

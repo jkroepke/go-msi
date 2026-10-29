@@ -87,6 +87,22 @@ func (b *build) writeRegistry(info *componentInfo) {
 		tbl.Add(b.registryID(info, reg), registryRoots[reg.Root], reg.Key, name, registryValue(reg), comp.ID)
 	}
 
+	// RemoveRegistryValues runs before WriteRegistryValues, so a key that is
+	// removed and written again is reset to the package's values (REG-02).
+	for _, entry := range comp.RemoveRegistry {
+		key := entry.ID
+		if key == "" {
+			key = generatedID("rreg", "RemoveRegistry", comp.ID, entry.Root, strings.ToLower(entry.Key), strings.ToLower(entry.Name))
+		}
+
+		name := entry.Name
+		if name == "" {
+			name = "-"
+		}
+
+		b.table("RemoveRegistry").Add(key, registryRoots[entry.Root], entry.Key, name, comp.ID)
+	}
+
 	for _, e := range comp.EventLog {
 		key := `SYSTEM\CurrentControlSet\Services\EventLog\` + e.Log + `\` + e.Source
 		tbl.Add(generatedID("reg", "EventLog", comp.ID, e.Log, e.Source, "EventMessageFile"), registryRoots["HKLM"], key, "EventMessageFile",

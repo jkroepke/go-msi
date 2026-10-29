@@ -441,6 +441,7 @@ components:
       - source: dist/windows_exporter.exe
         checksum: true
     registry: []
+    removeRegistry: []
     services: []
     eventLog: []
     environment: []
@@ -664,6 +665,32 @@ creates the key (`+`) or, with `removeOnUninstall: true`, creates and removes
 it (`*`). `append: true` and `prepend: true` on a `multiString` merge with an
 existing value.
 
+**Registry removal.** `removeRegistry` deletes keys or values that exist
+before the install, for example the handlers of an old version or a value
+an earlier release wrote outside its own components:
+
+```yaml
+removeRegistry:
+  - root: HKCU                       # HKLM | HKCU | HKCR | HKU | HKMU
+    key: Software\Classes\oldapp      # no name: the key with all values and subkeys
+  - id: LegacyArgs                   # optional; generated from the content otherwise
+    root: HKLM
+    key: SOFTWARE\Example\App
+    name: Arguments                  # one value
+```
+
+Each entry is a `RemoveRegistry` row of the component (name `-` for a whole
+key). The engine deletes it when the component is installed, in the
+component's registry view, and leaves it alone at uninstall (REG-02, which
+also records what a repair does). `RemoveRegistryValues` runs before
+`WriteRegistryValues`, so a key that is removed and also written by the
+package is reset to exactly the package's values: values the user added
+there are gone after the install (REG-02). A component that only removes
+registry entries has its directory as key path. Removing the default value
+of a key is not supported. The same root, key and name twice in one
+component is an error, and so is a per-user package that removes from HKLM
+or HKCR.
+
 **Services** (only in a component whose key file is the service executable):
 
 ```yaml
@@ -725,6 +752,17 @@ eventLog:
     messageFile: '%SystemRoot%\System32\EventCreate.exe'
     typesSupported: 7
 ```
+
+They write `EventMessageFile` (`REG_EXPAND_SZ`) and `TypesSupported`
+(`REG_DWORD`) under
+`HKLM\SYSTEM\CurrentControlSet\Services\EventLog\<log>\<source>`.
+Nothing else is needed: a key there is a registered source for
+`Write-EventLog`, `[EventLog]::SourceExists` and `Remove-EventLog`, and
+events show their text through a generic `%1` message file such as
+`EventCreate.exe` (REG-03). There is no `customSource` option: a
+`CustomSource` value made no difference to any of these in REG-03, and
+`New-EventLog` itself does not write it. A package that wants it anyway can
+add it as a `registry` entry.
 
 **Environment variables** (section 2.1, finding 4):
 

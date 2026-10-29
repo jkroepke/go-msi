@@ -597,6 +597,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 	fileIDs := make(map[string]string)
 	paths := newFolderPaths(cfg.Directories)
 	regIDs := make(map[string]bool)
+	removeIDs := make(map[string]bool)
 	perUser := cfg.Package.Scope == ScopePerUser
 
 	for i, comp := range cfg.Components {
@@ -622,6 +623,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 
 		files := v.componentFiles(cfg, p, comp, fileIDs, paths)
 		v.componentRegistry(p, comp, regIDs, perUser)
+		v.componentRemoveRegistry(p, comp, removeIDs, perUser)
 		keyFile := v.componentKeyFile(p, comp, files)
 
 		for j, svc := range comp.Services {
@@ -1051,17 +1053,7 @@ func (v *validator) componentRegistry(p string, c *Component, ids map[string]boo
 			ids[value.ID] = true
 		}
 
-		v.oneOf(valuePath+".root", value.Root, "HKLM", "HKCU", "HKCR", "HKU", "HKMU")
-
-		if perUser && (value.Root == "HKLM" || value.Root == "HKCR") {
-			v.errorf(valuePath+".root", "a per-user package cannot write %s (ICE105)", value.Root)
-		}
-
-		v.required(valuePath+".key", value.Key)
-
-		if strings.HasPrefix(value.Key, `\`) || strings.HasSuffix(value.Key, `\`) {
-			v.errorf(valuePath+".key", "no leading or trailing backslash")
-		}
+		v.registryLocation(valuePath, value.Root, value.Key, perUser)
 
 		v.oneOf(valuePath+".type", value.Type, "string", "expandString", "multiString", "dword", "binary", "key")
 
@@ -1095,6 +1087,57 @@ func (v *validator) componentRegistry(p string, c *Component, ids map[string]boo
 		if value.RemoveOnUninstall && value.Type != "key" {
 			v.errorf(valuePath+".removeOnUninstall", "only for type key; values are always removed with their component")
 		}
+	}
+}
+
+// registryLocation checks the root and key of a registry entry.
+func (v *validator) registryLocation(entryPath, root, key string, perUser bool) {
+	v.oneOf(entryPath+".root", root, "HKLM", "HKCU", "HKCR", "HKU", "HKMU")
+
+	if perUser && (root == "HKLM" || root == "HKCR") {
+		v.errorf(entryPath+".root", "a per-user package cannot change %s (ICE105)", root)
+	}
+
+	v.required(entryPath+".key", key)
+
+	if strings.HasPrefix(key, `\`) || strings.HasSuffix(key, `\`) {
+		v.errorf(entryPath+".key", "no leading or trailing backslash")
+	}
+}
+
+// componentRemoveRegistry checks the registry keys and values a component
+// deletes when it is installed.
+func (v *validator) componentRemoveRegistry(p string, c *Component, ids map[string]bool, perUser bool) {
+	seen := make(map[[3]string]bool)
+
+	for j, entry := range c.RemoveRegistry {
+		entryPath := fmt.Sprintf("%s.removeRegistry[%d]", p, j)
+
+		if entry.ID != "" {
+			if !IsIdentifier(entry.ID) || len(entry.ID) > MaxIdentifierLength {
+				v.errorf(entryPath+".id", "%q is not an identifier of at most %d characters", entry.ID, MaxIdentifierLength)
+			}
+
+			if ids[entry.ID] {
+				v.errorf(entryPath+".id", "removeRegistry id %s is defined twice", entry.ID)
+			}
+
+			ids[entry.ID] = true
+		}
+
+		v.registryLocation(entryPath, entry.Root, entry.Key, perUser)
+
+		if entry.Name == "-" {
+			v.errorf(entryPath+".name", "leave name out to delete the whole key")
+		}
+
+		// Two equal entries would get the same generated key.
+		key := [3]string{entry.Root, strings.ToLower(entry.Key), strings.ToLower(entry.Name)}
+		if entry.ID == "" && seen[key] {
+			v.errorf(entryPath, "this key or value is already removed by this component")
+		}
+
+		seen[key] = true
 	}
 }
 

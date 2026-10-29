@@ -6,7 +6,7 @@ summary  4: Example
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install Hello.
 summary  7: x64;1033
-summary  9: {211730DB-FF52-5D21-8A2D-1062744D509F}
+summary  9: {42B80B16-88C8-509E-8A05-3EA46A5EE4A4}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500
@@ -135,7 +135,7 @@ s72!	l0
 ALLUSERS	1
 ARPNOMODIFY	1
 Manufacturer	Example
-ProductCode	{77CF25DE-37FE-5E96-9703-86C60DBAF4ED}
+ProductCode	{FCCA1FFB-051C-571E-9B34-BE95740668F1}
 ProductLanguage	1033
 ProductName	Hello
 ProductVersion	1.0.0

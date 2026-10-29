@@ -192,14 +192,17 @@ func (f *Feature) levelIsDefault() bool {
 
 // Component is a unit that is installed, repaired and removed together.
 type Component struct { //nolint:govet // field order is the YAML key order
-	ID          string           `yaml:"id"`
-	Directory   string           `yaml:"directory"`
-	GUID        string           `yaml:"guid"`
-	Files       []*File          `yaml:"files"`
-	Registry    []*RegistryValue `yaml:"registry"`
-	Services    []*Service       `yaml:"services"`
-	EventLog    []*EventSource   `yaml:"eventLog"`
-	Environment []*Environment   `yaml:"environment"`
+	ID        string           `yaml:"id"`
+	Directory string           `yaml:"directory"`
+	GUID      string           `yaml:"guid"`
+	Files     []*File          `yaml:"files"`
+	Registry  []*RegistryValue `yaml:"registry"`
+	// RemoveRegistry deletes registry keys or values when the component is
+	// installed (REG-02).
+	RemoveRegistry []*RemoveRegistry `yaml:"removeRegistry"`
+	Services       []*Service        `yaml:"services"`
+	EventLog       []*EventSource    `yaml:"eventLog"`
+	Environment    []*Environment    `yaml:"environment"`
 	// Purge deletes the component's directory with everything in it when
 	// the product is uninstalled, but not on a major upgrade (FILE-03).
 	Purge          *Purge `yaml:"purge"`
@@ -320,6 +323,17 @@ type RegistryValue struct { //nolint:govet // field order is the YAML key order
 	Prepend           bool         `yaml:"prepend"`
 	RemoveOnUninstall bool         `yaml:"removeOnUninstall"`
 	Permissions       *Permissions `yaml:"permissions"`
+}
+
+// RemoveRegistry is a registry key or value that is deleted when its
+// component is installed, before the component's own values are written.
+type RemoveRegistry struct {
+	ID   string `yaml:"id"`
+	Root string `yaml:"root"`
+	Key  string `yaml:"key"`
+	// Name is the value to delete; empty deletes the key with all its values
+	// and subkeys.
+	Name string `yaml:"name"`
 }
 
 // Service is a Windows service installed from the component's key file.

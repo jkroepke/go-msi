@@ -90,6 +90,8 @@ func TestValidateAccepted(t *testing.T) {
 		"remote property":     firewall("[REMOTE_ADDR]"),
 		"environment scopes":  environment("{name: FOO, value: a}, {name: FOO, value: b, scope: user}"),
 		"environment actions": environment("{name: FOO, value: a}, {name: FOO, value: b, action: append}"),
+		"remove registry": base + strings.Replace(appComponent, "    files:",
+			"    removeRegistry: [{root: HKCU, key: Software\\Classes\\old}, {root: HKMU, key: Software\\X, name: Legacy}]\n    files:", 1),
 	} {
 		if ds := validate(t, doc); len(ds) != 0 {
 			t.Errorf("%s: unexpected diagnostics: %v", name, ds)
@@ -557,6 +559,22 @@ func TestValidate(t *testing.T) {
 		"multi string marker": {
 			base + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\X, name: N, value: 'a[~]b'}]\n    files:", 1),
 			sevError, "components[0].registry[0].value", "multiString",
+		},
+		"remove registry name dash": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X, name: '-'}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[0].name", "leave name out",
+		},
+		"remove registry twice": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X}, {root: HKLM, key: software\\x}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[1]", "already removed",
+		},
+		"remove registry per user": {
+			pkg(`{platform: x64, scope: perUser}`) + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[0].root", "ICE105",
+		},
+		"remove registry key slash": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X\\}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[0].key", "backslash",
 		},
 		// Properties.
 		"builder property": {
