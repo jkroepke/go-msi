@@ -21,7 +21,7 @@ WelcomeText: "O Assistente de Instalação instalará o [ProductName] no computa
 
 LicenseTitle: "Contrato de Licença do Usuário Final"
 LicenseText: "Leia atentamente o contrato de licença a seguir."
-LicenseAccept: "Aceito &os termos do Contrato de Licença"
+LicenseAccept: "Aceito os &termos do Contrato de Licença"
 LicensePrint: "Im&primir"
 
 InstallDirTitle: "Pasta de destino"

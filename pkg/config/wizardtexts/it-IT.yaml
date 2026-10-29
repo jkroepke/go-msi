@@ -21,7 +21,7 @@ WelcomeText: "L'installazione guidata installerà [ProductName] nel computer. Fa
 
 LicenseTitle: "Contratto di licenza con l'utente finale"
 LicenseText: "Leggere attentamente il seguente contratto di licenza."
-LicenseAccept: "Accetto &le condizioni del contratto di licenza"
+LicenseAccept: "Accetto le &condizioni del contratto di licenza"
 LicensePrint: "&Stampa"
 
 InstallDirTitle: "Cartella di destinazione"

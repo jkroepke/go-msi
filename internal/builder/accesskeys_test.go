@@ -13,16 +13,21 @@ import (
 )
 
 // accessKey returns the lower-case letter after the & that marks a
-// control's access key, or 0.
+// control's access key, or 0. && is a literal & and marks none.
 func accessKey(text string) rune {
-	_, after, ok := strings.Cut(text, "&")
-	if !ok {
-		return 0
+	for {
+		_, after, ok := strings.Cut(text, "&")
+		if !ok {
+			return 0
+		}
+
+		r, _ := utf8.DecodeRuneInString(after)
+		if r != '&' {
+			return unicode.ToLower(r)
+		}
+
+		text = after[1:]
 	}
-
-	r, _ := utf8.DecodeRuneInString(after)
-
-	return unicode.ToLower(r)
 }
 
 // str returns a string cell, or "" for a null one.
