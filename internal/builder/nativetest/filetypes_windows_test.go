@@ -69,8 +69,9 @@ func buildFileTypes(t *testing.T) string {
 }
 
 // regDefault returns the REG_SZ default value of a key in the 64-bit view,
-// or "<absent>". The value's name is localised, so the line is found by its
-// type.
+// or "<absent>" when the key is missing. For a key without a default it
+// returns reg.exe's localized "(value not set)" (hasDefault tells them
+// apart). The value's name is localised, so the line is found by its type.
 func regDefault(t *testing.T, key string) string {
 	t.Helper()
 
@@ -198,6 +199,11 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 	}
 
 	// cmd reads HKEY_CLASSES_ROOT, the merged view Explorer uses.
+	// The control for the checks after the uninstall.
+	if !hasDefault(t, classes+".msibtdoc") {
+		t.Error("hasDefault does not see the .msibtdoc default after the install")
+	}
+
 	out, _ := exec.CommandContext(t.Context(), "cmd.exe", "/c", "assoc .msibtdoc && ftype MsiBuilderTest.Document").CombinedOutput()
 	if text := string(out); !strings.Contains(text, ".msibtdoc=MsiBuilderTest.Document") ||
 		!strings.Contains(strings.ToLower(text), strings.ToLower(`MsiBuilderTest.Document="`+exe+`" "%1"`)) {

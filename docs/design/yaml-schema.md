@@ -785,8 +785,9 @@ associations, the tenth being advertised. Microsoft documents those tables
 for normal installs too (`RegisterExtensionInfo` registers the extensions
 of features set to be installed; documented, and REG-05 observed it), but
 their uninstall deletes the `.<extension>` key's values, other programs'
-included (REG-06; with their subkeys in a real package, REG-07), so msi-builder uses `Registry` rows like those packages
-do (specification chapter 16). msi-builder also writes an empty `<progId>` value in
+included (REG-06; with their subkeys in a real package, REG-07), so
+msi-builder uses `Registry` rows like those packages do (specification
+chapter 16). msi-builder also writes an empty `<progId>` value in
 `.<extension>\OpenWithProgids`, which Microsoft asks of every program that
 takes over an extension and which lists the program under Open with
 (specification section 10.2, REG-04). The root is HKCR, which the engine

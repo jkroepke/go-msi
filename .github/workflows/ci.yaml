@@ -219,8 +219,8 @@ jobs:
         shell: bash
         run: go test -v -count=1 -run 'TestMsiexecShortcutTargets' ./internal/builder/nativetest/
 
-      # Print what install writes and what uninstall leaves of the
-      # extension (MSISPEC-RESULTS REG-07).
+      # Verbose run of the file type install and uninstall checks
+      # (MSISPEC-RESULTS REG-07).
       - name: go test (file type results)
         if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
