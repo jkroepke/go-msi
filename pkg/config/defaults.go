@@ -318,6 +318,11 @@ func defaultComponent(comp *Component) { //nolint:cyclop,gocognit // a flat list
 		}
 
 		ctl := &svc.Control
+		// StartServices fails a disabled service with 1920 (SVC-05).
+		if ctl.StartOnInstall == nil && svc.Start == "disabled" {
+			ctl.StartOnInstall = new(false)
+		}
+
 		for _, b := range []**bool{&ctl.StartOnInstall, &ctl.StopOnInstall, &ctl.StopOnUninstall, &ctl.DeleteOnUninstall, &ctl.Wait} {
 			if *b == nil {
 				*b = new(true)

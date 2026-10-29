@@ -1219,6 +1219,10 @@ func (v *validator) service(svcPath string, svc *Service, keyFile *File, perUser
 	v.oneOf(svcPath+".start", svc.Start, "auto", "demand", "disabled")
 	v.oneOf(svcPath+".errorControl", svc.ErrorControl, "ignore", "normal", "critical")
 
+	if svc.Start == "disabled" && svc.Control.StartOnInstall != nil && *svc.Control.StartOnInstall {
+		v.errorf(svcPath+".control.startOnInstall", "a disabled service cannot be started; the install would fail with 1920 (SVC-05)")
+	}
+
 	if svc.DelayedAutoStart && svc.Start != "auto" {
 		v.errorf(svcPath+".delayedAutoStart", "needs start: auto")
 	}

@@ -73,6 +73,7 @@ closes each one.
 | Case | What happens | Schema rule |
 |---|---|---|
 | Executable with an empty `File.Version` (FILE-01) | On a major upgrade with early removal the new, unversioned file is disallowed against the old versioned one, then the old product is removed: the executable is **deleted** | `files[].version` defaults to `auto` (read from the PE version resource). A PE file without a version resource is a build error. `version: none` must be written explicitly and is only allowed for non-PE files, or with `allowUnversionedExecutable: true`, which also makes the validator warn about the upgrade. An empty string is never accepted. |
+| A versioned file whose version goes down in a major upgrade (UPG-07) | The new component is disallowed against the installed file with the higher version, then the early removal of the old product deletes it | None in the builder: it cannot know the version a previous release shipped. When a release ships an older version of a file, set its `version` above the one installed (`files[].version: 2.0.0.1` for an installed 2.0.0.0), or use `upgrade.removeOld: afterInstallExecute`, which keeps the old file instead. |
 | Corrupted cabinet data (MSZIP-01, CAB-04) | Wrong DEFLATE history, or a bit flip without a checksum, installs a corrupted file | Writer: every cabinet data block gets a checksum, and the builder re-extracts every cabinet after writing it and compares each file's SHA-256 with the source. Neither can be turned off, so the schema has no field for them. |
 | Script custom actions (CA-02) | Inline JScript/VBScript actions (types 37/38) report success whatever they return; a Binary script returning 5 ends the install with 0 and leaves files unregistered | There are no script custom actions. Actions run an executable (`exec`), a DLL (`dll`), set a property or directory, or fail with an error. |
 | EXE exit codes (CA-02) | Any non-zero exit fails the install unless the action ignores it | `customActions[].return` is required for `exec` actions (`check` or `ignore`), so the author decides. |
@@ -567,7 +568,7 @@ service must have the service executable as key file.
 | `language` | `auto` | From the PE resource; `none` for fonts |
 | `allowUnversionedExecutable` | `false` | Required to build a PE file with `version: none` or without a version resource |
 | `vital` | `true` | |
-| `checksum` | `false` | Verifies the PE checksum at install |
+| `checksum` | `false` | Verifies the PE checksum at install: sets `File.Attributes` 0x400 on a PE file that has a checksum and `MSICHECKCRCS=1`, without which the engine ignores the attribute (FILE-08). A wrong checksum then fails the install. |
 | `readOnly`, `hidden`, `system` | `false` | |
 
 Unversioned files get an `MsiFileHash` row automatically.
@@ -757,6 +758,9 @@ when `waitForStart` differs from `wait` the start gets a row of its own
 service that does not get there fails the install with error 1920 and rolls
 it back. With `false` the install succeeds and leaves such a service stopped;
 `recovery`, if set, restarts it (SVC-04).
+`startOnInstall` defaults to `false` for `start: disabled` and may not be
+set to `true` there: StartServices cannot start a disabled service and ends
+the install with error 1920 (SVC-05).
 
 `recovery` becomes a deferred, no-impersonate `sc.exe failure` action after
 InstallServices, with its exit code ignored (SVC-01). Each step is `restart`,

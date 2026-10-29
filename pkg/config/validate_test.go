@@ -337,6 +337,11 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, control: {startOnInstall: false, waitForStart: false}}]\n    files:", 1),
 			sevWarning, "components[0].services[0].control.waitForStart", "startOnInstall",
 		},
+		// SVC-05.
+		"start a disabled service": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, start: disabled, control: {startOnInstall: true}}]\n    files:", 1),
+			sevError, "components[0].services[0].control.startOnInstall", "SVC-05",
+		},
 		"service on dll": {
 			base + strings.Replace(strings.Replace(appComponent, "app.exe", "app.dll", 1), "    files:", "    services: [{name: svc}]\n    files:", 1),
 			sevError, "components[0].services[0]", "not an .exe",

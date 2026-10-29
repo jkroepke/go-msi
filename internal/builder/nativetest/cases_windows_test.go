@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"unsafe"
@@ -321,5 +322,56 @@ func TestMsiexecInstallsDotNames(t *testing.T) {
 
 	if _, err := os.Stat(installDir); err == nil {
 		t.Errorf("%s is left after uninstall", installDir)
+	}
+}
+
+const disabledServiceConfig = `schema: msi-builder/v1
+product: { name: MsiBuilderDisabledSvc, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 4b8e2f19-7a3c-4d56-9e01-c2a7f5b8d934 }
+package: { platform: x64 }
+installDir: { name: MsiBuilderDisabledSvc }
+components:
+  - files: [{ source: svc.exe }]
+    services:
+      - { name: MsiBuilderDisabledSvc, start: disabled }
+`
+
+// TestMsiexecInstallsDisabledService installs a service with start:
+// disabled and the default control settings (SVC-05). StartServices fails
+// a disabled service with 1920, so startOnInstall defaults to false there
+// and the install leaves the service registered and stopped.
+//
+//nolint:paralleltest // msiexec runs one installation at a time
+func TestMsiexecInstallsDisabledService(t *testing.T) {
+	if testing.Short() {
+		t.Skip("installing needs msiexec time and elevation")
+	}
+
+	const name = "MsiBuilderDisabledSvc"
+
+	dir := t.TempDir()
+	path := buildConfig(t, dir, "disabled", disabledServiceConfig, map[string][]byte{"svc.exe": testService(t)})
+	installDir := filepath.Join(os.Getenv("ProgramFiles"), name)
+
+	t.Cleanup(func() {
+		_, _ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn").CombinedOutput()
+		_, _ = exec.CommandContext(context.Background(), "sc", "delete", name).CombinedOutput()
+		_ = os.RemoveAll(installDir)
+	})
+
+	msiexecQuiet(t, filepath.Join(dir, "install.log"), "/i", path)
+
+	if state := serviceState(t, name); !strings.Contains(state, "STOPPED") {
+		t.Errorf("service state %q, want STOPPED", state)
+	}
+
+	out, err := exec.CommandContext(t.Context(), "sc", "qc", name).CombinedOutput()
+	if err != nil || !strings.Contains(string(out), "DISABLED") {
+		t.Errorf("sc qc %s: %v\n%s", name, err, out)
+	}
+
+	msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
+
+	if state := serviceState(t, name); state != "" {
+		t.Errorf("service still registered after uninstall: %q", state)
 	}
 }

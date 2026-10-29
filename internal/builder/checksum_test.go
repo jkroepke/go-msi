@@ -1,6 +1,7 @@
 package builder_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -57,7 +58,7 @@ components:
 
 			for _, row := range rows(t, database, "Property") {
 				if row[0] == "MSICHECKCRCS" {
-					got, _ = row[1].(string)
+					got = fmt.Sprint(row[1])
 				}
 			}
 
@@ -65,7 +66,11 @@ components:
 				t.Errorf("MSICHECKCRCS = %q, want %q", got, tc.want)
 			}
 
-			attrs, _ := cell(t, database, "File", "Attributes", func(r []any) bool { return r[0] == "hello.exe" }).(int)
+			attrs, ok := cell(t, database, "File", "Attributes", func(r []any) bool { return r[0] == "hello.exe" }).(int)
+			if !ok {
+				t.Fatal("File.Attributes is not an integer")
+			}
+
 			if checked := attrs&0x400 != 0; checked != (tc.checksum != 0) {
 				t.Errorf("File.Attributes = %#x", attrs)
 			}
