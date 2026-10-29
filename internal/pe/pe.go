@@ -260,7 +260,7 @@ func findEntry(res *resources, dir uint32, wantID int) (uint32, bool, error) {
 	// At most 2 x 65535 entries of 8 bytes: about 1 MiB.
 	entries, err := res.read(dir+16, 8*count)
 	if err != nil {
-		return 0, false, fmt.Errorf("pe: resource directory entries: %w", err)
+		return 0, false, err
 	}
 
 	for i := range count {
@@ -310,7 +310,7 @@ func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pas
 func versionData(res *resources, dataEntry uint32) ([]byte, error) {
 	entry, err := res.read(dataEntry, 16)
 	if err != nil {
-		return nil, fmt.Errorf("pe: resource data entry: %w", err)
+		return nil, err
 	}
 
 	le := binary.LittleEndian

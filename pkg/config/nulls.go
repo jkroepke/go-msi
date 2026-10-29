@@ -21,7 +21,8 @@ func nullEntries(cfg *Config) []string {
 
 // walkNulls appends the paths of nil pointers in the slices under val.
 // It follows the exported fields that have a YAML key, so the paths match
-// the YAML (no config type uses ",inline"; such a field would be skipped); a nil map value (a language without settings) is allowed.
+// the YAML. No config type uses ",inline"; such a field would be skipped.
+// A nil map value (a language without settings) is allowed.
 func walkNulls(val reflect.Value, path string, out *[]string) {
 	switch val.Kind() { //nolint:exhaustive // only containers hold entries
 	case reflect.Pointer, reflect.Interface:
