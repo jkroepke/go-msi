@@ -5,11 +5,11 @@ package nativetest_test
 import (
 	"bytes"
 	"crypto"
+	"crypto/sha1" //nolint:gosec // compared with what Windows reports
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/binary"
-	"crypto/sha1" //nolint:gosec // compared with what Windows reports
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
