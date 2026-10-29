@@ -264,6 +264,33 @@ func (b *build) scheduled(table, name string) bool {
 	return false
 }
 
+// anchoredTo counts the actions of a table that are scheduled relative to
+// name, directly or through other relative actions.
+func (b *build) anchoredTo(table, name string) int {
+	anchors := make(map[string]string, len(b.schedules[table]))
+	for _, a := range b.schedules[table] {
+		anchors[a.Name] = a.Before + a.After
+	}
+
+	count := 0
+
+	for _, a := range b.schedules[table] {
+		seen := make(map[string]bool)
+
+		for anchor := anchors[a.Name]; anchor != "" && !seen[anchor]; anchor = anchors[anchor] {
+			seen[anchor] = true
+
+			if anchor == name {
+				count++
+
+				break
+			}
+		}
+	}
+
+	return count
+}
+
 // standardAt adds a standard action at its default number for the table
 // unless it is already scheduled there. It panics on an action without a
 // default in that table, which is a builder bug.
@@ -600,8 +627,17 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 	}
 
 	if b.hasRows("LaunchCondition") {
-		b.standardAt(seqInstallExecute, "LaunchConditions")
-		b.standardAt(seqInstallUI, "LaunchConditions")
+		for _, table := range []string{seqInstallExecute, seqInstallUI} {
+			// After AppSearch and the actions that apply its results when
+			// they do not fit between 50 and 100, so that the gap does not
+			// limit how many properties a package can search.
+			if b.scheduled(table, "AppSearch") && !b.scheduled(table, "LaunchConditions") &&
+				standardActions["AppSearch"].number(table)+b.anchoredTo(table, "AppSearch") >= standardActions["LaunchConditions"].number(table) {
+				b.schedule(table, "LaunchConditions", standardActions["LaunchConditions"].condition, "", "AppSearch", 0)
+			}
+
+			b.standardAt(table, "LaunchConditions")
+		}
 	}
 
 	for _, tbl := range slices.Sorted(maps.Keys(tableActions)) {
