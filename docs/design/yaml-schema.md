@@ -568,7 +568,7 @@ service must have the service executable as key file.
 | `language` | `auto` | From the PE resource; `none` for fonts |
 | `allowUnversionedExecutable` | `false` | Required to build a PE file with `version: none` or without a version resource |
 | `vital` | `true` | |
-| `checksum` | `false` | Verifies the PE checksum at install: sets `File.Attributes` 0x400 on a PE file that has a checksum and `MSICHECKCRCS=1`, without which the engine ignores the attribute (FILE-08). A wrong checksum then fails the install. |
+| `checksum` | `false` | Verifies the PE checksum at install: sets `File.Attributes` 0x400 on a PE file that has a checksum and `MSICHECKCRCS=1`, without which the engine ignores the attribute (FILE-08). A wrong checksum then fails the install (FILE-08). A non-empty `MSICHECKCRCS` in `properties` replaces the value. |
 | `readOnly`, `hidden`, `system` | `false` | |
 
 Unversioned files get an `MsiFileHash` row automatically.

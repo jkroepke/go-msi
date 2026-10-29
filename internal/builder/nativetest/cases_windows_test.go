@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -53,29 +52,6 @@ func buildConfig(t *testing.T, dir, name, src string, inputs map[string][]byte) 
 	}
 
 	return path
-}
-
-// msiexecExit runs msiexec silently with a verbose log and returns its exit
-// code; it skips the test when the process is not elevated.
-func msiexecExit(t *testing.T, log string, args ...string) int {
-	t.Helper()
-
-	//nolint:gosec // the arguments are test-controlled paths
-	err := exec.CommandContext(t.Context(), "msiexec", append(args, "/qn", "/l*v", log)...).Run()
-	if err == nil {
-		return 0
-	}
-
-	exit, ok := errors.AsType[*exec.ExitError](err)
-	if !ok {
-		t.Fatalf("msiexec %v: %v", args, err)
-	}
-
-	if exit.ExitCode() == 1925 {
-		t.Skip("not elevated: msiexec returned 1925")
-	}
-
-	return exit.ExitCode()
 }
 
 const downgradeConfig = `schema: msi-builder/v1
@@ -246,7 +222,7 @@ func TestMsiexecVerifiesChecksum(t *testing.T) {
 			})
 
 			log := filepath.Join(dir, "install.log")
-			if got := msiexecExit(t, log, "/i", path); got != tc.want {
+			if got := msiexecCode(t, log, "/i", path); got != tc.want {
 				t.Fatalf("install exit %d, want %d\n%s", got, tc.want, readLog(log))
 			}
 

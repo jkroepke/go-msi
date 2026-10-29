@@ -39,7 +39,7 @@ func TestCheckControlRules(t *testing.T) {
 }
 
 // TestCheckDialogBounds guards against error 2826: a control that reaches
-// past the dialog's right or bottom edge.
+// past an edge of its dialog.
 func TestCheckDialogBounds(t *testing.T) {
 	t.Parallel()
 
@@ -51,6 +51,8 @@ func TestCheckDialogBounds(t *testing.T) {
 		{"inside", &uiControl{name: "Line", typ: "Line", x: 0, y: 234, w: 370, h: 0}, ""},
 		{"past the right edge", &uiControl{name: "Line", typ: "Line", x: 0, y: 234, w: 373, h: 0}, "extends beyond the 370x270 dialog (error 2826)"},
 		{"past the bottom edge", &uiControl{name: "Text", typ: "Text", x: 20, y: 260, w: 100, h: 20}, "error 2826"},
+		{"left of the dialog", &uiControl{name: "Text", typ: "Text", x: -1, y: 20, w: 100, h: 20}, "error 2826"},
+		{"above the dialog", &uiControl{name: "Text", typ: "Text", x: 20, y: -1, w: 100, h: 20}, "error 2826"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

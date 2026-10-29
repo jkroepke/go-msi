@@ -4,11 +4,12 @@ GitHub windows-latest runner, 2026-10-29, CI run 40885964831 (TestProbeWixIssues
 
 ```text
 SVC disabled "": install=1603 state=""
-  Executing op: ActionStart(Name=StartServices,Description=Starting services Service: [1],)
-  [13:57:11:798]: Product: MsiBuilderProbeSvc -- Error 1920. Service 'MsiBuilderProbeSvc' (MsiBuilderProbeSvc) failed to start.  Verify that you have sufficient privileges to start system services.
+  MSI (s) (98:F8) [13:56:41:708]: Doing action: StartServices
+  MSI (s) (98:F8) [13:56:41:756]: Executing op: ActionStart(Name=StartServices,Description=Starting services Service: [1],)
+  MSI (s) (98:F8) [13:57:11:798]: Product: MsiBuilderProbeSvc -- Error 1920. Service 'MsiBuilderProbeSvc' (MsiBuilderProbeSvc) failed to start.  Verify that you have sufficient privileges to start system services.
   Action ended 13:57:11: InstallFinalize. Return value 3.
   Action ended 13:57:11: INSTALL. Return value 3.
 SVC disabled ", control: { startOnInstall: false }": install=0 state="STATE              : 1  STOPPED"
 ```
 
-The failing start took 30 seconds (13:56:41 to 13:57:11) before the 1920 and the rollback.
+The failing start took 30 seconds (13:56:41.756 to 13:57:11.798) before the 1920 and the rollback. The probe did not log the start type; `TestMsiexecInstallsDisabledService` checks it with `sc qc`.
