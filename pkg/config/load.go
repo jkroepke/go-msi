@@ -108,107 +108,18 @@ func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one 
 		return nil, fmt.Errorf("schema: got %q, want %q", cfg.Schema, SchemaV1)
 	}
 
-	if err := emptyComponents(cfg); err != nil {
-		return nil, err
+	if paths := nullEntries(cfg); len(paths) > 0 {
+		errs := make([]error, 0, len(paths))
+		for _, path := range paths {
+			errs = append(errs, fmt.Errorf("%s: empty entry", path))
+		}
+
+		return nil, errors.Join(errs...)
 	}
 
 	ApplyDefaults(cfg)
 
 	return cfg, nil
-}
-
-// emptyComponents rejects null entries in the components, features, files,
-// shortcuts and firewall lists, which decode to nil pointers.
-func emptyComponents(cfg *Config) error { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
-	var errs []error
-
-	for i, comp := range cfg.Components {
-		if comp == nil {
-			errs = append(errs, fmt.Errorf("components[%d]: empty entry", i))
-
-			continue
-		}
-
-		errs = append(errs, emptyFiles(fmt.Sprintf("components[%d]", i), comp)...)
-	}
-
-	for i, rule := range cfg.Firewall {
-		if rule == nil {
-			errs = append(errs, fmt.Errorf("firewall[%d]: empty entry", i))
-		}
-	}
-
-	var walk func([]*Feature, string)
-
-	walk = func(features []*Feature, prefix string) {
-		for i, feature := range features {
-			featurePath := fmt.Sprintf("%s[%d]", prefix, i)
-			if feature == nil {
-				errs = append(errs, fmt.Errorf("%s: empty entry", featurePath))
-
-				continue
-			}
-
-			for j, comp := range feature.Components {
-				compPath := fmt.Sprintf("%s.components[%d]", featurePath, j)
-				if comp == nil {
-					errs = append(errs, fmt.Errorf("%s: empty entry", compPath))
-
-					continue
-				}
-
-				errs = append(errs, emptyFiles(compPath, comp)...)
-			}
-
-			for j, rule := range feature.Firewall {
-				if rule == nil {
-					errs = append(errs, fmt.Errorf("%s.firewall[%d]: empty entry", featurePath, j))
-				}
-			}
-
-			walk(feature.Features, featurePath+".features")
-		}
-	}
-
-	walk(cfg.Features, "features")
-
-	return errors.Join(errs...)
-}
-
-// emptyFiles rejects null entries in a component's files, their
-// shortcuts and file types, its own shortcuts, its removeFiles and its
-// serviceControl.
-func emptyFiles(compPath string, comp *Component) []error {
-	errs := nilEntries(compPath+".removeFiles", comp.RemoveFiles)
-	errs = append(errs, nilEntries(compPath+".shortcuts", comp.Shortcuts)...)
-	errs = append(errs, nilEntries(compPath+".serviceControl", comp.ServiceControl)...)
-
-	for j, file := range comp.Files {
-		filePath := fmt.Sprintf("%s.files[%d]", compPath, j)
-		if file == nil {
-			errs = append(errs, fmt.Errorf("%s: empty entry", filePath))
-
-			continue
-		}
-
-		errs = append(errs, nilEntries(filePath+".shortcuts", file.Shortcuts)...)
-		errs = append(errs, nilEntries(filePath+".fileTypes", file.FileTypes)...)
-	}
-
-	return errs
-}
-
-// nilEntries reports each null entry of a list.
-func nilEntries[T any](listPath string, entries []*T) []error {
-	var errs []error
-
-	for i, entry := range entries {
-		if entry == nil {
-			errs = append(errs, fmt.Errorf("%s[%d]: empty entry", listPath, i))
-		}
-	}
-
-	return errs
 }
 
 func fileVars(root *yaml.Node) (map[string]string, error) {

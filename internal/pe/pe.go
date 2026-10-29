@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -106,8 +107,8 @@ type image struct {
 	sections []section
 }
 
-// read returns size bytes at rva from the section that holds them.
-func (im *image) read(rva, size uint32) ([]byte, error) {
+// section returns the section that holds size bytes at rva.
+func (im *image) section(rva, size uint32) (section, bool) {
 	// 64-bit arithmetic: the 32-bit fields of a corrupt header can wrap
 	// rva+size or the section end around and pass a 32-bit range check.
 	for _, s := range im.sections {
@@ -115,25 +116,53 @@ func (im *image) read(rva, size uint32) ([]byte, error) {
 		end := start + uint64(max(s.virtualSize, s.rawSize))
 
 		if uint64(rva) >= start && uint64(rva)+uint64(size) <= end {
-			off := int64(s.rawPointer) + int64(rva-s.virtualAddress)
-
-			// Grow the buffer while reading instead of allocating size up
-			// front: a corrupt header can claim gigabytes that the file
-			// does not hold, and the read then fails at the real end.
-			buf, err := io.ReadAll(io.NewSectionReader(im.r, off, int64(size)))
-			if err != nil {
-				return nil, fmt.Errorf("pe: reading RVA %#x: %w", rva, err)
-			}
-
-			if uint64(len(buf)) != uint64(size) {
-				return nil, fmt.Errorf("pe: reading RVA %#x: %w", rva, io.ErrUnexpectedEOF)
-			}
-
-			return buf, nil
+			return s, true
 		}
 	}
 
-	return nil, fmt.Errorf("pe: RVA %#x is not in any section", rva)
+	return section{}, false
+}
+
+// read returns size bytes at rva from the section that holds them.
+func (im *image) read(rva, size uint32) ([]byte, error) {
+	sec, ok := im.section(rva, size)
+	if !ok {
+		return nil, fmt.Errorf("pe: RVA %#x is not in any section", rva)
+	}
+
+	off := int64(sec.rawPointer) + int64(rva-sec.virtualAddress)
+
+	// Grow the buffer while reading instead of allocating size up front: a
+	// corrupt header can claim gigabytes that the file does not hold, and
+	// the read then fails at the real end.
+	buf, err := io.ReadAll(io.NewSectionReader(im.r, off, int64(size)))
+	if err != nil {
+		return nil, fmt.Errorf("pe: reading RVA %#x: %w", rva, err)
+	}
+
+	if uint64(len(buf)) != uint64(size) {
+		return nil, fmt.Errorf("pe: reading RVA %#x: %w", rva, io.ErrUnexpectedEOF)
+	}
+
+	return buf, nil
+}
+
+// resources is the resource directory: size bytes at rva. Its records are
+// read one at a time, so that memory does not grow with the resources of
+// the file (icons, manifests, embedded payloads) that are not the version.
+type resources struct {
+	img       *image
+	rva, size uint32
+}
+
+// read returns size bytes at offset off of the resource directory.
+func (r *resources) read(off, size uint32) ([]byte, error) {
+	// Compare in 64 bits: a corrupt offset near 4 GiB would wrap the sum.
+	if uint64(off)+uint64(size) > uint64(r.size) || uint64(r.rva)+uint64(off) > math.MaxUint32 {
+		return nil, errors.New("pe: resource directory out of range")
+	}
+
+	return r.img.read(r.rva+off, size)
 }
 
 // Parse reads the headers and the version resource.
@@ -206,12 +235,11 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 		return info, nil
 	}
 
-	res, err := img.read(resRVA, resourceSize)
-	if err != nil {
-		return nil, err
+	if _, ok := img.section(resRVA, resourceSize); !ok {
+		return nil, fmt.Errorf("pe: resource directory at RVA %#x is not in any section", resRVA)
 	}
 
-	if err := parseVersion(img, res, resRVA, info); err != nil {
+	if err := parseVersion(&resources{img: img, rva: resRVA, size: resourceSize}, info); err != nil {
 		return nil, err
 	}
 
@@ -220,23 +248,22 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 
 // findEntry returns the offset of a resource directory entry's target. With
 // id < 0 the first entry is taken.
-func findEntry(res []byte, dir uint32, wantID int) (uint32, bool, error) {
-	// Compare in 64 bits: int is 32 bits wide on some platforms and a
-	// directory offset near 2 GiB would wrap the sum negative.
-	if uint64(dir)+16 > uint64(len(res)) {
-		return 0, false, errors.New("pe: resource directory out of range")
+func findEntry(res *resources, dir uint32, wantID int) (uint32, bool, error) {
+	head, err := res.read(dir, 16)
+	if err != nil {
+		return 0, false, err
 	}
 
 	order := binary.LittleEndian
-	named := int(order.Uint16(res[dir+12:]))
-	ids := int(order.Uint16(res[dir+14:]))
-	entries := res[dir+16:]
+	count := uint32(order.Uint16(head[12:])) + uint32(order.Uint16(head[14:]))
 
-	if 8*(named+ids) > len(entries) {
-		return 0, false, errors.New("pe: resource directory entries out of range")
+	// At most 2 x 65535 entries of 8 bytes: about 1 MiB.
+	entries, err := res.read(dir+16, 8*count)
+	if err != nil {
+		return 0, false, err
 	}
 
-	for i := range named + ids {
+	for i := range count {
 		name := order.Uint32(entries[8*i:])
 		off := order.Uint32(entries[8*i+4:])
 
@@ -248,7 +275,11 @@ func findEntry(res []byte, dir uint32, wantID int) (uint32, bool, error) {
 	return 0, false, nil
 }
 
-func parseVersion(img *image, res []byte, resRVA uint32, info *Info) error { //nolint:cyclop // one pass over the format; splitting would scatter it
+// maxVersionInfo is the largest VS_VERSIONINFO: its length is a 16-bit
+// field, so parseVersionInfo never looks past it.
+const maxVersionInfo = 0xFFFF
+
+func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	const rtVersion = 16
 
 	typeDir, ok, err := findEntry(res, 0, rtVersion)
@@ -266,28 +297,33 @@ func parseVersion(img *image, res []byte, resRVA uint32, info *Info) error { //n
 		return err
 	}
 
-	if uint64(dataEntry)+16 > uint64(len(res)) {
-		return errors.New("pe: resource data entry out of range")
-	}
-
-	le := binary.LittleEndian
-	dataRVA := le.Uint32(res[dataEntry:])
-	dataSize := le.Uint32(res[dataEntry+4:])
-
-	var data []byte
-
-	// Compare in 64 bits: a corrupt size can wrap dataRVA+dataSize and
-	// otherwise pass the check with an end before the start.
-	if dataRVA >= resRVA && uint64(dataRVA)+uint64(dataSize) <= uint64(resRVA)+uint64(len(res)) {
-		data = res[dataRVA-resRVA : dataRVA-resRVA+dataSize]
-	} else {
-		data, err = img.read(dataRVA, dataSize)
-		if err != nil {
-			return err
-		}
+	data, err := versionData(res, dataEntry)
+	if err != nil {
+		return err
 	}
 
 	return parseVersionInfo(data, info)
+}
+
+// versionData reads the version resource that the data entry at offset
+// dataEntry of the resource directory describes.
+func versionData(res *resources, dataEntry uint32) ([]byte, error) {
+	entry, err := res.read(dataEntry, 16)
+	if err != nil {
+		return nil, err
+	}
+
+	le := binary.LittleEndian
+	dataRVA := le.Uint32(entry)
+	dataSize := le.Uint32(entry[4:])
+
+	// The whole declared range must lie in a section, as before, but only
+	// what VS_VERSIONINFO can use is read.
+	if _, ok := res.img.section(dataRVA, dataSize); !ok {
+		return nil, fmt.Errorf("pe: RVA %#x is not in any section", dataRVA)
+	}
+
+	return res.img.read(dataRVA, min(dataSize, maxVersionInfo))
 }
 
 func utf16At(b []byte, off int) (string, int) {

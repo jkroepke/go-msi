@@ -52,14 +52,26 @@ func plainFileName(name string) bool {
 	return !strings.ContainsAny(name, cabinetForbidden) && !strings.ContainsFunc(name, unicode.IsControl)
 }
 
-// Validate fills in defaults, checks cfg and returns every finding. It reads
+// Validate fills in defaults, checks cfg and returns every finding; a null
+// list entry is reported alone, since the defaults need every entry. It reads
 // no input files; checks that need them (PE versions, sequence numbering,
 // conditions) run in the builder. Call Diagnostics.Err to decide whether to
 // build.
 func Validate(cfg *Config) Diagnostics {
+	checker := &validator{}
+
+	// The defaults and the checks dereference every entry.
+	if paths := nullEntries(cfg); len(paths) > 0 {
+		for _, entry := range paths {
+			checker.errorf(entry, "empty entry")
+		}
+
+		return checker.diags
+	}
+
 	ApplyDefaults(cfg)
 
-	checker := &validator{scope: cfg.Package.Scope}
+	checker.scope = cfg.Package.Scope
 	known := newRefs(cfg)
 
 	checker.product(cfg)
@@ -1920,6 +1932,18 @@ func (v *validator) firewall(cfg *Config, known *refs) { //nolint:cyclop // a fl
 
 			if strings.ContainsAny(rule.Name, `"`) {
 				v.errorf(p+".name", "must not contain a double quote")
+			}
+
+			// netsh deletes every rule that matches when the name is all,
+			// and the actions run a delete by name before each add. The
+			// name is formatted text, so a property could resolve to all
+			// at run time: it must be literal (section 4.11).
+			if strings.EqualFold(strings.TrimSpace(rule.Name), "all") {
+				v.errorf(p+".name", "all is reserved by netsh and would delete every inbound rule")
+			}
+
+			if strings.ContainsAny(rule.Name, "[]") {
+				v.errorf(p+".name", "must be literal text without [ or ]; a property could resolve to the reserved name all")
 			}
 		}
 
