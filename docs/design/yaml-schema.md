@@ -1212,7 +1212,7 @@ upgrade, but not when the product was already installed (Change, Repair,
 Remove, a patch or a minor upgrade) or for an administrative install, since
 those end on the same page. The page where the setup was cancelled or failed
 keeps its text. Silent installs never show the finish page. The text wraps
-by itself; leading and trailing white space is dropped, a blank text is an
+by itself; leading and trailing whitespace is dropped, a blank text is an
 error, and how a line break inside the text renders was not tested. UI-07 observed
 the resolved text after a full UI install and no paragraph after a repair;
 a NoPrefix text showing `&` literally is from UI-01.
