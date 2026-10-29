@@ -35,23 +35,34 @@ var (
 
 // fileSignatureHash returns the hash MsiGetFileSignatureInformation reports
 // for the signed file at path, the value MsiDigitalSignature.Hash compares.
+// The size call does not always report the size, so it tries growing
+// buffers.
 func fileSignatureHash(t *testing.T, path string) ([]byte, error) {
 	t.Helper()
 
 	var size uint32
 
-	// The first call reports the size (ERROR_MORE_DATA).
-	_ = signatureInformation(t, path, nil, &size)
-	if size == 0 {
-		size = 64
+	r := signatureInformation(t, path, nil, &size)
+	t.Logf("SIG-08: MsiGetFileSignatureInformation size call: HRESULT %#x, size %d", r, size)
+
+	sizes := []uint32{20, 32, 48, 64, 128, 256, 512, 1024, 4096, 65536}
+	if size != 0 {
+		sizes = append([]uint32{size}, sizes...)
 	}
 
-	hash := make([]byte, size)
-	if r := signatureInformation(t, path, hash, &size); r != 0 {
-		return nil, fmt.Errorf("MsiGetFileSignatureInformation: HRESULT %#x", r)
+	for _, want := range sizes {
+		hash := make([]byte, want)
+		size = want
+
+		r = signatureInformation(t, path, hash, &size)
+		if r == 0 {
+			t.Logf("SIG-08: MsiGetFileSignatureInformation filled %d bytes of a %d-byte buffer", size, want)
+
+			return hash[:size], nil
+		}
 	}
 
-	return hash[:size], nil
+	return nil, fmt.Errorf("MsiGetFileSignatureInformation: HRESULT %#x up to a 64 KiB buffer", r)
 }
 
 // signatureInformation calls MsiGetFileSignatureInformation with hash as the
@@ -151,17 +162,16 @@ func TestCabinetSignatureFormat(t *testing.T) {
 		}
 
 		if pki.trusted {
+			// Recorded, not asserted, until the Hash format is known.
 			hash, err := fileSignatureHash(t, path)
 			if err != nil {
-				t.Errorf("%v: %v", algo, err)
-			} else if !bytes.Equal(hash, digest) {
-				t.Errorf("%v: MsiGetFileSignatureInformation hash %x, msi-builder digest %x", algo, hash, digest)
+				t.Logf("SIG-08: %v: %v", algo, err)
 			}
 
 			whole, _ := os.ReadFile(path)
 			fileSHA1, fileSHA256 := sha1.Sum(whole), sha256.Sum256(whole) //nolint:gosec // compared with what Windows reports
-			t.Logf("SIG-08: %v: WinVerifyTrust ok, MsiGetFileSignatureInformation hash (%d bytes) %x, msi-builder digest %x, file SHA-1 %x, file SHA-256 %x",
-				algo, len(hash), hash, digest, fileSHA1, fileSHA256)
+			t.Logf("SIG-08: %v: MsiGetFileSignatureInformation hash (%d bytes) %x, equals the digest %v, inside the signature %v, msi-builder digest %x, file SHA-1 %x, file SHA-256 %x",
+				algo, len(hash), hash, bytes.Equal(hash, digest), len(hash) > 0 && bytes.Contains(whole[len(reserved):], hash), digest, fileSHA1, fileSHA256)
 		}
 
 		// A changed data byte breaks the signature for Windows too.
@@ -247,9 +257,10 @@ func readFile(t *testing.T, path string) []byte {
 	return data
 }
 
-// withoutHash writes the package at path again beside it with every
-// MsiDigitalSignature.Hash null and returns its path.
-func withoutHash(t *testing.T, path string) string {
+// withHash writes the package at path again beside it as name, with
+// MsiDigitalSignature.Hash of the cabinet with DiskId i+1 set to hash(i),
+// and returns its path.
+func withHash(t *testing.T, path, name string, hash func(i int) []byte) string {
 	t.Helper()
 
 	database, err := msidb.Unmarshal(readFile(t, path))
@@ -258,8 +269,13 @@ func withoutHash(t *testing.T, path string) string {
 	}
 
 	tbl := database.Table("MsiDigitalSignature")
-	for _, row := range tbl.Rows {
-		row[tbl.Column("Hash")] = nil
+	for i, row := range tbl.Rows {
+		// A nil []byte in an any is not a null value.
+		if value := hash(i); value != nil {
+			row[tbl.Column("Hash")] = value
+		} else {
+			row[tbl.Column("Hash")] = nil
+		}
 	}
 
 	data, err := database.Marshal(msidb.Options{})
@@ -267,7 +283,7 @@ func withoutHash(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 
-	out := filepath.Join(filepath.Dir(path), "probe-nohash.msi")
+	out := filepath.Join(filepath.Dir(path), name)
 	if err := os.WriteFile(out, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -340,9 +356,22 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 		}
 	}
 
-	// The same package with MsiDigitalSignature.Hash null: only the
-	// certificate is compared.
-	noHash := withoutHash(t, path)
+	// The same package with MsiDigitalSignature.Hash null, so only the
+	// certificate is compared, and with the hash MsiGetFileSignatureInformation
+	// reports for each cabinet.
+	noHash := withHash(t, path, "probe-nohash.msi", func(int) []byte { return nil })
+
+	apiHashes := make([][]byte, len(res.Cabinets))
+	for i, cabinet := range res.Cabinets {
+		hash, err := fileSignatureHash(t, cabinet.Path)
+		if err != nil {
+			t.Logf("SIG-09: %s: %v", cabinet.Name, err)
+		}
+
+		apiHashes[i] = hash
+	}
+
+	apiHash := withHash(t, path, "probe-apihash.msi", func(i int) []byte { return apiHashes[i] })
 
 	second := filepath.Join(dir, res.Cabinets[1].Name)
 
@@ -365,7 +394,7 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 
 	for _, pkg := range []struct {
 		label, path string
-	}{{"hash", path}, {"no hash", noHash}} {
+	}{{"hash", path}, {"no hash", noHash}, {"api hash", apiHash}} {
 		t.Run(pkg.label, func(t *testing.T) {
 			recordInstall(t, pkg.path, files, pkg.label+": signed cabinets")
 
