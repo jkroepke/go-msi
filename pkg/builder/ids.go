@@ -141,8 +141,9 @@ func configuredFileName(file *fileInfo) string {
 // a short|long name and a long name that is itself a valid short name, so
 // that no generated short name can take one of them, whichever row comes
 // first. Two different names with the same literal short name in one
-// directory are an error: with SHORTFILENAMES=1 the engine installs both
-// to that short name (FILE-07).
+// directory are an error: with SHORTFILENAMES=1 both resolve to it, so one
+// file overwrites the other, two directories merge, and a directory beside
+// such a file fails (FILE-07).
 func (b *build) reserveShortNames() error {
 	owners := make(map[string]map[string]string)
 

@@ -176,3 +176,37 @@ components:
 		t.Errorf("Shortcut.Name = %v", got)
 	}
 }
+
+// TestShortNamesAcrossKinds checks that a generated file name avoids a
+// directory's literal short name, and that two sibling directories with the
+// same name are no short-name conflict.
+func TestShortNamesAcrossKinds(t *testing.T) {
+	t.Parallel()
+
+	first := mustBuild(t, shortNameConfig(t, `components:
+  - directory: APPDIR
+    files:
+      - { source: one.txt, id: One, name: Readme Long }
+`))
+
+	generated, _, _ := strings.Cut(fmt.Sprint(cell(t, first.Database, "File", "FileName", func([]any) bool { return true })), "|")
+
+	second := mustBuild(t, shortNameConfig(t, `        children:
+          - id: DATADIR
+            name: "`+generated+`|Data Files"
+          - id: DATADIR2
+            name: "`+generated+`|Data Files"
+components:
+  - directory: APPDIR
+    files:
+      - { source: one.txt, id: One, name: Readme Long }
+  - directory: DATADIR
+    files:
+      - { source: two.txt }
+`))
+
+	name := fmt.Sprint(cell(t, second.Database, "File", "FileName", func(row []any) bool { return row[0] == "One" }))
+	if short, _, _ := strings.Cut(name, "|"); strings.EqualFold(short, generated) {
+		t.Errorf("File.FileName %s takes the directory's short name %s", name, generated)
+	}
+}

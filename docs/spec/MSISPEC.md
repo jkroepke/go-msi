@@ -1564,7 +1564,7 @@ The GNOME msitools commits whose message mentions a fix were reviewed on 2026-10
 
 ### Reviewed digitalxero/go-msi fixes (2026-10-29)
 
-[digitalxero/go-msi](https://github.com/digitalxero/go-msi) is an MIT-licensed Go library that writes packages, transforms and patches. Its source cites projects the clean-room rule (`AGENTS.md`) excludes, so only its commit messages were read: all 27 commits up to 2026-10-26, no diff and no source. Its issue tracker was not reachable from the review environment. Numbers in the table are its pull requests; the issues they close are #4 (shortcut working directory, closed by pull request #5) and #8 to #11, which this project reported from MSIDB-05, MSIDB-07 and FILE-01 (closed by pull requests #13, #14, #15 and #17). Each fix was checked against this spec and msi-builder:
+digitalxero/go-msi is an MIT-licensed Go library that writes packages, transforms and patches. Its source cites projects the clean-room rule (`AGENTS.md`) excludes, so only its commit messages were read: all 27 commits up to 2026-10-26, no diff and no source. Its issue tracker was not reachable from the review environment. Numbers in the table are its pull requests; the issues they close are #4 (shortcut working directory, closed by pull request #5) and #8 to #11, which this project reported from MSIDB-05, MSIDB-07 and FILE-01 (closed by pull requests #13, #14, #15 and #17). Each fix was checked against this spec and msi-builder:
 
 | digitalxero/go-msi fix (commit subject, abridged) | msi-builder |
 | --- | --- |
