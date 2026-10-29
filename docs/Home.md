@@ -18,6 +18,8 @@ of your release.
   package.
 - [Installation](Installation.md) lists the release binaries, `go install` and
   the container image.
+- [End User Guide](End%20User%20Guide.md) shows the people who install your
+  package how to install, upgrade and remove it, silently too.
 
 ## Reference
 

@@ -5,6 +5,7 @@
 - [Home](Home.md)
 - [Getting Started](Getting%20Started.md)
 - [Installation](Installation.md)
+- [End User Guide](End%20User%20Guide.md)
 
 **Configure and build**
 
