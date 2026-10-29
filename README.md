@@ -69,13 +69,15 @@ msi-builder verify hello.msi
 
 See [Signing](docs/signing.md) for PEM keys, `msi-builder sign` and the Go API.
 
-A whole build output can be added without listing each file; every file
-gets a component of its own:
+A whole build output can be added without listing each file: a `source`
+that ends in `/` is a folder, and every file below it gets a component of
+its own:
 
 ```yaml
-harvest:
-  - source: dist
-    exclude: '*.pdb'
+components:
+  - files:
+      - source: dist/
+        exclude: '*.pdb'
 ```
 
 Packages can also be built from Go without a YAML file; see the

@@ -58,7 +58,7 @@ func Validate(cfg *Config) Diagnostics {
 	checker.directories(cfg, known)
 	checker.features(cfg, known)
 	checker.components(cfg, known)
-	checker.harvest(cfg, known)
+	checker.folderComponents(cfg, known)
 	checker.shortcuts(cfg, known)
 	checker.properties(cfg)
 	checker.launchConditions(cfg)
@@ -644,7 +644,15 @@ func (v *validator) components(cfg *Config, known *refs) {
 
 		v.componentID(p, comp, seen, known)
 		v.componentDirectory(cfg, p, comp, known)
+
+		if folderComponent(comp) {
+			v.folderComponent(cfg, p, comp)
+
+			continue
+		}
+
 		v.componentGUID(p, comp)
+		v.filePatterns(p, comp)
 
 		v.oneOf(p+".bitness", comp.Bitness, Auto, "32", "64")
 		v.preserve(cfg, p, comp)
@@ -709,10 +717,11 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 	perUser := cfg.Package.Scope == ScopePerUser
 	top := known.topFolder(comp.Directory)
 
-	// A harvest entry reports this once, not once per file.
-	if cfg.Package.Platform.Is64Bit() && comp.Bitness != "32" && folders32[top] && !comp.harvested {
+	// The component of a folder source reported this once, not once per
+	// file.
+	if cfg.Package.Platform.Is64Bit() && comp.Bitness != "32" && folders32[top] && !comp.fromFolder {
 		v.warnf(compPath+".directory", "%s is the 32-bit folder on 64-bit Windows (ICE80); "+
-			"use its 64-bit counterpart", top)
+			"use its 64-bit counterpart, or bitness: 32 for 32-bit files", top)
 	}
 
 	if perUser && perMachineFolders[top] {

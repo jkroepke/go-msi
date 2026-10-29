@@ -62,25 +62,10 @@ func expandShorthands(cfg *Config) { //nolint:cyclop // one pass in a fixed orde
 		}
 	}
 
-	for _, entry := range cfg.Harvest {
-		if entry != nil && !entry.expanded && tree.needsInstallDir(entry.Directory) {
-			tree.ensureInstallDir()
-
-			break
-		}
-	}
-
 	for i, comp := range cfg.Components {
 		if !unplacedCarrier(comp) {
 			tree.origin = comp.Path(i) + ".directory"
 			comp.Directory = tree.resolve(comp.Directory)
-		}
-	}
-
-	for i, entry := range cfg.Harvest {
-		if entry != nil && !entry.expanded {
-			tree.origin = fmt.Sprintf("harvest[%d].directory", i)
-			entry.Directory = tree.resolve(entry.Directory)
 		}
 	}
 

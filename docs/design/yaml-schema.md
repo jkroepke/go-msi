@@ -108,7 +108,6 @@ installDir: {}           # the product's folder (default: Program Files\<name>)
 directories: []          # the install tree, for folders the shorthands do not cover
 features: []             # the feature tree
 components: []           # files, registry, services, folders, environment
-harvest: []              # whole folders, one component per file
 properties: {}           # Property table, Secure and Hidden flags
 launchConditions: []
 customActions: []
@@ -192,7 +191,7 @@ way:
 | no `upgrade` | the standard policy of section 4.3, as `upgrade: {}`; `upgrade: false` writes no Upgrade rows |
 | `features[].default: on`, `off` or `disabled` | `level: 1`, `2` or `0` (section 4.5) |
 | `features[].firewall` | the rules in `firewall`, following an empty component `<feature>_Firewall` that the feature holds (section 4.11) |
-| `harvest` entry | a directory per folder that holds a file and a component per file, as `Config.AddTree` adds them; the builder expands it before it validates (section 4.6, "Harvesting a folder") |
+| a file `source` that ends in `/` | in place of its component, a directory per folder that holds a file and a component per file, as `Config.AddTree` adds them; the builder expands it before it validates (section 4.6, "Adding a folder") |
 | a service argument with a `condition` | a private property set by an immediate `setProperty` action before InstallServices under that condition (section 4.6) |
 
 Generated IDs are stable: the same file gives the same IDs. Component GUIDs
@@ -229,7 +228,7 @@ them braced and upper case.
 | `codepage` | int | `1252` | Database code page, section 2.3 |
 | `compression` | enum | `lzx` | `lzx` (LZX with a 2 MB window), `lzx:15` … `lzx:21` (a window of 2^N bytes), `mszip` or `none` (stored blocks) |
 | `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters (fewer outside `0-9A-Za-z._`). ICE03 wants an identifier (letters, digits, `_` and `.`, not starting with a digit), so the default keeps only those characters of `<name>`, and an explicit name that is no identifier warns. The default is `product.cab` when that is no identifier, cannot be a stream name or `<name>` has non-ASCII characters |
-| `longFileNames` | bool | `true` | `false` sets Word Count bit 1 (short source paths). Each listed filename must itself be a valid 8.3 name, and a harvested tree is refused; directories and shortcuts get a generated `short\|long` when their name is not a valid 8.3 name. Installed folders still get the long names unless `SHORTFILENAMES=1` is set (FILE-06) |
+| `longFileNames` | bool | `true` | `false` sets Word Count bit 1 (short source paths). Each listed filename must itself be a valid 8.3 name, and a folder source is refused; directories and shortcuts get a generated `short\|long` when their name is not a valid 8.3 name. Installed folders still get the long names unless `SHORTFILENAMES=1` is set (FILE-06) |
 | `summary` | map | | `title` (`Installation Database`), `keywords` (`Installer`), `author` (manufacturer) |
 
 The x64 floor stays at 2.0 although the engine accepted 1.5 (SUM-03): ICE80
@@ -806,27 +805,42 @@ action and scope.
 
 **Top-level `files` shorthand.** Not in version 1. Every listed file belongs
 to an explicit component, so that its GUID and key path are visible in
-review. A whole folder is added with `harvest` instead.
+review. A whole folder is added with a folder source instead.
 
-#### Harvesting a folder (`harvest`)
+#### Adding a folder (folder sources)
 
-`harvest` adds every file below a folder of the build machine, so a package
-does not list each file of a build output:
+A file `source` that ends in `/` is a folder of the build machine. Its
+component becomes one component per file below it, so a package does not
+list each file of a build output:
 
 ```yaml
-harvest:
-  - source: ../dist              # relative to the YAML file, or absolute
+components:
+  - id: App                      # starts the generated ids; default: the folder's name
     directory: INSTALLDIR        # default: the install dir; also a folder path such as bin
-    feature: Main                # default: the only feature; required with several
-    include: ['**']              # default: every file
-    exclude: ['*.pdb', logs/, 'docs/**/*.tmp']
-    allowUnversionedExecutable: false   # applies to every harvested file (FILE-01)
-    bitness: auto                # of every harvested component, as for a component
+    condition: INSTALLAPP        # copied to every generated component
+    bitness: auto                # copied, as are permanent, neverOverwrite, preserve,
+                                 # sharedDllRefCount and transitive
+    files:
+      - source: ../dist/         # relative to the YAML file, or absolute; the / makes it a folder
+        include: ['**']          # default: every file
+        exclude: ['*.pdb', logs/, 'docs/**/*.tmp']
+        allowUnversionedExecutable: false   # copied to every file (FILE-01), as are vital,
+                                            # checksum, readOnly, hidden, system, permissions
 ```
 
-Harvest a separate output folder, not the YAML file's own: a package built
-next to the YAML file would be added by the next build. The builder warns
-when `source` is that folder or one above it.
+The folder must be the component's only file. Settings that name one file
+or one component cannot be copied to many: `guid` (other than `auto`),
+`keyPath`, `registry`, `removeRegistry`, `services`, `eventLog`,
+`environment`, `purge`, `createFolder` and `folderPermissions` on the
+component, and `name`, `id`, `version`, `language` and `shortcuts` on the
+file, are errors. Put them on a component of their own and exclude its file
+from the folder. `include` and `exclude` on a file that is not a folder are
+errors too. The generated components take the component's place in
+`components` and in the features that hold it.
+
+Add a separate output folder, not the YAML file's own: a package built next
+to the YAML file would be added by the next build. The builder warns when
+the folder is the YAML file's folder or one above it.
 
 - **Layout.** Each folder below `source` that holds a file, directly or
   further down, becomes a directory below `directory`; a folder that
@@ -844,15 +858,16 @@ when `source` is that folder or one above it.
   major upgrade, with an early as well as a late `removeOld`, while a file
   that is new gets a new component; FILE-08 checks this on Windows and is
   still pending.
-- **IDs.** Component, file and directory IDs are `tree_` plus a kind letter
-  and 20 hex digits, derived from the directory, `source` as written and the
-  path below it, exactly as `Config.AddTree` derives them. They are stable
-  between builds of the same input. A major upgrade presumably does not
-  depend on them, since components are matched by GUID (inferred, not
-  tested). Diagnostics name a harvested file as `harvest[0]{bin/app.exe}`.
-  A harvested file's `source` (also in `builder.Result.Files`) is its path
-  below the entry's `source` when the folder is read from disk, and its
-  path in `Config.FS`, with the entry's `source` in front, when that is set.
+- **IDs.** Component, file and directory IDs are the component's ID (cut to
+  50 characters), `_`, a kind letter and 20 hex digits, derived from the
+  directory, `source` as written and the path below it, exactly as
+  `Config.AddTree` derives them. They are stable between builds of the same
+  input. A major upgrade presumably does not depend on them, since
+  components are matched by GUID (inferred, not tested). Diagnostics name a
+  generated component as `components[0]{bin/app.exe}`. A generated file's
+  `source` (also in `builder.Result.Files`) is its path below the folder
+  when the folder is read from disk, and its path in `Config.FS`, with the
+  folder in front, when that is set.
 - **Patterns.** `include` and `exclude` take one pattern or a list, in the
   syntax of [doublestar](https://github.com/bmatcuk/doublestar): `*`, `?`,
   `[a-z]` and `{a,b}` within one name, and a `**` folder for any number of
@@ -864,24 +879,26 @@ when `source` is that folder or one above it.
   every file is added; `exclude` wins over `include`. `\`, a leading `/`,
   and `.` or `..` folders are errors.
 - **Errors.** A symbolic link or another special file, a name Windows does
-  not allow (`a|b.txt`, `nul.txt`, a trailing dot), a missing `source` and a
-  harvest without any file are errors, unless the patterns leave them out.
-  So is a file that another component or harvest installs to the same path:
-  exclude it here to give it a component of its own, for example one with
+  not allow (`a|b.txt`, `nul.txt`, a trailing dot), a missing folder and a
+  folder without any file are errors, unless the patterns leave them out.
+  So is a file that another component installs to the same path: exclude it
+  from the folder to give it a component of its own, for example one with
   `permissions`, `preserve` or a shortcut. `longFileNames: false` cannot be
-  combined with `harvest`, since harvested names need not be 8.3 names.
-- **32-bit folders.** In an x64 package, a harvest into a 32-bit folder
-  such as `ProgramFilesFolder` gets one warning (ICE80) unless it sets
-  `bitness: 32`, which makes every harvested component 32-bit.
-- **When.** `msi-builder validate` checks the entries but does not read the
-  folders; `msi-builder build` and `builder.Build` expand them first and
-  then validate the whole package. In Go, `Config.HarvestFiles` expands
-  them on its own, and a relative `source` is read from `Config.FS` when it
-  is set.
+  combined with a folder source, since its names need not be 8.3 names.
+- **32-bit folders.** In an x64 package, a folder source in a 32-bit folder
+  such as `ProgramFilesFolder` gets one warning (ICE80) unless its
+  component sets `bitness: 32`, which makes every generated component
+  32-bit.
+- **When.** `msi-builder validate` checks the component but does not read
+  the folder; `msi-builder build` and `builder.Build` expand it first and
+  then validate the whole package. In Go, `Config.ExpandFolders` expands
+  folder sources on its own; a relative `source` is read from the file's
+  `FS`, else `Config.FS`, when one is set.
 
 These were considered and not adopted; section 16 of the specification has
-the reasons: a component per folder, following symbolic links, adding empty
-folders, leaving out dot files by default, and matching patterns with case.
+the reasons: a separate top-level `harvest` list, a component per folder,
+following symbolic links, adding empty folders, leaving out dot files by
+default, and matching patterns with case.
 
 ### 4.7 `properties`
 

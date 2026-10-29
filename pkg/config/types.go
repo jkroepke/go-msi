@@ -29,7 +29,6 @@ type Config struct { //nolint:govet // field order is the YAML key order
 	Directories      []*Directory      `yaml:"directories"`
 	Features         []*Feature        `yaml:"features"`
 	Components       []*Component      `yaml:"components"`
-	Harvest          []*Harvest        `yaml:"harvest"`
 	Properties       Properties        `yaml:"properties"`
 	LaunchConditions []LaunchCondition `yaml:"launchConditions"`
 	CustomActions    []*CustomAction   `yaml:"customActions"`
@@ -49,6 +48,9 @@ type Config struct { //nolint:govet // field order is the YAML key order
 	// Paths in it use forward slashes. It is for Go callers and is never
 	// read from YAML.
 	FS fs.FS `yaml:"-"`
+
+	// folders are the components that ExpandFolders replaced.
+	folders []folderSource
 }
 
 // Product holds the product's identity.
@@ -232,8 +234,8 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	firewallFeature string
 	// carrierOf is that feature.
 	carrierOf *Feature
-	// harvested marks a component that a harvest entry added.
-	harvested bool
+	// fromFolder marks a component that a folder source added.
+	fromFolder bool
 }
 
 // FirewallFeature returns the feature whose firewall rules the component
@@ -251,32 +253,6 @@ func (c *Component) Path(index int) string {
 	}
 
 	return "components[" + strconv.Itoa(index) + "]"
-}
-
-// Harvest adds every file below a folder of the build machine, each in a
-// component of its own, as Config.AddTree does. The builder expands it
-// before it validates the config, see Config.HarvestFiles.
-type Harvest struct { //nolint:govet // field order is the YAML key order
-	// Source is the folder to add: relative to the YAML file (or a path in
-	// Config.FS), or absolute.
-	Source string `yaml:"source"`
-	// Directory is where the folder's content is installed: a directory
-	// ID, a standard folder or a folder path, the install dir by default.
-	Directory string `yaml:"directory"`
-	// Feature is the feature the components join; empty means the only
-	// feature, or the default one.
-	Feature string `yaml:"feature"`
-	// Include and Exclude are glob patterns over the paths below Source.
-	// Without Include every file is added; Exclude wins over Include.
-	Include StringList `yaml:"include"`
-	Exclude StringList `yaml:"exclude"`
-	// AllowUnversionedExecutable is set on every harvested file.
-	AllowUnversionedExecutable bool `yaml:"allowUnversionedExecutable"`
-	// Bitness is set on every harvested component: auto, 32 or 64.
-	Bitness string `yaml:"bitness"`
-
-	// expanded is set once HarvestFiles has added the files.
-	expanded bool
 }
 
 // Purge removes a directory tree on uninstall. "purge: true" is the short
@@ -314,6 +290,10 @@ type File struct { //nolint:govet // field order is the YAML key order
 	System                     bool         `yaml:"system"`
 	Permissions                *Permissions `yaml:"permissions"`
 	Shortcuts                  []*Shortcut  `yaml:"shortcuts"`
+	// Include and Exclude are glob patterns over the paths below a folder
+	// source (one that ends in a slash); see Config.ExpandFolders.
+	Include StringList `yaml:"include"`
+	Exclude StringList `yaml:"exclude"`
 
 	// FS, when set, is where Source is read from, overriding Config.FS for
 	// this file. AddTree sets it. It is never read from YAML.

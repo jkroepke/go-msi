@@ -88,9 +88,9 @@ whole file system; an empty `root` is an error.
 each file: an executable without a version resource is an error unless it
 is marked as allowed (FILE-01).
 
-YAML files harvest a folder with a `harvest` entry, which uses the same
-rules and IDs (see the
-[YAML schema](design/yaml-schema.md#harvesting-a-folder-harvest)). A
-`Config` that Go code builds can carry `Harvest` entries too: `builder.Build`
-expands them before it validates, and `Config.HarvestFiles` does so on its
+YAML files add a folder with a file `source` that ends in `/`, which uses
+the same rules and IDs (see the
+[YAML schema](design/yaml-schema.md#adding-a-folder-folder-sources)). A
+`Config` that Go code builds can hold such a component too: `builder.Build`
+expands it before it validates, and `Config.ExpandFolders` does so on its
 own, for example to adjust the new components first.

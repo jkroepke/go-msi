@@ -18,25 +18,26 @@ import (
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
-// harvestTestConfig harvests the folder dist next to the YAML file into
-// Program Files\MsiBuilderHarvest; %s is the version and %s removeOld.
-const harvestTestConfig = `schema: msi-builder/v1
-product: { name: MsiBuilderHarvest, manufacturer: msi-builder tests, version: %s, upgradeCode: 0b7d4c2e-5a8f-4e1b-9c3d-7f2a6e8b1d45 }
+// folderTestConfig installs the folder dist next to the YAML file into
+// Program Files\MsiBuilderFolder; %s is the version and %s removeOld.
+const folderTestConfig = `schema: msi-builder/v1
+product: { name: MsiBuilderFolder, manufacturer: msi-builder tests, version: %s, upgradeCode: 0b7d4c2e-5a8f-4e1b-9c3d-7f2a6e8b1d45 }
 package: { platform: x64 }
 upgrade: { removeOld: %s }
-harvest:
-  - source: dist
-    exclude: '*.pdb'
+components:
+  - files:
+      - source: dist/
+        exclude: '*.pdb'
 `
 
-// harvestVersion is the content of one version of the harvested folder.
-type harvestVersion struct {
+// folderVersion is the content of one version of the folder source.
+type folderVersion struct {
 	files   map[string][]byte
 	version string
 }
 
-// buildHarvest writes the files of v below dir/dist and builds the package.
-func buildHarvest(t *testing.T, dir string, pkg harvestVersion, removeOld string) string {
+// buildFolder writes the files of v below dir/dist and builds the package.
+func buildFolder(t *testing.T, dir string, pkg folderVersion, removeOld string) string {
 	t.Helper()
 
 	for name, data := range pkg.files {
@@ -50,7 +51,7 @@ func buildHarvest(t *testing.T, dir string, pkg harvestVersion, removeOld string
 		}
 	}
 
-	cfg, err := config.Parse(fmt.Appendf(nil, harvestTestConfig, pkg.version, removeOld), config.Options{})
+	cfg, err := config.Parse(fmt.Appendf(nil, folderTestConfig, pkg.version, removeOld), config.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +63,7 @@ func buildHarvest(t *testing.T, dir string, pkg harvestVersion, removeOld string
 		t.Fatalf("build %s: %v\n%s", pkg.version, err, res.Diagnostics)
 	}
 
-	path := filepath.Join(dir, "harvest.msi")
+	path := filepath.Join(dir, "folder.msi")
 	if err := os.WriteFile(path, res.Package, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +71,7 @@ func buildHarvest(t *testing.T, dir string, pkg harvestVersion, removeOld string
 	return path
 }
 
-// TestMsiexecUpgradesHarvest installs a harvested folder and upgrades it to
+// TestMsiexecUpgradesFolder installs a folder source and upgrades it to
 // a version in which files were removed, added, changed and renamed in case
 // only, with an early and a late removal of the old product (FILE-08). The
 // component GUIDs come from the install paths, so a file that stays at its
@@ -78,12 +79,12 @@ func buildHarvest(t *testing.T, dir string, pkg harvestVersion, removeOld string
 // files the new version dropped.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
-func TestMsiexecUpgradesHarvest(t *testing.T) {
+func TestMsiexecUpgradesFolder(t *testing.T) {
 	if testing.Short() {
 		t.Skip("installing needs msiexec time and elevation")
 	}
 
-	first := harvestVersion{version: "1.0.0", files: map[string][]byte{
+	first := folderVersion{version: "1.0.0", files: map[string][]byte{
 		"app.exe":       testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}}),
 		"app.pdb":       []byte("symbols"),
 		"readme.txt":    []byte("readme first"),
@@ -91,7 +92,7 @@ func TestMsiexecUpgradesHarvest(t *testing.T) {
 		"docs/old.txt":  []byte("old"),
 		"keep/same.txt": []byte("same"),
 	}}
-	second := harvestVersion{version: "2.0.0", files: map[string][]byte{
+	second := folderVersion{version: "2.0.0", files: map[string][]byte{
 		"app.exe":       testpe.Build(testpe.Options{FileVersion: "2.0.0.0", Languages: []int{1033}}),
 		"readme.txt":    []byte("readme second"),
 		"NOTES.txt":     []byte("notes second"),
@@ -99,12 +100,12 @@ func TestMsiexecUpgradesHarvest(t *testing.T) {
 		"keep/same.txt": []byte("same"),
 	}}
 
-	installDir := filepath.Join(os.Getenv("ProgramFiles"), "MsiBuilderHarvest")
+	installDir := filepath.Join(os.Getenv("ProgramFiles"), "MsiBuilderFolder")
 
 	for _, removeOld := range []string{"afterInstallInitialize", "afterInstallExecute"} {
 		t.Run(removeOld, func(t *testing.T) {
-			old := buildHarvest(t, t.TempDir(), first, removeOld)
-			upgrade := buildHarvest(t, t.TempDir(), second, removeOld)
+			old := buildFolder(t, t.TempDir(), first, removeOld)
+			upgrade := buildFolder(t, t.TempDir(), second, removeOld)
 			logs := t.TempDir()
 
 			// The premise: a file that stays at its install path keeps its
@@ -127,7 +128,7 @@ func TestMsiexecUpgradesHarvest(t *testing.T) {
 				t.Fatalf("msiexec /i v1 returned %d\n%s", code, readLog(filepath.Join(logs, "v1.log")))
 			}
 
-			harvestState(t, "v1", installDir, map[string][]byte{
+			folderState(t, "v1", installDir, map[string][]byte{
 				"app.exe": first.files["app.exe"], "readme.txt": first.files["readme.txt"], "notes.txt": first.files["Notes.txt"],
 				"docs/old.txt": first.files["docs/old.txt"], "keep/same.txt": first.files["keep/same.txt"],
 				"app.pdb": nil,
@@ -137,7 +138,7 @@ func TestMsiexecUpgradesHarvest(t *testing.T) {
 				t.Fatalf("msiexec /i v2 returned %d\n%s", code, readLog(filepath.Join(logs, "v2.log")))
 			}
 
-			harvestState(t, "upgrade", installDir, map[string][]byte{
+			folderState(t, "upgrade", installDir, map[string][]byte{
 				"app.exe": second.files["app.exe"], "readme.txt": second.files["readme.txt"], "notes.txt": second.files["NOTES.txt"],
 				"lib/new.txt": second.files["lib/new.txt"], "keep/same.txt": second.files["keep/same.txt"],
 				"docs/old.txt": nil, "docs": nil,
@@ -156,10 +157,10 @@ func TestMsiexecUpgradesHarvest(t *testing.T) {
 	}
 }
 
-// harvestState checks the files below dir: a nil entry must be absent, any
+// folderState checks the files below dir: a nil entry must be absent, any
 // other must hold exactly that content. Windows matches the names without
 // case, so notes.txt finds Notes.txt and NOTES.txt.
-func harvestState(t *testing.T, step, dir string, want map[string][]byte) {
+func folderState(t *testing.T, step, dir string, want map[string][]byte) {
 	t.Helper()
 
 	for name, data := range want {

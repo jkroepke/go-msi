@@ -291,19 +291,20 @@ func TestProductCodeFollowsConfigFSInputs(t *testing.T) {
 	}
 }
 
-// harvestYAML installs the folder dist below the install dir.
-const harvestYAML = `schema: msi-builder/v1
+// folderYAML installs the folder dist below the install dir.
+const folderYAML = `schema: msi-builder/v1
 product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
 package: { platform: x64 }
-harvest:
-  - source: dist
-    exclude: '*.pdb'
+components:
+  - files:
+      - source: dist/
+        exclude: '*.pdb'
 `
 
-func harvestConfig(t *testing.T, fsys fs.FS) *config.Config {
+func folderConfig(t *testing.T, fsys fs.FS) *config.Config {
 	t.Helper()
 
-	cfg, err := config.Parse([]byte(harvestYAML), config.Options{})
+	cfg, err := config.Parse([]byte(folderYAML), config.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +314,7 @@ func harvestConfig(t *testing.T, fsys fs.FS) *config.Config {
 	return cfg
 }
 
-func TestBuildHarvest(t *testing.T) {
+func TestBuildFolder(t *testing.T) {
 	t.Parallel()
 
 	exe := testpe.Build(testpe.Options{FileVersion: "1.2.3.4"})
@@ -323,7 +324,7 @@ func TestBuildHarvest(t *testing.T) {
 		"dist/conf/app.yaml": {Data: []byte("a: 1")},
 	}
 
-	cfg := harvestConfig(t, fsys)
+	cfg := folderConfig(t, fsys)
 
 	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
 	if err != nil {
@@ -342,19 +343,19 @@ func TestBuildHarvest(t *testing.T) {
 		t.Fatalf("%v\n%s", err, again.Diagnostics)
 	}
 
-	fresh, err := builder.Build(harvestConfig(t, fsys), builder.Options{BuildTime: buildTime})
+	fresh, err := builder.Build(folderConfig(t, fsys), builder.Options{BuildTime: buildTime})
 	if err != nil {
 		t.Fatalf("%v\n%s", err, fresh.Diagnostics)
 	}
 
 	if !bytes.Equal(res.Package, again.Package) || !bytes.Equal(res.Package, fresh.Package) {
-		t.Error("rebuilding the harvest changed the package")
+		t.Error("rebuilding the folder changed the package")
 	}
 
 	// A new file is new content, so it gets a new ProductCode.
 	fsys["dist/new.txt"] = &fstest.MapFile{Data: []byte("new")}
 
-	added, err := builder.Build(harvestConfig(t, fsys), builder.Options{BuildTime: buildTime})
+	added, err := builder.Build(folderConfig(t, fsys), builder.Options{BuildTime: buildTime})
 	if err != nil {
 		t.Fatalf("%v\n%s", err, added.Diagnostics)
 	}
@@ -364,7 +365,7 @@ func TestBuildHarvest(t *testing.T) {
 	}
 }
 
-func TestBuildHarvestDiagnostics(t *testing.T) {
+func TestBuildFolderDiagnostics(t *testing.T) {
 	t.Parallel()
 
 	fsys := fstest.MapFS{
@@ -373,23 +374,24 @@ func TestBuildHarvestDiagnostics(t *testing.T) {
 		"other/conf/a.yaml": {Data: []byte("a")},
 	}
 
-	res, err := builder.Build(harvestConfig(t, fsys), builder.Options{BuildTime: buildTime})
-	if err == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "harvest[0]{tool.exe}.files[0]") {
-		t.Errorf("want the unversioned executable reported at harvest[0]{tool.exe}, got %v\n%s", err, res.Diagnostics)
+	res, err := builder.Build(folderConfig(t, fsys), builder.Options{BuildTime: buildTime})
+	if err == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "components[0]{tool.exe}.files[0]") {
+		t.Errorf("want the unversioned executable reported at components[0]{tool.exe}, got %v\n%s", err, res.Diagnostics)
 	}
 
-	// The same install path from a component and a harvest is an error.
-	cfg := harvestConfig(t, fsys)
-	cfg.Harvest[0].Exclude = append(cfg.Harvest[0].Exclude, "tool.exe")
-	cfg.Components = append(cfg.Components, &config.Component{Directory: "conf", Files: []*config.File{{Source: "other/conf/a.yaml"}}})
+	// The same install path from a component and a folder is an error.
+	cfg := folderConfig(t, fsys)
+	cfg.Components[0].Files[0].Exclude = append(cfg.Components[0].Files[0].Exclude, "tool.exe")
+	cfg.Components = append(cfg.Components, &config.Component{ID: "Other", Directory: "conf", Files: []*config.File{{Source: "other/conf/a.yaml"}}})
+	cfg.Features[0].Components = append(cfg.Features[0].Components, config.ComponentRef("Other"))
 
 	res, err = builder.Build(cfg, builder.Options{BuildTime: buildTime})
-	if err == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "harvest[0]{conf/a.yaml}.files[0]: a.yaml installs the same file as components[0]") {
+	if err == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "components[1].files[0]: a.yaml installs the same file as components[0]{conf/a.yaml}.files[0]") {
 		t.Errorf("want a duplicate install path error, got %v\n%s", err, res.Diagnostics)
 	}
 }
 
-func TestBuildHarvestFromDisk(t *testing.T) {
+func TestBuildFolderFromDisk(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -415,7 +417,7 @@ func TestBuildHarvestFromDisk(t *testing.T) {
 	}
 
 	yamlPath := filepath.Join(yamlDir, "msi.yaml")
-	if err := os.WriteFile(yamlPath, []byte(strings.Replace(harvestYAML, "source: dist", "source: ../dist", 1)), 0o600); err != nil {
+	if err := os.WriteFile(yamlPath, []byte(strings.Replace(folderYAML, "source: dist/", "source: ../dist/", 1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -441,13 +443,13 @@ func TestBuildHarvestFromDisk(t *testing.T) {
 	}
 }
 
-// harvestGUIDs builds a harvest of source from fsys and returns each
+// folderGUIDs builds the folder source from fsys and returns each
 // file's ComponentId by its lower-case long name.
-func harvestGUIDs(t *testing.T, fsys fs.FS, source string) map[string]any {
+func folderGUIDs(t *testing.T, fsys fs.FS, source string) map[string]any {
 	t.Helper()
 
-	cfg := harvestConfig(t, fsys)
-	cfg.Harvest[0].Source = source
+	cfg := folderConfig(t, fsys)
+	cfg.Components[0].Files[0].Source = source + "/"
 
 	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
 	if err != nil {
@@ -479,16 +481,16 @@ func harvestGUIDs(t *testing.T, fsys fs.FS, source string) map[string]any {
 	return guids
 }
 
-func TestHarvestGUIDsFollowInstallPaths(t *testing.T) {
+func TestFolderGUIDsFollowInstallPaths(t *testing.T) {
 	t.Parallel()
 
 	// The same install paths from a moved source folder whose names
 	// changed case: the components keep their codes.
-	before := harvestGUIDs(t, fstest.MapFS{
+	before := folderGUIDs(t, fstest.MapFS{
 		"dist/readme.txt":     {Data: []byte("v1")},
 		"dist/conf/Notes.txt": {Data: []byte("v1")},
 	}, "dist")
-	after := harvestGUIDs(t, fstest.MapFS{
+	after := folderGUIDs(t, fstest.MapFS{
 		"build/dist/README.txt":     {Data: []byte("v2")},
 		"build/dist/Conf/NOTES.txt": {Data: []byte("v2")},
 		"build/dist/new.txt":        {Data: []byte("new")},
