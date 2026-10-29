@@ -1145,3 +1145,17 @@ func TestInstallDirBesideDataFolder(t *testing.T) {
 		}
 	}
 }
+
+// TestInstallDirBesideTargetDirTree warns about an upper-case directory
+// below Program Files in a tree rooted at TARGETDIR.
+func TestInstallDirBesideTargetDirTree(t *testing.T) {
+	t.Parallel()
+
+	doc := strings.Replace(base, "  - id: ProgramFiles64Folder\n    children:\n      - id: INSTALLDIR\n        name: App\n        configurable: true\n",
+		"  - id: TARGETDIR\n    children:\n      - id: ProgramFiles64Folder\n        children:\n          - id: APPDIR\n            name: App\n", 1) +
+		"components:\n  - files: [{ source: app.exe }]\n"
+
+	if !find(validate(t, doc), config.SeverityWarning, "installDir", "next to APPDIR") {
+		t.Error("no warning about APPDIR")
+	}
+}

@@ -149,9 +149,10 @@ type InstallDir struct {
 
 	// expanded is set by the first expandShorthands.
 	expanded bool
-	// besides lists, comma separated, the upper-case directory ids of a
-	// tree that the default install dir was added next to, for the
-	// validator to warn about.
+	// besides lists, comma separated, the directories of the file's own
+	// tree that could be meant as the install dir (configurable, or upper
+	// case below Program Files) when the default install dir was added
+	// next to them, for the validator to warn about.
 	besides string
 }
 
