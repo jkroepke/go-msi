@@ -67,10 +67,13 @@ func objectSDDL(t *testing.T, path string) string {
 	return out
 }
 
-// TestMsiexecSDDLWithoutProtection records what MsiLockPermissionsEx does with
-// an SDDL string without the P flag (SEC-02): whether the object keeps the
-// ACEs it inherits from its parent, and whether a folder that existed before
-// the install keeps its own explicit ACEs.
+// TestMsiexecSDDLWithoutProtection checks what MsiLockPermissionsEx does with
+// an SDDL string without the P (protected) flag (SEC-02): files and folders
+// still get a protected DACL with the authored ACEs only, so they drop what
+// they inherit, and a folder that existed before the install loses its own
+// explicit ACEs; a registry key reads back unprotected, with the authored
+// ACEs marked inherited and none of its parent's. An SDDL replaces the DACL
+// whatever its flags, which is why grants exist.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestMsiexecSDDLWithoutProtection(t *testing.T) {
@@ -102,28 +105,27 @@ func TestMsiexecSDDLWithoutProtection(t *testing.T) {
 	msiexecQuiet(t, filepath.Join(filepath.Dir(path), "install.log"), "/i", path)
 
 	installDir := filepath.Join(os.Getenv("ProgramFiles"), "MsiBuilderSec02")
-	objects := []struct{ name, path string }{
-		{"install folder (parent of the file)", installDir},
+	for _, object := range []struct{ name, path string }{
 		{"file", filepath.Join(installDir, "app.exe")},
-		{"ProgramData folder (parent of the folders)", root},
 		{"new folder", filepath.Join(root, "new")},
 		{"existing folder", existing},
-		{"registry key", `HKLM:\SOFTWARE\MsiBuilderTest\Sec02`},
+	} {
+		got := objectSDDL(t, object.path)
+		t.Logf("SEC-02: after install, %s: %s", object.name, got)
+
+		if !strings.Contains(got, "D:P(") || strings.Contains(got, "ID;") || strings.Contains(got, ";;;BG)") || !strings.Contains(got, ";;;NS)") {
+			t.Errorf("%s: %s, want a protected DACL with the authored ACEs only", object.name, got)
+		}
 	}
 
-	for _, o := range objects {
-		t.Logf("SEC-02: after install, %s: %s", o.name, objectSDDL(t, o.path))
-	}
+	key := objectSDDL(t, `HKLM:\SOFTWARE\MsiBuilderTest\Sec02`)
+	t.Logf("SEC-02: after install, registry key: %s", key)
 
-	msiexecQuiet(t, filepath.Join(filepath.Dir(path), "repair.log"), "/fa", path)
-
-	for _, o := range objects[1:] {
-		t.Logf("SEC-02: after repair /fa, %s: %s", o.name, objectSDDL(t, o.path))
+	if strings.Contains(key, "D:P") || !strings.Contains(key, "(A;CIID;KR;;;NS)") || strings.Contains(key, ";;;BU)") {
+		t.Errorf("registry key: %s, want the authored ACEs, marked inherited, and no others", key)
 	}
 
 	msiexecQuiet(t, filepath.Join(filepath.Dir(path), "uninstall.log"), "/x", path)
-
-	t.Logf("SEC-02: after uninstall, existing folder: %s", objectSDDL(t, existing))
 }
 
 // grantConfig grants rights on a file to an account from a property, on a
