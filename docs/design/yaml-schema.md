@@ -366,8 +366,8 @@ in the execute sequence of a quiet install: the upgrade went back to the
 remembered folder, and `INSTALLDIR=` on the command line still won, while a
 search straight into `INSTALLDIR` overrode the command line, and a search
 without a `Signature` table failed with 2228 and 1603. SEARCH-06 confirmed
-it for `perUser`, x86, a 32-bit folder in an x64 package, arm64 and both
-dual scopes in both contexts. The builder also
+it for `perUser` (also as a standard user), x86, a 32-bit folder in an
+x64 package, arm64 and both dual scopes in both contexts. The builder also
 schedules both actions in the UI sequence, so the wizard's install folder
 page shows the remembered folder and the upgrade installs there (UI-08).
 

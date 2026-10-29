@@ -1,7 +1,9 @@
 # UI-08: the wizard and a remembered install folder
 
 - Runner: GitHub `windows-latest`, elevated, interactive session, 2026-10-29
-- CI run 40962873234, commit fd57ff1 (raw `RegLocator` search)
+- CI run 40966065131, commit 99dddc0 (directory `RegLocator` search, all
+  three variants passed); first seen in CI run 40962873234, commit fd57ff1,
+  with the raw search
 - Test: `TestFullUIRememberInstallDir` in
   `internal/builder/nativetest/remember_windows_test.go`
 
@@ -15,15 +17,14 @@ and Finish.
 | `chooseDirectory: true`, perMachine | 0 | `C:\MsiBuilderRemember\custom\` | custom folder |
 | `chooseDirectory: true`, perMachineOrUser (scope page, all users kept) | 0 | `C:\MsiBuilderRemember\custom\` | custom folder |
 
-The two page variants failed only the test's own check, which looked for a
-`VALUE:` line from UI Automation's ValuePattern. The PathEdit's text is
-already among the window's names, which is what the test checks now:
+The PathEdit's text is among the window's names (in fd57ff1 the test
+looked for a ValuePattern value instead and failed on its own check):
 
 ```text
 WINDOW: C:\MsiBuilderRemember\custom\ | Change... | < Back | Next > | Cancel | BannerBmp | Click Next to install to the default folder or click Change to choose another. | Install MsiBuilderRemember to: | Destination Folder
 ```
 
-Client log of the scope variant: the UI sequence restores the folder,
+Client log of the scope variant (run 40962873234): the UI sequence restores the folder,
 `SetInstallScopeMachine_INSTALLDIR_Remembered` puts it into the machine
 folder property the scope page applies, and the client passes it on:
 

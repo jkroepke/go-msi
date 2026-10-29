@@ -31,3 +31,12 @@ Error 1327. Invalid Drive: Z:\
 
 msi-builder switched to the directory search; `TestMsiexecRememberMissingFolder`
 now asserts the directory rows.
+
+With the directory search (CI run 40966065131, commit 99dddc0),
+`TestMsiexecRememberMissingFolder` passed:
+
+```text
+SEARCH-07 existing folder C:\MsiBuilderRemember\existing\: INSTALLDIR_REMEMBERED="C:\\MsiBuilderRemember\\existing\\", INSTALLDIR="C:\\MsiBuilderRemember\\existing\\"
+SEARCH-07 missing folder C:\MsiBuilderRemember\missing\: INSTALLDIR_REMEMBERED="", INSTALLDIR="C:\\Program Files\\MsiBuilderRemember\\"
+SEARCH-07 missing drive folder Z:\MsiBuilderRemember\: INSTALLDIR_REMEMBERED="", INSTALLDIR="C:\\Program Files\\MsiBuilderRemember\\"
+```

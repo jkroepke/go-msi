@@ -2,10 +2,11 @@
 
 - Runners: GitHub `windows-latest` (x64) and `windows-11-arm` (arm64),
   elevated, 2026-10-29
-- CI run 40962873234, commit fd57ff1 (raw `RegLocator` search, before the
-  switch to a directory search)
-- Test: `TestMsiexecRememberInstallDir` in
-  `internal/builder/nativetest/remember_windows_test.go`
+- CI run 40966065131, commit 99dddc0 (directory `RegLocator` search, as
+  shipped); the same matrix passed in CI run 40962873234, commit fd57ff1,
+  with the raw search msi-builder wrote before
+- Tests: `TestMsiexecRememberInstallDir` and `TestNonAdminRememberInstallDir`
+  in `internal/builder/nativetest/remember_windows_test.go`
 
 Each variant installs version 1 silently with
 `INSTALLDIR=C:\MsiBuilderRemember\custom\`, then upgrades silently to
@@ -24,18 +25,27 @@ version 2 without `INSTALLDIR`. The dual packages pass the same
 | perUserOrMachine, per user | HKCU | yes (shared) | `C:\MsiBuilderRemember\custom\` | custom folder |
 | perUserOrMachine, `MSIINSTALLPERUSER=""` | HKLM, 64-bit view | no | `C:\MsiBuilderRemember\custom\` | custom folder |
 
-No variant installed into its default folder. The three HKCU variants failed
-only the test's own check that the value is absent from the other view:
-HKCU\Software is not redirected, so `reg query /reg:32` reads the same value.
-The test now checks the other view only for HKLM.
+No variant installed into its default folder. HKCU\Software is not
+redirected, so `reg query /reg:32` reads the per-user value too (in the
+fd57ff1 run this failed the test's own check, which now looks at the other
+view only for HKLM).
 
-Raw lines (arm64):
+As the standard user `msitest` (CI step "go test (non-admin)", run
+40966065131), both per-user packages upgraded into
+`C:\MsiBuilderNonAdmin\remember-<scope>\custom\` with exit 0:
+
+```text
+SEARCH-06 perUser as msitest: v2 exit 0, INSTALLDIR_REMEMBERED="C:\\MsiBuilderNonAdmin\\remember-perUser\\custom\\", INSTALLDIR_REMEMBERED_USER="", INSTALLDIR="C:\\MsiBuilderNonAdmin\\remember-perUser\\custom\\", in custom=true
+SEARCH-06 perUserOrMachine as msitest: v2 exit 0, INSTALLDIR_REMEMBERED="", INSTALLDIR_REMEMBERED_USER="C:\\MsiBuilderNonAdmin\\remember-perUserOrMachine\\custom\\", INSTALLDIR="C:\\MsiBuilderNonAdmin\\remember-perUserOrMachine\\custom\\", in custom=true
+```
+
+Raw lines (arm64, run 40962873234; the arm64 case passed again in run 40966065131):
 
 ```text
 SEARCH-06 perMachine arm64: v1 stored "C:\\MsiBuilderRemember\\custom\\" in HKLM view 64 ("<absent>" in view 32); v2 INSTALLDIR="C:\\MsiBuilderRemember\\custom\\", ALLUSERS="1", in custom=true, in default=false
 ```
 
-Raw lines (x64, HKCU variants):
+Raw lines (x64, HKCU variants, run 40966065131):
 
 ```text
 SEARCH-06 perUser x64: v1 stored "C:\\MsiBuilderRemember\\custom\\" in HKCU view 64 ("C:\\MsiBuilderRemember\\custom\\" in view 32); v2 INSTALLDIR="C:\\MsiBuilderRemember\\custom\\", ALLUSERS="", in custom=true, in default=false
