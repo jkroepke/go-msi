@@ -426,8 +426,8 @@ func TestSiblingNames(t *testing.T) {
 		wantError(t, name, rename(raw), "duplicate name")
 	}
 
-	// Names that differ only in a lone surrogate are different names,
-	// although both decode to U+FFFD.
+	// Names that differ only in a lone surrogate both decode to U+FFFD,
+	// so Stream could not tell them apart.
 	raw := write([]Source{src("x\U0001F600"), src("y\U0001F600")}, nil)
 	high, low := []byte{0x3D, 0xD8}, []byte{0x00, 0xDE}
 
@@ -438,9 +438,7 @@ func TestSiblingNames(t *testing.T) {
 	raw = bytes.Replace(raw, append(append([]byte{'x', 0}, high...), low...), append(append([]byte{'z', 0}, high...), 'a', 0), 1)
 	raw = bytes.Replace(raw, append(append([]byte{'y', 0}, high...), low...), append(append([]byte{'z', 0}, low...), 'a', 0), 1)
 
-	if _, err := Read(raw); err != nil {
-		t.Errorf("names with different lone surrogates: %v", err)
-	}
+	wantError(t, "names with different lone surrogates", raw, "duplicate name")
 
 	// The same name under different parents is fine.
 	raw = write([]Source{src("x"), src("S2")}, []Storage{{Name: "S", Streams: []Source{src("x"), src("S2")}}})
@@ -465,8 +463,8 @@ func TestHugeSizeAllocatesLittle(t *testing.T) { //nolint:paralleltest // measur
 	runtime.ReadMemStats(&stats)
 	before := stats.TotalAlloc
 
-	if _, err := Open(bytes.NewReader(out), 1<<40); err == nil {
-		t.Error("Open accepted 2^26 FAT sectors that the data does not hold")
+	if _, err := Open(bytes.NewReader(out), 1<<40); err == nil || !strings.Contains(err.Error(), "bad or repeated FAT sector") {
+		t.Errorf("Open = %v, want an error about the FAT sectors the data does not hold", err)
 	}
 
 	runtime.ReadMemStats(&stats)

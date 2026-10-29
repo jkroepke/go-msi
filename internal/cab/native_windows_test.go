@@ -1110,8 +1110,8 @@ func TestNativeLZXSystemBinaries(t *testing.T) { //nolint:paralleltest // the FD
 // blocks have the fewest distinct symbols: a run of zeros (one literal, one
 // match length) and bytes from 64 values with no match of 9 bytes or more
 // (an all-zero length tree, written as runs of one pretree code). The reader
-// rejects a nonempty Huffman tree of one code (MS-PATCH 2.4), so makecab must
-// never write one.
+// rejects a nonempty Huffman tree of one code (MS-PATCH 2.4), so these
+// cabinets show whether makecab pads such trees to two codes.
 func TestNativeReadMakecabFewCodes(t *testing.T) { //nolint:paralleltest // makecab runs one at a time
 	if testing.Short() {
 		t.Skip("native tests run without -short")

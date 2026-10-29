@@ -769,7 +769,10 @@ func (f *File) checkEntries(size int64, sectors owners) error {
 		}
 
 		// Siblings are compared ignoring ASCII case, like Write does.
-		key := sibling{name: foldRaw(ent.RawName), parent: ent.Parent}
+		// The decoded name is the key: Stream and Reader look names up
+		// decoded, so two siblings that differ only in a lone surrogate,
+		// which both decode to U+FFFD, could not be told apart.
+		key := sibling{name: foldName(ent.Name), parent: ent.Parent}
 		if names[key] {
 			return fmt.Errorf("cfb: duplicate name %q in storage %d", ent.Name, ent.Parent)
 		}
@@ -839,14 +842,13 @@ func (o owners) claim(ids []uint32) error {
 	return nil
 }
 
-// foldRaw is a stored UTF-16LE name with ASCII letters in upper case. It
-// keeps units such as lone surrogates that a decoded name would merge.
-func foldRaw(raw []byte) string {
-	out := make([]byte, len(raw))
-
-	for i := 0; i+1 < len(raw); i += 2 {
-		binary.LittleEndian.PutUint16(out[i:], upper(binary.LittleEndian.Uint16(raw[i:])))
+// foldName is name with ASCII letters in upper case, the key under which
+// Compare treats two names as equal.
+func foldName(name string) string {
+	units := utf16.Encode([]rune(name))
+	for i, unit := range units {
+		units[i] = upper(unit)
 	}
 
-	return string(out)
+	return string(utf16.Decode(units))
 }
