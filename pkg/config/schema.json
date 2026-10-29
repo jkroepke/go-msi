@@ -358,6 +358,44 @@
         "$ref": "#/$defs/component"
       }
     },
+    "harvest": {
+      "type": "array",
+      "description": "Folders whose files are all added, one component per file, below a directory. Folders below the source become directories; folders without a file are left out.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "The folder to add: relative to the YAML file, or absolute."
+          },
+          "directory": {
+            "type": "string",
+            "description": "Where the folder's content is installed: a directory id, a standard folder, or a folder path such as bin. Default: the install dir."
+          },
+          "feature": {
+            "type": "string",
+            "description": "The feature the components join. Default: the only feature; required when there are several."
+          },
+          "include": {
+            "$ref": "#/$defs/stringList",
+            "description": "doublestar glob patterns of the files to add, default all. A pattern without / matches a name in any folder; ** matches any number of folders; a trailing / matches folders only. Case is ignored."
+          },
+          "exclude": {
+            "$ref": "#/$defs/stringList",
+            "description": "Glob patterns of files and folders to leave out, like include; exclude wins."
+          },
+          "allowUnversionedExecutable": {
+            "$ref": "#/$defs/bool",
+            "default": false,
+            "description": "Accept executables without a version resource among the files (FILE-01)."
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      }
+    },
     "properties": {
       "type": "object",
       "additionalProperties": {

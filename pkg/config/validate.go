@@ -58,6 +58,7 @@ func Validate(cfg *Config) Diagnostics {
 	checker.directories(cfg, known)
 	checker.features(cfg, known)
 	checker.components(cfg, known)
+	checker.harvest(cfg, known)
 	checker.shortcuts(cfg, known)
 	checker.properties(cfg)
 	checker.launchConditions(cfg)

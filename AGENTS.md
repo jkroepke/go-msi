@@ -16,7 +16,10 @@ implementation details that may change without notice.
 
 - [`pkg/config`](pkg/config): the YAML schema (`docs/design/yaml-schema.md`,
   `pkg/config/schema.json`), parsing and validation. The builder consumes a
-  validated `*config.Config` and never reads YAML.
+  validated `*config.Config` and never reads YAML. `harvest` entries are the one
+  part that lists folders: `Config.HarvestFiles` expands them through the
+  `AddTree` code (`tree.go`, patterns in `glob.go` via doublestar), and
+  `builder.Build` calls it between two validation passes.
 - [`pkg/builder`](pkg/builder): config to tables. Identities and GUIDs,
   directories and short names, components, files, media, registry, services,
   upgrades, custom actions, sequences, the setup wizard (`ui*.go`),

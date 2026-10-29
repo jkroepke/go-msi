@@ -29,6 +29,7 @@ type Config struct { //nolint:govet // field order is the YAML key order
 	Directories      []*Directory      `yaml:"directories"`
 	Features         []*Feature        `yaml:"features"`
 	Components       []*Component      `yaml:"components"`
+	Harvest          []*Harvest        `yaml:"harvest"`
 	Properties       Properties        `yaml:"properties"`
 	LaunchConditions []LaunchCondition `yaml:"launchConditions"`
 	CustomActions    []*CustomAction   `yaml:"customActions"`
@@ -248,6 +249,30 @@ func (c *Component) Path(index int) string {
 	}
 
 	return "components[" + strconv.Itoa(index) + "]"
+}
+
+// Harvest adds every file below a folder of the build machine, each in a
+// component of its own, as Config.AddTree does. The builder expands it
+// before it validates the config, see Config.HarvestFiles.
+type Harvest struct {
+	// Source is the folder to add: relative to the YAML file (or a path in
+	// Config.FS), or absolute.
+	Source string `yaml:"source"`
+	// Directory is where the folder's content is installed: a directory
+	// ID, a standard folder or a folder path, the install dir by default.
+	Directory string `yaml:"directory"`
+	// Feature is the feature the components join; empty means the only
+	// feature, or the default one.
+	Feature string `yaml:"feature"`
+	// Include and Exclude are glob patterns over the paths below Source.
+	// Without Include every file is added; Exclude wins over Include.
+	Include StringList `yaml:"include"`
+	Exclude StringList `yaml:"exclude"`
+	// AllowUnversionedExecutable is set on every harvested file.
+	AllowUnversionedExecutable bool `yaml:"allowUnversionedExecutable"`
+
+	// expanded is set once HarvestFiles has added the files.
+	expanded bool
 }
 
 // Purge removes a directory tree on uninstall. "purge: true" is the short

@@ -108,6 +108,7 @@ installDir: {}           # the product's folder (default: Program Files\<name>)
 directories: []          # the install tree, for folders the shorthands do not cover
 features: []             # the feature tree
 components: []           # files, registry, services, folders, environment
+harvest: []              # whole folders, one component per file
 properties: {}           # Property table, Secure and Hidden flags
 launchConditions: []
 customActions: []
@@ -191,6 +192,7 @@ way:
 | no `upgrade` | the standard policy of section 4.3, as `upgrade: {}`; `upgrade: false` writes no Upgrade rows |
 | `features[].default: on`, `off` or `disabled` | `level: 1`, `2` or `0` (section 4.5) |
 | `features[].firewall` | the rules in `firewall`, following an empty component `<feature>_Firewall` that the feature holds (section 4.11) |
+| `harvest` entry | a directory per folder that holds a file and a component per file, as `Config.AddTree` adds them; the builder expands it before it validates (section 4.6, "Harvesting a folder") |
 | a service argument with a `condition` | a private property set by an immediate `setProperty` action before InstallServices under that condition (section 4.6) |
 
 Generated IDs are stable: the same file gives the same IDs. Component GUIDs
@@ -791,8 +793,72 @@ them gets a warning, since `set` replaces the whole variable. A component may
 not list the same variable (names compared without case) twice with the same
 action and scope.
 
-**Top-level `files` shorthand.** Not in version 1. Every file belongs to an
-explicit component, so that its GUID and key path are visible in review.
+**Top-level `files` shorthand.** Not in version 1. Every listed file belongs
+to an explicit component, so that its GUID and key path are visible in
+review. A whole folder is added with `harvest` instead.
+
+#### Harvesting a folder (`harvest`)
+
+`harvest` adds every file below a folder of the build machine, so a package
+does not list each file of a build output:
+
+```yaml
+harvest:
+  - source: ../dist              # relative to the YAML file, or absolute
+    directory: INSTALLDIR        # default: the install dir; also a folder path such as bin
+    feature: Main                # default: the only feature; required with several
+    include: ['**']              # default: every file
+    exclude: ['*.pdb', logs/, 'docs/**/*.tmp']
+    allowUnversionedExecutable: false   # applies to every harvested file (FILE-01)
+```
+
+- **Layout.** Each folder below `source` that holds a file, directly or
+  further down, becomes a directory below `directory`; a folder that
+  already exists there under the same name (case ignored), from
+  `directories` or a folder path, is reused. Folders without a file are
+  left out; give a component `createFolder: true` for an empty one. The
+  `source` folder itself is not installed, only its content.
+- **One component per file.** Every file is the key path of its own
+  component with an `auto` GUID. That GUID comes from the upgrade code,
+  the bitness and the install path in lower case (see GUIDs above), not
+  from the source path or the generated IDs, so a file that stays at its
+  install path keeps its component in every later build, also when the
+  source folder moves or the case of the name changes. A file that is gone
+  from a later version is removed with the old product on the major upgrade,
+  with an early as well as a late `removeOld`; a file that is new gets a new
+  component (FILE-08).
+- **IDs.** Component, file and directory IDs are `tree_` plus a kind letter
+  and 20 hex digits, derived from the directory, `source` as written and the
+  path below it, exactly as `Config.AddTree` derives them. They are stable
+  between builds of the same input and need not be: nothing in an
+  upgrade depends on them. Diagnostics name a harvested file as
+  `harvest[0]{bin/app.exe}`.
+- **Patterns.** `include` and `exclude` take one pattern or a list, in the
+  syntax of [doublestar](https://github.com/bmatcuk/doublestar): `*`, `?`,
+  `[a-z]` and `{a,b}` within one name, and a `**` folder for any number of
+  folders. A pattern is matched against the slash path below `source`,
+  ignoring case, as Windows does. A pattern without a `/` matches a name in
+  any folder (`*.pdb`), one with a `/` is anchored at `source`
+  (`lib/**/*.dll`), and a trailing `/` matches folders only (`logs/`). A
+  pattern that matches a folder covers everything in it. Without `include`
+  every file is added; `exclude` wins over `include`. `\`, a leading `/`,
+  and `.` or `..` folders are errors.
+- **Errors.** A symbolic link or another special file, a name Windows does
+  not allow (`a|b.txt`, `nul.txt`, a trailing dot), a missing `source` and a
+  harvest without any file are errors, unless the patterns leave them out.
+  So is a file that another component or harvest installs to the same path:
+  exclude it here to give it a component of its own, for example one with
+  `permissions`, `preserve` or a shortcut. `longFileNames: false` cannot be
+  combined with `harvest`, since harvested names need not be 8.3 names.
+- **When.** `msi-builder validate` checks the entries but does not read the
+  folders; `msi-builder build` and `builder.Build` expand them first and
+  then validate the whole package. In Go, `Config.HarvestFiles` expands
+  them on its own, and a relative `source` is read from `Config.FS` when it
+  is set.
+
+These were considered and not adopted; section 16 of the specification has
+the reasons: a component per folder, following symbolic links, adding empty
+folders, leaving out dot files by default, and matching patterns with case.
 
 ### 4.7 `properties`
 
@@ -1261,10 +1327,8 @@ the generated tables, and the cabinet round trip.
 ## 6. Not in version 1
 
 Multiple languages in one package, advertised installs and advertised
-shortcuts, script custom
-actions, and a top-level file harvester (Go callers have
-`config.Config.AddTree`, see [Go API](../go-api.md)). A future `schema: msi-builder/v2` can add
-them without changing the meaning of a v1 file.
+shortcuts, and script custom actions. A future `schema: msi-builder/v2` can
+add them without changing the meaning of a v1 file.
 
 Patches, transforms, merge modules and bundles are out of scope for good
 (see [Out of scope](../../README.md#out-of-scope) and

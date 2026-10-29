@@ -290,3 +290,101 @@ func TestProductCodeFollowsConfigFSInputs(t *testing.T) {
 		t.Error("a binary from cfg.FS with other content gives the same ProductCode")
 	}
 }
+
+// harvestYAML installs the folder dist below the install dir.
+const harvestYAML = `schema: msi-builder/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+harvest:
+  - source: dist
+    exclude: '*.pdb'
+`
+
+func harvestConfig(t *testing.T, fsys fs.FS) *config.Config {
+	t.Helper()
+
+	cfg, err := config.Parse([]byte(harvestYAML), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.FS = fsys
+
+	return cfg
+}
+
+func TestBuildHarvest(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.2.3.4"})
+	fsys := fstest.MapFS{
+		"dist/app.exe":       {Data: exe},
+		"dist/app.pdb":       {Data: []byte("symbols")},
+		"dist/conf/app.yaml": {Data: []byte("a: 1")},
+	}
+
+	cfg := harvestConfig(t, fsys)
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, res.Diagnostics)
+	}
+
+	files := cabinetFiles(t, res)
+	if len(res.Files) != 2 || len(files) != 2 {
+		t.Fatalf("got %d files, %d in the cabinet; want app.exe and app.yaml", len(res.Files), len(files))
+	}
+
+	// Building the same config again adds nothing, and a fresh parse of
+	// the same input gives the same package.
+	again, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, again.Diagnostics)
+	}
+
+	fresh, err := builder.Build(harvestConfig(t, fsys), builder.Options{BuildTime: buildTime})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, fresh.Diagnostics)
+	}
+
+	if !bytes.Equal(res.Package, again.Package) || !bytes.Equal(res.Package, fresh.Package) {
+		t.Error("rebuilding the harvest changed the package")
+	}
+
+	// A new file is new content, so it gets a new ProductCode.
+	fsys["dist/new.txt"] = &fstest.MapFile{Data: []byte("new")}
+
+	added, err := builder.Build(harvestConfig(t, fsys), builder.Options{BuildTime: buildTime})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, added.Diagnostics)
+	}
+
+	if added.ProductCode == res.ProductCode || len(added.Files) != 3 {
+		t.Errorf("after adding a file: ProductCode %s (was %s), %d files", added.ProductCode, res.ProductCode, len(added.Files))
+	}
+}
+
+func TestBuildHarvestDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	fsys := fstest.MapFS{
+		"dist/tool.exe":     {Data: testpe.Build(testpe.Options{})},
+		"dist/conf/a.yaml":  {Data: []byte("a")},
+		"other/conf/a.yaml": {Data: []byte("a")},
+	}
+
+	res, err := builder.Build(harvestConfig(t, fsys), builder.Options{BuildTime: buildTime})
+	if err == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "harvest[0]{tool.exe}.files[0]") {
+		t.Errorf("want the unversioned executable reported at harvest[0]{tool.exe}, got %v\n%s", err, res.Diagnostics)
+	}
+
+	// The same install path from a component and a harvest is an error.
+	cfg := harvestConfig(t, fsys)
+	cfg.Harvest[0].Exclude = append(cfg.Harvest[0].Exclude, "tool.exe")
+	cfg.Components = append(cfg.Components, &config.Component{Directory: "conf", Files: []*config.File{{Source: "other/conf/a.yaml"}}})
+
+	res, err = builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "harvest[0]{conf/a.yaml}.files[0]: a.yaml installs the same file as components[0]") {
+		t.Errorf("want a duplicate install path error, got %v\n%s", err, res.Diagnostics)
+	}
+}

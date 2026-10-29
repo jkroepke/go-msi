@@ -49,22 +49,29 @@ const MaxTreePrefixLength = MaxIdentifierLength - 22
 // returns the new components in walk order, for example to set permissions
 // or allowUnversionedExecutable on some of them.
 func (c *Config) AddTree(fsys fs.FS, root, dirID string, opts TreeOptions) ([]*Component, error) {
-	if opts.Prefix == "" {
-		opts.Prefix = "tree"
-	}
-
 	if root == "" {
 		return nil, errors.New("add tree: root is empty; use \".\" for the whole file system")
 	}
 
 	root = path.Clean(root)
 
+	return c.harvestTree(fsys, root, root, dirID, opts, nil)
+}
+
+// harvestTree is AddTree with the root that the generated ids are derived from,
+// which a harvest entry takes from its source instead of the fs.FS root, and
+// an optional filter.
+func (c *Config) harvestTree(fsys fs.FS, root, idRoot, dirID string, opts TreeOptions, filter *harvestFilter) ([]*Component, error) {
+	if opts.Prefix == "" {
+		opts.Prefix = "tree"
+	}
+
 	parent, feature, err := c.treeTarget(fsys, root, dirID, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	harvest := &tree{root: root, prefix: opts.Prefix, base: dirID + "\x1f" + root, dirs: map[string]*Directory{".": parent}}
+	harvest := &tree{root: root, prefix: opts.Prefix, base: dirID + "\x1f" + idRoot, dirs: map[string]*Directory{".": parent}, filter: filter}
 
 	err = fs.WalkDir(fsys, root, harvest.visit)
 	if err != nil {
@@ -72,7 +79,11 @@ func (c *Config) AddTree(fsys fs.FS, root, dirID string, opts TreeOptions) ([]*C
 	}
 
 	if len(harvest.files) == 0 {
-		return nil, errors.New("add tree: no files under " + root)
+		if filter != nil {
+			return nil, errors.New("add tree: no file under " + idRoot + " matches the include and exclude patterns")
+		}
+
+		return nil, errors.New("add tree: no files under " + idRoot)
 	}
 
 	added := make([]*Component, 0, len(harvest.files))
@@ -198,6 +209,7 @@ func checkTreeName(rel string) error {
 // tree collects the files of one AddTree call and creates their directories.
 type tree struct {
 	dirs   map[string]*Directory
+	filter *harvestFilter
 	root   string
 	prefix string
 	base   string
@@ -211,17 +223,23 @@ func (t *tree) visit(filePath string, entry fs.DirEntry, err error) error {
 		return err
 	}
 
-	if entry.IsDir() {
-		return nil
+	rel := filePath
+	if t.root != "." {
+		rel = strings.TrimPrefix(filePath, t.root+"/")
+	}
+
+	// The patterns run first, so that they can leave out a special file
+	// or a name Windows does not allow.
+	if skip := t.skip(filePath, rel, entry); skip != nil || entry.IsDir() {
+		if errors.Is(skip, errLeaveOut) {
+			return nil
+		}
+
+		return skip
 	}
 
 	if !entry.Type().IsRegular() {
 		return fmt.Errorf("%s is not a regular file", filePath)
-	}
-
-	rel := filePath
-	if t.root != "." {
-		rel = strings.TrimPrefix(filePath, t.root+"/")
 	}
 
 	if err := checkTreeName(rel); err != nil {
@@ -229,6 +247,31 @@ func (t *tree) visit(filePath string, entry fs.DirEntry, err error) error {
 	}
 
 	t.files = append(t.files, rel)
+
+	return nil
+}
+
+// errLeaveOut tells visit that the patterns leave a file out.
+var errLeaveOut = errors.New("left out")
+
+// skip applies the harvest patterns to an entry: fs.SkipDir for an excluded
+// folder, errLeaveOut for a file that is not included, else nil.
+func (t *tree) skip(filePath, rel string, entry fs.DirEntry) error {
+	if t.filter == nil || filePath == t.root {
+		return nil
+	}
+
+	if entry.IsDir() {
+		if t.filter.excluded(rel, true) {
+			return fs.SkipDir
+		}
+
+		return nil
+	}
+
+	if !t.filter.included(rel) {
+		return errLeaveOut
+	}
 
 	return nil
 }
