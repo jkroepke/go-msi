@@ -195,6 +195,38 @@ func TestFileTypesKeyPath(t *testing.T) {
 	mustBuild(t, cfg)
 }
 
+// TestFileTypesFeatures reports a file type whose component is in two
+// features: an Extension row registers with one feature only.
+func TestFileTypesFeatures(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Parse([]byte(`schema: msi-builder/v1
+product: { name: Acme App, manufacturer: Acme, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+features:
+  - { id: Optional, default: off, components: [App] }
+  - { id: Main, components: [App] }
+components:
+  - id: App
+    files:
+      - source: a.txt
+        fileTypes: [{ progId: Acme.Document, extensions: [{ extension: acmedoc }] }]
+`), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.BaseDir = t.TempDir()
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "a.txt"), []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "Optional, Main") {
+		t.Errorf("err %v, diagnostics %s: want the one-feature error", err, res.Diagnostics)
+	}
+}
+
 // TestFileTypesPerUser names HKCU\Software\Classes in a per-user package.
 func TestFileTypesPerUser(t *testing.T) {
 	t.Parallel()

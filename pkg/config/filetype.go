@@ -9,6 +9,9 @@ import (
 // maxProgIDLength is the longest ProgID Microsoft documents for COM.
 const maxProgIDLength = 39
 
+// maxVerbLength is the width of the Verb table's Verb column (s32).
+const maxVerbLength = 32
+
 // DefaultVerb is the shell verb a file type gets when it lists none.
 const DefaultVerb = "open"
 
@@ -17,8 +20,8 @@ const DefaultVerbArguments = `"%1"`
 
 // systemExtensions are extensions that Windows or common programs already
 // own. A package that registers one takes it over from them, and the
-// engine's UnregisterExtensionInfo removes the extension's registration on
-// uninstall (REG-06).
+// engine's UnregisterExtensionInfo removes the extension's default on
+// uninstall (observed, REG-05).
 var systemExtensions = map[string]bool{ //nolint:gochecknoglobals // lookup table
 	"bat": true, "bmp": true, "cer": true, "cmd": true, "crt": true, "csv": true, "dll": true,
 	"exe": true, "gif": true, "htm": true, "html": true, "inf": true, "ini": true, "jpeg": true,
@@ -169,6 +172,10 @@ func (v *validator) fileTypeVerb(field string, verb *FileTypeVerb, seen map[stri
 		v.errorf(field+".id", "%q %s", verb.ID, problem)
 
 		return
+	}
+
+	if len(verb.ID) > maxVerbLength {
+		v.errorf(field+".id", "verb %q is longer than %d characters, the width of the Verb table's Verb column", verb.ID, maxVerbLength)
 	}
 
 	if seen[strings.ToLower(verb.ID)] {

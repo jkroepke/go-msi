@@ -421,6 +421,10 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, verbs: [{id: open}, {id: Open}]}]\n", 1),
 			sevError, "components[0].files[0].fileTypes[0].verbs[1].id", "listed twice",
 		},
+		"fileTypes verb too long": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, verbs: [{id: OpenWithMyApplicationInANewWindowX}]}]\n", 1),
+			sevError, "components[0].files[0].fileTypes[0].verbs[0].id", "longer than 32",
+		},
 		"registry value twice": {
 			base + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\App, name: a, value: x}, {root: HKLM, key: software\\app, name: A, value: y}]\n    files:", 1),
 			sevError, "components[0].registry[1]", "already writes this registry value",

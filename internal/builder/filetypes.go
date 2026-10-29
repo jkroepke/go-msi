@@ -53,7 +53,18 @@ func (b *build) fileType(path string, writer classWriter, file *config.File, fil
 				"set keyPath or give the file a component of its own", file.Source, writer.comp)
 		}
 
-		b.nativeFileType(writer.comp, fileType, owned)
+		// An Extension row names one feature, and the engine registers it
+		// only when that feature is installed, so a component installed
+		// through another feature would leave the type half registered.
+		features := b.componentFeatures(writer.comp)
+		if len(features) > 1 {
+			b.errorf(path, "the Extension table registers an extension with one feature, so %s must be in one feature only, not %s: "+
+				"give the file a component of its own", writer.comp, strings.Join(features, ", "))
+		}
+
+		if len(features) == 1 {
+			b.nativeFileType(writer.comp, features[0], fileType, owned)
+		}
 	} else {
 		writeProgID(writer, target, fileType)
 	}
@@ -85,13 +96,11 @@ func ownedExtensions(fileType *config.FileType) []*config.FileTypeExtension {
 }
 
 // nativeFileType writes the ProgId row of a file type and an Extension row
-// with the verbs for each extension it owns, in the first feature that
-// installs the component. Verbs are numbered in their order, so the first
+// with the verbs for each extension it owns, in the feature that installs
+// the component. Verbs are numbered in their order, so the first
 // one is the shell key's default.
-func (b *build) nativeFileType(compID string, fileType *config.FileType, owned []*config.FileTypeExtension) {
+func (b *build) nativeFileType(compID, feature string, fileType *config.FileType, owned []*config.FileTypeExtension) {
 	b.table("ProgId").Add(fileType.ProgID, nil, nil, nullable(fileType.Description), nil, nil)
-
-	feature := b.firstFeature(compID)
 
 	for _, ext := range owned {
 		b.table("Extension").Add(ext.Extension, compID, fileType.ProgID, nil, feature)
@@ -102,20 +111,20 @@ func (b *build) nativeFileType(compID string, fileType *config.FileType, owned [
 	}
 }
 
-// firstFeature returns the first feature, in tree order, that installs
-// compID.
-func (b *build) firstFeature(compID string) string {
-	first := ""
+// componentFeatures returns the features, in tree order, that install
+// compID. Validation puts every component in at least one.
+func (b *build) componentFeatures(compID string) []string {
+	var features []string
 
 	config.WalkFeatures(b.cfg.Features, func(feature, _ *config.Feature) {
 		for _, comp := range feature.Components {
-			if first == "" && comp.ID == compID {
-				first = feature.ID
+			if comp.ID == compID {
+				features = append(features, feature.ID)
 			}
 		}
 	})
 
-	return first
+	return features
 }
 
 // writeProgID writes a ProgID that owns no extension as Registry rows: its

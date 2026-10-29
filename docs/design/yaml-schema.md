@@ -780,8 +780,12 @@ description and the verbs on install, the Unregister actions remove them,
 and the engine tells the shell that associations changed (REG-05: one
 notification per install and per uninstall, seen by a listener window;
 Explorer's view not checked). The engine runs the verbs with the key path
-of the extension's component, so the file must be its component's key path
-(`keyPath`, or the first file); anything else is an error. msi-builder adds
+of the extension's component (not stated by Microsoft's table pages;
+unverified until REG-06), so the file must be its component's key path
+(`keyPath`, or the first file); anything else is an error. An `Extension`
+row names one feature and the engine registers it only when that feature
+installs (documented), so the component must be in one feature only;
+anything else is an error. msi-builder adds
 `Registry` rows in the file's component for what the tables do not hold:
 `<progId>\DefaultIcon` = `"[#file]",<iconIndex>` (the table's icon column
 needs the icon in the `Icon` table), the extension's `Content Type` (the

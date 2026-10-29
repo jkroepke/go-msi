@@ -1,5 +1,9 @@
-# REG-05 probe: a file type written by msi-builder. Packages with fileTypes
-# carry the BuilderAssocChanged action, which calls SHChangeNotify.
+# REG-05 probe: a file type written by msi-builder. When REG-05 ran (PR #120),
+# packages with fileTypes carried the BuilderAssocChanged action, which called
+# SHChangeNotify, and kept .ext in a permanent component. Since PR #122
+# fileTypes use the ProgId, Extension and Verb tables, so rebuilding this probe
+# from main gives the same package shape as "native"; check out PR #120's
+# merge commit (ba5362f) to repeat the original run.
 schema: msi-builder/v1
 
 product:

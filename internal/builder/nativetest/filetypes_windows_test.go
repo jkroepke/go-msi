@@ -150,17 +150,26 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 	}
 
 	for key, want := range map[string]string{
-		".msibtdoc":                                   "MsiBuilderTest.Document",
-		".msibtkeep":                                  "MsiBuilderTest.Document",
-		"MsiBuilderTest.Document":                     "msi-builder test document",
-		`MsiBuilderTest.Document\DefaultIcon`:         `"` + exe + `",0`,
-		`MsiBuilderTest.Document\shell\open`:          "&Open",
-		`MsiBuilderTest.Document\shell\open\command`:  `"` + exe + `" "%1"`,
-		`MsiBuilderTest.Document\shell\print\command`: `"` + exe + `" /p "%1"`,
-		`MsiBuilderTest.Other\shell\open\command`:     `"` + exe + `" "%1"`,
+		".msibtdoc":                               "MsiBuilderTest.Document",
+		".msibtkeep":                              "MsiBuilderTest.Document",
+		"MsiBuilderTest.Document":                 "msi-builder test document",
+		`MsiBuilderTest.Document\DefaultIcon`:     `"` + exe + `",0`,
+		`MsiBuilderTest.Other\shell\open\command`: `"` + exe + `" "%1"`,
 	} {
 		if got := regDefault(t, classes+key); !strings.EqualFold(got, want) {
 			t.Errorf("%s = %q, want %q", key, got, want)
+		}
+	}
+
+	// REG-06: the engine writes the verbs from the Verb table. Microsoft
+	// does not document the command's form, so it is logged; it must name
+	// the installed file and the arguments.
+	for _, verb := range []struct{ key, args string }{{"open", `"%1"`}, {"print", `/p "%1"`}} {
+		got := regDefault(t, classes+`MsiBuilderTest.Document\shell\`+verb.key+`\command`)
+		t.Logf("%s command: %q, %s text: %q", verb.key, got, verb.key, regDefault(t, classes+`MsiBuilderTest.Document\shell\`+verb.key))
+
+		if !strings.Contains(strings.ToLower(got), strings.ToLower(exe)) || !strings.HasSuffix(got, verb.args) {
+			t.Errorf("%s command = %q, want %s and %s", verb.key, got, exe, verb.args)
 		}
 	}
 
@@ -191,7 +200,8 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 	// cmd reads HKEY_CLASSES_ROOT, the merged view Explorer uses.
 	out, _ := exec.CommandContext(t.Context(), "cmd.exe", "/c", "assoc .msibtdoc && ftype MsiBuilderTest.Document").CombinedOutput()
 	if text := string(out); !strings.Contains(text, ".msibtdoc=MsiBuilderTest.Document") ||
-		!strings.Contains(strings.ToLower(text), strings.ToLower(`MsiBuilderTest.Document="`+exe+`" "%1"`)) {
+		!strings.Contains(strings.ToLower(text), strings.ToLower(`MsiBuilderTest.Document=`)) ||
+		!strings.Contains(strings.ToLower(text), strings.ToLower(exe)) {
 		t.Errorf("assoc/ftype:\n%s", text)
 	}
 
