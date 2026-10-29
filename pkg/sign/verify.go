@@ -168,8 +168,8 @@ func (sdata *parsedSignedData) verify() (*x509.Certificate, crypto.Hash, error) 
 // against the signer's key and digest: the bare key algorithm
 // (rsaEncryption, which Sign writes, or id-ecPublicKey) or the signature
 // algorithm of that key with the same digest, with absent or NULL
-// parameters (or a named curve for id-ecPublicKey). checkSignature picks the scheme from the key alone, so an
-// unknown identifier would otherwise pass.
+// parameters, or a named curve for id-ecPublicKey. checkSignature picks the
+// scheme from the key alone, so an unknown identifier would otherwise pass.
 func checkSignatureAlgorithm(ident pkix.AlgorithmIdentifier, key crypto.PublicKey, algo crypto.Hash) error {
 	var allowed []asn1.ObjectIdentifier
 
@@ -187,7 +187,7 @@ func checkSignatureAlgorithm(ident pkix.AlgorithmIdentifier, key crypto.PublicKe
 	}
 
 	// id-ecPublicKey may name its curve, as in a certificate's key.
-	if ident.Algorithm.Equal(oidECPublicKey) && ident.Parameters.Tag == asn1.TagOID {
+	if params := ident.Parameters; ident.Algorithm.Equal(oidECPublicKey) && params.Class == asn1.ClassUniversal && params.Tag == asn1.TagOID {
 		return nil
 	}
 

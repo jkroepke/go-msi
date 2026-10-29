@@ -448,12 +448,12 @@ func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentI
 	return file
 }
 
-// parsePE reads the version resource of a payload, or returns nil for a file
-// that is not a PE image; ok is false when it reported a malformed one. A PE image whose headers or resources cannot be
-// read is an executable without a known version: it fails the build like an
-// unversioned one unless the configuration accepts that or sets the version
-// itself, because packaging it unversioned would let an upgrade remove it
-// (FILE-01).
+// parsePE reads the version resource of a payload, or returns a nil info
+// for a file that is not a PE image. A PE image whose headers or resources
+// cannot be read is an executable without a known version: it fails the
+// build like an unversioned one unless the configuration accepts that or
+// sets the version itself, because packaging it unversioned would let an
+// upgrade remove it (FILE-01). The bool is false once that is reported.
 func (b *build) parsePE(src io.ReaderAt, cfgFile *config.File, name, diagPath string) (*pe.Info, bool) {
 	info, err := pe.Parse(src)
 
