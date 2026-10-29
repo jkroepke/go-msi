@@ -622,7 +622,7 @@ func TestFullUIFinishText(t *testing.T) { //nolint:paralleltest // msiexec runs 
 	}
 
 	if !strings.Contains(repair, "PRESSED: Repair") || !strings.Contains(repair, "Completed the "+fullUIName) {
-		t.Errorf("the driver did not repair through the maintenance menu")
+		t.Error("the driver did not repair through the maintenance menu")
 	}
 
 	if finishShows(repair, want) {
@@ -638,16 +638,16 @@ func TestFullUIFinishText(t *testing.T) { //nolint:paralleltest // msiexec runs 
 
 // finishShows reports whether the finish page the driver saw shows s: on
 // its WINDOW line and not on the HIDDEN line after it.
-func finishShows(seen, s string) bool {
+func finishShows(seen, paragraph string) bool {
 	lines := strings.Split(seen, "\n")
 	for i, line := range lines {
 		if !strings.HasPrefix(line, "WINDOW: ") || !strings.Contains(line, "Completed the ") {
 			continue
 		}
 
-		hidden := i+1 < len(lines) && strings.HasPrefix(lines[i+1], "HIDDEN: ") && strings.Contains(lines[i+1], s)
+		hidden := i+1 < len(lines) && strings.HasPrefix(lines[i+1], "HIDDEN: ") && strings.Contains(lines[i+1], paragraph)
 
-		return strings.Contains(line, s) && !hidden
+		return strings.Contains(line, paragraph) && !hidden
 	}
 
 	return false

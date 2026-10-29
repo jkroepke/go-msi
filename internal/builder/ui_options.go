@@ -50,14 +50,14 @@ func (w *wizard) installDirDialog(dir string) {
 // launch check box it shows only after a new installation, so a repair or
 // a removal does not repeat advice about the installed product.
 func (b *build) finishText(wiz *wizard) {
-	s := b.cfg.UI.FinishText
-	if s == "" {
+	paragraph := b.cfg.UI.FinishText
+	if paragraph == "" {
 		return
 	}
 
 	exit := wiz.byName[dlgExit]
 	exit.find("Description").h = finishTextY - descriptionY - 5
-	exit.control(overlay(ctlFinishText, sideTextX, finishTextY, sideTextW, stripY-finishTextY-10, s)).
+	exit.control(overlay(ctlFinishText, sideTextX, finishTextY, sideTextW, stripY-finishTextY-10, paragraph)).
 		when("Hide", `Installed OR ACTION = "ADMIN"`)
 }
 
