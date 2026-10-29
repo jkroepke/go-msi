@@ -206,7 +206,7 @@ Silent-failure cases a producer has to guard against itself:
 | FILE-07 | Confirmed | [probe](msitest/results/FILE-07/probe/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40833269994: ICE30 reports two files with one short name in a folder, not two directories or a directory and a file; a normal install is unaffected, with `SHORTFILENAMES=1` one file overwrites the other, two directories merge and a directory beside a file of its short name fails with 1312 and 1603; [details](#duplicate-short-names-file-07) |
 | REG-01 | Confirmed | [x64](msitest/results/REG-01/x64/log.md) and [Intel](msitest/results/REG-01/Intel/log.md) templates: bit 256 picks the view |
 | REG-02 | Not run | |
-| REG-03 | Confirmed | [powershell](msitest/results/REG-03/powershell/log.md); SERVER2025, 2026-10-29: hand-made keys under `EventLog\Application` are sources with and without `CustomSource`, which changes nothing; `New-EventLog` writes only `EventMessageFile`; [details](#event-log-sources-reg-03) |
+| REG-03 | Confirmed | [log](msitest/results/REG-03/powershell/log.md); SERVER2025, 2026-10-29: hand-made keys under `EventLog\Application` are sources with and without `CustomSource`, which changes nothing; `New-EventLog` writes only `EventMessageFile`; [details](#event-log-sources-reg-03) |
 | ENVVAR-01 | Contradicted | [log](msitest/results/ENVVAR-01/environment/log.md); finding 4; segment removal on uninstall confirmed |
 | PROP-01 | Not run | Needs a non-administrator elevated install |
 | SEARCH-01 | Not run | Interactive full UI |
