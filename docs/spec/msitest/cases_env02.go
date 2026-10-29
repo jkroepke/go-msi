@@ -36,7 +36,7 @@ func caseENV02() {
 	}
 
 	c := newCase("ENV-02", "wix")
-	wixMSI := c.path("wix.msi")
+	wixMSI, _ := filepath.Abs(c.path("wix.msi"))
 	c.logf("wix --version: %s", strings.TrimSpace(cmdOut("wix", "--version")))
 	cmd := exec.Command("wix", "build", "-arch", "x64", "-o", wixMSI, filepath.Join(src, "wix.wxs"))
 	cmd.Dir = src
