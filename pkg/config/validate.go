@@ -2014,9 +2014,11 @@ func (v *validator) remoteAddresses(field, list string) {
 }
 
 func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independent checks
-	v.oneOf("ui.wizard", cfg.UI.Wizard, "none", "minimal", "featureTree")
+	if !cfg.UI.Wizard && cfg.UI.ChooseFeatures {
+		v.errorf("ui.chooseFeatures", "a feature tree page needs a wizard")
+	}
 
-	if cfg.UI.Wizard == None && len(cfg.UI.Dialogs) > 0 {
+	if !cfg.UI.Wizard && len(cfg.UI.Dialogs) > 0 {
 		v.errorf("ui.dialogs", "dialogs need a wizard")
 	}
 
@@ -2070,15 +2072,15 @@ const launchProperty = "LaunchOnFinish"
 
 // wizardOptions checks the install folder page and the launch check box.
 func (v *validator) wizardOptions(cfg *Config, ids *refs) {
-	none := cfg.UI.Wizard == None
+	none := !cfg.UI.Wizard
 
-	if cfg.UI.InstallDirPage {
+	if cfg.UI.ChooseDirectory {
 		if none {
-			v.errorf("ui.installDirPage", "an install folder page needs a wizard")
+			v.errorf("ui.chooseDirectory", "an install folder page needs a wizard")
 		}
 
 		if dir := ids.dirs[cfg.InstallDir.ID]; dir == nil || !dir.Configurable {
-			v.errorf("ui.installDirPage", "an install folder page needs installDir.id to name a configurable directory")
+			v.errorf("ui.chooseDirectory", "an install folder page needs installDir.id to name a configurable directory")
 		}
 	}
 
@@ -2104,7 +2106,7 @@ func (v *validator) wizardOptions(cfg *Config, ids *refs) {
 
 // finishText checks ui.finishText: it needs a wizard and some text.
 func (v *validator) finishText(cfg *Config) {
-	if cfg.UI.FinishText != "" && cfg.UI.Wizard == None {
+	if cfg.UI.FinishText != "" && !cfg.UI.Wizard {
 		v.errorf("ui.finishText", "a finish page text needs a wizard")
 	}
 
@@ -2122,7 +2124,7 @@ func (v *validator) checkFinishText(at, text string) {
 var colorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
 func (v *validator) theme(cfg *Config) {
-	none := cfg.UI.Wizard == None
+	none := !cfg.UI.Wizard
 
 	if none && cfg.UI.License != "" {
 		v.errorf("ui.license", "a license page needs a wizard")

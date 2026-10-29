@@ -177,7 +177,8 @@ icons:
   icon.ico: ${ICON}
 
 ui:
-  wizard: featureTree
+  wizard: true
+  chooseFeatures: true
   dialogs:
     - id: ConfigDlg
       title: windows_exporter configuration

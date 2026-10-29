@@ -58,7 +58,7 @@ func eventsOf(t *testing.T, res *builder.Result, dialog, control string) []strin
 	return out
 }
 
-func TestInstallDirPage(t *testing.T) {
+func TestChooseDirectory(t *testing.T) {
 	t.Parallel()
 
 	res := mustBuild(t, desktop(t))
@@ -95,11 +95,11 @@ func TestInstallDirPage(t *testing.T) {
 	checkRings(t, res)
 }
 
-func TestInstallDirPageWithFeatureTree(t *testing.T) {
+func TestChooseDirectoryWithFeatureTree(t *testing.T) {
 	t.Parallel()
 
 	cfg := example(t, "branded", map[string]string{"VERSION": "1.5.0"}, brandedInputs(t, nil))
-	cfg.UI.InstallDirPage = true
+	cfg.UI.ChooseDirectory = true
 	cfg.UI.Dialogs = []*config.Dialog{{ID: "ExtraDlg", Title: "Extra", After: "InstallDirDlg", Fields: []config.DialogField{{Property: "PROP"}}}}
 	res := mustBuild(t, cfg)
 
@@ -254,7 +254,7 @@ func TestInstallOnlyPageLinks(t *testing.T) {
 			{"VerifyReadyDlg", "Back"}:      {"NOT Installed": "InstallDirDlg", "Installed": "ExtraDlg"},
 		}},
 		{"feature tree without license", func(c *config.Config) {
-			c.UI.Wizard = "featureTree"
+			c.UI.Wizard, c.UI.ChooseFeatures = true, true
 			c.UI.License = ""
 		}, map[[2]string]map[string]string{
 			{"WelcomeDlg", "Next"}:           {"1": "InstallDirDlg"},
@@ -263,7 +263,7 @@ func TestInstallOnlyPageLinks(t *testing.T) {
 			{"CustomizeDlg", "Back"}:         {"NOT Installed": "InstallDirDlg", "Installed": "MaintenanceTypeDlg"},
 			{"MaintenanceTypeDlg", "Change"}: {"1": "CustomizeDlg"},
 		}},
-		{"feature tree with license", func(c *config.Config) { c.UI.Wizard = "featureTree" }, map[[2]string]map[string]string{
+		{"feature tree with license", func(c *config.Config) { c.UI.Wizard, c.UI.ChooseFeatures = true, true }, map[[2]string]map[string]string{
 			{"CustomizeDlg", "Back"}:         {"NOT Installed": "InstallDirDlg", "Installed": "MaintenanceTypeDlg"},
 			{"MaintenanceTypeDlg", "Change"}: {"1": "CustomizeDlg"},
 		}},
@@ -295,12 +295,12 @@ func TestWizardOptionErrors(t *testing.T) {
 		want   string
 	}{
 		{"unknown file", func(c *config.Config) { c.UI.Launch.File = "missing.exe" }, `file "missing.exe" is not defined`},
-		{"no wizard", func(c *config.Config) { c.UI.Wizard = "none"; c.UI.License = "" }, "an install folder page needs a wizard"},
-		{"launch without wizard", func(c *config.Config) { c.UI.Wizard = "none"; c.UI.License = ""; c.UI.InstallDirPage = false }, "a launch check box needs a wizard"},
+		{"no wizard", func(c *config.Config) { c.UI.Wizard = false; c.UI.License = "" }, "an install folder page needs a wizard"},
+		{"launch without wizard", func(c *config.Config) { c.UI.Wizard = false; c.UI.License = ""; c.UI.ChooseDirectory = false }, "a launch check box needs a wizard"},
 		{"finish text without wizard", func(c *config.Config) {
-			c.UI.Wizard = "none"
+			c.UI.Wizard = false
 			c.UI.License = ""
-			c.UI.InstallDirPage = false
+			c.UI.ChooseDirectory = false
 			c.UI.Launch = nil
 			c.UI.FinishText = "x"
 		}, "a finish page text needs a wizard"},
@@ -346,7 +346,7 @@ func TestUIStrings(t *testing.T) {
 
 	// A dual package, so the scope page is in it too.
 	cfg := dualDesktop(t)
-	cfg.UI.Wizard = "featureTree"
+	cfg.UI.Wizard, cfg.UI.ChooseFeatures = true, true
 	cfg.UI.Strings = make(map[string]string)
 
 	for key := range config.UIStrings() {
