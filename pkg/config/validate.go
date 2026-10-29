@@ -2130,7 +2130,7 @@ func (v *validator) removeDialogs(cfg *Config) {
 	}
 
 	reason := "product.arp.noModify hides Change in Add or Remove Programs, which is expected to open the maintenance menu; " +
-		"without it this page shows only when the package runs again"
+		"without Change this page shows only when the package runs again"
 	if arp.NoRemove {
 		reason = "product.arp.noRemove disables Remove in the maintenance menu, so no one can reach this page"
 	}
