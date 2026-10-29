@@ -270,6 +270,17 @@ func Unmarshal(data []byte) ([]Property, error) { //nolint:cyclop,gocognit // on
 		ents[i] = ent{int(order.Uint32(section[8+8*i:])), int(order.Uint32(section[12+8*i:]))}
 	}
 
+	pids := make([]int, count)
+	offs := make([]int, count)
+
+	for i, e := range ents {
+		pids[i], offs[i] = e.pid, e.off
+	}
+
+	if err := checkEntries(section, pids, offs); err != nil {
+		return nil, err
+	}
+
 	codePage := codepage.Windows1252
 
 	for _, e := range ents {
@@ -330,6 +341,83 @@ func Unmarshal(data []byte) ([]Property, error) { //nolint:cyclop,gocognit // on
 	}
 
 	return props, nil
+}
+
+// checkEntries rejects a property list that names a PID twice or whose
+// values overlap each other or the list itself. Values are decoded one by
+// one, so a list of aliases would multiply one large string in memory.
+func checkEntries(section []byte, pids, offs []int) error {
+	seen := make(map[int]bool, len(pids))
+
+	type extent struct{ pid, start, end int }
+
+	extents := make([]extent, 0, len(pids))
+
+	for i, pid := range pids {
+		if seen[pid] {
+			return fmt.Errorf("summary: PID %d appears twice", pid)
+		}
+
+		seen[pid] = true
+
+		end, err := valueEnd(section, offs[i])
+		if err != nil {
+			return fmt.Errorf("summary: PID %d %w", pid, err)
+		}
+
+		extents = append(extents, extent{pid, offs[i], end})
+	}
+
+	slices.SortFunc(extents, func(a, b extent) int { return a.start - b.start })
+
+	prevEnd := 8 + 8*len(pids)
+
+	for _, ext := range extents {
+		if ext.start < prevEnd {
+			return fmt.Errorf("summary: PID %d value overlaps another entry", ext.pid)
+		}
+
+		prevEnd = ext.end
+	}
+
+	return nil
+}
+
+// valueEnd returns the end offset of the typed value at off, or an error for
+// a value that does not fit the section. Unknown types end after their
+// header; Unmarshal rejects them later.
+func valueEnd(section []byte, off int) (int, error) {
+	if off < 0 || off > len(section)-4 {
+		return 0, errors.New("value out of range")
+	}
+
+	size := 0
+
+	switch binary.LittleEndian.Uint16(section[off:]) {
+	case vtI2:
+		size = 2
+	case vtI4:
+		size = 4
+	case vtFILETIME:
+		size = 8
+	case vtLPSTR:
+		if off > len(section)-8 {
+			return 0, errors.New("truncated")
+		}
+
+		n := binary.LittleEndian.Uint32(section[off+4:])
+		if uint64(n) > uint64(len(section)-off-8) {
+			return 0, errors.New("truncated")
+		}
+
+		size = 4 + int(n)
+	}
+
+	if size > len(section)-off-4 {
+		return 0, errors.New("truncated")
+	}
+
+	return off + 4 + size, nil
 }
 
 // Get returns the value of a PID, or nil.

@@ -40,6 +40,12 @@ func Decode(file *cfb.File) (*Database, error) {
 	return decodeFile(file, false)
 }
 
+// Problems with a binary cell's stream, completing "binary stream %q ".
+var (
+	errBinaryMissing = errors.New("is missing")
+	errBinaryShared  = errors.New("already belongs to an earlier row with the same primary key")
+)
+
 // streamData returns a stream's bytes, loading them on demand.
 func streamData(file *cfb.File, name string) ([]byte, error) {
 	data, ok := file.Stream(name)
@@ -92,29 +98,42 @@ func decodeFile(file *cfb.File, loadAll bool) (*Database, error) { //nolint:main
 		}
 	}
 
+	// handed lists the binary streams a cell already took, so that rows
+	// sharing a primary key do not each load a copy of one stream.
+	handed := make(map[string]bool)
+
 	// binaryStream hands a table cell its stream, loading it on demand, and
-	// takes it out of the extra streams.
-	binaryStream := func(name string) ([]byte, bool) {
+	// takes it out of the extra streams. Each stream goes to one cell only.
+	binaryStream := func(name string) ([]byte, error) {
+		if handed[name] {
+			return nil, errBinaryShared
+		}
+
 		if data, ok := otherStreams[name]; ok {
 			delete(otherStreams, name)
 
-			return data, true
+			handed[name] = true
+
+			return data, nil
 		}
 
 		encoded, ok := stored[name]
 		if !ok {
-			return nil, false
+			return nil, errBinaryMissing
 		}
 
 		// The stored name, not a re-encoding: the encoding is not canonical.
 		data, err := streamData(file, encoded)
 		if err != nil {
-			return nil, false
+			return nil, errBinaryMissing
 		}
 
 		delete(sizes, name)
+		delete(stored, name)
 
-		return data, true
+		handed[name] = true
+
+		return data, nil
 	}
 
 	poolStream, ok := tableStreams[TableStringPool]
@@ -350,7 +369,7 @@ func decodeFile(file *cfb.File, loadAll bool) (*Database, error) { //nolint:main
 
 func decodeRows( //nolint:cyclop,revive,gocognit // one pass over the format
 	tbl *Table, data []byte, longRefs bool, readRef func([]byte) uint32, str func(uint32) (string, error),
-	refs map[uint32]int, binaryStream func(string) ([]byte, bool), database *Database,
+	refs map[uint32]int, binaryStream func(string) ([]byte, error), database *Database,
 ) error {
 	rowSize := 0
 	for _, c := range tbl.Columns {
@@ -438,9 +457,9 @@ func decodeRows( //nolint:cyclop,revive,gocognit // one pass over the format
 
 			name := BinaryStreamName(tbl.Name, rows[rowIdx][:keys])
 
-			data, ok := binaryStream(name)
-			if !ok {
-				database.Problems = append(database.Problems, fmt.Sprintf("table %s row %d: binary stream %q is missing", tbl.Name, rowIdx, name))
+			data, err := binaryStream(name)
+			if err != nil {
+				database.Problems = append(database.Problems, fmt.Sprintf("table %s row %d: binary stream %q %v", tbl.Name, rowIdx, name, err))
 
 				continue
 			}

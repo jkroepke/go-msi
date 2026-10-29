@@ -412,3 +412,92 @@ func TestValidateKeepsCells(t *testing.T) {
 		t.Errorf("round trip %#v", got)
 	}
 }
+
+// TestDecodeLoadsSharedBinaryStreamOnce checks that rows sharing a primary
+// key do not each load a copy of the one binary stream they name: a small
+// file could otherwise expand into gigabytes of cells (REVIEW1 #2).
+func TestDecodeLoadsSharedBinaryStreamOnce(t *testing.T) {
+	t.Parallel()
+
+	const copies = 200
+
+	payload := bytes.Repeat([]byte{0xAB}, 64<<10)
+
+	bin := &Table{Name: "Blob", Columns: []Column{Col("Key", "s72", true), Col("Data", "v0", false)}}
+	bin.Add("k", payload)
+
+	out, err := (&Database{Codepage: 1252, Tables: []*Table{bin}}).Marshal(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	file, err := cfb.Read(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The one-row stream is the key's string reference and the binary
+	// marker, two bytes each; repeat each column copies times.
+	blobName, _ := EncodeStreamName("Blob", true)
+	streams := make([]cfb.Stream, 0, len(file.Streams()))
+
+	for _, stream := range file.Streams() {
+		if stream.Name == blobName {
+			if len(stream.Data) != 4 {
+				t.Fatalf("Blob stream %x", stream.Data)
+			}
+
+			stream.Data = append(bytes.Repeat(stream.Data[:2], copies), bytes.Repeat(stream.Data[2:], copies)...)
+		}
+
+		streams = append(streams, stream)
+	}
+
+	bad, err := cfb.Write(streams, cfb.Options{Version: file.Version})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opened, err := cfb.Read(bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	back, err := Decode(opened)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rows := back.Table("Blob").Rows
+	if len(rows) != copies {
+		t.Fatalf("%d rows", len(rows))
+	}
+
+	loaded := 0
+
+	for _, row := range rows {
+		if row[1] != nil {
+			loaded++
+		}
+	}
+
+	if loaded != 1 {
+		t.Errorf("%d rows hold a copy of the stream, want 1", loaded)
+	}
+
+	if !bytes.Equal(rows[0][1].([]byte), payload) {
+		t.Error("first row lost its stream")
+	}
+
+	shared := 0
+
+	for _, problem := range back.Problems {
+		if strings.Contains(problem, "already belongs to an earlier row") {
+			shared++
+		}
+	}
+
+	if shared != copies-1 {
+		t.Errorf("%d shared-stream problems, want %d: %v", shared, copies-1, back.Problems[:min(3, len(back.Problems))])
+	}
+}
