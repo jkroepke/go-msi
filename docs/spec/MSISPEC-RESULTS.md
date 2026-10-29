@@ -260,6 +260,8 @@ Silent-failure cases a producer has to guard against itself:
 | SIG-05 | Partly confirmed | A changed root CLSID gives `0x800B0003` (TRUST_E_SUBJECT_FORM_UNKNOWN): the MSI SIP no longer claims the file. Nested storages not covered (go-msi writes none) |
 | SIG-06 | Confirmed | RSA with SHA-1/256/384/512, ECDSA P-256/SHA-256 and P-384/SHA-384, and an RFC 3161 timestamp all pass WinVerifyTrust on Server 2025. Not run on Server 2016 |
 | SIG-07 | Not run | msi-rs regression case; test a candidate writer |
+| SIG-08 | Confirmed | [Signed external cabinets](#signed-external-cabinets-sig-08-sig-09): WinVerifyTrust, `Get-AuthenticodeSignature` and `signtool` accept msi-builder cabinet signatures; `MsiGetFileSignatureInformation` reports the signature value |
+| SIG-09 | Confirmed | [Signed external cabinets](#signed-external-cabinets-sig-08-sig-09): msiexec refuses changed, swapped, re-signed and unsigned cabinets when Hash is the signature value; trust is not checked |
 | INT-01…03 | Not run | WiX 5.0.2 is on the machine and wixl 0.106 runs in a container since ENV-02 (2026-10-29); ENV-02 covers only one-file packages; INT-02 and INT-03 also need msitools' `msibuild` and `msiinfo`, which `build-wixl.sh` does not install |
 
 ## WiX and msitools one-file packages (ENV-02)
@@ -755,6 +757,60 @@ in `internal/builder/nativetest/media_windows_test.go`.
   install needed one.
 - Not run: Windows Server 2016, a single file near 0x7FFF8000 bytes, LZX or
   MSZIP at this size, an install from a network share.
+
+## Signed external cabinets (SIG-08, SIG-09)
+
+Run on 2026-10-29 by the `windows-latest` CI runner (Windows Server 2025
+Datacenter 10.0.26100, image windows-2025-vs2026 20261021.278.1), elevated,
+for msi-builder PR #103 (workflow runs 40892925093, commit 2cbd01f,
+40895190291, commit b947afb, and 40900782153, commit aa54bd3): `TestCabinetSignatureFormat` and
+`TestMsiexecChecksSignedCabinets` and `TestICESignedCabinets` in
+`internal/builder/nativetest/cabsign_windows_test.go`, with a test CA added
+to the machine's root store and an RSA-2048 leaf.
+
+- SIG-08: a two-file MSZIP cabinet written with the signature reserve and
+  signed by msi-builder verified with WinVerifyTrust,
+  `Get-AuthenticodeSignature` (`Valid`) and `signtool verify /pa`, for
+  SHA-256 and SHA-1. A changed data byte gave `0x80096010`. A changed
+  `reserved1` (0x04) still verified; a changed `iCabinet` (0x22) gave
+  `0x80096010` although the digest leaves it out.
+  `MsiGetFileSignatureInformation` returned 0 with size 0 for a call without
+  a buffer, then filled 256 bytes: the signer's signature value, found
+  inside the PKCS#7, and neither the content digest nor a hash of the file.
+- SIG-08, `signtool`: signing the same cabinet without the reserve (337
+  bytes) set flag `0x0004`, inserted `14 00 00 00`, then the signature
+  header `00 00 10 00`, `69 01 00 00` (cbCabinet 361), `f0 05 00 00`, 0, 0,
+  and appended the PKCS#7 (1881 bytes in all). Its indirect data is `SpcLink`
+  1.3.6.1.4.1.311.2.1.28 with an `SpcSerializedObject` holding a page hash
+  (1.3.6.1.4.1.311.2.5.1). msi-builder verified its digest.
+- SIG-09: three external cabinets, one file each. msiexec logged
+  "Validating digital signature of file" for each cabinet. With the second
+  cabinet as built, changed in one data byte, taken from another build signed
+  with the same certificate, or unsigned:
+
+  | MsiDigitalSignature.Hash | as built | changed | other build | unsigned |
+  | --- | --- | --- | --- | --- |
+  | signature value (what msi-builder writes) | installs | 1603 | 1603 | 1603 |
+  | null | installs | 1603 | installs, other files | 1603 |
+  | content digest (32 bytes) | 1603, error 1330 | 1603 | 1603 | 1603 |
+
+  The same second cabinet signed by another (self-signed) certificate was
+  refused (1603) with every Hash, so the certificate is compared with
+  `CertData` (run 40900782153).
+
+  With the content digest, the log said "Hash of signed file … differs in
+  size with the hash of the file authored in the installation package", then
+  error 1330 ("… invalid digital signature … Error 0 was returned by
+  WinVerifyTrust"). Every refused install left no install folder.
+- SIG-09, trust: cabinets signed with a self-signed certificate that is in
+  no store installed with exit 0 (runs 40895190291, 40900782153); with the
+  content digest as Hash the same package was refused for the hash (run
+  40892925093). Cabinets signed with ECDSA P-256 (SHA-256), RSA with SHA-384,
+  RSA with SHA-1, and RSA with an RFC 3161 timestamp from DigiCert each
+  installed with the right files (run 40900782153). The ICE suite, ICE81
+  among it, reported nothing for a package with signed cabinets.
+- Not run: Windows Server 2016, an install from a network share, a signed
+  cabinet near 2 GiB.
 
 ## Per-user rollback (CA-01)
 

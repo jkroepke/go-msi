@@ -211,6 +211,16 @@ var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 		"VolumeLabel|S32||Text||||||The label attributed to the volume.",
 		"Source|S72||Property||||||The property defining the location of the cabinet file.",
 	},
+	"MsiDigitalCertificate": {
+		"DigitalCertificate|s72|K|Identifier||||||Primary key, the name of the certificate.",
+		"CertData|v0||Binary||||||The DER-encoded certificate.",
+	},
+	"MsiDigitalSignature": {
+		"Table|s32|K|Identifier|||||Media|The table of the signed object; only Media is checked.",
+		"SignObject|s72|K|Text||||||The primary key of the signed object in Table, a Media.DiskId.",
+		"DigitalCertificate_|s72||Identifier|MsiDigitalCertificate|1||||Foreign key into MsiDigitalCertificate, the certificate the object must be signed with.",
+		"Hash|V0||Binary||||||The signer's signature value, as MsiGetFileSignatureInformation reports it; null checks the certificate only.",
+	},
 	"MsiFileHash": {
 		"File_|s72|K|Identifier|File|1||||Primary key, foreign key into File table referencing file with this hash",
 		"Options|i2|||||0|32767||Various options and attributes for this hash.",

@@ -685,6 +685,7 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 
 	b.splitCabinets()
 	b.writeMedia()
+	b.writeSignatures()
 
 	return nil
 }
