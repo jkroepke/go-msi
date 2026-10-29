@@ -2358,9 +2358,14 @@ func lateRemoval(cfg *Config) bool {
 }
 
 // machineRegistry reports whether a component writes a registry value to
-// a per-machine root: HKLM and HKU, and HKMU and HKCR unless the package
-// only installs per user.
+// a per-machine root: HKLM (also for event log sources) and HKU, and HKMU
+// and HKCR unless the package only installs per user.
 func machineRegistry(cfg *Config, comp *Component) bool {
+	// Event log sources are HKLM values of the component too.
+	if len(comp.EventLog) > 0 {
+		return true
+	}
+
 	for _, reg := range comp.Registry {
 		switch reg.Root {
 		case rootHKLM, "HKU":

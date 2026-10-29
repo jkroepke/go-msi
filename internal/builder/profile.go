@@ -67,9 +67,14 @@ func (b *build) keepsKeyPath(comp *config.Component) bool {
 }
 
 // machineRegistry reports whether a component writes a registry value to a
-// per-machine root: HKLM and HKU, and HKMU and HKCR unless the package
-// only installs per user.
+// per-machine root: HKLM (also for event log sources) and HKU, and HKMU
+// and HKCR unless the package only installs per user.
 func (b *build) machineRegistry(comp *config.Component) bool {
+	// Event log sources are HKLM values of the component too.
+	if len(comp.EventLog) > 0 {
+		return true
+	}
+
 	for _, reg := range comp.Registry {
 		switch reg.Root {
 		case rootHKLM, rootHKU:

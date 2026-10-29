@@ -187,7 +187,10 @@ func TestProfileKeyPathFolderSource(t *testing.T) {
 func TestProfileKeyPathKeptKeyFile(t *testing.T) {
 	t.Parallel()
 
-	for _, extra := range []string{"preserve: true", "neverOverwrite: true", "sharedDllRefCount: true", "services: [{ name: acme }]"} {
+	for _, extra := range []string{
+		"preserve: true", "neverOverwrite: true", "sharedDllRefCount: true", "services: [{ name: acme }]",
+		`eventLog: [{ source: Acme, messageFile: "[#app.exe]" }]`,
+	} {
 		res := mustBuild(t, scopedShortcutConfig(t, "perMachine",
 			"  - { id: Kept, directory: AppDataFolder/Acme, files: [{ source: app.exe }], "+extra+" }\n"))
 
@@ -197,8 +200,8 @@ func TestProfileKeyPathKeptKeyFile(t *testing.T) {
 		}
 
 		for _, row := range rows(t, res.Database, "Registry") {
-			if row[5] == "Kept" {
-				t.Errorf("%s: registry row %v", extra, row)
+			if row[5] == "Kept" && row[2] == `Software\[Manufacturer]\[ProductName]` {
+				t.Errorf("%s: generated registry row %v", extra, row)
 			}
 		}
 
