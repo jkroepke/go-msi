@@ -771,17 +771,22 @@ files:
 ```
 
 The builder writes each extension a file type owns into Windows
-Installer's own tables: a `ProgId` row (the description), an `Extension`
-row per extension in the file's component and its feature, and a `Verb` row per verb and extension (`text` is the menu
-text, `arguments` the arguments; the verbs are numbered in their order, so
-the first one is the default). The engine's RegisterExtensionInfo and
-RegisterProgIdInfo actions write `.<extension>` = progId, `<progId>` =
-description and the verbs on install, the Unregister actions remove them,
-and the engine tells the shell that associations changed (REG-05: one
-notification per install and per uninstall, seen by a listener window;
-Explorer's view not checked). The engine runs the verbs with the key path
-of the extension's component (not stated by Microsoft's table pages;
-unverified until REG-06), so the file must be its component's key path
+Installer's own tables: a `ProgId` row, an `Extension` row per extension
+in the file's component and its feature, and a `Verb` row per verb and
+extension (`text` is the menu text, `arguments` the arguments; the verbs
+are numbered in their order). The engine's RegisterExtensionInfo and
+RegisterProgIdInfo actions write `.<extension>` = progId and the verbs on
+install: `<progId>\shell` = the verb IDs in order (`open,print`, so the
+first is the default), `shell\<verb>` = text, and `shell\<verb>\command`
+= `"<key path>" <arguments>` plus a `command` value of type
+`REG_MULTI_SZ` that holds the component's Darwin descriptor and the
+arguments (observed, REG-06; whether the shell then checks or repairs the
+component through Windows Installer when it runs the verb is not tested).
+The Unregister actions remove them, and the engine tells the shell that
+associations changed (REG-05: one notification per install and per
+uninstall, seen by a listener window; Explorer's view not checked). The
+engine runs the verbs with the key path of the extension's component
+(observed, REG-06), so the file must be its component's key path
 (`keyPath`, or the first file); anything else is an error. An `Extension`
 row names one feature and the engine registers it only when that feature
 installs (documented), so the component must be in one feature only,
@@ -789,8 +794,10 @@ without a `condition` (the engine registers with the feature, whatever the
 component's condition) and with a GUID (ICE19); anything else is an error.
 Verbs of such a type go into the `Verb` table: an `id` holds no space or
 comma (the shell reads the list of verbs split at them) and at most 32
-characters, `text`, `arguments` and `description` at most 255. msi-builder adds
+characters, `text` and `arguments` at most 255. msi-builder adds
 `Registry` rows in the file's component for what the tables do not hold:
+`<progId>` = description (RegisterProgIdInfo leaves it unset for a ProgID
+without a class, observed, REG-06),
 `<progId>\DefaultIcon` = `"[#file]",<iconIndex>` (the table's icon column
 needs the icon in the `Icon` table), the extension's `Content Type` (the
 table's MIME column needs the `MIME` table, which also writes the MIME
@@ -810,8 +817,10 @@ and periods, not starting with a digit) gets a warning.
 Uninstalling removes what the package registered, the `.<extension>`
 default included. Microsoft's File Types page asks installers to leave that
 default in place, because another program may have taken the extension over
-since; the engine's own actions remove it (REG-05), and REG-06 records what
-they do with a default or a value another program wrote. Registering an
+since; the engine's own actions remove it (REG-05). They delete the whole
+`.<extension>` key (observed, REG-06): a default another program set after
+the install and a value another program keeps in the key (`PerceivedType`
+in the test) are gone after the uninstall too. Registering an
 extension that Windows or other programs own (`txt`, `xml`, `pdf`, …) gets
 a warning, because the package takes it over from them. For such an
 extension, `openWithOnly: true` writes only the `OpenWithProgids` entry:

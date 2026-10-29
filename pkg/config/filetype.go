@@ -9,13 +9,12 @@ import (
 // maxProgIDLength is the longest ProgID Microsoft documents for COM.
 const maxProgIDLength = 39
 
-// Column widths of the ProgId and Verb tables in msi-builder's schema; a
-// longer string fails ICE03. They bind the file types that own an
-// extension, whose ProgID and verbs go into those tables.
+// Column widths of the Verb table in msi-builder's schema; a longer
+// string fails ICE03. They bind the file types that own an extension,
+// whose verbs go into that table.
 const (
-	maxVerbLength        = 32
-	maxVerbTextLength    = 255
-	maxDescriptionLength = 255
+	maxVerbLength     = 32
+	maxVerbTextLength = 255
 )
 
 // DefaultVerb is the shell verb a file type gets when it lists none.
@@ -26,8 +25,8 @@ const DefaultVerbArguments = `"%1"`
 
 // systemExtensions are extensions that Windows or common programs already
 // own. A package that registers one takes it over from them, and the
-// engine's UnregisterExtensionInfo removes the extension's default on
-// uninstall (observed, REG-05).
+// engine's UnregisterExtensionInfo deletes the extension's key, other
+// programs' values included, on uninstall (observed, REG-06).
 var systemExtensions = map[string]bool{ //nolint:gochecknoglobals // lookup table
 	"bat": true, "bmp": true, "cer": true, "cmd": true, "crt": true, "csv": true, "dll": true,
 	"exe": true, "gif": true, "htm": true, "html": true, "inf": true, "ini": true, "jpeg": true,
@@ -85,7 +84,7 @@ func (v *validator) fileTypes(cfg *Config) {
 				}
 
 				if native {
-					v.nativeFileType(typePath, comp, fileType)
+					v.nativeFileType(typePath, comp)
 				}
 
 				verbs := make(map[string]bool)
@@ -103,7 +102,7 @@ func (v *validator) fileTypes(cfg *Config) {
 // RegisterExtensionInfo registers an extension when the Extension row's
 // feature installs, whatever the component's condition (documented), and
 // ICE19 requires a ComponentId for a component an Extension row names.
-func (v *validator) nativeFileType(field string, comp *Component, fileType *FileType) {
+func (v *validator) nativeFileType(field string, comp *Component) {
 	if comp.Condition != "" {
 		v.errorf(field, "the engine registers an owned extension with its feature, whatever the component's condition, "+
 			"so component %s must not have a condition; mark the extensions openWithOnly or drop the condition", comp.ID)
@@ -111,10 +110,6 @@ func (v *validator) nativeFileType(field string, comp *Component, fileType *File
 
 	if strings.EqualFold(comp.GUID, None) {
 		v.errorf(field, "an Extension row needs a component with a GUID (ICE19), so component %s must not use guid: none", comp.ID)
-	}
-
-	if len(fileType.Description) > maxDescriptionLength {
-		v.errorf(field+".description", "longer than %d characters, the width of the ProgId table's Description column", maxDescriptionLength)
 	}
 }
 
@@ -184,7 +179,7 @@ func (v *validator) fileTypeExtension(field string, ext *FileTypeExtension, defa
 	defaults[lower] = field
 
 	if systemExtensions[lower] {
-		v.warnf(field+".extension", ".%s belongs to Windows or other programs: installing takes it over as its default program; "+
+		v.warnf(field+".extension", ".%s belongs to Windows or other programs: installing takes it over as its default program and uninstalling deletes its key; "+
 			"openWithOnly adds the program to its Open with menu instead", name)
 	}
 }

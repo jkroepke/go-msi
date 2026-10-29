@@ -52,7 +52,7 @@ func TestFileTypes(t *testing.T) {
 	}
 
 	progIDs := rows(t, database, "ProgId")
-	if len(progIDs) != 1 || fmt.Sprint(progIDs[0]) != "[Acme.Document <nil> <nil> #1 [Beta] document <nil> <nil>]" {
+	if len(progIDs) != 1 || fmt.Sprint(progIDs[0]) != "[Acme.Document <nil> <nil> <nil> <nil> <nil>]" {
 		t.Errorf("ProgId %v", progIDs)
 	}
 
@@ -107,6 +107,7 @@ func TestFileTypes(t *testing.T) {
 
 	want := map[string]string{
 		`Acme.Document\DefaultIcon|<nil>`:        `"[#app.exe]",1`,
+		`Acme.Document|<nil>`:                    `##1 [\[]Beta[\]] document`,
 		`.acmedoc|Content Type`:                  "application/x-acme",
 		`.acmedoc\OpenWithProgids|Acme.Document`: "<nil>",
 		`.acmd\OpenWithProgids|Acme.Document`:    "<nil>",

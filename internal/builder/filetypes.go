@@ -15,7 +15,7 @@ import (
 // the shell that associations changed (REG-05). A file type needs at least
 // one extension it owns: the engine registers a ProgId without a class only
 // through an Extension row with a verb. The rest goes into Registry rows of
-// the file's component: DefaultIcon, the extension's Content Type and its
+// the file's component: the description, DefaultIcon, the extension's Content Type and its
 // OpenWithProgids entry. A file type whose extensions are all openWithOnly
 // owns no extension, so its ProgID, description and verbs are Registry rows
 // too.
@@ -65,6 +65,8 @@ func (b *build) fileType(path string, writer classWriter, file *config.File, fil
 		if len(features) == 1 {
 			b.nativeFileType(writer.comp, features[0], fileType, owned)
 		}
+
+		writer.value(fileType.ProgID, "", escapeFormatted(fileType.Description))
 	} else {
 		writeProgID(writer, target, fileType)
 	}
@@ -100,7 +102,10 @@ func ownedExtensions(fileType *config.FileType) []*config.FileTypeExtension {
 // the component. Verbs are numbered in their order, so the first
 // one is the shell key's default.
 func (b *build) nativeFileType(compID, feature string, fileType *config.FileType, owned []*config.FileTypeExtension) {
-	b.table("ProgId").Add(fileType.ProgID, nil, nil, nullable(fileType.Description), nil, nil)
+	// RegisterProgIdInfo leaves the ProgID's default unset for a ProgId
+	// row without a class (observed, REG-06), so the description is a
+	// Registry row (fileType).
+	b.table("ProgId").Add(fileType.ProgID, nil, nil, nil, nil, nil)
 
 	for _, ext := range owned {
 		b.table("Extension").Add(ext.Extension, compID, fileType.ProgID, nil, feature)
