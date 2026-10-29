@@ -180,6 +180,9 @@ go test ./... -shuffle=on -race
   control; a Text control hidden by its ControlCondition from the start was
   absent from the control view the driver walks (UI-07). Each driver run starts with an
   empty log.
+- Uninstall test products with `defer`, not `t.Cleanup`: `msiexecQuiet` runs
+  under `t.Context()`, which is cancelled before cleanups run, so a cleanup
+  uninstall fails with "context canceled" and leaves the product installed.
 
 ## Implementation rules
 

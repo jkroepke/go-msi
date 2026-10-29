@@ -555,8 +555,43 @@ func TestSignatureSIG04(t *testing.T) {
 	}
 }
 
-// TestSignatureSIG05 changes the root CLSID of a signed package. msi-builder
-// writes no sub-storages, so nested storages are not covered.
+// withStorage rebuilds pkg's root streams with one root-level storage named
+// 1031 that holds an Inner stream with data and, with decoy, a stream named
+// like the signature stream.
+func withStorage(t *testing.T, pkg []byte, data string, clsid [16]byte, decoy bool) []byte {
+	t.Helper()
+
+	file, err := cfb.Read(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sources := make([]cfb.Source, 0, len(file.Streams()))
+	for _, s := range file.Streams() {
+		sources = append(sources, s.Source())
+	}
+
+	storages := []cfb.Storage{{Name: "1031", CLSID: clsid, Streams: []cfb.Source{
+		cfb.Stream{Name: "Inner", Data: []byte(data)}.Source(),
+	}}}
+	if decoy {
+		storages[0].Streams = append(storages[0].Streams, cfb.Stream{Name: sign.StreamSignature, Data: []byte("not a signature")}.Source())
+	}
+
+	var buf bytes.Buffer
+
+	if _, err := cfb.WriteStoragesTo(&buf, sources, storages, cfb.Options{Version: file.Version, CLSID: file.CLSID}); err != nil {
+		t.Fatal(err)
+	}
+
+	return buf.Bytes()
+}
+
+// TestSignatureSIG05 changes the root CLSID of a signed package, and signs
+// a package with a root-level storage, as embedded transforms are stored,
+// then changes the storage's stream data and CLSID. A signtool signature
+// over a storage that holds a stream named like the signature tells
+// whether Windows excludes that name below the root.
 func TestSignatureSIG05(t *testing.T) {
 	if testing.Short() {
 		t.Skip("native signature tests")
@@ -575,6 +610,53 @@ func TestSignatureSIG05(t *testing.T) {
 	// A different CLSID may also make the MSI SIP not claim the file.
 	if got == trustOK || got == trustUntrustedRoot {
 		t.Errorf("SIG-05: a changed root CLSID still verifies: %#x", got)
+	}
+
+	unsigned := withStorage(t, unsignedMinimal(t), "transform", cfb.CLSIDTransform, true)
+	stored := mustSign(t, unsigned, pki.options(crypto.SHA256))
+
+	got = winVerifyTrust(t, writeTemp(t, "storage.msi", stored))
+	t.Logf("SIG-05: msi-builder signed, storage 1031: WinVerifyTrust %#x", got)
+
+	if got != pki.wantValid() {
+		t.Errorf("SIG-05: signed package with a storage: WinVerifyTrust = %#x, want %#x", got, pki.wantValid())
+	}
+
+	clsid = cfb.CLSIDTransform
+	clsid[15] ^= 1
+
+	for name, pkg := range map[string][]byte{
+		"storage stream data": withStorage(t, stored, "tampered", cfb.CLSIDTransform, false),
+		"storage CLSID":       withStorage(t, stored, "transform", clsid, false),
+	} {
+		got := winVerifyTrust(t, writeTemp(t, "storage-changed.msi", pkg))
+		t.Logf("SIG-05: changed %s: WinVerifyTrust %#x", name, got)
+
+		if got != trustBadDigest {
+			t.Errorf("SIG-05: changed %s: WinVerifyTrust = %#x, want TRUST_E_BAD_DIGEST", name, got)
+		}
+	}
+
+	signtool := findSigntool()
+	if signtool == "" {
+		return
+	}
+
+	path := writeTemp(t, "storage-signtool.msi", unsigned)
+	signtoolSign(t, signtool, pki, path, "SHA256")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// sign.Verify hashes the decoy below the root. If Windows excluded it,
+	// the digests differ and this fails.
+	_, err = sign.Verify(data)
+	t.Logf("SIG-05: signtool-signed, storage with a signature-named stream: WinVerifyTrust %#x, sign.Verify %v", winVerifyTrust(t, path), err)
+
+	if err != nil {
+		t.Errorf("SIG-05: signtool-signed package with a storage: sign.Verify: %v", err)
 	}
 }
 

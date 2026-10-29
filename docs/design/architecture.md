@@ -304,7 +304,8 @@ Pipeline, each step a file of its own:
    page (RTF checked or converted by `rtf`), the install folder page, the
    finish page text and launch checkbox, the bitmaps drawn by `artwork`
    from a palette or decoded from the theme's pictures and re-encoded as
-   24-bit BMP, and the ICE-style self-checks.
+   24-bit BMP, and the ICE-style self-checks. Every built-in text comes from
+   `config.UIStrings` through `UI.UIString`, so `ui.strings` can replace it.
 10. **Finish**: `_Validation` from `schema`, summary information, then the
     streaming write: each cabinet is written with `cab.WriteTo` to a spool
     (memory when `Options.Output` is empty, otherwise a temporary file next to

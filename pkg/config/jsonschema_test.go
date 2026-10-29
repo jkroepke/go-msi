@@ -3,8 +3,10 @@ package config_test
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -263,4 +265,31 @@ func TestJSONSchemaMatchesTypes(t *testing.T) {
 	}
 
 	walk("config", reflect.TypeFor[config.Config](), &root)
+}
+
+// TestJSONSchemaUIStrings keeps the keys the schema offers for ui.strings
+// equal to the built-in wizard texts.
+func TestJSONSchemaUIStrings(t *testing.T) {
+	t.Parallel()
+
+	var doc struct {
+		Properties map[string]struct {
+			Properties map[string]struct {
+				PropertyNames struct {
+					Enum []string `json:"enum"`
+				} `json:"propertyNames"`
+			} `json:"properties"`
+		} `json:"properties"`
+	}
+
+	if err := json.Unmarshal(config.JSONSchema(), &doc); err != nil {
+		t.Fatal(err)
+	}
+
+	got := doc.Properties["ui"].Properties["strings"].PropertyNames.Enum
+	want := slices.Sorted(maps.Keys(config.UIStrings()))
+
+	if !slices.Equal(got, want) {
+		t.Errorf("ui.strings keys in the schema:\n%v\nwant (sorted):\n%v", got, want)
+	}
 }

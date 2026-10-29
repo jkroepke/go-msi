@@ -85,7 +85,7 @@ closes each one.
 | Fact | Source | Schema rule |
 |---|---|---|
 | Template platform tokens are exact and case-sensitive; `X64` and `arm64` give 1633 | SUM-02 | `package.platform` takes `x86`, `x64` or `arm64` in any case, plus the aliases `intel`, `amd64` and `aarch64`, and the builder writes the exact token. |
-| Two languages in the Template give 1624 | SUM-02 | `product.language` is one integer LCID, not a list. |
+| Two languages in the Template make the engine look for a transform named by a language; without it, 1624 | SUM-02 | `product.language` is the one base LCID. Further languages come from `ui.languages` (planned), which embeds a transform per language and lists it in the Template. |
 | Summary code page 65001 or 1200 gives 1620; a 65001 database works | SUM-04, MSIDB-08 | `package.codepage` sets the database code page (1252 by default, 65001 allowed). The summary code page is the database code page when that is an ANSI page, else 1252. Every table string must fit the database code page, or the build fails with a `package.codepage` error. Summary text that the summary code page cannot hold is stored with `?` in place of those characters, with a warning. |
 | Stream names are limited to 62 characters | MSIDB-11 | `icons` keys are at most 57 characters and `binaries` keys at most 55 (`Icon.` and `Binary.` count). The 62-character limit holds only for names made of `0`–`9`, `A`–`Z`, `a`–`z`, `.` and `_`: every other BMP character takes a stream-name unit of its own and a character outside the BMP two (31 in all), and `!`, `/`, `\`, `:`, NUL, U+3800–U+4840 and letters with case from U+0080 to U+D7FF are rejected. `package.cabinet` is checked with the stream-name encoder. |
 | The minimum integer of a column type is stored as NULL | MSIDB-02 | `tables[].rows` reject −32768 in `i2` columns and −2147483648 in `i4` columns. |
@@ -1396,6 +1396,90 @@ in `accent`); a colour that is not given keeps its default. A license,
 theme, install folder page, finish page text or launch checkbox without a
 wizard is an error.
 
+#### Wizard texts and languages
+
+```yaml
+product:
+  language: 1031           # LCID of the package (Template, ProductLanguage)
+package:
+  codepage: 1252           # must hold every text; 65001 for any script
+ui:
+  wizard: minimal
+  strings:
+    Next: '&Weiter >'
+    Back: '< &Zurück'
+    Cancel: Abbrechen
+    WelcomeTitle: 'Willkommen beim Setup-Assistenten für [ProductName]'
+```
+
+The wizard's own texts are English. `strings` replaces any of them by key;
+a key it leaves out keeps the English text. The keys are listed in
+`pkg/config/schema.json` and returned by `config.UIStrings`, together with
+the English texts: the shared buttons (`Back`, `Next`, `Cancel`, `Install`,
+`Finish`, `OK`, ...), `DialogTitle`, a `Title` and `Text` per page
+(`WelcomeTitle`, `ReadyInstallText`, `ExitTitle`, ...), the other labels of
+a page under its prefix (`LicenseAccept`, `BrowseLookIn`, `ProgressStatus`,
+...), the default `Launch` caption (`ui.launch.text` still wins), and the
+`UIText` rows that the feature tree, the disk usage list and the progress
+page read (`MenuLocal`, `SelLocalLocal`, `VolumeCostSize`, `KB`, ...).
+Texts other than those `UIText` rows are formatted, so `[ProductName]`
+works; `UIText` is documented as plain text (unverified). On buttons,
+checkboxes (`LicenseAccept`), the Restart Manager radio buttons (`RMUseRM`,
+`RMDontUseRM`) and the browse labels (`BrowseLookIn`, `BrowseFolderName`)
+`&` marks the access key, as in the English text, and `&&` writes a literal
+`&`; the other labels and page texts show `&` as it is. Quote a value that
+starts with `&`, `<`, `[` or `{`: unquoted, YAML reads `&Weiter >` as an
+anchor and the value as empty. An unknown key, an empty text and `strings`
+without a wizard are errors; a text longer than its column (`DialogTitle`
+128, `RMUseRM` and `RMDontUseRM` 64, `UIText` rows 255 characters) is a
+warning, since ICE03 reports it. `ui.dialogs` already take their texts from
+the configuration.
+
+Without further languages, a package has the one language of
+`product.language`, and `ui.strings` holds its texts. Messages that the
+engine itself shows (error and progress action texts) are documented to come
+from the engine, since msi-builder writes no `Error` or `ActionText` table;
+their language was not tested. Full-UI installs of a German package (code
+page 1252, language 1031) and of a Russian and Japanese one (code page
+65001) passed on Windows Server 2025 (UI-06).
+
+A multi-language product is one MSI with an embedded language transform per
+further language (spec section 7.6). This is planned, not built yet; the
+design is:
+
+```yaml
+product:
+  language: en             # base language, in the database itself
+ui:
+  wizard: minimal
+  languages:
+    de:                    # or 1031
+      strings:
+        Next: '&Weiter >'
+        Cancel: Abbrechen
+    fr-CA:                 # or 3084
+      strings:
+        Next: '&Suivant >'
+```
+
+A `languages` key is a decimal LCID or a language tag. The short tags `de`
+(1031), `en` (1033), `es` (3082) and `fr` (1036) name the main locale, and a
+full tag such as `de-AT` (3079) or `en-GB` (2057) names that locale;
+`product.language` takes the same forms. Each entry becomes a transform
+storage named by its LCID, the Template lists the base language and then each
+entry, and the transform sets `ProductLanguage` and replaces the texts its
+`strings` give; a key it leaves out keeps the base language's text. A
+transform cannot change the code page of a base that has one (MSIDB-12), so
+the builder writes the base and every transform in 65001 when the languages
+need different code pages. msiexec picks the transform that matches the
+user's regional format (`GetUserDefaultLangID`) and installs the base
+language when the user's language is the first one listed; `ProductLanguage=1031` or
+`TRANSFORMS=:1031` on the command line forces one (LANG-01, spec
+section 7.6). The wizard cannot
+offer a language choice, since the engine applies the transform before the
+first dialog; spec section 16, "Decisions not adopted", records that and
+the one-MSI-per-language alternative.
+
 ### 4.13 `tables`
 
 An escape hatch for tables the schema does not model.
@@ -1440,10 +1524,10 @@ the generated tables, and the cabinet round trip.
 
 ## 6. Not in version 1
 
-Multiple languages in one package. A future `schema: msi-builder/v2` can add
-it without changing the meaning of a v1 file.
+Nothing yet; a future `schema: msi-builder/v2` can add features without
+changing the meaning of a v1 file.
 
 Advertised installs, advertised shortcuts, script custom actions, patches,
-transforms, merge modules and bundles are out of scope for good
+standalone transforms (.mst files), merge modules and bundles are out of scope for good
 (see [Out of scope](../../README.md#out-of-scope) and
 [architecture.md](architecture.md)).

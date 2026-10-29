@@ -116,11 +116,13 @@ func installProbe(t *testing.T, path string, files []probeFile) {
 
 	removed := false
 
-	t.Cleanup(func() {
+	// Not t.Cleanup: msiexecQuiet runs under t.Context, which is cancelled
+	// before cleanups run.
+	defer func() {
 		if !removed {
 			msiexecQuiet(t, filepath.Join(t.TempDir(), "cleanup.log"), "/x", path)
 		}
-	})
+	}()
 
 	dir := filepath.Join(os.Getenv("ProgramFiles"), "Cabinet Probe")
 

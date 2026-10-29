@@ -163,7 +163,7 @@ Silent-failure cases a producer has to guard against itself:
 | MSIDB-09 | Confirmed | [log](msitest/results/MSIDB-09/empty-table/log.md); no stream and 0-byte stream both work |
 | MSIDB-10 | Confirmed | [log](msitest/results/MSIDB-10/validation-table/log.md); runtime needs no `_Validation` |
 | MSIDB-11 | Confirmed | [log](msitest/results/MSIDB-11/stream-name-limit/log.md); 62 characters, commit fails with 2213 |
-| MSIDB-12 | Not run | P2 |
+| MSIDB-12 | Confirmed | msi.dll transform layout, wide masks, code page switch (section 3); CI runner logs in `msitest/results/MSIDB-12` |
 | MSIDB-13 | Not run | P2 |
 | MSIDB-15 | Confirmed | Same as MSIDB-04 |
 | MSIDB-16 | Contradicted | Same as MSIDB-05 |
@@ -180,6 +180,8 @@ Silent-failure cases a producer has to guard against itself:
 | SUM-05 | Partial | [log](msitest/results/SUM-05/word-count/log.md); 0, 1, 2, 3, 4, 8, 10 install elevated; no standard-user session |
 | SUM-06 | Confirmed | [log](msitest/results/SUM-06/revision-and-times/log.md) |
 | SUM-07 | Confirmed | [log](msitest/results/SUM-07/summary-system-identifier/log.md); field ignored |
+| LANG-01 | Confirmed | [CI log](msitest/results/LANG-01/embedded-language-transform/log.md), [SERVER2025 log](msitest/results/LANG-01/embedded-language-transform/log-server2025.md); the user's default language ID (format, not display language) picks the transform; the first Template language is the database's own |
+| LANG-02 | Confirmed | SERVER2025: msi.dll applies MarshalTransform's transform; embedded as storage 1031 it installs as "Minimal Beispiel Zurück" with Language 1031 |
 | CAB-01 | Confirmed | Uncompressed, makecab stored/MSZIP and spec-writer stored/MSZIP install byte-identical ([go-mszip](msitest/results/CAB-01/go-mszip/log.md)) |
 | CAB-04 | Confirmed | [log](msitest/results/CAB-04/header-mutations/log.md); version ≠ 1.3 and bad checksum 1603, `cbCabinet` ignored |
 | CAB-05 | Confirmed | [log](msitest/results/CAB-05/zero-byte-file/log.md); missing external cabinet 1603 |
@@ -233,6 +235,7 @@ Silent-failure cases a producer has to guard against itself:
 | UI-02 | Not run | Interactive full UI |
 | UI-03 | Not run | Interactive full UI |
 | UI-05 | Confirmed | [log](msitest/results/UI-05/server2025/log.md); SERVER2025, 2026-10-29: the group starts on the first option the builder set as default, a `BM_CLICK` on "Debug" sets `LOG_LEVEL=debug` on the client and the server; ICE clean apart from warnings outside the choice dialog |
+| UI-06 | Confirmed | SERVER2025: German (1252) and Russian/Japanese (65001) wizards installed by pressing the translated buttons; the 65001 package replaced the German one; engine log messages follow ProductLanguage |
 | UI-07 | Confirmed | [log](msitest/results/UI-07/windows-latest/log.md); GitHub `windows-latest` runner, 2026-10-29, `TestFullUIFinishText`: after a full UI install the finish page lists the paragraph with `[ProductName]` resolved; after a repair through the maintenance menu the finish page has no such element (the hidden control is absent from the UI Automation control view the driver walks, not reported off-screen). UI Automation names drop `&`, so the literal `&` rests on UI-01 |
 | SEC-01 | Confirmed | File, [CreateFolder](msitest/results/SEC-01/createfolder/log.md), [Registry](msitest/results/SEC-01/registry/log.md) and [ServiceInstall](msitest/results/SEC-01/service/log.md) rows get the authored DACL; [`/fa` and `/fvomus` restore it](msitest/results/SEC-01/file/log.md); [owner and group](msitest/results/SEC-01/file-owner-group/log.md) are set; `[Property]` stays literal (1943) but [`<[%USERDOMAIN]\[%USERNAME]>`](msitest/results/SEC-01/account-angle-env/log.md) and [`<BUILTIN\Users>`](msitest/results/SEC-01/account-angle-builtin/log.md) resolve; invalid SDDL 1943, two true rows 1942, both tables 1941; [deny ACE for `BU`](msitest/results/SEC-01/file-deny-ace/log.md) leaves the file on uninstall |
 | VAL-01 | Confirmed | [log](msitest/results/VAL-01/msival2-compare/log.md); the Go runner and `msival2.exe` agree on all three packages (1, 25 and 26 warning and error findings; Info lines left out); ICE08 reports the duplicate GUID |

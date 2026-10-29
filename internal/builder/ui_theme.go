@@ -31,16 +31,16 @@ const (
 // box and Print. Next stays disabled until the box is checked.
 func (w *wizard) licenseDialog(license string) {
 	page := w.add(&uiDialog{name: dlgLicense, attrs: dlgPage, first: ctlLicense})
-	page.innerHeader("End-User License Agreement", "Please read the following license agreement carefully.")
+	page.innerHeader(w.text("LicenseTitle"), w.text("LicenseText"))
 	page.control(&uiControl{
 		name: ctlLicense, typ: typScrollText, text: license, ring: true,
 		x: margin, y: licenseTop, w: dlgWidth - 2*margin, h: licenseHeight, attrs: ctlActive | ctlSunken,
 	})
 	page.control(&uiControl{
-		name: ctlAccept, typ: typCheckBox, property: propLicense, text: "I &accept the terms in the License Agreement", ring: true,
+		name: ctlAccept, typ: typCheckBox, property: propLicense, text: w.text("LicenseAccept"), ring: true,
 		x: margin, y: acceptY, w: dlgWidth - 2*margin, h: acceptH, attrs: ctlActive, // ctlText's NoPrefix bit is PushLike here
 	})
-	page.control(button("Print", margin, buttonY, "&Print")).on("MsiPrint", "1", condAlways)
+	page.control(button("Print", margin, buttonY, w.text("LicensePrint"))).on("MsiPrint", "1", condAlways)
 	page.navigation()
 
 	next := page.find(ctlNext)

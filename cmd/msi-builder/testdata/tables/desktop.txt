@@ -506,7 +506,7 @@ KB	KB
 MB	MB
 MenuAbsent	Entire feature will be unavailable
 MenuAdvertise	Feature will be installed when required
-MenuAllCP	Entire feature will be installed to run from the network
+MenuAllCP	Entire feature will be installed to run from CD
 MenuAllLocal	Entire feature will be installed on local hard drive
 MenuAllNetwork	Entire feature will be installed to run from the network
 MenuCD	Will be installed to run from CD

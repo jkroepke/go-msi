@@ -577,6 +577,9 @@ type UI struct {
 	// Launch adds a check box to the finish page that starts an installed
 	// program when the user clicks Finish.
 	Launch *Launch `yaml:"launch"`
+	// Strings replaces built-in wizard texts by key, for example to build
+	// the wizard in another language (UIStrings lists the keys).
+	Strings map[string]string `yaml:"strings"`
 	// FinishText is a formatted paragraph shown on the finish page below
 	// its standard text; hidden by Installed OR ACTION = "ADMIN".
 	FinishText string    `yaml:"finishText"`

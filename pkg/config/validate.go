@@ -1865,6 +1865,7 @@ func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independ
 	}
 
 	v.theme(cfg)
+	v.uiStrings(cfg)
 
 	seen := make(map[string]bool)
 
