@@ -334,19 +334,19 @@ components:
 
 ### Upgrade even when the old version cannot be removed
 
-An upgrade removes the old version first. When that removal fails, for
-example because the old version's uninstall runs a command that fails, the
-upgrade fails too and the old version stays. `ignoreRemoveFailure` installs
-the new version anyway:
+An upgrade removes the old version. When that removal fails, for example
+because the old version's uninstall runs a command that fails, the upgrade
+normally fails too and the old version stays. `ignoreRemoveFailure`
+installs the new version anyway:
 
 ```yaml
 upgrade:
   ignoreRemoveFailure: true
 ```
 
-The old version then stays installed next to the new one and keeps its entry
-in Programs and Features, so remove it by hand afterwards. Use this only
-when an old release is known to fail on uninstall.
+The old version then stays installed next to the new one, so uninstall it
+separately afterwards. Use this only when an old release is known to fail
+on uninstall.
 
 ### Delete program data on uninstall
 
