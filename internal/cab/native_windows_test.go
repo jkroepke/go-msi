@@ -784,6 +784,9 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 			inputs := map[string][]byte{
 				"text.txt": text, "random.bin": random, "small.txt": []byte("small\r\n"), "empty.txt": nil,
 				`sub\deep\nested.txt`: []byte("nested\r\n"),
+				// One repeated byte gives makecab's LZX blocks the fewest
+				// distinct symbols; the reader rejects a tree of one code.
+				"zeros.bin": make([]byte, 200000),
 			}
 
 			var ddf strings.Builder
@@ -803,7 +806,7 @@ func TestNativeReadMakecab(t *testing.T) { //nolint:paralleltest // the FDI call
 
 			ddf.WriteString(".Set MaxDiskSize=CDROM\r\n.Set RptFileName=nul\r\n.Set InfFileName=nul\r\n.Set UniqueFiles=off\r\n")
 
-			for _, name := range []string{"text.txt", "empty.txt", "random.bin", `sub\deep\nested.txt`, "small.txt"} {
+			for _, name := range []string{"text.txt", "empty.txt", "random.bin", `sub\deep\nested.txt`, "small.txt", "zeros.bin"} {
 				path := filepath.Join(src, filepath.FromSlash(strings.ReplaceAll(name, `\`, "/")))
 				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 					t.Fatal(err)

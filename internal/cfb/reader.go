@@ -156,21 +156,35 @@ func (f *File) load(ent *Entry) ([]byte, error) {
 	return data, nil
 }
 
-// miniChain follows the MiniFAT chain of a small stream.
+// miniChain follows the MiniFAT chain of a small stream. The chain holds
+// exactly the mini sectors the size needs, each once, and then ends; every
+// byte it serves lies inside the root entry's mini stream.
 func (f *File) miniChain(ent *Entry) ([]uint32, error) {
-	var chain []uint32
+	count := (ent.Size + miniSectorSize - 1) / miniSectorSize
+	chain := make([]uint32, 0, count)
+	seen := make(map[uint32]bool, count)
+	mini := ent.Start
 
-	for mini, n := ent.Start, uint64(0); n*miniSectorSize < ent.Size; n++ {
-		if mini == endOfChain || int(mini) >= len(f.rdr.miniFAT) || mini >= 0xFFFFFFFA {
+	for index := range count {
+		if mini >= 0xFFFFFFFA || int(mini) >= len(f.rdr.miniFAT) || seen[mini] {
 			return nil, fmt.Errorf("cfb: bad MiniFAT chain for %q", ent.Name)
 		}
 
-		if int(mini)*miniSectorSize/f.SectorSize >= len(f.rootChain) {
+		// Only the bytes the stream uses must be in the mini stream; the
+		// mini sector's padding may reach past its size.
+		used := min(miniSectorSize, ent.Size-index*miniSectorSize)
+		if uint64(mini)*miniSectorSize+used > f.Entries[0].Size ||
+			int(mini)*miniSectorSize/f.SectorSize >= len(f.rootChain) {
 			return nil, fmt.Errorf("cfb: mini sector %d of %q outside the mini stream", mini, ent.Name)
 		}
 
+		seen[mini] = true
 		chain = append(chain, mini)
 		mini = f.rdr.miniFAT[mini]
+	}
+
+	if mini != endOfChain {
+		return nil, fmt.Errorf("cfb: MiniFAT chain of %q does not end after its size", ent.Name)
 	}
 
 	return chain, nil
@@ -398,7 +412,16 @@ func (r *reader) sector(index uint32) ([]byte, error) {
 	}
 
 	buf := make([]byte, r.ss)
-	if _, err := r.r.ReadAt(buf, off); err != nil && !errors.Is(err, io.EOF) {
+
+	// The size given to Open may promise more than the reader holds; a
+	// short read must not leave zeros in the FAT or directory.
+	read, err := r.r.ReadAt(buf, off)
+
+	switch {
+	case read == len(buf):
+	case err == nil || errors.Is(err, io.EOF):
+		return nil, fmt.Errorf("cfb: read sector %d: %w", index, io.ErrUnexpectedEOF)
+	default:
 		return nil, fmt.Errorf("cfb: read sector %d: %w", index, err)
 	}
 
@@ -465,7 +488,7 @@ func Read(raw []byte) (*File, error) {
 
 // Open parses the structure of a compound file of the given size without
 // loading its streams. Stream, Streams and Reader read them from r.
-func Open(src io.ReaderAt, size int64) (*File, error) { //nolint:maintidx,cyclop,gocyclo,gocognit // one pass over the format; splitting would scatter it
+func Open(src io.ReaderAt, size int64) (*File, error) { //nolint:cyclop,gocyclo,gocognit // one pass over the format; splitting would scatter it
 	raw := make([]byte, 512)
 
 	if size < 512 {
@@ -505,51 +528,29 @@ func Open(src io.ReaderAt, size int64) (*File, error) { //nolint:maintidx,cyclop
 
 	rdr := &reader{r: src, size: size, ss: 1 << shift}
 	file := &File{Version: major, SectorSize: rdr.ss, byName: make(map[string]*Entry), rdr: rdr}
-	folded := make(map[string]bool)
 
-	numFAT := order.Uint32(raw[0x2C:])
 	firstDir := order.Uint32(raw[0x30:])
 	firstMiniFAT := order.Uint32(raw[0x3C:])
 	firstDIFAT := order.Uint32(raw[0x44:])
 
-	var fatSectors []uint32
-
-	for i := 0; i < 109 && uint32(len(fatSectors)) < numFAT; i++ { //nolint:gosec // bounded by the format limits checked earlier
-		fatSectors = append(fatSectors, order.Uint32(raw[0x4C+4*i:]))
+	fatSectors, err := rdr.loadFAT(raw, order.Uint32(raw[0x2C:]), firstDIFAT)
+	if err != nil {
+		return nil, err
 	}
 
-	seenDIFAT := make(map[uint32]bool)
-
-	for difat := firstDIFAT; difat != endOfChain && difat != freeSect && uint32(len(fatSectors)) < numFAT; { //nolint:gosec // bounded
-		if seenDIFAT[difat] {
-			return nil, errors.New("cfb: DIFAT loop")
-		}
-
-		seenDIFAT[difat] = true
-
-		words, err := rdr.words(difat)
-		if err != nil {
-			return nil, fmt.Errorf("cfb: DIFAT: %w", err)
-		}
-
-		for i := 0; i < rdr.ss/4-1 && uint32(len(fatSectors)) < numFAT; i++ { //nolint:gosec // bounded by the format limits checked earlier
-			fatSectors = append(fatSectors, words[i])
-		}
-
-		difat = words[rdr.ss/4-1]
-	}
-
-	for _, s := range fatSectors {
-		words, err := rdr.words(s)
-		if err != nil {
-			return nil, fmt.Errorf("cfb: FAT: %w", err)
-		}
-
-		rdr.fat = append(rdr.fat, words...)
+	// Every sector belongs to at most one chain, so the streams together
+	// can never load more than the file holds (MSISPEC section 2).
+	sectors := newOwners(len(rdr.fat))
+	if err := sectors.claim(fatSectors); err != nil {
+		return nil, fmt.Errorf("cfb: FAT: %w", err)
 	}
 
 	dirChain, err := rdr.chain(firstDir, 1<<20)
 	if err != nil {
+		return nil, fmt.Errorf("cfb: directory: %w", err)
+	}
+
+	if err := sectors.claim(dirChain); err != nil {
 		return nil, fmt.Errorf("cfb: directory: %w", err)
 	}
 
@@ -609,12 +610,16 @@ func Open(src io.ReaderAt, size int64) (*File, error) { //nolint:maintidx,cyclop
 	file.CLSID = root.CLSID
 
 	if firstMiniFAT != endOfChain && firstMiniFAT != freeSect {
-		mc, err := rdr.chain(firstMiniFAT, 1<<20)
+		miniFATChain, err := rdr.chain(firstMiniFAT, 1<<20)
 		if err != nil {
 			return nil, fmt.Errorf("cfb: MiniFAT: %w", err)
 		}
 
-		for _, s := range mc {
+		if err := sectors.claim(miniFATChain); err != nil {
+			return nil, fmt.Errorf("cfb: MiniFAT: %w", err)
+		}
+
+		for _, s := range miniFATChain {
 			words, err := rdr.words(s)
 			if err != nil {
 				return nil, fmt.Errorf("cfb: MiniFAT: %w", err)
@@ -629,40 +634,209 @@ func Open(src io.ReaderAt, size int64) (*File, error) { //nolint:maintidx,cyclop
 		if err != nil {
 			return nil, fmt.Errorf("cfb: mini stream: %w", err)
 		}
+
+		if uint64(len(file.rootChain))*uint64(rdr.ss) < root.Size { //nolint:gosec // both are non-negative
+			return nil, errors.New("cfb: mini stream is shorter than its size")
+		}
+
+		if err := sectors.claim(file.rootChain); err != nil {
+			return nil, fmt.Errorf("cfb: mini stream: %w", err)
+		}
 	}
 
 	if err := file.walkTree(); err != nil {
 		return nil, err
 	}
 
-	for _, ent := range file.Entries {
-		if ent.Type != 2 || ent.Parent < 0 {
-			continue
-		}
+	if err := file.checkEntries(size, sectors); err != nil {
+		return nil, err
+	}
 
-		if ent.Size > uint64(size) {
-			return nil, fmt.Errorf("cfb: stream %q larger than the file", ent.Name)
-		}
+	return file, nil
+}
 
-		if ent.Parent == 0 {
-			// Siblings are compared ignoring ASCII case, like Write does.
-			key := foldName(ent.Name)
-			if folded[key] {
-				return nil, fmt.Errorf("cfb: duplicate stream name %q", ent.Name)
-			}
+// fatList collects the FAT sector IDs that the header and the DIFAT list.
+// Each sector may appear once: a repeated ID would let a small file expand
+// one sector into a FAT of any size.
+type fatList struct {
+	seen     map[uint32]bool
+	ids      []uint32 // FAT sectors
+	difats   []uint32 // DIFAT sectors
+	physical uint64   // sectors that start inside the file
+	want     uint32
+}
 
-			folded[key] = true
+func (l *fatList) full() bool { return uint32(len(l.ids)) >= l.want } //nolint:gosec // want is bounded by the file size
 
-			file.byName[ent.Name] = ent
-		}
+// add records one FAT sector, or with difat set one DIFAT sector.
+func (l *fatList) add(sector uint32, difat bool) error {
+	if uint64(sector) >= l.physical || l.seen[sector] {
+		return fmt.Errorf("cfb: bad or repeated FAT sector %#x", sector)
+	}
 
-		// Check the chain now so that a corrupt file fails at Open.
-		if _, err := file.readerFor(ent); err != nil {
+	l.seen[sector] = true
+
+	if difat {
+		l.difats = append(l.difats, sector)
+	} else {
+		l.ids = append(l.ids, sector)
+	}
+
+	return nil
+}
+
+// loadFAT reads the FAT from the sectors that the header and the DIFAT
+// list, each once, and returns the IDs of the FAT and DIFAT sectors.
+func (r *reader) loadFAT(header []byte, numFAT, firstDIFAT uint32) ([]uint32, error) {
+	list := &fatList{
+		seen:     make(map[uint32]bool, numFAT),
+		physical: uint64((r.size+int64(r.ss)-1)/int64(r.ss) - 1), //nolint:gosec // the size is at least one header
+		want:     numFAT,
+	}
+
+	if uint64(numFAT) > list.physical {
+		return nil, fmt.Errorf("cfb: %d FAT sectors in a file of %d sectors", numFAT, list.physical)
+	}
+
+	for i := 0; i < 109 && !list.full(); i++ {
+		if err := list.add(binary.LittleEndian.Uint32(header[0x4C+4*i:]), false); err != nil {
 			return nil, err
 		}
 	}
 
-	return file, nil
+	if err := r.walkDIFAT(list, firstDIFAT); err != nil {
+		return nil, err
+	}
+
+	if !list.full() {
+		return nil, fmt.Errorf("cfb: the header and DIFAT list %d of %d FAT sectors", len(list.ids), numFAT)
+	}
+
+	r.fat = make([]uint32, 0, len(list.ids)*r.ss/4)
+
+	for _, sector := range list.ids {
+		words, err := r.words(sector)
+		if err != nil {
+			return nil, fmt.Errorf("cfb: FAT: %w", err)
+		}
+
+		r.fat = append(r.fat, words...)
+	}
+
+	return append(list.ids, list.difats...), nil
+}
+
+// walkDIFAT adds the FAT sectors that the DIFAT chain lists until the list
+// is full or the chain ends.
+func (r *reader) walkDIFAT(list *fatList, first uint32) error {
+	for difat := first; difat != endOfChain && difat != freeSect && !list.full(); {
+		if err := list.add(difat, true); err != nil {
+			return fmt.Errorf("cfb: DIFAT: %w", err)
+		}
+
+		words, err := r.words(difat)
+		if err != nil {
+			return fmt.Errorf("cfb: DIFAT: %w", err)
+		}
+
+		for i := 0; i < r.ss/4-1 && !list.full(); i++ {
+			if err := list.add(words[i], false); err != nil {
+				return err
+			}
+		}
+
+		difat = words[r.ss/4-1]
+	}
+
+	return nil
+}
+
+// checkEntries validates the reachable entries: sibling names are unique
+// within each storage, and every stream's chain is readable and shares no
+// sector or mini sector with another chain.
+func (f *File) checkEntries(size int64, sectors owners) error {
+	type sibling struct {
+		name   string
+		parent int
+	}
+
+	names := make(map[sibling]bool)
+	minis := newOwners(len(f.rdr.miniFAT))
+
+	for _, ent := range f.Entries {
+		if (ent.Type != 1 && ent.Type != 2) || ent.Parent < 0 {
+			continue
+		}
+
+		// Siblings are compared ignoring ASCII case, like Write does.
+		key := sibling{name: foldName(ent.Name), parent: ent.Parent}
+		if names[key] {
+			return fmt.Errorf("cfb: duplicate name %q in storage %d", ent.Name, ent.Parent)
+		}
+
+		names[key] = true
+
+		if ent.Type == 2 {
+			if err := f.checkStream(ent, size, sectors, minis); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// checkStream checks one stream's size and chain and claims its sectors.
+func (f *File) checkStream(ent *Entry, size int64, sectors, minis owners) error {
+	if ent.Size > uint64(size) { //nolint:gosec // size is non-negative
+		return fmt.Errorf("cfb: stream %q larger than the file", ent.Name)
+	}
+
+	if ent.Parent == 0 {
+		f.byName[ent.Name] = ent
+	}
+
+	// Check the chain now so that a corrupt file fails at Open.
+	stream, err := f.readerFor(ent)
+	if err != nil {
+		return err
+	}
+
+	owned := sectors
+	if stream.unit == miniSectorSize {
+		owned = minis
+	}
+
+	if err := owned.claim(stream.chain); err != nil {
+		return fmt.Errorf("cfb: stream %q: %w", ent.Name, err)
+	}
+
+	return nil
+}
+
+// owners is a bit set of the sectors (or mini sectors) that a chain has
+// claimed.
+type owners []uint64
+
+func newOwners(count int) owners { return make(owners, (count+63)/64) }
+
+// claim marks the IDs as owned and fails on one that is owned already. IDs
+// beyond the set are left out: no chain can reach them.
+func (o owners) claim(ids []uint32) error {
+	for _, sector := range ids {
+		word, bit := int(sector/64), uint64(1)<<(sector%64)
+		if word >= len(o) {
+			continue
+		}
+
+		if o[word]&bit != 0 {
+			return fmt.Errorf("sector %#x is in two chains", sector)
+		}
+
+		o[word] |= bit
+	}
+
+	return nil
 }
 
 // foldName is name with ASCII letters in upper case, the key under which
