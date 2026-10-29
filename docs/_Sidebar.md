@@ -9,7 +9,7 @@
 
 **Configure and build**
 
-- [YAML Schema](design/yaml-schema.md)
+- [YAML Schema](YAML%20Schema.md)
 - [Signing](signing.md)
 - [Go API](go-api.md)
 
@@ -28,4 +28,5 @@
 
 - [MSI Specification](spec/MSISPEC.md)
 - [Windows Test Results](spec/MSISPEC-RESULTS.md)
+- [YAML Schema Design](design/yaml-schema.md)
 - [Architecture](design/architecture.md)

@@ -156,7 +156,8 @@ The documentation lives in the [wiki](https://github.com/jkroepke/msi-builder/wi
 - [Getting Started](https://github.com/jkroepke/msi-builder/wiki/Getting-Started)
 - [End user guide](https://github.com/jkroepke/msi-builder/wiki/End-User-Guide) for the people who install your packages
 - [Command-line reference](https://github.com/jkroepke/msi-builder/wiki/Command-Line)
-- [YAML schema](https://github.com/jkroepke/msi-builder/wiki/YAML-Schema)
+- [YAML schema](https://github.com/jkroepke/msi-builder/wiki/YAML-Schema): a recipe for each common task
+- [YAML schema design](https://github.com/jkroepke/msi-builder/wiki/YAML-Schema-Design): every key, default and rule
 - [Signing](https://github.com/jkroepke/msi-builder/wiki/Signing)
 - [Go API](https://github.com/jkroepke/msi-builder/wiki/Go-API)
 - [MSI specification](https://github.com/jkroepke/msi-builder/wiki/MSI-Specification) and its

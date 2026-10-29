@@ -305,6 +305,9 @@ go test ./... -shuffle=on -race
   public API or the pipeline changes, and
   [`docs/design/yaml-schema.md`](docs/design/yaml-schema.md) together with
   `pkg/config/schema.json` and the examples when the YAML schema changes.
+  A renamed or new everyday key also goes into the user guide
+  [`docs/YAML Schema.md`](docs/YAML%20Schema.md), whose YAML blocks
+  `TestGuideExamples` builds; keep internals out of that page.
 - `docs` is published to the wiki by `.github/scripts/wiki.py`; the first
   line of every file is its title and is removed on publish. Link with
   relative `.md` paths; the script turns them into wiki page links. A new

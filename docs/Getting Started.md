@@ -32,8 +32,8 @@ ties the versions of a product together, so a newer version replaces an
 installed one. The first line lets editors with the YAML language server
 complete and check the file.
 
-Every default can be spelled out. Section 3.3 of the
-[YAML Schema](design/yaml-schema.md#33-defaults-and-shorthands) lists them.
+The [YAML Schema](YAML%20Schema.md) page explains what this package does by
+default and how to change it.
 
 ## Validate and build
 
@@ -77,7 +77,7 @@ msiexec /x hello.msi /qn
 ## Next steps
 
 - Add shortcuts, services, registry values, a firewall rule or the install
-  wizard: see the sections of the [YAML Schema](design/yaml-schema.md). The
+  wizard: see the recipes of the [YAML Schema](YAML%20Schema.md). The
   [windows_exporter example](../examples/windows_exporter/msi.yaml) uses most
   of them.
 - Inspect a package: [`msi-builder inspect`](cli/msi-builder_inspect.md) prints its

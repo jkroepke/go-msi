@@ -21,7 +21,7 @@ from urllib.parse import quote, unquote
 EXCLUDE = ("spec/msitest/",)
 
 PAGES = {
-    "design/yaml-schema.md": "YAML Schema",
+    "design/yaml-schema.md": "YAML Schema Design",
     "design/architecture.md": "Architecture",
     "go-api.md": "Go API",
     "signing.md": "Signing",
