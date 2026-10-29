@@ -234,6 +234,13 @@ jobs:
         shell: bash
         run: go test -v -count=1 -run 'TestMsiexecOSProperties|TestMsiexecSearchesOSFileVersion|TestMsiexecUsesMsiFileHash|TestMsiexecUpgradeVersions|TestMsiexecFirewallPortLists' ./internal/builder/nativetest/
 
+      # Print what MsiLockPermissionsEx and permission grants do to the
+      # ACEs an object inherits or already has (MSISPEC-RESULTS SEC-02).
+      - name: go test (permission results)
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        shell: bash
+        run: go test -v -count=1 -run 'TestMsiexecSDDLWithoutProtection|TestMsiexecGrants' ./internal/builder/nativetest/
+
       # Install packages as a standard user (MSISPEC-RESULTS INST-02,
       # PROP-01). The runner is thrown away after the job, so the step
       # creates a local user with a random password and allows non-admin
