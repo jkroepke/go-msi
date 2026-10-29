@@ -74,6 +74,7 @@ func Validate(cfg *Config) Diagnostics {
 	checker.properties(cfg)
 	checker.launchConditions(cfg)
 	checker.customActions(cfg, known)
+	checker.scheduleReboot(cfg)
 	checker.streams(cfg)
 	checker.firewall(cfg, known)
 	checker.ui(cfg)

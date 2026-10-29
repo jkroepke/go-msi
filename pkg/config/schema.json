@@ -854,6 +854,26 @@
         ]
       }
     },
+    "scheduleReboot": {
+      "type": "object",
+      "description": "Ask for a restart at the end of the installation: ScheduleReboot after InstallFinalize, so msiexec returns 3010.",
+      "properties": {
+        "when": {
+          "enum": [
+            "install",
+            "upgrade",
+            "uninstall",
+            "maintenance"
+          ],
+          "description": "The case it runs in, ANDed with condition."
+        },
+        "condition": {
+          "type": "string",
+          "description": "Condition of the ScheduleReboot row."
+        }
+      },
+      "additionalProperties": false
+    },
     "ui": {
       "type": "object",
       "properties": {
