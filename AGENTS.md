@@ -122,7 +122,7 @@ go test ./... -shuffle=on -race
   measured 9.6 MB locally and 17.7 MB on a busy `windows-latest` runner for a
   live heap of about 5 MB. One collection's live value also counts objects
   allocated while it marks, which grows with a slow mark on a loaded machine,
-  so `Peak.Max` is the larger of min(live[i], live[i+1]) over consecutive
+  so `Peak.Max` is the larger of min(live[i], live[i+1]) over successive sampled
   collections: data the code holds survives both, mark-time garbage does not.
   Under 8 CPU hogs on 4 cores the MSZIP writer reads about 5 MB with
   `GOMAXPROCS=4` and about 10 MB with `GOMAXPROCS=16` (one cycle up to

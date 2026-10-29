@@ -435,6 +435,8 @@ func boundedMemory(t *testing.T, comp cab.Compression) {
 		t.Fatalf("walk: %v, %v", werr, names)
 	}
 
+	t.Logf("read back; %v", peak)
+
 	if peak.Used() > limit {
 		t.Errorf("reader used %d bytes of live heap, want at most %d; %v", peak.Used(), limit, peak)
 	}

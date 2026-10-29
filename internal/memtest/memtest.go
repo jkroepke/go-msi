@@ -63,8 +63,8 @@ func (p *PatternReader) Close() error { return nil }
 type Peak struct {
 	// Before is the live heap when fn started, after a collection.
 	Before uint64
-	// Max is the largest live heap that two collections in a row marked
-	// while fn ran: the larger of min(live[i], live[i+1]) over the cycles.
+	// Max is the largest live heap that two successive sampled collections
+	// both marked while fn ran: the larger of min(live[i], live[i+1]).
 	Max uint64
 	// Marked is the largest live heap a single collection marked. A
 	// collection also counts what is allocated while it marks, so a long mark
@@ -103,9 +103,10 @@ const (
 // collection is not stable either: objects allocated while it marks count as
 // live, and a mark takes longer on a busy machine. Data fn holds stays live
 // across collections, while garbage allocated during one mark is gone by the
-// next, so Max takes the smaller of each pair of consecutive collections.
-// The limit makes sure code that holds more than limit bytes is collected,
-// and so marked, while it does.
+// next, so Max takes the smaller of each pair of successive collections.
+// The limit makes sure code that holds more than limit bytes and keeps
+// allocating is collected, and so marked, repeatedly while it does; a
+// one-shot spike that a single collection marks shows up only in Marked.
 func PeakHeap(limit int64, run func()) Peak {
 	previous := debug.SetMemoryLimit(limit)
 	defer debug.SetMemoryLimit(previous)
@@ -132,8 +133,9 @@ func PeakHeap(limit int64, run func()) Peak {
 		for done := false; !done; {
 			select {
 			case <-stop:
-				// A last collection ends the series, so that the cycle
-				// before it has a successor.
+				// A last collection ends the series. It only sees data that
+				// outlives fn, so a peak only the final cycle marked shows
+				// up in Marked alone.
 				runtime.GC()
 
 				done = true

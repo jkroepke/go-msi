@@ -202,6 +202,8 @@ func TestBoundedMemory(t *testing.T) { //nolint:paralleltest // measures the hea
 		t.Fatal(err)
 	}
 
+	t.Logf("%v", peak)
+
 	if peak.Used() > limit {
 		t.Errorf("writer used %d bytes of live heap, want at most %d; %v", peak.Used(), limit, peak)
 	}
@@ -249,6 +251,8 @@ func TestBoundedMemory(t *testing.T) { //nolint:paralleltest // measures the hea
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Logf("%v", peak)
 
 	if peak.Used() > limit {
 		t.Errorf("reader used %d bytes of live heap, want at most %d; %v", peak.Used(), limit, peak)

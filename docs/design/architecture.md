@@ -339,7 +339,7 @@ generated from the command tree.
   function under `debug.SetMemoryLimit` and records the live heap each
   collection marked, for the bounded-memory tests in `cab`, `cfb` and
   `builder` (skipped with `-short`). The peak is the larger of the smaller
-  of each two consecutive collections, because one collection also counts
+  of each two successive sampled collections, because one collection also counts
   what is allocated while it marks. The heap in use (`HeapAlloc`) includes
   garbage up to the collector's goal and was flaky as a limit; it is only
   logged.
