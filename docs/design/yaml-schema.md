@@ -803,7 +803,7 @@ customActions:
     impersonate: false
     return: check                    # check | ignore | asyncWait | asyncNoWait
     schedule:
-      - { sequence: execute, before: InstallServices, condition: ConfigFile_Default }
+      - { sequence: execute, before: InstallServices, condition: ConfigFile_Default AND NOT REMOVE~="ALL" }
 ```
 
 Kinds, exactly one per action:

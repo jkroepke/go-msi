@@ -137,7 +137,8 @@ customActions:
       - { sequence: execute, before: InstallInitialize, condition: EXTRA_FLAGS AND (EXTRA_FLAGS >< "--config.file") }
 
   # config.yaml is not owned by a component, so it survives upgrades and
-  # uninstall.
+  # uninstall. Not on uninstall: when config.yaml is gone, RemoveFolders has
+  # already removed the folder, the command fails and the uninstall rolls back.
   - id: CreateConfigFile
     run:
       command: '"[%ComSpec]" /c TYPE NUL >>"[APPLICATIONFOLDER]config.yaml"'
@@ -146,7 +147,7 @@ customActions:
     impersonate: false
     return: check
     schedule:
-      - { sequence: execute, before: InstallServices, condition: CONFIG_FILE="config.yaml" }
+      - { sequence: execute, before: InstallServices, condition: CONFIG_FILE="config.yaml" AND NOT REMOVE~="ALL" }
 
   # Kill only processes that run this installation's binary, so a copy
   # elsewhere or a Kubernetes HostProcess container keeps running.
