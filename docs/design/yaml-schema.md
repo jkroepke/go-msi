@@ -183,7 +183,7 @@ way:
 
 | Short form | Expands to |
 |---|---|
-| no `installDir` | `INSTALLDIR`, configurable, named after the product, under `ProgramFiles64Folder` (`ProgramFilesFolder` on x86, `LocalAppDataFolder\Programs` for `perUser`). Not added when `directories` already defines that ID (section 4.4). |
+| no `installDir` | `INSTALLDIR`, configurable, named after the product, under `ProgramFiles64Folder` (`ProgramFilesFolder` on x86, `LocalAppDataFolder\Programs` for `perUser`). Not added when `directories` already defines that ID (section 4.4); added next to a tree with a configurable directory, or an upper-case one below Program Files, it warns, since components without `directory` go there. |
 | component without `directory` | the install dir |
 | `directory: bin` or `directory: CommonAppDataFolder/Hello/logs` | directory nodes for the path, with generated IDs such as `INSTALLDIR_bin` (section 4.4) |
 | component without `id` | an ID from the key file's name (`hello.exe`), else the first service name, else the directory ID |
@@ -280,6 +280,15 @@ detection row.
 | `afterInstallExecute` (default when a component has `preserve: true`) | right after InstallExecute | new first, then old, one transaction; strict component rules |
 | `afterInstallFinalize` | after InstallFinalize | separate transaction; a failed removal leaves both |
 
+"Strict component rules" bite when a package moves from another toolset
+whose components install the same files under different GUIDs, for example
+harvested components replaced by a folder source. With
+`afterInstallExecute`, the new product skips the files that are already
+there ("hash matches"), and removing the old product then deletes them
+(observed on Windows Server 2025). A component that kept WiX's GUID through
+`guid` survived. Early removal keeps all of them; for a folder source,
+which cannot take a `guid`, it is the only way.
+
 Every property named here must be public, is added to
 `SecureCustomProperties` and must not appear in `properties`.
 
@@ -292,7 +301,9 @@ installDir: windows_exporter          # the folder name alone
 installDir:
   id: APPLICATIONFOLDER               # Directory key and property, default INSTALLDIR
   name: Example/windows_exporter      # "/" nests folders, default product.name
-  parent: ProgramFiles64Folder        # a standard folder, default by platform and scope
+  parent: ProgramFiles64Folder        # a standard folder, default by platform and scope;
+                                      # perUser: LocalAppDataFolder\Programs; a name written
+                                      # next to an explicit parent is used as written
   remember: true                      # reuse the folder of the last install, default false
 ```
 
@@ -536,6 +547,9 @@ FILE-03: a pattern never matches in subfolders, so the folder row only
 removes a folder whose subfolders are gone, and `uninstall` rows also run
 when a major upgrade removes the old product, so logs or data matched by
 them do not survive an upgrade. Use `purge` for a data folder that must.
+The builder already removes the folders of shortcuts and of components in
+the user profile on uninstall; a folder entry for one of them warns, since
+it only adds a second row.
 
 **Data removal.** `purge` deletes the component's directory with every
 file and subfolder in it when the product is uninstalled, including what the
@@ -879,7 +893,9 @@ The builder encodes the value: `dword` writes `#n`, `binary` writes `#x…`,
 `[~]`, and a `string` that starts with `#` is escaped as `##`. `type: key`
 creates the key (`+`) or, with `removeOnUninstall: true`, creates and removes
 it (`*`). `append: true` and `prepend: true` on a `multiString` merge with an
-existing value.
+existing value. A `type: key` entry and the key's default value are separate
+rows; the same value written twice in one component is an error unless
+`id` tells the two apart.
 
 **Registry removal.** `removeRegistry` deletes keys or values that exist
 before the install, for example the handlers of an old version or a value

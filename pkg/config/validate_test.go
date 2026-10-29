@@ -406,6 +406,14 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, verbs: [{id: open}, {id: Open}]}]\n", 1),
 			sevError, "components[0].files[0].fileTypes[0].verbs[1].id", "listed twice",
 		},
+		"registry value twice": {
+			base + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\App, name: a, value: x}, {root: HKLM, key: software\\app, name: A, value: y}]\n    files:", 1),
+			sevError, "components[0].registry[1]", "already writes this registry value",
+		},
+		"default install dir beside a tree": {
+			strings.ReplaceAll(base, "INSTALLDIR", "APPLICATIONFOLDER") + "components:\n  - files: [{ source: app.exe }]\n",
+			sevWarning, "installDir", "next to APPLICATIONFOLDER",
+		},
 		"scheduleReboot bad when": {
 			base + appComponent + "scheduleReboot: { when: always }\n",
 			sevError, "scheduleReboot.when", "always",
@@ -1128,5 +1136,38 @@ func TestRemoveFilesEmptyEntry(t *testing.T) {
 	doc := base + strings.Replace(appComponent, "    files:", "    removeFiles: [~]\n    files:", 1)
 	if _, err := config.Parse([]byte(doc), config.Options{}); err == nil || !strings.Contains(err.Error(), "components[0].removeFiles[0]: empty entry") {
 		t.Errorf("parse: %v", err)
+	}
+}
+
+// TestInstallDirBesideDataFolder does not warn about a default install dir
+// next to an upper-case data folder, which is no install dir.
+func TestInstallDirBesideDataFolder(t *testing.T) {
+	t.Parallel()
+
+	doc := strings.Replace(base, "  - id: ProgramFiles64Folder\n    children:\n      - id: INSTALLDIR\n        name: App\n        configurable: true\n",
+		"  - id: CommonAppDataFolder\n    children:\n      - id: DATADIR\n        name: App\n", 1) +
+		"components:\n  - files: [{ source: app.exe }]\n  - { directory: DATADIR, createFolder: true }\n"
+	if !strings.Contains(doc, "DATADIR") {
+		t.Fatal("base changed; update the test")
+	}
+
+	for _, d := range validate(t, doc) {
+		if strings.Contains(d.Message, "next to") {
+			t.Errorf("unexpected warning: %s: %s", d.Path, d.Message)
+		}
+	}
+}
+
+// TestInstallDirBesideTargetDirTree warns about an upper-case directory
+// below Program Files in a tree rooted at TARGETDIR.
+func TestInstallDirBesideTargetDirTree(t *testing.T) {
+	t.Parallel()
+
+	doc := strings.Replace(base, "  - id: ProgramFiles64Folder\n    children:\n      - id: INSTALLDIR\n        name: App\n        configurable: true\n",
+		"  - id: TARGETDIR\n    children:\n      - id: ProgramFiles64Folder\n        children:\n          - id: APPDIR\n            name: App\n", 1) +
+		"components:\n  - files: [{ source: app.exe }]\n"
+
+	if !find(validate(t, doc), config.SeverityWarning, "installDir", "next to APPDIR") {
+		t.Error("no warning about APPDIR")
 	}
 }

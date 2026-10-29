@@ -33,6 +33,9 @@ var profileFolders = set( //nolint:gochecknoglobals // lookup table
 // folders32 are the 32-bit locations on 64-bit Windows (ICE80).
 var folders32 = set("ProgramFilesFolder", "CommonFilesFolder", "SystemFolder") //nolint:gochecknoglobals // lookup table
 
+// programFilesFolders are the folders programs are installed in.
+var programFilesFolders = set("ProgramFilesFolder", "ProgramFiles64Folder") //nolint:gochecknoglobals // lookup table
+
 // perMachineFolders cannot hold resources of a per-user package (ICE105).
 var perMachineFolders = set( //nolint:gochecknoglobals // lookup table
 	"CommonAppDataFolder", "CommonFiles64Folder", "CommonFilesFolder",

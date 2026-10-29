@@ -3,6 +3,7 @@ package builder
 import (
 	"cmp"
 	"fmt"
+	"iter"
 	"maps"
 	"slices"
 	"strconv"
@@ -363,6 +364,7 @@ func (b *build) removeShortcutFolders(carrier, dirID string, removed map[string]
 		}
 
 		removed[dir.id] = true
+		b.removedFolders[dir.id] = true
 		b.table("RemoveFile").Add(generatedID("rmf", "Shortcuts", carrier, dir.id), carrier, nil, dir.id, removeOnUninstall)
 	}
 }
@@ -379,9 +381,21 @@ var removeModes = map[string]int{ //nolint:gochecknoglobals // lookup table
 // the engine removes once it is empty (ICE64).
 func (b *build) removeFiles() error {
 	for _, comp := range b.cfg.Components {
-		for _, entry := range comp.RemoveFiles {
+		if shortcutsOnly(comp) {
+			continue
+		}
+
+		for dir := range b.profileFolders(comp.Directory) {
+			b.removedFolders[dir.id] = true
+		}
+	}
+
+	for i, comp := range b.cfg.Components {
+		for j, entry := range comp.RemoveFiles {
 			dirID := cmp.Or(entry.Directory, comp.Directory)
 			b.dirs[dirID].used = true
+
+			b.warnDuplicateFolderRow(fmt.Sprintf("%s.removeFiles[%d]", comp.Path(i), j), dirID, entry)
 
 			key := cmp.Or(entry.ID, generatedID("rmf", "RemoveFile", comp.ID, dirID, strings.ToLower(entry.Name), entry.On))
 
@@ -394,16 +408,40 @@ func (b *build) removeFiles() error {
 		}
 
 		// A component of shortcuts only has no row in its directory.
-		if shortcutsOnly(comp) || !config.IsProfileFolder(b.topFolder(comp.Directory)) {
+		if shortcutsOnly(comp) {
 			continue
 		}
 
-		for dir := b.dirs[comp.Directory]; dir != nil && !dir.standard; dir = b.dirs[dir.parent] {
+		for dir := range b.profileFolders(comp.Directory) {
 			b.table("RemoveFile").Add(generatedID("rmf", "Folder", comp.ID, dir.id), comp.ID, nil, dir.id, removeOnUninstall)
 		}
 	}
 
 	return nil
+}
+
+// warnDuplicateFolderRow warns about a removeFiles entry that removes a
+// folder on uninstall that a generated row already removes.
+func (b *build) warnDuplicateFolderRow(path, dirID string, entry *config.RemoveFile) {
+	if entry.Name == "" && entry.On == config.RemoveOnUninstall && b.removedFolders[dirID] {
+		b.warnf(path, "the builder already removes this folder on uninstall, for a shortcut or a component in the user profile; this entry adds a second row")
+	}
+}
+
+// profileFolders yields the folders between a directory in the user
+// profile and the standard folder above it; nothing outside the profile.
+func (b *build) profileFolders(dirID string) iter.Seq[*dirInfo] {
+	return func(yield func(*dirInfo) bool) {
+		if !config.IsProfileFolder(b.topFolder(dirID)) {
+			return
+		}
+
+		for dir := b.dirs[dirID]; dir != nil && !dir.standard; dir = b.dirs[dir.parent] {
+			if !yield(dir) {
+				return
+			}
+		}
+	}
 }
 
 // removeFileName returns the FileName of a RemoveFile row: that of a
