@@ -141,12 +141,14 @@ jobs:
       # skipped with -short.
       # The install snapshots that differ from testdata are saved to
       # MSI_BUILDER_SNAPSHOT_DIR and uploaded below.
+      # The nativetest package runs every msiexec test in sequence and needs
+      # more than go test's default 10 minutes under -race.
       - name: go test
         if: runner.arch == 'X64'
         shell: bash
         env:
           MSI_BUILDER_SNAPSHOT_DIR: ${{ runner.temp }}/install-snapshots
-        run: go test ./... ${{ runner.os != 'Windows' && '-short' || '' }} -shuffle=on -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./...
+        run: go test ./... ${{ runner.os != 'Windows' && '-short' || '' }} -shuffle=on -race -timeout 20m -covermode=atomic -coverprofile=coverage.out -coverpkg=./...
 
       # Windows on Arm installs the run action probe natively (Arm64 package
       # with the arm64 DLL). msiexec is slow on this runner, so the rest of
