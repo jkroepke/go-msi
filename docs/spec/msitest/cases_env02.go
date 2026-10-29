@@ -92,6 +92,9 @@ func env02Analyze(c *caseLog, path, installed string, payload []byte) *env02Pkg 
 	var names []string
 	kind := map[string]string{}
 	for _, e := range f.Entries[1:] {
+		if e.Type == 0 {
+			continue // unused directory slot
+		}
 		if e.Type != 2 {
 			c.logf("| entry %q | type %d | | |", e.NameString(), e.Type)
 			continue
@@ -180,7 +183,7 @@ func env02Analyze(c *caseLog, path, installed string, payload []byte) *env02Pkg 
 		}
 		var rs []string
 		for _, r := range rows {
-			rs = append(rs, strings.Join(r, " | "))
+			rs = append(rs, strings.ReplaceAll(strings.Join(r, " | "), nullMark, "NULL"))
 		}
 		sort.Strings(rs)
 		p.rows[t[0]] = rs
@@ -212,13 +215,23 @@ func env02Analyze(c *caseLog, path, installed string, payload []byte) *env02Pkg 
 			fo := cab[36+8*fi:]
 			c.logf("  folder %d: %d data blocks, compression %#04x", fi, le.Uint16(fo[4:]), le.Uint16(fo[6:]))
 		}
-		files, err := readCab(cab)
+		// readCab has no LZX decoder; expand.exe (cabinet.dll) reads every type.
+		if files, err := readCab(cab); err != nil {
+			c.logf("  msitest reader: %v", err)
+		} else {
+			for _, cf := range files {
+				c.logf("  msitest reader: file %q, %d bytes, attrib %#x, payload match %v", cf.Name, len(cf.Data), cf.Attrib, bytes.Equal(cf.Data, payload))
+			}
+		}
+		cabPath, dir := c.path("payload.cab"), c.path("expanded")
+		os.WriteFile(cabPath, cab, 0o644)
+		os.MkdirAll(dir, 0o755)
+		out, err := exec.Command("expand.exe", cabPath, "-F:*", dir).CombinedOutput()
 		if err != nil {
-			c.logf("  read: %v", err)
+			c.logf("  expand.exe: %v: %s", err, strings.TrimSpace(string(out)))
 		}
-		for _, cf := range files {
-			c.logf("  file %q: %d bytes, attrib %#x, payload match %v", cf.Name, len(cf.Data), cf.Attrib, bytes.Equal(cf.Data, payload))
-		}
+		got, err := os.ReadFile(filepath.Join(dir, "hello.txt"))
+		c.logf("  expand.exe: hello.txt payload match %v (err=%v)", err == nil && bytes.Equal(got, payload), err)
 	}
 
 	// Install and uninstall.
