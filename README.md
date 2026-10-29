@@ -12,8 +12,8 @@
 
 **YAML in, MSI out.** msi-builder turns one short YAML file into a Windows
 Installer (MSI) package. Write down what to install, run one command, ship the
-`.msi`. No XML, no database tables to fill in, no GUID for every component
-and no Windows machine to build on.
+`.msi`. No XML, no database tables to fill in, no component GUIDs to manage
+(just one upgrade code you generate once) and no Windows machine to build on.
 
 ```text
 msi.yaml + your files  ──▶  msi-builder build  ──▶  app.msi
@@ -28,14 +28,15 @@ a CI job next to the rest of your release.
   out the tables, component GUIDs, short names, attribute bits and sequence
   numbers. Editors complete and check the file through its JSON schema.
 - **Sensible defaults.** A dozen lines make a working package that installs
-  to `C:\Program Files` and replaces an older version on upgrade. Spell out a
+  to Program Files and replaces an older version on upgrade. Spell out a
   default only when it does not fit.
 - **One tool for the whole job.** Validate, build, sign and verify with the
-  same binary. The Authenticode signature and its RFC 3161 timestamp need no
-  Windows SDK or `signtool`, and there are no separate compile and link steps.
-- **Safe by default.** Configurations that Windows would accept and then
-  install in a broken state are rejected at build time, with the YAML path
-  of the problem.
+  same binary; one command turns the YAML into a finished MSI. The
+  Authenticode signature and its RFC 3161 timestamp need no Windows SDK or
+  `signtool`.
+- **Safe by default.** Most configurations that Windows would accept and
+  then install in a broken state are rejected at build time, each with the
+  YAML path of the problem.
 - **Reproducible.** The same configuration, inputs and `SOURCE_DATE_EPOCH`
   produce a byte-identical MSI.
 - **Focused.** msi-builder only builds and signs MSI packages. For MSIX
