@@ -1093,7 +1093,7 @@ Each WiX concept produces a fixed set of rows; these are WiX authoring concepts 
 | RemoveFile, RemoveFolder, CreateFolder | `RemoveFile(…, FileName, DirProperty, InstallMode)`; `CreateFolder(Directory_, Component_)` | Install 1, uninstall 2, both 3. Folder removal → `FileName` NULL (observed). Directory defaults to the component's. |
 | CopyFile | `DuplicateFile` for a package file; `MoveFile` for an existing file | `MoveFile.Options` 1 = move, 0 = copy. |
 | Icon, Binary | `Icon(Name, Data)`, `Binary(Name, Data)` | Key ≤ 55 chars, ≤ 18 recommended. `ARPPRODUCTICON` is a plain property. |
-| COM and file associations | Non-advertised (default): `Registry` rows with root 0 (HKCR) | `.ext` = ProgId; `ProgId\shell\verb` = text; `…\command` = `"[#File]" "%1"` (observed). A verb without arguments (DDE) gets `"[#File]"` alone, never a placeholder for the missing value (reported). |
+| COM and file associations | Non-advertised (default): `Registry` rows with root 0 (HKCR) | `.ext` = ProgId; `ProgId\shell\verb` = text; `…\command` = `"[#File]" "%1"` (observed). A verb without arguments (DDE) gets `"[#File]"` alone, never a placeholder for the missing value (reported). Observed in five real WiX 5 packages with file associations (2026-10-29): no `ProgId`, `Extension`, `Verb` or `MIME` table at all, only these `Registry` rows plus `<ProgId>\DefaultIcon` = `"[#File]",n` and `.ext` `Content Type`; per-machine they land in `HKLM\SOFTWARE\Classes`, with `MSIINSTALLPERUSER=1` in `HKCU\Software\Classes`. msi-builder `fileTypes` writes the same rows (`TestMsiexecFileTypes`). |
 
 Full detail: chapter 09 §9.2–§9.19.
 

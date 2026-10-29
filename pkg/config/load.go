@@ -199,6 +199,12 @@ func emptyFiles(compPath string, comp *Component) []error {
 				errs = append(errs, fmt.Errorf("%s.shortcuts[%d]: empty entry", filePath, k))
 			}
 		}
+
+		for k, fileType := range file.FileTypes {
+			if fileType == nil {
+				errs = append(errs, fmt.Errorf("%s.fileTypes[%d]: empty entry", filePath, k))
+			}
+		}
 	}
 
 	return errs

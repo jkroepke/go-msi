@@ -358,6 +358,38 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {resetAfter: 1500ms, actions: [restart]}}]\n    files:", 1),
 			sevError, "components[0].services[0].recovery.resetAfter", "whole number of seconds",
 		},
+		"fileTypes no progId": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{extensions: [{extension: acme}]}]\n", 1),
+			sevError, "components[0].files[0].fileTypes[0].progId", "required",
+		},
+		"fileTypes progId backslash": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: 'Acme\\\\Doc'}]\n", 1),
+			sevError, "components[0].files[0].fileTypes[0].progId", "must not hold",
+		},
+		"fileTypes progId twice": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc}, {progId: acme.doc}]\n", 1),
+			sevError, "components[0].files[0].fileTypes[1].progId", "registers",
+		},
+		"fileTypes progId style": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme_Doc}]\n", 1),
+			sevWarning, "components[0].files[0].fileTypes[0].progId", "COM-style",
+		},
+		"fileTypes extension dot": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, extensions: [{extension: .acme}]}]\n", 1),
+			sevError, "components[0].files[0].fileTypes[0].extensions[0].extension", "without its dot",
+		},
+		"fileTypes extension twice": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, extensions: [{extension: acme}]}, {progId: Acme.Other, extensions: [{extension: ACME}]}]\n", 1),
+			sevError, "components[0].files[0].fileTypes[1].extensions[0].extension", "the last one written wins",
+		},
+		"fileTypes system extension": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, extensions: [{extension: txt}]}]\n", 1),
+			sevWarning, "components[0].files[0].fileTypes[0].extensions[0].extension", "without a handler",
+		},
+		"fileTypes verb twice": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n        fileTypes: [{progId: Acme.Doc, verbs: [{id: open}, {id: Open}]}]\n", 1),
+			sevError, "components[0].files[0].fileTypes[0].verbs[1].id", "listed twice",
+		},
 		"removeFiles bad on": {
 			base + strings.Replace(appComponent, "    files:", "    removeFiles: [{name: \"*.log\", on: upgrade}]\n    files:", 1),
 			sevError, "components[0].removeFiles[0].on", "upgrade",

@@ -688,6 +688,48 @@ engine cannot convert (SHORTCUT-02). A `ToastActivatorCLSID` without braces
 is such a value, so the validator rejects it. The table needs Windows
 Installer 5.0, so a lower `installerVersion` gets a warning.
 
+**File types.** A file can list `fileTypes`, each a ProgID that the file
+opens, with the extensions that point at it and its shell verbs:
+
+```yaml
+files:
+  - source: viewer.exe
+    fileTypes:
+      - progId: Example.Document                 # a key under HKEY_CLASSES_ROOT
+        description: Example document            # the type's name in Explorer
+        iconIndex: 0                             # DefaultIcon: "[#viewer.exe]",0; leave out for none
+        extensions:
+          - extension: exdoc                     # without the dot
+            contentType: application/x-exdoc     # optional Content Type value
+        verbs:                                   # default: one open verb
+          - id: open
+            text: '&Open'                        # menu text; empty: the shell's text for the id
+          - id: print
+            arguments: /p "%1"                   # after the quoted file; default "%1", '' for none
+```
+
+The builder writes them as `Registry` rows of the file's component, so
+they follow its features and key path: `<progId>` = description,
+`<progId>\DefaultIcon`, `<progId>\shell\<verb>` = text,
+`<progId>\shell\<verb>\command` = `"[#file]" <arguments>`, `.<extension>` =
+progId and its `Content Type`. These are the rows WiX writes for
+non-advertised `ProgId`, `Extension` and `Verb` elements: the five real WiX
+packages with file associations that were checked have no `ProgId`,
+`Extension` or `Verb` table at all, and the msi-builder ports with the same
+rows left the same registry behind (specification section 10.2). Those
+tables only register advertised associations, which are out of scope for
+good (section 6). The root is HKCR, which the engine writes to
+`HKLM\Software\Classes` per machine; a per-user package names
+`HKCU\Software\Classes` itself, because HKCR fails ICE105.
+
+A ProgID and an extension may be registered once per package. A ProgID
+that is not COM-style (at most 39 letters, digits and periods, not starting
+with a digit) gets a warning. Uninstalling removes the default value of
+`.<extension>`, so registering an extension that Windows or other programs
+own (`txt`, `xml`, `pdf`, …) gets a warning: it would be left without a
+handler. Explorer's "Open with" choice of the user (`UserChoice`) still
+wins over the package's default.
+
 **Permissions.** A file, registry value, service or the component's folder
 can carry a `permissions` block (`folderPermissions` on the component, which
 then needs a `CreateFolder` row: `createFolder: true` or a directory key
