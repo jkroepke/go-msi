@@ -10,26 +10,44 @@
 
 ## About
 
-msi-builder builds Windows Installer (MSI) packages from a single YAML file. It is
-written in pure Go without cgo, so the same binary builds packages on Linux,
-macOS and Windows, for example in a CI job next to the rest of your release.
+**YAML in, MSI out.** msi-builder turns one short YAML file into a Windows
+Installer (MSI) package. Write down what to install, run one command, ship the
+`.msi`. No XML, no database tables to fill in, no GUID for every component
+and no Windows machine to build on.
 
-- **Declarative.** Describe directories, files, shortcuts, services, registry
-  values and actions. msi-builder writes the tables, attribute bits and sequence numbers.
+```text
+msi.yaml + your files  ──▶  msi-builder build  ──▶  app.msi
+```
+
+msi-builder is a single Go binary without cgo, so the same command builds the
+same package on Linux, macOS and Windows: on your laptop, in a container or in
+a CI job next to the rest of your release.
+
+- **Easy to write.** Say what you want: files, whole folders, shortcuts,
+  services, registry values, firewall rules and actions. msi-builder works
+  out the tables, component GUIDs, short names, attribute bits and sequence
+  numbers. Editors complete and check the file through its JSON schema.
+- **Sensible defaults.** A dozen lines make a working package that installs
+  to `C:\Program Files` and replaces an older version on upgrade. Spell out a
+  default only when it does not fit.
+- **One tool for the whole job.** Validate, build, sign and verify with the
+  same binary. The Authenticode signature and its RFC 3161 timestamp need no
+  Windows SDK or `signtool`, and there are no separate compile and link steps.
 - **Safe by default.** Configurations that Windows would accept and then
-  install in a broken state are rejected at build time.
+  install in a broken state are rejected at build time, with the YAML path
+  of the problem.
 - **Reproducible.** The same configuration, inputs and `SOURCE_DATE_EPOCH`
   produce a byte-identical MSI.
-- **Signed.** msi-builder adds an Authenticode signature itself, with an RFC 3161
-  timestamp, so no Windows SDK or `signtool` is needed.
-- **Focused.** msi-builder only builds and signs MSI packages. For MSIX packages, use
-  [nFPM](https://github.com/goreleaser/nfpm).
+- **Focused.** msi-builder only builds and signs MSI packages. For MSIX
+  packages, use [nFPM](https://github.com/goreleaser/nfpm).
 
 > [!NOTE]
-> msi-builder is under active development. The YAML schema is defined, the MSI
-> writer and the command line tool are in progress.
+> msi-builder is under active development and has not reached 1.0 yet, so the
+> YAML schema can still change between releases.
 
 ## Example
+
+This is a complete package:
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
@@ -52,7 +70,8 @@ components:
 
 The file goes to `C:\Program Files\Hello`, which `INSTALLDIR=…` can change,
 and a newer version replaces an installed one. Every default can be spelled
-out; the [YAML schema](docs/design/yaml-schema.md) lists them.
+out; the [YAML schema](docs/design/yaml-schema.md) lists them. Validate and
+build it on any operating system:
 
 ```shell
 msi-builder validate msi.yaml
@@ -104,7 +123,7 @@ agent with a service. These are not supported:
   beside the `.msi` (`package.embedCabinets: false`); a single file is at
   most 2 GiB − 32 KiB. Cabinets are LZX (the default), MSZIP or stored.
 - **Script custom actions** (VBScript, JScript).
-- **Editing existing packages and WiX XML input.** `msi-builder inspect` only
+- **Editing existing packages and XML input.** `msi-builder inspect` only
   reads packages to help debugging.
 - **Advertised installs and advertised shortcuts.**
 - **Hand-built dialogs.** The UI is a built-in wizard plus optional form
