@@ -27,15 +27,16 @@ var systemExtensions = map[string]bool{ //nolint:gochecknoglobals // lookup tabl
 	"url": true, "vbs": true, "xml": true, "zip": true,
 }
 
-// defaultFileTypes gives a file type without verbs an open verb and every
-// verb its default arguments.
+// defaultFileTypes gives a file type that leaves out verbs an open verb and
+// every verb its default arguments. An explicit empty list keeps it without
+// verbs, for a type that only names an icon and its extensions.
 func defaultFileTypes(file *File) {
 	for _, fileType := range file.FileTypes {
 		if fileType == nil {
 			continue
 		}
 
-		if len(fileType.Verbs) == 0 {
+		if fileType.Verbs == nil {
 			fileType.Verbs = []*FileTypeVerb{{ID: DefaultVerb}}
 		}
 

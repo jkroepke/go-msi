@@ -1825,14 +1825,21 @@ func (v *validator) placement(placementPath string, place Placement, inScript bo
 	v.placementWhen(placementPath, place, cfg)
 
 	for _, anchor := range []string{place.Before, place.After} {
-		if anchor == "" || standardActions[anchor] {
-			continue
-		}
-
-		if !hasCustomAction(cfg, anchor) && !hasDialog(cfg, anchor) {
+		if anchor != "" && !knownAnchor(cfg, anchor, place.Sequence) {
 			v.errorf(placementPath, "anchor %q is neither a standard action nor a custom action", anchor)
 		}
 	}
+}
+
+// knownAnchor reports whether an action can be placed next to anchor: a
+// standard action, a custom action, a dialog, or a generated search action,
+// which exists only in the execute and UI sequences.
+func knownAnchor(cfg *Config, anchor, sequence string) bool {
+	if standardActions[anchor] || hasCustomAction(cfg, anchor) || hasDialog(cfg, anchor) {
+		return true
+	}
+
+	return (sequence == sequenceExecute || sequence == "ui") && hasSearchAction(cfg, anchor)
 }
 
 // placementPosition checks that a placement has exactly one of before,
@@ -1880,6 +1887,46 @@ func hasCustomAction(cfg *Config, id string) bool {
 	}
 
 	return false
+}
+
+// hasSearchAction reports whether action names an action generated for a
+// property search (SearchApply_<NAME>, SearchApply2_<NAME>, …,
+// SearchDefault_<NAME>), so a custom action can run after a search result
+// is applied.
+func hasSearchAction(cfg *Config, action string) bool {
+	for name, prop := range cfg.Properties {
+		if prop == nil || len(prop.Search) == 0 {
+			continue
+		}
+
+		for i := range prop.Search {
+			suffix := ""
+			if i > 0 {
+				suffix = strconv.Itoa(i + 1)
+			}
+
+			if action == searchActionName("SearchApply"+suffix+"_", name) {
+				return true
+			}
+		}
+
+		if prop.Value != "" && action == searchActionName("SearchDefault_", name) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// searchActionName is the name of a generated search action, or "" when
+// prefix and name are too long to be used as written and the builder
+// generates an identifier instead.
+func searchActionName(prefix, name string) string {
+	if len(prefix)+len(name) > MaxIdentifierLength {
+		return ""
+	}
+
+	return prefix + name
 }
 
 func hasDialog(cfg *Config, id string) bool {
