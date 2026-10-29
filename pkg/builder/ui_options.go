@@ -104,7 +104,7 @@ func (b *build) launchFile(key string) *fileInfo {
 	file := b.fileByKey[key]
 	if file == nil {
 		for _, fi := range b.files {
-			if config.FileByRef([]*config.File{fi.cfg}, key) != nil {
+			if fi.cfg.ID == "" && config.FileLongName(fi.cfg) == key {
 				file = fi
 
 				break
