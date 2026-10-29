@@ -315,8 +315,8 @@ func (b *build) startCarrier(info *componentInfo, svc *config.Service) string {
 	carrier := generatedID("cmp", "StartService", b.upgradeCode, comp.ID, svc.Name)
 	registry := generatedID("reg", "StartService", b.upgradeCode, comp.ID, svc.Name)
 
-	// It shares the component's condition, so it is re-evaluated on a
-	// reinstall exactly when that one is.
+	// Permanent and transitive follow the service's component, so a
+	// transitive component's carrier is re-evaluated on a reinstall too.
 	bitness := "32"
 	attributes := compRegistryKeyPath | info.attributes&(compPermanent|compTransitive)
 

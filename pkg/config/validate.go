@@ -1354,6 +1354,9 @@ func packageServices(cfg *Config) map[string]bool {
 	return names
 }
 
+// maxServiceName is the length of ServiceControl.Name.
+const maxServiceName = 255
+
 // maxComponentCondition is the length of Component.Condition.
 const maxComponentCondition = 255
 
@@ -1404,10 +1407,26 @@ func (v *validator) componentServiceControl(compPath string, comp *Component, se
 
 		seen[key] = true
 
-		if !ctl.anyEvent() {
-			v.errorf(ctlPath, "names no event; set at least one of stopOnInstall, startOnInstall, deleteOnInstall, "+
-				"stopOnUninstall, startOnUninstall and deleteOnUninstall")
-		}
+		v.controlledService(ctlPath, ctl)
+	}
+}
+
+// controlledService checks the events of one serviceControl entry.
+func (v *validator) controlledService(ctlPath string, ctl *ControlledService) {
+	if len(ctl.Name) > maxServiceName {
+		v.errorf(ctlPath+".name", "is %d characters, ServiceControl.Name holds %d", len(ctl.Name), maxServiceName)
+	}
+
+	// The outcome is not tested; the sequence order alone makes it a
+	// start of a service that was just deleted.
+	if (ctl.DeleteOnInstall && ctl.StartOnInstall) || (ctl.DeleteOnUninstall && ctl.StartOnUninstall) {
+		v.warnf(ctlPath, "deletes and starts %s in the same phase; DeleteServices runs before StartServices, "+
+			"so the start looks for a service that is gone", ctl.Name)
+	}
+
+	if !ctl.anyEvent() {
+		v.errorf(ctlPath, "names no event; set at least one of stopOnInstall, startOnInstall, deleteOnInstall, "+
+			"stopOnUninstall, startOnUninstall and deleteOnUninstall")
 	}
 }
 

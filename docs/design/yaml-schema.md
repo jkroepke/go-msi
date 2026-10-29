@@ -873,20 +873,21 @@ installer or by hand, before InstallServices creates the package's own.
 Without it InstallServices reconfigures the existing registration: the
 binary path and display name become the package's, but a setting the
 package does not write, such as a description, stays (SVC-06). With it
-nothing of the old registration carries over. A repair reinstalls the
-component, which deletes and creates the service again; it was running
-afterwards in SVC-06.
+nothing of the old registration carries over. After a `/fa` repair the
+service was running (SVC-06); whether event 8 ran during the repair was not
+checked.
 
 `startCondition` starts the service at install only when the condition is
 true. `ServiceControl` has no condition column, so the start row goes to a
 generated component (`cmp…`) in the same folder and features, with the
 service component's condition and this one as its `Condition`, the
 component's `transitive` and `permanent` settings and an HKLM registry value
-as key path; together the two conditions must fit in 255 characters; public properties in the condition become
-secure, so a value set in the wizard reaches the server. A component
-condition is evaluated when the component is first installed, so the
-property counts at install (and on each major upgrade, which installs
-afresh), not on a later repair (SVC-08). It needs `startOnInstall`.
+as key path; together the two conditions must fit in 255 characters. Public
+properties in the condition become secure, so a value set in the wizard
+reaches the server. SVC-08 showed the start following the property at a
+first install. How a repair or a major upgrade treats the generated
+component (for example, whether a repair starts the service again) is not
+tested. It needs `startOnInstall`.
 
 `recovery` becomes a deferred, no-impersonate `sc.exe failure` action after
 InstallServices, with its exit code ignored (SVC-01). Each step is `restart`,
@@ -917,9 +918,11 @@ components:
 ```
 
 Each event is off unless set, and an entry needs at least one. Install
-events run when the component is installed (including a repair of it),
-uninstall events when it is removed. A service that does not exist is not
-an error. A service the component installs is controlled with
+events run when the component is installed, uninstall events when it is
+removed; repairs were not tested. Stopping and deleting a service that does
+not exist is not an error (SVC-07); starting one is not tested. Deleting and
+starting a service in the same phase gives a warning, because DeleteServices
+runs before StartServices. A name longer than 255 characters is an error. A service the component installs is controlled with
 `services[].control` instead: naming any service of the package here is an
 error, because a row in another component would stop or delete it when that
 component is removed or repaired. A name listed twice in one component is an

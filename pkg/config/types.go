@@ -488,12 +488,12 @@ type ServiceControl struct { //nolint:govet // field order is the YAML key order
 // Each event is off unless set.
 type ControlledService struct { //nolint:govet // field order is the YAML key order
 	Name              string `yaml:"name"`
-	StopOnInstall     bool   `yaml:"stopOnInstall"`
-	StartOnInstall    bool   `yaml:"startOnInstall"`
-	DeleteOnInstall   bool   `yaml:"deleteOnInstall"`
-	StopOnUninstall   bool   `yaml:"stopOnUninstall"`
-	StartOnUninstall  bool   `yaml:"startOnUninstall"`
-	DeleteOnUninstall bool   `yaml:"deleteOnUninstall"`
+	StopOnInstall     bool   `yaml:"stopOnInstall,omitempty"`
+	StartOnInstall    bool   `yaml:"startOnInstall,omitempty"`
+	DeleteOnInstall   bool   `yaml:"deleteOnInstall,omitempty"`
+	StopOnUninstall   bool   `yaml:"stopOnUninstall,omitempty"`
+	StartOnUninstall  bool   `yaml:"startOnUninstall,omitempty"`
+	DeleteOnUninstall bool   `yaml:"deleteOnUninstall,omitempty"`
 	// Wait waits for each event to complete; nil means true.
 	Wait *bool `yaml:"wait"`
 }

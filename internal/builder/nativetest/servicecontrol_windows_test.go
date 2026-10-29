@@ -171,8 +171,8 @@ func TestMsiexecDeletesServiceOnInstall(t *testing.T) {
 			t.Errorf("service state %q, want RUNNING", state)
 		}
 
-		// A repair reinstalls the component, so event 8 deletes the
-		// running service and InstallServices creates it again.
+		// The service still runs after a repair, which reinstalls the
+		// component with its event 8.
 		msiexecQuiet(t, filepath.Join(dir, "repair.log"), "/fa", path)
 
 		if state := serviceState(t, ctlService); !strings.Contains(state, "RUNNING") {

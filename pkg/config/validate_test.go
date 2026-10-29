@@ -719,6 +719,14 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    serviceControl: [{name: Old}]\n    files:", 1),
 			sevError, "components[0].serviceControl[0]", "no event",
 		},
+		"service control delete and start": {
+			base + strings.Replace(appComponent, "    files:", "    serviceControl: [{name: Old, deleteOnInstall: true, startOnInstall: true}]\n    files:", 1),
+			sevWarning, "components[0].serviceControl[0]", "same phase",
+		},
+		"service control long name": {
+			base + strings.Replace(appComponent, "    files:", "    serviceControl: [{name: S"+strings.Repeat("s", 255)+", stopOnInstall: true}]\n    files:", 1),
+			sevError, "components[0].serviceControl[0].name", "holds 255",
+		},
 		"service control without name": {
 			base + strings.Replace(appComponent, "    files:", "    serviceControl: [{stopOnInstall: true}]\n    files:", 1),
 			sevError, "components[0].serviceControl[0].name", "required",
