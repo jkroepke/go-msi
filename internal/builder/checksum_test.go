@@ -13,7 +13,7 @@ import (
 
 // TestChecksumSetsMSICHECKCRCS checks that checksum: true on a PE file with
 // a checksum sets the attribute and MSICHECKCRCS, without which the engine
-// never verifies it (FILE-08), and that a value from properties wins.
+// never verifies it (FILE-09), and that a value from properties wins.
 func TestChecksumSetsMSICHECKCRCS(t *testing.T) {
 	t.Parallel()
 

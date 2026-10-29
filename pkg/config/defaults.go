@@ -294,6 +294,12 @@ func defaultComponent(comp *Component) { //nolint:cyclop,gocognit // a flat list
 		}
 	}
 
+	for _, entry := range comp.RemoveFiles {
+		if entry.On == "" {
+			entry.On = RemoveOnUninstall
+		}
+	}
+
 	for _, r := range comp.Registry {
 		if r.Type == "" {
 			r.Type = "string"
@@ -329,8 +335,8 @@ func defaultComponent(comp *Component) { //nolint:cyclop,gocognit // a flat list
 			}
 		}
 
-		if svc.Recovery != nil && svc.Recovery.RestartDelay == 0 {
-			svc.Recovery.RestartDelay = Duration(DefaultRestartDelay)
+		if svc.Recovery != nil && svc.Recovery.RestartDelay == nil {
+			svc.Recovery.RestartDelay = new(Duration(DefaultRestartDelay))
 		}
 	}
 

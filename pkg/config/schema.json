@@ -851,6 +851,10 @@
           "type": "boolean",
           "description": "Adds a page after the welcome and license pages that shows the install folder (installDir) and lets the user change it."
         },
+        "finishText": {
+          "type": "string",
+          "description": "Formatted paragraph shown on the finish page below its standard text; hidden by the condition Installed OR ACTION = \"ADMIN\"."
+        },
         "launch": {
           "type": "object",
           "description": "A check box on the finish page that starts an installed program when the user clicks Finish.",
@@ -1422,7 +1426,7 @@
             "properties": {
               "source": {
                 "type": "string",
-                "description": "Path relative to the YAML file."
+                "description": "Path relative to the YAML file, or absolute. A source that ends in / (or \\) is a folder: the component becomes one component per file below it, with subfolders as directories below the component's directory (see the YAML schema doc)."
               },
               "name": {
                 "type": "string",
@@ -1527,6 +1531,14 @@
                   },
                   "additionalProperties": false
                 }
+              },
+              "include": {
+                "$ref": "#/$defs/stringList",
+                "description": "Folder sources only: doublestar glob patterns of the files to add, default all. A pattern without / matches a name in any folder; ** matches any number of folders; a trailing / matches folders only. Case is ignored."
+              },
+              "exclude": {
+                "$ref": "#/$defs/stringList",
+                "description": "Folder sources only: glob patterns of files and folders to leave out, like include; exclude wins."
               }
             },
             "required": [
@@ -1660,6 +1672,35 @@
               "root",
               "key"
             ],
+            "additionalProperties": false
+          }
+        },
+        "removeFiles": {
+          "type": "array",
+          "description": "Files or empty folders deleted when the component is installed or removed (RemoveFile rows). A pattern matches the files of one folder only; uninstall rows also run on the uninstall half of a major upgrade.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/identifier"
+              },
+              "name": {
+                "type": "string",
+                "description": "A filename that may hold * and ?. Leave it out to remove the folder itself when it is empty."
+              },
+              "directory": {
+                "type": "string",
+                "description": "A directory ID, default the component's directory."
+              },
+              "on": {
+                "enum": [
+                  "install",
+                  "uninstall",
+                  "both"
+                ],
+                "default": "uninstall"
+              }
+            },
             "additionalProperties": false
           }
         },
@@ -1841,7 +1882,7 @@
                   },
                   "restartDelay": {
                     "type": "string",
-                    "description": "A Go duration such as 60s or 1m.",
+                    "description": "A Go duration such as 60s or 1m; 0s restarts at once.",
                     "default": "1m"
                   }
                 },

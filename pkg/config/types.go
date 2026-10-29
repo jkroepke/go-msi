@@ -48,6 +48,9 @@ type Config struct { //nolint:govet // field order is the YAML key order
 	// Paths in it use forward slashes. It is for Go callers and is never
 	// read from YAML.
 	FS fs.FS `yaml:"-"`
+
+	// folders are the components that ExpandFolders replaced.
+	folders []folderSource
 }
 
 // Product holds the product's identity.
@@ -204,9 +207,12 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	// RemoveRegistry deletes registry keys or values when the component is
 	// installed.
 	RemoveRegistry []*RemoveRegistry `yaml:"removeRegistry"`
-	Services       []*Service        `yaml:"services"`
-	EventLog       []*EventSource    `yaml:"eventLog"`
-	Environment    []*Environment    `yaml:"environment"`
+	// RemoveFiles deletes files or empty folders when the component is
+	// installed or removed (RemoveFile rows).
+	RemoveFiles []*RemoveFile  `yaml:"removeFiles"`
+	Services    []*Service     `yaml:"services"`
+	EventLog    []*EventSource `yaml:"eventLog"`
+	Environment []*Environment `yaml:"environment"`
 	// Purge deletes the component's directory with everything in it when
 	// the product is uninstalled, but not on a major upgrade (FILE-03).
 	Purge          *Purge `yaml:"purge"`
@@ -235,6 +241,9 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	firewallFeature string
 	// carrierOf is that feature.
 	carrierOf *Feature
+	// folder is the component with a folder source that this one was
+	// generated from.
+	folder *Component
 }
 
 // FirewallFeature returns the feature whose firewall rules the component
@@ -289,6 +298,10 @@ type File struct { //nolint:govet // field order is the YAML key order
 	System                     bool         `yaml:"system"`
 	Permissions                *Permissions `yaml:"permissions"`
 	Shortcuts                  []*Shortcut  `yaml:"shortcuts"`
+	// Include and Exclude are glob patterns over the paths below a folder
+	// source (one that ends in a slash); see Config.ExpandFolders.
+	Include StringList `yaml:"include"`
+	Exclude StringList `yaml:"exclude"`
 
 	// FS, when set, is where Source is read from, overriding Config.FS for
 	// this file. AddTree sets it. It is never read from YAML.
@@ -339,6 +352,26 @@ type RemoveRegistry struct {
 	// and subkeys.
 	Name string `yaml:"name"`
 }
+
+// RemoveFile is one RemoveFile row: the files of one folder that match a
+// pattern, or the folder itself when it is empty.
+type RemoveFile struct {
+	ID string `yaml:"id"`
+	// Name is a filename that may hold * and ?; empty removes the folder
+	// itself, if it is empty.
+	Name string `yaml:"name"`
+	// Directory is a directory ID, default the component's.
+	Directory string `yaml:"directory"`
+	// On is install, uninstall (default) or both.
+	On string `yaml:"on"`
+}
+
+// Values of RemoveFile.On.
+const (
+	RemoveOnInstall   = "install"
+	RemoveOnUninstall = "uninstall"
+	RemoveOnBoth      = "both"
+)
 
 // Service is a Windows service installed from the component's key file.
 type Service struct { //nolint:govet // field order is the YAML key order
@@ -403,7 +436,7 @@ type ServiceRecovery struct { //nolint:govet // field order is the YAML key orde
 	ResetAfterDays int              `yaml:"resetAfterDays"`
 	ResetAfter     *Duration        `yaml:"resetAfter"`
 	Actions        []RecoveryAction `yaml:"actions"`
-	RestartDelay   Duration         `yaml:"restartDelay"`
+	RestartDelay   *Duration        `yaml:"restartDelay"`
 }
 
 // RecoveryAction is one failure step: "restart", "none", or
@@ -543,9 +576,12 @@ type UI struct {
 	License string `yaml:"license"`
 	// Launch adds a check box to the finish page that starts an installed
 	// program when the user clicks Finish.
-	Launch  *Launch   `yaml:"launch"`
-	Theme   Theme     `yaml:"theme"`
-	Dialogs []*Dialog `yaml:"dialogs"`
+	Launch *Launch `yaml:"launch"`
+	// FinishText is a formatted paragraph shown on the finish page below
+	// its standard text; hidden by Installed OR ACTION = "ADMIN".
+	FinishText string    `yaml:"finishText"`
+	Theme      Theme     `yaml:"theme"`
+	Dialogs    []*Dialog `yaml:"dialogs"`
 	// InstallDirPage adds a page after the welcome and license pages that
 	// shows the install folder and lets the user change it.
 	InstallDirPage bool `yaml:"installDirPage"`

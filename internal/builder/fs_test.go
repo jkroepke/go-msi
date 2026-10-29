@@ -290,3 +290,251 @@ func TestProductCodeFollowsConfigFSInputs(t *testing.T) {
 		t.Error("a binary from cfg.FS with other content gives the same ProductCode")
 	}
 }
+
+// folderYAML installs the folder dist below the install dir.
+const folderYAML = `schema: msi-builder/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+components:
+  - files:
+      - source: dist/
+        exclude: '*.pdb'
+`
+
+func folderConfig(t *testing.T, fsys fs.FS) *config.Config {
+	t.Helper()
+
+	cfg, err := config.Parse([]byte(folderYAML), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.FS = fsys
+
+	return cfg
+}
+
+func TestBuildFolder(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.2.3.4"})
+	fsys := fstest.MapFS{
+		"dist/app.exe":       {Data: exe},
+		"dist/app.pdb":       {Data: []byte("symbols")},
+		"dist/conf/app.yaml": {Data: []byte("a: 1")},
+	}
+
+	cfg := folderConfig(t, fsys)
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, res.Diagnostics)
+	}
+
+	files := cabinetFiles(t, res)
+	if len(res.Files) != 2 || len(files) != 2 {
+		t.Fatalf("got %d files, %d in the cabinet; want app.exe and app.yaml", len(res.Files), len(files))
+	}
+
+	// Building the same config again adds nothing, and a fresh parse of
+	// the same input gives the same package.
+	again, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, again.Diagnostics)
+	}
+
+	fresh, err := builder.Build(folderConfig(t, fsys), builder.Options{BuildTime: buildTime})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, fresh.Diagnostics)
+	}
+
+	if !bytes.Equal(res.Package, again.Package) || !bytes.Equal(res.Package, fresh.Package) {
+		t.Error("rebuilding the folder changed the package")
+	}
+
+	// A new file is new content, so it gets a new ProductCode.
+	fsys["dist/new.txt"] = &fstest.MapFile{Data: []byte("new")}
+
+	added, err := builder.Build(folderConfig(t, fsys), builder.Options{BuildTime: buildTime})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, added.Diagnostics)
+	}
+
+	if added.ProductCode == res.ProductCode || len(added.Files) != 3 {
+		t.Errorf("after adding a file: ProductCode %s (was %s), %d files", added.ProductCode, res.ProductCode, len(added.Files))
+	}
+}
+
+func TestBuildFolderDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	fsys := fstest.MapFS{
+		"dist/tool.exe":     {Data: testpe.Build(testpe.Options{})},
+		"dist/conf/a.yaml":  {Data: []byte("a")},
+		"other/conf/a.yaml": {Data: []byte("a")},
+	}
+
+	res, err := builder.Build(folderConfig(t, fsys), builder.Options{BuildTime: buildTime})
+	if err == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "components[0]{tool.exe}.files[0]") {
+		t.Errorf("want the unversioned executable reported at components[0]{tool.exe}, got %v\n%s", err, res.Diagnostics)
+	}
+
+	// The same install path from a component and a folder is an error.
+	cfg := folderConfig(t, fsys)
+	cfg.Components[0].Files[0].Exclude = append(cfg.Components[0].Files[0].Exclude, "tool.exe")
+	cfg.Components = append(cfg.Components, &config.Component{ID: "Other", Directory: "conf", Files: []*config.File{{Source: "other/conf/a.yaml"}}})
+	cfg.Features[0].Components = append(cfg.Features[0].Components, config.ComponentRef("Other"))
+
+	res, err = builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "components[1].files[0]: a.yaml installs the same file as components[0]{conf/a.yaml}.files[0]") {
+		t.Errorf("want a duplicate install path error, got %v\n%s", err, res.Diagnostics)
+	}
+}
+
+func TestBuildFolderFromDisk(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	files := map[string][]byte{
+		"dist/app.exe":       testpe.Build(testpe.Options{FileVersion: "1.2.3.4"}),
+		"dist/conf/app.yaml": []byte("a: 1"),
+	}
+
+	for name, data := range files {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	yamlDir := filepath.Join(root, "packaging")
+	if err := os.Mkdir(yamlDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	yamlPath := filepath.Join(yamlDir, "msi.yaml")
+	if err := os.WriteFile(yamlPath, []byte(strings.Replace(folderYAML, "source: dist/", "source: ../dist/", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(yamlPath, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, res.Diagnostics)
+	}
+
+	payload := cabinetFiles(t, res)
+	if len(payload) != 2 {
+		t.Fatalf("cabinet holds %d files, want 2", len(payload))
+	}
+
+	for _, f := range res.Files {
+		if !bytes.Equal(payload[f.Key], files["dist/"+f.Source]) {
+			t.Errorf("%s: cabinet content differs from dist/%s", f.Key, f.Source)
+		}
+	}
+}
+
+// folderGUIDs builds the folder source from fsys and returns each
+// file's ComponentId by its lower-case long name.
+func folderGUIDs(t *testing.T, fsys fs.FS, source string) map[string]any {
+	t.Helper()
+
+	cfg := folderConfig(t, fsys)
+	cfg.Components[0].Files[0].Source = source + "/"
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, res.Diagnostics)
+	}
+
+	codes := make(map[any]any)
+	for _, row := range rows(t, res.Database, "Component") {
+		codes[row[0]] = row[1]
+	}
+
+	guids := make(map[string]any)
+
+	for _, row := range rows(t, res.Database, "File") {
+		name := fmt.Sprint(row[2])
+		if i := strings.IndexByte(name, '|'); i >= 0 {
+			name = name[i+1:]
+		}
+
+		guids[strings.ToLower(name)] = codes[row[1]]
+	}
+
+	for _, f := range res.Files {
+		if !strings.HasPrefix(f.Source, source+"/") {
+			t.Errorf("source %s with Config.FS, want it below %s/", f.Source, source)
+		}
+	}
+
+	return guids
+}
+
+func TestFolderGUIDsFollowInstallPaths(t *testing.T) {
+	t.Parallel()
+
+	// The same install paths from a moved source folder whose names
+	// changed case: the components keep their codes.
+	before := folderGUIDs(t, fstest.MapFS{
+		"dist/readme.txt":     {Data: []byte("v1")},
+		"dist/conf/Notes.txt": {Data: []byte("v1")},
+	}, "dist")
+	after := folderGUIDs(t, fstest.MapFS{
+		"build/dist/README.txt":     {Data: []byte("v2")},
+		"build/dist/Conf/NOTES.txt": {Data: []byte("v2")},
+		"build/dist/new.txt":        {Data: []byte("new")},
+	}, "build/dist")
+
+	for _, name := range []string{"readme.txt", "notes.txt"} {
+		if before[name] == nil || before[name] != after[name] {
+			t.Errorf("%s: ComponentId %v before the move, %v after", name, before[name], after[name])
+		}
+	}
+
+	if after["new.txt"] == nil || after["new.txt"] == after["readme.txt"] {
+		t.Errorf("new.txt has ComponentId %v", after["new.txt"])
+	}
+}
+
+// TestBuildFolderInSeveralCabinets checks that the files of a folder source
+// are split into cabinets beside the package like any other files, as a
+// build output above 2 GB needs (CAB-10, CAB-13).
+func TestBuildFolderInSeveralCabinets(t *testing.T) {
+	t.Parallel()
+
+	fsys := fstest.MapFS{
+		"dist/app.exe":      {Data: testpe.Build(testpe.Options{FileVersion: "1.2.3.4"})},
+		"dist/a.txt":        {Data: []byte("a")},
+		"dist/data/b.bin":   {Data: bytes.Repeat([]byte{1}, 1000)},
+		"dist/data/c/d.bin": {Data: bytes.Repeat([]byte{2}, 1000)},
+	}
+
+	cfg := folderConfig(t, fsys)
+	cfg.Package.EmbedCabinets = new(false)
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime, CabinetSize: 1})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, res.Diagnostics)
+	}
+
+	if len(res.Files) != 4 || len(res.Cabinets) != 4 {
+		t.Fatalf("%d files in %d cabinets, want one cabinet per file", len(res.Files), len(res.Cabinets))
+	}
+
+	for _, cabinet := range res.Cabinets {
+		if strings.HasPrefix(cabinet.Name, "#") || int64(len(cabinet.Data)) != cabinet.Size {
+			t.Errorf("cabinet %s: %d bytes, size %d", cabinet.Name, len(cabinet.Data), cabinet.Size)
+		}
+	}
+}

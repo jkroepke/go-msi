@@ -76,8 +76,9 @@ func msiexecCode(t *testing.T, log string, args ...string) int {
 
 // TestMsiexecRunActions installs the run action probe (CA-03): the embedded
 // custom action DLL runs each command and copies its output into the log.
-// On arm64 both the Arm64 package and the x64 one, under emulation, are
-// installed.
+// Each runner installs the package of its own platform. An x64 package
+// under emulation on arm64 was confirmed once (CA-03) and is not repeated:
+// it tests Windows' emulation, not the DLL choice, and doubles the run.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestMsiexecRunActions(t *testing.T) {
@@ -87,7 +88,7 @@ func TestMsiexecRunActions(t *testing.T) {
 
 	archs := []string{"x64"}
 	if runtime.GOARCH == "arm64" {
-		archs = []string{"arm64", "x64"}
+		archs = []string{"arm64"}
 	}
 
 	for _, arch := range archs {

@@ -13,6 +13,8 @@ const (
 	dlgInstallDir = "InstallDirDlg"
 	ctlFolder     = "Folder"
 
+	ctlFinishText = "FinishText"
+
 	propLaunch = "LaunchOnFinish"
 	ctlLaunch  = "LaunchCheckBox"
 	actLaunch  = "LaunchOnFinish"
@@ -41,6 +43,23 @@ func (w *wizard) installDirDialog(dir string) {
 	page.find(ctlNext).on("SetTargetPath", dir, condAlways)
 
 	w.browseDialog()
+}
+
+// finishText adds ui.finishText: a paragraph below the finish page's
+// standard text, which gives up the space under its first lines. Like the
+// launch check box it is hidden once the product is installed, so a repair
+// or a removal does not repeat advice about the installation.
+func (b *build) finishText(wiz *wizard) {
+	// A YAML block scalar ends in a line break, which would only take space.
+	paragraph := strings.TrimSpace(b.cfg.UI.FinishText)
+	if paragraph == "" {
+		return
+	}
+
+	exit := wiz.byName[dlgExit]
+	exit.find("Description").h = finishTextY - descriptionY - 5
+	exit.control(overlay(ctlFinishText, sideTextX, finishTextY, sideTextW, stripY-finishTextY-10, paragraph)).
+		when("Hide", `Installed OR ACTION = "ADMIN"`)
 }
 
 // launch adds ui.launch: a check box on the finish page and an action that

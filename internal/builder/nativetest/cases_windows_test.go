@@ -190,7 +190,7 @@ func withPEChecksum(t *testing.T, data []byte, correct bool) []byte {
 	return out
 }
 
-// TestMsiexecVerifiesChecksum installs a file with checksum: true (FILE-08).
+// TestMsiexecVerifiesChecksum installs a file with checksum: true (FILE-09).
 // The builder sets MSICHECKCRCS, so a wrong PE checksum fails the install
 // with 1603 and a correct one installs. Without MSICHECKCRCS the engine
 // installed the wrong checksum.
@@ -247,7 +247,7 @@ components:
 `
 
 // TestMsiexecInstallsDotNames installs folders and files whose names start
-// with a dot (FILE-09): the generated short names pass ICE03 and the long
+// with a dot (FILE-10): the generated short names pass ICE03 and the long
 // names install as written.
 //
 //nolint:paralleltest // msiexec runs one installation at a time

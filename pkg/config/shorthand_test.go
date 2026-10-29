@@ -479,8 +479,9 @@ func TestShorthandProfileKeyPath(t *testing.T) {
 			t.Errorf("%s: ICE38 warning = %v, want %v: %v", comp, !ice38, ice38, diags)
 		}
 
-		if !find(diags, config.SeverityWarning, "components[0].directory", "ICE64") {
-			t.Errorf("%s: no ICE64 warning: %v", comp, diags)
+		// The builder writes the RemoveFile rows for the folders.
+		if find(diags, config.SeverityWarning, "components[0].directory", "ICE64") {
+			t.Errorf("%s: ICE64 warning: %v", comp, diags)
 		}
 	}
 }

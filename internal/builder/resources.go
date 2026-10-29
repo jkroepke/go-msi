@@ -324,7 +324,7 @@ func (b *build) recoveryAction(info *componentInfo, svc *config.Service) {
 	for _, a := range rec.Actions {
 		switch a.Action {
 		case "restart":
-			delay := rec.RestartDelay
+			delay := *rec.RestartDelay
 			if a.Restart != nil {
 				delay = *a.Restart
 			}

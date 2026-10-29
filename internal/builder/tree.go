@@ -544,7 +544,7 @@ func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentI
 		if file.isPE && info.HasChecksum {
 			file.Attrs |= fileChecksum
 			// The engine verifies the attribute only while MSICHECKCRCS is
-			// set (FILE-08); a non-empty value from properties overrides it.
+			// set (FILE-09); a non-empty value from properties overrides it.
 			b.properties["MSICHECKCRCS"] = "1"
 		} else {
 			b.warnf(diagPath+".checksum", "%s has no PE checksum to verify; the checksum attribute is not set", file.LongName)
@@ -698,8 +698,10 @@ func (b *build) resolveKeyPath(path string, info *componentInfo) error { //nolin
 	case keyPath == "directory":
 		info.keyPath = nil
 	case keyPath == "":
+		// The first file in the configuration, not in sequence order: the
+		// validator checks that one, and a service names its executable.
 		if len(files) > 0 {
-			info.keyFile = files[0]
+			info.keyFile = files[max(0, slices.IndexFunc(files, func(f *fileInfo) bool { return f.cfg == comp.Files[0] }))]
 		} else if len(comp.Registry) > 0 {
 			info.keyPath = b.registryID(info, comp.Registry[0])
 			info.attributes |= compRegistryKeyPath
