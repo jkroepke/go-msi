@@ -330,6 +330,10 @@ type FileTypeExtension struct {
 	// Extension is the extension without its dot, such as acme.
 	Extension   string `yaml:"extension"`
 	ContentType string `yaml:"contentType"`
+	// OpenWithOnly lists the ProgID in the extension's Open with menu
+	// (OpenWithProgids) and leaves the extension's default program and
+	// content type alone.
+	OpenWithOnly bool `yaml:"openWithOnly,omitempty"`
 }
 
 // FileTypeVerb is a shell verb of a FileType that runs the file.

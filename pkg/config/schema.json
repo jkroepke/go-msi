@@ -1607,6 +1607,10 @@
                           "contentType": {
                             "type": "string",
                             "description": "MIME type written as Content Type."
+                          },
+                          "openWithOnly": {
+                            "type": "boolean",
+                            "description": "Only list the ProgID in the extension's Open with menu (OpenWithProgids); keep its default program and content type."
                           }
                         },
                         "required": [

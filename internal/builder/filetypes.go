@@ -10,7 +10,8 @@ import (
 
 // fileTypes writes the file types of every file as Registry rows in the
 // file's component, the way non-advertised ProgId, Extension and Verb
-// elements are written (specification section 10.2): HKCR, which the engine
+// elements are written (specification section 10.2), plus the ProgID in
+// each extension's OpenWithProgids list: HKCR, which the engine
 // maps to HKLM\Software\Classes per machine and HKCU\Software\Classes per
 // user. A per-user package names HKCU\Software\Classes itself (ICE105).
 func (b *build) fileTypes() error {
@@ -39,8 +40,13 @@ func (b *build) fileTypes() error {
 				}
 
 				for _, ext := range fileType.Extensions {
-					writer.value("."+ext.Extension, "", progID)
-					writer.value("."+ext.Extension, "Content Type", escapeFormatted(ext.ContentType))
+					key := "." + ext.Extension
+					if !ext.OpenWithOnly {
+						writer.value(key, "", progID)
+						writer.value(key, "Content Type", escapeFormatted(ext.ContentType))
+					}
+
+					writer.emptyValue(key+`\OpenWithProgids`, progID)
 				}
 			}
 		}
@@ -68,6 +74,17 @@ func (w classWriter) value(key, name, value string) {
 		value = "#" + value
 	}
 
+	w.add(key, name, value)
+}
+
+// emptyValue writes a named value with a Null Value column, which the
+// engine stores as an empty REG_SZ (REG-04). Shell lists such as
+// OpenWithProgids name their entries this way.
+func (w classWriter) emptyValue(key, name string) {
+	w.add(key, escapeFormatted(name), nil)
+}
+
+func (w classWriter) add(key, name string, value any) {
 	key = w.prefix + key
 	id := generatedID("reg", "FileType", w.comp, strconv.Itoa(w.root), strings.ToLower(key), strings.ToLower(name))
 	w.b.table("Registry").Add(id, w.root, key, nullable(name), value, w.comp)

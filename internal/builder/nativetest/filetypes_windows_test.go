@@ -31,6 +31,8 @@ components:
             verbs:
               - { id: open, text: '&Open' }
               - { id: print, arguments: '/p "%1"' }
+          - progId: MsiBuilderTest.Other
+            extensions: [{ extension: msibtoth, openWithOnly: true }]
 `
 
 // buildFileTypes writes the file type test package.
@@ -98,10 +100,26 @@ func regNamed(t *testing.T, key, name string) string {
 	return "<absent>"
 }
 
-// TestMsiexecFileTypes installs a package with a file type: the per-machine
+// regEntry returns the type and data of a named value in the 64-bit view,
+// or "<absent>".
+func regEntry(t *testing.T, key, name string) string {
+	t.Helper()
+
+	for line := range strings.Lines(reg(t, "query", key, "/v", name, "/reg:64")) {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && strings.EqualFold(fields[0], name) {
+			return strings.Join(fields[1:], " ")
+		}
+	}
+
+	return "<absent>"
+}
+
+// TestMsiexecFileTypes installs a package with file types: the per-machine
 // HKCR rows land in HKLM\Software\Classes, cmd's assoc and ftype resolve
-// the extension and the open command to the installed file, and uninstall
-// removes every key.
+// the extension and the open command to the installed file, each ProgID is
+// an empty REG_SZ in its extensions' OpenWithProgids (REG-04), an
+// openWithOnly extension gets no default, and uninstall removes every key.
 func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
 	if testing.Short() {
 		t.Skip("installing needs msiexec time and elevation")
@@ -116,6 +134,8 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 		_ = exec.CommandContext(ctx, "msiexec", "/x", path, "/qn").Run()
 		_ = exec.CommandContext(ctx, "reg.exe", "delete", classes+".msibtdoc", "/f", "/reg:64").Run()
 		_ = exec.CommandContext(ctx, "reg.exe", "delete", classes+"MsiBuilderTest.Document", "/f", "/reg:64").Run()
+		_ = exec.CommandContext(ctx, "reg.exe", "delete", classes+".msibtoth", "/f", "/reg:64").Run()
+		_ = exec.CommandContext(ctx, "reg.exe", "delete", classes+"MsiBuilderTest.Other", "/f", "/reg:64").Run()
 	}
 
 	cleanup()
@@ -143,6 +163,20 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 		t.Errorf("Content Type = %q", got)
 	}
 
+	// A Registry row with a Name and a Null Value (REG-04).
+	for key, name := range map[string]string{
+		`.msibtdoc\OpenWithProgids`: "MsiBuilderTest.Document",
+		`.msibtoth\OpenWithProgids`: "MsiBuilderTest.Other",
+	} {
+		if got := regEntry(t, classes+key, name); got != "REG_SZ" {
+			t.Errorf("%s %s = %q, want an empty REG_SZ", key, name, got)
+		}
+	}
+
+	if got := regDefault(t, classes+".msibtoth"); got != "<absent>" {
+		t.Errorf(".msibtoth default = %q, want none for openWithOnly", got)
+	}
+
 	// cmd reads HKEY_CLASSES_ROOT, the merged view Explorer uses.
 	out, _ := exec.CommandContext(t.Context(), "cmd.exe", "/c", "assoc .msibtdoc && ftype MsiBuilderTest.Document").CombinedOutput()
 	if text := string(out); !strings.Contains(text, ".msibtdoc=MsiBuilderTest.Document") ||
@@ -155,7 +189,7 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 		t.Fatalf("msiexec /x returned %d\n%s", code, readLog(log))
 	}
 
-	for _, key := range []string{".msibtdoc", "MsiBuilderTest.Document"} {
+	for _, key := range []string{".msibtdoc", "MsiBuilderTest.Document", ".msibtoth", "MsiBuilderTest.Other"} {
 		if regHas(t, "64", classes+key, "") {
 			t.Errorf("%s is still there after the uninstall", key)
 		}
