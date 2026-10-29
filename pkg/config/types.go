@@ -388,7 +388,9 @@ type ServiceControl struct {
 	// Wait waits for the stop and delete events to complete.
 	Wait *bool `yaml:"wait"`
 	// WaitForStart waits for the start to complete, so a service that does
-	// not reach SERVICE_RUNNING fails the install; it defaults to Wait.
+	// not reach SERVICE_RUNNING fails the install. Nil means Wait: it stays
+	// unset after defaults so the derived product code of configurations
+	// that do not use it does not change.
 	WaitForStart *bool `yaml:"waitForStart"`
 }
 

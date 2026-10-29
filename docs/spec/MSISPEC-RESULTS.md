@@ -550,3 +550,27 @@ commands and outputs are in
   the log key exists to maintain.
 - Not run: other tools that might read `CustomSource`, a custom log
   instead of `Application`, `CategoryMessageFile`, and Windows Server 2016.
+
+## Service start without waiting (SVC-04)
+
+Run on 2026-10-29 on SERVER2025 (Windows Server 2025 10.0.26100.1742) as
+part of the windows_exporter real-world check: the same windows_exporter
+0.90.0 binary packaged by its WiX installer and by msi-builder (as of
+`2e527f8`, before `control.waitForStart`), each installed with
+`msiexec /i <msi> EXTRA_FLAGS=--no-such-flag /qn`. The exporter rejects the
+flag and exits at once, so the service never reaches `SERVICE_RUNNING`. The
+service has recovery set to restart after 60 s, three times.
+
+| Package | `ServiceControl` rows | Exit | Duration | Result |
+| --- | --- | --- | --- | --- |
+| WiX | event 1 `Wait=0`; event 162 `Wait=1` | 0 | 1.0 s | Installed, service stopped |
+| msi-builder | event 163 `Wait=1` | 1603 | 248.8 s | Error 1920 at StartServices, rolled back |
+
+- `Wait=0` on the start event lets the install succeed with the service
+  stopped; recovery then restarts it on its own schedule.
+- The 249 s are far longer than the 30 s documented for `Wait=1`. The SCM
+  recovery restarts ran during the wait, so whether they extended it is not
+  known; a service without recovery actions was not tried.
+- Not yet run: the split rows that msi-builder writes for
+  `waitForStart: false` (event 162 `Wait=1` plus event 1 `Wait=0`), and
+  Windows Server 2016.

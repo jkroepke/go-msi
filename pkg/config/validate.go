@@ -1187,12 +1187,22 @@ func (v *validator) service(svcPath string, svc *Service, keyFile *File, perUser
 		v.errorf(svcPath+".password", "use a hidden property such as [SERVICE_PASSWORD], never a literal password")
 	}
 
-	if !*svc.Control.DeleteOnUninstall {
-		v.warnf(svcPath+".control.deleteOnUninstall", "without it the service stays registered after uninstall (SVC-01)")
-	}
+	v.serviceControl(svcPath+".control", &svc.Control)
 
 	if svc.Recovery != nil {
 		v.recovery(svcPath+".recovery", svc.Recovery)
+	}
+}
+
+// serviceControl warns about ServiceControl settings that do not do what
+// they look like.
+func (v *validator) serviceControl(ctlPath string, ctl *ServiceControl) {
+	if !*ctl.DeleteOnUninstall {
+		v.warnf(ctlPath+".deleteOnUninstall", "without it the service stays registered after uninstall (SVC-01)")
+	}
+
+	if ctl.WaitForStart != nil && !*ctl.StartOnInstall {
+		v.warnf(ctlPath+".waitForStart", "has no effect without startOnInstall")
 	}
 }
 

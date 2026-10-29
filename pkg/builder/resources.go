@@ -247,6 +247,33 @@ func (b *build) writeServices(info *componentInfo) { //nolint:cyclop // one pass
 // delete events gets a row of its own.
 func (b *build) serviceControl(componentID string, svc *config.Service) {
 	ctl := svc.Control
+	event, startEvent := serviceEvents(ctl)
+
+	wait, waitForStart := *ctl.Wait, *ctl.Wait
+	if ctl.WaitForStart != nil {
+		waitForStart = *ctl.WaitForStart
+	}
+
+	switch {
+	case startEvent == 0:
+	case event == 0:
+		event, startEvent, wait = startEvent, 0, waitForStart
+	case waitForStart == wait:
+		event, startEvent = event|startEvent, 0
+	}
+
+	if event != 0 {
+		b.table("ServiceControl").Add(serviceID("sc", svc.Name), svc.Name, event, nil, waitColumn(wait), componentID)
+	}
+
+	if startEvent != 0 {
+		b.table("ServiceControl").Add(serviceID("scs", svc.Name), svc.Name, startEvent, nil, waitColumn(waitForStart), componentID)
+	}
+}
+
+// serviceEvents returns the stop and delete events and the start event that
+// a service's control settings select.
+func serviceEvents(ctl config.ServiceControl) (int, int) {
 	event, startEvent := 0, 0
 
 	if *ctl.StartOnInstall {
@@ -265,23 +292,7 @@ func (b *build) serviceControl(componentID string, svc *config.Service) {
 		event |= eventDeleteUninstall
 	}
 
-	wait := *ctl.Wait
-
-	switch {
-	case startEvent == 0:
-	case event == 0:
-		event, startEvent, wait = startEvent, 0, *ctl.WaitForStart
-	case *ctl.WaitForStart == wait:
-		event, startEvent = event|startEvent, 0
-	}
-
-	if event != 0 {
-		b.table("ServiceControl").Add(serviceID("sc", svc.Name), svc.Name, event, nil, waitColumn(wait), componentID)
-	}
-
-	if startEvent != 0 {
-		b.table("ServiceControl").Add(serviceID("scs", svc.Name), svc.Name, startEvent, nil, waitColumn(*ctl.WaitForStart), componentID)
-	}
+	return event, startEvent
 }
 
 // waitColumn is the ServiceControl.Wait value.
