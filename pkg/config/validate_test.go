@@ -801,7 +801,7 @@ func TestHelpers(t *testing.T) {
 		}
 	}
 
-	for _, bad := range []string{"256.0.0", "1.256.0", "1.0.65536", "1", "1.0.0.0.0", "1..0", "1.-1.0", "a.b.c"} {
+	for _, bad := range []string{"256.0.0", "1.256.0", "1.0.65536", "1", "1.0.0.0.0", "1..0", "1.-1.0", "1.-0.0", "1.+1.0", "v1.0.0", "1.0 .0", "a.b.c"} {
 		if _, err := config.ParseVersion(bad); err == nil {
 			t.Errorf("ParseVersion(%q) accepted", bad)
 		}

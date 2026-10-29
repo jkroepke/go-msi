@@ -59,6 +59,12 @@ func (b *build) checkDialog(wiz *wizard, dialog *uiDialog, styles, pictures map[
 
 	for _, ctl := range dialog.controls {
 		b.checkControl(wiz, path, ctl, styles, pictures)
+
+		// The engine clips such a control and logs error 2826 for it.
+		if ctl.x < 0 || ctl.y < 0 || ctl.x+ctl.w > dialog.width || ctl.y+ctl.h > dialog.height {
+			b.errorf(path, "control %s (%d,%d %dx%d) extends beyond the %dx%d dialog (error 2826)",
+				ctl.name, ctl.x, ctl.y, ctl.w, ctl.h, dialog.width, dialog.height)
+		}
 	}
 }
 
