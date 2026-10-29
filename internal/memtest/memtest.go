@@ -3,9 +3,11 @@
 package memtest
 
 import (
+	"fmt"
 	"io"
 	"runtime"
 	"runtime/debug"
+	"runtime/metrics"
 	"sync"
 	"time"
 )
@@ -59,33 +61,64 @@ func (p *PatternReader) Close() error { return nil }
 
 // Peak is what PeakHeap measured.
 type Peak struct {
-	// Before is the heap in use when fn started, after a collection.
+	// Before is the live heap when fn started, after a collection.
 	Before uint64
-	// Max is the largest heap in use observed while fn ran.
+	// Max is the largest live heap that two successive sampled collections
+	// both marked while fn ran: the larger of min(live[i], live[i+1]).
 	Max uint64
+	// Marked is the largest live heap a single collection marked. A
+	// collection also counts what is allocated while it marks, so a long mark
+	// on a busy machine inflates it; it is only for logs.
+	Marked uint64
+	// Allocated is the largest heap in use observed while fn ran, garbage
+	// not yet collected included. It depends on collector pacing and the
+	// load of the machine, so it is only for logs.
+	Allocated uint64
 }
 
-// Used is the heap fn added at its peak.
+// Used is the live heap fn added at its peak.
 func (p Peak) Used() uint64 { return p.Max - p.Before }
 
-// PeakHeap runs the function under a soft memory limit and samples the heap
-// in use every millisecond while it runs. The limit makes the collector
-// reclaim garbage promptly, so Max reflects live data plus a small allocation
-// burst rather than collector pacing; code that holds more live data than the
-// limit still exceeds it.
+// String describes the measurement for test logs.
+func (p Peak) String() string {
+	return fmt.Sprintf("live heap before %d, peak %d (one cycle %d), allocated peak %d", p.Before, p.Max, p.Marked, p.Allocated)
+}
+
+// sampleInterval is how often PeakHeap reads the heap metrics. A read does
+// not stop the world, so it is cheap also under the race detector.
+const sampleInterval = time.Millisecond
+
+const (
+	cyclesMetric    = "/gc/cycles/total:gc-cycles"
+	liveMetric      = "/gc/heap/live:bytes"
+	allocatedMetric = "/memory/classes/heap/objects:bytes"
+)
+
+// PeakHeap runs the function under a soft memory limit and records the live
+// heap each collection marked while it ran.
+//
+// The heap in use (HeapAlloc) is not a stable measure: between collections it
+// holds garbage up to the collector's goal, twice the live heap by default,
+// so its peak moves with GOGC and allocation rate. The live heap of one
+// collection is not stable either: objects allocated while it marks count as
+// live, and a mark takes longer on a busy machine. Data fn holds stays live
+// across collections, while garbage allocated during one mark is gone by the
+// next, so Max takes the smaller of each pair of successive collections.
+// The limit makes sure code that holds more than limit bytes and keeps
+// allocating is collected, and so marked, repeatedly while it does; a
+// one-shot spike that a single collection marks shows up only in Marked.
 func PeakHeap(limit int64, run func()) Peak {
 	previous := debug.SetMemoryLimit(limit)
 	defer debug.SetMemoryLimit(previous)
 
 	runtime.GC() //nolint:revive // a collection gives a baseline that holds only live data
 
-	var stats runtime.MemStats
+	samples := []metrics.Sample{{Name: cyclesMetric}, {Name: liveMetric}, {Name: allocatedMetric}}
+	metrics.Read(samples)
 
-	runtime.ReadMemStats(&stats)
-
-	peak := Peak{Before: stats.HeapAlloc}
+	before := samples[1].Value.Uint64()
 	stop := make(chan struct{})
-	result := make(chan uint64, 1)
+	result := make(chan Peak, 1)
 
 	var wg sync.WaitGroup
 
@@ -93,29 +126,40 @@ func PeakHeap(limit int64, run func()) Peak {
 		ticker := time.NewTicker(sampleInterval)
 		defer ticker.Stop()
 
-		var observed uint64
+		observed := Peak{Before: before, Max: before, Marked: before}
+		cycles := samples[0].Value.Uint64()
+		last := before
 
-		for {
-			var sample runtime.MemStats
-
-			runtime.ReadMemStats(&sample)
-			observed = max(observed, sample.HeapAlloc)
-
+		for done := false; !done; {
 			select {
 			case <-stop:
-				result <- observed
+				// A last collection ends the series. It only sees data that
+				// outlives fn, so a peak only the final cycle marked shows
+				// up in Marked alone.
+				runtime.GC()
 
-				return
+				done = true
 			case <-ticker.C:
 			}
+
+			metrics.Read(samples)
+
+			if n := samples[0].Value.Uint64(); n != cycles {
+				live := samples[1].Value.Uint64()
+				observed.Max = max(observed.Max, min(last, live))
+				observed.Marked = max(observed.Marked, live)
+				cycles, last = n, live
+			}
+
+			observed.Allocated = max(observed.Allocated, samples[2].Value.Uint64())
 		}
+
+		result <- observed
 	})
 
 	run()
 	close(stop)
 	wg.Wait()
 
-	peak.Max = max(<-result, peak.Before)
-
-	return peak
+	return <-result
 }
