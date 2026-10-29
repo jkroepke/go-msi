@@ -98,7 +98,7 @@ properties:
   LOG_LEVEL: {}
 
 ui:
-  wizard: true
+  enabled: true
   chooseFeatures: true
   dialogs:
     - id: ChoiceDlg
@@ -600,9 +600,9 @@ func TestFullUIFinishText(t *testing.T) { //nolint:paralleltest // msiexec runs 
 	// (UI-01), so the checks look for the part before it.
 	want := "Open a new command prompt to use " + fullUIName
 
-	doc := strings.Replace(fullUIConfig, "  wizard: true\n", "  wizard: true\n  finishText: "+finishText+"\n", 1)
+	doc := strings.Replace(fullUIConfig, "  enabled: true\n", "  enabled: true\n  finishText: "+finishText+"\n", 1)
 	if !strings.Contains(doc, "finishText:") {
-		t.Fatal("fullUIConfig has no wizard: true line to add finishText to")
+		t.Fatal("fullUIConfig has no enabled: true line to add finishText to")
 	}
 
 	dir := t.TempDir()

@@ -15,7 +15,7 @@ package:
   platform: x64
 
 ui:
-  wizard: false
+  enabled: false
 
 components:
   - files:

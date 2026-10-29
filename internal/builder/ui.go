@@ -290,7 +290,7 @@ func styled(style, s string) string {
 
 // ui writes the wizard tables when a wizard is selected (spec section 7).
 func (b *build) ui() error {
-	if !b.cfg.UI.Wizard {
+	if !b.cfg.UI.Enabled {
 		if _, set := b.properties["ARPNOMODIFY"]; !set {
 			b.properties["ARPNOMODIFY"] = "1"
 		}

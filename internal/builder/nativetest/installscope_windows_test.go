@@ -17,7 +17,7 @@ const installScopeConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderScope, manufacturer: msi-builder tests, version: "${VERSION}", upgradeCode: 7d2c41e8-93a5-4f1b-8e60-2b9d5c7a4f13 }
 package: { platform: ${PLATFORM}, scope: ${SCOPE} }
 installDir: { remember: true }
-ui: { wizard: true, chooseDirectory: true }
+ui: { enabled: true, chooseDirectory: true }
 components:
   - files:
       - source: ${SOURCE}

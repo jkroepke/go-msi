@@ -1121,7 +1121,7 @@ func TestStreamCollision(t *testing.T) {
 		}
 
 		if tc.wizard {
-			cfg.UI.Wizard = true
+			cfg.UI.Enabled = true
 		}
 
 		res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})

@@ -155,7 +155,7 @@ func TestDefaultCodepage(t *testing.T) {
 		"Hindi":             {true, []string{"hi"}, 1033, 65001},
 		"unknown LCID base": {true, []string{"de"}, 1279, 65001},
 	} {
-		cfg := &Config{Product: Product{Language: new(tc.base)}, UI: UI{Wizard: tc.wizard, Languages: map[string]*Language{}}}
+		cfg := &Config{Product: Product{Language: new(tc.base)}, UI: UI{Enabled: tc.wizard, Languages: map[string]*Language{}}}
 		for _, l := range tc.languages {
 			cfg.UI.Languages[l] = nil
 		}

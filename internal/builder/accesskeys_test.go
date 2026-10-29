@@ -102,7 +102,7 @@ func TestAccessKeysUnique(t *testing.T) {
 
 			if wizard == "scope" {
 				cfg = dualDesktop(t)
-				cfg.UI.Wizard = true
+				cfg.UI.Enabled = true
 			}
 
 			cfg.Product.Language = new(lcid)
