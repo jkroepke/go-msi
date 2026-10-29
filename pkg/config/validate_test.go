@@ -353,6 +353,30 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {resetAfter: 1500ms, actions: [restart]}}]\n    files:", 1),
 			sevError, "components[0].services[0].recovery.resetAfter", "whole number of seconds",
 		},
+		"removeFiles bad on": {
+			base + strings.Replace(appComponent, "    files:", "    removeFiles: [{name: \"*.log\", on: upgrade}]\n    files:", 1),
+			sevError, "components[0].removeFiles[0].on", "upgrade",
+		},
+		"removeFiles undefined directory": {
+			base + strings.Replace(appComponent, "    files:", "    removeFiles: [{name: \"*\", directory: Logs}]\n    files:", 1),
+			sevError, "components[0].removeFiles[0].directory", "not defined",
+		},
+		"removeFiles path in name": {
+			base + strings.Replace(appComponent, "    files:", "    removeFiles: [{name: \"logs\\\\*.log\"}]\n    files:", 1),
+			sevError, "components[0].removeFiles[0].name", "one folder only",
+		},
+		"removeFiles short name part": {
+			base + strings.Replace(appComponent, "    files:", "    removeFiles: [{name: \"app~1.log|app.log\"}]\n    files:", 1),
+			sevError, "components[0].removeFiles[0].name", "short name part",
+		},
+		"removeFiles twice": {
+			base + strings.Replace(appComponent, "    files:", "    removeFiles: [{name: \"*.log\"}, {name: \"*.LOG\"}]\n    files:", 1),
+			sevError, "components[0].removeFiles[1]", "already removes",
+		},
+		"removeFiles long pattern in a short-name package": {
+			pkg("{platform: x64, longFileNames: false}") + strings.Replace(appComponent, "    files:", "    removeFiles: [{name: \"service-*.log\"}]\n    files:", 1),
+			sevError, "components[0].removeFiles[0].name", "8.3 pattern",
+		},
 		"recovery restart delay negative": {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, recovery: {restartDelay: -1s, actions: [restart]}}]\n    files:", 1),
 			sevError, "components[0].services[0].recovery.restartDelay", "negative",

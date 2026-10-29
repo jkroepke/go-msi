@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -146,4 +147,48 @@ func (b *build) removeShortcutFolders(carrier, dirID string, removed map[string]
 		removed[dir.id] = true
 		b.table("RemoveFile").Add(generatedID("rmf", "Shortcuts", carrier, dir.id), carrier, nil, dir.id, removeOnUninstall)
 	}
+}
+
+// removeModes maps removeFiles[].on to RemoveFile.InstallMode.
+var removeModes = map[string]int{ //nolint:gochecknoglobals // lookup table
+	config.RemoveOnInstall:   1,
+	config.RemoveOnUninstall: removeOnUninstall,
+	config.RemoveOnBoth:      3,
+}
+
+// removeFiles writes the RemoveFile rows of every component's removeFiles,
+// and one for each folder a component creates in the user profile, which
+// the engine removes once it is empty (ICE64).
+func (b *build) removeFiles() error {
+	for _, comp := range b.cfg.Components {
+		for _, entry := range comp.RemoveFiles {
+			dirID := cmp.Or(entry.Directory, comp.Directory)
+			b.dirs[dirID].used = true
+
+			key := cmp.Or(entry.ID, generatedID("rmf", "RemoveFile", comp.ID, dirID, strings.ToLower(entry.Name), entry.On))
+
+			var name any
+			if entry.Name != "" {
+				name = filename(dirID, entry.Name, false, b.taken(dirID), validShortPattern)
+			}
+
+			b.table("RemoveFile").Add(key, comp.ID, name, dirID, removeModes[entry.On])
+		}
+
+		if !config.IsProfileFolder(b.topFolder(comp.Directory)) {
+			continue
+		}
+
+		for dir := b.dirs[comp.Directory]; dir != nil && !dir.standard; dir = b.dirs[dir.parent] {
+			b.table("RemoveFile").Add(generatedID("rmf", "Folder", comp.ID, dir.id), comp.ID, nil, dir.id, removeOnUninstall)
+		}
+	}
+
+	return nil
+}
+
+// validShortPattern reports whether a filename pattern is a valid short
+// name once its wildcards stand for one character each.
+func validShortPattern(pattern string) bool {
+	return config.ValidShortName(strings.NewReplacer("*", "x", "?", "x").Replace(pattern))
 }

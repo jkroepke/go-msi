@@ -332,8 +332,10 @@ lands in it, so an explicit tree never gains an unused folder.
 
 A per-user install dir lies in the user profile. Windows Installer wants an
 HKCU registry value as the key path of such components (ICE38) and
-RemoveFolder rows for their folders (ICE64); msi-builder does not write either
-yet, and the validator warns about such components.
+RemoveFolder rows for their folders (ICE64). The builder writes the
+RemoveFolder rows (a `RemoveFile` row with no filename, at uninstall, for
+every folder from the component's up to the profile folder); the validator
+warns about the key path.
 
 A component's `directory` is a directory ID, a standard folder, or a folder
 path. A path starts at its first segment when that is a directory ID or a
@@ -443,6 +445,7 @@ components:
         checksum: true
     registry: []
     removeRegistry: []
+    removeFiles: []                  # RemoveFile rows, see "File removal" below
     services: []
     eventLog: []
     environment: []
@@ -501,6 +504,32 @@ components:
     files:
       - source: config.alloy
 ```
+
+**File removal.** `removeFiles` writes `RemoveFile` rows of the component.
+Each entry removes the files of one folder that match a pattern, or the
+folder itself when it is empty:
+
+```yaml
+components:
+  - id: Server
+    files:
+      - source: redis-server.exe
+    removeFiles:
+      - name: '*.log'                 # * and ? match; one folder, no subfolders
+        directory: LOGS               # a directory ID, default the component's
+        on: uninstall                 # install | uninstall (default) | both
+      - directory: LOGS               # no name: the folder itself, once empty
+      - { name: stale.txt, on: install }
+```
+
+The engine removes the files when the component is installed (`install`),
+removed (`uninstall`) or both, and resolves the folder at that time, so the
+rows follow an install dir the user moved, unlike `purge`. A pattern that is
+no valid short name gets a generated short name part. Two limits come from
+FILE-03: a pattern never matches in subfolders, so the folder row only
+removes a folder whose subfolders are gone, and `uninstall` rows also run
+when a major upgrade removes the old product, so logs or data matched by
+them do not survive an upgrade. Use `purge` for a data folder that must.
 
 **Data removal.** `purge` deletes the component's directory with every
 file and subfolder in it when the product is uninstalled, including what the

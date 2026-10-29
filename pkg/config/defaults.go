@@ -294,6 +294,12 @@ func defaultComponent(comp *Component) { //nolint:cyclop,gocognit // a flat list
 		}
 	}
 
+	for _, entry := range comp.RemoveFiles {
+		if entry.On == "" {
+			entry.On = RemoveOnUninstall
+		}
+	}
+
 	for _, r := range comp.Registry {
 		if r.Type == "" {
 			r.Type = "string"

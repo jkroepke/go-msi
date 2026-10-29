@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"path"
@@ -646,6 +647,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 	paths := newFolderPaths(cfg.Directories)
 	regIDs := make(map[string]bool)
 	removeIDs := make(map[string]bool)
+	removeFileIDs := make(map[string]bool)
 	perUser := cfg.Package.Scope == ScopePerUser
 
 	for i, comp := range cfg.Components {
@@ -672,6 +674,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 		files := v.componentFiles(cfg, p, comp, fileIDs, paths)
 		v.componentRegistry(p, comp, regIDs, perUser)
 		v.componentRemoveRegistry(p, comp, removeIDs, perUser)
+		v.componentRemoveFiles(cfg, p, comp, known, removeFileIDs)
 		keyFile := v.componentKeyFile(p, comp, files)
 
 		for j, svc := range comp.Services {
@@ -737,11 +740,7 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 	case !profileFolders[top]:
 	case !userRegistryKeyPath(comp, perUser):
 		v.warnf(compPath+".directory", "a component in the user profile (%s) needs an HKCU registry value "+
-			"as key path (ICE38), and its folders need RemoveFolder rows (ICE64), which msi-builder "+
-			"does not write yet", top)
-	default:
-		v.warnf(compPath+".directory", "the folders of a component in the user profile (%s) need "+
-			"RemoveFolder rows (ICE64), which msi-builder does not write yet", top)
+			"as key path (ICE38)", top)
 	}
 }
 
@@ -1177,6 +1176,58 @@ func (v *validator) componentRemoveRegistry(p string, c *Component, ids map[stri
 		}
 
 		seen[key] = true
+	}
+}
+
+// componentRemoveFiles checks the files and folders a component deletes.
+func (v *validator) componentRemoveFiles(cfg *Config, p string, comp *Component, known *refs, ids map[string]bool) {
+	seen := make(map[[3]string]bool)
+
+	for j, entry := range comp.RemoveFiles {
+		entryPath := fmt.Sprintf("%s.removeFiles[%d]", p, j)
+
+		if entry.ID != "" {
+			if !IsIdentifier(entry.ID) || len(entry.ID) > MaxIdentifierLength {
+				v.errorf(entryPath+".id", "%q is not an identifier of at most %d characters", entry.ID, MaxIdentifierLength)
+			}
+
+			if ids[entry.ID] {
+				v.errorf(entryPath+".id", "removeFiles id %s is defined twice", entry.ID)
+			}
+
+			ids[entry.ID] = true
+		}
+
+		v.oneOf(entryPath+".on", entry.On, RemoveOnInstall, RemoveOnUninstall, RemoveOnBoth)
+
+		row := [3]string{cmp.Or(entry.Directory, comp.Directory), strings.ToLower(entry.Name), entry.On}
+		if seen[row] {
+			v.errorf(entryPath, "this component already removes %q there", entry.Name)
+		}
+
+		seen[row] = true
+
+		if entry.Directory != "" && known.dirs[entry.Directory] == nil {
+			v.errorf(entryPath+".directory", "directory %q is not defined", entry.Directory)
+		}
+
+		v.removeFilePattern(entryPath+".name", entry.Name, *cfg.Package.LongFileNames)
+	}
+}
+
+// removeFilePattern checks a RemoveFile pattern. The engine matches * and ?
+// itself; the rest must be a filename.
+func (v *validator) removeFilePattern(field, pattern string, longNames bool) {
+	plain := strings.NewReplacer("*", "x", "?", "x").Replace(pattern)
+
+	switch {
+	case pattern == "":
+	case strings.Contains(pattern, "|"):
+		v.errorf(field, "%q has a short name part; short names are generated, so give only the long name", pattern)
+	case !validLongName(plain):
+		v.errorf(field, "%q is not a filename pattern; a pattern matches files of one folder only", pattern)
+	case !longNames && !isShortName(plain):
+		v.errorf(field, "longFileNames is false, so %q must be a valid 8.3 pattern", pattern)
 	}
 }
 
