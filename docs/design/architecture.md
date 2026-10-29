@@ -13,7 +13,7 @@ never consulted (both are LGPL).
 
 ## 1. Package map
 
-Each format package (`cfb`, `cab`, `summary`, `msidb`) is independently usable. Every package has no cgo,
+Each format package (`cfb`, `cab`, `summary`, `msidb`) is self-contained and tested on its own; all of them are internal. Every package has no cgo,
 no package the product uses has platform-specific code, and every package
 except the test helpers is tested on its own. Arrows point from a package to what it imports. The
 diagram leaves out the test helpers: `internal/testpe` (and its
@@ -242,17 +242,23 @@ after InstallFinalize, UPG-04), and ICE27 ordering.
 
 ### 1.9 `builder`
 
+`internal/builder`:
+
 ```go
-type Options struct { BuildTime time.Time; ToolName string; CFBVersion int; SkipVerify bool }
+type Options struct { BuildTime time.Time; ToolName, Output string; CFBVersion int; SkipVerify bool }
 type Result struct {
     Package     []byte
     Database    *msidb.Database
     Diagnostics config.Diagnostics
     ProductCode, PackageCode string
     Files       []File // payload files in File.Sequence order
+    Size        int64
 }
 func Build(cfg *config.Config, o Options) (*Result, error)
 ```
+
+`pkg/builder` has the same `Build`, `Options`, `File` and `Result`, without
+`Result.Database`.
 
 Pipeline, each step a file of its own:
 

@@ -24,8 +24,9 @@ versioning after 1.0.
 - [`pkg/builder`](pkg/builder): the public `Build`, `Options`, `Result` and
   `File`. It converts to and from `internal/builder` and adds nothing else;
   `Options` and `File` mirror the internal structs field by field so that a
-  type conversion compiles, and a new `Result` field is copied in `Build`.
-  The internal `Result.Database` stays internal for tests and `cmd`.
+  type conversion compiles, and a new `Result` field is copied in `Build`
+  (`TestResultFieldsMatch` fails until it is). The internal
+  `Result.Database` is not exposed; only the internal tests read it.
 - [`internal/builder`](internal/builder): config to tables. Identities and GUIDs,
   directories and short names, components, files, media, registry, services,
   upgrades, custom actions, sequences, the setup wizard (`ui*.go`),
