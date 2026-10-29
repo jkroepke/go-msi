@@ -936,7 +936,7 @@ components:
 
 The folder must be the component's only file. Settings that name one file
 or one component cannot be copied to many: `guid` (other than `auto`),
-`keyPath`, `registry`, `removeRegistry`, `services`, `eventLog`,
+`keyPath`, `registry`, `removeRegistry`, `removeFiles`, `services`, `eventLog`,
 `environment`, `purge`, `createFolder` and `folderPermissions` on the
 component, and `name`, `id`, `version`, `language` and `shortcuts` on the
 file, are errors. Put them on a component of their own and exclude its file
