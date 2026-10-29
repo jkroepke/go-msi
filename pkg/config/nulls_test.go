@@ -44,7 +44,7 @@ package: { platform: x64 }
 		"customActions[0]": "customActions: [null]\n",
 		"firewall[0]":      "firewall: [null]\n",
 		"tables[0]":        "tables: [null]\n",
-		"ui.dialogs[0]":    "ui: { wizard: minimal, dialogs: [null] }\n",
+		"ui.dialogs[0]":    "ui: { wizard: true, dialogs: [null] }\n",
 	} {
 		t.Run(path, func(t *testing.T) {
 			t.Parallel()
@@ -64,7 +64,7 @@ func TestValidateNullEntries(t *testing.T) {
 	cfg := &config.Config{
 		Components: []*config.Component{{ID: "App", Files: []*config.File{nil}}},
 		Tables:     []*config.Table{nil},
-		UI:         config.UI{Wizard: "minimal", Dialogs: []*config.Dialog{nil}},
+		UI:         config.UI{Wizard: true, Dialogs: []*config.Dialog{nil}},
 	}
 
 	diags := config.Validate(cfg)

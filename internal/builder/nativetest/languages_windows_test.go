@@ -107,7 +107,7 @@ func TestLanguageOnlyLicenseInstall(t *testing.T) { //nolint:paralleltest // one
 
 	waitForMsiexec(t)
 
-	const anchor = "ui:\n  wizard: featureTree\n"
+	const anchor = "ui:\n  wizard: true\n  chooseFeatures: true\n"
 
 	if strings.Count(fullUIConfig, anchor) != 1 {
 		t.Fatalf("the full UI configuration no longer holds %q once", anchor)
