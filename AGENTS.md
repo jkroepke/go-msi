@@ -237,5 +237,8 @@ go test ./... -shuffle=on -race
 Follow the template in `.github/PULL_REQUEST_TEMPLATE.md`. Titles start with
 `feat`, `fix`, `docs` or `chore` (`!` for breaking changes) and every pull
 request carries one release label. Sign off each commit (`git commit -s`).
+Automatic releases are paused: the `release` job in `ci.yaml` is disabled
+with `if: false`, so merges to `main` create no tag. Keep it off until the
+maintainer resumes releases.
 Report in the pull request which checks ran, including the Windows run, and
 which could not run and why.
