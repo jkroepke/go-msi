@@ -332,6 +332,22 @@ components:
       - source: hello.conf
 ```
 
+### Upgrade even when the old version cannot be removed
+
+An upgrade removes the old version first. When that removal fails, for
+example because the old version's uninstall runs a command that fails, the
+upgrade fails too and the old version stays. `ignoreRemoveFailure` installs
+the new version anyway:
+
+```yaml
+upgrade:
+  ignoreRemoveFailure: true
+```
+
+The old version then stays installed next to the new one and keeps its entry
+in Programs and Features, so remove it by hand afterwards. Use this only
+when an old release is known to fail on uninstall.
+
 ### Delete program data on uninstall
 
 `purge` deletes a folder with everything the program wrote into it when the
@@ -458,6 +474,7 @@ The keys used most inside them:
 | `components[].environment` | none | Environment variables such as `PATH` |
 | `components[].preserve` | `false` | Keep the user's changes on upgrade |
 | `components[].purge` | `false` | Delete the folder on uninstall |
+| `upgrade.ignoreRemoveFailure` | `false` | Install even when removing the old version fails |
 | `features[].default` | `on` | `off` installs only on request |
 | `ui.enabled` | `false` | The setup wizard |
 | `ui.license` | none | License page |

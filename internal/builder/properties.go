@@ -129,6 +129,21 @@ const (
 	upgradeLanguagesExclusive  = 1024
 )
 
+// removeAttributes returns the attribute bits of an Upgrade row whose
+// products RemoveExistingProducts removes.
+func removeAttributes(upg *config.Upgrade) int {
+	attrs := 0
+	if *upg.MigrateFeatures {
+		attrs |= upgradeMigrateFeatures
+	}
+
+	if upg.IgnoreRemoveFailure {
+		attrs |= upgradeIgnoreRemoveFailure
+	}
+
+	return attrs
+}
+
 // upgrade writes the Upgrade rows and schedules the upgrade actions.
 func (b *build) upgrade() error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	upg := b.cfg.Upgrade
@@ -140,10 +155,7 @@ func (b *build) upgrade() error { //nolint:cyclop // one pass over the format; s
 	version := b.cfg.Product.Version
 
 	// Older (and, with allowSameVersion, equal) versions are removed.
-	attrs := 0
-	if *upg.MigrateFeatures {
-		attrs |= upgradeMigrateFeatures
-	}
+	attrs := removeAttributes(upg)
 
 	if *upg.AllowSameVersion {
 		attrs |= upgradeVersionMaxInclusive
@@ -179,8 +191,8 @@ func (b *build) upgrade() error { //nolint:cyclop // one pass over the format; s
 
 		if related.OnlyDetect {
 			attrs |= upgradeOnlyDetect
-		} else if *upg.MigrateFeatures {
-			attrs |= upgradeMigrateFeatures
+		} else {
+			attrs |= removeAttributes(upg)
 		}
 
 		tbl.Add(code, nullable(related.MinVersion), nullable(related.MaxVersion), nil, attrs, nil, related.Property)

@@ -656,6 +656,57 @@ components:
 	}
 }
 
+// TestIgnoreRemoveFailure checks that upgrade.ignoreRemoveFailure sets
+// bit 4 on every Upgrade row that removes products and leaves the
+// detect-only rows alone.
+func TestIgnoreRemoveFailure(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Parse([]byte(`schema: msi-builder/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+upgrade:
+  ignoreRemoveFailure: true
+  related:
+    - { upgradeCode: 11111111-2222-3333-4444-555555555555, maxVersion: 1.0.0, property: OLDNAME }
+    - { upgradeCode: 66666666-2222-3333-4444-555555555555, maxVersion: 1.0.0, onlyDetect: true, property: OTHERFOUND }
+components:
+  - files: [{ source: hello.exe }]
+`), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.BaseDir = dir
+
+	database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Attributes are column 4, ActionProperty column 6.
+	want := map[string]int{
+		"OLDERVERSIONBEINGUPGRADED": 1 | 4 | 512,
+		"NEWERVERSIONDETECTED":      2,
+		"OLDNAME":                   1 | 4 | 256,
+		"OTHERFOUND":                2 | 256,
+	}
+
+	for _, row := range rows(t, database, "Upgrade") {
+		property := fmt.Sprint(row[6])
+		if got := fmt.Sprint(row[4]); got != strconv.Itoa(want[property]) {
+			t.Errorf("Upgrade row %s: attributes %s, want %d", property, got, want[property])
+		}
+	}
+}
+
 // TestFeatureDisplay checks the Feature.Display parity the selection tree
 // relies on: even values show a feature collapsed, odd values expanded and 0
 // hides it, whatever the display state of the features before it.

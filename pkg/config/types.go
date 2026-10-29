@@ -110,15 +110,16 @@ type Summary struct {
 // into the standard policy; "upgrade: false" sets Disabled, which writes no
 // Upgrade rows.
 type Upgrade struct { //nolint:govet // field order is the YAML key order
-	Disabled         bool             `yaml:"-"`
-	AllowSameVersion *bool            `yaml:"allowSameVersion"`
-	Downgrade        string           `yaml:"downgrade"`
-	DowngradeMessage string           `yaml:"downgradeMessage"`
-	RemoveOld        string           `yaml:"removeOld"`
-	MigrateFeatures  *bool            `yaml:"migrateFeatures"`
-	Property         string           `yaml:"property"`
-	NewerProperty    string           `yaml:"newerProperty"`
-	Related          []RelatedProduct `yaml:"related"`
+	Disabled            bool             `yaml:"-"`
+	AllowSameVersion    *bool            `yaml:"allowSameVersion"`
+	Downgrade           string           `yaml:"downgrade"`
+	DowngradeMessage    string           `yaml:"downgradeMessage"`
+	RemoveOld           string           `yaml:"removeOld"`
+	MigrateFeatures     *bool            `yaml:"migrateFeatures"`
+	IgnoreRemoveFailure bool             `yaml:"ignoreRemoveFailure,omitempty"`
+	Property            string           `yaml:"property"`
+	NewerProperty       string           `yaml:"newerProperty"`
+	Related             []RelatedProduct `yaml:"related"`
 }
 
 // RelatedProduct is an extra Upgrade row.

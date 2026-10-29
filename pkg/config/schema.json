@@ -250,6 +250,10 @@
               "$ref": "#/$defs/bool",
               "default": true
             },
+            "ignoreRemoveFailure": {
+              "$ref": "#/$defs/bool",
+              "default": false
+            },
             "property": {
               "type": "string",
               "default": "OLDERVERSIONBEINGUPGRADED"
