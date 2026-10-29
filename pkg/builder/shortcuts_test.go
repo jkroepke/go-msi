@@ -155,7 +155,7 @@ func TestShortcutOptions(t *testing.T) {
   - files:
       - source: app.exe
         shortcuts:
-          - { id: AppMenu, name: "Acme|Acme Console", directory: ProgramMenuFolder/Acme/Tools, arguments: "--user [LogonUser]",
+          - { id: AppMenu, name: Acme Console, directory: ProgramMenuFolder/Acme/Tools, arguments: "--user [LogonUser]",
               workingDirectory: ProgramMenuFolder, icon: app.ico, iconIndex: 2, show: minimized }
           - { directory: ProgramMenuFolder/Acme, show: maximized }
 `)
@@ -163,7 +163,7 @@ func TestShortcutOptions(t *testing.T) {
 	database := res.Database
 
 	console := rowWhere(t, database, "Shortcut", func(r []any) bool { return r[0] == "AppMenu" })
-	if console[scName] != "Acme|Acme Console" || console[scArguments] != "--user [LogonUser]" || console[scIcon] != "app.ico" ||
+	if !strings.HasSuffix(fmt.Sprint(console[scName]), "|Acme Console") || console[scArguments] != "--user [LogonUser]" || console[scIcon] != "app.ico" ||
 		console[scIconIndex] != 2 || console[scShowCmd] != 7 || console[scWkDir] != "ProgramMenuFolder" {
 		t.Errorf("shortcut row %v", console)
 	}

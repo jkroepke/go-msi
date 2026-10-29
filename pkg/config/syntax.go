@@ -171,12 +171,17 @@ func isShortName(name string) bool {
 	return base != "" && len(base) <= 8
 }
 
-// validName checks "long" or "short|long".
-func validName(s string) bool {
-	short, long, ok := strings.Cut(s, "|")
-	if !ok {
-		return validLongName(s)
+// nameProblem explains why s cannot be a file or folder name, kind, or
+// returns "". A "short|long" pair gets its own message: msi-builder generates
+// every 8.3 short name (specification section 11.3), so a name is the long
+// name only.
+func nameProblem(s, kind string) string {
+	switch {
+	case strings.Contains(s, "|"):
+		return fmt.Sprintf("%q has a short name part; short names are generated, so give only the long name", s)
+	case !validLongName(s):
+		return fmt.Sprintf("%q is not a valid %s", s, kind)
+	default:
+		return ""
 	}
-
-	return isShortName(short) && !reservedDeviceName(short) && validLongName(long)
 }

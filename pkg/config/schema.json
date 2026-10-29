@@ -1014,7 +1014,7 @@
         },
         "name": {
           "type": "string",
-          "description": "Directory name, `short|long` allowed. Required below the top level."
+          "description": "Directory name (the long name; the 8.3 short name is generated). Required below the top level."
         },
         "configurable": {
           "$ref": "#/$defs/bool",
@@ -1295,7 +1295,7 @@
               },
               "name": {
                 "type": "string",
-                "description": "Defaults to the base name of source; `short|long` allowed."
+                "description": "Defaults to the base name of source. The long name; the 8.3 short name is generated."
               },
               "id": {
                 "$ref": "#/$defs/identifier",
@@ -1357,7 +1357,7 @@
                     },
                     "name": {
                       "type": "string",
-                      "description": "Shortcut name without .lnk; `short|long` allowed. Defaults to product.name."
+                      "description": "Shortcut name without .lnk; the 8.3 short name is generated. Defaults to product.name."
                     },
                     "directory": {
                       "type": "string",

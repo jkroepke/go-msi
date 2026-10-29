@@ -109,7 +109,7 @@ func (c *Config) treeTarget(fsys fs.FS, root, dirID string, opts TreeOptions) (*
 	}
 
 	if c.Package.LongFileNames != nil && !*c.Package.LongFileNames {
-		return nil, nil, errors.New("add tree: package.longFileNames is false, but harvested files have no short names")
+		return nil, nil, errors.New("add tree: package.longFileNames is false, which needs 8.3 file names, but harvested files keep their own names")
 	}
 
 	if err := checkTreeRoot(fsys, root); err != nil {
@@ -244,12 +244,7 @@ func (t *tree) directory(rel string) *Directory {
 	name := path.Base(rel)
 
 	for _, child := range parent.Children {
-		long := child.Name
-		if _, l, ok := strings.Cut(long, "|"); ok {
-			long = l
-		}
-
-		if strings.EqualFold(long, name) {
+		if strings.EqualFold(child.Name, name) {
 			t.dirs[rel] = child
 
 			return child

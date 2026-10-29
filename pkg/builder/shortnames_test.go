@@ -42,59 +42,37 @@ directories:
 	return cfg
 }
 
-func TestDuplicateShortNamesFail(t *testing.T) {
+// TestShortNamePairRejected checks that a hand-written short|long name is
+// an error wherever a name is given: msi-builder generates every short name.
+func TestShortNamePairRejected(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]struct{ sections, path string }{
-		"files": {`components:
+		"file": {`components:
   - directory: APPDIR
     files:
-      - { source: one.txt, id: One, name: "PROG~1.TXT|Program One.txt" }
-      - { source: two.txt, id: Two, name: "prog~1.txt|Program Two.txt" }
-`, "components[0].files[1].name"},
-		"files in two components": {`components:
-  - directory: APPDIR
-    files:
-      - { source: one.txt, id: One, name: "PROG~1.TXT|Program One.txt" }
-  - directory: APPDIR
-    files:
-      - { source: two.txt, id: Two, name: PROG~1.TXT }
-`, "components[1].files[0].name"},
-		"file named by its source": {`components:
-  - directory: APPDIR
-    files:
-      - { source: one.txt, id: One, name: "ONE.TXT|One Long.txt" }
-      - { source: one.txt, id: Two }
-`, "components[0].files[1].source"},
-		"directory and file": {`        children:
-          - id: DATADIR
-            name: "DATA~1|Data Files"
-components:
-  - directory: APPDIR
-    files:
-      - { source: one.txt, id: One, name: "DATA~1|Data One" }
+      - { source: one.txt, name: "PROG~1.TXT|Program One.txt" }
 `, "components[0].files[0].name"},
-		"directories": {`        children:
+		"directory": {`        children:
           - id: DATADIR
             name: "DATA~1|Data Files"
-          - id: LOGDIR
-            name: "DATA~1|Log Files"
 components:
   - directory: DATADIR
     files:
       - { source: one.txt }
-  - directory: LOGDIR
-    files:
-      - { source: two.txt }
-`, "directories[0].children[0].children[1].name"},
-		"shorthand directories": {`components:
+`, "directories[0].children[0].children[0].name"},
+		"shorthand directory": {`components:
   - directory: APPDIR/DATA~1|Data One
     files:
       - { source: one.txt }
-  - directory: APPDIR/DATA~1|Data Two
+`, "components[0].directory"},
+		"shortcut": {`components:
+  - directory: APPDIR
     files:
-      - { source: two.txt }
-`, "components[1].directory"},
+      - source: one.txt
+        shortcuts:
+          - { name: "ACME~1|Acme App" }
+`, "components[0].files[0].shortcuts[0].name"},
 	}
 
 	for name, tc := range cases {
@@ -103,16 +81,16 @@ components:
 
 			res, err := builder.Build(shortNameConfig(t, tc.sections), builder.Options{BuildTime: buildTime})
 			if err == nil {
-				t.Fatal("build succeeded with a duplicate short name")
+				t.Fatal("build succeeded with a short|long name")
 			}
 
 			for _, d := range res.Diagnostics {
-				if d.Path == tc.path && strings.Contains(d.Message, "FILE-07") {
+				if d.Path == tc.path && strings.Contains(d.Message, "short names are generated") {
 					return
 				}
 			}
 
-			t.Errorf("no FILE-07 error at %s: %v", tc.path, res.Diagnostics)
+			t.Errorf("no short name error at %s: %v", tc.path, res.Diagnostics)
 		})
 	}
 }
@@ -156,30 +134,33 @@ func TestGeneratedShortNameAvoidsLiteralName(t *testing.T) {
 }
 
 // TestShortcutKeepsItsOwnShortNames guards against adding shortcuts to the
-// short-name check: a shortcut is written as name.lnk, so its literal short
-// name may equal a folder's.
+// short-name set of their directory: a shortcut is written as name.lnk, so a
+// shortcut and a folder of the same name get the same generated short name.
 func TestShortcutKeepsItsOwnShortNames(t *testing.T) {
 	t.Parallel()
 
 	res := mustBuild(t, shortNameConfig(t, `        children:
           - id: DATADIR
-            name: "ACME~1|Acme Tools"
+            name: Acme Tools
 components:
   - directory: DATADIR
     files:
       - source: one.txt
         shortcuts:
-          - { name: "ACME~1|Acme App", directory: APPDIR }
+          - { name: Acme Tools, directory: APPDIR }
 `))
 
-	if got := cell(t, res.Database, "Shortcut", "Name", func([]any) bool { return true }); got != "ACME~1|Acme App" {
-		t.Errorf("Shortcut.Name = %v", got)
+	dirShort, _, _ := strings.Cut(fmt.Sprint(cell(t, res.Database, "Directory", "DefaultDir", func(row []any) bool { return row[0] == "DATADIR" })), "|")
+	shortcutShort, _, _ := strings.Cut(fmt.Sprint(cell(t, res.Database, "Shortcut", "Name", func([]any) bool { return true })), "|")
+
+	if shortcutShort != dirShort {
+		t.Errorf("Shortcut short name %s, want the folder's %s", shortcutShort, dirShort)
 	}
 }
 
 // TestShortNamesAcrossKinds checks that a file's generated short name
-// avoids a directory's literal one, and the other way round, and that two
-// sibling directories with the same name are no short-name conflict.
+// avoids a directory whose long name is a valid short name, and the other
+// way round.
 func TestShortNamesAcrossKinds(t *testing.T) {
 	t.Parallel()
 
@@ -193,9 +174,7 @@ func TestShortNamesAcrossKinds(t *testing.T) {
 
 	second := mustBuild(t, shortNameConfig(t, `        children:
           - id: DATADIR
-            name: "`+generated+`|Data Files"
-          - id: DATADIR2
-            name: "`+generated+`|Data Files"
+            name: `+generated+`
 components:
   - directory: APPDIR
     files:

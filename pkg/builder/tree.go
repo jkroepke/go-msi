@@ -185,23 +185,21 @@ func sortedStringKeys(m map[string]string) []string {
 func (b *build) directories() error {
 	b.addDir(&dirInfo{id: targetDir, canonical: targetDir, standard: true})
 
-	var walk func(ds []*config.Directory, parent *dirInfo, path string)
+	var walk func(ds []*config.Directory, parent *dirInfo)
 
-	walk = func(ds []*config.Directory, parent *dirInfo, path string) {
-		for i, dir := range ds {
-			dirPath := fmt.Sprintf("%s[%d]", path, i)
-
+	walk = func(ds []*config.Directory, parent *dirInfo) {
+		for _, dir := range ds {
 			if existing, dup := b.dirs[dir.ID]; dup {
 				// A top-level TARGETDIR node only carries children for the
 				// root the builder already added.
 				if parent == nil && dir.ID == targetDir {
-					walk(dir.Children, existing, dirPath+".children")
+					walk(dir.Children, existing)
 				}
 
 				continue
 			}
 
-			info := &dirInfo{id: dir.ID, namePath: dir.NamePath(dirPath)}
+			info := &dirInfo{id: dir.ID}
 
 			switch {
 			case parent == nil && config.IsStandardFolder(dir.ID):
@@ -211,11 +209,11 @@ func (b *build) directories() error {
 			case parent == nil:
 				info.parent = targetDir
 				info.long = dir.Name
-				info.canonical = "TARGETDIR\\" + strings.ToLower(longPart(dir.Name))
+				info.canonical = "TARGETDIR\\" + strings.ToLower(dir.Name)
 			default:
 				info.parent = parent.id
 				info.long = dir.Name
-				info.canonical = parent.canonical + "\\" + strings.ToLower(longPart(dir.Name))
+				info.canonical = parent.canonical + "\\" + strings.ToLower(dir.Name)
 			}
 
 			if dir.Configurable {
@@ -223,21 +221,13 @@ func (b *build) directories() error {
 			}
 
 			b.addDir(info)
-			walk(dir.Children, info, dirPath+".children")
+			walk(dir.Children, info)
 		}
 	}
 
-	walk(b.cfg.Directories, nil, "directories")
+	walk(b.cfg.Directories, nil)
 
 	return nil
-}
-
-func longPart(name string) string {
-	if _, long, ok := strings.Cut(name, "|"); ok {
-		return long
-	}
-
-	return name
 }
 
 func (b *build) addDir(d *dirInfo) {

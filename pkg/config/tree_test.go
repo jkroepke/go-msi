@@ -135,12 +135,12 @@ func TestAddTreeTwoRootsOneDirectory(t *testing.T) {
 	}
 }
 
-func TestAddTreeReusesShortLongDirectory(t *testing.T) {
+func TestAddTreeReusesDirectoryOfOtherCase(t *testing.T) {
 	t.Parallel()
 
 	cfg := treeConfig()
 	install := cfg.Directories[0].Children[0]
-	install.Children = []*config.Directory{{ID: "CONFDIR", Name: "CONF|conf"}}
+	install.Children = []*config.Directory{{ID: "CONFDIR", Name: "Conf"}}
 
 	comps, err := cfg.AddTree(fstest.MapFS{"dist/conf/app.yaml": {Data: []byte("a")}}, "dist", "INSTALLDIR", config.TreeOptions{Feature: "Main"})
 	if err != nil {
@@ -159,7 +159,7 @@ func TestValidateSameTargetPath(t *testing.T) {
 	// one automatic GUID, even when one of them is configurable.
 	cfg := treeConfig()
 	install := cfg.Directories[0].Children[0]
-	install.Children = []*config.Directory{{ID: "CONFA", Name: "conf"}, {ID: "CONFB", Name: "CNF|Conf", Configurable: true}}
+	install.Children = []*config.Directory{{ID: "CONFA", Name: "conf"}, {ID: "CONFB", Name: "Conf", Configurable: true}}
 	cfg.Components = []*config.Component{
 		{ID: "A", Directory: "CONFA", Files: []*config.File{{Source: "a/app.yaml"}}},
 		{ID: "B", Directory: "CONFB", Files: []*config.File{{Source: "b/app.yaml", ID: "app2"}}},
@@ -291,7 +291,7 @@ func TestValidateNames(t *testing.T) {
 		{"console.txt", true},
 		{"nullable.txt", true},
 		{".nul", true},
-		{"APP|application.txt", true},
+		{"APP|application.txt", false},
 		{"nul.txt", false},
 		{"CONIN$", false},
 		{"conout$.log", false},

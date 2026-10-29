@@ -100,14 +100,8 @@ func shortName(parentKey, longName string, directory bool, taken map[string]bool
 }
 
 // filename returns the DefaultDir/FileName value for a long name: the long
-// name alone when it is a valid short name, else short|long.
+// name alone when it is a valid short name, else a generated short|long.
 func filename(parentKey, long string, directory bool, taken map[string]bool, validShort func(string) bool) string {
-	if short, l, ok := strings.Cut(long, "|"); ok {
-		taken[strings.ToLower(short)] = true
-
-		return short + "|" + l
-	}
-
 	if validShort(long) {
 		taken[strings.ToLower(long)] = true
 
@@ -137,66 +131,30 @@ func configuredFileName(file *fileInfo) string {
 	return file.LongName
 }
 
-// reserveShortNames takes the literal short names first, the short part of
-// a short|long name and a long name that is itself a valid short name, so
-// that no generated short name can take one of them, whichever row comes
-// first. Two different names with the same literal short name in one
-// directory are an error: with SHORTFILENAMES=1 both resolve to it, so one
-// file overwrites the other, two directories merge, and a directory beside
-// such a file fails (FILE-07).
+// reserveShortNames takes the long names that are themselves valid short
+// names first, so that no generated short name can take one of them,
+// whichever row comes first (section 11.3, FILE-07).
 func (b *build) reserveShortNames() error {
-	owners := make(map[string]map[string]string)
-
 	for _, dir := range b.dirOrder {
 		if !dir.standard {
-			b.reserveShortName(owners, dir.parent, dir.long, dir.namePath)
+			b.reserveShortName(dir.parent, dir.long)
 		}
 	}
 
 	for _, comp := range b.cfg.Components {
 		info := b.components[comp.ID]
-		path := info.cfg.Path(info.index)
 
-		for fileIndex, cfgFile := range comp.Files {
-			field := "name"
-			if cfgFile.Name == "" {
-				field = "source"
-			}
-
-			file := b.fileByKey[config.FileKey(cfgFile)]
-			b.reserveShortName(owners, info.dir.id, configuredFileName(file), fmt.Sprintf("%s.files[%d].%s", path, fileIndex, field))
+		for _, cfgFile := range comp.Files {
+			b.reserveShortName(info.dir.id, configuredFileName(b.fileByKey[config.FileKey(cfgFile)]))
 		}
 	}
 
 	return nil
 }
 
-// reserveShortName takes the literal short name of name, if it has one, in
-// dirKey. owners maps each directory's literal short names, in lower case,
-// to the long names that took them.
-func (b *build) reserveShortName(owners map[string]map[string]string, dirKey, name, path string) {
-	short, long, ok := strings.Cut(name, "|")
-	if !ok {
-		if !config.ValidShortName(name) {
-			return
-		}
-
-		short, long = name, name
+// reserveShortName takes name in dirKey if it is a valid short name.
+func (b *build) reserveShortName(dirKey, name string) {
+	if config.ValidShortName(name) {
+		b.taken(dirKey)[strings.ToLower(name)] = true
 	}
-
-	key := strings.ToLower(short)
-
-	if owners[dirKey] == nil {
-		owners[dirKey] = make(map[string]string)
-	}
-
-	if owner, dup := owners[dirKey][key]; dup && !strings.EqualFold(owner, long) {
-		b.errorf(path, "short name %s is also the short name of %q in directory %s; short names must be unique in a directory (FILE-07)",
-			short, owner, dirKey)
-
-		return
-	}
-
-	owners[dirKey][key] = long
-	b.taken(dirKey)[key] = true
 }

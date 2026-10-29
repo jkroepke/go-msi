@@ -227,7 +227,7 @@ them braced and upper case.
 | `codepage` | int | `1252` | Database code page, section 2.3 |
 | `compression` | enum | `lzx` | `lzx` (LZX with a 2 MB window), `lzx:15` … `lzx:21` (a window of 2^N bytes), `mszip` or `none` (stored blocks) |
 | `cabinet` | string | `<name>.cab` | Embedded cabinet stream name, at most 62 characters (fewer outside `0-9A-Za-z._`). ICE03 wants an identifier (letters, digits, `_` and `.`, not starting with a digit), so the default keeps only those characters of `<name>`, and an explicit name that is no identifier warns. The default is `product.cab` when that is no identifier, cannot be a stream name or `<name>` has non-ASCII characters |
-| `longFileNames` | bool | `true` | `false` sets Word Count bit 1 (short source paths). Each listed file needs a valid 8.3 name or an explicit `short\|long` name, and a harvested tree is refused; directories and shortcuts get a generated `short\|long` when their name is not a valid 8.3 name. Installed folders still get the long names unless `SHORTFILENAMES=1` is set (FILE-06) |
+| `longFileNames` | bool | `true` | `false` sets Word Count bit 1 (short source paths). Each listed file name must itself be a valid 8.3 name, and a harvested tree is refused; directories and shortcuts get a generated `short\|long` when their name is not a valid 8.3 name. Installed folders still get the long names unless `SHORTFILENAMES=1` is set (FILE-06) |
 | `summary` | map | | `title` (`Installation Database`), `keywords` (`Installer`), `author` (manufacturer) |
 
 The x64 floor stays at 2.0 although the engine accepted 1.5 (SUM-03): ICE80
@@ -346,7 +346,7 @@ names are added below their parent with IDs from the parent ID and the name
 (`INSTALLDIR_textfile_inputs`); a folder that already exists is reused.
 
 `directories` is the explicit tree, for directory IDs that something else
-refers to or short names that must be pinned. Every node has an `id` (the
+refers to. Every node has an `id` (the
 Directory key and the property that holds its path) and a `name`.
 
 ```yaml
@@ -364,15 +364,16 @@ directories:
 - Top-level nodes must be standard folder properties (`ProgramFilesFolder`,
   `ProgramFiles64Folder`, `CommonAppDataFolder`, `System64Folder`, …) or
   `TARGETDIR`. The builder adds `TARGETDIR` with `SourceDir` itself.
-- `name` may be `short|long`. Without a short part the builder generates one
-  from a hash of the parent key and the long name (specification section 11.3).
-  A short name, given or generated, is unique among the differently
-  named directories and files of its parent: two different names with the
-  same short name, given as `short|long` or as a long name that is itself a
-  valid short name, are an error.
+- `name` is the long name. The builder generates the 8.3 short name the
+  format needs from a hash of the parent key and the long name
+  (specification section 11.3), unique among the directories and files of
+  its parent; a long name that is itself a valid short name is used as is.
+  A hand-written `short|long` name is an error: short names only matter
+  with `SHORTFILENAMES=1` or on a volume without long names, and generating
+  them keeps them unique.
 - File and directory names must be valid on Windows: no `\/:*?"<>|` or
   control characters, no trailing dot or space, and no device name such as
-  `CON`, `CONIN$`, `nul.txt` or `COM1`, in either half of `short|long`.
+  `CON`, `CONIN$`, `nul.txt` or `COM1`.
 - A 64-bit package that installs a component under `ProgramFilesFolder`,
   `CommonFilesFolder` or `SystemFolder` gets a warning (ICE80): those are the
   32-bit folders on 64-bit Windows.
@@ -528,9 +529,7 @@ product's folders. Whether the installer ignores a private directory ID
 given on the command line was not tested. A standard folder nested below
 another folder is rejected too, because the installer resolves its path
 itself, and so is a `%` in any folder name, because `cmd.exe` expands
-`%NAME%` as an environment variable, and a hand-written short name
-(`SHORT~1|Long`), because with `SHORTFILENAMES=1` it can resolve to another
-folder's 8.3 alias. A permanent component in the purged folder or below it
+`%NAME%` as an environment variable. A permanent component in the purged folder or below it
 is an error: the component would outlive the product, but its folder would
 not. Data below the install dir therefore cannot be purged;
 use a path below a fixed standard folder other than TARGETDIR (public, and
@@ -555,7 +554,7 @@ service must have the service executable as key file.
 | Key | Default | Notes |
 |---|---|---|
 | `source` | required | Path relative to the YAML file; `\` counts as `/` on every OS |
-| `name` | base name of `source` | `short|long` allowed |
+| `name` | base name of `source` | The long name; the short name is generated |
 | `id` | the name, if it is a legal identifier and unique, else generated | File key |
 | `version` | `auto` | `auto`, a four-field version, the ID of another file (companion), or `none`; never empty (section 2.2) |
 | `language` | `auto` | From the PE resource; `none` for fonts |

@@ -122,16 +122,11 @@ func newRefs(cfg *Config) *refs {
 
 // fileName returns the long name of a file.
 func fileName(f *File) string {
-	name := f.Name
-	if name == "" {
-		name = path.Base(strings.ReplaceAll(f.Source, `\`, "/"))
+	if f.Name != "" {
+		return f.Name
 	}
 
-	if _, long, ok := strings.Cut(name, "|"); ok {
-		return long
-	}
-
-	return name
+	return path.Base(strings.ReplaceAll(f.Source, `\`, "/"))
 }
 
 // fileID returns the File key: the explicit id, else the long name.
@@ -348,18 +343,20 @@ func (v *validator) directories(cfg *Config, known *refs) { //nolint:cyclop,goco
 				seen[dir.ID] = true
 			}
 
+			problem := nameProblem(dir.Name, "folder name")
+
 			switch {
 			case top && !standardFolders[dir.ID]:
 				v.errorf(dirPath+".id", "a top-level directory must be a standard folder such as ProgramFiles64Folder")
 			case top && dir.Name != "":
 				v.errorf(dirPath+".name", "a standard folder has no name")
 			case !top && !v.required(dirPath+".name", dir.Name):
-			case !top && !validName(dir.Name) && dir.origin == productNamePath:
+			case !top && problem != "" && dir.origin == productNamePath:
 				v.errorf(dir.origin, "%q cannot be used as a folder name; set installDir.name", dir.Name)
-			case !top && !validName(dir.Name) && dir.origin != "":
-				v.errorf(dir.origin, "%q is not a valid folder name", dir.Name)
-			case !top && !validName(dir.Name):
-				v.errorf(dirPath+".name", "%q is not a valid name or short|long pair", dir.Name)
+			case !top && problem != "" && dir.origin != "":
+				v.errorf(dir.origin, "%s", problem)
+			case !top && problem != "":
+				v.errorf(dirPath+".name", "%s", problem)
 			}
 
 			if dir.Configurable && !IsPublicProperty(dir.ID) {
@@ -433,7 +430,7 @@ func (v *validator) sameFolder(names map[string]string, dirPath string, dir *Dir
 		return
 	}
 
-	long := strings.ToLower(longPart(dir.Name))
+	long := strings.ToLower(dir.Name)
 	if other, dup := names[long]; dup {
 		field := dirPath + ".name"
 		if dir.origin != "" {
@@ -585,12 +582,7 @@ func directoryPaths(dirs []*Directory, parent string, out map[string]string) map
 		dirPath := dir.ID
 
 		if parent != "" {
-			name := dir.Name
-			if _, long, ok := strings.Cut(name, "|"); ok {
-				name = long
-			}
-
-			dirPath = parent + `\` + strings.ToLower(name)
+			dirPath = parent + `\` + strings.ToLower(dir.Name)
 		}
 
 		out[dir.ID] = dirPath
@@ -945,12 +937,10 @@ func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component
 			name = fileName(file)
 		}
 
-		if !validName(name) {
-			v.errorf(filePath+".name", "%q is not a valid file name or short|long pair", name)
-		}
-
-		if !*cfg.Package.LongFileNames && !strings.Contains(name, "|") && !isShortName(name) {
-			v.errorf(filePath+".name", "longFileNames is false, so %q needs a short name", name)
+		if problem := nameProblem(name, "file name"); problem != "" {
+			v.errorf(filePath+".name", "%s", problem)
+		} else if !*cfg.Package.LongFileNames && !isShortName(name) {
+			v.errorf(filePath+".name", "longFileNames is false, so %q must be a valid 8.3 name", name)
 		}
 
 		fileKey := fileID(file)

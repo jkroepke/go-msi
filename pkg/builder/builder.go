@@ -118,7 +118,6 @@ type dirInfo struct {
 	parent    string
 	long      string // long name, "" for standard folders and TARGETDIR
 	canonical string // canonical path for GUIDs and sorting
-	namePath  string // config path of the name, "" for directories the builder adds
 	standard  bool
 	used      bool
 }

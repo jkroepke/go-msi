@@ -441,10 +441,13 @@ func TestValidate(t *testing.T) {
 				"    schedule: [{sequence: execute, after: CostFinalize}]\n",
 			sevError, "components[0].purge", "CommonAppDataFolder can be pointed",
 		},
-		"purge short name": {
-			strings.Replace(base, "        configurable: true\n", "        children: [{id: DataDir, name: 'DATA~1|Data'}]\n", 1) +
-				strings.Replace(appComponent, "directory: INSTALLDIR", "directory: DataDir\n    purge: true", 1),
-			sevError, "components[0].purge", "short name",
+		"short-name package with a long file name": {
+			pkg("{platform: x64, longFileNames: false}") + strings.Replace(appComponent, "source: app.exe", "{source: app.exe, name: Application.exe}", 1),
+			sevError, "components[0].files[0].name", "valid 8.3 name",
+		},
+		"short|long file name": {
+			base + strings.Replace(appComponent, "source: app.exe", "{source: app.exe, name: 'APP.EXE|Application.exe'}", 1),
+			sevError, "components[0].files[0].name", "short names are generated",
 		},
 		"purge above a permanent component": {
 			base + appComponent + "  - id: Data\n    directory: CommonAppDataFolder/Example/Hello\n    createFolder: true\n    purge: true\n" +
