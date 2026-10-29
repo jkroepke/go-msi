@@ -227,6 +227,15 @@ go test ./... -shuffle=on -race
 - Readers (`cfb`, `cab`, `msidb.Unmarshal`) treat their input as untrusted:
   bounds-check every offset and sector, detect chain cycles, and never allocate
   from a size the input declares without checking it against the input length.
+- Wizard translations live in `pkg/config/wizardtexts/<tag>.yaml`, one file
+  per locale with every `ui.strings` key. Write them yourself; never copy
+  another toolset's localization files. `TestTranslations` checks keys,
+  placeholders, `&` counts, column widths and the code page, and
+  `TestAccessKeysUnique` (`internal/builder`) fails when two controls of a
+  dialog share an access key: move the `&` to another letter of the text.
+  In formatted text any `[name]` is a property reference, so a translation
+  never adds brackets (Japanese uses 「」). A language whose letters no
+  ANSI code page holds gets code page 0 in `locales` (Hindi, Kazakh).
 - `cmd/msi-builder` uses `spf13/cobra` (with `spf13/pflag`) and nothing else
   outside the standard library; never import `cobra/doc`, which pulls in a
   man-page renderer. Add no new module dependencies elsewhere without
