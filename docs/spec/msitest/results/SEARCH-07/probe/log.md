@@ -21,6 +21,17 @@ package edited with `msidb`).
 | `Z:\MsiBuilderRemember\` (drive not mounted) | raw | **1603** | the folder | nothing |
 | same | directory | 0 | empty | `C:\Program Files\MsiBuilderRemember\` |
 
+Raw probe lines:
+
+```text
+existing folder (C:\MsiBuilderRemember\existing\), raw search: exit 0, INSTALLDIR_REMEMBERED="C:\\MsiBuilderRemember\\existing\\", INSTALLDIR="C:\\MsiBuilderRemember\\existing\\", in remembered=true, in default=false
+existing folder (C:\MsiBuilderRemember\existing\), directory search: exit 0, INSTALLDIR_REMEMBERED="C:\\MsiBuilderRemember\\existing\\", INSTALLDIR="C:\\MsiBuilderRemember\\existing\\", in remembered=true, in default=false
+missing folder (C:\MsiBuilderRemember\missing\), raw search: exit 0, INSTALLDIR_REMEMBERED="C:\\MsiBuilderRemember\\missing\\", INSTALLDIR="C:\\MsiBuilderRemember\\missing\\", in remembered=true, in default=false
+missing folder (C:\MsiBuilderRemember\missing\), directory search: exit 0, INSTALLDIR_REMEMBERED="", INSTALLDIR="C:\\Program Files\\MsiBuilderRemember\\", in remembered=false, in default=true
+missing drive folder (Z:\MsiBuilderRemember\), raw search: exit 1603, INSTALLDIR_REMEMBERED="Z:\\MsiBuilderRemember\\", INSTALLDIR="Z:\\MsiBuilderRemember\\", in remembered=false, in default=false
+missing drive folder (Z:\MsiBuilderRemember\), directory search: exit 0, INSTALLDIR_REMEMBERED="", INSTALLDIR="C:\\Program Files\\MsiBuilderRemember\\", in remembered=false, in default=true
+```
+
 The raw search on the missing drive failed in costing:
 
 ```text

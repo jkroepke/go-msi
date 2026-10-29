@@ -3,8 +3,9 @@
 - Runners: GitHub `windows-latest` (x64) and `windows-11-arm` (arm64),
   elevated, 2026-10-29
 - CI run 40966065131, commit 99dddc0 (directory `RegLocator` search, as
-  shipped); the same matrix passed in CI run 40962873234, commit fd57ff1,
-  with the raw search msi-builder wrote before
+  shipped); the same install behaviour was observed in CI run 40962873234, commit
+  fd57ff1, with the raw search msi-builder wrote before (the HKCU cases
+  failed only the test's view check there)
 - Tests: `TestMsiexecRememberInstallDir` and `TestNonAdminRememberInstallDir`
   in `internal/builder/nativetest/remember_windows_test.go`
 

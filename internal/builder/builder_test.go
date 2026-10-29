@@ -1339,10 +1339,10 @@ components:
 	}
 }
 
-// TestRememberInstallDir checks the SEARCH-03 recipe for installDir.remember:
-// a registry value with the folder, a 64-bit directory RegLocator search into a
-// separate property, an empty Signature table, and a guarded type-51 action
-// after AppSearch in both sequences.
+// TestRememberInstallDir checks the SEARCH-03 and SEARCH-07 recipe for
+// installDir.remember: a registry value with the folder, a 64-bit directory
+// RegLocator search into a separate property, an empty Signature table, and
+// a guarded type-51 action after AppSearch in both sequences.
 func TestRememberInstallDir(t *testing.T) {
 	t.Parallel()
 
