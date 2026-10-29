@@ -715,10 +715,10 @@ type UI struct {
 	FinishText string    `yaml:"finishText"`
 	Theme      Theme     `yaml:"theme"`
 	Dialogs    []*Dialog `yaml:"dialogs"`
-	// Wizard shows the setup wizard: welcome, ready, progress and finish
+	// Enabled shows the setup wizard: welcome, ready, progress and finish
 	// pages plus maintenance, cancel and error dialogs. Without it msiexec
 	// shows only its basic progress window.
-	Wizard bool `yaml:"wizard,omitempty"`
+	Enabled bool `yaml:"enabled,omitempty"`
 	// ChooseFeatures adds the feature tree page after the welcome and
 	// license pages, with Browse for a feature's directory.
 	ChooseFeatures bool `yaml:"chooseFeatures,omitempty"`

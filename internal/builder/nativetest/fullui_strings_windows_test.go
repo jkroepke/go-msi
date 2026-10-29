@@ -145,7 +145,7 @@ func translatedConfig(t *testing.T, language, codepage, texts string) string {
 	for _, edit := range [][2]string{
 		{"  language: 1033\n", "  language: " + language + "\n"},
 		{"  installerVersion: \"5.0\"\n", "  installerVersion: \"5.0\"\n  codepage: " + codepage + "\n"},
-		{"ui:\n  wizard: true\n  chooseFeatures: true\n", "ui:\n  wizard: true\n  chooseFeatures: true\n" + texts},
+		{"ui:\n  enabled: true\n  chooseFeatures: true\n", "ui:\n  enabled: true\n  chooseFeatures: true\n" + texts},
 	} {
 		if strings.Count(doc, edit[0]) != 1 {
 			t.Fatalf("the full UI configuration no longer holds %q once", edit[0])

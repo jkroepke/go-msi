@@ -1617,7 +1617,7 @@ under the feature, such as `features[1].firewall[0].program`.
 
 ```yaml
 ui:
-  wizard: true                      # the setup wizard; default false (basic UI)
+  enabled: true                     # the setup wizard; default false (basic UI)
   chooseFeatures: true              # adds the feature tree page
   dialogs:
     - id: ConfigDlg
@@ -1649,7 +1649,7 @@ ui:
 
 The wizards are written from scratch for msi-builder, including the bitmaps,
 which the `artwork` package draws from a colour palette at build time.
-`wizard: true` has welcome, ready, progress and finish; `chooseFeatures`
+`enabled: true` shows the wizard: welcome, ready, progress and finish; `chooseFeatures`
 adds the feature tree (`CustomizeDlg`) with Browse and disk usage. Browse
 changes the directory of the selected feature (`features[].directory`); the
 generated `MainFeature` has the install dir. Every wizard includes
@@ -1681,7 +1681,7 @@ for the same reason, and so is a choice on a property that another field
 binds too. In the full UI the group starts on the default and selecting
 another option sets the property on the server (UI-05, observed on Windows). `after` names the
 page the dialog follows: `WelcomeDlg`, `CustomizeDlg` or an added dialog.
-Without `wizard` no UI tables are written and msiexec shows its basic
+Without `enabled` no UI tables are written and msiexec shows its basic
 progress window; silent installs never depend on the UI in any mode.
 Without `chooseFeatures` `ARPNOMODIFY` is set. A feature tree page without
 the wizard is an error.
@@ -1690,7 +1690,7 @@ the wizard is an error.
 
 ```yaml
 ui:
-  wizard: true
+  enabled: true
   chooseFeatures: true
   license: LICENSE.rtf     # RTF as is, any other file is text converted to RTF
 ```
@@ -1712,7 +1712,7 @@ license page. `ui.dialogs` can follow it with `after: LicenseAgreementDlg`;
 
 ```yaml
 ui:
-  wizard: true
+  enabled: true
   chooseDirectory: true     # needs installDir
 ```
 
@@ -1748,7 +1748,7 @@ define either.
 
 ```yaml
 ui:
-  wizard: true
+  enabled: true
   launch:
     file: viewer.exe       # files[].id, or the file name when it has no id
     arguments: --welcome   # formatted, optional
@@ -1776,7 +1776,7 @@ When `launch` is set, the custom action name and the property
 
 ```yaml
 ui:
-  wizard: true
+  enabled: true
   finishText: Open a new command prompt to use [ProductName].
 ```
 
@@ -1845,7 +1845,7 @@ checkbox without a wizard is an error.
 product:
   language: 1031           # LCID of the package (Template, ProductLanguage)
 ui:
-  wizard: true
+  enabled: true
   strings:
     Next: '&Weiter >'
     Back: '< &Zurück'
@@ -1894,7 +1894,7 @@ further language (spec section 7.6):
 product:
   language: 1033           # base language, in the database itself
 ui:
-  wizard: true
+  enabled: true
   finishText: Thanks for installing [ProductName].
   languages:
     de: {}                 # or 1031: the built-in German texts

@@ -424,7 +424,7 @@ generated from the command tree.
 | 5 | `pe`, `condition`, `sequence` | this PR |
 | 6 | `builder` steps 1–8 and 10, `cmd/msi-builder`, example builds | this PR |
 | 7 | CI: Linux, macOS and Windows runners, native tests, mise | this PR |
-| 8 | `ui`: built-in wizard (`wizard`, `chooseFeatures`, `chooseDirectory`), generated dialogs, `artwork` bitmaps | PR 2 |
+| 8 | `ui`: built-in wizard (`enabled`, `chooseFeatures`, `chooseDirectory`), generated dialogs, `artwork` bitmaps | PR 2 |
 | 9 | ICE-style checks that still need the UI tables; `_Validation` for UI | PR 2 |
 | 10 | External cabinets and several media (`package.embedCabinets`, packages above 2 GB) | done |
 | 11 | `sign`: Authenticode signing, verification and RFC 3161 timestamps (MSISPEC §12) | done |

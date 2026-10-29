@@ -42,7 +42,7 @@ properties:
       registry: { root: HKLM, key: SOFTWARE\Example\Viewer, name: Theme }
 
 ui:
-  wizard: true
+  enabled: true
   license: LICENSE.txt
   chooseDirectory: true
   # A paragraph on the finish page after a new installation.

@@ -92,7 +92,7 @@ product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f25
 package: { platform: x64 }
 components:
   - files: [{ source: hello.exe, checksum: true }]
-ui: { wizard: true, languages: { de: {} } }
+ui: { enabled: true, languages: { de: {} } }
 `
 
 	propertyChanges := func(checksum uint32) []byte {

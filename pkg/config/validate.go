@@ -2014,11 +2014,11 @@ func (v *validator) remoteAddresses(field, list string) {
 }
 
 func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independent checks
-	if !cfg.UI.Wizard && cfg.UI.ChooseFeatures {
+	if !cfg.UI.Enabled && cfg.UI.ChooseFeatures {
 		v.errorf("ui.chooseFeatures", "a feature tree page needs a wizard")
 	}
 
-	if !cfg.UI.Wizard && len(cfg.UI.Dialogs) > 0 {
+	if !cfg.UI.Enabled && len(cfg.UI.Dialogs) > 0 {
 		v.errorf("ui.dialogs", "dialogs need a wizard")
 	}
 
@@ -2072,7 +2072,7 @@ const launchProperty = "LaunchOnFinish"
 
 // wizardOptions checks the install folder page and the launch check box.
 func (v *validator) wizardOptions(cfg *Config, ids *refs) {
-	none := !cfg.UI.Wizard
+	none := !cfg.UI.Enabled
 
 	if cfg.UI.ChooseDirectory {
 		if none {
@@ -2106,7 +2106,7 @@ func (v *validator) wizardOptions(cfg *Config, ids *refs) {
 
 // finishText checks ui.finishText: it needs a wizard and some text.
 func (v *validator) finishText(cfg *Config) {
-	if cfg.UI.FinishText != "" && !cfg.UI.Wizard {
+	if cfg.UI.FinishText != "" && !cfg.UI.Enabled {
 		v.errorf("ui.finishText", "a finish page text needs a wizard")
 	}
 
@@ -2124,7 +2124,7 @@ func (v *validator) checkFinishText(at, text string) {
 var colorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
 func (v *validator) theme(cfg *Config) {
-	none := !cfg.UI.Wizard
+	none := !cfg.UI.Enabled
 
 	if none && cfg.UI.License != "" {
 		v.errorf("ui.license", "a license page needs a wizard")
