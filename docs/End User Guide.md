@@ -76,7 +76,8 @@ for the current user. The package author can change the folder and give the
 property another name.
 
 Some packages remember the folder: an upgrade then normally installs to
-the folder of the earlier install, if that version remembered it too. For
+the folder of the earlier install, if that version remembered it too and
+the folder still exists; otherwise it uses the default folder. For
 other packages, or if in doubt, pass `INSTALLDIR` again on every upgrade if
 you did not use the default folder.
 
@@ -289,7 +290,9 @@ Next to the link, list what this page cannot know about your package:
 - whether the package installs per user, for all users or lets the user
   choose (`package.scope`);
 - the languages, if you set `ui.languages`;
-- whether upgrades keep the feature choice (`upgrade.migrateFeatures`) and
+- whether upgrades keep the feature choice (`upgrade.migrateFeatures`),
+  whether an upgrade can leave the old version installed when its removal
+  fails (`upgrade.ignoreRemoveFailure`) and how to remove it then, and
   whether Repair, Change or Uninstall is hidden (`product.arp`).
 
 The [YAML Schema Design](design/yaml-schema.md) describes each of these settings.

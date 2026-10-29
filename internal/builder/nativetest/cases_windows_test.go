@@ -28,6 +28,15 @@ var pMapFileAndCheckSumW = syscall.NewLazyDLL("imagehlp.dll").NewProc("MapFileAn
 func buildConfig(t *testing.T, dir, name, src string, inputs map[string][]byte) string {
 	t.Helper()
 
+	path, _ := buildConfigResult(t, dir, name, src, inputs)
+
+	return path
+}
+
+// buildConfigResult is buildConfig that also returns the build result.
+func buildConfigResult(t *testing.T, dir, name, src string, inputs map[string][]byte) (string, *builder.Result) {
+	t.Helper()
+
 	for file, data := range inputs {
 		if err := os.WriteFile(filepath.Join(dir, file), data, 0o600); err != nil {
 			t.Fatal(err)
@@ -51,7 +60,7 @@ func buildConfig(t *testing.T, dir, name, src string, inputs map[string][]byte) 
 		t.Fatal(err)
 	}
 
-	return path
+	return path, res
 }
 
 const downgradeConfig = `schema: msi-builder/v1
