@@ -15,7 +15,7 @@ import (
 )
 
 // exeProbeSource is the program the exe actions of TestMsiexecEXEActions
-// run: it appends "<tag>|<its own path>|<user>|<working folder>" to the file
+// run: it appends "<tag>|<its own path>|<user SID>|<working folder>" to the file
 // in its first argument and exits with the code in its third.
 const exeProbeSource = `package main
 
@@ -32,7 +32,7 @@ func main() {
 	self, _ := os.Executable()
 	who := "?"
 	if u, err := user.Current(); err == nil {
-		who = u.Username
+		who = u.Uid
 	}
 	cwd, _ := os.Getwd()
 	_ = os.MkdirAll(filepath.Dir(os.Args[1]), 0o755)
@@ -208,6 +208,7 @@ func TestMsiexecEXEActions(t *testing.T) {
 
 	t.Cleanup(func() {
 		uninstall()
+
 		_ = os.RemoveAll(markerDir)
 	})
 
@@ -237,7 +238,9 @@ func TestMsiexecEXEActions(t *testing.T) {
 			continue
 		}
 
-		if isSystem := strings.EqualFold(line.user, `NT AUTHORITY\SYSTEM`); isSystem != system {
+		// The SID, since user.Current names LocalSystem by the machine
+		// account (DOMAIN\HOST$) on the CI runner.
+		if isSystem := line.user == "S-1-5-18"; isSystem != system {
 			t.Errorf("%s ran as %s", tag, line.user)
 		}
 
