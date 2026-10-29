@@ -870,10 +870,12 @@ the install with error 1920 (SVC-05).
 `deleteOnInstall` (default `false`) adds event 8: DeleteServices removes a
 service of the same name that is already registered, for example by an old
 installer or by hand, before InstallServices creates the package's own.
-Without it InstallServices leaves an existing registration alone, so the
-package's service would keep the old binary path and account (SVC-06). A
-repair reinstalls the component, which deletes and creates the service
-again.
+Without it InstallServices reconfigures the existing registration: the
+binary path and display name become the package's, but a setting the
+package does not write, such as a description, stays (SVC-06). With it
+nothing of the old registration carries over. A repair reinstalls the
+component, which deletes and creates the service again; it was running
+afterwards in SVC-06.
 
 `startCondition` starts the service at install only when the condition is
 true. `ServiceControl` has no condition column, so the start row goes to a
