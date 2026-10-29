@@ -272,11 +272,14 @@ func TestMsiexecGrants(t *testing.T) {
 		}
 	}
 
-	// A repair grants again and finds the rights there.
-	msiexecQuiet(t, filepath.Join(dir, "repair.log"), "/fa", path, account)
+	// A repair grants again and finds the rights there. msiexec /fa left
+	// the command line properties out on the CI runner (SVC_ACCOUNT and
+	// FAILNOW were not set), so the repairs use /i with REINSTALL.
+	repair := []string{"/i", path, "REINSTALL=ALL", "REINSTALLMODE=amus", account}
+	msiexecQuiet(t, filepath.Join(dir, "repair.log"), repair...)
 
-	if log := readLog(filepath.Join(dir, "repair.log")); !strings.Contains(log, "already granted") {
-		t.Error("repair: no grant ran")
+	if log := readLog(filepath.Join(dir, "repair.log")); !strings.Contains(log, `MsiBuilderGrant\data: already granted`) {
+		t.Errorf("repair: the data folder grant did not run\n%s", grepLog(log, "BuilderGrant", "Command Line"))
 	}
 
 	for name, object := range map[string]string{"file": app, "data folder": data, "existing folder": existing} {
@@ -286,7 +289,7 @@ func TestMsiexecGrants(t *testing.T) {
 	}
 
 	// A repair that fails after the grants keeps the rights that were there.
-	if code := msiexecCode(t, filepath.Join(dir, "repair-rollback.log"), "/fa", path, account, "FAILNOW=1"); code != 1603 {
+	if code := msiexecCode(t, filepath.Join(dir, "repair-rollback.log"), append(repair, "FAILNOW=1")...); code != 1603 {
 		t.Fatalf("repair with FAILNOW=1 returned %d, want 1603\n%s", code, grepLog(readLog(filepath.Join(dir, "repair-rollback.log")), "FailNow", "FAILNOW", "BuilderGrant"))
 	}
 
