@@ -213,8 +213,8 @@ func env02Analyze(c *caseLog, path, installed string, payload []byte) *env02Pkg 
 			c.logf("cabinet %s: %d bytes, no cabinet header", m[0], len(cab))
 			continue
 		}
-		if le.Uint16(cab[0x1E:])&4 != 0 {
-			c.logf("cabinet %s: reserved header fields present, not decoded", m[0])
+		if le.Uint16(cab[0x1E:])&7 != 0 || len(cab) < 36+8*int(le.Uint16(cab[0x1A:])) {
+			c.logf("cabinet %s: flags %#x or %d bytes, not decoded", m[0], le.Uint16(cab[0x1E:]), len(cab))
 			continue
 		}
 		c.logf("cabinet %s: %d bytes, header %q, set %d/%d, %d folders, %d files, flags %#x",

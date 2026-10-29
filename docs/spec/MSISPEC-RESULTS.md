@@ -244,7 +244,7 @@ Silent-failure cases a producer has to guard against itself:
 | SIG-05 | Partly confirmed | A changed root CLSID gives `0x800B0003` (TRUST_E_SUBJECT_FORM_UNKNOWN): the MSI SIP no longer claims the file. Nested storages not covered (go-msi writes none) |
 | SIG-06 | Confirmed | RSA with SHA-1/256/384/512, ECDSA P-256/SHA-256 and P-384/SHA-384, and an RFC 3161 timestamp all pass WinVerifyTrust on Server 2025. Not run on Server 2016 |
 | SIG-07 | Not run | msi-rs regression case; test a candidate writer |
-| INT-01…03 | Not run | WiX 5.0.2 is on the machine and wixl 0.106 runs in a container since ENV-02 (2026-10-29); ENV-02 covers only one-file packages |
+| INT-01…03 | Not run | WiX 5.0.2 is on the machine and wixl 0.106 runs in a container since ENV-02 (2026-10-29); ENV-02 covers only one-file packages; INT-02 and INT-03 also need msitools' `msibuild` and `msiinfo`, which `build-wixl.sh` does not install |
 
 ## WiX and msitools one-file packages (ENV-02)
 
@@ -266,8 +266,8 @@ Both tools were used as black boxes; no source of either was read. Both
 packages open with `MsiOpenDatabaseW`, answer every `_Tables` query, carry the
 same `MsiFileHash` row, embed one single-folder cabinet that `expand.exe`
 extracts to the payload, and install and uninstall with exit 0; `hello.txt`
-is gone after the uninstall (other leftovers were checked by hand: no
-uninstall entry and no folder remained). The two agree on the root CLSID,
+is gone after the uninstall (a check by hand after the run, outside the
+logs, found no uninstall entry or folder left). The two agree on the root CLSID,
 every table column type they share, the sequence numbers of every action
 they share, and summary PIDs 1, 2, 4, 5, 7, 14, 15 and 19 (code page 1252,
 `x64;1033`, Page Count 500, Word Count 2, Security 2).
