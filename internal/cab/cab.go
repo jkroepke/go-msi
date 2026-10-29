@@ -1097,12 +1097,9 @@ func (b *blockReader) decodeLZX(payload, out []byte) error {
 		return b.errorf("empty LZX block")
 	}
 
-	got, err := b.lzx.Decode(payload, len(out))
-	if err != nil {
+	if err := b.lzx.DecodeInto(payload, out); err != nil {
 		return b.errorf("%v", err)
 	}
-
-	copy(out, got)
 
 	return nil
 }

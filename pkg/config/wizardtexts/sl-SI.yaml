@@ -29,6 +29,12 @@ InstallDirText: "Kliknite Naprej za namestitev v privzeto mapo ali Spremeni za i
 InstallDirLabel: "Namesti [ProductName] v:"
 InstallDirChange: "&Spremeni ..."
 
+InstallScopeTitle: "Obseg namestitve"
+InstallScopeText: "Izberite, kdo lahko uporablja [ProductName] v tem računalniku."
+InstallScopeUser: "Namesti &samo zame ([LogonUser])"
+InstallScopeMachine: "Namesti za vse &uporabnike tega računalnika"
+InstallScopeHint: "Namestitev za vse uporabnike zahteva skrbniške pravice. Namestitev samo za vas jih ne zahteva in [ProductName] boste lahko uporabljali samo vi."
+
 CustomizeTitle: "Namestitev po meri"
 CustomizeText: "Izberite način namestitve funkcij."
 CustomizeHint: "Kliknite ikone v spodnjem drevesu, da spremenite način namestitve funkcij."

@@ -69,7 +69,31 @@ func (ds Diagnostics) Warnings() Diagnostics {
 }
 
 type validator struct {
+	scope Scope
 	diags Diagnostics
+}
+
+// perUserPackage names the package in an ICE105 finding: a per-user
+// package, or a dual one that can also install per user.
+func (v *validator) perUserPackage() string {
+	if v.scope.Dual() {
+		return "a " + string(v.scope) + " package"
+	}
+
+	return "a per-user package"
+}
+
+// forbiddenFolder reports whether a component under the standard folder top
+// fails ICE105 for this package's scope.
+func (v *validator) forbiddenFolder(top string) bool {
+	switch {
+	case v.scope.Dual():
+		return ice105Folders[top]
+	case v.scope == ScopePerUser:
+		return perMachineFolders[top]
+	default:
+		return false
+	}
 }
 
 func (v *validator) errorf(path, format string, args ...any) {

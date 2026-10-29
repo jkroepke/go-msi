@@ -1105,3 +1105,63 @@ func TestNativeLZXSystemBinaries(t *testing.T) { //nolint:paralleltest // the FD
 
 	t.Logf("%d files, %d bytes: msi-builder LZX:21 %d bytes, makecab LZX:21 %d bytes", len(files), total, len(ours), len(theirs))
 }
+
+// TestNativeReadMakecabFewCodes reads makecab LZX cabinets of inputs whose
+// blocks have the fewest distinct symbols: a run of zeros (one literal, one
+// match length) and bytes from 64 values with no match of 9 bytes or more
+// (an all-zero length tree, written as runs of one pretree code). The reader
+// rejects a nonempty Huffman tree of one code (MS-PATCH 2.4), so these
+// cabinets show whether makecab pads such trees to two codes.
+func TestNativeReadMakecabFewCodes(t *testing.T) { //nolint:paralleltest // makecab runs one at a time
+	if testing.Short() {
+		t.Skip("native tests run without -short")
+	}
+
+	rng := rand.New(rand.NewSource(7)) //nolint:gosec // reproducible test data
+	short := make([]byte, 100000)
+
+	for i := range short {
+		short[i] = byte(32 + rng.Intn(64)) //nolint:gosec // below 96
+	}
+
+	for name, data := range map[string][]byte{"zeros.bin": make([]byte, 200000), "short.bin": short} { //nolint:paralleltest // makecab runs one at a time
+		for _, memory := range []string{"15", "21"} {
+			t.Run(name+"/LZX:"+memory, func(t *testing.T) {
+				dir := t.TempDir()
+				if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+
+				ddf := ".OPTION EXPLICIT\r\n.Set CabinetNameTemplate=out.cab\r\n.Set DiskDirectoryTemplate=.\r\n" +
+					".Set Cabinet=on\r\n.Set Compress=on\r\n.Set CompressionType=LZX\r\n.Set CompressionMemory=" + memory + "\r\n" +
+					".Set MaxDiskSize=0\r\n.Set RptFileName=nul\r\n.Set InfFileName=nul\r\n" + name + " " + name + "\r\n"
+				if err := os.WriteFile(filepath.Join(dir, "cab.ddf"), []byte(ddf), 0o600); err != nil {
+					t.Fatal(err)
+				}
+
+				cmd := exec.CommandContext(t.Context(), filepath.Join(os.Getenv("SystemRoot"), "System32", "makecab.exe"), "/F", "cab.ddf") //nolint:gosec // fixed Windows tool
+				cmd.Dir = dir
+
+				if output, err := cmd.CombinedOutput(); err != nil {
+					t.Fatalf("makecab.exe: %v\n%s", err, output)
+				}
+
+				raw, err := os.ReadFile(filepath.Join(dir, "out.cab"))
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				files, err := cab.Read(raw)
+				if err != nil {
+					t.Fatalf("cab.Read of makecab's cabinet: %v", err)
+				}
+
+				if len(files) != 1 || !bytes.Equal(files[0].Data, data) {
+					t.Fatal("cab.Read of makecab's cabinet differs")
+				}
+
+				t.Logf("%s: %d bytes in a %d-byte cabinet", name, len(data), len(raw))
+			})
+		}
+	}
+}

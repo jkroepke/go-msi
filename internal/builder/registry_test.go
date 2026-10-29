@@ -218,3 +218,26 @@ components:
 		}
 	}
 }
+
+// TestRegistryKeyAndDefaultValue gives a type key row and the key's default
+// value different generated ids (round 4: aspia, qttabbar).
+func TestRegistryKeyAndDefaultValue(t *testing.T) {
+	t.Parallel()
+
+	cfg := shortcutConfig(t, `
+  - registry:
+      - { root: HKLM, key: Software\Acme, type: key, removeOnUninstall: true }
+      - { root: HKLM, key: Software\Acme, value: x }
+      - { root: HKLM, key: Software\Acme\Sub, type: key }
+`)
+
+	names := make(map[any]bool)
+
+	for _, row := range rows(t, mustBuild(t, cfg).Database, "Registry") {
+		names[row[3]] = true
+	}
+
+	if !names["*"] || !names["+"] || !names[nil] {
+		t.Errorf("Registry names %v, want *, + and the default value", names)
+	}
+}

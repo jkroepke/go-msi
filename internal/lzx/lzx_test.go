@@ -3,6 +3,7 @@ package lzx //nolint:testpackage // the tests reach the unexported encoder parts
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -18,6 +19,8 @@ func scaled(n int) int {
 	return n
 }
 
+// decodeAll decodes the frames twice: through Decode, and through DecodeInto
+// into one reused buffer that still holds the previous frame and garbage.
 func decodeAll(t *testing.T, frames [][]byte, window, size int) []byte {
 	t.Helper()
 
@@ -26,14 +29,29 @@ func decodeAll(t *testing.T, frames [][]byte, window, size int) []byte {
 		t.Fatal(err)
 	}
 
+	into, err := NewDecoder(window)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	var out []byte
 
-	for i, frame := range frames {
-		n := min(FrameSize, size-i*FrameSize)
+	buf := bytes.Repeat([]byte{0xAA}, FrameSize)
 
-		got, err := dec.Decode(frame, n)
+	for i, frame := range frames {
+		frameSize := min(FrameSize, size-i*FrameSize)
+
+		got, err := dec.Decode(frame, frameSize)
 		if err != nil {
 			t.Fatalf("frame %d: %v", i, err)
+		}
+
+		if err := into.DecodeInto(frame, buf[:frameSize]); err != nil {
+			t.Fatalf("frame %d: DecodeInto: %v", i, err)
+		}
+
+		if !bytes.Equal(buf[:frameSize], got) {
+			t.Fatalf("frame %d: DecodeInto differs from Decode", i)
 		}
 
 		out = append(out, got...)
@@ -396,5 +414,93 @@ func TestEncoderFrameSizes(t *testing.T) {
 
 	if _, err := enc.Frame(make([]byte, 1)); err == nil {
 		t.Fatal("a frame after the end was accepted")
+	}
+}
+
+// TestDecodeIntoAllocates nothing per frame once the decoder exists, so the
+// cabinet reader decodes a folder without a temporary buffer per block.
+func TestDecodeIntoAllocates(t *testing.T) { //nolint:paralleltest // AllocsPerRun refuses parallel tests
+	if raceEnabled {
+		t.Skip("the race detector allocates")
+	}
+
+	data := x86ish(8*FrameSize, 4)
+
+	for _, block := range []int{blockVerb, blockAligned, blockStored} {
+		frames, err := Compress(data, Options{Window: 15, Level: 1, Block: block})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		dec, err := NewDecoder(15)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		buf := make([]byte, FrameSize)
+		next := 0
+
+		allocs := testing.AllocsPerRun(len(frames)-1, func() {
+			if err := dec.DecodeInto(frames[next], buf); err != nil {
+				t.Fatal(err)
+			}
+
+			next++
+		})
+
+		if allocs != 0 {
+			t.Errorf("block type %d: %.1f allocations per frame, want 0", block, allocs)
+		}
+	}
+}
+
+// TestDecoderRejectsSingleCode: a tree that is not all zero needs at least
+// two codes ([MS-PATCH] 2.4), which is also what buildLengths writes.
+func TestDecoderRejectsSingleCode(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		lengths []uint8
+		ok      bool
+	}{
+		"empty":           {lengths: nil, ok: true},
+		"all zero":        {lengths: make([]uint8, 8), ok: true},
+		"two codes":       {lengths: []uint8{1, 0, 1}, ok: true},
+		"one code":        {lengths: []uint8{0, 1, 0}},
+		"one long code":   {lengths: []uint8{0, 0, 16}},
+		"oversubscribed":  {lengths: []uint8{1, 1, 1}},
+		"incomplete pair": {lengths: []uint8{1, 2}, ok: true},
+	} {
+		var dec decoder
+
+		err := dec.init(tc.lengths)
+		if tc.ok != (err == nil) {
+			t.Errorf("%s: init = %v, want ok %v", name, err, tc.ok)
+		}
+	}
+
+	// A verbatim block whose main tree holds only the literal 'A', with a
+	// valid pretree, decoded 'A' before the fix.
+	frame := newWriter(nil, 1, Options{Window: 15})
+	frame.bits.write(0, 1) // no E8 translation
+	frame.bits.write(blockVerb, 3)
+	frame.bits.write(1, 24)
+
+	mainLens := make([]uint8, len(frame.prevMain))
+	mainLens['A'] = 1
+
+	frame.writeTree(mainLens[:numChars], frame.prevMain[:numChars])
+	frame.writeTree(mainLens[numChars:], frame.prevMain[numChars:])
+	frame.writeTree(make([]uint8, numLengths), frame.prevLen)
+	frame.bits.write(0, 1) // the code of 'A'
+	frame.bits.align()
+
+	dec, err := NewDecoder(15)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := dec.Decode(frame.bits.out, 1); !errors.Is(err, errBadTree) {
+		t.Fatalf("Decode = %q, %v; want %v", got, err, errBadTree)
 	}
 }

@@ -29,6 +29,12 @@ InstallDirText: "Kliknij przycisk Dalej, aby zainstalować w folderze domyślnym
 InstallDirLabel: "Zainstaluj program [ProductName] w:"
 InstallDirChange: "&Zmień..."
 
+InstallScopeTitle: "Zakres instalacji"
+InstallScopeText: "Wybierz, kto może używać programu [ProductName] na tym komputerze."
+InstallScopeUser: "Zainstaluj tylko dla &mnie ([LogonUser])"
+InstallScopeMachine: "Zainstaluj dla wszystkich &użytkowników tego komputera"
+InstallScopeHint: "Instalacja dla wszystkich użytkowników wymaga uprawnień administratora. Instalacja tylko dla Ciebie ich nie wymaga i tylko Ty możesz używać programu [ProductName]."
+
 CustomizeTitle: "Instalacja niestandardowa"
 CustomizeText: "Wybierz sposób instalacji funkcji."
 CustomizeHint: "Klikaj ikony w poniższym drzewie, aby zmienić sposób instalacji funkcji."

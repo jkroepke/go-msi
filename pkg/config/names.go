@@ -33,12 +33,35 @@ var profileFolders = set( //nolint:gochecknoglobals // lookup table
 // folders32 are the 32-bit locations on 64-bit Windows (ICE80).
 var folders32 = set("ProgramFilesFolder", "CommonFilesFolder", "SystemFolder") //nolint:gochecknoglobals // lookup table
 
+// programFilesFolders are the folders programs are installed in.
+var programFilesFolders = set("ProgramFilesFolder", "ProgramFiles64Folder") //nolint:gochecknoglobals // lookup table
+
 // perMachineFolders cannot hold resources of a per-user package (ICE105).
 var perMachineFolders = set( //nolint:gochecknoglobals // lookup table
 	"CommonAppDataFolder", "CommonFiles64Folder", "CommonFilesFolder",
 	"ProgramFiles64Folder", "ProgramFilesFolder", "System16Folder",
 	"System64Folder", "SystemFolder", "WindowsFolder", "FontsFolder",
 )
+
+// ice105Folders are the Directory keys ICE105 rejects. A dual package may
+// use the Program Files and Common Files folders, which follow the install
+// context (spec section 8.2).
+var ice105Folders = set( //nolint:gochecknoglobals // lookup table
+	"AdminToolsFolder", "CommonAppDataFolder", "FontsFolder", "System16Folder",
+	"System64Folder", "SystemFolder", "TempFolder", "WindowsFolder", "WindowsVolume",
+)
+
+// contextShellFolders follow the install context like Program Files, but
+// the client has no property for the other context's folder, so a dual
+// package cannot move a public directory below them on the scope page
+// (ALLUSERS property, spec section 8.2).
+var contextShellFolders = set( //nolint:gochecknoglobals // lookup table
+	"DesktopFolder", "ProgramMenuFolder", "StartMenuFolder", "StartupFolder", "TemplateFolder",
+)
+
+// dualActionPrefixes start the names of the actions a dual package's
+// scope page and installDir.remember add.
+var dualActionPrefixes = []string{"SetInstallScope", "SetScope", "RestoreInstallDir"} //nolint:gochecknoglobals // lookup table
 
 // standardActions may not be used as custom action ids (ICE93) and are valid
 // placement anchors.

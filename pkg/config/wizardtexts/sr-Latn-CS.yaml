@@ -29,6 +29,12 @@ InstallDirText: "Kliknite na Dalje da biste instalirali u podrazumevanu fasciklu
 InstallDirLabel: "Instaliraj [ProductName] u:"
 InstallDirChange: "P&romeni..."
 
+InstallScopeTitle: "Opseg instalacije"
+InstallScopeText: "Izaberite ko može da koristi [ProductName] na ovom računaru."
+InstallScopeUser: "Instaliraj samo za &mene ([LogonUser])"
+InstallScopeMachine: "Instaliraj za sve &korisnike ovog računara"
+InstallScopeHint: "Instalacija za sve korisnike zahteva administratorska prava. Instalacija samo za vas ih ne zahteva i samo vi možete da koristite [ProductName]."
+
 CustomizeTitle: "Prilagođena instalacija"
 CustomizeText: "Izaberite način na koji želite da se funkcije instaliraju."
 CustomizeHint: "Kliknite na ikone u stablu ispod da biste promenili način instalacije funkcija."

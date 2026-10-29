@@ -53,6 +53,23 @@ func (d *Decoder) Decode(frame []byte, size int) ([]byte, error) {
 		return nil, fmt.Errorf("lzx: frame of %d bytes", size)
 	}
 
+	out := make([]byte, size)
+	if err := d.DecodeInto(frame, out); err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}
+
+// DecodeInto decompresses the next frame into out, which holds the frame's
+// uncompressed size, so a caller with a buffer of its own allocates nothing
+// per frame.
+func (d *Decoder) DecodeInto(frame, out []byte) error {
+	size := len(out)
+	if size <= 0 || size > FrameSize {
+		return fmt.Errorf("lzx: frame of %d bytes", size)
+	}
+
 	d.r.reset(frame)
 
 	if !d.started {
@@ -68,19 +85,19 @@ func (d *Decoder) Decode(frame []byte, size int) ([]byte, error) {
 	start := d.pos
 
 	if err := d.fill(frame, start+size); err != nil {
-		return nil, err
+		return err
 	}
 
-	out := make([]byte, size)
-	for i := range out {
-		out[i] = d.window[(start+i)&d.mask]
-	}
+	// The window keeps the translated bytes as history; only out is
+	// restored. A frame never exceeds the window, so it wraps at most once.
+	head := copy(out, d.window[start&d.mask:])
+	copy(out[head:], d.window)
 
 	if d.e8size != 0 {
 		e8(out, start, d.e8size, false)
 	}
 
-	return out, nil
+	return nil
 }
 
 // fill decodes blocks until the window holds end bytes.

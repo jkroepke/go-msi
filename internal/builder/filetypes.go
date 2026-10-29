@@ -14,7 +14,8 @@ import (
 // elements are written (specification section 10.2), plus the ProgID in
 // each extension's OpenWithProgids list: HKCR, which the engine maps to
 // HKLM\Software\Classes per machine and HKCU\Software\Classes per user. A
-// per-user package names HKCU\Software\Classes itself (ICE105).
+// per-user package names HKCU\Software\Classes itself (ICE105); a dual one
+// keeps HKCR, which follows the context it installs in (INST-02).
 //
 // An extension's default value goes into a permanent component of its own,
 // so that uninstalling leaves it in place, as Microsoft asks: another

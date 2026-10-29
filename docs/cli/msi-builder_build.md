@@ -34,7 +34,7 @@ msi-builder build [flags] msi.yaml
       --hash string            signature digest: sha256, sha384, sha512 or sha1 (default "sha256")
   -h, --help                   help for build
       --key string             PEM private key for --cert
-  -o, --output string          output file (default: <product name>-<version>.msi next to the YAML file)
+  -o, --output string          output file (default: <product name>-<version>.msi next to the YAML file, characters a file name cannot hold replaced by _)
       --password-env string    environment variable holding the --pfx password
       --pfx string             sign with the key and certificates in this PKCS #12 file
   -q, --quiet                  print nothing on success

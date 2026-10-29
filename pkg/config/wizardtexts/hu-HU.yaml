@@ -29,6 +29,12 @@ InstallDirText: "Az alapértelmezett mappába való telepítéshez kattintson a 
 InstallDirLabel: "A(z) [ProductName] telepítési helye:"
 InstallDirChange: "&Módosítás..."
 
+InstallScopeTitle: "Telepítés hatóköre"
+InstallScopeText: "Válassza ki, kik használhatják a(z) [ProductName] programot ezen a számítógépen."
+InstallScopeUser: "Telepítés csak &nekem ([LogonUser])"
+InstallScopeMachine: "Telepítés a számítógép összes &felhasználójának"
+InstallScopeHint: "A minden felhasználó számára történő telepítéshez rendszergazdai jogok szükségesek. A csak Önnek szóló telepítéshez nem, és a(z) [ProductName] programot csak Ön használhatja."
+
 CustomizeTitle: "Egyéni telepítés"
 CustomizeText: "Válassza ki, hogyan települjenek az összetevők."
 CustomizeHint: "Az összetevők telepítési módjának módosításához kattintson az alábbi fa ikonjaira."

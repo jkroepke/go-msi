@@ -161,7 +161,7 @@ func (v *validator) componentShortcut(cfg *Config, scPath string, shortcut *Shor
 	}
 
 	if shortcut.URL != "" {
-		v.urlShortcut(cfg, scPath, shortcut, known)
+		v.urlShortcut(scPath, shortcut, known)
 
 		return
 	}
@@ -175,7 +175,7 @@ func (v *validator) componentShortcut(cfg *Config, scPath string, shortcut *Shor
 			v.targetLength(scPath+".file", "[#"+fileID(file)+"]", "file id")
 		}
 	case shortcut.Folder != "":
-		v.folderTarget(cfg, scPath, shortcut, known)
+		v.folderTarget(scPath, shortcut, known)
 	case shortcut.Program != "":
 		v.programTarget(scPath, shortcut)
 	}
@@ -204,7 +204,7 @@ func (v *validator) targetLength(field, target, what string) {
 // folderTarget checks the folder of a folder shortcut. A folder that is not
 // a standard folder gets a CreateFolder row, so that the shortcut does not
 // point at nothing.
-func (v *validator) folderTarget(cfg *Config, scPath string, shortcut *Shortcut, known *refs) {
+func (v *validator) folderTarget(scPath string, shortcut *Shortcut, known *refs) {
 	field := scPath + ".folder"
 	if known.dirs[shortcut.Folder] == nil {
 		v.errorf(field, "directory %q is not defined", shortcut.Folder)
@@ -214,8 +214,8 @@ func (v *validator) folderTarget(cfg *Config, scPath string, shortcut *Shortcut,
 
 	v.targetLength(field, "["+shortcut.Folder+"]", "directory id")
 
-	if top := known.topFolder(shortcut.Folder); cfg.Package.Scope == ScopePerUser && perMachineFolders[top] && top != shortcut.Folder {
-		v.errorf(field, "a per-user package cannot create a folder under %s (ICE105)", top)
+	if top := known.topFolder(shortcut.Folder); v.forbiddenFolder(top) && top != shortcut.Folder {
+		v.errorf(field, "%s cannot create a folder under %s (ICE105)", v.perUserPackage(), top)
 	}
 
 	for _, field := range []struct{ name, value string }{{keyArguments, shortcut.Arguments}, {"workingDirectory", shortcut.WorkingDirectory}} {
@@ -244,9 +244,9 @@ func (v *validator) programTarget(scPath string, shortcut *Shortcut) {
 
 // urlShortcut checks an Internet shortcut, which the builder writes as a
 // .url file through IniFile rows, not as a Shortcut row.
-func (v *validator) urlShortcut(cfg *Config, scPath string, shortcut *Shortcut, known *refs) {
+func (v *validator) urlShortcut(scPath string, shortcut *Shortcut, known *refs) {
 	v.shortcutName(scPath, shortcut, maxURLFileName, "msi-builder", ".url")
-	v.shortcutDirectory(cfg, scPath, shortcut, known)
+	v.shortcutDirectory(scPath, shortcut, known)
 	v.urlIcon(scPath, shortcut, known)
 
 	field := scPath + ".url"
@@ -348,17 +348,18 @@ func (v *validator) shortcutName(scPath string, shortcut *Shortcut, limit int, a
 
 // shortcutDirectory checks the folder a shortcut is created in, which is
 // also the folder of the component that carries it.
-func (v *validator) shortcutDirectory(cfg *Config, scPath string, shortcut *Shortcut, known *refs) {
+func (v *validator) shortcutDirectory(scPath string, shortcut *Shortcut, known *refs) {
 	if known.dirs[shortcut.Directory] == nil {
 		v.errorf(scPath+".directory", "directory %q is not defined", shortcut.Directory)
-	} else if top := known.topFolder(shortcut.Directory); cfg.Package.Scope == ScopePerUser && perMachineFolders[top] {
-		v.errorf(scPath+".directory", "a per-user package cannot install under %s (ICE105)", top)
+	} else if top := known.topFolder(shortcut.Directory); v.forbiddenFolder(top) {
+		// The shortcuts' component lives in this folder.
+		v.errorf(scPath+".directory", "%s cannot install under %s (ICE105)", v.perUserPackage(), top)
 	}
 }
 
 func (v *validator) shortcut(cfg *Config, scPath string, shortcut *Shortcut, known *refs) { //nolint:cyclop // a flat list of independent checks
 	v.shortcutName(scPath, shortcut, maxShortcutName, "Windows", ".lnk")
-	v.shortcutDirectory(cfg, scPath, shortcut, known)
+	v.shortcutDirectory(scPath, shortcut, known)
 
 	// A component's shortcut other than a file one has no working directory
 	// by default.
