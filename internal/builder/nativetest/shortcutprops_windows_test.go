@@ -3,10 +3,12 @@
 package nativetest_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"syscall"
@@ -70,7 +72,11 @@ type propVariant struct {
 	value    [2]uintptr
 }
 
-// comCall calls the method in slot of a COM object.
+// comCall calls the method in slot of a COM object. Like call, it is a
+// //go:uintptrescapes function: convert pointers to uintptr only inside its
+// argument list, so that out-parameters move to the heap (AGENTS.md).
+//
+//go:uintptrescapes
 func comCall(obj unsafe.Pointer, slot int, args ...uintptr) uintptr {
 	vtbl := *(**[8]uintptr)(obj)
 	r, _, _ := syscall.SyscallN(vtbl[slot], append([]uintptr{uintptr(obj)}, args...)...)
@@ -92,13 +98,14 @@ func (p lnkProperty) String() string { return fmt.Sprintf("vt %d %q", p.vt, p.te
 // system does not know is left out.
 func lnkProperties(t *testing.T, path string, names ...string) map[string]lnkProperty {
 	t.Helper()
+
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
 	if hr, _, _ := pCoInitializeEx.Call(0, coinitApartmentThreaded); int32(hr) < 0 {
 		t.Fatalf("CoInitializeEx: 0x%08X", uint32(hr))
 	}
-	defer pCoUninitialize.Call()
+	defer func() { _, _, _ = pCoUninitialize.Call() }()
 
 	var link, file, store unsafe.Pointer
 
@@ -141,10 +148,10 @@ func lnkProperties(t *testing.T, path string, names ...string) map[string]lnkPro
 		prop := lnkProperty{vt: value.vt}
 		if hr, _, _ := pPropVariantToStringAlloc.Call(uintptr(unsafe.Pointer(&value)), uintptr(unsafe.Pointer(&text))); int32(hr) >= 0 && text != nil {
 			prop.text = utf16PtrString(text)
-			pCoTaskMemFree.Call(uintptr(unsafe.Pointer(text)))
+			_, _, _ = pCoTaskMemFree.Call(uintptr(unsafe.Pointer(text)))
 		}
 
-		pPropVariantClear.Call(uintptr(unsafe.Pointer(&value)))
+		_, _, _ = pPropVariantClear.Call(uintptr(unsafe.Pointer(&value)))
 
 		got[name] = prop
 	}
@@ -164,7 +171,6 @@ func utf16PtrString(p *uint16) string {
 
 // VARTYPEs the engine may store.
 const (
-	vtEmpty  = 0
 	vtBool   = 11
 	vtUI4    = 19
 	vtLPWSTR = 31
@@ -173,9 +179,11 @@ const (
 
 // TestMsiexecShortcutProperties installs shortcuts with MsiShortcutProperty
 // rows and reads the property store of the installed .lnk files back
-// (SHORTCUT-02): which VARTYPE the engine stores for a string, a CLSID, a
-// boolean and an integer property, whether the values are formatted, and
-// what an unknown property name does.
+// (SHORTCUT-02): the engine converts each value to the property's type
+// (string, CLSID in braces in either case, boolean from "1" or "true",
+// integer), formats it, and logs warning 1946 for an unknown name. A CLSID
+// without braces also gave 1946 (HRESULT 87) in the first run; the
+// validator rejects it since.
 func TestMsiexecShortcutProperties(t *testing.T) {
 	if testing.Short() {
 		t.Skip("installing needs msiexec time and elevation")
@@ -206,7 +214,7 @@ components:
           - name: MsiBuilder Toast Test 2
             properties:
               System.AppUserModel.ID: Plain.Value
-              System.AppUserModel.ToastActivatorCLSID: "`+strings.Trim(toastCLSID, "{}")+`"
+              System.AppUserModel.ToastActivatorCLSID: "`+strings.ToLower(toastCLSID)+`"
               System.AppUserModel.PreventPinning: "true"
               System.MsiBuilderTest.Unknown: x
 `), config.Options{})
@@ -226,10 +234,12 @@ components:
 		t.Fatal(err)
 	}
 
+	// Registered first: msiexecQuiet stops the test on 3010 with the
+	// product installed.
+	t.Cleanup(func() { _ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn").Run() })
+
 	log := filepath.Join(dir, "install.log")
 	msiexecQuiet(t, log, "/i", path)
-
-	t.Cleanup(func() { msiexecQuietCleanup(path) })
 
 	menu := filepath.Join(os.Getenv("ProgramData"), `Microsoft\Windows\Start Menu\Programs`)
 	names := []string{
@@ -254,29 +264,31 @@ components:
 		{"ExcludeFromShowInNewInstall 1", first["System.AppUserModel.ExcludeFromShowInNewInstall"], vtBool, ""},
 		{"StartPinOption 1", first["System.AppUserModel.StartPinOption"], vtUI4, "1"},
 		{"plain AppUserModel.ID", second["System.AppUserModel.ID"], vtLPWSTR, "Plain.Value"},
+		{"lower-case ToastActivatorCLSID", second["System.AppUserModel.ToastActivatorCLSID"], vtCLSID, toastCLSID},
+		{"PreventPinning true", second["System.AppUserModel.PreventPinning"], vtBool, ""},
 	} {
 		if check.got.vt != check.vt || check.text != "" && !strings.EqualFold(check.got.text, check.text) {
 			t.Errorf("%s: read %v, want vt %d %q", check.what, check.got, check.vt, check.text)
 		}
 	}
 
-	// Recorded, not asserted, until the results are in the spec.
-	t.Logf("CLSID without braces: %v; PreventPinning \"true\": %v; empty: vt %d",
-		second["System.AppUserModel.ToastActivatorCLSID"], second["System.AppUserModel.PreventPinning"], vtEmpty)
+	warned := false
 
-	installLog := readLog(log)
-	for _, line := range strings.Split(installLog, "\n") {
-		if strings.Contains(line, "1946") || strings.Contains(line, "ShortcutProperty") {
-			t.Logf("log: %s", strings.TrimSpace(line))
+	for line := range strings.SplitSeq(readLog(log), "\n") {
+		if strings.Contains(line, "ShortcutProperty") || strings.Contains(line, "MsiBuilderTest.Unknown") {
+			t.Log("log:", strings.TrimSpace(line))
+		}
+
+		if warning1946.MatchString(line) && strings.Contains(line, "System.MsiBuilderTest.Unknown") {
+			warned = true
 		}
 	}
 
-	if !strings.Contains(installLog, "1946") {
-		t.Errorf("the unknown property name did not log warning 1946")
+	if !warned {
+		t.Errorf("no warning 1946 names the unknown property System.MsiBuilderTest.Unknown")
 	}
 }
 
-// msiexecQuietCleanup removes a test product, ignoring errors.
-func msiexecQuietCleanup(path string) {
-	_ = exec.Command("msiexec", "/x", path, "/qn").Run()
-}
+// warning1946 matches the number of the warning for a shortcut property
+// the engine could not set.
+var warning1946 = regexp.MustCompile(`\b1946\b`) //nolint:gochecknoglobals // compiled once

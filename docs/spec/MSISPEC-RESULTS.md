@@ -228,6 +228,7 @@ Silent-failure cases a producer has to guard against itself:
 | CA-03 | Confirmed | GitHub `windows-latest` (x64) and `windows-11-arm` runners, 2026-10-28, `TestMsiexecRunActions`: every stdout and stderr line of the seven run actions is in the verbose log as `GoMsiRun:`, `whoami` shows LocalSystem versus the user, brackets stay literal, OEM and UTF-8 output decode, exit 3 with `Continue` returns 1, exit 7 fails with 1603 and runs the rollback action with the hidden command absent; Arm64 package native and x64 package under emulation on Arm; repeated on SERVER2025 with the same result; [details](#embedded-custom-action-dll-ca-03) |
 | CA-04 | Confirmed | GitHub `windows-latest` runner, 2026-10-28, CI run 40787803798: netsh rejects `any` or `*` combined with other `remoteip=` entries (exit 1), accepts `ANY` and `*` alone and accepts `localsubnet,10.0.0.1`; quotes inside a quoted description are dropped; [details](#firewall-arguments-ca-04) |
 | SHORTCUT-01 | Confirmed | [hkcu-folder](msitest/results/SHORTCUT-01/hkcu-folder/log.md), [file-component](msitest/results/SHORTCUT-01/file-component/log.md), [file-component-folder](msitest/results/SHORTCUT-01/file-component-folder/log.md), [advertised](msitest/results/SHORTCUT-01/advertised/log.md), [per-user](msitest/results/SHORTCUT-01/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-shortcut-01) |
+| SHORTCUT-02 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40882369236 (PR #98): the engine converts `PropVariantValue` to the property's type and formats it; a CLSID needs braces; an unknown name or a bad value is warning 1946 and the install goes on; [details](#shortcut-properties-shortcut-02) |
 | UI-01 | Confirmed | Wizard rendering on Windows Server 2025, go-msi packages driven by hand and by window messages, with PrintWindow and screen captures (2026-10-26); [details](#wizard-rendering-ui-01) |
 | UI-02 | Not run | Interactive full UI |
 | UI-03 | Not run | Interactive full UI |
@@ -374,7 +375,38 @@ parser (`WScript.Shell.CreateShortcut`) reads the `.lnk` files back.
   asks for one; that the engine needs it is not shown here.
 - Not covered: the ICE verdicts on these layouts (ICE38, ICE43, ICE57, ICE64),
   repair of a deleted shortcut, a second user's profile after a per-machine
-  install, and `MsiShortcutProperty`.
+  install, and `MsiShortcutProperty` (SHORTCUT-02 below).
+
+## Shortcut properties (SHORTCUT-02)
+
+Run on 2026-10-29 in CI run 40882369236 of PR #98, `Build & Test
+(windows-latest)` job (Windows Server 2025 x64, elevated), by
+`TestMsiexecShortcutProperties` in `internal/builder/nativetest`. A
+per-machine package installs two Start menu shortcuts with
+`MsiShortcutProperty` rows; the test opens each installed `.lnk` with the
+shell's `ShellLink` object, reads `IPropertyStore` and prints the VARTYPE and
+`PropVariantToStringAlloc` text of each property.
+
+| Property | `PropVariantValue` | Read back |
+| --- | --- | --- |
+| `System.AppUserModel.ID` | `[Manufacturer].Toast` | `VT_LPWSTR` `MsiBuilderTest.Toast` (formatted) |
+| `System.AppUserModel.ID` | `Plain.Value` | `VT_LPWSTR` `Plain.Value` |
+| `System.AppUserModel.ToastActivatorCLSID` | `{6E3F1A3C-61B6-4C1B-9A0F-2C5D8B7E4A10}` | `VT_CLSID`, the same GUID |
+| `System.AppUserModel.ToastActivatorCLSID` | the same GUID without braces | not set (`VT_EMPTY`); warning 1946, HRESULT 87 |
+| `System.AppUserModel.ExcludeFromShowInNewInstall` | `1` | `VT_BOOL` true (`-1`) |
+| `System.AppUserModel.PreventPinning` | `true` | `VT_BOOL` true (`-1`) |
+| `System.AppUserModel.StartPinOption` | `1` | `VT_UI4` `1` |
+| `System.MsiBuilderTest.Unknown` | `x` | warning 1946, HRESULT 32811 |
+
+- The verbose log shows one `ShortcutPropertyCreate(ShortcutName=…,
+  PropertyKey=…, PropVariantValue=…)` op per row, with the value already
+  formatted, after the shortcut is created.
+- Warning 1946 is logged as `Property '<name>' for shortcut '<file>.lnk' could
+  not be set. HRESULT <n>.`; the install still ended with 0 and the other
+  properties of the same shortcut were set.
+- Later runs assert these results and a lower-case braced CLSID (`VT_CLSID`).
+- Not covered: repair, a per-user install, an upgrade that changes a value,
+  other VARTYPEs (vectors, dates), Windows Server 2016.
 
 ## Short-name packages (FILE-06)
 

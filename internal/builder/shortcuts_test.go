@@ -258,6 +258,8 @@ func TestShortcutValidation(t *testing.T) {
 		{`{ name: "` + strings.Repeat("A", 127) + `" }`, ".name", "at most 128 fit"},
 		{`{ properties: { AppUserModelID: x } }`, ".properties.AppUserModelID", "canonical name"},
 		{`{ properties: { "System.AppUserModel.ID": "" } }`, ".properties.System.AppUserModel.ID", "value is required"},
+		{`{ properties: { System.AppUserModel.ToastActivatorCLSID: 6E3F1A3C-61B6-4C1B-9A0F-2C5D8B7E4A10 } }`,
+			".properties.System.AppUserModel.ToastActivatorCLSID", "not a CLSID in braces"},
 	} {
 		cfg := shortcutConfig(t, "  - files: [{ source: app.exe, shortcuts: ["+tc.shortcut+"] }]\n")
 

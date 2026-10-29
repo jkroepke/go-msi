@@ -643,13 +643,16 @@ shortcuts are not supported (section 6).
 `properties` sets shell properties on the `.lnk`, one `MsiShortcutProperty`
 row each: the key is the canonical name the Windows property system knows
 the property by, the value formatted text that the engine converts to the
-property's type. The common ones are `System.AppUserModel.ID`, which ties
+property's type: text, `1` or `true` for a boolean, a number, a CLSID in
+braces. The common ones are `System.AppUserModel.ID`, which ties
 the shortcut to the program's windows and notifications, and
 `System.AppUserModel.ToastActivatorCLSID`, which a program that is started
 from a toast notification needs. The engine applies them when it creates the
 shortcut, on install and repair; a name the property system does not know
-is warning 1946 in the log and the install goes on (SHORTCUT-02). The table
-needs Windows Installer 5.0, so a lower `installerVersion` gets a warning.
+is warning 1946 in the log and the install goes on, and so is a value the
+engine cannot convert (SHORTCUT-02). A `ToastActivatorCLSID` without braces
+is such a value, so the validator rejects it. The table needs Windows
+Installer 5.0, so a lower `installerVersion` gets a warning.
 
 **Permissions.** A file, registry value, service or the component's folder
 can carry a `permissions` block (`folderPermissions` on the component, which

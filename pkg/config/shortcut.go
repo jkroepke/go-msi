@@ -20,6 +20,14 @@ const (
 	minShortcutPropertyPages = 500
 )
 
+// clsidProperties are the shell properties of type CLSID that shortcuts
+// commonly carry.
+var clsidProperties = map[string]bool{"System.AppUserModel.ToastActivatorCLSID": true} //nolint:gochecknoglobals // lookup table
+
+// bracedGUID matches a GUID in registry format, which the engine needs for
+// a CLSID property.
+var bracedGUID = regexp.MustCompile(`^\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}$`)
+
 // propertyKeyName matches the canonical name of a shell property,
 // dot-separated words such as System.AppUserModel.ID.
 var propertyKeyName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$`)
@@ -137,8 +145,15 @@ func (v *validator) shortcutProperties(cfg *Config, scPath string, shortcut *Sho
 			v.errorf(propPath, "%q is not the canonical name of a shell property, such as System.AppUserModel.ID", name)
 		}
 
-		if shortcut.Properties[name] == "" {
+		value := shortcut.Properties[name]
+
+		switch {
+		case value == "":
 			v.errorf(propPath, "a value is required; PropVariantValue cannot be empty")
+		case clsidProperties[name] && !strings.Contains(value, "[") && !bracedGUID.MatchString(value):
+			// SHORTCUT-02: without braces the engine logs warning 1946
+			// (HRESULT 87) and leaves the property unset.
+			v.errorf(propPath, "%q is not a CLSID in braces, such as {6E3F1A3C-61B6-4C1B-9A0F-2C5D8B7E4A10}", value)
 		}
 	}
 
