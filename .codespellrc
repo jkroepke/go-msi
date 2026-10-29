@@ -1,4 +1,4 @@
 [codespell]
-skip = */.gitignores,*/package-lock.json,*/go.mod,*/go.sum,*.log,.git,*.json
-# flate: the compress/flate package. fo: msiexec /fo option. bu: SDDL alias for BUILTIN\Users. nmae, valeu: misspelled keys in config tests. sie, aktion: German in the translated wizard test and its engine log (UI-06).
+skip = */wizardtexts/*.yaml,*/.gitignores,*/package-lock.json,*/go.mod,*/go.sum,*.log,.git,*.json
+# wizardtexts: translations, not English. flate: the compress/flate package. fo: msiexec /fo option. bu: SDDL alias for BUILTIN\Users. nmae, valeu: misspelled keys in config tests. sie, aktion: German in the translated wizard test and its engine log (UI-06).
 ignore-words-list = aktion,bu,flate,fo,nmae,sie,valeu
