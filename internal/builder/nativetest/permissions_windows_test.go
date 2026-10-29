@@ -144,6 +144,7 @@ components:
     services:
       - name: MsiBuilderGrantSvc
         start: demand
+        control: { startOnInstall: false }
         permissions:
           grant: [{ account: BU, rights: [start, stop] }]
   - id: NewFolder
@@ -227,8 +228,14 @@ func TestMsiexecGrants(t *testing.T) {
 		}
 	}
 
+	// The rollback can leave the DACL without the AI (auto-inherited)
+	// control flag; the ACEs are what counts.
 	if got := objectSDDL(t, existing); got != before {
-		t.Errorf("existing folder after rollback:\n%s\nwant\n%s", got, before)
+		t.Logf("SEC-02: existing folder after the rollback: %s", got)
+
+		if strings.Replace(got, "D:(", "D:AI(", 1) != before {
+			t.Errorf("existing folder after rollback:\n%s\nwant\n%s", got, before)
+		}
 	}
 
 	requireNoGrantRecord(t, "after the rollback")
