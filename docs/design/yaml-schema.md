@@ -1650,42 +1650,42 @@ ui:
 The wizards are written from scratch for msi-builder, including the bitmaps,
 which the `artwork` package draws from a colour palette at build time.
 `enabled: true` shows the wizard: welcome, ready, progress and finish;
-`chooseFeatures` adds the feature tree (`CustomizeDlg`) with Browse and
-disk usage. Browse changes the directory of the selected feature
+`chooseFeatures` adds the feature tree (`CustomizeDlg`) with Browse and disk
+usage. Browse changes the directory of the selected feature
 (`features[].directory`); the generated `MainFeature` has the install dir.
 Every wizard includes maintenance (Repair and Remove; Change with the
-feature tree), cancel, user exit, fatal error, files in use, Restart
-Manager and the error dialog. Added dialogs are laid out automatically:
-one label and one edit field per property, Back, Next and Cancel. The fields of one dialog must fit in 160
-dialog units (four text fields); the error names the height they need. A `password`
-field is an edit field with the Password attribute (0x200000), and its
-property is added to `MsiHiddenProperties`. A `checkbox` field is a
-checkbox with the label as its text, in the space of a label and an edit
-field; its `CheckBox` row holds `value`. Two checkboxes on one property must
-set the same value. Microsoft's documentation reports that a checked box
-sets the property to `value`, that a box starts checked when its property has any
-value, and that the password characters are masked; none of this, what an
-unchecked box leaves in the property, or whether the password stays out of
-the log was tested on Windows. The validator warns when a checkbox
-property has a default in `properties`, since the box would start checked.
-An `&` in a checkbox label marks the access key, as in `&Delete`; write
-`&&` for a literal `&`. Text and password labels show `&` as it is.
-A `choice` field is a label above a `RadioButtonGroup` with one radio
-button per option, 16 dialog units each. It needs at least two options;
-values are unique, at most 64 characters and contain no `[ ] { }`, labels
-at most 64 characters (default: the value, shown literally; in a label `&` marks the access key). The
-property's default in `properties` must be one of the values; without one
-the first option becomes the default, since ICE34 requires a group's
-property to match a button. A choice on a searched property is an error
-for the same reason, and so is a choice on a property that another field
-binds too. In the full UI the group starts on the default and selecting
-another option sets the property on the server (UI-05, observed on Windows). `after` names the
-page the dialog follows: `WelcomeDlg`, `CustomizeDlg` or an added dialog.
-With `enabled: false` (the default) no UI tables are written and msiexec
-shows its basic progress window; silent installs never depend on the UI in
-any mode.
-Without `chooseFeatures` `ARPNOMODIFY` is set. A feature tree page without
-the wizard is an error.
+feature tree), cancel, user exit, fatal error, files in use, Restart Manager
+and the error dialog. Added dialogs are laid out automatically: one label
+and one edit field per property, Back, Next and Cancel. The fields of one
+dialog must fit in 160 dialog units (four text fields); the error names the
+height they need. A `password` field is an edit field with the Password
+attribute (0x200000), and its property is added to `MsiHiddenProperties`. A
+`checkbox` field is a checkbox with the label as its text, in the space of a
+label and an edit field; its `CheckBox` row holds `value`. Two checkboxes on
+one property must set the same value. Microsoft's documentation reports that
+a checked box sets the property to `value`, that a box starts checked when
+its property has any value, and that the password characters are masked;
+none of this, what an unchecked box leaves in the property, or whether the
+password stays out of the log was tested on Windows. The validator warns
+when a checkbox property has a default in `properties`, since the box would
+start checked. An `&` in a checkbox label marks the access key, as in
+`&Delete`; write `&&` for a literal `&`. Text and password labels show `&`
+as it is. A `choice` field is a label above a `RadioButtonGroup` with one
+radio button per option, 16 dialog units each. It needs at least two
+options; values are unique, at most 64 characters and contain no `[ ] { }`,
+labels at most 64 characters (default: the value, shown literally; in a
+label `&` marks the access key). The property's default in `properties` must
+be one of the values; without one the first option becomes the default,
+since ICE34 requires a group's property to match a button. A choice on a
+searched property is an error for the same reason, and so is a choice on a
+property that another field binds too. In the full UI the group starts on
+the default and selecting another option sets the property on the server
+(UI-05, observed on Windows). `after` names the page the dialog follows:
+`WelcomeDlg`, `CustomizeDlg` or an added dialog. With `enabled: false` (the
+default) no UI tables are written and msiexec shows its basic progress
+window; silent installs never depend on the UI in any mode. Without
+`chooseFeatures` `ARPNOMODIFY` is set. A feature tree page without the
+wizard is an error.
 
 #### License page
 
