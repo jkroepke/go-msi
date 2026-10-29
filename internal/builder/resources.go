@@ -2,6 +2,7 @@ package builder
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -118,12 +119,23 @@ func (b *build) writeRegistry(info *componentInfo) {
 	}
 
 	for _, e := range comp.EventLog {
-		key := `SYSTEM\CurrentControlSet\Services\EventLog\` + e.Log + `\` + e.Source
-		tbl.Add(generatedID("reg", "EventLog", comp.ID, e.Log, e.Source, "EventMessageFile"), registryRoots["HKLM"], key, "EventMessageFile",
+		key := eventLogKey(e)
+		tbl.Add(eventLogID(comp, e), registryRoots["HKLM"], key, "EventMessageFile",
 			"#%"+e.MessageFile, comp.ID)
 		tbl.Add(generatedID("reg", "EventLog", comp.ID, e.Log, e.Source, "TypesSupported"), registryRoots["HKLM"], key, "TypesSupported",
 			"#"+strconv.Itoa(*e.TypesSupported), comp.ID)
 	}
+}
+
+// eventLogKey is the HKLM key of an event log source.
+func eventLogKey(e *config.EventSource) string {
+	return `SYSTEM\CurrentControlSet\Services\EventLog\` + e.Log + `\` + e.Source
+}
+
+// eventLogID is the Registry key of a source's EventMessageFile row, which
+// is the key path of a component that has no files or registry entries.
+func eventLogID(comp *config.Component, e *config.EventSource) string {
+	return generatedID("reg", "EventLog", comp.ID, e.Log, e.Source, "EventMessageFile")
 }
 
 // writeEnvironment emits Environment rows. The removal flag is always
@@ -197,7 +209,7 @@ func (b *build) writeServices(info *componentInfo) { //nolint:cyclop // one pass
 	comp := info.cfg
 
 	for _, svc := range comp.Services {
-		installID := serviceID("svi", svc.Name)
+		installID := b.componentServiceID("svi", comp, svc.Name)
 
 		typ := serviceOwnProcess
 		if svc.Type == "shareProcess" {
@@ -243,11 +255,13 @@ func (b *build) writeServices(info *componentInfo) { //nolint:cyclop // one pass
 		b.serviceControl(info, svc)
 
 		if svc.DelayedAutoStart {
-			b.table("MsiServiceConfig").Add(serviceID("scd", svc.Name), svc.Name, configEventInstall|configEventReinstall, configDelayedStart, "1", comp.ID)
+			b.table("MsiServiceConfig").Add(b.componentServiceID("scd", comp, svc.Name), svc.Name,
+				configEventInstall|configEventReinstall, configDelayedStart, "1", comp.ID)
 		}
 
 		if svc.FailureActionsOnNonCrashFailures {
-			b.table("MsiServiceConfig").Add(serviceID("scf", svc.Name), svc.Name, configEventInstall|configEventReinstall, configFailureNonCrash, "1", comp.ID)
+			b.table("MsiServiceConfig").Add(b.componentServiceID("scf", comp, svc.Name), svc.Name,
+				configEventInstall|configEventReinstall, configFailureNonCrash, "1", comp.ID)
 		}
 
 		if svc.Recovery != nil {
@@ -271,7 +285,7 @@ func (b *build) serviceControl(info *componentInfo, svc *config.Service) {
 
 	if startEvent != 0 && ctl.StartCondition != "" {
 		carrier := b.startCarrier(info, svc)
-		b.table("ServiceControl").Add(serviceID("scs", svc.Name), svc.Name, startEvent, nil, waitColumn(waitForStart), carrier)
+		b.table("ServiceControl").Add(b.componentServiceID("scs", info.cfg, svc.Name), svc.Name, startEvent, nil, waitColumn(waitForStart), carrier)
 		startEvent = 0
 	}
 
@@ -284,11 +298,11 @@ func (b *build) serviceControl(info *componentInfo, svc *config.Service) {
 	}
 
 	if event != 0 {
-		b.table("ServiceControl").Add(serviceID("sc", svc.Name), svc.Name, event, nil, waitColumn(wait), info.cfg.ID)
+		b.table("ServiceControl").Add(b.componentServiceID("sc", info.cfg, svc.Name), svc.Name, event, nil, waitColumn(wait), info.cfg.ID)
 	}
 
 	if startEvent != 0 {
-		b.table("ServiceControl").Add(serviceID("scs", svc.Name), svc.Name, startEvent, nil, waitColumn(waitForStart), info.cfg.ID)
+		b.table("ServiceControl").Add(b.componentServiceID("scs", info.cfg, svc.Name), svc.Name, startEvent, nil, waitColumn(waitForStart), info.cfg.ID)
 	}
 }
 
@@ -399,6 +413,26 @@ func waitColumn(wait bool) int {
 	return 0
 }
 
+// componentServiceID is serviceID for a service of comp. Conditional
+// components may install the same service in different ways (a twin that
+// starts it and one that does not); the rows of such a name carry the
+// component in their keys, so they do not collide.
+func (b *build) componentServiceID(prefix string, comp *config.Component, name string) string {
+	owners := 0
+
+	for _, other := range b.cfg.Components {
+		if slices.ContainsFunc(other.Services, func(svc *config.Service) bool { return strings.EqualFold(svc.Name, name) }) {
+			owners++
+		}
+	}
+
+	if owners > 1 {
+		return generatedID(prefix, comp.ID, strings.ToLower(name))
+	}
+
+	return serviceID(prefix, name)
+}
+
 // serviceID builds a table key from a service name.
 func serviceID(prefix, name string) string {
 	if config.IsIdentifier(name) && len(prefix)+1+len(name) <= 72 {
@@ -441,7 +475,7 @@ func (b *build) recoveryAction(info *componentInfo, svc *config.Service) {
 
 	sysDir := b.systemDir()
 	cmd := fmt.Sprintf(`"[%s]sc.exe" failure "%s" reset= %d actions= %s`, sysDir, svc.Name, reset, strings.Join(actions, "/"))
-	name := serviceID("ServiceRecovery", svc.Name)
+	name := b.componentServiceID("ServiceRecovery", info.cfg, svc.Name)
 
 	b.addAction(&actionInfo{name: name, typ: caExec | caDeferred | caNoImpersonate | caContinue, source: sysDir, target: cmd})
 	b.schedule("InstallExecuteSequence", name, "$"+info.cfg.ID+"=3", "", actInstallServices, 0)

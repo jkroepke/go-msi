@@ -47,7 +47,7 @@ func (b *build) lockComponent(path string, comp *config.Component, info *compone
 
 	for _, svc := range comp.Services {
 		if svc.Permissions != nil {
-			b.lock(lockService, serviceID("svi", svc.Name), svc.Permissions)
+			b.lock(lockService, b.componentServiceID("svi", comp, svc.Name), svc.Permissions)
 		}
 	}
 }
