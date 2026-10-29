@@ -199,7 +199,7 @@ jobs:
       - name: go test (language transform results)
         if: runner.os == 'Windows'
         shell: bash
-        run: go test -v -count=1 -run 'TestLanguagesInstallLANG03' ./internal/builder/nativetest/
+        run: go test -v -count=1 -run 'TestLanguagesInstallLANG03|TestFullUILanguages' ./internal/builder/nativetest/
 
       - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         if: runner.os == 'Linux'
