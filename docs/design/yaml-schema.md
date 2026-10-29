@@ -225,7 +225,7 @@ them braced and upper case.
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `platform` | enum | required | `x86`, `x64`, `arm64` (aliases `intel`, `amd64`, `aarch64`), any case |
-| `scope` | enum | `perMachine` | `perMachine` (`ALLUSERS=1`) or `perUser` (no `ALLUSERS`) |
+| `scope` | enum | `perMachine` | `perMachine` (`ALLUSERS=1`), `perUser` (no `ALLUSERS`), or a dual scope that lets the user choose at install time: `perUserOrMachine` (`ALLUSERS=2`, `MSIINSTALLPERUSER=1`, per user unless the user chooses all users) or `perMachineOrUser` (`ALLUSERS=2`, per machine unless the user chooses per user); see "Install scope" below |
 | `installerVersion` | string | `"5.0"` | Page Count = major × 100 + minor. x86: 1.0 to 5.0, x64: 2.0 to 5.0, arm64: 5.0 |
 | `codepage` | int | `1252` | Database code page, section 2.3 |
 | `compression` | enum | `lzx` | `lzx` (LZX with a 2 MB window), `lzx:15` … `lzx:21` (a window of 2^N bytes), `mszip` or `none` (stored blocks) |
@@ -241,6 +241,42 @@ current engine, so it is rejected.
 
 `perUser` packages are checked for ICE105: no services, no HKLM registry
 values, no no-impersonate actions and no per-machine directories.
+
+#### Install scope
+
+`perUserOrMachine` and `perMachineOrUser` build one package that installs
+either for the current user or for all users (Microsoft's "dual-purpose
+package"; specification section 8.2, INST-02). Both need `installerVersion`
+5.0. The command line chooses with `MSIINSTALLPERUSER=1` (per user) or
+`MSIINSTALLPERUSER=""` (per machine); a wizard shows a scope page after
+the welcome and license pages, see `ui`.
+
+```yaml
+package:
+  platform: x64
+  scope: perUserOrMachine   # per user by default, all users on request
+```
+
+The install folder stays under `ProgramFiles64Folder` (or
+`ProgramFilesFolder`), which Windows Installer moves to
+`%LOCALAPPDATA%\Programs` in a per-user install; the Start menu, the desktop,
+HKMU and HKCR values follow the context the same way. A standard user can
+install per user without elevation; a silent per-machine install by a
+standard user fails with 1925. The ICE105 checks of `perUser` apply, except
+that Program Files, Common Files and HKCR are allowed because they follow
+the context. Directories below the Start menu, the desktop, the startup
+and template folders need private (mixed-case) IDs: the scope page can only
+move public folders under Program Files and Common Files, so the install
+folder stays there too. `purge` is rejected under Program Files, Common
+Files and those shell folders, because ICE105 keeps the action unelevated.
+Custom action IDs starting with `SetInstallScope`, `SetScope` or
+`RestoreInstallDir` are taken by the scope page. In the other scopes a
+`MSIINSTALLPERUSER` property gets a warning: it has no effect unless
+`ALLUSERS` is 2, and a per-user install was seen deleting it (reported). Like every per-user
+package, a dual one needs its deferred actions that can fail before
+RegisterProduct (section 8.2). A major upgrade only finds a product installed in the same context, so a product
+installed per user and then per machine is installed twice; offer one
+scope as the default and keep upgrades in it.
 
 ### 4.3 `upgrade`
 
@@ -326,6 +362,14 @@ without a `Signature` table failed with 2228 and 1603. The builder also
 schedules both actions in the UI sequence so that the wizard shows the
 remembered folder; that, `perUser`, x86, arm64 and a 32-bit folder in a
 64-bit package were not tested.
+
+A dual scope writes the value with root HKMU, which follows the context, and
+searches both roots, since `RegLocator` has no HKMU: `<ID>_REMEMBERED_USER`
+from HKCU with `RestoreInstallDirUser` under `NOT ALLUSERS`, and
+`<ID>_REMEMBERED_MACHINE` from HKLM with `RestoreInstallDirMachine` under
+`ALLUSERS=1`, the values the engine leaves in `ALLUSERS` per user and per
+machine (INST-02). The scope page offers each context's remembered folder.
+Restoring it in a dual package was not tested.
 
 The install dir must be a configurable directory with an upper-case ID, and
 the IDs `RememberInstallDir` and `RestoreInstallDir` are taken. The component
@@ -1524,6 +1568,26 @@ the typed path as the folder's target, so the engine checks it before the
 next page. Like the license page, an installed product's Change and Back
 step over it, since an installed product keeps its folder. `ui.dialogs`
 can follow it with `after: InstallDirDlg`.
+
+#### Scope page
+
+A package with a dual `package.scope` gets `InstallScopeDlg` after the
+welcome and license pages, before the install folder page: "Install just
+for you" and "Install for all users of this computer", preselected with the
+context the package opened in (the scope's default, or the command line's
+`MSIINSTALLPERUSER`). Next sets `ALLUSERS=2` and `MSIINSTALLPERUSER`, and
+the ready page then shows Install with the UAC shield for all users. The
+client keeps the folders it resolved for the context it opened in, so Next
+also sets every public folder under Program Files or Common Files (such as
+the install folder) to its path in the chosen context, unless it holds
+another path from the command line or `installDir.remember`. Installed
+products step over the page, since they keep their context. Its texts are
+the `ui.strings` keys `InstallScopeTitle`, `InstallScopeText`,
+`InstallScopeUser`, `InstallScopeMachine` and `InstallScopeHint`, translated
+like the other pages. The page's property is `BuilderInstallScope`; the
+builder writes it and `MSIINSTALLPERUSER`, which it makes secure so that a
+standard user's choice reaches the elevated server, and `properties` cannot
+define either.
 
 #### Launch checkbox
 

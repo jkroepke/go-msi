@@ -29,6 +29,12 @@ InstallDirText: "Klik op Volgende om in de standaardmap te installeren of op Wij
 InstallDirLabel: "[ProductName] installeren in:"
 InstallDirChange: "&Wijzigen..."
 
+InstallScopeTitle: "Installatiebereik"
+InstallScopeText: "Kies wie [ProductName] op deze computer kan gebruiken."
+InstallScopeUser: "Alleen voor &mij installeren ([LogonUser])"
+InstallScopeMachine: "Voor &alle gebruikers van deze computer installeren"
+InstallScopeHint: "Installeren voor alle gebruikers vereist beheerdersrechten. Installeren alleen voor u vereist die niet, en alleen u kunt [ProductName] dan gebruiken."
+
 CustomizeTitle: "Aangepaste installatie"
 CustomizeText: "Selecteer hoe de onderdelen moeten worden geïnstalleerd."
 CustomizeHint: "Klik op de pictogrammen in de structuur hieronder om te wijzigen hoe de onderdelen worden geïnstalleerd."

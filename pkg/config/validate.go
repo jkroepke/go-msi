@@ -59,7 +59,7 @@ func plainFileName(name string) bool {
 func Validate(cfg *Config) Diagnostics {
 	ApplyDefaults(cfg)
 
-	checker := &validator{}
+	checker := &validator{scope: cfg.Package.Scope}
 	known := newRefs(cfg)
 
 	checker.product(cfg)
@@ -285,6 +285,9 @@ func (v *validator) pkg(cfg *Config) { //nolint:cyclop // a flat list of indepen
 	case pkg.Platform != "" && pages < MinPageCount(pkg.Platform):
 		v.errorf("package.installerVersion", "%s needs at least %d.%d", pkg.Platform,
 			MinPageCount(pkg.Platform)/100, MinPageCount(pkg.Platform)%100)
+	case pkg.Scope.Dual() && pages < MaxPageCount:
+		// Older engines ignore MSIINSTALLPERUSER (spec section 8.2).
+		v.errorf("package.installerVersion", "scope %s needs 5.0, the first version with MSIINSTALLPERUSER", pkg.Scope)
 	}
 
 	if pkg.Codepage != 65001 && pkg.Codepage != 0 && !ansiCodepages[pkg.Codepage] {
@@ -415,6 +418,8 @@ func (v *validator) directories(cfg *Config, known *refs) { //nolint:cyclop,goco
 				v.errorf(dirPath+".id", "a configurable directory needs an upper-case id")
 			}
 
+			v.contextDirectory(cfg, dirPath, dir, top, known)
+
 			walk(dir.Children, dirPath+".children", false)
 		}
 	}
@@ -442,6 +447,50 @@ func (v *validator) directories(cfg *Config, known *refs) { //nolint:cyclop,goco
 	if cfg.Product.ARP.InstallLocation != "" && known.dirs[cfg.Product.ARP.InstallLocation] == nil {
 		v.errorf("product.arp.installLocation", "directory %q is not defined", cfg.Product.ARP.InstallLocation)
 	}
+}
+
+// builderProperty reports a property the builder or the installer sets: a
+// dual package also writes MSIINSTALLPERUSER and its scope page's property.
+func (v *validator) builderProperty(name string) bool {
+	return builderProperties[name] || v.scope.Dual() && (name == "MSIINSTALLPERUSER" || name == "BuilderInstallScope")
+}
+
+// installPerUser warns about MSIINSTALLPERUSER outside a dual package: it
+// has no effect unless ALLUSERS is 2 (spec section 8.2), and a per-user
+// install was seen deleting it, which skips a component conditioned on it
+// (reported).
+func (v *validator) installPerUser(propPath, name string) {
+	if name == "MSIINSTALLPERUSER" && !v.scope.Dual() {
+		v.warnf(propPath, "MSIINSTALLPERUSER has no effect unless ALLUSERS is 2, and a condition on it may not hold; "+
+			"use scope perUserOrMachine for a package that installs per user or per machine")
+	}
+}
+
+// contextDirectory rejects a public directory of a dual package below a
+// shell folder that follows the context: the scope page moves only Program
+// Files and Common Files folders, and the client resolved this one for the
+// context the package opened in.
+func (v *validator) contextDirectory(cfg *Config, dirPath string, dir *Directory, top bool, known *refs) {
+	folder := known.topFolder(dir.ID)
+	if top || !v.scope.Dual() || !IsPublicProperty(dir.ID) || !contextShellFolders[folder] {
+		return
+	}
+
+	if dir.ID == cfg.InstallDir.ID {
+		// installDir generated the directory, or directories defines it.
+		at := dirPath + ".id"
+		if dir.origin != "" {
+			at = "installDir.parent"
+		}
+
+		v.errorf(at, "the install folder of a %s package must be under Program Files, which the scope page moves "+
+			"to the chosen context, not under %s", v.scope, folder)
+
+		return
+	}
+
+	v.errorf(dirPath+".id", "a %s package cannot have a public directory under %s, which the scope page cannot "+
+		"move to the chosen context; use a private (mixed-case) id", v.scope, folder)
 }
 
 // rememberComponent checks installDir.remember: the install dir must be
@@ -656,7 +705,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 	regIDs := make(map[string]bool)
 	removeIDs := make(map[string]bool)
 	removeFileIDs := make(map[string]bool)
-	perUser := cfg.Package.Scope == ScopePerUser
+	perUser := cfg.Package.Scope.MayBePerUser()
 
 	for i, comp := range cfg.Components {
 		p := comp.Path(i) //nolint:varnamelen // the YAML path, named p throughout this file
@@ -744,7 +793,7 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 		return
 	}
 
-	perUser := cfg.Package.Scope == ScopePerUser
+	perUser := cfg.Package.Scope.MayBePerUser()
 	top := known.topFolder(comp.Directory)
 
 	// The component of a folder source reports these once, not once per
@@ -758,8 +807,8 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 			"use its 64-bit counterpart, or bitness: 32 for 32-bit files", top)
 	}
 
-	if perUser && perMachineFolders[top] {
-		v.errorf(compPath+".directory", "a per-user package cannot install under %s (ICE105)", top)
+	if v.forbiddenFolder(top) {
+		v.errorf(compPath+".directory", "%s cannot install under %s (ICE105)", v.perUserPackage(), top)
 	}
 
 	switch {
@@ -1172,8 +1221,10 @@ func (v *validator) componentRegistry(p string, c *Component, ids map[string]boo
 func (v *validator) registryLocation(entryPath, root, key string, perUser bool) {
 	v.oneOf(entryPath+".root", root, "HKLM", "HKCU", "HKCR", "HKU", "HKMU")
 
-	if perUser && (root == "HKLM" || root == "HKCR") {
-		v.errorf(entryPath+".root", "a per-user package cannot change %s (ICE105)", root)
+	// A dual package's HKCR rows follow the context like HKMU ones
+	// (Registry.Root 0, spec section 8.2); a per-user package has none.
+	if perUser && (root == "HKLM" || root == "HKCR" && !v.scope.Dual()) {
+		v.errorf(entryPath+".root", "%s cannot change %s (ICE105)", v.perUserPackage(), root)
 	}
 
 	v.required(entryPath+".key", key)
@@ -1301,7 +1352,7 @@ func (v *validator) registryScalar(fieldPath, typ, val string) { //nolint:cyclop
 
 func (v *validator) service(svcPath string, svc *Service, keyFile *File, perUser bool) {
 	if perUser {
-		v.errorf(svcPath, "a per-user package cannot install services (ICE105)")
+		v.errorf(svcPath, "%s cannot install services (ICE105)", v.perUserPackage())
 	}
 
 	if keyFile == nil {
@@ -1411,7 +1462,7 @@ func (v *validator) environment(envPath string, env *Environment, perUser bool) 
 	v.oneOf(envPath+".scope", env.Scope, "machine", "user")
 
 	if env.Scope == "machine" && perUser {
-		v.errorf(envPath+".scope", "a per-user package cannot change machine variables")
+		v.errorf(envPath+".scope", "%s cannot change machine variables", v.perUserPackage())
 	}
 
 	if env.Action != "remove" && env.Value == "" {
@@ -1436,9 +1487,11 @@ func (v *validator) properties(cfg *Config) {
 			v.errorf(propPath, "%q is not an identifier", name)
 		}
 
-		if builderProperties[name] {
+		if v.builderProperty(name) {
 			v.errorf(propPath, "%s is set by the builder or the installer; it cannot be defined here", name)
 		}
+
+		v.installPerUser(propPath, name)
 
 		public := IsPublicProperty(name)
 		if prop.Secure != nil && *prop.Secure && !public {
@@ -1581,6 +1634,10 @@ func (v *validator) actionID(actionPath, actionID string, seen map[string]bool) 
 		v.errorf(actionPath+".id", "custom action %s is defined twice", actionID)
 	}
 
+	if v.scope.Dual() && slices.ContainsFunc(dualActionPrefixes, func(prefix string) bool { return strings.HasPrefix(actionID, prefix) }) {
+		v.errorf(actionPath+".id", "%s starts like the actions the scope page of a %s package adds; rename this one", actionID, v.scope)
+	}
+
 	seen[actionID] = true
 }
 
@@ -1673,8 +1730,8 @@ func (v *validator) actionRun(cfg *Config, actionPath string, action *CustomActi
 		v.errorf(actionPath+".impersonate", "impersonate: false needs a deferred, rollback or commit action")
 	}
 
-	if !*action.Impersonate && cfg.Package.Scope == ScopePerUser {
-		v.errorf(actionPath+".impersonate", "a per-user package cannot run actions without impersonation (ICE105)")
+	if !*action.Impersonate && cfg.Package.Scope.MayBePerUser() {
+		v.errorf(actionPath+".impersonate", "%s cannot run actions without impersonation (ICE105)", v.perUserPackage())
 	}
 
 	if isExec && action.Return == "" {
@@ -1848,8 +1905,8 @@ func (v *validator) firewall(cfg *Config, known *refs) { //nolint:cyclop // a fl
 			v.oneOf(fmt.Sprintf("%s.profiles[%d]", p, j), prof, "all", "domain", "private", "public")
 		}
 
-		if cfg.Package.Scope == ScopePerUser {
-			v.errorf(p, "firewall rules need a per-machine package")
+		if cfg.Package.Scope.MayBePerUser() {
+			v.errorf(p, "firewall rules need a perMachine package")
 		}
 	}
 }

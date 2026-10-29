@@ -29,6 +29,12 @@ InstallDirText: "既定のフォルダーにインストールするには 「�
 InstallDirLabel: "[ProductName] のインストール先:"
 InstallDirChange: "変更(&C)..."
 
+InstallScopeTitle: "インストールの範囲"
+InstallScopeText: "このコンピューターで [ProductName] を使用できるユーザーを選択してください。"
+InstallScopeUser: "自分のみにインストール ([LogonUser])(&M)"
+InstallScopeMachine: "このコンピューターのすべてのユーザーにインストール(&A)"
+InstallScopeHint: "すべてのユーザーにインストールするには管理者権限が必要です。自分のみにインストールする場合は不要ですが、[ProductName] を使用できるのは自分だけになります。"
+
 CustomizeTitle: "カスタム セットアップ"
 CustomizeText: "機能のインストール方法を選択してください。"
 CustomizeHint: "下のツリーのアイコンをクリックすると、機能のインストール方法を変更できます。"

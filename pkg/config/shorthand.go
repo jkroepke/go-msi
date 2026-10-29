@@ -433,18 +433,22 @@ const rememberOrigin = "installDir.remember"
 const RememberValueName = "InstallDir"
 
 // RememberKey returns the registry key below the root (HKLM per machine,
-// HKCU per user) that installDir.remember writes and searches.
+// HKCU per user, HKMU for a dual scope) that installDir.remember writes and
+// searches.
 func RememberKey(cfg *Config) string {
 	return `Software\` + cfg.Product.Manufacturer + `\` + cfg.Product.Name
 }
 
 // RememberRoot returns the registry root of installDir.remember.
 func RememberRoot(cfg *Config) string {
-	if cfg.Package.Scope == ScopePerUser {
+	switch {
+	case cfg.Package.Scope == ScopePerUser:
 		return "HKCU"
+	case cfg.Package.Scope.Dual():
+		return "HKMU"
+	default:
+		return "HKLM"
 	}
-
-	return "HKLM"
 }
 
 // rememberInstallDir adds the component that writes the install dir to the

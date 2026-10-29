@@ -29,6 +29,12 @@ InstallDirText: "Vaikekausta installimiseks klõpsake nuppu Edasi või muu kaust
 InstallDirLabel: "Installi [ProductName] kausta:"
 InstallDirChange: "&Muuda..."
 
+InstallScopeTitle: "Installimise ulatus"
+InstallScopeText: "Valige, kes saavad selles arvutis rakendust [ProductName] kasutada."
+InstallScopeUser: "Installi &ainult minule ([LogonUser])"
+InstallScopeMachine: "Installi selle arvuti kõigile &kasutajatele"
+InstallScopeHint: "Kõigile kasutajatele installimiseks on vaja administraatoriõigusi. Ainult teile installimiseks pole neid vaja ja rakendust [ProductName] saate kasutada ainult teie."
+
 CustomizeTitle: "Kohandatud installimine"
 CustomizeText: "Valige, kuidas funktsioonid installitakse."
 CustomizeHint: "Funktsioonide installiviisi muutmiseks klõpsake allolevas puus ikoone."

@@ -46,6 +46,12 @@ var uiStrings = map[string]string{ //nolint:gochecknoglobals // lookup table
 	"InstallDirLabel":  "Install [ProductName] to:",
 	"InstallDirChange": "&Change...",
 
+	"InstallScopeTitle":   "Installation Scope",
+	"InstallScopeText":    "Choose who can use [ProductName] on this computer.",
+	"InstallScopeUser":    "Install just for &you ([LogonUser])",
+	"InstallScopeMachine": "Install for &all users of this computer",
+	"InstallScopeHint":    "Installing for all users needs administrator rights. Installing just for you does not, and only you can use [ProductName].",
+
 	"CustomizeTitle":     "Custom Setup",
 	"CustomizeText":      "Select the way you want features to be installed.",
 	"CustomizeHint":      "Click the icons in the tree below to change the way features will be installed.",
@@ -193,7 +199,9 @@ var uiTextKeys = []string{ //nolint:gochecknoglobals // lookup table
 
 // uiStringWidths are the column widths of the texts that are not stored in
 // an unbounded Control.Text: Dialog.Title, RadioButton.Text and UIText.Text.
-var uiStringWidths = map[string]int{"DialogTitle": 128, "RMUseRM": 64, "RMDontUseRM": 64} //nolint:gochecknoglobals // lookup table
+var uiStringWidths = map[string]int{ //nolint:gochecknoglobals // lookup table
+	"DialogTitle": 128, "RMUseRM": 64, "RMDontUseRM": 64, "InstallScopeUser": 64, "InstallScopeMachine": 64,
+}
 
 // uiTextWidth is the width of UIText.Text.
 const uiTextWidth = 255

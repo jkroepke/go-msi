@@ -29,6 +29,12 @@ InstallDirText: "Asenna oletuskansioon valitsemalla Seuraava tai valitse toinen 
 InstallDirLabel: "Sovelluksen [ProductName] asennuskansio:"
 InstallDirChange: "&Muuta..."
 
+InstallScopeTitle: "Asennuksen laajuus"
+InstallScopeText: "Valitse, ketkä voivat käyttää sovellusta [ProductName] tässä tietokoneessa."
+InstallScopeUser: "Asenna &vain minulle ([LogonUser])"
+InstallScopeMachine: "Asenna tietokoneen &kaikille käyttäjille"
+InstallScopeHint: "Asentaminen kaikille käyttäjille edellyttää järjestelmänvalvojan oikeuksia. Asentaminen vain sinulle ei edellytä niitä, ja vain sinä voit käyttää sovellusta [ProductName]."
+
 CustomizeTitle: "Mukautettu asennus"
 CustomizeText: "Valitse, miten ominaisuudet asennetaan."
 CustomizeHint: "Muuta ominaisuuksien asennustapaa napsauttamalla alla olevan puun kuvakkeita."

@@ -29,6 +29,12 @@ InstallDirText: "डिफ़ॉल्ट फ़ोल्डर में इं
 InstallDirLabel: "[ProductName] को यहाँ इंस्टॉल करें:"
 InstallDirChange: "बदलें(&C)..."
 
+InstallScopeTitle: "इंस्टॉलेशन का दायरा"
+InstallScopeText: "चुनें कि इस कंप्यूटर पर [ProductName] का उपयोग कौन कर सकता है।"
+InstallScopeUser: "केवल मेरे लिए इंस्टॉल करें ([LogonUser])(&M)"
+InstallScopeMachine: "इस कंप्यूटर के सभी उपयोगकर्ताओं के लिए इंस्टॉल करें(&A)"
+InstallScopeHint: "सभी उपयोगकर्ताओं के लिए इंस्टॉल करने हेतु व्यवस्थापक अधिकार आवश्यक हैं। केवल आपके लिए इंस्टॉल करने में इनकी आवश्यकता नहीं होती, और केवल आप ही [ProductName] का उपयोग कर सकेंगे।"
+
 CustomizeTitle: "कस्टम सेटअप"
 CustomizeText: "चुनें कि सुविधाएँ किस तरह इंस्टॉल की जाएँ।"
 CustomizeHint: "सुविधाओं को इंस्टॉल करने का तरीका बदलने के लिए नीचे दिए गए ट्री में आइकन पर क्लिक करें।"

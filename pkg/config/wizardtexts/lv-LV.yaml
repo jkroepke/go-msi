@@ -29,6 +29,12 @@ InstallDirText: "Noklikšķiniet uz Tālāk, lai instalētu noklusējuma mapē, 
 InstallDirLabel: "Instalēt [ProductName] mapē:"
 InstallDirChange: "&Mainīt..."
 
+InstallScopeTitle: "Instalēšanas tvērums"
+InstallScopeText: "Izvēlieties, kas šajā datorā varēs izmantot [ProductName]."
+InstallScopeUser: "Instalēt tikai &man ([LogonUser])"
+InstallScopeMachine: "Instalēt &visiem šī datora lietotājiem"
+InstallScopeHint: "Instalēšanai visiem lietotājiem ir vajadzīgas administratora tiesības. Instalēšanai tikai jums tās nav vajadzīgas, un [ProductName] varēsiet izmantot tikai jūs."
+
 CustomizeTitle: "Pielāgota instalēšana"
 CustomizeText: "Izvēlieties, kā instalēt līdzekļus."
 CustomizeHint: "Noklikšķiniet uz ikonām zemāk esošajā kokā, lai mainītu līdzekļu instalēšanas veidu."
