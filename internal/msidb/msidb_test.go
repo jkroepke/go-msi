@@ -485,7 +485,7 @@ func TestDecodeLoadsSharedBinaryStreamOnce(t *testing.T) {
 		t.Errorf("%d rows hold a copy of the stream, want 1", loaded)
 	}
 
-	if !bytes.Equal(rows[0][1].([]byte), payload) {
+	if first, ok := rows[0][1].([]byte); !ok || !bytes.Equal(first, payload) {
 		t.Error("first row lost its stream")
 	}
 

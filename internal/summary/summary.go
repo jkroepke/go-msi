@@ -406,7 +406,7 @@ func valueEnd(section []byte, off int) (int, error) {
 		}
 
 		n := binary.LittleEndian.Uint32(section[off+4:])
-		if uint64(n) > uint64(len(section)-off-8) {
+		if int64(n) > int64(len(section)-off-8) {
 			return 0, errors.New("truncated")
 		}
 

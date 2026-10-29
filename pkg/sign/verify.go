@@ -170,7 +170,7 @@ func (sdata *parsedSignedData) verify() (*x509.Certificate, crypto.Hash, error) 
 // algorithm of that key with the same digest, with absent or NULL
 // parameters. checkSignature picks the scheme from the key alone, so an
 // unknown identifier would otherwise pass.
-func checkSignatureAlgorithm(id pkix.AlgorithmIdentifier, key crypto.PublicKey, algo crypto.Hash) error {
+func checkSignatureAlgorithm(ident pkix.AlgorithmIdentifier, key crypto.PublicKey, algo crypto.Hash) error {
 	var allowed []asn1.ObjectIdentifier
 
 	switch key.(type) {
@@ -182,12 +182,12 @@ func checkSignatureAlgorithm(id pkix.AlgorithmIdentifier, key crypto.PublicKey, 
 		return fmt.Errorf("unsupported key type %T", key)
 	}
 
-	if !slices.ContainsFunc(allowed, id.Algorithm.Equal) {
-		return fmt.Errorf("signature algorithm %v does not match the %T signer key and the %v digest", id.Algorithm, key, algo)
+	if !slices.ContainsFunc(allowed, ident.Algorithm.Equal) {
+		return fmt.Errorf("signature algorithm %v does not match the %T signer key and the %v digest", ident.Algorithm, key, algo)
 	}
 
-	if params := id.Parameters.FullBytes; len(params) != 0 && !bytes.Equal(params, []byte{asn1.TagNull, 0}) {
-		return fmt.Errorf("signature algorithm %v has parameters", id.Algorithm)
+	if params := ident.Parameters.FullBytes; len(params) != 0 && !bytes.Equal(params, []byte{asn1.TagNull, 0}) {
+		return fmt.Errorf("signature algorithm %v has parameters", ident.Algorithm)
 	}
 
 	return nil

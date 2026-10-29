@@ -129,43 +129,45 @@ func TestUnmarshalRejectsAliases(t *testing.T) {
 	order := binary.LittleEndian
 
 	// build writes a section whose entries all point at one LPSTR value.
-	build := func(pids []int) []byte {
-		text := bytes.Repeat([]byte{'a'}, 64<<10)
-		listEnd := 8 + 8*(len(pids)+1)
-		codePageOff := listEnd
-		valueOff := codePageOff + 8
+	build := func(pids []uint32) []byte {
+		const text = 64 << 10
 
-		section := make([]byte, valueOff+8+len(text)+1)
-		order.PutUint32(section[0:], uint32(len(section)))
-		order.PutUint32(section[4:], uint32(len(pids)+1))
+		count := uint32(len(pids)) + 1 //nolint:gosec // a few entries
+		codePageOff := 8 + 8*count
+		valueOff := codePageOff + 8
+		size := valueOff + 8 + text + 1
+
+		out := make([]byte, 0x30+size)
+		order.PutUint16(out[0x00:], 0xFFFE)
+		order.PutUint32(out[0x18:], 1)
+		copy(out[0x1C:], fmtid[:])
+		order.PutUint32(out[0x2C:], 0x30)
+
+		section := out[0x30:]
+		order.PutUint32(section[0:], size)
+		order.PutUint32(section[4:], count)
 		order.PutUint32(section[8:], PIDCodepage)
-		order.PutUint32(section[12:], uint32(codePageOff))
+		order.PutUint32(section[12:], codePageOff)
 
 		for i, pid := range pids {
-			order.PutUint32(section[16+8*i:], uint32(pid))
-			order.PutUint32(section[20+8*i:], uint32(valueOff))
+			order.PutUint32(section[16+8*i:], pid)
+			order.PutUint32(section[20+8*i:], valueOff)
 		}
 
 		order.PutUint16(section[codePageOff:], vtI2)
 		order.PutUint16(section[codePageOff+4:], 1252)
 		order.PutUint16(section[valueOff:], vtLPSTR)
-		order.PutUint32(section[valueOff+4:], uint32(len(text)+1))
-		copy(section[valueOff+8:], text)
+		order.PutUint32(section[valueOff+4:], text+1)
+		copy(section[valueOff+8:], bytes.Repeat([]byte{'a'}, text))
 
-		head := make([]byte, 0x30)
-		order.PutUint16(head[0x00:], 0xFFFE)
-		order.PutUint32(head[0x18:], 1)
-		copy(head[0x1C:], fmtid[:])
-		order.PutUint32(head[0x2C:], 0x30)
-
-		return append(head, section...)
+		return out
 	}
 
-	if props, err := Unmarshal(build([]int{PIDTitle})); err != nil || Get(props, PIDTitle) == nil {
+	if props, err := Unmarshal(build([]uint32{PIDTitle})); err != nil || Get(props, PIDTitle) == nil {
 		t.Fatalf("single value: %v, %v", err, len(props))
 	}
 
-	repeated := make([]int, 200)
+	repeated := make([]uint32, 200)
 	for i := range repeated {
 		repeated[i] = PIDTitle
 	}
@@ -174,7 +176,7 @@ func TestUnmarshalRejectsAliases(t *testing.T) {
 		t.Errorf("repeated PID: %v", err)
 	}
 
-	if _, err := Unmarshal(build([]int{PIDTitle, PIDSubject, PIDAuthor})); err == nil || !strings.Contains(err.Error(), "overlaps") {
+	if _, err := Unmarshal(build([]uint32{PIDTitle, PIDSubject, PIDAuthor})); err == nil || !strings.Contains(err.Error(), "overlaps") {
 		t.Errorf("shared value: %v", err)
 	}
 }

@@ -449,7 +449,7 @@ func replaceSignerAlgorithm(t *testing.T, der, algo []byte) []byte {
 		t.Fatal(err)
 	}
 
-	var sdata struct { //nolint:govet // field order is the ASN.1 order
+	var sdata struct {
 		Version          int
 		DigestAlgorithms asn1.RawValue
 		ContentInfo      asn1.RawValue
@@ -692,6 +692,7 @@ func TestTimestampBodyTimeout(t *testing.T) {
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
+
 		w.Header().Set("Content-Type", "application/timestamp-reply")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte{0x30})

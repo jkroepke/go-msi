@@ -516,7 +516,7 @@ components:
 func TestDefaultFileName(t *testing.T) {
 	t.Parallel()
 
-	for in, want := range map[string]string{
+	for name, want := range map[string]string{
 		"Hello-1.0.0":          "Hello-1.0.0",
 		"Client/Server-1.0.0":  "Client_Server-1.0.0",
 		`a<b>c:d"e\f|g?h*-1.0`: "a_b_c_d_e_f_g_h_-1.0",
@@ -524,8 +524,8 @@ func TestDefaultFileName(t *testing.T) {
 		". .hidden-1.0":        "hidden-1.0",
 		"tab\there-1.0":        "tab_here-1.0",
 	} {
-		if got := defaultFileName(in); got != want {
-			t.Errorf("defaultFileName(%q) = %q, want %q", in, got, want)
+		if got := defaultFileName(name); got != want {
+			t.Errorf("defaultFileName(%q) = %q, want %q", name, got, want)
 		}
 	}
 }

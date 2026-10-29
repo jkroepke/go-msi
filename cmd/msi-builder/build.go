@@ -136,7 +136,8 @@ Diagnostics go to stderr; on success one summary line goes to stdout.`,
 	}
 
 	flags.load.register(cmd)
-	cmd.Flags().StringVarP(&flags.out, "output", "o", "", "output file (default: <product name>-<version>.msi next to the YAML file, with characters a file name cannot hold replaced by _)")
+	cmd.Flags().StringVarP(&flags.out, "output", "o", "",
+		"output file (default: <product name>-<version>.msi next to the YAML file, characters a file name cannot hold replaced by _)")
 	cmd.Flags().IntVar(&flags.cfbVersion, "cfb", 4, "compound file version, 3 (512-byte sectors) or 4 (4096-byte sectors)")
 	cmd.Flags().BoolVar(&flags.skipVerify, "skip-verify", false, "do not read the finished package back")
 	cmd.Flags().BoolVarP(&flags.quiet, "quiet", "q", false, "print nothing on success")
