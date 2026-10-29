@@ -1933,10 +1933,10 @@ page texts show `&` as it is. Quote a value that starts with `&`, `<`, `[` or
 An unknown key, an empty text and `strings` without a wizard are errors; a
 text longer than its column (`DialogTitle` 128, `RMUseRM` and `RMDontUseRM`
 64, `UIText` rows 255 characters) is a warning, since ICE03 reports it.
-`ui.dialogs` and `ui.launch.text` already take their texts from the
-configuration. A `languages` entry cannot replace those texts, so they are
-the same in every language; the buttons of a `ui.dialogs` page still follow
-the language.
+`ui.dialogs` and `ui.launch.text` take their texts from the
+configuration; a `languages` entry translates them with `dialogs` and
+`launch` (below), and the buttons of a `ui.dialogs` page follow the
+language on their own.
 
 Messages that the engine itself shows (error and progress action texts)
 come from the engine in the language of `ProductLanguage`, since
@@ -1964,13 +1964,61 @@ ui:
         WelcomeTitle: '[ProductName] へようこそ'
 ```
 
+The texts the configuration itself brings, the pages of `ui.dialogs` and
+the label of `ui.launch`, are translated in the same entry:
+
+```yaml
+ui:
+  enabled: true
+  launch: {file: app.exe, text: '&Open [ProductName]'}
+  dialogs:
+    - id: ServerDlg
+      title: Server connection
+      description: Where the program reads its data.
+      after: WelcomeDlg
+      fields:
+        - {property: SERVER_URL, label: 'Server address:'}
+        - property: LOG_LEVEL
+          label: 'Log level:'
+          type: choice
+          options: [{value: warn, label: '&Warnings'}, {value: debug, label: '&Debug'}]
+  languages:
+    de:
+      launch: {text: '[ProductName] &öffnen'}
+      dialogs:
+        ServerDlg:              # a ui.dialogs id
+          title: Serververbindung
+          description: Woher die Anwendung ihre Daten liest.
+          fields:
+            SERVER_URL: {label: 'Serveradresse:'}   # the property a field binds
+            LOG_LEVEL:
+              label: 'Protokollstufe:'
+              options: {warn: '&Warnungen', debug: '&Ausführlich'}   # by option value
+```
+
+`dialogs` is keyed by the page's `id`, its `fields` by the property a field
+binds and a choice field's `options` by option value, so the entry does not
+repeat the page layout or depend on the order of the fields. Every text is
+optional: one left out keeps the base language's. A key that names no page,
+no field of the page or no option of the field is an error, and so is a
+field key whose property two fields of the page bind, `options` on a field
+that is not a choice, an option label longer than 64 characters,
+`launch` without `ui.launch`, and a text that is only blanks. Values,
+properties, conditions and the page order stay those of `ui.dialogs`; only
+texts change. The texts are formatted and `&` marks the access key on the
+same controls as in `ui.dialogs` (checkboxes and radio buttons). LANG-04
+runs a German transform's translated page through the full UI and checks
+that the option chosen by its translated label sets its value; it passed
+on the CI runner.
+
 A `languages` key is a decimal LCID or a language tag: a full tag such as
 `de-AT` (3079) or `pt-PT` (2070) names that locale, and a short tag such as
 `de` (1031), `es` (3082) or `hi` (1081) the language's main locale. `pt`,
 `sr` and `zh` have no short tag, because their spellings or scripts differ
 (`pt-BR`/`pt-PT`, `zh-CN`/`zh-TW`); `product.language` stays a decimal
-LCID. An entry may set `strings`, `finishText` and `license`, which replace
-`ui.strings`, `ui.finishText` and `ui.license` in that language; a field it
+LCID. An entry may set `strings`, `finishText`, `license`, `launch` and
+`dialogs`, which replace `ui.strings`, `ui.finishText`, `ui.license`,
+`ui.launch.text` and the texts of `ui.dialogs` in that language; a field it
 leaves out keeps the base language's value, and a text key it leaves out
 takes the built-in translation, and without one the base language's text.
 Two keys for one LCID, or an entry for `product.language`, are errors. A

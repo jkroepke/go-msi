@@ -112,3 +112,33 @@ func TestRemoveFlowErrors(t *testing.T) {
 		})
 	}
 }
+
+// TestRemoveFlowLanguage translates a remove dialog like an install one: the
+// transform holds its texts and keeps it on the remove path.
+func TestRemoveFlowLanguage(t *testing.T) {
+	t.Parallel()
+
+	cfg := removeConfig(t, checkBoxDialog("RemoveOptionsDlg", "", config.FlowRemove))
+	cfg.UI.Languages = map[string]*config.Language{
+		"de": {Dialogs: map[string]*config.LanguageDialog{"RemoveOptionsDlg": {
+			Title:  "Optionen zum Entfernen",
+			Fields: map[string]*config.LanguageField{"DELETE_CONFIGURATION": {Label: "&Einstellungen entfernen"}},
+		}}},
+	}
+	res := mustBuild(t, cfg)
+
+	if len(res.Database.Storages) != 1 {
+		t.Fatalf("%d storages, want one for de", len(res.Database.Storages))
+	}
+
+	texts := storageStrings(t, res.Database.Storages[0])
+	for _, want := range []string{"Optionen zum Entfernen", "&Einstellungen entfernen"} {
+		if !strings.Contains(texts, want) {
+			t.Errorf("the German transform does not hold %q", want)
+		}
+	}
+
+	if got := nextOf(t, res, "MaintenanceTypeDlg", "Remove"); got["1"] != "RemoveOptionsDlg" {
+		t.Errorf("MaintenanceTypeDlg Remove goes to %v", got)
+	}
+}
