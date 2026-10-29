@@ -20,7 +20,7 @@ import (
 // default and Content Type included, and keeps other programs' values in
 // the key (REG-07).
 func (b *build) fileTypes() error {
-	root, prefix := registryRoots["HKCR"], ""
+	root, prefix := registryRoots[rootHKCR], ""
 	if b.cfg.Package.Scope == config.ScopePerUser {
 		root, prefix = registryRoots["HKCU"], `Software\Classes\`
 	}

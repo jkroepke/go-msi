@@ -808,8 +808,9 @@ func (b *build) resolveKeyPath(path string, info *componentInfo) error { //nolin
 	if info.keyFile != nil {
 		info.keyPath = info.keyFile.Key
 
-		// A companion file never is a key path (section 8.6).
-		if v, ok := info.keyFile.Version.(string); ok {
+		// A companion file never is a key path (section 8.6); a component
+		// that gets an HKCU key path does not use it as one.
+		if v, ok := info.keyFile.Version.(string); ok && !b.needsProfileKeyPath(comp) {
 			if _, err := config.ParseVersion(v); err != nil {
 				b.errorf(path+".keyPath", "the key file %s is a companion file of %s", info.keyFile.Key, v)
 			}

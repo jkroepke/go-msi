@@ -31,30 +31,47 @@ func (b *build) profileKeyPath(info *componentInfo) {
 
 // needsProfileKeyPath reports whether a component below a profile folder
 // leaves its key path to the builder and would not get an HKCU value
-// anyway: no keyPath, no services (they need the executable), and neither
-// neverOverwrite (also set by preserve, UPG-05) nor sharedDllRefCount,
-// whose engine checks test the key path itself. An HKMU value counts as
-// HKCU only in a per-user package: a dual package installed per machine
-// writes it to HKLM. The validator warns about the components this leaves
-// out.
+// anyway (keepsKeyPath lists the exceptions). An HKMU value counts as HKCU
+// only in a per-user package: a dual package installed per machine writes
+// it to HKLM. The validator makes the same decision and warns about the
+// components this leaves out.
 func (b *build) needsProfileKeyPath(comp *config.Component) bool {
-	if keepsKeyPath(comp) || shortcutsOnly(comp) || !config.IsProfileFolder(b.topFolder(comp.Directory)) {
+	if b.keepsKeyPath(comp) || shortcutsOnly(comp) || !config.IsProfileFolder(b.topFolder(comp.Directory)) {
 		return false
 	}
 
 	if len(comp.Files) == 0 && len(comp.Registry) > 0 {
 		root := comp.Registry[0].Root
 
-		return root != rootHKCU && (root != "HKMU" || b.cfg.Package.Scope != config.ScopePerUser)
+		return root != rootHKCU && (root != rootHKMU || b.cfg.Package.Scope != config.ScopePerUser)
 	}
 
 	return true
 }
 
 // keepsKeyPath reports whether a component's key path must stay as the
-// configuration or resolveKeyPath makes it.
-func keepsKeyPath(comp *config.Component) bool {
-	return comp.KeyPath != "" || len(comp.Services) > 0 || comp.NeverOverwrite || comp.SharedDLLRefCount
+// configuration or resolveKeyPath makes it: an explicit keyPath (a
+// firewall carrier's is generated), services, which need their
+// executable, neverOverwrite (also set by preserve) and sharedDllRefCount,
+// which test the key path (reported), and per-machine registry values,
+// which an HKCU key path would mix with per-user data (ICE57).
+func (b *build) keepsKeyPath(comp *config.Component) bool {
+	if comp.KeyPath != "" && comp.FirewallFeature() == "" || len(comp.Services) > 0 || comp.NeverOverwrite || comp.SharedDLLRefCount {
+		return true
+	}
+
+	for _, reg := range comp.Registry {
+		switch reg.Root {
+		case rootHKLM, rootHKU:
+			return true
+		case rootHKMU, rootHKCR:
+			if b.cfg.Package.Scope != config.ScopePerUser {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // hashProfileKeyPaths adds a marker to the ProductCode digest when a

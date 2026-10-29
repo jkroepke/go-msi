@@ -81,9 +81,8 @@ func TestProfileKeyPathInstallDir(t *testing.T) {
 	}
 }
 
-// A component keyed on its folder keeps its CreateFolder row; one keyed on
-// an HKCU value of its own keeps that value; an HKLM or HKMU value is
-// replaced in a per-machine package.
+// A component keyed on its folder keeps its CreateFolder row and gets the
+// value; one keyed on an HKCU value of its own keeps that value.
 func TestProfileKeyPathOtherKeys(t *testing.T) {
 	t.Parallel()
 
@@ -93,44 +92,74 @@ func TestProfileKeyPathOtherKeys(t *testing.T) {
   - id: Own
     directory: AppDataFolder/Acme
     registry: [{ id: OwnValue, root: HKCU, key: Software\Acme, name: x, type: dword, value: 1 }]
-  - id: Machine
-    directory: AppDataFolder/Acme/m
-    registry: [{ id: MachineValue, root: HKLM, key: Software\Acme, name: y, type: dword, value: 1 }]
-  - id: Mixed
-    directory: AppDataFolder/Acme/u
-    registry: [{ id: MixedValue, root: HKMU, key: Software\Acme, name: z, type: dword, value: 1 }]
   - { id: App, directory: INSTALLDIR, files: [{ source: app.exe }] }
 `))
 
-	for _, compID := range []string{"Folder", "Empty", "Machine", "Mixed"} {
-		profileKey(t, res.Database, compID)
-	}
-
 	for _, compID := range []string{"Folder", "Empty"} {
+		profileKey(t, res.Database, compID)
 		rowWhere(t, res.Database, "CreateFolder", func(r []any) bool { return r[1] == compID })
 	}
 
-	for compID, key := range map[string]string{"Own": "OwnValue"} {
-		if comp, _ := profileKey(t, res.Database, compID); comp[5] != key {
-			t.Errorf("%s: key path %v, want its own value %s", compID, comp[5], key)
-		}
-	}
-
-	// An HKMU value is HKCU in a per-user package and stays the key path; a
-	// dual package writes it to HKLM per machine, so it gets the value.
-	for scope, own := range map[string]bool{"perUser": true, "perUserOrMachine": false, "perMachineOrUser": false} {
-		res := mustBuild(t, scopedShortcutConfig(t, scope, `
-  - id: Mixed
-    directory: AppDataFolder/Acme/u
-    registry: [{ id: MixedValue, root: HKMU, key: Software\Acme, name: z, type: dword, value: 1 }]
-`))
-		if comp, _ := profileKey(t, res.Database, "Mixed"); (comp[5] == "MixedValue") != own {
-			t.Errorf("%s HKMU: key path %v, want its own value = %v", scope, comp[5], own)
-		}
+	if comp, _ := profileKey(t, res.Database, "Own"); comp[5] != "OwnValue" {
+		t.Errorf("Own: key path %v, want its own value", comp[5])
 	}
 
 	if strings.Contains(fmt.Sprint(res.Diagnostics), "ICE38") {
 		t.Errorf("ICE38 warning: %s", res.Diagnostics)
+	}
+}
+
+// A component with a per-machine registry value keeps its key path, and
+// the validator warns (ICE57): HKLM always, HKMU and HKCR unless the
+// package only installs per user, where HKMU is HKCU and stays the key path.
+func TestProfileKeyPathMachineRegistry(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		scope, root string
+		kept        bool
+	}{
+		{"perMachine", "HKLM", true}, {"perMachine", "HKMU", true}, {"perUserOrMachine", "HKMU", true},
+		{"perMachineOrUser", "HKCR", true}, {"perUser", "HKMU", false},
+	} {
+		res := mustBuild(t, scopedShortcutConfig(t, tc.scope, `
+  - id: Mixed
+    directory: AppDataFolder/Acme
+    files: [{ source: app.exe }]
+    registry: [{ id: MixedValue, root: `+tc.root+`, key: Software\Acme, name: z, type: dword, value: 1 }]
+`))
+
+		comp := rowWhere(t, res.Database, "Component", func(r []any) bool { return r[0] == "Mixed" })
+		warned := strings.Contains(fmt.Sprint(res.Diagnostics), "ICE57")
+
+		if (comp[5] == "app.exe") != tc.kept || warned != tc.kept {
+			t.Errorf("%s %s: key path %v, warning %v, want kept = %v: %s", tc.scope, tc.root, comp[5], warned, tc.kept, res.Diagnostics)
+		}
+	}
+
+	// A registry-only HKMU component in a per-user package keeps its value.
+	res := mustBuild(t, scopedShortcutConfig(t, "perUser", `
+  - id: Mixed
+    directory: AppDataFolder/Acme
+    registry: [{ id: MixedValue, root: HKMU, key: Software\Acme, name: z, type: dword, value: 1 }]
+`))
+	if comp, _ := profileKey(t, res.Database, "Mixed"); comp[5] != "MixedValue" {
+		t.Errorf("per-user HKMU: key path %v", comp[5])
+	}
+}
+
+// An unversioned first file is no key file once the builder replaces it,
+// so it gets no warning.
+func TestProfileKeyPathUnversionedFirstFile(t *testing.T) {
+	t.Parallel()
+
+	cfg := scopedShortcutConfig(t, "perUser", "  - { id: Data, files: [{ source: app.ico, version: none }, { source: app.exe }] }\n")
+	res := mustBuild(t, cfg)
+
+	profileKey(t, res.Database, "Data")
+
+	if strings.Contains(fmt.Sprint(res.Diagnostics), "unversioned") {
+		t.Errorf("unversioned key file warning: %s", res.Diagnostics)
 	}
 }
 
@@ -191,5 +220,7 @@ func TestProfileKeyPathFolderPermissions(t *testing.T) {
 
 	profileKey(t, res.Database, "Locked")
 	rowWhere(t, res.Database, "CreateFolder", func(r []any) bool { return r[1] == "Locked" })
-	rowWhere(t, res.Database, "MsiLockPermissionsEx", func(r []any) bool { return fmt.Sprint(r[1]) == "AppDataFolder_Acme" || strings.Contains(fmt.Sprint(r[1]), "Acme") })
+	rowWhere(t, res.Database, "MsiLockPermissionsEx", func(r []any) bool {
+		return fmt.Sprint(r[1]) == "AppDataFolder_Acme" || strings.Contains(fmt.Sprint(r[1]), "Acme")
+	})
 }

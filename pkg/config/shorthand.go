@@ -445,9 +445,9 @@ func RememberRoot(cfg *Config) string {
 	case cfg.Package.Scope == ScopePerUser:
 		return "HKCU"
 	case cfg.Package.Scope.Dual():
-		return "HKMU"
+		return rootHKMU
 	default:
-		return "HKLM"
+		return rootHKLM
 	}
 }
 

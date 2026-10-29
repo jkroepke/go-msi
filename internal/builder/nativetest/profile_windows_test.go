@@ -300,7 +300,8 @@ func TestICEProfileKeyPath(t *testing.T) {
 
 // TestICEProfileHKMUKeyPath checks that ICE38 accepts a component in the
 // profile whose own key path is an HKMU value (root -1) in a per-user
-// package, which keeps it; a dual package gets the HKCU value instead.
+// package, which keeps it as key path. A dual package keeps it too, with
+// the validator's ICE57 warning, since it is HKLM per machine.
 //
 //nolint:paralleltest // msi.dll's external UI handler is process-wide
 func TestICEProfileHKMUKeyPath(t *testing.T) {
