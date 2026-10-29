@@ -8,8 +8,10 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/binary"
-	"encoding/hex"
+	"crypto/sha1" //nolint:gosec // compared with what Windows reports
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"os"
@@ -22,6 +24,7 @@ import (
 
 	"github.com/jkroepke/msi-builder/internal/builder"
 	"github.com/jkroepke/msi-builder/internal/cab"
+	"github.com/jkroepke/msi-builder/internal/msidb"
 	"github.com/jkroepke/msi-builder/pkg/sign"
 )
 
@@ -35,23 +38,43 @@ var (
 func fileSignatureHash(t *testing.T, path string) ([]byte, error) {
 	t.Helper()
 
+	var size uint32
+
+	// The first call reports the size (ERROR_MORE_DATA).
+	_ = signatureInformation(t, path, nil, &size)
+	if size == 0 {
+		size = 64
+	}
+
+	hash := make([]byte, size)
+	if r := signatureInformation(t, path, hash, &size); r != 0 {
+		return nil, fmt.Errorf("MsiGetFileSignatureInformation: HRESULT %#x", r)
+	}
+
+	return hash[:size], nil
+}
+
+// signatureInformation calls MsiGetFileSignatureInformation with hash as the
+// buffer and releases the certificate it returns.
+func signatureInformation(t *testing.T, path string, hash []byte, size *uint32) uintptr {
+	t.Helper()
+
 	var (
 		cert uintptr
-		hash = make([]byte, 64)
-		size = uint32(len(hash))
+		buf  uintptr
 	)
 
+	if len(hash) > 0 {
+		buf = uintptr(unsafe.Pointer(&hash[0]))
+	}
+
 	r, _, _ := pMsiGetFileSignatureInformationW.Call(uintptr(unsafe.Pointer(wstr(t, path))), 0,
-		uintptr(unsafe.Pointer(&cert)), uintptr(unsafe.Pointer(&hash[0])), uintptr(unsafe.Pointer(&size)))
+		uintptr(unsafe.Pointer(&cert)), buf, uintptr(unsafe.Pointer(size)))
 	if cert != 0 {
 		_, _, _ = pCertFreeCertificateContext.Call(cert)
 	}
 
-	if r != 0 {
-		return nil, errors.New("MsiGetFileSignatureInformation: HRESULT 0x" + strings.ToUpper(hex.EncodeToString([]byte{byte(r >> 24), byte(r >> 16), byte(r >> 8), byte(r)})))
-	}
-
-	return hash[:size], nil
+	return r
 }
 
 // logLines returns the lines of the msiexec log at path that name an
@@ -135,7 +158,10 @@ func TestCabinetSignatureFormat(t *testing.T) {
 				t.Errorf("%v: MsiGetFileSignatureInformation hash %x, msi-builder digest %x", algo, hash, digest)
 			}
 
-			t.Logf("SIG-08: %v: WinVerifyTrust ok, MsiGetFileSignatureInformation hash %x, msi-builder digest %x", algo, hash, digest)
+			whole, _ := os.ReadFile(path)
+			fileSHA1, fileSHA256 := sha1.Sum(whole), sha256.Sum256(whole) //nolint:gosec // compared with what Windows reports
+			t.Logf("SIG-08: %v: WinVerifyTrust ok, MsiGetFileSignatureInformation hash (%d bytes) %x, msi-builder digest %x, file SHA-1 %x, file SHA-256 %x",
+				algo, len(hash), hash, digest, fileSHA1, fileSHA256)
 		}
 
 		// A changed data byte breaks the signature for Windows too.
@@ -186,6 +212,13 @@ func TestCabinetSignatureFormat(t *testing.T) {
 	t.Logf("SIG-08: signtool cabinet: flags % x, reserve fields and signature header % x, %d bytes for a %d-byte cabinet",
 		data[0x1E:0x20], data[36:min(len(data), 60)], len(data), len(plain))
 
+	// The indirect data signtool writes for a cabinet.
+	for _, oid := range [][]byte{{0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x01, 0x19}, {0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x01, 0x1C}} {
+		if at := bytes.Index(data, oid); at >= 0 {
+			t.Logf("SIG-08: signtool indirect data from the type OID: % x", data[max(0, at-6):min(len(data), at+90)])
+		}
+	}
+
 	sig, err := sign.VerifyCabinet(bytes.NewReader(data))
 	if err != nil {
 		t.Fatalf("sign.VerifyCabinet of the signtool signature: %v", err)
@@ -203,39 +236,77 @@ func signedProbe(t *testing.T, files []probeFile, opts sign.Options) (string, *b
 		builder.Options{BuildTime: time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC), CabinetSize: 1, SignCabinets: &opts})
 }
 
-// expectRefused installs path, which must fail, and logs the error lines.
-func expectRefused(t *testing.T, path, label string) {
+func readFile(t *testing.T, path string) []byte {
 	t.Helper()
 
-	log := filepath.Join(t.TempDir(), "install.log")
-
-	code := msiexecCode(t, log, "/i", path)
-	if code == 0 {
-		msiexecQuiet(t, filepath.Join(t.TempDir(), "uninstall.log"), "/x", path)
-		t.Errorf("%s: the package installed", label)
-
-		return
-	}
-
-	t.Logf("SIG-09: %s: msiexec exit %d\n%s", label, code, logLines(log))
-
-	if _, err := os.Stat(filepath.Join(os.Getenv("ProgramFiles"), "Cabinet Probe")); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("%s: the failed install left its folder: %v", label, err)
-	}
-}
-
-// replaceFile copies src over dst.
-func replaceFile(t *testing.T, src, dst string) {
-	t.Helper()
-
-	data, err := os.ReadFile(src)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := os.WriteFile(dst, data, 0o600); err != nil {
+	return data
+}
+
+// withoutHash writes the package at path again beside it with every
+// MsiDigitalSignature.Hash null and returns its path.
+func withoutHash(t *testing.T, path string) string {
+	t.Helper()
+
+	database, err := msidb.Unmarshal(readFile(t, path))
+	if err != nil {
 		t.Fatal(err)
 	}
+
+	tbl := database.Table("MsiDigitalSignature")
+	for _, row := range tbl.Rows {
+		row[tbl.Column("Hash")] = nil
+	}
+
+	data, err := database.Marshal(msidb.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(filepath.Dir(path), "probe-nohash.msi")
+	if err := os.WriteFile(out, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	return out
+}
+
+// recordInstall installs the package at path, logs the outcome for the
+// results (SIG-09), checks the files when it installed, and removes it.
+func recordInstall(t *testing.T, path string, files []probeFile, label string) {
+	t.Helper()
+
+	log := filepath.Join(t.TempDir(), "install.log")
+	dir := filepath.Join(os.Getenv("ProgramFiles"), "Cabinet Probe")
+
+	code := msiexecCode(t, log, "/i", path)
+	if code != 0 {
+		t.Logf("SIG-09: %s: refused, msiexec exit %d\n%s", label, code, logLines(log))
+
+		if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s: the failed install left %s: %v", label, dir, err)
+		}
+
+		return
+	}
+
+	same := true
+
+	for _, file := range files {
+		installed, err := os.ReadFile(filepath.Join(dir, file.name))
+		want, _ := io.ReadAll(file.data())
+
+		if err != nil || !bytes.Equal(installed, want) {
+			same = false
+		}
+	}
+
+	t.Logf("SIG-09: %s: installed, files match the package's sources: %v", label, same)
+	msiexecQuiet(t, filepath.Join(t.TempDir(), "uninstall.log"), "/x", path)
 }
 
 // TestMsiexecChecksSignedCabinets installs a package whose three external
@@ -269,9 +340,9 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 		}
 	}
 
-	t.Run("signed", func(t *testing.T) {
-		installProbe(t, path, files)
-	})
+	// The same package with MsiDigitalSignature.Hash null: only the
+	// certificate is compared.
+	noHash := withoutHash(t, path)
 
 	second := filepath.Join(dir, res.Cabinets[1].Name)
 
@@ -280,45 +351,44 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	restore := func() {
-		if err := os.WriteFile(second, original, 0o600); err != nil {
-			t.Fatal(err)
-		}
+	// The same certificate signs other content in the same layout.
+	otherPath, other := signedProbe(t, probeFilesOf('x'), pki.options(crypto.SHA256))
+	swapped := filepath.Join(filepath.Dir(otherPath), other.Cabinets[1].Name)
+
+	unsignedPath, unsigned := buildProbe(t, "  compression: mszip\n  embedCabinets: false", files,
+		builder.Options{BuildTime: time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC), CabinetSize: 1})
+	unsignedCab := filepath.Join(filepath.Dir(unsignedPath), unsigned.Cabinets[1].Name)
+
+	// The last byte before cbCabinet is cabinet data, not signature.
+	changed := bytes.Clone(original)
+	changed[binary.LittleEndian.Uint32(changed[8:])-1] ^= 1
+
+	for _, pkg := range []struct {
+		label, path string
+	}{{"hash", path}, {"no hash", noHash}} {
+		t.Run(pkg.label, func(t *testing.T) {
+			recordInstall(t, pkg.path, files, pkg.label+": signed cabinets")
+
+			for _, tc := range []struct {
+				label string
+				data  func() []byte
+			}{
+				{"a changed byte in the second cabinet", func() []byte { return changed }},
+				{"the second cabinet of another build by the same signer", func() []byte { return readFile(t, swapped) }},
+				{"an unsigned second cabinet", func() []byte { return readFile(t, unsignedCab) }},
+			} {
+				if err := os.WriteFile(second, tc.data(), 0o600); err != nil {
+					t.Fatal(err)
+				}
+
+				recordInstall(t, pkg.path, files, pkg.label+": "+tc.label)
+
+				if err := os.WriteFile(second, original, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
 	}
-
-	t.Run("changed", func(t *testing.T) {
-		defer restore()
-
-		// The last byte before cbCabinet is cabinet data, not signature.
-		changed := bytes.Clone(original)
-		changed[binary.LittleEndian.Uint32(changed[8:])-1] ^= 1
-
-		if err := os.WriteFile(second, changed, 0o600); err != nil {
-			t.Fatal(err)
-		}
-
-		expectRefused(t, path, "a changed byte in the second cabinet")
-	})
-
-	t.Run("swapped", func(t *testing.T) {
-		defer restore()
-
-		// The same certificate signs other content in the same layout.
-		otherPath, other := signedProbe(t, probeFilesOf('x'), pki.options(crypto.SHA256))
-		replaceFile(t, filepath.Join(filepath.Dir(otherPath), other.Cabinets[1].Name), second)
-
-		expectRefused(t, path, "the second cabinet of another build by the same signer")
-	})
-
-	t.Run("unsigned", func(t *testing.T) {
-		defer restore()
-
-		unsignedPath, unsigned := buildProbe(t, "  compression: mszip\n  embedCabinets: false", files,
-			builder.Options{BuildTime: time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC), CabinetSize: 1})
-		replaceFile(t, filepath.Join(filepath.Dir(unsignedPath), unsigned.Cabinets[1].Name), second)
-
-		expectRefused(t, path, "an unsigned second cabinet")
-	})
 
 	t.Run("untrusted", func(t *testing.T) {
 		// A self-signed certificate that no store trusts: recorded, not

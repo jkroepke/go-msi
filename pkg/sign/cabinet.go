@@ -34,8 +34,13 @@ const (
 	cabSigAlign = 8
 )
 
-// oidSpcCabImageData is the indirect data type of a cabinet signature.
-var oidSpcCabImageData = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 2, 1, 25} //nolint:gochecknoglobals // OID
+// oidSpcCabImageData is the indirect data type of a cabinet signature;
+// signtool writes oidSpcLink instead (SIG-08), which VerifyCabinet accepts
+// too.
+var (
+	oidSpcCabImageData = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 2, 1, 25} //nolint:gochecknoglobals // OID
+	oidSpcLink         = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 2, 1, 28} //nolint:gochecknoglobals // OID
+)
 
 // ErrCabinetNotSigned is returned by VerifyCabinet for a cabinet without a
 // signature.
@@ -228,7 +233,7 @@ func VerifyCabinet(src io.ReaderAt) (*Signature, error) {
 		return nil, err
 	}
 
-	indirect, err := parseIndirect(sdata, oidSpcCabImageData)
+	indirect, err := parseIndirect(sdata, oidSpcCabImageData, oidSpcLink)
 	if err != nil {
 		return nil, err
 	}

@@ -281,8 +281,8 @@ func parseIndirectData(sdata *parsedSignedData) (crypto.Hash, []byte, error) {
 }
 
 // parseIndirect decodes the SpcIndirectDataContent of sdata and checks that
-// its data has the type kind.
-func parseIndirect(sdata *parsedSignedData, kind asn1.ObjectIdentifier) (*spcIndirectDataContent, error) {
+// its data has one of the types kinds.
+func parseIndirect(sdata *parsedSignedData, kinds ...asn1.ObjectIdentifier) (*spcIndirectDataContent, error) {
 	if !sdata.contentType.Equal(oidSpcIndirectData) {
 		return nil, fmt.Errorf("sign: signed content %v is not SpcIndirectDataContent", sdata.contentType)
 	}
@@ -293,8 +293,8 @@ func parseIndirect(sdata *parsedSignedData, kind asn1.ObjectIdentifier) (*spcInd
 		return nil, fmt.Errorf("sign: malformed SpcIndirectDataContent: %w", err)
 	}
 
-	if !indirect.Data.Type.Equal(kind) {
-		return nil, fmt.Errorf("sign: indirect data %v, want %v", indirect.Data.Type, kind)
+	if !slices.ContainsFunc(kinds, indirect.Data.Type.Equal) {
+		return nil, fmt.Errorf("sign: indirect data %v, want %v", indirect.Data.Type, kinds)
 	}
 
 	return &indirect, nil
