@@ -70,9 +70,11 @@ func Validate(cfg *Config) Diagnostics {
 	checker.components(cfg, known)
 	checker.folderComponents(cfg, known)
 	checker.shortcuts(cfg, known)
+	checker.fileTypes(cfg)
 	checker.properties(cfg)
 	checker.launchConditions(cfg)
 	checker.customActions(cfg, known)
+	checker.scheduleReboot(cfg)
 	checker.streams(cfg)
 	checker.firewall(cfg, known)
 	checker.ui(cfg)
@@ -1874,6 +1876,8 @@ func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independ
 	}
 
 	v.theme(cfg)
+	v.uiStrings(cfg)
+	v.uiLanguages(cfg)
 
 	seen := make(map[string]bool)
 
@@ -1955,12 +1959,17 @@ func (v *validator) wizardOptions(cfg *Config, ids *refs) {
 
 // finishText checks ui.finishText: it needs a wizard and some text.
 func (v *validator) finishText(cfg *Config) {
-	switch text := cfg.UI.FinishText; {
-	case text == "":
-	case strings.TrimSpace(text) == "":
-		v.errorf("ui.finishText", "the finish page text is blank")
-	case cfg.UI.Wizard == None:
+	if cfg.UI.FinishText != "" && cfg.UI.Wizard == None {
 		v.errorf("ui.finishText", "a finish page text needs a wizard")
+	}
+
+	v.checkFinishText("ui.finishText", cfg.UI.FinishText)
+}
+
+// checkFinishText reports a finish page text at path that is only blanks.
+func (v *validator) checkFinishText(at, text string) {
+	if text != "" && strings.TrimSpace(text) == "" {
+		v.errorf(at, "the finish page text is blank")
 	}
 }
 

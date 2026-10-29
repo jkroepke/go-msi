@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"testing"
 	"unicode/utf16"
 )
@@ -310,8 +311,10 @@ func (c *conformance) entry(rec []byte, sid int) dirEntry {
 	}
 
 	switch {
-	case ent.typ != 2 && ent.typ != 5:
-		c.errorf("entry %d: object type %d, the writer only makes streams", sid, ent.typ)
+	case ent.typ != 1 && ent.typ != 2 && ent.typ != 5:
+		c.errorf("entry %d: object type %d, the writer only makes storages and streams", sid, ent.typ)
+	case ent.typ == 1 && (ent.start != 0 || ent.size != 0):
+		c.errorf("entry %d: storage with a start sector or size", sid)
 	case ent.colour > 1:
 		c.errorf("entry %d: colour %d", sid, ent.colour)
 	case !zero(0x60, 0x74):
@@ -327,13 +330,45 @@ func (c *conformance) entry(rec []byte, sid int) dirEntry {
 	return ent
 }
 
-// tree checks the red-black rules of 2.6.4 and that every stream is in
-// the tree exactly once.
+// tree checks the red-black rules of 2.6.4 for the root's tree and the
+// tree of every storage in it, and that every storage and stream is in a
+// tree exactly once.
 func (c *conformance) tree(entries []dirEntry, top uint32) {
+	reached := 0
+	pending := []uint32{top}
+
+	for len(pending) > 0 && reached <= len(entries) {
+		next := pending[0]
+		pending = pending[1:]
+
+		for _, sid := range c.siblings(entries, next) {
+			reached++
+
+			if entries[sid].typ == 1 {
+				pending = append(pending, entries[sid].child)
+			}
+		}
+	}
+
+	objects := 0
+
+	for _, ent := range entries[1:] {
+		if ent.typ == 1 || ent.typ == 2 {
+			objects++
+		}
+	}
+
+	if objects != reached {
+		c.errorf("tree: %d of %d storages and streams reachable", reached, objects)
+	}
+}
+
+// siblings checks one storage's tree and returns its entries in order.
+func (c *conformance) siblings(entries []dirEntry, top uint32) []uint32 {
 	if top != noStream && int(top) >= len(entries) {
 		c.errorf("tree: top node %d outside the directory", top)
 
-		return
+		return nil
 	}
 
 	if top != noStream && entries[top].colour != 1 {
@@ -350,7 +385,7 @@ func (c *conformance) tree(entries []dirEntry, top uint32) {
 			return 0
 		}
 
-		if int(sid) >= len(entries) || depth > len(entries) || entries[sid].typ != 2 {
+		if int(sid) >= len(entries) || depth > len(entries) || (entries[sid].typ != 1 && entries[sid].typ != 2) {
 			c.errorf("tree: bad link %d", sid)
 
 			return 0
@@ -387,17 +422,7 @@ func (c *conformance) tree(entries []dirEntry, top uint32) {
 		}
 	}
 
-	streams := 0
-
-	for _, ent := range entries[1:] {
-		if ent.typ == 2 {
-			streams++
-		}
-	}
-
-	if streams != len(order) {
-		c.errorf("tree: %d of %d streams reachable", len(order), streams)
-	}
+	return order
 }
 
 // streams checks the chains of every stream, the mini stream and the zero
@@ -630,5 +655,115 @@ func TestConformanceCatchesFaults(t *testing.T) {
 
 	if len(checkConformance(v4, true)) == 0 {
 		t.Error("v4 huge mini stream: not detected")
+	}
+}
+
+// TestConformanceStorages covers root-level storages, as embedded
+// transforms need them: the checker walks each storage's own tree, and the
+// reader finds every stream in its storage with its data.
+func TestConformanceStorages(t *testing.T) {
+	t.Parallel()
+
+	rng := rand.New(rand.NewSource(3)) //nolint:gosec // reproducible test data
+	sizes := []int{0, 5, 4095, 4096, 9000}
+
+	for _, version := range []int{3, 4} {
+		for _, allBlack := range []bool{false, true} {
+			for count := range 6 {
+				want := map[string][]byte{}
+				root := make([]Source, 0, count)
+
+				for i := range count {
+					data := make([]byte, sizes[i%len(sizes)])
+					rng.Read(data)
+
+					name := fmt.Sprintf("S%d", i)
+					want[name] = data
+					root = append(root, Stream{Name: name, Data: data}.Source())
+				}
+
+				storages := make([]Storage, 0, count)
+
+				for k := range count {
+					stg := Storage{Name: strconv.Itoa(1031 + k), CLSID: CLSIDTransform}
+
+					for i := range k + 1 {
+						data := make([]byte, sizes[(i+k)%len(sizes)])
+						rng.Read(data)
+
+						name := fmt.Sprintf("T%d", i)
+						want[stg.Name+"/"+name] = data
+						stg.Streams = append(stg.Streams, Stream{Name: name, Data: data}.Source())
+					}
+
+					storages = append(storages, stg)
+				}
+
+				var buf bytes.Buffer
+
+				layout, err := WriteStoragesTo(&buf, root, storages, Options{Version: version, AllBlack: allBlack})
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				label := fmt.Sprintf("v%d all-black=%v %d storages", version, allBlack, count)
+
+				for _, e := range checkConformance(buf.Bytes(), !allBlack) {
+					t.Errorf("%s: %s", label, e)
+				}
+
+				checkStorages(t, label, buf.Bytes(), layout, want)
+			}
+		}
+	}
+}
+
+// checkStorages reads raw back and compares every stream, by its
+// "storage/stream" path, with want and with the offset Layout reports.
+func checkStorages(t *testing.T, label string, raw []byte, layout *Layout, want map[string][]byte) {
+	t.Helper()
+
+	file, err := Read(raw)
+	if err != nil {
+		t.Fatalf("%s: read: %v", label, err)
+	}
+
+	got := map[string][]byte{}
+
+	for _, ent := range file.Entries {
+		if ent.Type != 2 || ent.Parent < 0 {
+			continue
+		}
+
+		path := ent.Name
+		if ent.Parent != 0 {
+			parent := file.Entries[ent.Parent]
+			if parent.Type != 1 || parent.CLSID != CLSIDTransform {
+				t.Errorf("%s: %s is in entry %d of type %d", label, ent.Name, ent.Parent, parent.Type)
+			}
+
+			path = parent.Name + "/" + ent.Name
+		}
+
+		data, err := file.load(ent)
+		if err != nil {
+			t.Fatalf("%s: %s: %v", label, path, err)
+		}
+
+		got[path] = data
+	}
+
+	for path, data := range want {
+		if !bytes.Equal(got[path], data) {
+			t.Errorf("%s: %s differs", label, path)
+		}
+
+		if off, ok := layout.Offsets[path]; !ok || len(data) > 0 && !bytes.Equal(raw[off:off+int64(len(data))], data) {
+			t.Errorf("%s: layout offset of %s is wrong", label, path)
+		}
+	}
+
+	if len(got) != len(want) {
+		t.Errorf("%s: read %d streams, want %d", label, len(got), len(want))
 	}
 }

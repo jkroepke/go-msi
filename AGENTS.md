@@ -171,6 +171,12 @@ go test ./... -shuffle=on -race
 - Changes that affect the generated packages need a Windows run. Use the
   `msitest` harness or the native tests on a Windows machine; state in the
   pull request which checks ran and which could not.
+- Per-user behaviour needs a non-administrator run as well: an elevated
+  administrator's install can hide failures (CA-01: the rollback of the product
+  registration only fails for a non-administrator). Windows Server refuses
+  non-administrator installs with 1625 unless the machine policy `DisableMsi`
+  is 0, and a per-user test package needs `INSTALLDIR` under
+  `LocalAppDataFolder`, or it stops with 1303 at Program Files.
 - To learn what Windows does before writing a test, a temporary nativetest
   that collects its observations and reports them with one `t.Errorf` runs
   on the `windows-latest` runner: push the branch and start CI with
@@ -192,6 +198,9 @@ go test ./... -shuffle=on -race
   control; a Text control hidden by its ControlCondition from the start was
   absent from the control view the driver walks (UI-07). Each driver run starts with an
   empty log.
+- Uninstall test products with `defer`, not `t.Cleanup`: `msiexecQuiet` runs
+  under `t.Context()`, which is cancelled before cleanups run, so a cleanup
+  uninstall fails with "context canceled" and leaves the product installed.
 
 ## Implementation rules
 
@@ -229,6 +238,15 @@ go test ./... -shuffle=on -race
 - Readers (`cfb`, `cab`, `msidb.Unmarshal`) treat their input as untrusted:
   bounds-check every offset and sector, detect chain cycles, and never allocate
   from a size the input declares without checking it against the input length.
+- Wizard translations live in `pkg/config/wizardtexts/<tag>.yaml`, one file
+  per locale with every `ui.strings` key. Write them yourself; never copy
+  another toolset's localization files. `TestTranslations` checks keys,
+  placeholders, `&` counts, column widths and the code page, and
+  `TestAccessKeysUnique` (`internal/builder`) fails when two controls of a
+  dialog share an access key: move the `&` to another letter of the text.
+  In formatted text any `[name]` is a property reference, so a translation
+  never adds brackets (Japanese uses 「」). A language whose letters no
+  ANSI code page holds gets code page 0 in `locales` (Hindi, Kazakh).
 - `cmd/msi-builder` uses `spf13/cobra` (with `spf13/pflag`) and nothing else
   outside the standard library; never import `cobra/doc`, which pulls in a
   man-page renderer. Add no new module dependencies elsewhere without

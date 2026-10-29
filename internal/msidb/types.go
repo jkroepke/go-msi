@@ -259,7 +259,10 @@ type Database struct {
 	// Sources are extra streams that MarshalTo copies from their readers
 	// instead of holding them in memory, such as a spooled cabinet. Decode
 	// lists the streams it left in the file here with a nil Open.
-	Sources  []cfb.Source
+	Sources []cfb.Source
+	// Storages are root-level storages that MarshalTo writes beside the
+	// streams, such as embedded language transforms (TransformStorage).
+	Storages []cfb.Storage
 	Summary  []summary.Property
 	Problems []string
 	Codepage int

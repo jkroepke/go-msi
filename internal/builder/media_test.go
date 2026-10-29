@@ -19,6 +19,7 @@ import (
 
 	"github.com/jkroepke/msi-builder/internal/builder"
 	"github.com/jkroepke/msi-builder/internal/cab"
+	"github.com/jkroepke/msi-builder/internal/cfb"
 	"github.com/jkroepke/msi-builder/internal/msidb"
 	"github.com/jkroepke/msi-builder/internal/testpe"
 	"github.com/jkroepke/msi-builder/pkg/config"
@@ -406,6 +407,48 @@ func TestSignCabinetsChecksOptions(t *testing.T) {
 		res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime, CabinetSize: 100000, SignCabinets: opts})
 		if err == nil || res.Package != nil || len(res.Cabinets) != 0 {
 			t.Errorf("%s: Build = %v with %d cabinets", name, err, len(res.Cabinets))
+		}
+	}
+}
+
+// TestSignedCabinetsWithLanguages keeps MsiDigitalSignature out of the
+// language transforms: they are built before the cabinets are signed, so a
+// transform that changed the table would null each language's Hash.
+func TestSignedCabinetsWithLanguages(t *testing.T) {
+	t.Parallel()
+
+	cfg := desktop(t)
+	cfg.Package.EmbedCabinets = new(false)
+	cfg.UI.Languages = map[string]*config.Language{"de": nil}
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime, CabinetSize: 1, SignCabinets: testSigner(t)})
+	if err != nil {
+		t.Fatalf("build: %v\n%s", err, res.Diagnostics)
+	}
+
+	if len(res.Database.Storages) != 1 {
+		t.Fatalf("%d transform storages, want 1", len(res.Database.Storages))
+	}
+
+	for _, name := range []string{"MsiDigitalSignature", "MsiDigitalCertificate"} {
+		encoded, err := msidb.EncodeStreamName(name, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if slices.ContainsFunc(res.Database.Storages[0].Streams, func(s cfb.Source) bool { return s.Name == encoded }) {
+			t.Errorf("the language transform changes %s", name)
+		}
+	}
+
+	signatures := rows(t, res.Database, "MsiDigitalSignature")
+	if len(signatures) == 0 {
+		t.Fatal("no MsiDigitalSignature rows")
+	}
+
+	for _, row := range signatures {
+		if hash, ok := row[3].([]byte); !ok || len(hash) == 0 {
+			t.Errorf("MsiDigitalSignature row %v has no Hash", row[:3])
 		}
 	}
 }

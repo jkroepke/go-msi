@@ -19,7 +19,7 @@ func (b *build) writeProperties() error { //nolint:cyclop // one pass over the f
 	b.properties["ProductCode"] = b.productCode
 	b.properties["ProductName"] = product.Name
 	b.properties["ProductVersion"] = product.Version
-	b.properties["ProductLanguage"] = strconv.Itoa(*product.Language)
+	b.properties["ProductLanguage"] = strconv.Itoa(b.language)
 	b.properties["Manufacturer"] = product.Manufacturer
 	b.properties["UpgradeCode"] = b.upgradeCode
 

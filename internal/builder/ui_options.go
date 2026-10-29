@@ -30,13 +30,15 @@ var installOnly = map[string]bool{dlgLicense: true, dlgInstallDir: true} //nolin
 // sets the typed path as the directory's target, which checks it.
 func (w *wizard) installDirDialog(dir string) {
 	page := w.add(&uiDialog{name: dlgInstallDir, attrs: dlgPage, first: ctlFolder})
-	page.innerHeader("Destination Folder", "Click Next to install to the default folder or click Change to choose another.")
-	page.control(text("FolderLabel", margin+5, 60, dlgWidth-2*margin-10, 12, "Install [ProductName] to:"))
+	page.innerHeader(w.text("InstallDirTitle"), w.text("InstallDirText"))
+	page.control(text("FolderLabel", margin+5, 60, dlgWidth-2*margin-10, 12, w.text("InstallDirLabel")))
 	page.control(&uiControl{
 		name: ctlFolder, typ: typPathEdit, property: dir, ring: true,
 		x: margin + 5, y: 75, w: 260, h: 18, attrs: ctlActive,
 	})
-	page.control(&uiControl{name: "ChangeFolder", typ: typPushButton, x: 292, y: 75, w: buttonW, h: buttonH, attrs: ctlActive, text: "&Change...", ring: true}).
+	page.control(&uiControl{
+		name: "ChangeFolder", typ: typPushButton, x: 292, y: 75, w: buttonW, h: buttonH, attrs: ctlActive, text: w.text("InstallDirChange"), ring: true,
+	}).
 		on("["+propBrowse+"]", dir, condAlways).
 		on(evSpawnDialog, dlgBrowse, condAlways)
 	page.navigation()
@@ -94,7 +96,7 @@ func (b *build) launch(wiz *wizard) {
 
 	caption := cfg.Text
 	if caption == "" {
-		caption = "&Launch [ProductName]"
+		caption = wiz.text("Launch")
 	}
 
 	// The box sits on the bottom strip, left of the buttons: Windows paints

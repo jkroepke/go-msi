@@ -39,6 +39,9 @@ const (
 	maxTargetLength = 255
 )
 
+// returnIgnore is the custom action return mode that never fails the install.
+const returnIgnore = "ignore"
+
 // Sequence table names.
 const (
 	seqInstallExecute = "InstallExecuteSequence"
@@ -69,6 +72,7 @@ const (
 	actPublishFeatures      = "PublishFeatures"
 	actPublishProduct       = "PublishProduct"
 	actInstallFinalize      = "InstallFinalize"
+	actScheduleReboot       = "ScheduleReboot"
 
 	condNotInstalled = "NOT Installed"
 	condVersionNT    = "VersionNT"
@@ -175,6 +179,7 @@ var standardActions = map[string]standardAction{ //nolint:gochecknoglobals // lo
 	"MsiPublishAssemblies":     {ies: 6250, advt: 6250},
 	actPublishFeatures:         {ies: 6300, advt: 6300},
 	actPublishProduct:          {ies: 6400, advt: 6400},
+	actScheduleReboot:          {},
 	"InstallExecute":           {ies: 6500, condition: condNotInstalled},
 	"InstallExecuteAgain":      {ies: 6550, condition: condNotInstalled},
 	actInstallFinalize:         {ies: 6600, aes: 6600, advt: 6600},
@@ -292,7 +297,7 @@ func (b *build) anchorActions() {
 				continue
 			}
 
-			if config.IsStandardAction(anchor) {
+			if config.IsStandardAction(anchor) && !b.scheduled(table, anchor) {
 				b.errorf("customActions", "%s: %s is scheduled relative to standard action %s, which has no default number there in msi-builder; "+
 					"schedule %s with an absolute number instead", table, action.Name, anchor, action.Name)
 			}
@@ -352,7 +357,7 @@ func (b *build) customActions() error { //nolint:cyclop // one pass over the for
 		}
 
 		switch custom.Return {
-		case "ignore":
+		case returnIgnore:
 			action.typ |= caContinue
 		case "asyncWait":
 			action.typ |= caAsyncWait
@@ -612,6 +617,12 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 		b.standardAt(seqInstallExecute, "AllocateRegistrySpace")
 	}
 
+	// ScheduleReboot has no default number: it goes after InstallFinalize,
+	// where packages place it.
+	if reboot := b.cfg.ScheduleReboot; reboot != nil {
+		b.schedule(seqInstallExecute, actScheduleReboot, reboot.Placement().FullCondition(b.cfg), "", actInstallFinalize, 0)
+	}
+
 	b.anchorActions()
 
 	// Every scheduled name must be a standard action or a custom action.
@@ -651,6 +662,7 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 
 	b.checkSequences()
 	b.checkWhen()
+	b.checkPerUserRollback()
 
 	scheduled := make(map[string]bool)
 

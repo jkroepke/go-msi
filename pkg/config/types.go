@@ -35,6 +35,7 @@ type Config struct { //nolint:govet // field order is the YAML key order
 	Icons            map[string]string `yaml:"icons"`
 	Binaries         map[string]string `yaml:"binaries"`
 	Firewall         []*FirewallRule   `yaml:"firewall"`
+	ScheduleReboot   *ScheduleReboot   `yaml:"scheduleReboot"`
 	UI               UI                `yaml:"ui"`
 	Tables           []*Table          `yaml:"tables"`
 
@@ -298,6 +299,7 @@ type File struct { //nolint:govet // field order is the YAML key order
 	System                     bool         `yaml:"system"`
 	Permissions                *Permissions `yaml:"permissions"`
 	Shortcuts                  []*Shortcut  `yaml:"shortcuts"`
+	FileTypes                  []*FileType  `yaml:"fileTypes"`
 	// Include and Exclude are glob patterns over the paths below a folder
 	// source (one that ends in a slash); see Config.ExpandFolders.
 	Include StringList `yaml:"include"`
@@ -306,6 +308,42 @@ type File struct { //nolint:govet // field order is the YAML key order
 	// FS, when set, is where Source is read from, overriding Config.FS for
 	// this file. AddTree sets it. It is never read from YAML.
 	FS fs.FS `yaml:"-"`
+}
+
+// FileType is a ProgId that the file it is listed under opens, with the
+// extensions that point at it and its shell verbs. The builder writes them
+// as Registry rows under HKEY_CLASSES_ROOT, in the file's component, the
+// way non-advertised ProgId, Extension and Verb elements are written.
+type FileType struct {
+	// ProgID is the programmatic identifier, such as Acme.Document.1.
+	ProgID string `yaml:"progId"`
+	// Description is the type's name in Explorer.
+	Description string `yaml:"description"`
+	// IconIndex picks an icon resource of the file for DefaultIcon; nil
+	// writes no DefaultIcon.
+	IconIndex  *int                 `yaml:"iconIndex"`
+	Extensions []*FileTypeExtension `yaml:"extensions"`
+	Verbs      []*FileTypeVerb      `yaml:"verbs"`
+}
+
+// FileTypeExtension is a file name extension that opens with a FileType.
+type FileTypeExtension struct {
+	// Extension is the extension without its dot, such as acme.
+	Extension   string `yaml:"extension"`
+	ContentType string `yaml:"contentType"`
+}
+
+// FileTypeVerb is a shell verb of a FileType that runs the file.
+type FileTypeVerb struct { //nolint:govet // field order is the YAML key order
+	// ID is the verb's key, such as open or edit.
+	ID string `yaml:"id"`
+	// Text is the menu text; empty shows the shell's text for the id.
+	Text string `yaml:"text"`
+	// Arguments follow the quoted file path in the command, default "%1";
+	// an empty string runs the file without arguments. They are formatted
+	// text, so [INSTALLDIR] works; description, text and contentType are
+	// written literally.
+	Arguments *string `yaml:"arguments"`
 }
 
 // Shortcut is a non-advertised shortcut to the file it is listed under, in
@@ -551,6 +589,21 @@ type Placement struct { //nolint:govet // field order is the YAML key order
 	When string `yaml:"when"`
 }
 
+// ScheduleReboot asks for a restart at the end of the installation: the
+// ScheduleReboot action after InstallFinalize. With /norestart or
+// REBOOT=ReallySuppress msiexec returns 3010 instead of restarting; a quiet
+// install without them may restart without asking.
+type ScheduleReboot struct {
+	// When is install, upgrade, uninstall or maintenance, as in a schedule.
+	When      string `yaml:"when"`
+	Condition string `yaml:"condition"`
+}
+
+// Placement returns the reboot's placement in the execute sequence.
+func (r *ScheduleReboot) Placement() *Placement {
+	return &Placement{Sequence: "execute", After: "InstallFinalize", Condition: r.Condition, When: r.When}
+}
+
 // FirewallRule is an inbound rule that follows a component's state.
 type FirewallRule struct { //nolint:govet // field order is the YAML key order
 	Name            string     `yaml:"name"`
@@ -588,6 +641,13 @@ type UI struct {
 	// Launch adds a check box to the finish page that starts an installed
 	// program when the user clicks Finish.
 	Launch *Launch `yaml:"launch"`
+	// Strings replaces built-in wizard texts by key, for example to build
+	// the wizard in another language (UIStrings lists the keys).
+	Strings map[string]string `yaml:"strings"`
+	// Languages adds wizard languages by LCID or language tag, each built
+	// as an embedded language transform that msiexec picks by the user's
+	// language (spec section 7.6).
+	Languages map[string]*Language `yaml:"languages"`
 	// FinishText is a formatted paragraph shown on the finish page below
 	// its standard text; hidden by Installed OR ACTION = "ADMIN".
 	FinishText string    `yaml:"finishText"`

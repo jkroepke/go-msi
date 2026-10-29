@@ -854,6 +854,26 @@
         ]
       }
     },
+    "scheduleReboot": {
+      "type": "object",
+      "description": "Ask for a restart at the end of the installation: ScheduleReboot after InstallFinalize. With /norestart or REBOOT=ReallySuppress msiexec returns 3010 instead of restarting; a quiet install without them may restart without asking.",
+      "properties": {
+        "when": {
+          "enum": [
+            "install",
+            "upgrade",
+            "uninstall",
+            "maintenance"
+          ],
+          "description": "The case it runs in, ANDed with condition."
+        },
+        "condition": {
+          "type": "string",
+          "description": "Condition of the ScheduleReboot row."
+        }
+      },
+      "additionalProperties": false
+    },
     "ui": {
       "type": "object",
       "properties": {
@@ -874,6 +894,33 @@
         "license": {
           "type": "string",
           "description": "A license file shown with an accept check box after the welcome page: RTF, or UTF-8 text converted to RTF."
+        },
+        "strings": {
+          "$ref": "#/$defs/uiStrings"
+        },
+        "languages": {
+          "type": "object",
+          "description": "Further wizard languages by LCID (1031) or language tag (de, de-AT), each built as an embedded language transform that msiexec picks by the user's regional format. A field left out keeps the base language's value; texts missing from strings take the built-in translation.",
+          "additionalProperties": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "strings": {
+                "$ref": "#/$defs/uiStrings"
+              },
+              "finishText": {
+                "type": "string",
+                "description": "Replaces ui.finishText in this language."
+              },
+              "license": {
+                "type": "string",
+                "description": "Replaces ui.license in this language."
+              }
+            }
+          }
         },
         "installDirPage": {
           "type": "boolean",
@@ -904,7 +951,9 @@
               "description": "Whether the box starts checked. Default: true."
             }
           },
-          "required": ["file"],
+          "required": [
+            "file"
+          ],
           "additionalProperties": false
         },
         "theme": {
@@ -1575,6 +1624,77 @@
                   "additionalProperties": false
                 }
               },
+              "fileTypes": {
+                "type": "array",
+                "description": "File types this file opens: Registry rows under HKEY_CLASSES_ROOT for the ProgID, its verbs and the extensions that point at it.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "progId": {
+                      "type": "string",
+                      "description": "Programmatic identifier, such as Acme.Document.1."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The type's name in Explorer."
+                    },
+                    "iconIndex": {
+                      "type": "integer",
+                      "description": "Icon resource of the file for DefaultIcon; leave out for none."
+                    },
+                    "extensions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "extension": {
+                            "type": "string",
+                            "description": "Extension without its dot."
+                          },
+                          "contentType": {
+                            "type": "string",
+                            "description": "MIME type written as Content Type."
+                          }
+                        },
+                        "required": [
+                          "extension"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "verbs": {
+                      "type": "array",
+                      "description": "Shell verbs; default one open verb.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "Verb key, such as open or edit."
+                          },
+                          "text": {
+                            "type": "string",
+                            "description": "Menu text; empty shows the shell's text for the id."
+                          },
+                          "arguments": {
+                            "type": "string",
+                            "description": "Arguments after the quoted file path, as formatted text; default \"%1\", empty for none.",
+                            "default": "\"%1\""
+                          }
+                        },
+                        "required": [
+                          "id"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "progId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "include": {
                 "$ref": "#/$defs/stringList",
                 "description": "Folder sources only: doublestar glob patterns of the files to add, default all. A pattern without / matches a name in any folder; ** matches any number of folders; a trailing / matches folders only. Case is ignored."
@@ -2174,6 +2294,147 @@
         "program"
       ],
       "additionalProperties": false
+    },
+    "uiStrings": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "Abort",
+          "AbsentPath",
+          "Back",
+          "BrowseFolderName",
+          "BrowseLookIn",
+          "BrowseNewFolder",
+          "BrowseText",
+          "BrowseTitle",
+          "BrowseUp",
+          "Bytes",
+          "Cancel",
+          "CancelText",
+          "CustomizeBrowse",
+          "CustomizeDiskUsage",
+          "CustomizeHint",
+          "CustomizeLocation",
+          "CustomizeReset",
+          "CustomizeText",
+          "CustomizeTitle",
+          "DialogTitle",
+          "DiskCostHint",
+          "DiskCostText",
+          "DiskCostTitle",
+          "Exit",
+          "ExitText",
+          "ExitTitle",
+          "FatalErrorText",
+          "FatalErrorTitle",
+          "FilesInUseList",
+          "FilesInUseText",
+          "FilesInUseTitle",
+          "Finish",
+          "GB",
+          "Ignore",
+          "Install",
+          "InstallDirChange",
+          "InstallDirLabel",
+          "InstallDirText",
+          "InstallDirTitle",
+          "KB",
+          "Launch",
+          "LicenseAccept",
+          "LicensePrint",
+          "LicenseText",
+          "LicenseTitle",
+          "MB",
+          "MaintenanceChange",
+          "MaintenanceChangeText",
+          "MaintenanceRemove",
+          "MaintenanceRemoveText",
+          "MaintenanceRepair",
+          "MaintenanceRepairText",
+          "MaintenanceTypeText",
+          "MaintenanceTypeTitle",
+          "MaintenanceWelcomeText",
+          "MaintenanceWelcomeTitle",
+          "MenuAbsent",
+          "MenuAdvertise",
+          "MenuAllCP",
+          "MenuAllLocal",
+          "MenuAllNetwork",
+          "MenuCD",
+          "MenuLocal",
+          "MenuNetwork",
+          "NewFolder",
+          "Next",
+          "No",
+          "OK",
+          "ProgressStatus",
+          "ProgressText",
+          "ProgressTitle",
+          "RMDontUseRM",
+          "RMFilesInUseList",
+          "RMUseRM",
+          "ReadyInstallText",
+          "ReadyInstallTitle",
+          "ReadyRemoveText",
+          "ReadyRemoveTitle",
+          "ReadyRepairText",
+          "ReadyRepairTitle",
+          "Remove",
+          "Repair",
+          "ResumeText",
+          "ResumeTitle",
+          "Retry",
+          "Return",
+          "ScriptInProgress",
+          "SelAbsentAbsent",
+          "SelAbsentAdvertise",
+          "SelAbsentCD",
+          "SelAbsentLocal",
+          "SelAbsentNetwork",
+          "SelAdvertiseAbsent",
+          "SelAdvertiseAdvertise",
+          "SelAdvertiseCD",
+          "SelAdvertiseLocal",
+          "SelAdvertiseNetwork",
+          "SelCDAbsent",
+          "SelCDAdvertise",
+          "SelCDCD",
+          "SelCDLocal",
+          "SelChildCostNeg",
+          "SelChildCostPos",
+          "SelCostPending",
+          "SelLocalAbsent",
+          "SelLocalAdvertise",
+          "SelLocalCD",
+          "SelLocalLocal",
+          "SelLocalNetwork",
+          "SelNetworkAbsent",
+          "SelNetworkAdvertise",
+          "SelNetworkLocal",
+          "SelNetworkNetwork",
+          "SelParentCostNegNeg",
+          "SelParentCostNegPos",
+          "SelParentCostPosNeg",
+          "SelParentCostPosPos",
+          "TimeRemaining",
+          "UserExitText",
+          "UserExitTitle",
+          "VolumeCostAvailable",
+          "VolumeCostDifference",
+          "VolumeCostRequired",
+          "VolumeCostSize",
+          "VolumeCostVolume",
+          "WaitCostingText",
+          "WelcomeText",
+          "WelcomeTitle",
+          "Yes",
+          "bytes"
+        ]
+      },
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Replaces built-in wizard texts by key, for example to build the wizard in another language. Values other than the UIText rows are formatted text; & marks the access key on buttons, check boxes, radio buttons and the browse labels."
     }
   }
 }

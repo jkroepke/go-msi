@@ -6,7 +6,7 @@ summary  4: Example
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install Example Agent.
 summary  7: x64;1033
-summary  9: {035285BB-FA3F-56B1-BC42-B785ABE8005D}
+summary  9: {D7633904-5935-5282-A98A-9DFAF012D623}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500
@@ -519,7 +519,7 @@ KB	KB
 MB	MB
 MenuAbsent	Entire feature will be unavailable
 MenuAdvertise	Feature will be installed when required
-MenuAllCP	Entire feature will be installed to run from the network
+MenuAllCP	Entire feature will be installed to run from CD
 MenuAllLocal	Entire feature will be installed on local hard drive
 MenuAllNetwork	Entire feature will be installed to run from the network
 MenuCD	Will be installed to run from CD
