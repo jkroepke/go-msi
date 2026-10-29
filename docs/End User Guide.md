@@ -75,9 +75,10 @@ for a 32-bit package on 64-bit Windows), or to
 for the current user. The package author can change the folder and give the
 property another name.
 
-Some packages remember the folder: an upgrade then installs to the folder
-you chose for the first install. For other packages, pass `INSTALLDIR`
-again on every upgrade if you did not use the default folder.
+Some packages remember the folder: an upgrade then normally installs to
+the folder of the earlier install, if that version remembered it too. For
+other packages, or if in doubt, pass `INSTALLDIR` again on every upgrade if
+you did not use the default folder.
 
 ### Features
 
@@ -185,7 +186,8 @@ deleted, a silent repair fails with 1612, so pass the file again.
 ## Uninstall
 
 Uninstall the product in **Settings > Apps** or in
-**Control Panel > Programs and Features**, or with the package file:
+**Control Panel > Programs and Features**, or with the `.msi` of the
+installed version:
 
 ```bat
 msiexec /x hello.msi /qn /norestart
@@ -263,7 +265,7 @@ echo %ERRORLEVEL%
 | 0 | Success. |
 | 1602 | The user cancelled the install. |
 | 1603 | The install failed, for example because a newer version is installed or administrator rights are missing. Check the log. |
-| 1605 | The product is not installed (an uninstall with a product code). |
+| 1605 | The product is not installed, or the `.msi` or product code belongs to another version. |
 | 1612 | The installation source is not available. Repair or install with the `.msi` file. |
 | 1618 | Another installation is already running. Try again when it has finished. |
 | 1619 | The package could not be opened. Check the path. |
