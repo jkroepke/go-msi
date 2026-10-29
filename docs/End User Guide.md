@@ -283,7 +283,7 @@ Next to the link, list what this page cannot know about your package:
 
 - the install folder property, if you set `installDir.id`, and whether
   upgrades keep the folder (`installDir.remember`);
-- whether the package has a setup wizard (`ui.wizard`);
+- whether the package has a setup wizard (`ui.enabled`);
 - the feature IDs and which features are off by default (`features`);
 - your own properties (`properties`) and their values;
 - whether the package installs per user, for all users or lets the user

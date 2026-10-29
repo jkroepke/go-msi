@@ -334,7 +334,7 @@ components:
 		dirs = "directories:\n  - id: CommonAppDataFolder\n    children: [{ id: dataDir, name: Hello }]\n"
 	)
 
-	const launch = "ui: { wizard: true, launch: { file: hello.exe"
+	const launch = "ui: { enabled: true, launch: { file: hello.exe"
 
 	for _, pair := range []struct{ without, with string }{
 		{src, src + "    createFolder: true\n"},

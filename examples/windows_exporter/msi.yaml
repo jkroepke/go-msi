@@ -177,7 +177,7 @@ icons:
   icon.ico: ${ICON}
 
 ui:
-  wizard: true
+  enabled: true
   chooseFeatures: true
   dialogs:
     - id: ConfigDlg

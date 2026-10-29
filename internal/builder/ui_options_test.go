@@ -254,7 +254,7 @@ func TestInstallOnlyPageLinks(t *testing.T) {
 			{"VerifyReadyDlg", "Back"}:      {"NOT Installed": "InstallDirDlg", "Installed": "ExtraDlg"},
 		}},
 		{"feature tree without license", func(c *config.Config) {
-			c.UI.Wizard, c.UI.ChooseFeatures = true, true
+			c.UI.Enabled, c.UI.ChooseFeatures = true, true
 			c.UI.License = ""
 		}, map[[2]string]map[string]string{
 			{"WelcomeDlg", "Next"}:           {"1": "InstallDirDlg"},
@@ -263,7 +263,7 @@ func TestInstallOnlyPageLinks(t *testing.T) {
 			{"CustomizeDlg", "Back"}:         {"NOT Installed": "InstallDirDlg", "Installed": "MaintenanceTypeDlg"},
 			{"MaintenanceTypeDlg", "Change"}: {"1": "CustomizeDlg"},
 		}},
-		{"feature tree with license", func(c *config.Config) { c.UI.Wizard, c.UI.ChooseFeatures = true, true }, map[[2]string]map[string]string{
+		{"feature tree with license", func(c *config.Config) { c.UI.Enabled, c.UI.ChooseFeatures = true, true }, map[[2]string]map[string]string{
 			{"CustomizeDlg", "Back"}:         {"NOT Installed": "InstallDirDlg", "Installed": "MaintenanceTypeDlg"},
 			{"MaintenanceTypeDlg", "Change"}: {"1": "CustomizeDlg"},
 		}},
@@ -295,10 +295,10 @@ func TestWizardOptionErrors(t *testing.T) {
 		want   string
 	}{
 		{"unknown file", func(c *config.Config) { c.UI.Launch.File = "missing.exe" }, `file "missing.exe" is not defined`},
-		{"no wizard", func(c *config.Config) { c.UI.Wizard = false; c.UI.License = "" }, "an install folder page needs a wizard"},
-		{"launch without wizard", func(c *config.Config) { c.UI.Wizard = false; c.UI.License = ""; c.UI.ChooseDirectory = false }, "a launch check box needs a wizard"},
+		{"no wizard", func(c *config.Config) { c.UI.Enabled = false; c.UI.License = "" }, "an install folder page needs a wizard"},
+		{"launch without wizard", func(c *config.Config) { c.UI.Enabled = false; c.UI.License = ""; c.UI.ChooseDirectory = false }, "a launch check box needs a wizard"},
 		{"finish text without wizard", func(c *config.Config) {
-			c.UI.Wizard = false
+			c.UI.Enabled = false
 			c.UI.License = ""
 			c.UI.ChooseDirectory = false
 			c.UI.Launch = nil
@@ -346,7 +346,7 @@ func TestUIStrings(t *testing.T) {
 
 	// A dual package, so the scope page is in it too.
 	cfg := dualDesktop(t)
-	cfg.UI.Wizard, cfg.UI.ChooseFeatures = true, true
+	cfg.UI.Enabled, cfg.UI.ChooseFeatures = true, true
 	cfg.UI.Strings = make(map[string]string)
 
 	for key := range config.UIStrings() {
