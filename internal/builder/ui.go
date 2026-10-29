@@ -290,7 +290,7 @@ func styled(style, s string) string {
 
 // ui writes the wizard tables when a wizard is selected (spec section 7).
 func (b *build) ui() error {
-	if b.cfg.UI.Wizard == "none" {
+	if !b.cfg.UI.Wizard {
 		if _, set := b.properties["ARPNOMODIFY"]; !set {
 			b.properties["ARPNOMODIFY"] = "1"
 		}
@@ -299,7 +299,7 @@ func (b *build) ui() error {
 	}
 
 	wiz := &wizard{byName: make(map[string]*uiDialog), checkBoxes: make(map[string]string), ui: b.languageUI()}
-	tree := b.cfg.UI.Wizard == "featureTree"
+	tree := b.cfg.UI.ChooseFeatures
 
 	wiz.commonDialogs(tree, b.hasRows("Component"))
 
@@ -321,7 +321,7 @@ func (b *build) ui() error {
 
 	b.installScope(wiz)
 
-	if b.cfg.UI.InstallDirPage {
+	if b.cfg.UI.ChooseDirectory {
 		wiz.installDirDialog(b.cfg.InstallDir.ID)
 		wiz.flow = slices.Insert(wiz.flow, wiz.shown(1, 1), dlgInstallDir)
 	}

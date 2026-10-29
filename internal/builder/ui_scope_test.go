@@ -59,7 +59,7 @@ func TestScopeProperties(t *testing.T) {
 		"perUserOrMachine": {"2", "1"},
 		"perMachineOrUser": {"2", ""},
 	} {
-		props := properties(t, buildScope(t, scope, "x64", "ui: { wizard: none }\n"))
+		props := properties(t, buildScope(t, scope, "x64", "ui: { wizard: false }\n"))
 		if got := [2]string{props["ALLUSERS"], props["MSIINSTALLPERUSER"]}; got != want {
 			t.Errorf("%s: ALLUSERS, MSIINSTALLPERUSER = %q, want %q", scope, got, want)
 		}
@@ -78,7 +78,7 @@ func TestScopeProperties(t *testing.T) {
 func TestScopePage(t *testing.T) {
 	t.Parallel()
 
-	res := buildScope(t, "perMachineOrUser", "x86", "installDir: { remember: true }\nui: { wizard: minimal, installDirPage: true }\n")
+	res := buildScope(t, "perMachineOrUser", "x86", "installDir: { remember: true }\nui: { wizard: true, chooseDirectory: true }\n")
 
 	for _, want := range []struct {
 		dialog, control string
@@ -143,7 +143,7 @@ func TestScopePage(t *testing.T) {
 func TestScopePageOnlyForDual(t *testing.T) {
 	t.Parallel()
 
-	res := buildScope(t, "perUser", "x64", "ui: { wizard: minimal }\n")
+	res := buildScope(t, "perUser", "x64", "ui: { wizard: true }\n")
 	if got := nextOf(t, res, "WelcomeDlg", "Next"); fmt.Sprint(got) != fmt.Sprint(map[string]string{"1": "VerifyReadyDlg"}) {
 		t.Errorf("WelcomeDlg Next goes to %v", got)
 	}

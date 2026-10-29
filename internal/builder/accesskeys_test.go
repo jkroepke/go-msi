@@ -98,11 +98,11 @@ func TestAccessKeysUnique(t *testing.T) {
 	for _, wizard := range []string{"minimal", "featureTree", "scope"} {
 		for _, lcid := range lcids {
 			cfg := desktop(t)
-			cfg.UI.Wizard = wizard
+			cfg.UI.ChooseFeatures = wizard == "featureTree"
 
 			if wizard == "scope" {
 				cfg = dualDesktop(t)
-				cfg.UI.Wizard = "minimal"
+				cfg.UI.Wizard = true
 			}
 
 			cfg.Product.Language = new(lcid)

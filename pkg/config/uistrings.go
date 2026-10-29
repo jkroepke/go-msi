@@ -236,7 +236,7 @@ func (u *UI) UIString(key string) string {
 
 // uiStrings checks ui.strings.
 func (v *validator) uiStrings(cfg *Config) {
-	if len(cfg.UI.Strings) > 0 && cfg.UI.Wizard == None {
+	if len(cfg.UI.Strings) > 0 && !cfg.UI.Wizard {
 		v.errorf("ui.strings", "wizard texts need a wizard")
 	}
 
