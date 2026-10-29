@@ -1086,7 +1086,7 @@ folder (SEARCH-04).
 | `directory` | `path` | A full path (a drive, a share or a property in brackets such as `[ProgramFiles64Folder]`), or with `under` a path relative to the folder that search finds. Returns the folder with a trailing backslash, and nothing for a file or a missing folder |
 | | `under` | A search that finds a folder: `registry` (its `type` defaults to `directory` there, `value` is an error), `directory` or `component`. Up to eight searches in one chain |
 | | `depth` | Default 0. How many folders may lie between the path's parent and its last folder: `C:\a\b` with depth 2 also finds `C:\a\x\y\b` |
-| `file` | `name` | The filename, without a folder. The result is the folder plus `name` as written here, in this case, not the case on disk |
+| `file` | `name` | The filename, without a folder. The result is the folder plus `name` as written here, in this case, not the case on disk. A name that is no valid 8.3 name is written with a generated short name (`short\|long`); the long name is the one matched and returned (SEARCH-05) |
 | | `path`, `under` | The folder to look in, as for `directory` |
 | | `depth` | Default 0. How many levels of subfolders below the folder are searched as well |
 | | `minVersion`, `maxVersion` | Inclusive bounds, one to four fields. A `minVersion` rules out files without a version (SEARCH-05) |
