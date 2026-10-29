@@ -324,6 +324,10 @@ func defaultComponent(comp *Component) { //nolint:cyclop,gocognit // a flat list
 			}
 		}
 
+		if ctl.WaitForStart == nil {
+			ctl.WaitForStart = new(*ctl.Wait)
+		}
+
 		if svc.Recovery != nil && svc.Recovery.RestartDelay == 0 {
 			svc.Recovery.RestartDelay = Duration(DefaultRestartDelay)
 		}

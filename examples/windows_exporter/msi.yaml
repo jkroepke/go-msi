@@ -74,6 +74,12 @@ features:
               - '[EXTRA_FLAGS]'
             dependencies: [wmiApSrv]
             failureActionsOnNonCrashFailures: true
+            # Start without waiting, like the released packages: a service
+            # that cannot start (a bad flag or config) leaves the install
+            # in place with the service stopped instead of rolling it back.
+            # Stopping still waits, so files are not replaced while it runs.
+            control:
+              waitForStart: false
             recovery:
               actions: [restart, restart, restart]
               restartDelay: 60s

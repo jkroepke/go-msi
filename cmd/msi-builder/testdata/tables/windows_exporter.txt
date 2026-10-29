@@ -6,7 +6,7 @@ summary  4: prometheus-community
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install windows_exporter.
 summary  7: x64;1033
-summary  9: {BB54C3D0-207D-5709-BB3F-6423C83DC704}
+summary  9: {ADC51ED9-59F4-5D89-9359-5296218F53B9}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500
@@ -525,7 +525,7 @@ LISTEN_PORT	9182
 MSIRESTARTMANAGERCONTROL	Disable
 Manufacturer	prometheus-community
 MsiHiddenProperties	SERVICE_PASSWORD
-ProductCode	{45A10138-5708-525C-8D30-B99FCBF81D92}
+ProductCode	{097FA036-0B9C-5615-A286-1C071C6F73F0}
 ProductLanguage	1033
 ProductName	windows_exporter
 ProductVersion	0.32.0.5
@@ -545,10 +545,11 @@ s72!	i2	l255	L255	L0	s72
 regB818D01EFAAE44D17FA9D926E177AA99	2	SYSTEM\CurrentControlSet\Services\EventLog\Application\windows_exporter	TypesSupported	#7	Executable
 regE8F5189595D7517F07D276B5A5828D6B	2	SYSTEM\CurrentControlSet\Services\EventLog\Application\windows_exporter	EventMessageFile	#%%SystemRoot%\System32\EventCreate.exe	Executable
 
-== ServiceControl (1 rows)
+== ServiceControl (2 rows)
 ServiceControl	Name	Event	Arguments	Wait	Component_
 s72!	l255	i2	L255	I2	s72
-sc_windows_exporter	windows_exporter	163		1	Executable
+sc_windows_exporter	windows_exporter	162		1	Executable
+scs_windows_exporter	windows_exporter	1		0	Executable
 
 == ServiceInstall (1 rows)
 ServiceInstall	Name	DisplayName	ServiceType	StartType	ErrorControl	LoadOrderGroup	Dependencies	StartName	Password	Arguments	Component_	Description

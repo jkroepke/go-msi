@@ -1732,6 +1732,9 @@
                   },
                   "wait": {
                     "$ref": "#/$defs/bool"
+                  },
+                  "waitForStart": {
+                    "$ref": "#/$defs/bool"
                   }
                 },
                 "additionalProperties": false

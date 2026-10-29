@@ -179,7 +179,7 @@ const (
 	configFailureNonCrash = 4
 )
 
-func (b *build) writeServices(info *componentInfo) { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
+func (b *build) writeServices(info *componentInfo) { //nolint:cyclop // one pass over the format; splitting would scatter it
 	comp := info.cfg
 
 	for _, svc := range comp.Services {
@@ -226,32 +226,7 @@ func (b *build) writeServices(info *componentInfo) { //nolint:cyclop,gocognit //
 			}
 		}
 
-		event := 0
-
-		if *svc.Control.StartOnInstall {
-			event |= eventStartInstall
-		}
-
-		if *svc.Control.StopOnInstall {
-			event |= eventStopInstall
-		}
-
-		if *svc.Control.StopOnUninstall {
-			event |= eventStopUninstall
-		}
-
-		if *svc.Control.DeleteOnUninstall {
-			event |= eventDeleteUninstall
-		}
-
-		if event != 0 {
-			wait := 0
-			if *svc.Control.Wait {
-				wait = 1
-			}
-
-			b.table("ServiceControl").Add(serviceID("sc", svc.Name), svc.Name, event, nil, wait, comp.ID)
-		}
+		b.serviceControl(comp.ID, svc)
 
 		if svc.DelayedAutoStart {
 			b.table("MsiServiceConfig").Add(serviceID("scd", svc.Name), svc.Name, configEventInstall|configEventReinstall, configDelayedStart, "1", comp.ID)
@@ -265,6 +240,57 @@ func (b *build) writeServices(info *componentInfo) { //nolint:cyclop,gocognit //
 			b.recoveryAction(info, svc)
 		}
 	}
+}
+
+// serviceControl writes the ServiceControl rows of a service. Wait is a
+// column of the row, so a start that waits differently from the stop and
+// delete events gets a row of its own.
+func (b *build) serviceControl(componentID string, svc *config.Service) {
+	ctl := svc.Control
+	event, startEvent := 0, 0
+
+	if *ctl.StartOnInstall {
+		startEvent = eventStartInstall
+	}
+
+	if *ctl.StopOnInstall {
+		event |= eventStopInstall
+	}
+
+	if *ctl.StopOnUninstall {
+		event |= eventStopUninstall
+	}
+
+	if *ctl.DeleteOnUninstall {
+		event |= eventDeleteUninstall
+	}
+
+	wait := *ctl.Wait
+
+	switch {
+	case startEvent == 0:
+	case event == 0:
+		event, startEvent, wait = startEvent, 0, *ctl.WaitForStart
+	case *ctl.WaitForStart == wait:
+		event, startEvent = event|startEvent, 0
+	}
+
+	if event != 0 {
+		b.table("ServiceControl").Add(serviceID("sc", svc.Name), svc.Name, event, nil, waitColumn(wait), componentID)
+	}
+
+	if startEvent != 0 {
+		b.table("ServiceControl").Add(serviceID("scs", svc.Name), svc.Name, startEvent, nil, waitColumn(*ctl.WaitForStart), componentID)
+	}
+}
+
+// waitColumn is the ServiceControl.Wait value.
+func waitColumn(wait bool) int {
+	if wait {
+		return 1
+	}
+
+	return 0
 }
 
 // serviceID builds a table key from a service name.

@@ -385,7 +385,11 @@ type ServiceControl struct {
 	StopOnInstall     *bool `yaml:"stopOnInstall"`
 	StopOnUninstall   *bool `yaml:"stopOnUninstall"`
 	DeleteOnUninstall *bool `yaml:"deleteOnUninstall"`
-	Wait              *bool `yaml:"wait"`
+	// Wait waits for the stop and delete events to complete.
+	Wait *bool `yaml:"wait"`
+	// WaitForStart waits for the start to complete, so a service that does
+	// not reach SERVICE_RUNNING fails the install; it defaults to Wait.
+	WaitForStart *bool `yaml:"waitForStart"`
 }
 
 // ServiceRecovery is applied with sc.exe after InstallServices.

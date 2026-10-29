@@ -718,7 +718,8 @@ services:
       stopOnInstall: true
       stopOnUninstall: true
       deleteOnUninstall: true
-      wait: true
+      wait: true                 # stop and delete wait for completion
+      waitForStart: true         # defaults to wait
     recovery:
       resetAfter: 24h            # or resetAfterDays: 1
       actions:                   # one to three steps
@@ -736,6 +737,14 @@ the command line when the condition is true: it becomes a private property
 the property. A property that is not set formats to an empty string, so the
 command line has no placeholder left over. Conditions are checked like
 those of section 4.9.
+
+`control` becomes `ServiceControl` rows. `Wait` is a column of the row, so
+when `waitForStart` differs from `wait` the start gets a row of its own
+(`scs_<service>`) next to the stop and delete row (`sc_<service>`). With
+`waitForStart: true`, StartServices waits for `SERVICE_RUNNING`, and a
+service that does not get there fails the install with error 1920 and rolls
+it back; with `false` the install succeeds and leaves such a service stopped
+(SVC-04).
 
 `recovery` becomes a deferred, no-impersonate `sc.exe failure` action after
 InstallServices, with its exit code ignored (SVC-01). Each step is `restart`,
