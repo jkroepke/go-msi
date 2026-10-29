@@ -109,6 +109,10 @@ func checkCabinetHeader(raw []byte) error {
 		return errors.New("sign: not a cabinet")
 	case order.Uint16(raw[0x1E:])&cabFlagMask != cabFlagReserv:
 		return errors.New("sign: the cabinet has no signature reserve, or is part of a set")
+	case order.Uint16(raw[0x22:]) != 0:
+		// The digest leaves iCabinet out, but WinVerifyTrust refuses a
+		// cabinet whose iCabinet is not 0 (SIG-08).
+		return errors.New("sign: the cabinet is not the first of its set")
 	case order.Uint16(raw[cabHeaderSize:]) != cabSigHeaderSize || raw[cabHeaderSize+2] != 0 || raw[cabHeaderSize+3] != 0:
 		return errors.New("sign: the cabinet reserve is not a 20-byte signature reserve")
 	case coffFiles != cabFolders+cabFolderSize*int64(order.Uint16(raw[0x1A:])):

@@ -116,7 +116,7 @@ func TestVerifyCabinetDetectsTampering(t *testing.T) {
 		valid bool
 	}{
 		{"header reserved field", 0x04, true},
-		{"iCabinet", 0x22, true},
+		{"iCabinet", 0x22, false},
 		{"setID", 0x20, false},
 		{"folder record", cabFolders, false},
 		{"file record", cabFolders + cabFolderSize + 4, false},

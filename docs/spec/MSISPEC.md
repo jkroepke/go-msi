@@ -1373,7 +1373,7 @@ A package can require that its external cabinets are signed: Windows Installer t
 
 - The digest needs the CFFILE records right after the folders (`coffFiles` = 60 + 8·cFolders) and no per-folder or per-data reserve.
 - `signtool sign` on a cabinet without the reserve inserts the 24 bytes and shifts the rest of the file (observed, SIG-08: a 337-byte cabinet became 361 bytes before the signature). msi-builder writes the reserve when it writes the cabinet, so signing a 2 GB cabinet only appends the PKCS#7.
-- WinVerifyTrust rejects a changed data byte with `0x80096010` (TRUST_E_BAD_DIGEST), and accepts changes to `reserved1` and `iCabinet` (SIG-08).
+- WinVerifyTrust rejects a changed data byte with `0x80096010` (TRUST_E_BAD_DIGEST) and accepts a changed `reserved1`. It also rejects an `iCabinet` other than 0 with `0x80096010`, although the digest leaves `iCabinet` out (it matches `signtool`'s digest only without those two bytes), so a signed cabinet is always the first of its set; `sign.VerifyCabinet` refuses it too (SIG-08).
 
 The package lists the cabinets to check in two tables:
 

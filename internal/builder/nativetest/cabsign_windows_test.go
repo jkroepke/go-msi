@@ -176,17 +176,21 @@ func TestCabinetSignatureFormat(t *testing.T) {
 
 		ourSigned[algo] = signed
 
-		// reserved1 and iCabinet are outside the digest.
-		for _, off := range []int{0x04, 0x22} {
+		// reserved1 and iCabinet are outside the digest, but WinVerifyTrust
+		// refuses an iCabinet other than 0.
+		for _, tc := range []struct {
+			off   int
+			valid bool
+		}{{0x04, true}, {0x22, false}} {
 			skipped := bytes.Clone(signed)
-			skipped[off] ^= 1
+			skipped[tc.off] ^= 1
 
 			got := winVerifyTrust(t, writeTemp(t, "skipped.cab", skipped))
-			if got != pki.wantValid() {
-				t.Errorf("%v: WinVerifyTrust of a changed byte at %#x = %#x, want %#x", algo, off, got, pki.wantValid())
+			if (got == pki.wantValid()) != tc.valid {
+				t.Errorf("%v: WinVerifyTrust of a changed byte at %#x = %#x", algo, tc.off, got)
 			}
 
-			t.Logf("SIG-08: %v: WinVerifyTrust with byte %#x changed = %#x", algo, off, got)
+			t.Logf("SIG-08: %v: WinVerifyTrust with byte %#x changed = %#x", algo, tc.off, got)
 		}
 
 		changed := bytes.Clone(signed)
