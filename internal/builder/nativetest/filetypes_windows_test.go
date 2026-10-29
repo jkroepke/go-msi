@@ -134,9 +134,11 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 	t.Cleanup(cleanup)
 
 	// Another program already lists itself under .msibtoth, and keeps a
-	// value of its own in .msibtkeep.
+	// value and subkeys of its own in .msibtkeep.
 	regSet(t, "64", classes+`.msibtoth\OpenWithProgids`, "MsiBuilderTest.Foreign", "")
 	regSet(t, "64", classes+".msibtkeep", "PerceivedType", "text")
+	regSet(t, "64", classes+`.msibtkeep\ShellNew`, "NullFile", "")
+	regSet(t, "64", classes+`.msibtkeep\OpenWithProgids`, "MsiBuilderTest.Foreign", "")
 
 	log := filepath.Join(filepath.Dir(path), "install.log")
 	if code := msiexecCode(t, log, "/i", path); code != 0 {
@@ -215,10 +217,14 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 		t.Fatalf("msiexec /x returned %d\n%s", code, readLog(log))
 	}
 
-	for _, key := range []string{"MsiBuilderTest.Document", "MsiBuilderTest.Other", `.msibtdoc\OpenWithProgids`, `.msibtkeep\OpenWithProgids`} {
+	for _, key := range []string{"MsiBuilderTest.Document", "MsiBuilderTest.Other", `.msibtdoc\OpenWithProgids`} {
 		if regHas(t, "64", classes+key, "") {
 			t.Errorf("%s is still there after the uninstall", key)
 		}
+	}
+
+	if regHas(t, "64", classes+`.msibtkeep\OpenWithProgids`, "MsiBuilderTest.Document") {
+		t.Error(`.msibtkeep\OpenWithProgids still lists MsiBuilderTest.Document after the uninstall`)
 	}
 
 	// REG-06: what the engine's UnregisterExtensionInfo leaves.
@@ -226,6 +232,9 @@ func TestMsiexecFileTypes(t *testing.T) { //nolint:paralleltest // msiexec runs 
 	t.Logf(".msibtdoc Content Type after the uninstall: %q", regNamed(t, classes+".msibtdoc", "Content Type"))
 	t.Logf(".msibtkeep default after the uninstall: %q", regDefault(t, classes+".msibtkeep"))
 	t.Logf(".msibtkeep PerceivedType (another program's value) after the uninstall: %q", regNamed(t, classes+".msibtkeep", "PerceivedType"))
+	t.Logf(".msibtkeep\\ShellNew (another program's subkey) after the uninstall: %v", regHas(t, "64", classes+`.msibtkeep\ShellNew`, "NullFile"))
+	t.Logf(".msibtkeep\\OpenWithProgids another program's entry after the uninstall: %v",
+		regHas(t, "64", classes+`.msibtkeep\OpenWithProgids`, "MsiBuilderTest.Foreign"))
 
 	if regHas(t, "64", classes+`.msibtoth\OpenWithProgids`, "MsiBuilderTest.Other") ||
 		!regHas(t, "64", classes+`.msibtoth\OpenWithProgids`, "MsiBuilderTest.Foreign") {

@@ -1509,7 +1509,7 @@
               },
               "fileTypes": {
                 "type": "array",
-                "description": "File types this file opens: the ProgID, its verbs and the extensions it owns go into the ProgId, Extension and Verb tables, which the installer registers; the file must be its component's key path.",
+                "description": "File types this file opens: the ProgID, its verbs and the extensions it owns go into the ProgId, Extension and Verb tables, which the installer registers. A type that owns an extension (not openWithOnly) needs the file to be its component's key path, the component in one feature, without condition and with a GUID; owning a Windows extension such as txt is an error.",
                 "items": {
                   "type": "object",
                   "properties": {

@@ -2,6 +2,7 @@ package builder
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -49,7 +50,7 @@ func (b *build) fileType(path string, writer classWriter, file *config.File, fil
 
 	if owned := ownedExtensions(fileType); len(owned) > 0 {
 		if info := b.components[writer.comp]; info.keyFile == nil || info.keyFile.cfg != file {
-			b.errorf(path, "the engine runs the verbs with the key path of the component (unverified, REG-06), so %s must be the key path of %s: "+
+			b.errorf(path, "the engine runs the verbs with the key path of the component (observed, REG-06), so %s must be the key path of %s: "+
 				"set keyPath or give the file a component of its own", file.Source, writer.comp)
 		}
 
@@ -123,7 +124,7 @@ func (b *build) componentFeatures(compID string) []string {
 
 	config.WalkFeatures(b.cfg.Features, func(feature, _ *config.Feature) {
 		for _, comp := range feature.Components {
-			if comp.ID == compID {
+			if comp.ID == compID && !slices.Contains(features, feature.ID) {
 				features = append(features, feature.ID)
 			}
 		}

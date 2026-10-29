@@ -790,8 +790,9 @@ engine runs the verbs with the key path of the extension's component
 (`keyPath`, or the first file); anything else is an error. An `Extension`
 row names one feature and the engine registers it only when that feature
 installs (documented), so the component must be in one feature only,
-without a `condition` (the engine registers with the feature, whatever the
-component's condition) and with a GUID (ICE19); anything else is an error.
+without a `condition` (Microsoft's pages tie the registration to the
+feature and do not mention the component's condition; msi-builder infers
+that it does not count, unverified) and with a GUID (ICE19); anything else is an error.
 Verbs of such a type go into the `Verb` table: an `id` holds no space or
 comma (the shell reads the list of verbs split at them) and at most 32
 characters, `text` and `arguments` at most 255. msi-builder adds
@@ -817,12 +818,16 @@ and periods, not starting with a digit) gets a warning.
 Uninstalling removes what the package registered, the `.<extension>`
 default included. Microsoft's File Types page asks installers to leave that
 default in place, because another program may have taken the extension over
-since; the engine's own actions remove it (REG-05). They delete the whole
-`.<extension>` key (observed, REG-06): a default another program set after
-the install and a value another program keeps in the key (`PerceivedType`
-in the test) are gone after the uninstall too. Registering an
-extension that Windows or other programs own (`txt`, `xml`, `pdf`, …) gets
-a warning, because the package takes it over from them. For such an
+since; the engine's own actions remove it (REG-05). They delete the
+`.<extension>` key's values (observed, REG-06): a default another program
+set after the install and a value another program keeps in the key
+(`PerceivedType` in the test) are gone after the uninstall too; what happens
+to another program's subkeys is logged by the test. Whether a major upgrade
+that removes the old product after installing the new one loses the
+extension this way is not tested. Owning an
+extension that Windows or other programs own (`txt`, `xml`, `pdf`, …) is an
+error, because the package would take it over from them and uninstalling
+would delete their values. For such an
 extension, `openWithOnly: true` writes only the `OpenWithProgids` entry:
 the program shows up under Open with and the extension keeps its default
 program and content type (`contentType` is then an error). Uninstalling
