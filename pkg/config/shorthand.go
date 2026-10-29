@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -432,18 +433,22 @@ const rememberOrigin = "installDir.remember"
 const RememberValueName = "InstallDir"
 
 // RememberKey returns the registry key below the root (HKLM per machine,
-// HKCU per user) that installDir.remember writes and searches.
+// HKCU per user, HKMU for a dual scope) that installDir.remember writes and
+// searches.
 func RememberKey(cfg *Config) string {
 	return `Software\` + cfg.Product.Manufacturer + `\` + cfg.Product.Name
 }
 
 // RememberRoot returns the registry root of installDir.remember.
 func RememberRoot(cfg *Config) string {
-	if cfg.Package.Scope == ScopePerUser {
+	switch {
+	case cfg.Package.Scope == ScopePerUser:
 		return "HKCU"
+	case cfg.Package.Scope.Dual():
+		return "HKMU"
+	default:
+		return "HKLM"
 	}
-
-	return "HKLM"
 }
 
 // rememberInstallDir adds the component that writes the install dir to the
@@ -622,23 +627,42 @@ type dirTree struct {
 	origin string
 	// installOrigin is the YAML path of the install dir's name.
 	installOrigin string
+	// installCandidates are the directories of the file's own tree that
+	// could be meant as the install dir.
+	installCandidates []string
+	// installDefaulted is set when the file sets no installDir.
+	installDefaulted bool
 }
 
 func newDirTree(cfg *Config) *dirTree {
 	tree := &dirTree{cfg: cfg, byID: make(map[string]*Directory)}
 
-	var walk func([]*Directory)
+	var walk func([]*Directory, string)
 
-	walk = func(dirs []*Directory) {
+	walk = func(dirs []*Directory, top string) {
 		for _, dir := range dirs {
 			if _, dup := tree.byID[dir.ID]; !dup {
 				tree.byID[dir.ID] = dir
 			}
 
-			walk(dir.Children)
+			if top == "" && standardFolders[dir.ID] && dir.ID != targetDir {
+				walk(dir.Children, dir.ID)
+
+				continue
+			}
+
+			// A configurable directory, or one below Program Files, may be
+			// the install dir the file meant.
+			if !standardFolders[dir.ID] && IsPublicProperty(dir.ID) && (dir.Configurable || programFilesFolders[top]) {
+				tree.installCandidates = append(tree.installCandidates, dir.ID)
+			}
+
+			walk(dir.Children, top)
 		}
 	}
-	walk(cfg.Directories)
+	walk(cfg.Directories, "")
+
+	slices.Sort(tree.installCandidates)
 
 	return tree
 }
@@ -652,6 +676,7 @@ func (t *dirTree) installDir() {
 
 	install := &t.cfg.InstallDir
 	perUser := t.cfg.Package.Scope == ScopePerUser
+	t.installDefaulted = *install == InstallDir{}
 
 	if install.ID == "" {
 		install.ID = DefaultInstallDirID
@@ -659,6 +684,9 @@ func (t *dirTree) installDir() {
 
 	if install.Parent == "" {
 		install.Parent = defaultInstallParent(t.cfg.Package.Platform, perUser)
+		if perUser {
+			install.Name = perUserProgramsName(install.Name)
+		}
 	}
 
 	t.installOrigin = "installDir.name"
@@ -675,6 +703,17 @@ func (t *dirTree) installDir() {
 	if eager {
 		t.ensureInstallDir()
 	}
+}
+
+// perUserProgramsName puts a per-user install dir name below Programs, the
+// per-user Program Files in LocalAppDataFolder, unless it already starts
+// there or is empty.
+func perUserProgramsName(name string) string {
+	if names := splitPath(name); len(names) == 0 || strings.EqualFold(names[0], "Programs") {
+		return name
+	}
+
+	return "Programs/" + name
 }
 
 // ensureInstallDir returns the install dir's node, adding it unless the
@@ -700,6 +739,10 @@ func (t *dirTree) ensureInstallDir() *Directory {
 	parent := t.top(install.Parent)
 	for _, name := range names[:len(names)-1] {
 		parent = t.child(parent, name, "")
+	}
+
+	if t.installDefaulted {
+		t.cfg.InstallDir.besides = strings.Join(t.installCandidates, ", ")
 	}
 
 	dir := t.child(parent, names[len(names)-1], install.ID)

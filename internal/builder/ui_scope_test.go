@@ -1,0 +1,150 @@
+package builder_test
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/jkroepke/msi-builder/internal/builder"
+	"github.com/jkroepke/msi-builder/pkg/config"
+)
+
+// buildScope builds a one-file package with the given scope, platform and
+// ui section.
+func buildScope(t *testing.T, scope, platform, extra string) *builder.Result {
+	t.Helper()
+
+	cfg, err := config.Parse([]byte(`schema: msi-builder/v1
+product: { name: Acme App, manufacturer: Acme, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: `+platform+`, scope: `+scope+` }
+components:
+  - files: [{ source: a.txt }]
+`+extra), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.BaseDir = t.TempDir()
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "a.txt"), []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	return mustBuild(t, cfg)
+}
+
+// properties returns the Property table as a map.
+func properties(t *testing.T, res *builder.Result) map[string]string {
+	t.Helper()
+
+	props := map[string]string{}
+	for _, row := range rows(t, res.Database, "Property") {
+		props[fmt.Sprint(row[0])] = fmt.Sprint(row[1])
+	}
+
+	return props
+}
+
+// TestScopeProperties checks ALLUSERS and MSIINSTALLPERUSER per scope
+// (spec section 8.2, INST-02).
+func TestScopeProperties(t *testing.T) {
+	t.Parallel()
+
+	for scope, want := range map[string][2]string{
+		"perMachine":       {"1", ""},
+		"perUser":          {"", ""},
+		"perUserOrMachine": {"2", "1"},
+		"perMachineOrUser": {"2", ""},
+	} {
+		props := properties(t, buildScope(t, scope, "x64", "ui: { wizard: none }\n"))
+		if got := [2]string{props["ALLUSERS"], props["MSIINSTALLPERUSER"]}; got != want {
+			t.Errorf("%s: ALLUSERS, MSIINSTALLPERUSER = %q, want %q", scope, got, want)
+		}
+
+		// A standard user's choice must reach the elevated server.
+		secure := slices.Contains(strings.Split(props["SecureCustomProperties"], ";"), "MSIINSTALLPERUSER")
+		if dual := want[0] == "2"; secure != dual {
+			t.Errorf("%s: MSIINSTALLPERUSER secure = %v, want %v", scope, secure, dual)
+		}
+	}
+}
+
+// TestScopePage checks the scope page of a dual package: its place in the
+// flow, the events of Next, the folders it moves and the two Install
+// buttons of the ready page.
+func TestScopePage(t *testing.T) {
+	t.Parallel()
+
+	res := buildScope(t, "perMachineOrUser", "x86", "installDir: { remember: true }\nui: { wizard: minimal, installDirPage: true }\n")
+
+	for _, want := range []struct {
+		dialog, control string
+		next            map[string]string
+	}{
+		{"WelcomeDlg", "Next", map[string]string{"1": "InstallScopeDlg"}},
+		{"InstallScopeDlg", "Next", map[string]string{"1": "InstallDirDlg"}},
+		{"InstallDirDlg", "Back", map[string]string{"1": "InstallScopeDlg"}},
+	} {
+		if got := nextOf(t, res, want.dialog, want.control); fmt.Sprint(got) != fmt.Sprint(want.next) {
+			t.Errorf("%s %s goes to %v, want %v", want.dialog, want.control, got, want.next)
+		}
+	}
+
+	if got := properties(t, res)["BuilderInstallScope"]; got != "perMachine" {
+		t.Errorf("BuilderInstallScope = %q, want perMachine", got)
+	}
+
+	unchanged := `(INSTALLDIR ~= InstallScopeUser_INSTALLDIR OR INSTALLDIR ~= InstallScopeMachine_INSTALLDIR)`
+	want := []string{
+		"[ALLUSERS] 2 [1]",
+		`[MSIINSTALLPERUSER] 1 [NOT BuilderInstallScope="perMachine"]`,
+		`[MSIINSTALLPERUSER] {} [BuilderInstallScope="perMachine"]`,
+		`[INSTALLDIR] [InstallScopeUser_INSTALLDIR] [NOT BuilderInstallScope="perMachine" AND ` + unchanged + `]`,
+		`[INSTALLDIR] [InstallScopeMachine_INSTALLDIR] [BuilderInstallScope="perMachine" AND ` + unchanged + `]`,
+		"NewDialog InstallDirDlg [1]",
+	}
+
+	if got := eventsOf(t, res, "InstallScopeDlg", "Next"); !slices.Equal(got, want) {
+		t.Errorf("Next events\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+
+	// The x86 package's folder under ProgramFilesFolder: per user below
+	// LocalAppData, per machine from the environment, the 32-bit one on
+	// 64-bit Windows, and the remembered folders over both.
+	targets := map[string]string{}
+	for _, row := range rows(t, res.Database, "CustomAction") {
+		targets[fmt.Sprint(row[0])] = fmt.Sprint(row[3])
+	}
+
+	for action, target := range map[string]string{
+		"SetInstallScopeUser_INSTALLDIR":               `[LocalAppDataFolder]Programs\Acme App\`,
+		"SetInstallScopeMachine_INSTALLDIR":            `[%ProgramFiles]\Acme App\`,
+		"SetInstallScopeMachine_INSTALLDIR_WOW":        `[%ProgramFiles(x86)]\Acme App\`,
+		"SetInstallScopeUser_INSTALLDIR_Remembered":    `[INSTALLDIR_REMEMBERED_USER]`,
+		"SetInstallScopeMachine_INSTALLDIR_Remembered": `[INSTALLDIR_REMEMBERED_MACHINE]`,
+		"RestoreInstallDirUser":                        `[INSTALLDIR_REMEMBERED_USER]`,
+		"RestoreInstallDirMachine":                     `[INSTALLDIR_REMEMBERED_MACHINE]`,
+	} {
+		if targets[action] != target {
+			t.Errorf("%s sets %q, want %q", action, targets[action], target)
+		}
+	}
+
+	if got := controlRow(t, res, "VerifyReadyDlg", "InstallElevated"); fmt.Sprint(got[7]) != strconv.Itoa(0x800003) {
+		t.Errorf("elevated Install button %v, want attributes 0x800003", got)
+	}
+}
+
+// TestScopePageOnlyForDual checks that a single-context package has no
+// scope page.
+func TestScopePageOnlyForDual(t *testing.T) {
+	t.Parallel()
+
+	res := buildScope(t, "perUser", "x64", "ui: { wizard: minimal }\n")
+	if got := nextOf(t, res, "WelcomeDlg", "Next"); fmt.Sprint(got) != fmt.Sprint(map[string]string{"1": "VerifyReadyDlg"}) {
+		t.Errorf("WelcomeDlg Next goes to %v", got)
+	}
+}

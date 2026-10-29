@@ -29,6 +29,12 @@ InstallDirText: "Feu clic a Següent per instal·lar a la carpeta predeterminada
 InstallDirLabel: "Instal·la [ProductName] a:"
 InstallDirChange: "&Canvia..."
 
+InstallScopeTitle: "Abast de la instal·lació"
+InstallScopeText: "Trieu qui pot utilitzar [ProductName] en aquest ordinador."
+InstallScopeUser: "Instal·la només per a &mi ([LogonUser])"
+InstallScopeMachine: "Instal·la per a &tots els usuaris de l'ordinador"
+InstallScopeHint: "Instal·lar per a tots els usuaris requereix drets d'administrador. Instal·lar només per a vós no ho requereix, i només vós podreu utilitzar [ProductName]."
+
 CustomizeTitle: "Instal·lació personalitzada"
 CustomizeText: "Seleccioneu com voleu instal·lar les característiques."
 CustomizeHint: "Feu clic a les icones de l'arbre següent per canviar com s'instal·len les característiques."

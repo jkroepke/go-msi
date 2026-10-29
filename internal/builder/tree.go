@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -478,6 +479,30 @@ func (b *build) readFile(diagPath string, cfgFile *config.File, comp *componentI
 	return file
 }
 
+// parsePE reads the version resource of a payload, or returns a nil info
+// for a file that is not a PE image. A PE image whose headers or resources
+// cannot be read is an executable without a known version: it fails the
+// build like an unversioned one unless the configuration accepts that or
+// sets the version itself, because packaging it unversioned would let an
+// upgrade remove it (FILE-01). The bool is false once that is reported.
+func (b *build) parsePE(src io.ReaderAt, cfgFile *config.File, name, diagPath string) (*pe.Info, bool) {
+	info, err := pe.Parse(src)
+
+	switch {
+	case err == nil:
+		return info, true
+	case errors.Is(err, pe.ErrNotPE):
+		return nil, true
+	case cfgFile.Version == config.Auto && !cfgFile.AllowUnversionedExecutable:
+		b.errorf(diagPath+".source", "%s is a PE file whose version resource cannot be read (%v); an upgrade can delete it (FILE-01). "+
+			"Fix the file, set its version, or set allowUnversionedExecutable: true if this is intended", name, err)
+	default:
+		b.warnf(diagPath+".source", "%s is a PE file whose version resource cannot be read: %v", name, err)
+	}
+
+	return &pe.Info{}, false
+}
+
 // readPayload reads a payload file: its size, hashes and version resource.
 func (b *build) readPayload(diagPath string, cfgFile *config.File, comp *componentInfo) *fileInfo { //nolint:cyclop,gocognit // one pass over the format
 	src, err := openSource(b.cfg, cfgFile.FS, cfgFile.Source)
@@ -547,14 +572,19 @@ func (b *build) readPayload(diagPath string, cfgFile *config.File, comp *compone
 
 	copy(file.digest[:], sha.Sum(nil))
 
-	info, perr := pe.Parse(peSource)
-	file.isPE = perr == nil
+	info, readable := b.parsePE(peSource, cfgFile, file.LongName, diagPath)
+	file.isPE = info != nil
+
+	if info == nil {
+		info = &pe.Info{}
+	}
 
 	switch cfgFile.Version {
 	case config.Auto:
 		if file.isPE { //nolint:nestif // reads best as one block
 			if !info.HasVersion {
-				if !cfgFile.AllowUnversionedExecutable {
+				// parsePE has reported an unreadable one.
+				if readable && !cfgFile.AllowUnversionedExecutable {
 					b.errorf(diagPath+".version", "%s is a PE file without a version resource; an upgrade can delete it (FILE-01). "+
 						"Set allowUnversionedExecutable: true if this is intended", file.LongName)
 				}

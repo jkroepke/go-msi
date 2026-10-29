@@ -29,6 +29,12 @@ InstallDirText: "Kliknutím na tlačítko Další nainstalujete produkt do vých
 InstallDirLabel: "Instalovat produkt [ProductName] do:"
 InstallDirChange: "Z&měnit..."
 
+InstallScopeTitle: "Rozsah instalace"
+InstallScopeText: "Zvolte, kdo může v tomto počítači používat [ProductName]."
+InstallScopeUser: "Instalovat jen pro &mě ([LogonUser])"
+InstallScopeMachine: "Instalovat pro všechny &uživatele tohoto počítače"
+InstallScopeHint: "Instalace pro všechny uživatele vyžaduje oprávnění správce. Instalace jen pro vás je nevyžaduje a [ProductName] pak můžete používat jen vy."
+
 CustomizeTitle: "Vlastní instalace"
 CustomizeText: "Vyberte, jak se mají funkce nainstalovat."
 CustomizeHint: "Kliknutím na ikony ve stromu níže změníte způsob instalace funkcí."

@@ -30,6 +30,12 @@ InstallDirText: "לחץ על הבא כדי להתקין בתיקיית בריר�
 InstallDirLabel: "התקן את [ProductName] ב:"
 InstallDirChange: "&שנה..."
 
+InstallScopeTitle: "היקף ההתקנה"
+InstallScopeText: "בחר מי יוכל להשתמש ב-[ProductName] במחשב זה."
+InstallScopeUser: "התקן &רק עבורי ([LogonUser])"
+InstallScopeMachine: "התקן עבור &כל המשתמשים במחשב זה"
+InstallScopeHint: "התקנה עבור כל המשתמשים דורשת הרשאות מנהל. התקנה עבורך בלבד אינה דורשת אותן, ורק אתה תוכל להשתמש ב-[ProductName]."
+
 CustomizeTitle: "התקנה מותאמת אישית"
 CustomizeText: "בחר את אופן ההתקנה של התכונות."
 CustomizeHint: "לחץ על הסמלים בעץ שלהלן כדי לשנות את אופן ההתקנה של התכונות."

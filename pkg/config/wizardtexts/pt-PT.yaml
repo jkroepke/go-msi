@@ -29,6 +29,12 @@ InstallDirText: "Clique em Seguinte para instalar na pasta predefinida ou em Alt
 InstallDirLabel: "Instalar o [ProductName] em:"
 InstallDirChange: "A&lterar..."
 
+InstallScopeTitle: "Âmbito da instalação"
+InstallScopeText: "Escolha quem pode utilizar o [ProductName] neste computador."
+InstallScopeUser: "Instalar apenas para &mim ([LogonUser])"
+InstallScopeMachine: "Instalar para &todos os utilizadores deste computador"
+InstallScopeHint: "A instalação para todos os utilizadores requer direitos de administrador. A instalação apenas para si não requer, e só o utilizador atual poderá utilizar o [ProductName]."
+
 CustomizeTitle: "Configuração personalizada"
 CustomizeText: "Selecione o modo como pretende instalar as funcionalidades."
 CustomizeHint: "Clique nos ícones da árvore abaixo para alterar o modo como as funcionalidades serão instaladas."

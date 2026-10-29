@@ -23,7 +23,7 @@ const (
 // installOnly are the pages that only a new installation shows: Change in
 // the maintenance menu and the Next and Back buttons of an installed
 // product step over them.
-var installOnly = map[string]bool{dlgLicense: true, dlgInstallDir: true} //nolint:gochecknoglobals // lookup table
+var installOnly = map[string]bool{dlgLicense: true, dlgInstallScope: true, dlgInstallDir: true} //nolint:gochecknoglobals // lookup table
 
 // installDirDialog adds the install folder page: the folder in a path edit
 // and Change, which opens the folder browser on the same directory. Next

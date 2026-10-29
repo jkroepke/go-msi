@@ -29,6 +29,12 @@ InstallDirText: "Klikk på Neste for å installere i standardmappen, eller klikk
 InstallDirLabel: "Installer [ProductName] i:"
 InstallDirChange: "&Endre..."
 
+InstallScopeTitle: "Installasjonsomfang"
+InstallScopeText: "Velg hvem som kan bruke [ProductName] på denne datamaskinen."
+InstallScopeUser: "Installer bare for &meg ([LogonUser])"
+InstallScopeMachine: "Installer for &alle brukere av denne datamaskinen"
+InstallScopeHint: "Installasjon for alle brukere krever administratorrettigheter. Installasjon bare for deg krever ikke det, og bare du kan bruke [ProductName]."
+
 CustomizeTitle: "Tilpasset installasjon"
 CustomizeText: "Velg hvordan funksjonene skal installeres."
 CustomizeHint: "Klikk på ikonene i treet nedenfor for å endre hvordan funksjonene installeres."

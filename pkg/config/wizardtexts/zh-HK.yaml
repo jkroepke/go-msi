@@ -29,6 +29,12 @@ InstallDirText: "按「下一步」安裝到預設資料夾，或按「變更」
 InstallDirLabel: "將 [ProductName] 安裝到:"
 InstallDirChange: "變更(&C)..."
 
+InstallScopeTitle: "安裝範圍"
+InstallScopeText: "選擇這部電腦上可以使用 [ProductName] 的使用者。"
+InstallScopeUser: "只為我安裝 ([LogonUser])(&M)"
+InstallScopeMachine: "為這部電腦的所有使用者安裝(&A)"
+InstallScopeHint: "為所有使用者安裝需要系統管理員權限。只為您安裝則不需要，而且只有您可以使用 [ProductName]。"
+
 CustomizeTitle: "自訂安裝"
 CustomizeText: "請選擇功能的安裝方式。"
 CustomizeHint: "按下方樹狀結構中的圖示，即可變更功能的安裝方式。"

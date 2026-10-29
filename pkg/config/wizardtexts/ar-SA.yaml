@@ -30,6 +30,12 @@ InstallDirText: "انقر فوق التالي للتثبيت في المجلد �
 InstallDirLabel: "تثبيت [ProductName] في:"
 InstallDirChange: "ت&غيير..."
 
+InstallScopeTitle: "نطاق التثبيت"
+InstallScopeText: "اختر من يمكنه استخدام [ProductName] على هذا الكمبيوتر."
+InstallScopeUser: "التثبيت لك &فقط ([LogonUser])"
+InstallScopeMachine: "التثبيت لجميع &مستخدمي هذا الكمبيوتر"
+InstallScopeHint: "يتطلب التثبيت لجميع المستخدمين حقوق المسؤول. لا يتطلبها التثبيت لك فقط، ولن يتمكن أحد غيرك من استخدام [ProductName]."
+
 CustomizeTitle: "إعداد مخصص"
 CustomizeText: "حدد طريقة تثبيت الميزات."
 CustomizeHint: "انقر فوق الرموز في الشجرة أدناه لتغيير طريقة تثبيت الميزات."

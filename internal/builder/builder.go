@@ -113,6 +113,9 @@ type File struct {
 // build holds the state of one build.
 type build struct { //nolint:govet // grouped by build step
 	secure map[string]bool
+	// lastScopeAction is the last UI action the scope page added; the
+	// next one follows it.
+	lastScopeAction string
 	// runDLL is set once the custom action DLL of run actions is in the
 	// Binary table.
 	runDLL     bool
@@ -126,6 +129,9 @@ type build struct { //nolint:govet // grouped by build step
 	// shortcutCarrier maps a component to the generated component that
 	// holds the shortcuts to its files.
 	shortcutCarrier map[string]string
+	// removedFolders are the folders that generated RemoveFile rows remove
+	// on uninstall.
+	removedFolders map[string]bool
 	// guids maps each ComponentId to the component that has it, to report
 	// duplicates (ICE08).
 	guids map[any]string
@@ -290,6 +296,7 @@ func newBuild(cfg *config.Config, opts Options, diags config.Diagnostics) *build
 		secure:          make(map[string]bool),
 		hidden:          make(map[string]bool),
 		shortcutCarrier: make(map[string]string),
+		removedFolders:  make(map[string]bool),
 		shortNames:      make(map[string]map[string]bool),
 		shortcutNames:   make(map[string]map[string]bool),
 		schedules:       make(map[string][]sequence.Action),
