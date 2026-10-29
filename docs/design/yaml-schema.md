@@ -655,6 +655,9 @@ the engine resolves (including `[%ENV]` inside it), is replaced by a
 placeholder SID. `[Property]` references are not expanded by the engine and
 are rejected. A deny ACE gets a warning, because SEC-01 saw a deny for
 `BUILTIN\Users` lock the installer out of its own file on uninstall. A
+DACL with no allow ACE for SYSTEM or Administrators gets a warning too: the
+engine runs as SYSTEM, and a folder locked to `NetworkService` alone failed
+its install and the rollback of an upgrade. A
 `LockPermissions` custom table cannot coexist with it (ICE104, error 1941).
 
 **Registry values.**
@@ -760,7 +763,7 @@ it back. With `false` the install succeeds and leaves such a service stopped;
 `recovery` becomes a deferred, no-impersonate `sc.exe failure` action after
 InstallServices, with its exit code ignored (SVC-01). Each step is `restart`,
 `none` or `{restart: <delay>}`; a plain `restart` waits `restartDelay`
-(default 60s). Delays are whole milliseconds and `resetAfter` is whole
+(default 60s; `0s` restarts at once). Delays are whole milliseconds and `resetAfter` is whole
 seconds, as `sc.exe` takes them (SVC-03); `resetAfter` and `resetAfterDays`
 exclude each other. A `password` is added
 to `MsiHiddenProperties` when it names a property.

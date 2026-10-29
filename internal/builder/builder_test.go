@@ -799,7 +799,7 @@ func TestServiceRecoverySteps(t *testing.T) {
 
 	svc.Recovery = &config.ServiceRecovery{
 		ResetAfter:   &reset,
-		RestartDelay: config.Duration(5 * time.Minute),
+		RestartDelay: new(config.Duration(5 * time.Minute)),
 		Actions:      []config.RecoveryAction{{Action: "restart", Restart: &minute}, {Action: "restart"}},
 	}
 

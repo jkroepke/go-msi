@@ -1235,13 +1235,14 @@ const secondsPerDay = 86400
 
 // recoveryDuration checks a delay or reset period that sc.exe takes as a
 // whole number of units (milliseconds or seconds) in a 32-bit value.
-func (v *validator) recoveryDuration(field string, value Duration, unit time.Duration) {
+func (v *validator) recoveryDuration(field string, value *Duration, unit time.Duration) {
 	switch {
-	case value < 0:
+	case value == nil:
+	case *value < 0:
 		v.errorf(field, "must not be negative")
-	case time.Duration(value)%unit != 0:
+	case time.Duration(*value)%unit != 0:
 		v.errorf(field, "must be a whole number of %s", map[time.Duration]string{time.Millisecond: "milliseconds", time.Second: "seconds"}[unit])
-	case int64(time.Duration(value)/unit) > math.MaxInt32:
+	case int64(time.Duration(*value)/unit) > math.MaxInt32:
 		v.errorf(field, "is too long for sc.exe")
 	}
 }
@@ -1261,7 +1262,7 @@ func (v *validator) recovery(recPath string, rec *ServiceRecovery) {
 				v.errorf(step+".restart", "a delay is only allowed on a restart action")
 			}
 
-			v.recoveryDuration(step+".restart", *recAction.Restart, time.Millisecond)
+			v.recoveryDuration(step+".restart", recAction.Restart, time.Millisecond)
 		}
 	}
 
@@ -1280,7 +1281,7 @@ func (v *validator) recovery(recPath string, rec *ServiceRecovery) {
 			v.errorf(recPath+".resetAfter", "set resetAfter or resetAfterDays, not both")
 		}
 
-		v.recoveryDuration(recPath+".resetAfter", *rec.ResetAfter, time.Second)
+		v.recoveryDuration(recPath+".resetAfter", rec.ResetAfter, time.Second)
 	}
 }
 

@@ -60,7 +60,10 @@ var aceRights = map[string]bool{ //nolint:gochecknoglobals // lookup table
 var aclFlags = []string{"NO_ACCESS_CONTROL", "AR", "AI", "P"} //nolint:gochecknoglobals // lookup table
 
 const (
-	placeholderSID = "BA"
+	// placeholderSID stands for an <account> form; installerSID for one
+	// that names SYSTEM or Administrators, which the engine runs as.
+	placeholderSID = "S-1-5-21-0-0-0-1000"
+	installerSID   = "SY"
 	minACEFields   = 6
 	maxACEFields   = 7
 	// maxSubAuthorities is SID_MAX_SUB_AUTHORITIES.
@@ -118,6 +121,15 @@ func resolveAccounts(sddl string) (string, error) {
 		inner := envRef.ReplaceAllString(account[1:len(account)-1], "x")
 		if strings.ContainsAny(inner, "[]") || strings.TrimSpace(inner) == "" {
 			return "<bad>"
+		}
+
+		_, name, _ := strings.Cut(inner, `\`)
+		if name == "" {
+			name = inner
+		}
+
+		if strings.EqualFold(name, "SYSTEM") || strings.EqualFold(name, "Administrators") {
+			return installerSID
 		}
 
 		return placeholderSID
@@ -219,6 +231,28 @@ func validSID(sid string) bool {
 	return true
 }
 
+// installerSIDs are LocalSystem and BUILTIN\Administrators.
+var installerSIDs = map[string]bool{"SY": true, "BA": true, "S-1-5-18": true, "S-1-5-32-544": true} //nolint:gochecknoglobals // lookup table
+
+// grantsInstaller reports whether a DACL lets the engine in: it has no
+// access control at all, or an allow ACE for SYSTEM or Administrators.
+// Only the trustee is checked, not the rights.
+func grantsInstaller(body string) bool {
+	flags, aces, _ := strings.Cut(body, "(")
+	if strings.Contains(flags, "NO_ACCESS_CONTROL") {
+		return true
+	}
+
+	for ace := range strings.SplitSeq(aces, "(") {
+		fields := strings.Split(strings.TrimSuffix(ace, ")"), ";")
+		if len(fields) >= minACEFields && fields[0] == "A" && installerSIDs[fields[5]] {
+			return true
+		}
+	}
+
+	return false
+}
+
 // checkACL validates the flags and ACEs of a DACL or SACL.
 func checkACL(kind byte, body string) ([]string, error) {
 	flags, aces, _ := strings.Cut(body, "(")
@@ -231,6 +265,12 @@ func checkACL(kind byte, body string) ([]string, error) {
 	}
 
 	var warnings []string
+
+	if kind == 'D' && !grantsInstaller(body) {
+		warnings = append(warnings, "the DACL grants neither SYSTEM nor Administrators access, so the installer, "+
+			"which runs as SYSTEM, can lock itself out: a folder locked this way failed the install and the "+
+			"rollback of an upgrade (section 6.2)")
+	}
 
 	for aces != "" {
 		if aces[0] != '(' {

@@ -988,3 +988,22 @@ func TestPreserveInFeature(t *testing.T) {
 		}
 	}
 }
+
+// A zero restartDelay is a delay of its own, not the default.
+func TestZeroRestartDelay(t *testing.T) {
+	t.Parallel()
+
+	for doc, want := range map[string]time.Duration{
+		"recovery: {restartDelay: 0s, actions: [restart]}": 0,
+		"recovery: {actions: [restart]}":                   config.DefaultRestartDelay,
+	} {
+		cfg, err := config.Parse([]byte(base+strings.Replace(appComponent, "    files:", "    services: [{name: svc, "+doc+"}]\n    files:", 1)), config.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if got := time.Duration(*cfg.Components[0].Services[0].Recovery.RestartDelay); got != want {
+			t.Errorf("%s: restartDelay %v, want %v", doc, got, want)
+		}
+	}
+}
