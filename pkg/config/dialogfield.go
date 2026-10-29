@@ -55,7 +55,7 @@ func (o *ChoiceOptions) UnmarshalYAML(node *yaml.Node) error {
 
 // wizardRadioProperties are bound to the wizard's own RadioButtonGroups; a
 // choice on one of them would add its buttons to that group.
-var wizardRadioProperties = set("RMOPTION", "InstallScope") //nolint:gochecknoglobals // lookup table
+var wizardRadioProperties = set("RMOPTION", "BuilderInstallScope") //nolint:gochecknoglobals // lookup table
 
 // choiceProperties reports a choice field whose property another field, or
 // one of the wizard's own radio groups, also binds: a RadioButtonGroup shows

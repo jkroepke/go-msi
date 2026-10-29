@@ -98,6 +98,9 @@ func TestValidateAccepted(t *testing.T) {
 		"dual scope": pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:",
 			"    registry: [{root: HKCR, key: .app, value: App.File}, {root: HKMU, key: Software\\X, name: N, value: v}]\n    files:", 1),
 		"dual scope machine first": pkg(`{platform: x64, scope: PerMachineOrUser}`) + appComponent,
+		// Only a dual package reserves the scope page's names.
+		"scope names in a perMachine package": pkg(`{platform: x64}`) + appComponent +
+			"properties:\n  MSIINSTALLPERUSER: {value: \"1\"}\n  InstallScope: {value: x}\n",
 	} {
 		if ds := validate(t, doc); len(ds) != 0 {
 			t.Errorf("%s: unexpected diagnostics: %v", name, ds)
@@ -763,6 +766,28 @@ func TestValidate(t *testing.T) {
 		"dual scope machine variable": {
 			pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:", "    environment: [{name: FOO, value: a}]\n    files:", 1),
 			sevError, "components[0].environment[0].scope", "machine variables",
+		},
+		"dual scope purge": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + "  - id: Data\n    directory: ProgramFiles64Folder/AcmeData\n    createFolder: true\n    purge: true\n",
+			sevError, "components[1].purge", "runs as the user",
+		},
+		"dual scope public start menu folder": {
+			strings.Replace(pkg(`{platform: x64, scope: perUserOrMachine}`), "directories:\n",
+				"directories:\n  - id: ProgramMenuFolder\n    children: [{id: MENUDIR, name: Acme, configurable: true}]\n", 1) +
+				appComponent + "  - id: Menu\n    directory: MENUDIR\n    createFolder: true\n",
+			sevError, "directories[0].children[0].id", "public directory under ProgramMenuFolder",
+		},
+		"dual scope action prefix": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + `customActions:
+  - id: SetInstallScopeX
+    setProperty: {name: X, value: "1"}
+    schedule: [{sequence: execute, after: CostFinalize}]
+`,
+			sevError, "customActions[0].id", "scope page",
+		},
+		"dual scope MSIINSTALLPERUSER": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + "properties:\n  MSIINSTALLPERUSER: {value: \"1\"}\n",
+			sevError, "properties.MSIINSTALLPERUSER", "set by the builder",
 		},
 		"per-user HKCR": {
 			pkg(`{platform: x64, scope: perUser}`) + strings.Replace(appComponent, "    files:", "    registry: [{root: HKCR, key: .app, value: v}]\n    files:", 1),

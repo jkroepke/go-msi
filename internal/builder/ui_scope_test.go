@@ -63,6 +63,12 @@ func TestScopeProperties(t *testing.T) {
 		if got := [2]string{props["ALLUSERS"], props["MSIINSTALLPERUSER"]}; got != want {
 			t.Errorf("%s: ALLUSERS, MSIINSTALLPERUSER = %q, want %q", scope, got, want)
 		}
+
+		// A standard user's choice must reach the elevated server.
+		secure := slices.Contains(strings.Split(props["SecureCustomProperties"], ";"), "MSIINSTALLPERUSER")
+		if dual := want[0] == "2"; secure != dual {
+			t.Errorf("%s: MSIINSTALLPERUSER secure = %v, want %v", scope, secure, dual)
+		}
 	}
 }
 
@@ -87,17 +93,17 @@ func TestScopePage(t *testing.T) {
 		}
 	}
 
-	if got := properties(t, res)["InstallScope"]; got != "perMachine" {
-		t.Errorf("InstallScope = %q, want perMachine", got)
+	if got := properties(t, res)["BuilderInstallScope"]; got != "perMachine" {
+		t.Errorf("BuilderInstallScope = %q, want perMachine", got)
 	}
 
 	unchanged := `(INSTALLDIR ~= InstallScopeUser_INSTALLDIR OR INSTALLDIR ~= InstallScopeMachine_INSTALLDIR)`
 	want := []string{
 		"[ALLUSERS] 2 [1]",
-		`[MSIINSTALLPERUSER] 1 [NOT InstallScope="perMachine"]`,
-		`[MSIINSTALLPERUSER] {} [InstallScope="perMachine"]`,
-		`[INSTALLDIR] [InstallScopeUser_INSTALLDIR] [NOT InstallScope="perMachine" AND ` + unchanged + `]`,
-		`[INSTALLDIR] [InstallScopeMachine_INSTALLDIR] [InstallScope="perMachine" AND ` + unchanged + `]`,
+		`[MSIINSTALLPERUSER] 1 [NOT BuilderInstallScope="perMachine"]`,
+		`[MSIINSTALLPERUSER] {} [BuilderInstallScope="perMachine"]`,
+		`[INSTALLDIR] [InstallScopeUser_INSTALLDIR] [NOT BuilderInstallScope="perMachine" AND ` + unchanged + `]`,
+		`[INSTALLDIR] [InstallScopeMachine_INSTALLDIR] [BuilderInstallScope="perMachine" AND ` + unchanged + `]`,
 		"NewDialog InstallDirDlg [1]",
 	}
 

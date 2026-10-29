@@ -48,6 +48,18 @@ var ice105Folders = set( //nolint:gochecknoglobals // lookup table
 	"System64Folder", "SystemFolder", "TempFolder", "WindowsFolder", "WindowsVolume",
 )
 
+// contextShellFolders follow the install context like Program Files, but
+// the client has no property for the other context's folder, so a dual
+// package cannot move a public directory below them on the scope page
+// (ALLUSERS property, spec section 8.2).
+var contextShellFolders = set( //nolint:gochecknoglobals // lookup table
+	"DesktopFolder", "ProgramMenuFolder", "StartMenuFolder", "StartupFolder", "TemplateFolder",
+)
+
+// dualActionPrefixes start the names of the actions a dual package's
+// scope page and installDir.remember add.
+var dualActionPrefixes = []string{"SetInstallScope", "SetScope", "RestoreInstallDir"} //nolint:gochecknoglobals // lookup table
+
 // standardActions may not be used as custom action ids (ICE93) and are valid
 // placement anchors.
 var standardActions = set( //nolint:gochecknoglobals // lookup table
@@ -83,7 +95,7 @@ var builderProperties = set( //nolint:gochecknoglobals // lookup table
 	"COMPADDSOURCE", "COMPADDDEFAULT", "FILEADDLOCAL", "FILEADDSOURCE",
 	"FILEADDDEFAULT", "REINSTALL", "REMOVE", "ARPPRODUCTICON", "ARPNOREPAIR",
 	"ARPNOMODIFY", "ARPNOREMOVE", "ARPHELPLINK", "ARPURLINFOABOUT", "ARPURLUPDATEINFO",
-	"ARPCOMMENTS", "ARPCONTACT", "ARPSIZE", "ARPINSTALLLOCATION", "MSIINSTALLPERUSER", "InstallScope",
+	"ARPCOMMENTS", "ARPCONTACT", "ARPSIZE", "ARPINSTALLLOCATION",
 )
 
 // standardTables are written by the builder and cannot be redefined in tables.

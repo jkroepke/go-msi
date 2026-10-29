@@ -44,6 +44,9 @@ func TestPerUserRollbackWarning(t *testing.T) {
 		{"perUser", "rollback", "check", "PublishProduct", false},
 		{"perUser", "commit", "check", "PublishProduct", false},
 		{"perMachine", "deferred", "check", "PublishProduct", false},
+		{"perUserOrMachine", "deferred", "check", "PublishProduct", true},
+		{"perMachineOrUser", "deferred", "check", "PublishProduct", true},
+		{"perMachineOrUser", "deferred", "check", "InstallFiles", false},
 	} {
 		t.Run(tc.scope+"-"+tc.execute+"-"+tc.ret+"-"+tc.after, func(t *testing.T) {
 			t.Parallel()

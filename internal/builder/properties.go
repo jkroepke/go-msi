@@ -36,6 +36,13 @@ func (b *build) writeProperties() error { //nolint:cyclop // one pass over the f
 	case config.ScopePerUser:
 	}
 
+	// The scope page sets MSIINSTALLPERUSER in the client; a standard user's
+	// elevated install passes only restricted public properties
+	// (ALLUSERS among them) and secure ones to the server.
+	if b.cfg.Package.Scope.Dual() {
+		b.secure["MSIINSTALLPERUSER"] = true
+	}
+
 	arp := product.ARP
 	set := func(name, value string) {
 		if value != "" {

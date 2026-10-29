@@ -418,6 +418,8 @@ func (v *validator) directories(cfg *Config, known *refs) { //nolint:cyclop,goco
 				v.errorf(dirPath+".id", "a configurable directory needs an upper-case id")
 			}
 
+			v.contextDirectory(dirPath, dir.ID, top, known)
+
 			walk(dir.Children, dirPath+".children", false)
 		}
 	}
@@ -439,6 +441,23 @@ func (v *validator) directories(cfg *Config, known *refs) { //nolint:cyclop,goco
 
 	if cfg.Product.ARP.InstallLocation != "" && known.dirs[cfg.Product.ARP.InstallLocation] == nil {
 		v.errorf("product.arp.installLocation", "directory %q is not defined", cfg.Product.ARP.InstallLocation)
+	}
+}
+
+// builderProperty reports a property the builder or the installer sets: a
+// dual package also writes MSIINSTALLPERUSER.
+func (v *validator) builderProperty(name string) bool {
+	return builderProperties[name] || name == "MSIINSTALLPERUSER" && v.scope.Dual()
+}
+
+// contextDirectory rejects a public directory of a dual package below a
+// shell folder that follows the context: the scope page moves only Program
+// Files and Common Files folders, and the client resolved this one for the
+// context the package opened in.
+func (v *validator) contextDirectory(dirPath, dirID string, top bool, known *refs) {
+	if folder := known.topFolder(dirID); !top && v.scope.Dual() && IsPublicProperty(dirID) && contextShellFolders[folder] {
+		v.errorf(dirPath+".id", "a %s package cannot have a public directory under %s, which the scope page cannot "+
+			"move to the chosen context; use a private (mixed-case) id", v.scope, folder)
 	}
 }
 
@@ -1423,7 +1442,7 @@ func (v *validator) properties(cfg *Config) {
 			v.errorf(propPath, "%q is not an identifier", name)
 		}
 
-		if builderProperties[name] {
+		if v.builderProperty(name) {
 			v.errorf(propPath, "%s is set by the builder or the installer; it cannot be defined here", name)
 		}
 
@@ -1566,6 +1585,10 @@ func (v *validator) actionID(actionPath, actionID string, seen map[string]bool) 
 
 	if seen[actionID] {
 		v.errorf(actionPath+".id", "custom action %s is defined twice", actionID)
+	}
+
+	if v.scope.Dual() && slices.ContainsFunc(dualActionPrefixes, func(prefix string) bool { return strings.HasPrefix(actionID, prefix) }) {
+		v.errorf(actionPath+".id", "%s starts like the actions the scope page of a %s package adds; rename this one", actionID, v.scope)
 	}
 
 	seen[actionID] = true

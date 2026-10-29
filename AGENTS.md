@@ -253,7 +253,8 @@ go test ./... -shuffle=on -race
   context the package opened in, and a public folder it passes to the server
   wins over the server's own resolution, so a UI that switches the context
   must set every public folder under Program Files or Common Files itself
-  (`internal/builder/ui_scope.go`, INST-02). The other context's paths come
+  (`internal/builder/ui_scope.go`, INST-02); public directories below the
+  other context-dependent shell folders (Start menu, desktop) are rejected. The other context's paths come
   from `[LocalAppDataFolder]Programs\` and the `ProgramFiles` environment
   variables, since a client only has its own context's folder properties.
 - `cmd/msi-builder` uses `spf13/cobra` (with `spf13/pflag`) and nothing else

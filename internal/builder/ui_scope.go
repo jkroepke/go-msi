@@ -14,7 +14,7 @@ const (
 
 	// propScope is the scope page's choice. It stays private: the command
 	// line chooses with MSIINSTALLPERUSER.
-	propScope    = "InstallScope"
+	propScope    = "BuilderInstallScope"
 	scopeUser    = "perUser"
 	scopeMachine = "perMachine"
 	condMachine  = propScope + `="` + scopeMachine + `"`
