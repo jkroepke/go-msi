@@ -293,6 +293,7 @@ upgrade:
   downgradeMessage: A later version of [ProductName] is already installed. Setup will now exit.
   removeOld: afterInstallInitialize
   migrateFeatures: true
+  ignoreRemoveFailure: false      # go on when removing an old product fails
   property: OLDERVERSIONBEINGUPGRADED
   newerProperty: NEWERVERSIONDETECTED
   related:                        # extra Upgrade rows, e.g. a renamed predecessor
@@ -332,6 +333,16 @@ there ("hash matches"), and removing the old product then deletes them
 `guid` survived. Early removal keeps all of them; for a folder source,
 which cannot take a `guid`, it is the only way.
 
+`ignoreRemoveFailure: true` sets the IgnoreRemoveFailure bit (4) on every
+Upgrade row that removes products, `related` rows included. When the
+removal of an old product fails, the install goes on instead of failing
+(1603 with the default `afterInstallInitialize`), and the old product
+stays registered next to the new one, in every `removeOld` window
+(observed, UPG-10, section 8.10 of the specification). It is meant for a
+release whose own uninstall is known to fail. That uninstall still fails
+afterwards; removing the old product needs whatever its uninstall offers
+to get past the failure, or a fixed package (not tested).
+
 Every property named here must be public, is added to
 `SecureCustomProperties` and must not appear in `properties`.
 
@@ -357,7 +368,7 @@ and the wizard's Browse button can move it, and its ID must be upper case.
 package writes the folder to the registry value `InstallDir` below
 `HKLM\Software\<manufacturer>\<name>` (`HKCU` for `perUser`), in a component
 `RememberInstallDir` that joins every top-level feature. The next install
-searches that value with `AppSearch` into `<ID>_REMEMBERED` (a raw
+searches that value with `AppSearch` into `<ID>_REMEMBERED` (a directory
 `RegLocator` search, in the 64-bit view on x64 and arm64, plus the empty
 `Signature` table that `AppSearch` needs) and a type-51 action
 `RestoreInstallDir` copies it into the install dir only when
@@ -365,10 +376,11 @@ searches that value with `AppSearch` into `<ID>_REMEMBERED` (a raw
 in the execute sequence of a quiet install: the upgrade went back to the
 remembered folder, and `INSTALLDIR=` on the command line still won, while a
 search straight into `INSTALLDIR` overrode the command line, and a search
-without a `Signature` table failed with 2228 and 1603. The builder also
-schedules both actions in the UI sequence so that the wizard shows the
-remembered folder; that, `perUser`, x86, arm64 and a 32-bit folder in a
-64-bit package were not tested.
+without a `Signature` table failed with 2228 and 1603. SEARCH-06 confirmed
+it for `perUser` (also as a standard user), x86, a 32-bit folder in an
+x64 package, arm64 and both dual scopes in both contexts. The builder also
+schedules both actions in the UI sequence, so the wizard's install folder
+page shows the remembered folder and the upgrade installs there (UI-08).
 
 A dual scope writes the value with root HKMU, which follows the context, and
 searches both roots, since `RegLocator` has no HKMU: `<ID>_REMEMBERED_USER`
@@ -376,7 +388,13 @@ from HKCU with `RestoreInstallDirUser` under `NOT ALLUSERS`, and
 `<ID>_REMEMBERED_MACHINE` from HKLM with `RestoreInstallDirMachine` under
 `ALLUSERS=1`, the values the engine leaves in `ALLUSERS` per user and per
 machine (INST-02). The scope page offers each context's remembered folder.
-Restoring it in a dual package was not tested.
+
+The search finds only a folder that exists (SEARCH-07). A remembered folder
+that is gone, deleted or on a drive that is no longer there, leaves
+`<ID>_REMEMBERED` empty and the package installs into its default folder.
+A raw search would apply the folder as it is: that recreates a deleted folder,
+but a folder on a missing drive fails the install with 1327 (Invalid Drive)
+and 1603, so msi-builder does not use it.
 
 The install dir must be a configurable directory with an upper-case ID, and
 the IDs `RememberInstallDir` and `RestoreInstallDir` are taken. The component
@@ -385,9 +403,7 @@ and the search use the 64-bit registry view in a 64-bit package, and the
 x86. So the folder should not be found after a change of platform or of
 that parent folder, nor after a version without `remember`, and the upgrade
 should use the default folder; this follows from the search but was not
-tested. The search does not check that the folder still
-exists: a remembered folder on a drive that is gone is applied as it is,
-and what the install does then was not tested. Do not write your own
+tested. Do not write your own
 registry value `InstallDir` under the same key, which the generated
 component owns.
 When `directories` defines the install dir's ID, that node is used as
@@ -1955,10 +1971,10 @@ page texts show `&` as it is. Quote a value that starts with `&`, `<`, `[` or
 An unknown key, an empty text and `strings` without a wizard are errors; a
 text longer than its column (`DialogTitle` 128, `RMUseRM` and `RMDontUseRM`
 64, `UIText` rows 255 characters) is a warning, since ICE03 reports it.
-`ui.dialogs` and `ui.launch.text` already take their texts from the
-configuration. A `languages` entry cannot replace those texts, so they are
-the same in every language; the buttons of a `ui.dialogs` page still follow
-the language.
+`ui.dialogs` and `ui.launch.text` take their texts from the
+configuration; a `languages` entry translates them with `dialogs` and
+`launch` (below), and the buttons of a `ui.dialogs` page follow the
+language on their own.
 
 Messages that the engine itself shows (error and progress action texts)
 come from the engine in the language of `ProductLanguage`, since
@@ -1986,13 +2002,61 @@ ui:
         WelcomeTitle: '[ProductName] へようこそ'
 ```
 
+The texts the configuration itself brings, the pages of `ui.dialogs` and
+the label of `ui.launch`, are translated in the same entry:
+
+```yaml
+ui:
+  enabled: true
+  launch: {file: app.exe, text: '&Open [ProductName]'}
+  dialogs:
+    - id: ServerDlg
+      title: Server connection
+      description: Where the program reads its data.
+      after: WelcomeDlg
+      fields:
+        - {property: SERVER_URL, label: 'Server address:'}
+        - property: LOG_LEVEL
+          label: 'Log level:'
+          type: choice
+          options: [{value: warn, label: '&Warnings'}, {value: debug, label: '&Debug'}]
+  languages:
+    de:
+      launch: {text: '[ProductName] &öffnen'}
+      dialogs:
+        ServerDlg:              # a ui.dialogs id
+          title: Serververbindung
+          description: Woher die Anwendung ihre Daten liest.
+          fields:
+            SERVER_URL: {label: 'Serveradresse:'}   # the property a field binds
+            LOG_LEVEL:
+              label: 'Protokollstufe:'
+              options: {warn: '&Warnungen', debug: '&Ausführlich'}   # by option value
+```
+
+`dialogs` is keyed by the page's `id`, its `fields` by the property a field
+binds and a choice field's `options` by option value, so the entry does not
+repeat the page layout or depend on the order of the fields. Every text is
+optional: one left out keeps the base language's. A key that names no page,
+no field of the page or no option of the field is an error, and so is a
+field key whose property two fields of the page bind, `options` on a field
+that is not a choice, an option label longer than 64 characters,
+`launch` without `ui.launch`, and a text that is only blanks. Values,
+properties, conditions and the page order stay those of `ui.dialogs`; only
+texts change. The texts are formatted and `&` marks the access key on the
+same controls as in `ui.dialogs` (checkboxes and radio buttons). LANG-04
+runs a German transform's translated page through the full UI and checks
+that the option chosen by its translated label sets its value; it passed
+on the CI runner.
+
 A `languages` key is a decimal LCID or a language tag: a full tag such as
 `de-AT` (3079) or `pt-PT` (2070) names that locale, and a short tag such as
 `de` (1031), `es` (3082) or `hi` (1081) the language's main locale. `pt`,
 `sr` and `zh` have no short tag, because their spellings or scripts differ
 (`pt-BR`/`pt-PT`, `zh-CN`/`zh-TW`); `product.language` stays a decimal
-LCID. An entry may set `strings`, `finishText` and `license`, which replace
-`ui.strings`, `ui.finishText` and `ui.license` in that language; a field it
+LCID. An entry may set `strings`, `finishText`, `license`, `launch` and
+`dialogs`, which replace `ui.strings`, `ui.finishText`, `ui.license`,
+`ui.launch.text` and the texts of `ui.dialogs` in that language; a field it
 leaves out keeps the base language's value, and a text key it leaves out
 takes the built-in translation, and without one the base language's text.
 Two keys for one LCID, or an entry for `product.language`, are errors. A
