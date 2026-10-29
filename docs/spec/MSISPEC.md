@@ -413,7 +413,7 @@ Measured on Windows Server 2025 with makecab.exe 5.00 (2026-10-25, LZX:21 agains
 - A Media row (DiskId, LastSequence L) covers `L_prev < Sequence ≤ L`. DiskId 1 MUST exist (ICE71); LastSequence MUST NOT decrease.
 - Each cabinet has its own Media row covering all its files. `Media.Source` stays null, and so does `Cabinet` on rows of uncompressed files.
 - Embedded: `Media.Cabinet = "#" + name`, case-sensitive, e.g. `#cab1.cab`. The cabinet is the whole stream, name-encoded without prefix (section 3).
-- External: `Media.Cabinet` is the bare 8.3 filename, never with `|`, at the source root. Above 80 Media rows, set Page Count ≥ 200.
+- External: `Media.Cabinet` is the bare filename, never with `|`, at the source root. Long names with spaces work: three cabinets named `Cabinet Probe Long Name.cab`, `… Name2.cab` and `… Name3.cab` installed silently, without a disk prompt, from the folder of the `.msi` (observed, CAB-13); an 8.3 name, which Microsoft's documentation implies, is not needed. Above 80 Media rows, set Page Count ≥ 200 (reported).
 - Word Count 0x2 makes cabinets the default; `File.Attributes` 0x4000 or 0x2000 overrides it per file. In a compressed package, uncompressed files must sit at the source root.
 - To mix a cabinet with an uncompressed tree, clear 0x2 and mark cabinet files 0x4000. Never set both bits.
 - Use one folder per cabinet, splitting only at 0x7FFF8000 bytes. Split cabinets only at file boundaries.
@@ -449,8 +449,8 @@ Unverified:
 
 - `cabinet.dll` handling of minor version ≠ 3, `cbCabinet` mismatches, short non-final blocks, and reserve bytes in checksums.
 - Whether Windows Installer itself (as opposed to FDI) accepts type 0, installs empty files from empty folders, and ignores cabinet dates and attributes.
-- The 2 GiB − 1 cabinet limit and files above 2 GiB; `Write` stops a folder at 0x7FFF8000 bytes because `cCFData` is a u16.
-- Long external cabinet names, shared or over-full cabinets, folder skipping, and prompt-free multi-cabinet installs.
+- The 2 GiB − 1 cabinet limit and files between 0x7FFF8000 bytes and 2 GiB; `Write` stops a folder at 0x7FFF8000 bytes because `cCFData` is a u16. A 2.0 GB stored cabinet (two files, 1.9 GB of data) installs (CAB-10); a single file near the limit was not run.
+- Shared or over-full cabinets and folder skipping. Long external cabinet names and prompt-free installs from several cabinets were observed in CAB-13, and a payload of 2.9 GB in two external cabinets in CAB-10; the reported failure of an embedded package above 2 GB was not run.
 
 ## 6. Database schema
 
@@ -520,7 +520,7 @@ Validators (ICE03, ICE06, ICE32) read `_Validation`, the installer does not, and
 | `Guid` | 38 characters, braced, upper-case hex. The category string is `Guid`, not `GUID`. |
 | `RegPath` | Formatted registry key path. It MUST NOT start or end with `\`. |
 | `KeyFormatted` | Listed in the schema, undocumented, used by no standard column. Builders MUST NOT use it. |
-| `Cabinet` | `#name` is a stream in the package, case-sensitive. Otherwise an external 8.3 file at the source root, case-insensitive. |
+| `Cabinet` | `#name` is a stream in the package, case-sensitive. Otherwise an external file at the source root (a long name works, CAB-13), case-insensitive. |
 | `Shortcut` | Contains `[`: a formatted, non-advertised target. Otherwise a Feature key: an advertised shortcut. |
 
 ### Unverified (chapter 05)
@@ -2218,8 +2218,8 @@ Until 2026-10-26 the cases used other IDs: `RUN-` for most installation and runt
 | CAB-06 | P1 | S/A/I | Two CABs; correct/wrong Media.LastSequence across the boundary | Exercise embedded and external sources; log cabinet selection, extraction, source prompts and final installed hashes. | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | CAB-07 | P2 | S/A | Cabinet file entry name 254/255/256 bytes | Test FDI extraction with a valid control and an optional non-ASCII variant; record the enforced name limits. | Not run |
 | CAB-09 | P2 | S/A | Cabinets with 65535 and 65536 entries; duplicate content once per cabinet | Build with FCI and by hand; `FDICopy` both; check that the smart-cabbed duplicate extracts with its own date and attributes (section 5, W15). | Not run |
-| CAB-10 | P2 | S/A/I | Payload above 2 GB: about 2.9 GB in two stored cabinets beside the `.msi` (`package.embedCabinets: false`); the same cabinets embedded | Install the external variant silently and compare every installed hash (`TestMsiexecInstallsLargePackage`, run with `MSI_BUILDER_LARGE_PACKAGE=1`). msi-builder refuses to build the embedded variant (section 5), so the reported failure "The system cannot open the device or file specified" of an embedded package above 2 GB stays untested; it needs a compound file writer above 2 GB (CFB-07). | Not run |
-| CAB-13 | P1 | S/A/I | Three cabinets, embedded and external; the external ones with a long name that has spaces (`Cabinet Probe Long Name.cab`, `… Name2.cab`, `… Name3.cab`) | Install silently from the build folder; compare installed hashes; uninstall. Does the engine need an 8.3 external cabinet name, and does a multi-cabinet install prompt for a disk? (`internal/builder/nativetest/media_windows_test.go`) | Not run |
+| CAB-10 | P2 | S/A/I | Payload above 2 GB: about 2.9 GB in two stored cabinets beside the `.msi` (`package.embedCabinets: false`); the same cabinets embedded | Install the external variant silently and compare every installed hash (`TestMsiexecInstallsLargePackage`, run with `MSI_BUILDER_LARGE_PACKAGE=1`). msi-builder refuses to build the embedded variant (section 5), so the reported failure "The system cannot open the device or file specified" of an embedded package above 2 GB stays untested; it needs a compound file writer above 2 GB (CFB-07). | Confirmed, external variant ([results](MSISPEC-RESULTS.md#packages-above-2-gb-cab-10-cab-13)) |
+| CAB-13 | P1 | S/A/I | Three cabinets, embedded and external; the external ones with a long name that has spaces (`Cabinet Probe Long Name.cab`, `… Name2.cab`, `… Name3.cab`) | Install silently from the build folder; compare installed hashes; uninstall. Does the engine need an 8.3 external cabinet name, and does a multi-cabinet install prompt for a disk? (`internal/builder/nativetest/media_windows_test.go`) | Confirmed ([results](MSISPEC-RESULTS.md#packages-above-2-gb-cab-10-cab-13)) |
 | MSZIP-01 | P0 | S/A/I | MSZIP input crossing at least three 32768-byte blocks | Use cross-block repeated patterns; validate FDI and MSI extraction byte for byte, including a variant without dictionary continuity. | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | MSZIP-02 | P1 | S/A | MSZIP trailing empty final DEFLATE block present/absent | Verify DEFLATE validity independently, then test FDI extraction; identify which variants native cabinet.dll accepts. | Confirmed ([results](MSISPEC-RESULTS.md)) |
 | LZX-01 | P2 | S/A/I | Real LZX reference CAB and continued-folder cabinet set | Compare native FDI, msitools and MSI payload handling. Record compression window and continuation errors, and the DiskId-order rule (error 2350, section 5). | Not run |
