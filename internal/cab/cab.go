@@ -75,7 +75,9 @@ const (
 // names hold nameBytes bytes in all and whose sizes add up to folderBytes,
 // whatever the data: every compressed block taking the most bytes its
 // compression allows. It is exact for None. A cabinet of entries that fits
-// MaxSize by Bound can always be written.
+// MaxSize by Bound can always be written; Options.SignatureReserve adds
+// SignatureReserve bytes to it. A signature appended after cbCabinet is not
+// counted.
 func Bound(files int, nameBytes, folderBytes int64, comp Compression) int64 {
 	blocks := (folderBytes + blockSize - 1) / blockSize
 	header := headerSize + folderSize + int64(files)*(fileEntrySize+1) + nameBytes + blocks*recordHeaderSize

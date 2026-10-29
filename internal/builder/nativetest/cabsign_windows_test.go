@@ -5,6 +5,9 @@ package nativetest_test
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/binary"
@@ -27,8 +30,8 @@ import (
 )
 
 var (
-	pMsiGetFileSignatureInformationW = msiDLL.NewProc("MsiGetFileSignatureInformationW")
-	pCertFreeCertificateContext      = syscall.NewLazyDLL("crypt32.dll").NewProc("CertFreeCertificateContext")
+	pMsiGetFileSignatureInformationW = msiDLL.NewProc("MsiGetFileSignatureInformationW")                       //nolint:gochecknoglobals // lazy procedure
+	pCertFreeCertificateContext      = syscall.NewLazyDLL("crypt32.dll").NewProc("CertFreeCertificateContext") //nolint:gochecknoglobals // lazy procedure
 )
 
 // fileSignatureHash returns the hash MsiGetFileSignatureInformation reports
@@ -38,18 +41,18 @@ var (
 func fileSignatureHash(t *testing.T, path string) ([]byte, error) {
 	t.Helper()
 
-	var r uintptr
+	var hresult uintptr
 
 	for _, want := range []uint32{64, 256, 1024, 4096, 65536} {
 		hash := make([]byte, want)
 		size := want
 
-		if r = signatureInformation(t, path, hash, &size); r == 0 {
+		if hresult = signatureInformation(t, path, hash, &size); hresult == 0 {
 			return hash[:size], nil
 		}
 	}
 
-	return nil, fmt.Errorf("MsiGetFileSignatureInformation: HRESULT %#x up to a 64 KiB buffer", r)
+	return nil, fmt.Errorf("no signature hash up to a 64 KiB buffer: HRESULT %#x", hresult)
 }
 
 // signatureInformation calls MsiGetFileSignatureInformation with hash as the
@@ -66,13 +69,13 @@ func signatureInformation(t *testing.T, path string, hash []byte, size *uint32) 
 		buf = uintptr(unsafe.Pointer(&hash[0]))
 	}
 
-	r, _, _ := pMsiGetFileSignatureInformationW.Call(uintptr(unsafe.Pointer(wstr(t, path))), 0,
+	hresult, _, _ := pMsiGetFileSignatureInformationW.Call(uintptr(unsafe.Pointer(wstr(t, path))), 0,
 		uintptr(unsafe.Pointer(&cert)), buf, uintptr(unsafe.Pointer(size)))
 	if cert != 0 {
 		_, _, _ = pCertFreeCertificateContext.Call(cert)
 	}
 
-	return r
+	return hresult
 }
 
 // logLines returns the lines of the msiexec log at path that name an
@@ -108,8 +111,10 @@ func probeFilesOf(fill byte) []probeFile {
 // TestCabinetSignatureFormat checks the cabinet signature against Windows
 // (SIG-08): WinVerifyTrust and signtool accept a cabinet msi-builder
 // signed, msi-builder accepts one signtool signed, and
-// MsiGetFileSignatureInformation reports the digest msi-builder writes to
-// MsiDigitalSignature.Hash.
+// MsiGetFileSignatureInformation reports the signature value msi-builder
+// writes to MsiDigitalSignature.Hash.
+//
+//nolint:paralleltest // it changes the machine's root store
 func TestCabinetSignatureFormat(t *testing.T) {
 	if testing.Short() {
 		t.Skip("trusting the test CA needs elevation")
@@ -123,7 +128,7 @@ func TestCabinetSignatureFormat(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var ourSigned []byte
+	ourSigned := make(map[crypto.Hash][]byte)
 
 	for _, algo := range []crypto.Hash{crypto.SHA256, crypto.SHA1} {
 		path := writeTemp(t, "ours-"+algo.String()+".cab", reserved)
@@ -169,13 +174,25 @@ func TestCabinetSignatureFormat(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if algo == crypto.SHA256 {
-			ourSigned = bytes.Clone(signed)
+		ourSigned[algo] = signed
+
+		// reserved1 and iCabinet are outside the digest.
+		for _, off := range []int{0x04, 0x22} {
+			skipped := bytes.Clone(signed)
+			skipped[off] ^= 1
+
+			got := winVerifyTrust(t, writeTemp(t, "skipped.cab", skipped))
+			if got != pki.wantValid() {
+				t.Errorf("%v: WinVerifyTrust of a changed byte at %#x = %#x, want %#x", algo, off, got, pki.wantValid())
+			}
+
+			t.Logf("SIG-08: %v: WinVerifyTrust with byte %#x changed = %#x", algo, off, got)
 		}
 
-		signed[len(reserved)-1] ^= 1
+		changed := bytes.Clone(signed)
+		changed[len(reserved)-1] ^= 1
 
-		got := winVerifyTrust(t, writeTemp(t, "tampered.cab", signed))
+		got := winVerifyTrust(t, writeTemp(t, "tampered.cab", changed))
 		if got == trustOK {
 			t.Errorf("%v: WinVerifyTrust accepted a changed cabinet", algo)
 		}
@@ -190,8 +207,10 @@ func TestCabinetSignatureFormat(t *testing.T) {
 		return
 	}
 
-	if out, err := signtoolVerify(t, signtool, writeTemp(t, "ours.cab", ourSigned)); err != nil {
-		t.Errorf("signtool verify of the msi-builder cabinet signature: %v\n%s", err, out)
+	for algo, signed := range ourSigned {
+		if out, err := signtoolVerify(t, signtool, writeTemp(t, "ours.cab", signed)); err != nil {
+			t.Errorf("%v: signtool verify of the msi-builder cabinet signature: %v\n%s", algo, err, out)
+		}
 	}
 
 	// signtool inserts the reserve into a cabinet without one.
@@ -233,6 +252,23 @@ func signedProbe(t *testing.T, files []probeFile, opts sign.Options) (string, *b
 
 	return buildProbe(t, "  compression: mszip\n  embedCabinets: false", files,
 		builder.Options{BuildTime: time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC), CabinetSize: 1, SignCabinets: &opts})
+}
+
+// selfSigned returns signing options with a self-signed certificate for key
+// that no store trusts.
+func selfSigned(t *testing.T, key crypto.Signer) sign.Options {
+	t.Helper()
+
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(time.Now().UnixNano()),
+		Subject:      pkix.Name{CommonName: "msi-builder untrusted signer"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning},
+	}
+
+	return sign.Options{Signer: key, Certificates: []*x509.Certificate{newCertificate(t, tmpl, tmpl, key.Public(), key)}}
 }
 
 func readFile(t *testing.T, path string) []byte {
@@ -329,9 +365,11 @@ func checkInstall(t *testing.T, path string, files []probeFile, label string, wa
 // TestMsiexecChecksSignedCabinets installs a package whose three external
 // cabinets are signed and listed in MsiDigitalSignature (SIG-09), then
 // checks that Windows Installer refuses a changed cabinet, a cabinet signed
-// by the same certificate for other content and an unsigned cabinet, and
-// that it does not ask for a trusted certificate. Packages with a null Hash and with the
-// content digest as Hash show why Hash holds the signature value.
+// by the same certificate for other content, the same content signed by
+// another certificate and an unsigned cabinet, and that it does not ask for
+// a trusted certificate. Packages with a null Hash and with the content
+// digest as Hash show why Hash holds the signature value. Other keys,
+// digests and a timestamp must install too.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestMsiexecChecksSignedCabinets(t *testing.T) {
@@ -381,6 +419,10 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 	otherPath, other := signedProbe(t, probeFilesOf('x'), pki.options(crypto.SHA256))
 	swapped := filepath.Join(filepath.Dir(otherPath), other.Cabinets[1].Name)
 
+	// Another certificate signs the same content.
+	resignedPath, resigned := signedProbe(t, files, selfSigned(t, rsaLeafKey(t)))
+	resignedCab := filepath.Join(filepath.Dir(resignedPath), resigned.Cabinets[1].Name)
+
 	unsignedPath, unsigned := buildProbe(t, "  compression: mszip\n  embedCabinets: false", files,
 		builder.Options{BuildTime: time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC), CabinetSize: 1})
 	unsignedCab := filepath.Join(filepath.Dir(unsignedPath), unsigned.Cabinets[1].Name)
@@ -389,17 +431,18 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 	changed := bytes.Clone(original)
 	changed[binary.LittleEndian.Uint32(changed[8:])-1] ^= 1
 
-	// want: the signed, changed, swapped and unsigned second cabinet
-	// install. A null Hash only checks the certificate, so a cabinet of
-	// another build by the same signer installs; the content digest is not
-	// what Windows Installer compares, so it refuses everything.
+	// want: the signed, changed, swapped, re-signed and unsigned second
+	// cabinet install. A null Hash only checks the certificate, so a
+	// cabinet of another build by the same signer installs; the content
+	// digest is not what Windows Installer compares, so it refuses
+	// everything.
 	for _, pkg := range []struct {
 		label, path string
-		want        [4]bool
+		want        [5]bool
 	}{
-		{"signature value", path, [4]bool{true, false, false, false}},
-		{"no hash", noHash, [4]bool{true, false, true, false}},
-		{"content digest", digestHash, [4]bool{false, false, false, false}},
+		{"signature value", path, [5]bool{true, false, false, false, false}},
+		{"no hash", noHash, [5]bool{true, false, true, false, false}},
+		{"content digest", digestHash, [5]bool{false, false, false, false, false}},
 	} {
 		t.Run(pkg.label, func(t *testing.T) {
 			if checkInstall(t, pkg.path, files, pkg.label+": signed cabinets", pkg.want[0]) != pkg.want[0] {
@@ -412,6 +455,7 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 			}{
 				{"a changed byte in the second cabinet", func() []byte { return changed }},
 				{"the second cabinet of another build by the same signer", func() []byte { return readFile(t, swapped) }},
+				{"the same second cabinet signed by another certificate", func() []byte { return readFile(t, resignedCab) }},
 				{"an unsigned second cabinet", func() []byte { return readFile(t, unsignedCab) }},
 			} {
 				if err := os.WriteFile(second, tc.data(), 0o600); err != nil {
@@ -431,29 +475,71 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 		// A self-signed certificate that no store trusts installs: the
 		// package pins the certificate in MsiDigitalCertificate, and the
 		// package's own signature is what a user trusts.
-		key := rsaLeafKey(t)
-		tmpl := &x509.Certificate{
-			SerialNumber: big.NewInt(time.Now().UnixNano()),
-			Subject:      pkix.Name{CommonName: "msi-builder untrusted signer"},
-			NotBefore:    time.Now().Add(-time.Hour),
-			NotAfter:     time.Now().Add(24 * time.Hour),
-			KeyUsage:     x509.KeyUsageDigitalSignature,
-			ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning},
+		untrustedPath, _ := signedProbe(t, files, selfSigned(t, rsaLeafKey(t)))
+		if !checkInstall(t, untrustedPath, files, "untrusted self-signed certificate", true) {
+			t.Error("the installed files are not the package's sources")
 		}
-		cert := newCertificate(t, tmpl, tmpl, key.Public(), key)
-
-		untrustedPath, _ := signedProbe(t, files, sign.Options{Signer: key, Certificates: []*x509.Certificate{cert}})
-		log := filepath.Join(t.TempDir(), "install.log")
-
-		code := msiexecCode(t, log, "/i", untrustedPath)
-		if code == 0 {
-			msiexecQuiet(t, filepath.Join(t.TempDir(), "uninstall.log"), "/x", untrustedPath)
-		} else {
-			t.Errorf("msiexec exit %d for cabinets signed by the certificate the package lists", code)
-		}
-
-		t.Logf("SIG-09: cabinets signed by an untrusted self-signed certificate: msiexec exit %d\n%s", code, logLines(log))
 	})
+
+	t.Run("keys and digests", func(t *testing.T) {
+		ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		sha384, sha1 := pki.options(crypto.SHA384), pki.options(crypto.SHA1)
+		stamped := pki.options(crypto.SHA256)
+		stamped.TimestampURL = "http://timestamp.digicert.com"
+
+		for _, tc := range []struct {
+			label string
+			opts  sign.Options
+		}{
+			{"ECDSA P-256 with SHA-256", newPKI(t, ecKey).options(crypto.SHA256)},
+			{"RSA with SHA-384", sha384},
+			{"RSA with SHA-1", sha1},
+			{"RSA with SHA-256 and a timestamp", stamped},
+		} {
+			if tc.opts.TimestampURL != "" && !timestampAvailable(t, tc.opts) {
+				t.Logf("SIG-09: %s: timestamp authority unavailable, skipped", tc.label)
+
+				continue
+			}
+
+			probe, _ := signedProbe(t, files, tc.opts)
+			if !checkInstall(t, probe, files, tc.label, true) {
+				t.Errorf("%s: the installed files are not the package's sources", tc.label)
+			}
+		}
+	})
+}
+
+// timestampAvailable signs a small cabinet with opts and reports whether
+// the timestamp authority answered.
+func timestampAvailable(t *testing.T, opts sign.Options) bool {
+	t.Helper()
+
+	raw, err := cab.Write([]cab.File{{Name: "a.txt", Data: []byte("timestamp probe")}}, cab.Options{SignatureReserve: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	file, err := os.OpenFile(writeTemp(t, "stamp.cab", raw), os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+
+	_, err = sign.SignCabinet(t.Context(), file, opts)
+	if errors.Is(err, sign.ErrTimestampUnavailable) {
+		return false
+	}
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return true
 }
 
 // TestICESignedCabinets runs the ICE suite, ICE81 among it, on a package
@@ -462,8 +548,7 @@ func TestMsiexecChecksSignedCabinets(t *testing.T) {
 //nolint:paralleltest // msi.dll's external UI handler is process-wide
 func TestICESignedCabinets(t *testing.T) {
 	cub := iceCube(t)
-	pki := newPKI(t, rsaLeafKey(t))
-	path, _ := signedProbe(t, probeFilesOf('a'), pki.options(crypto.SHA256))
+	path, _ := signedProbe(t, probeFilesOf('a'), selfSigned(t, rsaLeafKey(t)))
 
 	requireCleanICE(t, path, cub)
 }

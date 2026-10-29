@@ -219,7 +219,7 @@ var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 		"Table|s32|K|Identifier|||||Media|The table of the signed object; only Media is checked.",
 		"SignObject|s72|K|Text||||||The primary key of the signed object in Table, a Media.DiskId.",
 		"DigitalCertificate_|s72||Identifier|MsiDigitalCertificate|1||||Foreign key into MsiDigitalCertificate, the certificate the object must be signed with.",
-		"Hash|V0||Binary||||||The digest the object's signature covers; null checks the certificate only.",
+		"Hash|V0||Binary||||||The signer's signature value, as MsiGetFileSignatureInformation reports it; null checks the certificate only.",
 	},
 	"MsiFileHash": {
 		"File_|s72|K|Identifier|File|1||||Primary key, foreign key into File table referencing file with this hash",

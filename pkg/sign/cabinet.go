@@ -32,6 +32,9 @@ const (
 	cabSigMagic = 0x00100000
 	// cabSigAlign pads the signature.
 	cabSigAlign = 8
+	// cabSigMax bounds the signature size a cabinet may declare; a
+	// certificate chain and a timestamp take a few kilobytes.
+	cabSigMax = 1 << 20
 )
 
 // oidSpcCabImageData is the indirect data type of a cabinet signature;
@@ -88,6 +91,9 @@ func readCabinetHeader(src io.ReaderAt) (*cabinetHeader, error) {
 	}
 
 	hdr.signature = int64(order.Uint32(sig[8:]))
+	if hdr.signature == 0 || hdr.signature%cabSigAlign != 0 || hdr.signature > cabSigMax {
+		return nil, fmt.Errorf("sign: the cabinet declares a signature of %d bytes", hdr.signature)
+	}
 
 	return hdr, nil
 }

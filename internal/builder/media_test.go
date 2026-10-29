@@ -301,7 +301,7 @@ func testSigner(t *testing.T) *sign.Options {
 }
 
 // TestSignedExternalCabinets signs each external cabinet and lists the
-// certificate and each cabinet's digest in the signature tables.
+// certificate and each cabinet's signature value in the signature tables.
 func TestSignedExternalCabinets(t *testing.T) {
 	t.Parallel()
 
@@ -384,5 +384,28 @@ func TestSignedExternalCabinets(t *testing.T) {
 
 	if database.Table("MsiDigitalSignature") != nil || database.Table("MsiDigitalCertificate") != nil {
 		t.Error("an embedded build has signature tables")
+	}
+}
+
+// TestSignCabinetsChecksOptions refuses signing options without a
+// certificate, or with a key that is not the certificate's, before the
+// first cabinet is written.
+func TestSignCabinetsChecksOptions(t *testing.T) {
+	t.Parallel()
+
+	signer := testSigner(t)
+	other := testSigner(t)
+
+	for name, opts := range map[string]*sign.Options{
+		"no certificate": {Signer: signer.Signer},
+		"another key":    {Signer: other.Signer, Certificates: signer.Certificates},
+	} {
+		cfg := splitConfig(t)
+		cfg.Package.EmbedCabinets = new(false)
+
+		res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime, CabinetSize: 100000, SignCabinets: opts})
+		if err == nil || res.Package != nil || len(res.Cabinets) != 0 {
+			t.Errorf("%s: Build = %v with %d cabinets", name, err, len(res.Cabinets))
+		}
 	}
 }

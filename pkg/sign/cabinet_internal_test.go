@@ -147,6 +147,20 @@ func TestSignCabinetRejects(t *testing.T) {
 		t.Error("a signer without a certificate was accepted")
 	}
 
+	signed := reservedCabinet(t, true)
+	if _, err := SignCabinet(context.Background(), signed, opts); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, size := range []uint32{0xFFFFFFF8, cabSigMax + cabSigAlign, 12} {
+		huge := bytes.Clone(signed.Bytes())
+		binary.LittleEndian.PutUint32(huge[cabSigHeader+8:], size)
+
+		if _, err := VerifyCabinet(bytes.NewReader(huge)); err == nil {
+			t.Errorf("a declared signature of %d bytes was accepted", size)
+		}
+	}
+
 	short := reservedCabinet(t, true)
 	if _, err := VerifyCabinet(bytes.NewReader(short.Bytes()[:30])); err == nil {
 		t.Error("a truncated cabinet was accepted")

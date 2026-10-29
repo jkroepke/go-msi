@@ -173,6 +173,13 @@ func Sign(ctx context.Context, pkg []byte, opts Options) ([]byte, error) {
 }
 
 // check refuses options without a usable key and certificate.
+// Check reports whether the options can sign: a signer, its certificate,
+// and a key the format supports. Sign and SignCabinet check the same, so a
+// caller can find a bad key before it does the work that comes first.
+func (o *Options) Check() error {
+	return o.check()
+}
+
 func (o *Options) check() error {
 	if o.Signer == nil || len(o.Certificates) == 0 {
 		return errors.New("sign: a signer and its certificate are required")

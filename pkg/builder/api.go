@@ -21,12 +21,14 @@ type Options struct {
 	BuildTime time.Time
 	// SignCabinets signs each cabinet written beside the package
 	// (package.embedCabinets false) with Authenticode and lists the
-	// signing certificate and each cabinet's digest in the
+	// signing certificate and each cabinet's signature value in the
 	// MsiDigitalCertificate and MsiDigitalSignature tables, so that Windows
 	// Installer refuses a cabinet that was changed or swapped. The package
-	// itself is not signed: sign it with sign.Sign after the build. Nil,
-	// or embedded cabinets, which the package signature covers, leave the
-	// cabinets unsigned.
+	// itself is not signed: sign it with sign.Sign after the build, since
+	// the tables protect the cabinets only as far as the package is
+	// protected. Nil, or embedded cabinets, which the package signature
+	// covers, leave the cabinets unsigned. A timestamp request is bounded
+	// by the HTTP client's timeout; the build cannot cancel it.
 	SignCabinets *sign.Options
 	ToolName     string
 	// Output is the path the package is written to. The cabinet and the

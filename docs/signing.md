@@ -63,8 +63,10 @@ anyone from replacing the tables along with the cabinets.
   to a package built without them, because they change the package's tables.
 - Embedded cabinets are covered by the package signature and are not signed
   on their own.
-- Windows Server 2025 accepts RSA with SHA-256 for cabinets. ECDSA, timestamps
-  and older Windows versions are not yet tested for cabinets.
+- Size limits (`builder.Options.CabinetSize`, 2 GiB) count the cabinet
+  without its signature, which adds a few kilobytes to each file.
+- `msi-builder verify` checks the package signature only; it does not yet
+  check the cabinets beside it against `MsiDigitalSignature`.
 
 Packages with sub-storages (embedded transforms) cannot be signed, because
 msi-builder does not write sub-storages. `msi-builder verify` reads them.

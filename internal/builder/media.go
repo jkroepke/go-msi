@@ -164,12 +164,6 @@ func (b *build) writeSignatures() {
 		return
 	}
 
-	if len(b.opts.SignCabinets.Certificates) == 0 {
-		b.errorf("package.embedCabinets", "signing the cabinets needs a certificate")
-
-		return
-	}
-
 	b.table("MsiDigitalCertificate").Add(cabinetSigner, b.opts.SignCabinets.Certificates[0].Raw)
 
 	signatures := b.table("MsiDigitalSignature")
