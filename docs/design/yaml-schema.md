@@ -115,6 +115,7 @@ customActions: []
 icons: {}
 binaries: {}
 firewall: []             # helper: firewall rules
+scheduleReboot: {}       # ask for a restart after the installation
 ui: {}                   # built-in wizard and added dialogs
 tables: []               # escape hatch: custom tables
 ```
@@ -1230,9 +1231,9 @@ engine asks the user to restart at the end. With `/norestart` or
 (`TestMsiexecScheduleReboot`). A quiet install (`/qn`) without one of them
 may restart the machine without asking, so unattended deployments pass
 `/norestart`. When `scheduleReboot` is set, execute-sequence actions can use
-`ScheduleReboot` as an anchor. `ForceReboot`, which restarts in the middle of the installation and
-resumes it afterwards, is not offered: a simple package has nothing that
-needs it.
+`ScheduleReboot` as an anchor. `ForceReboot`, which restarts in the middle
+of the installation and resumes it afterwards, is not offered: a simple
+package has nothing that needs it.
 
 ### 4.10 `icons` and `binaries`
 
