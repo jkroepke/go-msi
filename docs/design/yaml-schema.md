@@ -1516,16 +1516,16 @@ An unknown key, an empty text and `strings` without a wizard are errors; a
 text longer than its column (`DialogTitle` 128, `RMUseRM` and `RMDontUseRM`
 64, `UIText` rows 255 characters) is a warning, since ICE03 reports it.
 `ui.dialogs` and `ui.launch.text` already take their texts from the
-configuration; they are the same in every language, since a `languages`
-entry cannot replace them.
+configuration. A `languages` entry cannot replace those texts, so they are
+the same in every language; the buttons of a `ui.dialogs` page still follow
+the language.
 
 Messages that the engine itself shows (error and progress action texts)
 come from the engine in the language of `ProductLanguage`, since
 msi-builder writes no `Error` or `ActionText` table (UI-06). Full-UI
 installs of a German package (code page 1252, language 1031) and of a
 Russian and Japanese one (code page 65001) passed on Windows Server 2025
-(UI-06), and the full-UI install of a multi-language package showed the
-German wizard on the CI runner (LANG-03).
+(UI-06).
 
 A multi-language product is one MSI with an embedded language transform per
 further language (spec section 7.6):
@@ -1556,8 +1556,9 @@ LCID. An entry may set `strings`, `finishText` and `license`, which replace
 leaves out keeps the base language's value, and a text key it leaves out
 takes the built-in translation, and without one the base language's text.
 Two keys for one LCID, or an entry for `product.language`, are errors. A
-problem in an entry's texts or license is reported under the entry's own
-path, such as `ui.languages.fr.license`.
+problem in an entry's `strings`, `finishText` or `license` is reported
+under the entry's key as written, such as `ui.languages.fr.license`; a text
+that the code page cannot hold is reported under `package.codepage`.
 
 msi-builder ships its own translations (not taken from another toolset) of
 every text for the languages WixUI also covers: ar-SA, bg-BG, ca-ES, cs-CZ,
@@ -1590,7 +1591,9 @@ transform that matches the user's regional format
 (`GetUserDefaultLangID`): an exact LCID first, then the same primary
 language, else the first entry, which is the base language;
 `ProductLanguage=1031` or `TRANSFORMS=:1031` on the command line forces one
-(LANG-01, LANG-03, spec section 7.6). The wizard cannot offer a language
+(LANG-01, LANG-03, spec section 7.6). On the en-US CI runner, a full-UI
+install with `ProductLanguage=1031` showed the German wizard from the
+built-in translation, with the `de` entry's finish text (LANG-03). The wizard cannot offer a language
 choice, since the engine applies the transform before the first dialog;
 spec section 16, "Decisions not adopted", records that and the
 one-MSI-per-language alternative.
