@@ -62,7 +62,7 @@ icons:
   icon.ico: icon.ico
 
 ui:
-  wizard: true
+  enabled: true
   chooseFeatures: true
   license: LICENSE.rtf
   theme:

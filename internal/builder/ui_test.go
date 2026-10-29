@@ -200,7 +200,7 @@ func TestMinimalWizard(t *testing.T) {
 
 	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
 	cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
-	cfg.UI.Wizard = true
+	cfg.UI.Enabled = true
 	res := mustBuild(t, cfg)
 
 	if got := nextOf(t, res, "WelcomeDlg", "Next"); got["1"] != "VerifyReadyDlg" {
@@ -251,7 +251,7 @@ func TestWizardErrors(t *testing.T) {
 			t.Parallel()
 
 			cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
-			cfg.UI.Wizard = true
+			cfg.UI.Enabled = true
 			dialog := tc.dialog
 			cfg.UI.Dialogs = []*config.Dialog{&dialog}
 
@@ -271,7 +271,7 @@ func TestDialogFieldTypes(t *testing.T) {
 
 	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
 	cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
-	cfg.UI.Wizard = true
+	cfg.UI.Enabled = true
 	cfg.UI.Dialogs = []*config.Dialog{{
 		ID: "ExtraDlg", Title: "Options", After: "WelcomeDlg", Fields: []config.DialogField{
 			{Property: "API_TOKEN", Label: "Token", Type: config.FieldPassword},
@@ -324,7 +324,7 @@ func TestDialogChoiceField(t *testing.T) {
 
 	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
 	cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
-	cfg.UI.Wizard = true
+	cfg.UI.Enabled = true
 	cfg.UI.Dialogs = []*config.Dialog{{
 		ID: "ExtraDlg", Title: "Options", After: "WelcomeDlg", Fields: []config.DialogField{
 			{Property: "LOG_LEVEL", Label: "&Log level", Type: config.FieldChoice, Options: []config.ChoiceOption{

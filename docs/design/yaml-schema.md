@@ -77,7 +77,7 @@ closes each one.
 | Corrupted cabinet data (MSZIP-01, CAB-04) | Wrong DEFLATE history, or a bit flip without a checksum, installs a corrupted file | Writer: every cabinet data block gets a checksum, and the builder re-extracts every cabinet after writing it and compares each file's SHA-256 with the source. Neither can be turned off, so the schema has no field for them. |
 | Script custom actions (CA-02) | Inline JScript/VBScript actions (types 37/38) report success whatever they return; a Binary script returning 5 ends the install with 0 and leaves files unregistered | There are no script custom actions. Actions run an executable (`exec`, `execProperty`, `exe`), a command through msi-builder's DLL (`run`), a DLL (`dll`), set a property or directory, or fail with an error. |
 | EXE exit codes (CA-02) | Any non-zero exit fails the install unless the action ignores it | `customActions[].return` is required for `exec`, `execProperty`, `exe` and `run` actions (`check` or `ignore`), so the author decides. |
-| Same ProductCode, new package (UPG-03) | Installing a rebuilt package over the installed one fails with 1638 | `product.productCode: auto` derives the code from the upgrade code, version, platform and a digest of every input, including the contents of the wizard's licenses and theme pictures; the release that added these derives a new code once for every configuration that uses them. Changed content gives a new ProductCode (a major upgrade); unchanged content gives the same package byte for byte. Keys whose value means the same as a missing key (null, `""`, `[]`, `{}`) are left out of the digest, so a key a later version adds to the schema (as a pointer, string, list or mapping, or left out when empty) does not change the code of a configuration that does not use it; `false` and `0` stay in, since an explicit `secure: false` is not the default. The release that introduced this pruning derives a new code once for every configuration, unchanged ones included. A pinned ProductCode makes the validator warn. |
+| Same ProductCode, new package (UPG-03) | Installing a rebuilt package over the installed one fails with 1638 | `product.productCode: auto` derives the code from the upgrade code, version, platform and a digest of every input, including the contents of the wizard's licenses and theme pictures; the release that added these derives a new code once for every configuration that uses them. Changed content gives a new ProductCode (a major upgrade); unchanged content gives the same package byte for byte. Keys whose value means the same as a missing key (null, `""`, `[]`, `{}`) are left out of the digest, so a key a later version adds to the schema (as a pointer, string, list or mapping, or left out when empty) does not change the code of a configuration that does not use it; `false` and `0` stay in, since an explicit `secure: false` is not the default. The release that introduced this pruning derives a new code once for every configuration, unchanged ones included. So did renaming `ui.installDirPage` to `chooseDirectory` (its `false` was in every digest), and renaming `ui.wizard` to `enabled` does for every configuration with `wizard: true`. A pinned ProductCode makes the validator warn. |
 | Quote in a firewall rule description (CA-04) | netsh drops the quote and stores the rest of the description | `firewall[].name` and `firewall[].description` must not contain a double quote. |
 | Firewall rule named `all` (CA-06) | `add rule` refuses the name, `delete rule name=all dir=in` deletes every inbound rule, in lower or upper case and with or without double quotes (also `\"all\"` through `cmd`) | `firewall[].name` must not be `all` in any case (spaces around it included) and must not contain `[` or `]`. |
 | Versions that differ in the fourth field only (UPG-01) | Without an inclusive maximum both products stay installed side by side | `upgrade.allowSameVersion` defaults to `true` (maximum inclusive), so `0.32.0.5` replaces `0.32.0.4`. Four-field versions get a warning that Windows compares only three. |
@@ -1634,7 +1634,7 @@ under the feature, such as `features[1].firewall[0].program`.
 
 ```yaml
 ui:
-  wizard: true                      # the setup wizard; default false (basic UI)
+  enabled: true                     # the setup wizard; default false (basic UI)
   chooseFeatures: true              # adds the feature tree page
   dialogs:
     - id: ConfigDlg
@@ -1666,50 +1666,51 @@ ui:
 
 The wizards are written from scratch for msi-builder, including the bitmaps,
 which the `artwork` package draws from a colour palette at build time.
-`wizard: true` has welcome, ready, progress and finish; `chooseFeatures`
-adds the feature tree (`CustomizeDlg`) with Browse and disk usage. Browse
-changes the directory of the selected feature (`features[].directory`); the
-generated `MainFeature` has the install dir. Every wizard includes
-maintenance (Repair and Remove; Change with the feature tree), cancel, user
-exit, fatal error, files in use, Restart Manager and the error dialog. Added
-dialogs are laid out automatically: one label and one edit field per
-property, Back, Next and Cancel. The fields of one dialog must fit in 160
-dialog units (four text fields); the error names the height they need. A `password`
-field is an edit field with the Password attribute (0x200000), and its
-property is added to `MsiHiddenProperties`. A `checkbox` field is a
-checkbox with the label as its text, in the space of a label and an edit
-field; its `CheckBox` row holds `value`. Two checkboxes on one property must
-set the same value. Microsoft's documentation reports that a checked box
-sets the property to `value`, that a box starts checked when its property has any
-value, and that the password characters are masked; none of this, what an
-unchecked box leaves in the property, or whether the password stays out of
-the log was tested on Windows. The validator warns when a checkbox
-property has a default in `properties`, since the box would start checked.
-An `&` in a checkbox label marks the access key, as in `&Delete`; write
-`&&` for a literal `&`. Text and password labels show `&` as it is.
-A `choice` field is a label above a `RadioButtonGroup` with one radio
-button per option, 16 dialog units each. It needs at least two options;
-values are unique, at most 64 characters and contain no `[ ] { }`, labels
-at most 64 characters (default: the value, shown literally; in a label `&` marks the access key). The
-property's default in `properties` must be one of the values; without one
-the first option becomes the default, since ICE34 requires a group's
-property to match a button. A choice on a searched property is an error
-for the same reason, and so is a choice on a property that another field
-binds too. In the full UI the group starts on the default and selecting
-another option sets the property on the server (UI-05, observed on Windows). `after` names the
-page the dialog follows: `WelcomeDlg`, `CustomizeDlg` or an added dialog.
-Without `wizard` no UI tables are written and msiexec shows its basic
-progress window; silent installs never depend on the UI in any mode.
-Without `chooseFeatures` `ARPNOMODIFY` is set, whatever `product.arp.noModify`
-says: such a package has no page that Change could show, so `noModify: false`
-does not bring the button back. A feature tree page without the wizard is an
+`enabled: true` shows the wizard: welcome, ready, progress and finish;
+`chooseFeatures` adds the feature tree (`CustomizeDlg`) with Browse and disk
+usage. Browse changes the directory of the selected feature
+(`features[].directory`); the generated `MainFeature` has the install dir.
+Every wizard includes maintenance (Repair and Remove; Change with the
+feature tree), cancel, user exit, fatal error, files in use, Restart Manager
+and the error dialog. Added dialogs are laid out automatically: one label
+and one edit field per property, Back, Next and Cancel. The fields of one
+dialog must fit in 160 dialog units (four text fields); the error names the
+height they need. A `password` field is an edit field with the Password
+attribute (0x200000), and its property is added to `MsiHiddenProperties`. A
+`checkbox` field is a checkbox with the label as its text, in the space of a
+label and an edit field; its `CheckBox` row holds `value`. Two checkboxes on
+one property must set the same value. Microsoft's documentation reports that
+a checked box sets the property to `value`, that a box starts checked when
+its property has any value, and that the password characters are masked;
+none of this, what an unchecked box leaves in the property, or whether the
+password stays out of the log was tested on Windows. The validator warns
+when a checkbox property has a default in `properties`, since the box would
+start checked. An `&` in a checkbox label marks the access key, as in
+`&Delete`; write `&&` for a literal `&`. Text and password labels show `&`
+as it is. A `choice` field is a label above a `RadioButtonGroup` with one
+radio button per option, 16 dialog units each. It needs at least two
+options; values are unique, at most 64 characters and contain no `[ ] { }`,
+labels at most 64 characters (default: the value, shown literally; in a
+label `&` marks the access key). The property's default in `properties` must
+be one of the values; without one the first option becomes the default,
+since ICE34 requires a group's property to match a button. A choice on a
+searched property is an error for the same reason, and so is a choice on a
+property that another field binds too. In the full UI the group starts on
+the default and selecting another option sets the property on the server
+(UI-05, observed on Windows). `after` names the page the dialog follows:
+`WelcomeDlg`, `CustomizeDlg` or an added dialog. With `enabled: false` (the
+default) no UI tables are written and msiexec shows its basic progress
+window; silent installs never depend on the UI in any mode. Without
+`chooseFeatures` `ARPNOMODIFY` is set, whatever `product.arp.noModify` says:
+such a package has no page that Change could show, so `noModify: false` does
+not bring the button back. A feature tree page without the wizard is an
 error.
 
 #### License page
 
 ```yaml
 ui:
-  wizard: true
+  enabled: true
   chooseFeatures: true
   license: LICENSE.rtf     # RTF as is, any other file is text converted to RTF
 ```
@@ -1731,7 +1732,7 @@ license page. `ui.dialogs` can follow it with `after: LicenseAgreementDlg`;
 
 ```yaml
 ui:
-  wizard: true
+  enabled: true
   chooseDirectory: true     # needs installDir
 ```
 
@@ -1767,7 +1768,7 @@ define either.
 
 ```yaml
 ui:
-  wizard: true
+  enabled: true
   launch:
     file: viewer.exe       # files[].id, or the file name when it has no id
     arguments: --welcome   # formatted, optional
@@ -1795,7 +1796,7 @@ When `launch` is set, the custom action name and the property
 
 ```yaml
 ui:
-  wizard: true
+  enabled: true
   finishText: Open a new command prompt to use [ProductName].
 ```
 
@@ -1864,7 +1865,7 @@ checkbox without a wizard is an error.
 product:
   language: 1031           # LCID of the package (Template, ProductLanguage)
 ui:
-  wizard: true
+  enabled: true
   strings:
     Next: '&Weiter >'
     Back: '< &Zurück'
@@ -1913,7 +1914,7 @@ further language (spec section 7.6):
 product:
   language: 1033           # base language, in the database itself
 ui:
-  wizard: true
+  enabled: true
   finishText: Thanks for installing [ProductName].
   languages:
     de: {}                 # or 1031: the built-in German texts
