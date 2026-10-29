@@ -346,6 +346,7 @@ func checkInstall(t *testing.T, path string, files []probeFile, label string, wa
 	if !strings.Contains(readLog(log), "Validating digital signature of file") {
 		t.Errorf("%s: msiexec did not log a cabinet signature check", label)
 	}
+
 	if code != 0 {
 		t.Logf("SIG-09: %s: refused, msiexec exit %d\n%s", label, code, logLines(log))
 
