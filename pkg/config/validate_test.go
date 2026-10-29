@@ -667,6 +667,15 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    serviceControl: [{name: Old, stopOnInstall: true}, {name: old, deleteOnInstall: true}]\n    files:", 1),
 			sevError, "components[0].serviceControl[1].name", "already controls",
 		},
+		"service control of a service in another component": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: Svc}]\n    files:", 1) +
+				"  - id: Other\n    directory: INSTALLDIR\n    createFolder: true\n    serviceControl: [{name: svc, stopOnUninstall: true}]\n",
+			sevError, "components[1].serviceControl[0].name", "services[].control",
+		},
+		"start condition too long": {
+			base + strings.Replace(appComponent, "    files:", "    condition: A"+strings.Repeat("A", 200)+"\n    services: [{name: svc, control: {startCondition: B"+strings.Repeat("B", 100)+"}}]\n    files:", 1),
+			sevError, "components[0].services[0].control.startCondition", "at most 255",
+		},
 		"service control of own service": {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc}]\n    serviceControl: [{name: svc, stopOnInstall: true}]\n    files:", 1),
 			sevError, "components[0].serviceControl[0].name", "services[].control",

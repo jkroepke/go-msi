@@ -315,8 +315,10 @@ func (b *build) startCarrier(info *componentInfo, svc *config.Service) string {
 	carrier := generatedID("cmp", "StartService", b.upgradeCode, comp.ID, svc.Name)
 	registry := generatedID("reg", "StartService", b.upgradeCode, comp.ID, svc.Name)
 
+	// It shares the component's condition, so it is re-evaluated on a
+	// reinstall exactly when that one is.
 	bitness := "32"
-	attributes := compRegistryKeyPath
+	attributes := compRegistryKeyPath | info.attributes&(compPermanent|compTransitive)
 
 	if info.attributes&comp64Bit != 0 {
 		bitness = "64"
@@ -330,9 +332,10 @@ func (b *build) startCarrier(info *componentInfo, svc *config.Service) string {
 		cond = "(" + comp.Condition + ") AND " + cond
 	}
 
-	// A public property set in the wizard must reach the server.
+	// A public property set in the wizard must reach the server, unless
+	// the configuration declares it not secure.
 	for _, prop := range condition.Properties(svc.Control.StartCondition) {
-		if config.IsPublicProperty(prop) {
+		if p, ok := b.cfg.Properties[prop]; config.IsPublicProperty(prop) && (!ok || p.Secure == nil || *p.Secure) {
 			b.secure[prop] = true
 		}
 	}

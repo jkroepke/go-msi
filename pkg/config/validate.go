@@ -650,6 +650,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 	removeIDs := make(map[string]bool)
 	removeFileIDs := make(map[string]bool)
 	perUser := cfg.Package.Scope == ScopePerUser
+	services := packageServices(cfg)
 
 	for i, comp := range cfg.Components {
 		p := comp.Path(i) //nolint:varnamelen // the YAML path, named p throughout this file
@@ -693,10 +694,11 @@ func (v *validator) components(cfg *Config, known *refs) {
 		for j, svc := range comp.Services {
 			svcPath := fmt.Sprintf("%s.services[%d]", p, j)
 			v.service(svcPath, svc, keyFile, perUser)
+			v.startConditionLength(svcPath+".control.startCondition", comp.Condition, svc.Control.StartCondition)
 			v.permissions(svcPath+".permissions", svc.Permissions)
 		}
 
-		v.componentServiceControl(p, comp, perUser)
+		v.componentServiceControl(p, comp, services, perUser)
 		v.componentPermissions(p, comp)
 		v.componentEvents(p, comp, perUser)
 	}
@@ -1336,14 +1338,47 @@ func (v *validator) serviceControl(ctlPath string, ctl *ServiceControl, start st
 	}
 }
 
-// componentServiceControl checks the services a component stops, starts or
-// deletes without installing them.
-func (v *validator) componentServiceControl(compPath string, comp *Component, perUser bool) {
-	seen := make(map[string]bool)
+// packageServices returns the lower-case names of the services the package
+// installs.
+func packageServices(cfg *Config) map[string]bool {
+	names := make(map[string]bool)
 
-	for _, svc := range comp.Services {
-		seen[strings.ToLower(svc.Name)] = true
+	for _, comp := range cfg.Components {
+		for _, svc := range comp.Services {
+			names[strings.ToLower(svc.Name)] = true
+		}
 	}
+
+	return names
+}
+
+// maxComponentCondition is the length of Component.Condition.
+const maxComponentCondition = 255
+
+// startConditionLength rejects a start condition that does not fit the
+// Condition column of the generated component, which also holds the
+// condition of the service's component.
+func (v *validator) startConditionLength(field, compCondition, startCondition string) {
+	if startCondition == "" {
+		return
+	}
+
+	n := len("(" + startCondition + ")")
+	if compCondition != "" {
+		n += len("(" + compCondition + ") AND ")
+	}
+
+	if n > maxComponentCondition {
+		v.errorf(field, "with the component's condition it is %d characters, at most %d fit in Component.Condition", n, maxComponentCondition)
+	}
+}
+
+// componentServiceControl checks the services a component stops, starts or
+// deletes without installing them. A service the package installs is
+// controlled by its services[].control: a row in another component would
+// stop or delete it when that component is removed or repaired.
+func (v *validator) componentServiceControl(compPath string, comp *Component, services map[string]bool, perUser bool) {
+	seen := make(map[string]bool)
 
 	for j, ctl := range comp.ServiceControl {
 		ctlPath := fmt.Sprintf("%s.serviceControl[%d]", compPath, j)
@@ -1357,9 +1392,12 @@ func (v *validator) componentServiceControl(compPath string, comp *Component, pe
 		}
 
 		key := strings.ToLower(ctl.Name)
-		if seen[key] {
-			v.errorf(ctlPath+".name", "this component already controls %s; set the events of a service it installs in services[].control, "+
-				"and list each other service once", ctl.Name)
+
+		switch {
+		case services[key]:
+			v.errorf(ctlPath+".name", "the package installs %s; set its events in services[].control", ctl.Name)
+		case seen[key]:
+			v.errorf(ctlPath+".name", "this component already controls %s; list each service once", ctl.Name)
 		}
 
 		seen[key] = true

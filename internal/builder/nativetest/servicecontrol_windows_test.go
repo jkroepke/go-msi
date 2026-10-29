@@ -229,9 +229,9 @@ func TestMsiexecControlsForeignServices(t *testing.T) {
 }
 
 const conditionalStartConfig = `schema: msi-builder/v1
-product: { name: MsiBuilderCtlSvc, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 9d2c4e61-3b7a-4f08-a5c1-7e9b0d3f2a48 }
+product: { name: MsiBuilderCondSvc, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 2f6b8d13-a7c4-4e59-b1d0-8c3e5a9f7b26 }
 package: { platform: x64 }
-installDir: { name: MsiBuilderCtlSvc }
+installDir: { name: MsiBuilderCondSvc }
 components:
   - files: [{ source: svc.exe }]
     services:
@@ -248,7 +248,7 @@ func TestMsiexecStartsServiceOnCondition(t *testing.T) {
 		t.Skip("installing needs msiexec time and elevation")
 	}
 
-	installDir := filepath.Join(os.Getenv("ProgramFiles"), ctlService)
+	installDir := filepath.Join(os.Getenv("ProgramFiles"), "MsiBuilderCondSvc")
 	svc := testService(t)
 	dir := t.TempDir()
 	path := buildConfig(t, dir, "conditional", conditionalStartConfig, map[string][]byte{"svc.exe": svc})

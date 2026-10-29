@@ -1160,7 +1160,7 @@ Reproducible mode (for example `SOURCE_DATE_EPOCH` set):
 2. `identity = tableName + U+001F + value₁ + U+001F + value₂ …`: the non-key columns in order, after defaults, before bind-time values, NULL as empty.
 3. Rows with the same identity are duplicates: keep one and warn.
 
-Prefixes: `reg` Registry, `rrg` RemoveRegistry, `cmp` Component, `fil` File, `dir` Directory, `rmf` RemoveFile, `ini` IniFile, `rif` RemoveIniFile, `env` Environment, `sc` ServiceControl, `svi` ServiceInstall, `scp` MsiShortcutProperty, `dup` DuplicateFile, `mvf` MoveFile, `lpe` MsiLockPermissionsEx, `sig` Signature, `id` other.
+Prefixes: `reg` Registry, `rrg` RemoveRegistry, `cmp` Component, `fil` File, `dir` Directory, `rmf` RemoveFile, `ini` IniFile, `rif` RemoveIniFile, `env` Environment, `sc` ServiceControl, `scx` ServiceControl of a service the package does not install, `svi` ServiceInstall, `scp` MsiShortcutProperty, `dup` DuplicateFile, `mvf` MoveFile, `lpe` MsiLockPermissionsEx, `sig` Signature, `id` other.
 
 - Observed v3: `reg`, `scp`, `fil`, `cmp`, `dir` + 32 upper-case hex. Observed v5: `reg`, `scp`, `fls`, `d` + 27 characters from `[A-Za-z0-9._]`. Hashes are not expected to match.
 - A file key defaults to the filename if it is a legal identifier of at most 72 characters. msi-builder makes any other filename into one: characters outside `[A-Za-z0-9_.]` become `_`, a leading digit or `.` gets a `_` prefix, and a key over 60 characters is cut and ends in `_` plus eight hex digits of the SHA-256 of the replaced name. This is a producer convention: the engine only needs a unique identifier. A component key defaults to its key-path resource's key.

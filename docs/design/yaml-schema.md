@@ -449,6 +449,7 @@ components:
     removeRegistry: []
     removeFiles: []                  # RemoveFile rows, see "File removal" below
     services: []
+    serviceControl: []               # services the package does not install
     eventLog: []
     environment: []
     createFolder: false
@@ -831,8 +832,9 @@ again.
 `startCondition` starts the service at install only when the condition is
 true. `ServiceControl` has no condition column, so the start row goes to a
 generated component (`cmp…`) in the same folder and features, with the
-service component's condition and this one as its `Condition` and an HKLM
-registry value as key path; public properties in the condition become
+service component's condition and this one as its `Condition`, the
+component's `transitive` and `permanent` settings and an HKLM registry value
+as key path; together the two conditions must fit in 255 characters; public properties in the condition become
 secure, so a value set in the wizard reaches the server. A component
 condition is evaluated when the component is first installed, so the
 property counts at install (and on each major upgrade, which installs
@@ -870,8 +872,10 @@ Each event is off unless set, and an entry needs at least one. Install
 events run when the component is installed (including a repair of it),
 uninstall events when it is removed. A service that does not exist is not
 an error. A service the component installs is controlled with
-`services[].control` instead; naming it here is an error, and so is a name
-listed twice in one component. A per-user package cannot control services.
+`services[].control` instead: naming any service of the package here is an
+error, because a row in another component would stop or delete it when that
+component is removed or repaired. A name listed twice in one component is an
+error too. A per-user package cannot control services.
 
 **Event log sources** become Registry rows of the component:
 
@@ -937,7 +941,7 @@ components:
 
 The folder must be the component's only file. Settings that name one file
 or one component cannot be copied to many: `guid` (other than `auto`),
-`keyPath`, `registry`, `removeRegistry`, `services`, `eventLog`,
+`keyPath`, `registry`, `removeRegistry`, `services`, `serviceControl`, `eventLog`,
 `environment`, `purge`, `createFolder` and `folderPermissions` on the
 component, and `name`, `id`, `version`, `language` and `shortcuts` on the
 file, are errors. Put them on a component of their own and exclude its file
