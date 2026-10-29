@@ -239,3 +239,8 @@ Follow the template in `.github/PULL_REQUEST_TEMPLATE.md`. Titles start with
 request carries one release label. Sign off each commit (`git commit -s`).
 Report in the pull request which checks ran, including the Windows run, and
 which could not run and why.
+
+Automatic releases are controlled by the repository Actions variable
+`RELEASE_ENABLED`: the `release` job in `ci.yaml` runs only when it is
+`true` (compared case-insensitively). Unset means merges to `main` create no
+tag. Don't change it from a pull request; the maintainer sets it.
