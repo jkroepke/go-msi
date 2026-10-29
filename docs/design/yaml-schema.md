@@ -1484,8 +1484,6 @@ wizard is an error.
 ```yaml
 product:
   language: 1031           # LCID of the package (Template, ProductLanguage)
-package:
-  codepage: 1252           # must hold every text; 65001 for any script
 ui:
   wizard: minimal
   strings:
@@ -1517,14 +1515,17 @@ page texts show `&` as it is. Quote a value that starts with `&`, `<`, `[` or
 An unknown key, an empty text and `strings` without a wizard are errors; a
 text longer than its column (`DialogTitle` 128, `RMUseRM` and `RMDontUseRM`
 64, `UIText` rows 255 characters) is a warning, since ICE03 reports it.
-`ui.dialogs` already take their texts from the configuration.
+`ui.dialogs` and `ui.launch.text` already take their texts from the
+configuration; they are the same in every language, since a `languages`
+entry cannot replace them.
 
 Messages that the engine itself shows (error and progress action texts)
 come from the engine in the language of `ProductLanguage`, since
 msi-builder writes no `Error` or `ActionText` table (UI-06). Full-UI
 installs of a German package (code page 1252, language 1031) and of a
 Russian and Japanese one (code page 65001) passed on Windows Server 2025
-(UI-06).
+(UI-06), and the full-UI install of a multi-language package showed the
+German wizard on the CI runner (LANG-03).
 
 A multi-language product is one MSI with an embedded language transform per
 further language (spec section 7.6):
@@ -1554,7 +1555,9 @@ LCID. An entry may set `strings`, `finishText` and `license`, which replace
 `ui.strings`, `ui.finishText` and `ui.license` in that language; a field it
 leaves out keeps the base language's value, and a text key it leaves out
 takes the built-in translation, and without one the base language's text.
-Two keys for one LCID, or an entry for `product.language`, are errors.
+Two keys for one LCID, or an entry for `product.language`, are errors. A
+problem in an entry's texts or license is reported under the entry's own
+path, such as `ui.languages.fr.license`.
 
 msi-builder ships its own translations (not taken from another toolset) of
 every text for the languages WixUI also covers: ar-SA, bg-BG, ca-ES, cs-CZ,
