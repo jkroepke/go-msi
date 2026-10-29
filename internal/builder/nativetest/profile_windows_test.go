@@ -298,7 +298,7 @@ func TestICEProfileKeyPath(t *testing.T) {
 	}
 }
 
-// TestICEProfileHKMUKeyPath shows how ICE38 judges a component in the
+// TestICEProfileHKMUKeyPath checks that ICE38 accepts a component in the
 // profile whose own key path is an HKMU value (root -1) in a per-user
 // package, which keeps it; a dual package gets the HKCU value instead.
 //
@@ -321,8 +321,12 @@ func TestICEProfileHKMUKeyPath(t *testing.T) {
 			}
 
 			for _, finding := range findings {
-				if finding.Type != ice.Info {
-					t.Logf("PROBE %s: %v", scope, finding)
+				switch {
+				case finding.Type == ice.Info:
+				case finding.ICE == "ICE38" || finding.Type == ice.Error || finding.Type == ice.Failure:
+					t.Error(finding)
+				default:
+					t.Log(finding)
 				}
 			}
 		})

@@ -32,7 +32,7 @@ func (b *build) permissions() error {
 
 func (b *build) lockComponent(path string, comp *config.Component, info *componentInfo) {
 	if comp.FolderPermissions != nil {
-		if info.keyPath != nil && !comp.CreateFolder {
+		if !info.createFolder {
 			b.errorf(path+".folderPermissions", "the component creates no folder row; set createFolder: true")
 		} else {
 			b.lock(lockFolder, comp.Directory, comp.FolderPermissions)

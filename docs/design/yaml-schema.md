@@ -413,7 +413,8 @@ msi-builder made (error 1638). These components keep their key path and
 get the ICE38 warning instead: one with an explicit `keyPath`, one with
 services (the key path is the executable), and one with `neverOverwrite`,
 `preserve` or `sharedDllRefCount`, whose engine checks test the key path
-(UPG-05). A dual package's install dir is under Program Files in the
+(observed for `neverOverwrite` in UPG-05, reported for
+`sharedDllRefCount`). A dual package's install dir is under Program Files in the
 package, so its components keep their key files; components in profile
 folders get the HKCU value in both contexts.
 

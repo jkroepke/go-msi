@@ -32,8 +32,8 @@ func (b *build) profileKeyPath(info *componentInfo) {
 // needsProfileKeyPath reports whether a component below a profile folder
 // leaves its key path to the builder and would not get an HKCU value
 // anyway: no keyPath, no services (they need the executable), and neither
-// neverOverwrite (also set by preserve) nor sharedDllRefCount, whose
-// engine checks test the key path itself (UPG-05). An HKMU value counts as
+// neverOverwrite (also set by preserve, UPG-05) nor sharedDllRefCount,
+// whose engine checks test the key path itself. An HKMU value counts as
 // HKCU only in a per-user package: a dual package installed per machine
 // writes it to HKLM. The validator warns about the components this leaves
 // out.

@@ -178,3 +178,18 @@ func TestProfileKeyPathKeptKeyFile(t *testing.T) {
 		}
 	}
 }
+
+// A folder-keyed profile component keeps the CreateFolder row that its
+// folderPermissions lock.
+func TestProfileKeyPathFolderPermissions(t *testing.T) {
+	t.Parallel()
+
+	res := mustBuild(t, scopedShortcutConfig(t, "perMachine", `
+  - { id: Locked, directory: AppDataFolder/Acme, folderPermissions: { sddl: "D:(A;;FA;;;BU)" } }
+  - { files: [{ source: app.exe }] }
+`))
+
+	profileKey(t, res.Database, "Locked")
+	rowWhere(t, res.Database, "CreateFolder", func(r []any) bool { return r[1] == "Locked" })
+	rowWhere(t, res.Database, "MsiLockPermissionsEx", func(r []any) bool { return fmt.Sprint(r[1]) == "AppDataFolder_Acme" || strings.Contains(fmt.Sprint(r[1]), "Acme") })
+}
