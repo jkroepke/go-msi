@@ -1363,13 +1363,13 @@ func (v *validator) startConditionLength(field, compCondition, startCondition st
 		return
 	}
 
-	n := len("(" + startCondition + ")")
+	length := len("(" + startCondition + ")")
 	if compCondition != "" {
-		n += len("(" + compCondition + ") AND ")
+		length += len("(" + compCondition + ") AND ")
 	}
 
-	if n > maxComponentCondition {
-		v.errorf(field, "with the component's condition it is %d characters, at most %d fit in Component.Condition", n, maxComponentCondition)
+	if length > maxComponentCondition {
+		v.errorf(field, "with the component's condition it is %d characters, at most %d fit in Component.Condition", length, maxComponentCondition)
 	}
 }
 
