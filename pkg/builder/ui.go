@@ -451,14 +451,14 @@ func (b *build) formDialog(wiz *wizard, cfg *config.Dialog) *uiDialog {
 }
 
 // choiceButtons adds the radio buttons of a choice field; an option without
-// a label shows its value. A property without
+// a label shows its value, with & doubled so it stays literal. A property without
 // a default selects the first option, because a group whose property matches
 // no button fails ICE34 and starts with nothing selected.
 func (b *build) choiceButtons(wiz *wizard, field *config.DialogField, width int) {
 	for i, option := range field.Options {
 		label := option.Label
 		if label == "" {
-			label = option.Value
+			label = strings.ReplaceAll(option.Value, "&", "&&")
 		}
 
 		wiz.radios = append(wiz.radios, uiRadio{

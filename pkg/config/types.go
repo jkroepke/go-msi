@@ -596,7 +596,7 @@ type DialogField struct {
 	// Value is what a checked checkbox sets the property to, default 1.
 	Value string `yaml:"value"`
 	// Options are the values a choice field offers, in the order shown.
-	Options []ChoiceOption `yaml:"options"`
+	Options ChoiceOptions `yaml:"options"`
 }
 
 // ChoiceOption is one radio button of a choice field. "info" is the short

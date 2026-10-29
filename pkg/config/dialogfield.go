@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -8,6 +9,9 @@ import (
 
 	"go.yaml.in/yaml/v3"
 )
+
+// tagNull is the YAML tag of a null node.
+const tagNull = "!!null"
 
 // maxChoiceText is the width of the RadioButton table's Value (s64) and
 // Text (L64) columns.
@@ -22,6 +26,66 @@ func (o *ChoiceOption) UnmarshalYAML(node *yaml.Node) error {
 	type plain ChoiceOption
 
 	return decodeStrict(node, (*plain)(o))
+}
+
+// ChoiceOptions are the options of a choice field.
+type ChoiceOptions []ChoiceOption
+
+// errNullOption reports an empty entry in a choice field's options.
+var errNullOption = errors.New("an option cannot be empty")
+
+// UnmarshalYAML rejects a null entry, which the YAML decoder would otherwise
+// drop from the list without a trace.
+func (o *ChoiceOptions) UnmarshalYAML(node *yaml.Node) error {
+	for _, item := range node.Content {
+		if item.Tag == tagNull {
+			return fmt.Errorf("line %d: %w", item.Line, errNullOption)
+		}
+	}
+
+	var options []ChoiceOption
+	if err := node.Decode(&options); err != nil {
+		return err //nolint:wrapcheck // yaml.v3 collects an unwrapped *yaml.TypeError with the others
+	}
+
+	*o = options
+
+	return nil
+}
+
+// wizardRadioProperties are bound to the wizard's own RadioButtonGroups; a
+// choice on one of them would add its buttons to that group.
+var wizardRadioProperties = set("RMOPTION") //nolint:gochecknoglobals // lookup table
+
+// choiceProperties reports a choice field whose property another field, or
+// one of the wizard's own radio groups, also binds: a RadioButtonGroup shows
+// every RadioButton row of its property, so the buttons would overlap.
+func (v *validator) choiceProperties(cfg *Config) {
+	bound := make(map[string]int)
+
+	for _, dialog := range cfg.UI.Dialogs {
+		for _, field := range dialog.Fields {
+			bound[field.Property]++
+		}
+	}
+
+	for i, dialog := range cfg.UI.Dialogs {
+		for index, field := range dialog.Fields {
+			if field.Type != FieldChoice {
+				continue
+			}
+
+			fieldPath := fmt.Sprintf("ui.dialogs[%d].fields[%d].property", i, index)
+
+			switch {
+			case wizardRadioProperties[field.Property]:
+				v.errorf(fieldPath, "%s belongs to a radio button group of the wizard", field.Property)
+			case bound[field.Property] > 1:
+				v.errorf(fieldPath, "%s is bound by another field too; a choice needs a property of its own, "+
+					"because its group shows every radio button of the property", field.Property)
+			}
+		}
+	}
 }
 
 // dialogField checks the type of a ui.dialogs field and the value of a

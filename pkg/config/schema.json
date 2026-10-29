@@ -983,14 +983,22 @@
                       "items": {
                         "anyOf": [
                           {
-                            "type": "string",
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
                             "maxLength": 64
                           },
                           {
                             "type": "object",
                             "properties": {
                               "value": {
-                                "type": "string",
+                                "type": [
+                                  "string",
+                                  "number",
+                                  "boolean"
+                                ],
                                 "maxLength": 64
                               },
                               "label": {
@@ -1015,6 +1023,21 @@
                   "required": [
                     "property"
                   ],
+                  "if": {
+                    "properties": {
+                      "type": {
+                        "const": "choice"
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "options"
+                    ]
+                  },
                   "additionalProperties": false
                 }
               }

@@ -373,6 +373,50 @@ func TestValidate(t *testing.T) {
 			base + appComponent + "ui:\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, value: x}]}\n",
 			sevError, "ui.dialogs[0].fields[0].value", "only a checkbox",
 		},
+		"choice one option": {
+			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a]}]}\n",
+			sevError, "ui.dialogs[0].fields[0].options", "at least two",
+		},
+		"choice duplicate": {
+			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, a]}]}\n",
+			sevError, "ui.dialogs[0].fields[0].options[1].value", "offered twice",
+		},
+		"choice brackets": {
+			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, '[b]']}]}\n",
+			sevError, "ui.dialogs[0].fields[0].options[1].value", "formatted",
+		},
+		"choice long value": {
+			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]}]}\n",
+			sevError, "ui.dialogs[0].fields[0].options[1].value", "at most 64",
+		},
+		"choice long label": {
+			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, {value: b, label: yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy}]}]}\n",
+			sevError, "ui.dialogs[0].fields[0].options[1].label", "at most 64",
+		},
+		"choice empty value": {
+			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, {label: b}]}]}\n",
+			sevError, "ui.dialogs[0].fields[0].options[1].value", "required",
+		},
+		"choice default not an option": {
+			base + appComponent + "properties: {OPT: c}\nui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}]}\n",
+			sevError, "ui.dialogs[0].fields[0].property", "none of the options",
+		},
+		"choice on a searched property": {
+			base + appComponent + "properties: {OPT: {search: {registry: {root: HKLM, key: X}}}}\nui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}]}\n",
+			sevError, "ui.dialogs[0].fields[0].property", "ICE34",
+		},
+		"options on text": {
+			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, options: [a, b]}]}\n",
+			sevError, "ui.dialogs[0].fields[0].options", "only a choice",
+		},
+		"choice shares a property": {
+			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}, {property: OPT}]}\n",
+			sevError, "ui.dialogs[0].fields[0].property", "another field",
+		},
+		"choice on RMOPTION": {
+			base + appComponent + "ui:\n  wizard: minimal\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: RMOPTION, type: choice, options: [a, b]}]}\n",
+			sevError, "ui.dialogs[0].fields[0].property", "wizard",
+		},
 		"checkbox with a default": {
 			base + appComponent + "properties: {OPT: '0'}\nui:\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: checkbox}]}\n",
 			sevWarning, "ui.dialogs[0].fields[0].property", "starts checked",

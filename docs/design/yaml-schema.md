@@ -1096,12 +1096,13 @@ An `&` in a checkbox label marks the access key, as in `&Delete`; write
 A `choice` field is a label above a `RadioButtonGroup` with one radio
 button per option, 16 dialog units each. It needs at least two options;
 values are unique, at most 64 characters and contain no `[ ] { }`, labels
-at most 64 characters (default: the value, `&` marks the access key). The
+at most 64 characters (default: the value, shown literally; in a label `&` marks the access key). The
 property's default in `properties` must be one of the values; without one
 the first option becomes the default, since ICE34 requires a group's
 property to match a button. A choice on a searched property is an error
-for the same reason. Selecting an option in the full UI was tested in
-UI-05 (pending). `after` names the
+for the same reason, and so is a choice on a property that another field
+binds too. Selecting an option in the full UI has not been tested on
+Windows yet (UI-05). `after` names the
 page the dialog follows: `WelcomeDlg`, `CustomizeDlg` or an added dialog.
 `none` writes no UI tables; silent installs never depend on the UI in any
 mode. Without feature selection (`none`, `minimal`) `ARPNOMODIFY` is set.

@@ -146,7 +146,7 @@ func (a *RecoveryAction) UnmarshalYAML(node *yaml.Node) error {
 	}
 
 	// yaml.v3 skips UnmarshalYAML for a null value, which would leave a 0 delay.
-	if node.Content[1].Tag == "!!null" {
+	if node.Content[1].Tag == tagNull {
 		return fmt.Errorf("line %d: a restart step needs a delay", node.Line)
 	}
 
@@ -256,7 +256,7 @@ func (p *Properties) UnmarshalYAML(node *yaml.Node) error {
 
 		switch value.Kind {
 		case yaml.ScalarNode:
-			if value.Tag != "!!null" {
+			if value.Tag != tagNull {
 				prop.Value = value.Value
 			}
 		case yaml.MappingNode:

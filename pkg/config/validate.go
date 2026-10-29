@@ -1771,6 +1771,8 @@ func (v *validator) ui(cfg *Config) { //nolint:cyclop // a flat list of independ
 			v.dialogField(cfg, fieldPath, &dialog.Fields[index])
 		}
 	}
+
+	v.choiceProperties(cfg)
 }
 
 // launchProperty is the property of the ui.launch check box.

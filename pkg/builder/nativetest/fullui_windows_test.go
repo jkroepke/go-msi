@@ -94,7 +94,8 @@ customActions:
       - { sequence: execute, before: InstallInitialize, condition: FORCEERR }
 
 properties:
-  LOG_LEVEL: warn
+  # No default: the builder selects the first option (ICE34).
+  LOG_LEVEL: {}
 
 ui:
   wizard: featureTree
@@ -368,9 +369,16 @@ func fullUIChoosing(t *testing.T, dir, choose string, args ...string) (int, stri
 	defer cancel()
 
 	code, err := runMsiexec(args, func(pid int) {
-		drv = exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-			"-File", driver, "-MsiPid", strconv.Itoa(pid), "-Out", seen, "-ErrorText", fullUIErrorText, "-Choose", choose,
-			"-Seconds", strconv.Itoa(int((fullUITimeout - 10*time.Second).Seconds())))
+		args := []string{
+			"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+			"-File", driver, "-MsiPid", strconv.Itoa(pid), "-Out", seen, "-ErrorText", fullUIErrorText,
+			"-Seconds", strconv.Itoa(int((fullUITimeout - 10*time.Second).Seconds())),
+		}
+		if choose != "" {
+			args = append(args, "-Choose", choose)
+		}
+
+		drv = exec.CommandContext(ctx, "powershell", args...)
 		if err := drv.Start(); err != nil {
 			t.Errorf("driver: %v", err)
 
