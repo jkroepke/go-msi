@@ -53,17 +53,19 @@ func buildProfileExtra(t *testing.T, dir, scope, version string, pinned bool, ex
 		}
 	}
 
-	app := ""
-	if scope == "perUser" {
-		app = profileApp
-	}
-
 	dataKey, appKey := "", ""
 	if pinned {
 		dataKey, appKey = "keyPath: tool.exe", "keyPath: app.exe"
 	}
 
-	doc := strings.NewReplacer("${APP}", app, "${VERSION}", version, "${SCOPE}", scope, "${DATAKEY}", dataKey, "${APPKEY}", appKey, "${EXTRA}", extra).Replace(profileConfig)
+	// The app component goes in first: one replacer pass would leave the
+	// ${APPKEY} it brings along.
+	app := ""
+	if scope == "perUser" {
+		app = strings.ReplaceAll(profileApp, "${APPKEY}", appKey)
+	}
+
+	doc := strings.NewReplacer("${APP}", app, "${VERSION}", version, "${SCOPE}", scope, "${DATAKEY}", dataKey, "${EXTRA}", extra).Replace(profileConfig)
 
 	cfg, err := config.Parse([]byte(doc), config.Options{})
 	if err != nil {
