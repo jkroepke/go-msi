@@ -90,12 +90,10 @@ agent with a service. These are not supported:
   embedded language transforms. Not in schema v1.
 - **Spanned cabinets.** Every cabinet holds one folder; cabinets are LZX
   (the default), MSZIP or stored.
-- **Script custom actions** (VBScript, JScript). Use an executable or DLL
-  action instead. Not in schema v1.
+- **Script custom actions** (VBScript, JScript).
 - **Editing existing packages and WiX XML input.** `msi-builder inspect` only
   reads packages to help debugging.
-- **Advertised installs and advertised shortcuts.** Not in schema v1;
-  shortcuts are ordinary `.lnk` files.
+- **Advertised installs and advertised shortcuts.**
 - **File harvesting in YAML.** List each file of a component; a YAML file
   cannot add a whole directory. Not in schema v1. Go callers can use
   `Config.AddTree` ([Go API](docs/go-api.md)).
