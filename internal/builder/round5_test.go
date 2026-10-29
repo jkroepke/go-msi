@@ -61,8 +61,8 @@ func TestSingleServiceKeepsKeys(t *testing.T) {
 }
 
 // TestEventLogOnlyComponents puts two event sources into components of their
-// own in one folder (datadog-agent). Each must be keyed on its own
-// EventMessageFile value so the component codes differ.
+// own in one folder (datadog-agent). Both keep the folder as key path, and
+// the second takes its code from its source, since the folder's is taken.
 func TestEventLogOnlyComponents(t *testing.T) {
 	t.Parallel()
 
@@ -79,13 +79,8 @@ func TestEventLogOnlyComponents(t *testing.T) {
 			continue
 		}
 
-		key, ok := row[5].(string)
-		if !ok || !strings.HasPrefix(key, "reg") {
-			t.Errorf("component %v key path %v, want an EventMessageFile row", row[0], row[5])
-		}
-
-		if attrs, ok := row[3].(int); !ok || attrs&4 == 0 {
-			t.Errorf("component %v attributes %v lack the registry key path bit", row[0], row[3])
+		if row[5] != nil {
+			t.Errorf("component %v key path %v, want the folder", row[0], row[5])
 		}
 
 		guids[row[1]] = true
@@ -178,5 +173,22 @@ customActions:
 
 	if seq["SetIt"] <= seq["SearchApply_RWDIR"] {
 		t.Errorf("SetIt at %d, SearchApply_RWDIR at %d", seq["SetIt"], seq["SearchApply_RWDIR"])
+	}
+}
+
+// TestEventLogOnlyComponentFolderPermissions checks that a component with
+// only event sources still owns its folder: it keeps the CreateFolder row
+// that folderPermissions locks.
+func TestEventLogOnlyComponentFolderPermissions(t *testing.T) {
+	t.Parallel()
+
+	database := buildYAML(t, round5Header+`components:
+  - files: [{ source: hello.exe }]
+  - eventLog: [{ source: rwA, log: Application, messageFile: 'x.dll' }]
+    folderPermissions: { sddl: 'D:(A;;GA;;;SY)(A;;GA;;;BA)' }
+`)
+
+	if len(rows(t, database, "CreateFolder")) == 0 {
+		t.Error("no CreateFolder row")
 	}
 }

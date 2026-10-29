@@ -413,7 +413,6 @@ func waitColumn(wait bool) int {
 	return 0
 }
 
-// serviceID builds a table key from a service name.
 // componentServiceID is serviceID for a service of comp. Conditional
 // components may install the same service in different ways (a twin that
 // starts it and one that does not); the rows of such a name carry the
@@ -434,6 +433,7 @@ func (b *build) componentServiceID(prefix string, comp *config.Component, name s
 	return serviceID(prefix, name)
 }
 
+// serviceID builds a table key from a service name.
 func serviceID(prefix, name string) string {
 	if config.IsIdentifier(name) && len(prefix)+1+len(name) <= 72 {
 		return prefix + "_" + name

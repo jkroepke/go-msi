@@ -752,14 +752,10 @@ func (b *build) resolveKeyPath(path string, info *componentInfo) error { //nolin
 	case keyPath == "":
 		// The first file in the configuration, not in sequence order: the
 		// validator checks that one, and a service names its executable.
-		switch {
-		case len(files) > 0:
+		if len(files) > 0 {
 			info.keyFile = files[max(0, slices.IndexFunc(files, func(f *fileInfo) bool { return f.cfg == comp.Files[0] }))]
-		case len(comp.Registry) > 0:
+		} else if len(comp.Registry) > 0 {
 			info.keyPath = b.registryID(info, comp.Registry[0])
-			info.attributes |= compRegistryKeyPath
-		case len(comp.EventLog) > 0:
-			info.keyPath = eventLogID(comp, comp.EventLog[0])
 			info.attributes |= compRegistryKeyPath
 		}
 	case byRef(keyPath) != nil:
@@ -837,14 +833,19 @@ func (b *build) componentGUID(path string, info *componentInfo) error { //nolint
 				location = "registry|" + strings.ToLower(r.Root+"\\"+r.Key+"\\"+r.Name)
 			}
 		}
-
-		for _, e := range comp.EventLog {
-			if eventLogID(comp, e) == info.keyPath {
-				location = "registry|" + strings.ToLower("HKLM\\"+eventLogKey(e)+"\\EventMessageFile")
-			}
-		}
 	default:
 		location = "directory|" + info.dir.canonical
+
+		// Components keyed on one folder would share a code. One that
+		// only registers event sources takes its first source instead,
+		// but only when the folder's code is taken, so packages that
+		// built before keep their component codes.
+		if len(comp.EventLog) > 0 {
+			if _, taken := b.guids[uuid5(namespaceComponent, b.upgradeCode+"|"+bitness+"|"+location)]; taken {
+				e := comp.EventLog[0]
+				location = "eventlog|" + strings.ToLower(e.Log+"\\"+e.Source)
+			}
+		}
 	}
 
 	info.guid = uuid5(namespaceComponent, b.upgradeCode+"|"+bitness+"|"+location)
