@@ -174,6 +174,7 @@ jobs:
           go test -count=1 ./internal/lzx/
           go test -count=1 -run 'TestNative(FDI|Expand)Extracts/lzx|TestNativeLZXSystemBinaries|TestLZX' ./internal/cab/
           go test -count=1 -run 'BoundedMemory' ./internal/cab/ ./internal/builder/
+          go test -count=1 -v -run 'TestNativeFDIMaxFiles' ./internal/cab/
 
       # A package above 2 GB, its cabinets beside the .msi (MSISPEC section 5,
       # CAB-10). It writes about 9 GB, so it runs on its own and without
@@ -225,6 +226,13 @@ jobs:
         if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
         run: go test -v -count=1 -run 'TestMsiexecFileTypes' ./internal/builder/nativetest/
+
+      # Print the cases of the spec audit (MSISPEC-RESULTS PROP-02,
+      # SEARCH-02, FILE-04, UPG-08, UPG-09, CA-07).
+      - name: go test (spec audit results)
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        shell: bash
+        run: go test -v -count=1 -run 'TestMsiexecOSProperties|TestMsiexecSearchesOSFileVersion|TestMsiexecUsesMsiFileHash|TestMsiexecUpgradeVersions|TestMsiexecFirewallPortLists' ./internal/builder/nativetest/
 
       - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         if: runner.os == 'Linux'

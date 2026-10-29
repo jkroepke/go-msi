@@ -1165,3 +1165,49 @@ func TestNativeReadMakecabFewCodes(t *testing.T) { //nolint:paralleltest // make
 		}
 	}
 }
+
+// TestNativeFDIMaxFiles extracts a cabinet with cab.MaxFiles entries, the
+// most cFiles holds and the count at which the builder starts a new cabinet,
+// through cabinet.dll (CAB-09).
+func TestNativeFDIMaxFiles(t *testing.T) { //nolint:paralleltest // the FDI callbacks share one package state
+	if testing.Short() {
+		t.Skip("native tests run without -short")
+	}
+
+	if raceEnabled {
+		t.Skip("65535 FDI callbacks; CI runs it without -race")
+	}
+
+	when := time.Date(2026, 1, 2, 3, 4, 6, 0, time.UTC)
+
+	files := make([]cab.File, cab.MaxFiles)
+	for i := range files {
+		files[i] = cab.File{Name: "f" + strconv.Itoa(i), Data: []byte{byte(i)}, Time: when}
+	}
+
+	raw, err := cab.Write(files, cab.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := fdiExtract(t, raw)
+	if err != nil {
+		t.Fatalf("cabinet.dll: %v", err)
+	}
+
+	if len(got) != len(files) {
+		t.Fatalf("FDI extracted %d files, want %d", len(got), len(files))
+	}
+
+	for i, file := range got {
+		if file.Name != files[i].Name || !bytes.Equal(file.Data, files[i].Data) {
+			t.Fatalf("file %d: FDI reports %q with %v, want %q with %v", i, file.Name, file.Data, files[i].Name, files[i].Data)
+		}
+	}
+
+	t.Logf("CAB-09: cabinet.dll extracted all %d entries of a %d-byte cabinet", len(got), len(raw))
+
+	if _, err := cab.Write(append(files, cab.File{Name: "one-more", Time: when}), cab.Options{}); err == nil {
+		t.Error("cab.Write accepted 65536 files")
+	}
+}
