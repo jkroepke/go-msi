@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // BuiltPackage is the package WiX built from the source file.
@@ -41,7 +43,7 @@ func (c *converter) pinCode(comp *comp, keyFile string) bool {
 		return false
 	}
 
-	comp.out.set("guid", cmp.Or(built.Code, "none"))
+	comp.out.set("guid", built.Code)
 	comp.pinned = true
 
 	return true
@@ -51,29 +53,22 @@ func (c *converter) pinCode(comp *comp, keyFile string) bool {
 // when the source gave it none, by the name and folder of its key file.
 func (c *converter) builtComponent(comp *comp, keyFile string) *BuiltComponent {
 	if id := comp.e.attr("Id"); id != "" {
-		for i := range c.built.Components {
-			if c.built.Components[i].ID == id {
-				return &c.built.Components[i]
-			}
-		}
-
-		return nil
+		return c.builtByID(id)
 	}
 
 	if keyFile == "" {
 		return nil
 	}
 
+	// A folder without an Id got a generated one in the package.
+	folder := c.dirs[comp.dir]
+	anyDir := folder != nil && folder.generated
+
 	var found *BuiltComponent
 
 	for i := range c.built.Components {
 		row := &c.built.Components[i]
-		if !strings.EqualFold(row.KeyFile, keyFile) {
-			continue
-		}
-
-		// A folder without an Id got a generated one in the package.
-		if !strings.HasPrefix(comp.dir, anonymousDir) && row.Directory != comp.dir {
+		if row.Code == "" || !strings.EqualFold(row.KeyFile, keyFile) || !anyDir && row.Directory != comp.dir {
 			continue
 		}
 
@@ -85,6 +80,18 @@ func (c *converter) builtComponent(comp *comp, keyFile string) *BuiltComponent {
 	}
 
 	return found
+}
+
+// builtByID returns the component of the built package with an Id and a
+// code, or nil.
+func (c *converter) builtByID(id string) *BuiltComponent {
+	for i := range c.built.Components {
+		if c.built.Components[i].ID == id && c.built.Components[i].Code != "" {
+			return &c.built.Components[i]
+		}
+	}
+
+	return nil
 }
 
 // checkCodes notes the components that keep no code of the WiX package:
@@ -135,7 +142,7 @@ func (c *converter) noteDroppedValues() {
 	}
 
 	for _, comp := range c.comps {
-		if comp.out == nil || comp.out.get("guid") == nil || len(comp.droppedValues) == 0 {
+		if comp.out == nil || !hasCode(comp.out) || len(comp.droppedValues) == 0 {
 			continue
 		}
 
@@ -201,4 +208,12 @@ func (c *converter) noteLateRemoval(open []*comp) {
 			"this one deletes their files on the first upgrade from the WiX package. Run msi-builder convert again with "+
 			"--msi and the package WiX built, or set each guid from msi-builder inspect --table Component",
 		list)
+}
+
+// hasCode reports whether a converted component has a pinned code, not
+// none: an unmanaged component is never removed, so it keeps nothing.
+func hasCode(component *omap) bool {
+	guid := component.str("guid")
+
+	return guid != "" && guid != config.None
 }

@@ -237,6 +237,12 @@ const codesSource = `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
       <Shortcut Name="Hello notes" Target="[#main.exe]" Arguments="notes" />
       <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="notes" Value="1" KeyPath="yes" />
     </Component>
+    <Component Id="Unmanaged" Directory="ProgramMenuFolder" Guid="">
+      <Shortcut Name="Hello tools" Target="[#main.exe]" Arguments="tools" />
+    </Component>
+    <Component Directory="INSTALLFOLDER" Subdirectory="bin">
+      <File Source="tool.exe" />
+    </Component>
     <InstallExecuteSequence>
       <RemoveExistingProducts After="InstallExecute" />
     </InstallExecuteSequence>
@@ -257,6 +263,8 @@ func TestConvertBuiltCodes(t *testing.T) {
 		// A folder without an Id matches any folder.
 		{ID: "cmpD", Code: "{00000000-0000-4000-8000-000000000005}", Directory: "dirE1A2", KeyFile: "a.txt"},
 		{ID: "Menu", Code: "{00000000-0000-4000-8000-000000000006}", Directory: "ProgramMenuFolder"},
+		// A Subdirectory folder has a generated ID in the package.
+		{ID: "cmpE", Code: "{00000000-0000-4000-8000-000000000007}", Directory: "dirB7C3", KeyFile: "tool.exe"},
 	}}
 
 	res, err := wixconvert.Convert(strings.NewReader(codesSource), wixconvert.Options{Built: built})
@@ -270,11 +278,24 @@ func TestConvertBuiltCodes(t *testing.T) {
 		"guid: '{00000000-0000-4000-8000-000000000005}'",
 		// The shortcut component keeps its code and its shortcut.
 		"guid: '{00000000-0000-4000-8000-000000000006}'\n    shortcuts:\n      - name: Hello\n        file: main.exe",
-		"The guid of 3 components whose Guid WiX generated comes from hello.msi.",
+		"guid: '{00000000-0000-4000-8000-000000000007}'",
+		// An unmanaged shortcut component keeps nothing: its shortcut
+		// stays on the file.
+		"arguments: tools",
+		"The guid of 4 components whose Guid WiX generated comes from hello.msi.",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("YAML lacks %q:\n%s", want, text)
 		}
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v", err)
 	}
 
 	var lines []int
@@ -305,8 +326,8 @@ func TestConvertBuiltCodes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := wixconvert.Note{Line: 32, Message: "WiX generated the Guid of the component in line 7, Main, the component in line 17, " +
-		"the component in line 20, Menu and one more component; msi-builder generates other codes"}
+	want := wixconvert.Note{Line: 38, Message: "WiX generated the Guid of the component in line 7, Main, the component in line 17, " +
+		"the component in line 20, Menu and 2 more components; msi-builder generates other codes"}
 
 	if !slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool {
 		return n.Line == want.Line && strings.HasPrefix(n.Message, want.Message)

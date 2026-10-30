@@ -155,6 +155,9 @@ type dir struct {
 	name     string
 	line     int
 	std      bool
+	// generated is set when WiX gives the folder an ID of its own: one
+	// without an Id, or one a Subdirectory path makes.
+	generated bool
 }
 
 type comp struct {
@@ -467,7 +470,7 @@ func (c *converter) addDir(elm *elem, parentID string, standard bool) *dir {
 		return d
 	}
 
-	folder := &dir{id: dirID, name: elm.attr("Name"), parentID: parentID, line: elm.line}
+	folder := &dir{id: dirID, name: elm.attr("Name"), parentID: parentID, line: elm.line, generated: elm.attr("Id") == ""}
 
 	if dirID == "TARGETDIR" || standard || isStandardFolder(dirID) {
 		folder.std, folder.name, folder.parentID = true, "", ""
@@ -485,7 +488,7 @@ func (c *converter) subdir(parentID, path string, line int) string {
 	for _, name := range strings.FieldsFunc(path, func(r rune) bool { return r == '\\' || r == '/' }) {
 		dirID := parentID + "_" + idPart(name)
 		if _, ok := c.dirs[dirID]; !ok {
-			folder := &dir{id: dirID, name: name, parentID: parentID, line: line}
+			folder := &dir{id: dirID, name: name, parentID: parentID, line: line, generated: true}
 			c.dirs[dirID] = folder
 			c.dirOrder = append(c.dirOrder, folder)
 		}
