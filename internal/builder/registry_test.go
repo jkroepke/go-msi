@@ -102,6 +102,48 @@ components:
 	}
 }
 
+// TestRemoveRegistryOnUninstall checks that uninstall removals become
+// Registry rows named - with a Null value (REG-08) and that both adds a
+// RemoveRegistry row as well.
+func TestRemoveRegistryOnUninstall(t *testing.T) {
+	t.Parallel()
+
+	database := buildYAML(t, `schema: msi-builder/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+components:
+  - files: [{ source: hello.exe }]
+    removeRegistry:
+      - { id: Verb, root: HKCR, key: '*\shell\hello', on: uninstall }
+      - { root: HKLM, key: 'Software\Example\Hello', on: both }
+      - { root: HKLM, key: 'Software\Example\Old', on: install }
+`)
+
+	if got := len(rows(t, database, "RemoveRegistry")); got != 2 {
+		t.Errorf("%d RemoveRegistry rows, want 2 (both and install)", got)
+	}
+
+	isVerb := func(r []any) bool { return r[0] == "Verb" }
+	for column, want := range map[string]any{"Root": 0, "Key": `*\shell\hello`, "Name": "-", "Value": nil} {
+		if got := cell(t, database, "Registry", column, isVerb); got != want {
+			t.Errorf("uninstall removal %s is %v, want %v", column, got, want)
+		}
+	}
+
+	isBoth := func(r []any) bool { return r[2] == `Software\Example\Hello` }
+	if got := cell(t, database, "Registry", "Name", isBoth); got != "-" {
+		t.Errorf("both writes a Registry row named %v, want -", got)
+	}
+
+	if got := cell(t, database, "RemoveRegistry", "Name", isBoth); got != "-" {
+		t.Errorf("both writes a RemoveRegistry row named %v, want -", got)
+	}
+
+	if slices.ContainsFunc(rows(t, database, "Registry"), func(r []any) bool { return r[2] == `Software\Example\Old` }) {
+		t.Error("an install removal wrote a Registry row")
+	}
+}
+
 func TestPropertySearch(t *testing.T) {
 	t.Parallel()
 

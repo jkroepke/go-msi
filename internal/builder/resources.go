@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strconv"
@@ -123,17 +124,27 @@ func (b *build) writeRegistry(info *componentInfo) {
 	// RemoveRegistryValues runs before WriteRegistryValues, so a key that is
 	// removed and written again ends up with only the package's values.
 	for _, entry := range comp.RemoveRegistry {
-		key := entry.ID
-		if key == "" {
-			key = generatedID("rreg", "RemoveRegistry", comp.ID, entry.Root, strings.ToLower(entry.Key), strings.ToLower(entry.Name))
+		if entry.On != config.RemoveOnUninstall {
+			key := entry.ID
+			if key == "" {
+				key = generatedID("rreg", "RemoveRegistry", comp.ID, entry.Root, strings.ToLower(entry.Key), strings.ToLower(entry.Name))
+			}
+
+			name := entry.Name
+			if name == "" {
+				name = "-"
+			}
+
+			b.table("RemoveRegistry").Add(key, registryRoots[entry.Root], entry.Key, name, comp.ID)
 		}
 
-		name := entry.Name
-		if name == "" {
-			name = "-"
+		// A Registry row named - with a Null value never creates the key
+		// and deletes it with its subkeys when the component is removed
+		// (REG-08).
+		if entry.On == config.RemoveOnUninstall || entry.On == config.RemoveOnBoth {
+			key := cmp.Or(entry.ID, generatedID("reg", "Registry", comp.ID, entry.Root, strings.ToLower(entry.Key), "-"))
+			tbl.Add(key, registryRoots[entry.Root], entry.Key, "-", nil, comp.ID)
 		}
-
-		b.table("RemoveRegistry").Add(key, registryRoots[entry.Root], entry.Key, name, comp.ID)
 	}
 
 	for _, e := range comp.EventLog {
