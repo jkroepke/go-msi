@@ -1773,6 +1773,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 		}
 	case action.Exec != nil:
 		v.required(actionPath+".exec.command", action.Exec.Command)
+		v.quotedExecutable(actionPath+".exec.command", action.Exec.Command)
 
 		if action.Exec.Directory != targetDir && known.dirs[action.Exec.Directory] == nil && !standardFolders[action.Exec.Directory] {
 			v.errorf(actionPath+".exec.directory", "directory %q is not defined", action.Exec.Directory)
@@ -1791,6 +1792,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 		}
 	case action.Run != nil:
 		v.required(actionPath+".run.command", action.Run.Command)
+		v.quotedExecutable(actionPath+".run.command", action.Run.Command)
 
 		if dir := action.Run.Directory; dir != "" && dir != targetDir && known.dirs[dir] == nil && !standardFolders[dir] {
 			v.errorf(actionPath+".run.directory", "directory %q is not defined", dir)
@@ -1803,6 +1805,31 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 		if len(action.ID)+len(".Data") > MaxIdentifierLength {
 			v.errorf(actionPath+".id", "%q is too long: the builder adds a %s.Data action and identifiers hold %d characters", action.ID, action.ID, MaxIdentifierLength)
 		}
+	}
+}
+
+// quotedExecutable rejects a command line whose executable comes from a
+// property or folder reference without quotes. CreateProcess reads the
+// executable out of the command line and, when the path has a space, tries
+// every prefix first (C:\Program.exe for C:\Program Files\App\tool.exe), so
+// a file an unprivileged user can create runs in place of the real one,
+// as LocalSystem in a deferred action without impersonation (CWE-428).
+// The check looks at the first token only and catches the [...] case
+// msi-builder's own examples lead to; an unquoted literal path with a
+// space (C:\Program Files\App\tool.exe) has the same problem and is the
+// author's to quote, since the token C:\Program alone does not show where
+// the path ends.
+func (v *validator) quotedExecutable(field, command string) {
+	command = strings.TrimLeft(command, " \t")
+	if command == "" || command[0] == '"' {
+		return
+	}
+
+	token, _, _ := strings.Cut(command, " ")
+	if strings.Contains(token, "[") {
+		v.errorf(field, "the executable must be quoted when it comes from a property or folder, as in \"%s\": "+
+			"an unquoted path with a space is tried piece by piece (C:\\Program.exe first), and a deferred action without "+
+			"impersonation runs as LocalSystem", token)
 	}
 }
 

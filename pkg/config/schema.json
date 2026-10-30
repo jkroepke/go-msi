@@ -487,7 +487,8 @@
             "type": "object",
             "properties": {
               "command": {
-                "type": "string"
+                "type": "string",
+                "description": "The command line. Quote the executable when it comes from a property or folder reference: \"[#tool.exe]\" --init."
               },
               "directory": {
                 "$ref": "#/$defs/directoryRef",
@@ -519,7 +520,8 @@
             "description": "Runs a command through the custom action DLL msi-builder embeds: hidden window, output in the log, exit code checked.",
             "properties": {
               "command": {
-                "type": "string"
+                "type": "string",
+                "description": "The command line. Quote the executable when it comes from a property or folder reference: \"[#tool.exe]\" --init."
               },
               "directory": {
                 "$ref": "#/$defs/directoryRef"
