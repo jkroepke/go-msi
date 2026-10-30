@@ -497,7 +497,10 @@ command runs without a window, and its output goes into the
 installation log (`msiexec /i hello.msi /l*v install.log`). Quote the
 executable when it comes from a folder or property, as above: an
 unquoted `[INSTALLDIR]hello.exe` is rejected, because Windows would try
-`C:\Program.exe` first and the command runs as LocalSystem. `directory`
+`C:\Program.exe` first and the command runs as LocalSystem. A property
+alone, such as `[OLD_UNINSTALL] /S` with an `UninstallString` found by a
+registry search, only gets a warning: that value is quoted already, and
+quoting it again would break it. `directory`
 only sets the working directory; name the program with its folder or
 `[#hello.exe]`, since a bare `hello.exe` is looked up next to msiexec and
 on `PATH`. Pass a folder as `"[INSTALLDIR]."`, not `"[INSTALLDIR]"`, whose

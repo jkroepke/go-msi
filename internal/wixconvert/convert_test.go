@@ -89,6 +89,7 @@ func TestConvertNotes(t *testing.T) {
     <Feature Id="Other"><ComponentRef Id="Missing" /></Feature>
     <Merge Id="Runtime" SourceFile="runtime.msm" />
     <CustomAction Id="Init" Directory="INSTALLFOLDER" ExeCommand="[INSTALLFOLDER]tool.exe /s" Execute="deferred" Return="check" />
+    <CustomAction Id="Old" Directory="INSTALLFOLDER" ExeCommand="[OLD_UNINSTALL] /S" Execute="deferred" Return="check" />
   </Package>
 </Wix>`
 
@@ -104,6 +105,7 @@ func TestConvertNotes(t *testing.T) {
 		{Line: 2, Message: "the WiX package has no MajorUpgrade; msi-builder adds the standard major upgrade (set upgrade: false to leave it out)"},
 		{Line: 5, Message: "<Merge> is not supported: merge modules are not supported; install their files in components"},
 		{Line: 6, Message: "quote the executable [INSTALLFOLDER]tool.exe: an unquoted path with a space is tried piece by piece by CreateProcess"},
+		{Line: 7, Message: "check [OLD_UNINSTALL]: quote it if it holds a bare path; leave it if it holds a quoted command line such as an UninstallString"},
 	}
 
 	if len(res.Notes) != len(want) {

@@ -1826,11 +1826,35 @@ func (v *validator) quotedExecutable(field, command string) {
 	}
 
 	token, _, _ := strings.Cut(command, " ")
-	if strings.Contains(token, "[") {
-		v.errorf(field, "the executable must be quoted when it comes from a property or folder, as in \"%s\": "+
-			"an unquoted path with a space is tried piece by piece (C:\\Program.exe first), and a deferred action without "+
-			"impersonation runs as LocalSystem", token)
+	if !strings.Contains(token, "[") {
+		return
 	}
+
+	// A property alone may hold a command line that is quoted already, such
+	// as an UninstallString from a registry search, which quoting would break.
+	if bareProperty(token) {
+		v.warnf(field, "the executable is the property %s alone: if it holds a bare path, quote it (\"%s\"), because an "+
+			"unquoted path with a space is tried piece by piece (C:\\Program.exe first) and a deferred action without "+
+			"impersonation runs as LocalSystem; if it holds a quoted command line, such as an UninstallString, leave it", token, token)
+
+		return
+	}
+
+	v.errorf(field, "the executable must be quoted when it comes from a property or folder, as in \"%s\": "+
+		"an unquoted path with a space is tried piece by piece (C:\\Program.exe first), and a deferred action without "+
+		"impersonation runs as LocalSystem", token)
+}
+
+// bareProperty reports whether token is exactly one [PROPERTY] reference: not
+// a file, component, environment or escape reference, which always format to
+// a bare path, and nothing before or after it.
+func bareProperty(token string) bool {
+	if len(token) < 3 || token[0] != '[' || token[len(token)-1] != ']' ||
+		strings.Count(token, "[") != 1 || strings.Count(token, "]") != 1 {
+		return false
+	}
+
+	return !strings.ContainsRune(`#!$%\~`, rune(token[1]))
 }
 
 // actionRun checks how a custom action runs: impersonation, return
