@@ -137,8 +137,10 @@ environment is taken as it is, and a `vars` entry it overrides is not
 expanded at all. A cycle (`A: ${B}`, `B: ${A}`, or `A: ${A}`) is an error,
 reported on the entry that closes it. An undefined variable is an error
 where it is used, so a `vars` entry that nothing uses is not checked.
-`$${` writes a literal `${`, also inside `vars`. All substituted text in a
-file is capped at 16 MiB, so doubling `vars` cannot blow up a document.
+`$${` writes a literal `${`, also inside `vars`. The text that variables
+insert into the document is capped at 16 MiB, and so is the text they
+insert into `vars` values (a value nested through several entries counts at
+each one), so doubling `vars` cannot blow up a document.
 Windows Installer's own `[Property]` syntax is left alone, so
 `[INSTALLDIR]` and `${VERSION}` never collide. Inside a flow mapping
 (`{ … }`) a value that starts with `${` must be quoted, as YAML reads `{` as

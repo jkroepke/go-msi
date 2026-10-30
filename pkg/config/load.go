@@ -60,14 +60,17 @@ func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one 
 
 	var errs []error
 
-	r := &resolver{opts: opts, vars: vars, lines: lines, resolved: make(map[string]string), budget: maxSubstituted, errs: &errs}
+	res := &resolver{
+		opts: opts, vars: vars, lines: lines, resolved: make(map[string]string),
+		docLeft: maxSubstituted, varsLeft: maxSubstituted, errs: &errs,
+	}
 
 	for i := 0; i < len(root.Content); i += 2 {
 		if root.Content[i].Value == "vars" {
 			continue
 		}
 
-		substitute(root.Content[i+1], r.lookup, &errs)
+		substitute(root.Content[i+1], res.resolve, &res.docLeft, &errs)
 	}
 
 	if len(errs) > 0 {
@@ -109,7 +112,8 @@ func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one 
 	return cfg, nil
 }
 
-// fileVars returns the file's vars and the line of each value.
+// fileVars returns the file's vars and the line of each value. A value
+// that comes in through a merge key gets the line of the vars mapping.
 func fileVars(root *yaml.Node) (map[string]string, map[string]int, error) {
 	lines := make(map[string]int)
 
@@ -125,9 +129,15 @@ func fileVars(root *yaml.Node) (map[string]string, map[string]int, error) {
 			return nil, nil, fmt.Errorf("vars: %w", err)
 		}
 
+		for name := range vars {
+			lines[name] = node.Line
+		}
+
 		if node.Kind == yaml.MappingNode {
 			for j := 0; j+1 < len(node.Content); j += 2 {
-				lines[node.Content[j].Value] = node.Content[j+1].Line
+				if _, ok := vars[node.Content[j].Value]; ok && node.Content[j].Value != "<<" {
+					lines[node.Content[j].Value] = node.Content[j+1].Line
+				}
 			}
 		}
 
@@ -140,8 +150,8 @@ func fileVars(root *yaml.Node) (map[string]string, map[string]int, error) {
 // resolver looks up variables for substitution. A value from the file's
 // vars may use other variables, which are expanded like any other string;
 // values from the command line and the environment are taken as they are.
-// Every value handed out counts against one budget, so nested vars cannot
-// blow up exponentially.
+// Text inserted into vars values and text inserted into the document each
+// count against a budget, so doubling vars cannot blow up exponentially.
 type resolver struct {
 	opts     Options
 	vars     map[string]string
@@ -149,23 +159,8 @@ type resolver struct {
 	resolved map[string]string
 	errs     *[]error
 	stack    []string
-	budget   int
-}
-
-func (r *resolver) lookup(name string) (string, bool) {
-	value, ok := r.resolve(name)
-	if r.budget < 0 {
-		return "", ok
-	}
-
-	r.budget -= len(value)
-	if r.budget < 0 {
-		*r.errs = append(*r.errs, fmt.Errorf("variables expand to more than %d bytes in total", maxSubstituted))
-
-		return "", ok
-	}
-
-	return value, ok
+	docLeft  int
+	varsLeft int
 }
 
 func (r *resolver) resolve(name string) (string, bool) {
@@ -198,7 +193,7 @@ func (r *resolver) resolve(name string) (string, bool) {
 
 	r.stack = append(r.stack, name)
 	before := len(*r.errs)
-	value = expand(value, r.where(name), r.lookup, r.errs)
+	value = expand(value, r.where(name), r.resolve, &r.varsLeft, r.errs)
 	r.stack = r.stack[:len(r.stack)-1]
 
 	// A broken entry is reported once, here, and not again where it is used.
@@ -215,7 +210,8 @@ func (r *resolver) where(name string) string {
 	return fmt.Sprintf("line %d: vars.%s", r.lines[name], name)
 }
 
-// maxSubstituted caps the text that variables put into one document.
+// maxSubstituted caps the text that variables insert into the document, and
+// separately the text they insert into vars values.
 const maxSubstituted = 16 << 20
 
 // yamlNulls are the plain scalars YAML 1.1 and 1.2 read as null, except the
@@ -225,8 +221,9 @@ var yamlNulls = map[string]bool{"null": true, "Null": true, "NULL": true, "~": t
 var varPattern = regexp.MustCompile(`\$\$\{|\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // expand replaces ${NAME} in s; "$${" writes a literal "${". where names
-// the place for an error.
-func expand(s, where string, lookup func(string) (string, bool), errs *[]error) string {
+// the place for an error. Every inserted value is charged to budget; once
+// it is spent, values are left out and only the first overrun is reported.
+func expand(s, where string, lookup func(string) (string, bool), budget *int, errs *[]error) string {
 	return varPattern.ReplaceAllStringFunc(s, func(m string) string {
 		if m == "$${" {
 			return "${"
@@ -243,20 +240,31 @@ func expand(s, where string, lookup func(string) (string, bool), errs *[]error) 
 			*errs = append(*errs, fmt.Errorf("%s: variable ${%s} is not valid UTF-8", where, name))
 		}
 
+		if *budget < 0 {
+			return ""
+		}
+
+		*budget -= len(value)
+		if *budget < 0 {
+			*errs = append(*errs, fmt.Errorf("%s: variables insert more than %d bytes", where, maxSubstituted))
+
+			return ""
+		}
+
 		return value
 	})
 }
 
 // substitute replaces ${NAME} in every scalar value below node. Mapping keys
 // are left alone. "$${" writes a literal "${".
-func substitute(node *yaml.Node, lookup func(string) (string, bool), errs *[]error) {
+func substitute(node *yaml.Node, lookup func(string) (string, bool), budget *int, errs *[]error) {
 	switch node.Kind {
 	case yaml.ScalarNode:
 		if !strings.Contains(node.Value, "${") {
 			return
 		}
 
-		node.Value = expand(node.Value, fmt.Sprintf("line %d", node.Line), lookup, errs)
+		node.Value = expand(node.Value, fmt.Sprintf("line %d", node.Line), lookup, budget, errs)
 
 		// Resolve the tag again from the substituted text, so that an
 		// integer field can take "${PORT}". A value that spells null stays
@@ -270,11 +278,11 @@ func substitute(node *yaml.Node, lookup func(string) (string, bool), errs *[]err
 		}
 	case yaml.MappingNode:
 		for i := 1; i < len(node.Content); i += 2 {
-			substitute(node.Content[i], lookup, errs)
+			substitute(node.Content[i], lookup, budget, errs)
 		}
 	case yaml.SequenceNode, yaml.DocumentNode:
 		for _, c := range node.Content {
-			substitute(c, lookup, errs)
+			substitute(c, lookup, budget, errs)
 		}
 	case yaml.AliasNode:
 		// Aliases point at nodes that are substituted where they are defined.

@@ -275,12 +275,42 @@ func TestNestedVariableBomb(t *testing.T) {
 	doc.WriteString("  V40: xx\nproduct: {name: \"${V0}\"}\n")
 
 	_, err := config.Parse([]byte(doc.String()), config.Options{})
-	if err == nil || !strings.Contains(err.Error(), "variables expand to more than") {
-		t.Fatalf("err = %v, want the size limit", err)
+	if err == nil || !strings.Contains(err.Error(), ": vars.V") || !strings.Contains(err.Error(), "variables insert more than") {
+		t.Fatalf("err = %v, want the size limit on a vars entry", err)
 	}
 
 	if n := strings.Count(err.Error(), "\n") + 1; n != 1 {
 		t.Errorf("%d errors, want 1: %v", n, err)
+	}
+}
+
+// Text passing through one vars entry is charged once to vars and once to
+// the document, so a large --var used through vars still fits.
+func TestNestedVariableLargeValue(t *testing.T) {
+	t.Parallel()
+
+	big := strings.Repeat("x", 9<<20)
+
+	cfg, err := config.Parse([]byte("schema: msi-builder/v1\nvars: {X: \"${BIG}\"}\nproduct: {name: \"${X}\"}\n"),
+		config.Options{Vars: map[string]string{"BIG": big}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(cfg.Product.Name) != len(big) {
+		t.Errorf("name has %d bytes, want %d", len(cfg.Product.Name), len(big))
+	}
+}
+
+// A vars entry from a merge key is reported on the line of vars.
+func TestNestedVariableMergeKeyLine(t *testing.T) {
+	t.Parallel()
+
+	doc := "schema: msi-builder/v1\nbase: &b {M: \"${NOPE}\"}\nvars:\n  <<: *b\nproduct: {name: \"${M}\"}\n"
+
+	_, err := config.Parse([]byte(doc), config.Options{})
+	if err == nil || !strings.Contains(err.Error(), "line 4: vars.M: undefined variable ${NOPE}") {
+		t.Errorf("err = %v, want the line of the vars mapping", err)
 	}
 }
 
