@@ -294,7 +294,12 @@ func (c *converter) newerProperty(upgrade *omap, prop string, line int) {
 			upgrade.set("newerProperty", prop)
 		}
 	case prop != current:
-		c.todof(upgrade, "newerProperty", line, "the file tests both %s and %s for a newer version; msi-builder sets only %s, "+
+		key := "newerProperty"
+		if upgrade.str(key) == "" {
+			key = ""
+		}
+
+		c.todof(upgrade, key, line, "the file tests both %s and %s for a newer version; msi-builder sets only %s, "+
 			"use it in both places", current, prop, current)
 	}
 }
