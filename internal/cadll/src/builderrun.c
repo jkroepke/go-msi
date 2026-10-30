@@ -1104,6 +1104,8 @@ static const WCHAR rollbackKey[] = u"Software\\msi-builder\\GrantRollback\\";
 static const WCHAR accountsKey[] = u"SOFTWARE\\msi-builder\\GrantAccounts\\";
 static const WCHAR userAccountsKey[] = u"\\Software\\msi-builder\\GrantAccounts\\";
 static const WCHAR propUserSid[] = u"UserSID";
+static const WCHAR msgNoContext[] = u"cannot tell where the product is registered; remembered accounts are not used";
+static const WCHAR msgStillRegistered[] = u"the product is still registered in this scope; its remembered accounts stay";
 static const WCHAR msgUserSid[] = u"the user's security identifier is missing or malformed; remembered accounts are not used";
 static const WCHAR msgRemembered[] = u"the account is empty in a maintenance install; granting to the remembered account";
 static const WCHAR msgRemember[] = u"cannot remember the account of";
@@ -1256,6 +1258,7 @@ typedef struct {
 
 // MSIINSTALLCONTEXT values of MsiGetProductInfoExW.
 enum {
+    ERROR_UNKNOWN_PRODUCT_ = 1605,
     CONTEXT_USERMANAGED = 1,
     CONTEXT_USERUNMANAGED = 2,
     CONTEXT_MACHINE = 4,
@@ -1263,24 +1266,29 @@ enum {
 
 // registeredContext tells where the engine has a product registered: in the
 // machine context (CONTEXT_MACHINE), for the user with the SID
-// (CONTEXT_USERUNMANAGED, also for a managed per-user install), or not
-// known (0).
+// (CONTEXT_USERUNMANAGED, also for a managed per-user install), nowhere (0)
+// or, when a query fails for another reason than an unknown product, -1.
 static int registeredContext(const WCHAR *product, const WCHAR *sid)
 {
     static const WCHAR stateProp[] = u"State";
+    static const int userContexts[] = {CONTEXT_USERUNMANAGED, CONTEXT_USERMANAGED};
     WCHAR state[16];
     DWORD n = 16;
-    if (!MsiGetProductInfoExW(product, 0, CONTEXT_MACHINE, stateProp, state, &n)) {
+    UINT err = MsiGetProductInfoExW(product, 0, CONTEXT_MACHINE, stateProp, state, &n);
+    if (!err) {
         return CONTEXT_MACHINE;
     }
-    if (sid) {
+    if (err != ERROR_UNKNOWN_PRODUCT_) {
+        return -1;
+    }
+    for (int i = 0; sid && i < 2; i++) {
         n = 16;
-        if (!MsiGetProductInfoExW(product, sid, CONTEXT_USERUNMANAGED, stateProp, state, &n)) {
+        err = MsiGetProductInfoExW(product, sid, userContexts[i], stateProp, state, &n);
+        if (!err) {
             return CONTEXT_USERUNMANAGED;
         }
-        n = 16;
-        if (!MsiGetProductInfoExW(product, sid, CONTEXT_USERMANAGED, stateProp, state, &n)) {
-            return CONTEXT_USERUNMANAGED;
+        if (err != ERROR_UNKNOWN_PRODUCT_) {
+            return -1;
         }
     }
     return 0;
@@ -1778,28 +1786,44 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
     WCHAR *entries = field(product, '\n');
     grantScope scope = {product, 0, 0};
     int perUser = field(product, '|') != 0;
-    if (again || op == 'x') {
-        // A maintenance install follows where the engine registered the
-        // product, not ALLUSERS, which a user may set on the command line
-        // of an elevated repair: a per-machine product must never read
-        // accounts from the user's hive.
+    int context = 0;
+    const WCHAR *why = 0;
+    if (again || op == 'c' || op == 'x') {
+        // Where the engine registered the product decides, not ALLUSERS,
+        // which a user may pass to an elevated repair and an impersonated
+        // action may change: a per-machine product must never read or write
+        // accounts in the user's hive. A maintenance install whose product
+        // is registered nowhere (or cannot be told) uses no remembered
+        // account; the commit of a first install falls back to the marker
+        // only when the product is registered nowhere; the removal's commit
+        // runs after the product was unregistered, so the marker names the
+        // scope, and nothing is deleted while the product is still
+        // registered there.
         WCHAR *user = property(install, propUserSid);
-        int context = registeredContext(product, user && validSid(user) ? user : 0);
+        context = registeredContext(product, user && validSid(user) ? user : 0);
         HeapFree(heap, 0, user);
-        if (context) {
+        if (context > 0 && op != 'x') {
             perUser = context == CONTEXT_USERUNMANAGED;
+        } else if (op != 'x' && (again || context < 0)) {
+            scope.bad = 1;
+            why = msgNoContext;
         }
     }
-    if (perUser && op != '-') {
+    if (op == 'x' && context > 0 && perUser == (context == CONTEXT_USERUNMANAGED)) {
+        scope.bad = 1; // another install of the product still uses the accounts
+        why = msgStillRegistered;
+    }
+    if (perUser && op != '-' && !scope.bad) {
         // Per user: the engine's UserSID names the hive.
         scope.sid = property(install, propUserSid);
         scope.bad = !scope.sid;
     }
-    if (scope.bad || (scope.sid && !validSid(scope.sid))) {
+    if (!why && (scope.bad || (scope.sid && !validSid(scope.sid)))) {
         scope.bad = 1;
-        if (op != '-') {
-            logft(install, tmplGrant, msgUserSid, 0, 0);
-        }
+        why = msgUserSid;
+    }
+    if (why && op != '-') {
+        logft(install, tmplGrant, why, 0, 0);
     }
     if (!*product) {
         // An empty ProductCode would name every product's key below.

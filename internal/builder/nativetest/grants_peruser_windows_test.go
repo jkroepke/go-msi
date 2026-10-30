@@ -147,7 +147,9 @@ func TestNonAdminGrantsPerUser(t *testing.T) {
 // of a per-machine product in the administrator's own hive, where a
 // per-user install would keep it, and repairs the product with ALLUSERS=""
 // and no account (SEC-04): the DLL follows the context the product is
-// registered in, so the folder must not get a grant for Users.
+// registered in, so the folder gets no grant for Users and the account
+// remembered in HKLM is used. The log shows whether the engine kept
+// ALLUSERS empty, so that the per-user marker reached the DLL.
 func repairWithPlantedAccount(t *testing.T, dir, path, productCode, folder string) {
 	t.Helper()
 
@@ -170,7 +172,16 @@ func repairWithPlantedAccount(t *testing.T, dir, path, productCode, folder strin
 	err := cmd.Run()
 
 	text := readLog(log)
-	t.Logf("SEC-04: repair with ALLUSERS=\"\" of a per-machine product: %v\n%s", err, grepLog(text, "BuilderGrant:", "ALLUSERS"))
+	t.Logf("SEC-04: repair with ALLUSERS=\"\" of a per-machine product: %v\n%s", err, grepLog(text, "BuilderGrant", "ALLUSERS"))
+
+	if err != nil {
+		t.Fatalf("the repair with ALLUSERS=\"\" failed: %v", err)
+	}
+
+	// The account remembered in HKLM is still used.
+	if !strings.Contains(text, "granting to the remembered account") {
+		t.Errorf("the repair did not grant to the account remembered in HKLM\n%s", grepLog(text, "BuilderGrant:"))
+	}
 
 	if sddl := objectSDDL(t, folder); strings.Contains(sddl, "(A;OICI;0x1301bf;;;BU)") {
 		t.Errorf("the repair granted to the account planted in the user's hive: %s", sddl)

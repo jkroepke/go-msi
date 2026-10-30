@@ -107,9 +107,12 @@ the root `AGENTS.md` first.
   the DLL reads `UserSID` itself (the engine's value, which an action that
   changes the session property cannot change, FILE-12; never format it into
   the data) and the key is `HKEY_USERS\<SID>\Software\msi-builder\GrantAccounts\<ProductCode>`:
-  in a maintenance install and on removal the context the engine
-  registered the product in (`MsiGetProductInfoExW`, `State`) overrides
-  the marker, because a user may pass `ALLUSERS` to an elevated repair;
+  the context the engine registered the product in (`MsiGetProductInfoExW`,
+  `State`) overrides the marker in a maintenance install (registered
+  nowhere or a failed query: no remembered account) and in the commit of a
+  first install (the marker only when registered nowhere), because a user
+  may pass `ALLUSERS` to an elevated repair; only the removal's commit,
+  after the product was unregistered, goes by the marker;
   never use `HKCU` there, which is LocalSystem's hive when an elevated
   per-user install runs the action as LocalSystem, and never fall back to
   HKLM, which users who install the same product per user would share), because `msiexec /fa` and Apps & Features
