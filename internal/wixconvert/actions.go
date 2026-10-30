@@ -94,7 +94,7 @@ func (c *converter) placement(custom *elem, sequence string) *omap {
 		placement.set("at", at)
 	}
 
-	setCondition(placement, c.condition(custom))
+	c.setCondition(placement, c.condition(custom))
 
 	if custom.has("OnExit") {
 		c.todof(nil, "", custom.line, "actions that run on exit (OnExit) have no counterpart")
@@ -116,7 +116,7 @@ func (c *converter) condition(entry *elem) string {
 func (c *converter) scheduleReboot(entry *elem) {
 	reboot := c.out.child("scheduleReboot")
 	reboot.keep = true
-	setCondition(reboot, c.condition(entry))
+	c.setCondition(reboot, c.condition(entry))
 
 	if entry.attr("After") != "InstallFinalize" {
 		c.todof(c.out, "scheduleReboot", entry.line, "ScheduleReboot is scheduled after InstallFinalize, not here")
@@ -125,11 +125,12 @@ func (c *converter) scheduleReboot(entry *elem) {
 
 func (c *converter) emitActions() {
 	byAction := c.placements()
-	consumed := c.quietExecSetters()
+	c.quietExecCommands()
+	c.reanchor(byAction)
 
 	for _, custom := range c.actionOrder {
 		actionID := custom.attr("Id")
-		if consumed[actionID] || actionID == c.launchAction {
+		if c.consumed[custom] || actionID == c.launchAction {
 			continue
 		}
 
@@ -144,6 +145,10 @@ func (c *converter) emitActions() {
 	}
 
 	for _, setter := range c.setters {
+		if c.consumed[setter] {
+			continue
+		}
+
 		action, schedule := c.setter(setter)
 		id := action.str("id")
 		action.set("schedule", append(schedule, byAction[id]...))
@@ -158,54 +163,287 @@ func (c *converter) emitActions() {
 	}
 }
 
+// anchorKey names an action in one sequence.
+type anchorKey struct{ action, sequence string }
+
+// reanchor moves the placements anchored on a command line setter, which
+// becomes part of its run action, to the setter's own anchor in the same
+// sequence.
+func (c *converter) reanchor(byAction map[string][]any) {
+	anchors, sourceIDs := c.sourceAnchors(byAction)
+
+	for _, entries := range byAction {
+		for i, entry := range entries {
+			placement, ok := entry.(*omap)
+			if !ok {
+				continue
+			}
+
+			name := placement.str("after")
+			if name == "" {
+				name = placement.str("before")
+			}
+
+			if !sourceIDs[name] {
+				continue
+			}
+
+			if anchor := anchors[anchorKey{name, placement.str("sequence")}]; anchor != nil {
+				entries[i] = moveAnchor(placement, anchor)
+			} else {
+				c.todof(placement, "", 0, "this action was scheduled next to %s, which is not in the %s sequence; schedule it yourself",
+					name, placement.str("sequence"))
+			}
+		}
+	}
+}
+
+// sourceAnchors returns the placement of each consumed command line source
+// in each sequence, and the names of the sources.
+func (c *converter) sourceAnchors(byAction map[string][]any) (map[anchorKey]*omap, map[string]bool) {
+	anchors := make(map[anchorKey]*omap)
+	sourceIDs := make(map[string]bool)
+
+	for _, src := range c.consumedSources() {
+		sourceIDs[src.id] = true
+
+		schedule := byAction[src.id]
+		if src.e.is("SetProperty") {
+			_, schedule = c.setter(src.e)
+		}
+
+		for _, entry := range schedule {
+			if placement, ok := entry.(*omap); ok {
+				key := anchorKey{src.id, placement.str("sequence")}
+				if anchors[key] == nil {
+					anchors[key] = placement
+				}
+			}
+		}
+	}
+
+	return anchors, sourceIDs
+}
+
+// consumedSources returns each command line source that became part of a
+// run action once, in the order of the actions.
+func (c *converter) consumedSources() []commandSource {
+	var sources []commandSource
+
+	seen := make(map[*elem]bool)
+
+	for _, quiet := range c.actionOrder {
+		if src, ok := c.quietCommands[quiet.attr("Id")]; ok && !seen[src.e] {
+			seen[src.e] = true
+			sources = append(sources, src)
+		}
+	}
+
+	return sources
+}
+
+// moveAnchor returns the placement with the anchor of another one.
+func moveAnchor(placement, anchor *omap) *omap {
+	moved := flowMap()
+	moved.order("sequence", "before", "after", "at", "condition", "when")
+
+	for _, key := range []string{"sequence", "condition", "when"} {
+		moved.set(key, placement.get(key))
+	}
+
+	for _, key := range []string{"before", "after", "at"} {
+		moved.set(key, anchor.get(key))
+	}
+
+	return moved
+}
+
 func immediate(ca *elem) bool {
 	x := ca.attr("Execute")
 
 	return x == "" || x == "immediate"
 }
 
-// passesCommand reports whether the setter, a CustomAction that sets a
-// property, passes the command line to the quiet exec action qe: through
-// CustomActionData, the property named like a deferred action, or through
-// the extension's command line property for an immediate one.
-func passesCommand(setter, qe *elem) bool {
-	p := setter.attr(attrProperty)
-
-	return p == qe.attr("Id") || quietExecProperties[p] && immediate(qe)
+// commandSource is an element that sets a property a quiet exec action
+// reads its command line from: a CustomAction with Property and Value, or
+// a SetProperty.
+type commandSource struct {
+	e        *elem
+	id       string
+	property string
 }
 
-// quietExecSetters finds the actions that pass a command line to a quiet
-// exec action, which becomes a run action with that command instead.
-func (c *converter) quietExecSetters() map[string]bool {
-	consumed := make(map[string]bool)
+// commandSources lists the elements that set a property.
+func (c *converter) commandSources() []commandSource {
+	var sources []commandSource
+
+	for _, custom := range c.actionOrder {
+		if custom.has(attrProperty) && custom.has("Value") {
+			sources = append(sources, commandSource{e: custom, id: custom.attr("Id"), property: custom.attr(attrProperty)})
+		}
+	}
+
+	for _, setter := range c.setters {
+		if setter.is("SetProperty") {
+			sources = append(sources, commandSource{e: setter, id: setterName(setter), property: setter.attr("Id")})
+		}
+	}
+
+	return sources
+}
+
+// passesCommand reports whether a source passes the command line to the
+// quiet exec action qe: through CustomActionData, the property named like
+// a deferred action, or through the extension's command line property for
+// an immediate one.
+func passesCommand(src commandSource, qe *elem) bool {
+	return src.property == qe.attr("Id") || quietExecProperties[src.property] && immediate(qe)
+}
+
+// commandFor picks the source of a quiet exec action's command line. Each
+// immediate quiet exec action reads the one shared property, so the source
+// is the setter scheduled right before it.
+func (c *converter) commandFor(quiet *elem, sources []commandSource) (commandSource, bool) {
+	var candidates []commandSource
+
+	for _, src := range sources {
+		if src.property == quiet.attr("Id") {
+			return src, true
+		}
+
+		if passesCommand(src, quiet) {
+			candidates = append(candidates, src)
+		}
+	}
+
+	switch len(candidates) {
+	case 0:
+		return commandSource{}, false
+	case 1:
+		return candidates[0], true
+	}
+
+	if src, ok := c.scheduledBefore(quiet, candidates); ok {
+		return src, true
+	}
+
+	c.todof(nil, "", quiet.line,
+		"several actions set the command line property of %s and none is scheduled right before it; check its run.command", quiet.attr("Id"))
+
+	return candidates[0], true
+}
+
+// seqEntry is a Custom element of a sequence, or a SetProperty, in one
+// schedule sequence.
+type seqEntry struct {
+	e        *elem
+	sequence string
+}
+
+// scheduledBefore finds the candidate that the same sequence schedules right
+// before the action: Before it, named in its After, or with the highest
+// sequence number below its own.
+func (c *converter) scheduledBefore(quiet *elem, candidates []commandSource) (commandSource, bool) {
+	actionID := quiet.attr("Id")
+	entries := c.sequenceEntries()
+	own := entries[actionID]
+
+	for _, src := range candidates {
+		for _, srcEntry := range sourceEntries(src, entries) {
+			for _, ownEntry := range own {
+				if srcEntry.sequence == ownEntry.sequence &&
+					(srcEntry.e.attr("Before") == actionID || ownEntry.e.attr("After") == src.id) {
+					return src, true
+				}
+			}
+		}
+	}
+
+	return lowerSequence(entries, own, candidates)
+}
+
+// sourceEntries returns where a command line source is scheduled: in the
+// sequences, or for a SetProperty, by its own attributes.
+func sourceEntries(src commandSource, entries map[string][]seqEntry) []seqEntry {
+	if !src.e.is("SetProperty") {
+		return entries[src.id]
+	}
+
+	var own []seqEntry
+	for _, seq := range setterSequenceNames(src.e) {
+		own = append(own, seqEntry{e: src.e, sequence: seq})
+	}
+
+	return own
+}
+
+// lowerSequence finds the candidate with the highest sequence number below
+// the action's in the same sequence.
+func lowerSequence(entries map[string][]seqEntry, own []seqEntry, candidates []commandSource) (commandSource, bool) {
+	best, bestAt := commandSource{}, -1
+
+	for _, ownEntry := range own {
+		ownAt, err := strconv.Atoi(ownEntry.e.attr("Sequence"))
+		if err != nil {
+			continue
+		}
+
+		for _, src := range candidates {
+			for _, srcEntry := range entries[src.id] {
+				if srcEntry.sequence != ownEntry.sequence {
+					continue
+				}
+
+				if srcAt, err := strconv.Atoi(srcEntry.e.attr("Sequence")); err == nil && srcAt < ownAt && srcAt > bestAt {
+					best, bestAt = src, srcAt
+				}
+			}
+		}
+	}
+
+	return best, bestAt >= 0
+}
+
+// sequenceEntries indexes the Custom elements of the sequences by action.
+func (c *converter) sequenceEntries() map[string][]seqEntry {
+	entries := make(map[string][]seqEntry)
+
+	for _, seq := range c.sequences {
+		for _, entry := range seq.kids {
+			if entry.is("Custom") {
+				id := entry.attr("Action")
+				entries[id] = append(entries[id], seqEntry{e: entry, sequence: sequenceNames[seq.name]})
+			}
+		}
+	}
+
+	return entries
+}
+
+// quietExecCommands picks the command line source of every quiet exec
+// action. The sources become part of the run actions, not actions of their
+// own.
+func (c *converter) quietExecCommands() {
+	sources := c.commandSources()
+	c.quietCommands = make(map[string]commandSource)
+	c.consumed = make(map[*elem]bool)
 
 	for _, quiet := range c.actionOrder {
 		if !quietExec[quiet.attr("DllEntry")] {
 			continue
 		}
 
-		for _, setter := range c.actionOrder {
-			if passesCommand(setter, quiet) {
-				consumed[setter.attr("Id")] = true
-			}
+		if src, ok := c.commandFor(quiet, sources); ok {
+			c.quietCommands[quiet.attr("Id")] = src
+			c.consumed[src.e] = true
 		}
 	}
-
-	return consumed
 }
 
 // command returns the command line a quiet exec action runs.
 func (c *converter) command(quiet *elem) (string, bool) {
-	for _, setter := range c.actionOrder {
-		if passesCommand(setter, quiet) {
-			return c.value(setter, "Value"), true
-		}
-	}
-
-	for _, setter := range c.setters {
-		if setter.is("SetProperty") && setter.attr("Id") == quiet.attr("Id") {
-			return c.value(setter, "Value"), true
-		}
+	if src, ok := c.quietCommands[quiet.attr("Id")]; ok {
+		return c.value(src.e, "Value"), true
 	}
 
 	for _, prop := range c.properties {
@@ -357,15 +595,35 @@ func (c *converter) actionFlags(action *omap, custom *elem, program bool) { //no
 // setterSequences are the sequences a SetProperty or SetDirectory runs in.
 func (c *converter) setterSequences(action *omap, setter *elem) []string {
 	switch seq := setter.attr("Sequence"); seq {
-	case "", onBoth:
-		return []string{seqUI, seqExecute}
-	case seqExecute, seqUI:
-		return []string{seq}
+	case "", onBoth, seqExecute, seqUI:
 	default:
 		c.todof(action, "", setter.line, "Sequence=%q has no counterpart", seq)
+	}
 
+	return setterSequenceNames(setter)
+}
+
+// setterSequenceNames returns the sequences a SetProperty or SetDirectory
+// runs in.
+func setterSequenceNames(setter *elem) []string {
+	switch seq := setter.attr("Sequence"); seq {
+	case "", onBoth:
+		return []string{seqUI, seqExecute}
+	case seqUI:
+		return []string{seqUI}
+	default:
 		return []string{seqExecute}
 	}
+}
+
+// setterName returns the name of the action WiX makes for a SetProperty or
+// SetDirectory: its Action attribute, or Set and its Id.
+func setterName(setter *elem) string {
+	if name := setter.attr("Action"); name != "" {
+		return name
+	}
+
+	return "Set" + setter.attr("Id")
 }
 
 // setter converts SetProperty and SetDirectory elements, which carry their
@@ -373,13 +631,7 @@ func (c *converter) setterSequences(action *omap, setter *elem) []string {
 func (c *converter) setter(setter *elem) (*omap, []any) {
 	action := newAction(setter)
 	setterID := setter.attr("Id")
-
-	name := setter.attr("Action")
-	if name == "" {
-		name = "Set" + setterID
-	}
-
-	action.set("id", name)
+	action.set("id", setterName(setter))
 
 	before, after := setter.attr("Before"), setter.attr("After")
 
@@ -398,7 +650,7 @@ func (c *converter) setter(setter *elem) (*omap, []any) {
 
 	for _, seq := range sequences {
 		placement := flowMap().set("sequence", seq).set("before", before).set("after", after)
-		setCondition(placement, c.value(setter, "Condition"))
+		c.setCondition(placement, c.value(setter, "Condition"))
 		schedule = append(schedule, placement)
 	}
 
@@ -410,10 +662,14 @@ func (c *converter) emitActionRefs() {
 	for _, ref := range c.actionRefs {
 		refID := ref.attr("Id")
 
-		if strings.Contains(refID, "BroadcastEnvironmentChange") || strings.Contains(refID, "BroadcastSettingChange") {
+		switch {
+		case strings.Contains(refID, "BroadcastEnvironmentChange"):
 			c.todof(nil, "", ref.line,
-				"%s has no counterpart: programs that are already running keep the old environment until they restart", refID)
-		} else {
+				"drop %s: Windows Installer announces environment changes itself", refID)
+		case strings.Contains(refID, "BroadcastSettingChange"):
+			c.todof(nil, "", ref.line,
+				"%s has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action", refID)
+		default:
 			c.todof(nil, "", ref.line, "the custom action %s comes from a WiX extension and has no counterpart", refID)
 		}
 	}
@@ -429,8 +685,11 @@ var whenConditions = map[string]string{ //nolint:gochecknoglobals // lookup tabl
 }
 
 // setCondition sets a schedule's condition, as when where one fits.
-func setCondition(schedule *omap, cond string) {
+func (c *converter) setCondition(schedule *omap, cond string) {
 	normalized := strings.Join(strings.Fields(cond), " ")
+
+	// The when conditions name msi-builder's upgrade property, which
+	// emitUpgrade sets to WIX_UPGRADE_DETECTED whenever the file uses it.
 	if when, ok := whenConditions[normalized]; ok {
 		schedule.set("when", when)
 
