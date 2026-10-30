@@ -602,6 +602,10 @@ firewall:
   permissions.
 - The core `PermissionEx` with an `Sddl` attribute, and `Permission`,
   replace the permissions; write an SDDL string in `sddl` for those.
+  For a `Permission`, add `(A;OICI;FA;;;SY)`: Windows Installer also
+  gives SYSTEM full access to every object it locks through
+  `Permission`, which a WiX package reads back as
+  `D:P(A;OICI;FA;;;WD)(A;OICI;FA;;;SY)` for `User="Everyone"`.
   Registry values take only `sddl`, so a `util:PermissionEx` on a registry
   key becomes an SDDL string too.
 - `Scope="any"` is the default; `remoteAddresses` limits the rule and

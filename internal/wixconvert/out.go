@@ -206,7 +206,7 @@ func scalar(s string) *yaml.Node {
 }
 
 // node writes the mapping. Comments of keys that ended up without a value
-// move to the next key, or below the mapping.
+// move to the next key, or above the last one.
 func (m *omap) node() *yaml.Node { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
 	mapping := &yaml.Node{Kind: yaml.MappingNode}
 	if m.flow {
@@ -243,7 +243,14 @@ func (m *omap) node() *yaml.Node { //nolint:cyclop // one pass in a fixed order;
 		mapping.Content = append(mapping.Content, keyNode, node(value))
 	}
 
-	if len(pending) > 0 {
+	switch {
+	case len(pending) == 0:
+	case len(mapping.Content) > 0:
+		// A foot comment of a list item lands below the next item's dash,
+		// so the comments go above the last key instead.
+		last := mapping.Content[len(mapping.Content)-2]
+		last.HeadComment = strings.TrimPrefix(last.HeadComment+"\n"+commentText(pending), "\n")
+	default:
 		mapping.FootComment = commentText(pending)
 	}
 

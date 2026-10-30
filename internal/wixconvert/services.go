@@ -909,7 +909,8 @@ func (c *converter) permission(target *omap, key string, elm *elem, kind string)
 
 		c.todof(target, key, elm.line, "a PermissionEx without Sddl has no counterpart")
 	case elemPermission:
-		c.todof(target, key, elm.line, "<Permission> replaces the object's permissions; write them as an SDDL string in %s.sddl", key)
+		c.todof(target, key, elm.line, "<Permission> replaces the object's permissions; write them as an SDDL string in %s.sddl "+
+			"and add (A;OICI;FA;;;SY): Windows Installer also gives SYSTEM full access to an object it locks", key)
 	case "util:PermissionEx":
 		account := grantAccount(c.value(elm, "Domain"), c.value(elm, "User"))
 
