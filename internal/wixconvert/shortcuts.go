@@ -159,7 +159,7 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 	}
 
 	target := elm.attr("Target")
-	if file := c.targetFile(target); file != nil && (file.comp == pending.comp || fileTarget.MatchString(target)) {
+	if file := c.shortcutFile(pending, target); file != nil {
 		c.fileTargetShortcut(pending, file)
 
 		return
@@ -187,6 +187,46 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 	link.set("workingDirectory", c.dirRef(elm.attr("WorkingDirectory")))
 	pending.comp.out.add("shortcuts", link)
 	c.markAdvertised(elm)
+}
+
+// shortcutFile returns the packaged file a shortcut starts, when it goes on
+// that file or names it with file: the file of an advertised shortcut
+// (shortcut() notes that it is no longer advertised), a file of its own
+// component, or a [#file] or [!file] target.
+func (c *converter) shortcutFile(pending pendingShortcut, target string) *fileRef {
+	if target == "" {
+		return c.advertisedFile(pending)
+	}
+
+	if file := c.targetFile(target); file != nil && (file.comp == pending.comp || fileTarget.MatchString(target)) {
+		return file
+	}
+
+	return nil
+}
+
+// advertisedFile returns the file an advertised shortcut starts: the key
+// path of its component, the File marked KeyPath or else the first one.
+func (c *converter) advertisedFile(pending pendingShortcut) *fileRef {
+	if !pending.e.yes("Advertise") {
+		return nil
+	}
+
+	var first *fileRef
+
+	key := keyElem(pending.comp.e)
+
+	for _, ref := range c.files {
+		switch {
+		case ref.comp != pending.comp:
+		case ref.e == key:
+			return ref
+		case first == nil:
+			first = ref
+		}
+	}
+
+	return first
 }
 
 // fileTargetShortcut places a shortcut to a packaged file: on the file when

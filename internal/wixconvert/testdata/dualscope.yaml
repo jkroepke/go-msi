@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
+# Converted from dualscope.wxs by msi-builder convert.
+# Review it, resolve the TODO comments, then run msi-builder validate.
+# TODO(line 38): the standard action RemoveExistingProducts in InstallExecuteSequence runs only when NOT UPGRADINGPRODUCTCODE; msi-builder schedules the standard actions itself, without conditions
+# TODO(line 27): the action OverridePerMachineFolder, which sets WixPerMachineFolder for WixUI_Advanced, was left out: msi-builder sets the install folder of each scope itself
+# TODO(line 31): the action OverrideAgain, which sets WixPerMachineFolder for WixUI_Advanced, was left out: msi-builder sets the install folder of each scope itself
+schema: msi-builder/v1
+vars:
+  MainLevel: "1"
+product:
+  name: Hello
+  manufacturer: Example
+  version: 1.0.0
+  upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301
+package:
+  # TODO(line 5): WiX takes the platform from wix build -arch; check package.platform
+  platform: x64
+  scope: perUserOrMachine
+upgrade:
+  downgradeMessage: newer
+installDir:
+  id: INSTALLFOLDER
+  name: Hello
+features:
+  - id: DefaultFeature
+    directory: INSTALLFOLDER
+    allowAbsent: false
+    components: [hello.exe, Component1, Component2, Component3]
+components:
+  - id: hello.exe
+    files:
+      - source: hello.exe
+  - id: Component1
+    registry:
+      - root: HKLM
+        key: Software\Example\Hello
+        name: InstalledBy
+        value: msi
+    environment:
+      - name: PATH
+        value: '[INSTALLFOLDER]'
+        action: append
+        scope: machine
+    scope: perMachine
+  - id: Component2
+    registry:
+      - root: HKLM
+        key: Software\Example\Hello
+        name: Machine
+        value: "1"
+    scope: perMachine
+  - id: Component3
+    registry:
+      - root: HKCU
+        key: Software\Example\Hello
+        name: u
+        value: "1"
+    environment:
+      - name: PATH
+        value: '[INSTALLFOLDER]'
+        action: append
+        scope: user
+    scope: perUser
+customActions:
+  # Placed on left-out setters, so they move to those setters' place.
+  - id: SetHELLOMODE
+    setProperty: {name: HELLOMODE, value: dual}
+    # TODO(line 33): WixSetDefaultPerMachineFolder is an action of a WiX extension, which the msi-builder package does not have; convert placed this action after CostFinalize, check that place
+    schedule:
+      - {sequence: execute, after: CostFinalize}
+  - id: SetUIMODE
+    setProperty: {name: UIMODE, value: dual}
+    # TODO(line 34): WixSetDefaultPerMachineFolder is an action of a WiX extension, which the msi-builder package does not have; convert placed this action after CostFinalize, check that place
+    schedule:
+      # TODO(line 31): SetUIMODE was scheduled next to OverrideAgain, which is not in the ui sequence; convert placed it after CostFinalize, check that place
+      - {sequence: ui, after: CostFinalize}
+      - {sequence: execute, after: CostFinalize}
+ui:
+  enabled: true
+  chooseFeatures: true
+  chooseDirectory: true

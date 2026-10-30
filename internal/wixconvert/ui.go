@@ -43,7 +43,7 @@ func (c *converter) uiRef(e *elem) {
 func (c *converter) chooseFeatures() bool {
 	id := c.uiID()
 
-	return id == uiFeatureTree || id == uiMondo
+	return id == uiFeatureTree || id == uiMondo || id == uiAdvanced
 }
 
 func (c *converter) uiID() string {
@@ -78,9 +78,14 @@ func (c *converter) emitUI() {
 		if wizardID == uiMondo {
 			c.todof(wizard, "chooseFeatures", line, "msi-builder has no setup type page (Typical, Custom, Complete)")
 		}
-	case "WixUI_Advanced":
-		wizard.set("enabled", true)
-		c.todof(wizard, "enabled", line, "WixUI_Advanced: set package.scope to perUserOrMachine or perMachineOrUser for the scope page")
+	case uiAdvanced:
+		// The advanced path shows the folder and the feature tree.
+		wizard.set("enabled", true).set("chooseFeatures", true).set("chooseDirectory", true)
+
+		if !c.dualScope() {
+			c.todof(wizard, "enabled", line, "WixUI_Advanced: set package.scope to perUserOrMachine or perMachineOrUser, which need "+
+				"installerVersion 5.0, for the scope page")
+		}
 	default:
 		wizard.set("enabled", true)
 		c.todof(wizard, "enabled", line, "the wizard %s is not a WiX standard wizard; check the ui keys", wizardID)
@@ -178,19 +183,17 @@ func (c *converter) uiLaunch(wizard *omap) {
 
 	target := props["WixShellExecTarget"]
 	if target == nil && props["WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT"] == nil {
+		if c.launchAction != "" {
+			c.todof(wizard, "", 0, "the Finish button runs the action %s, which has no counterpart: ui.launch starts a file "+
+				"of the package from a check box on the finish page", c.launchAction)
+		}
+
 		return
 	}
 
 	launch := wizard.child("launch")
 
-	if target != nil {
-		v := c.value(target, "Value")
-		if m := fileTarget.FindStringSubmatch(v); m != nil {
-			launch.set("file", m[1])
-		} else {
-			c.todof(wizard, "launch", target.line, "WixShellExecTarget=%q: launch.file names a file of the package", v)
-		}
-	}
+	c.launchFile(wizard, launch, target)
 
 	if p := props["WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT"]; p != nil {
 		launch.set("text", c.value(p, "Value"))
@@ -198,6 +201,27 @@ func (c *converter) uiLaunch(wizard *omap) {
 
 	if p := props["WIXUI_EXITDIALOGOPTIONALCHECKBOX"]; p == nil || c.value(p, "Value") != "1" {
 		launch.set("checked", false)
+	}
+}
+
+// launchFile sets the file the finish page launches: the WixShellExecTarget
+// file, or the file the launch action runs.
+func (c *converter) launchFile(wizard, launch *omap, target *elem) {
+	switch custom := c.actions[c.launchAction]; {
+	case target != nil:
+		v := c.value(target, "Value")
+		if m := fileTarget.FindStringSubmatch(v); m != nil {
+			launch.set("file", m[1])
+		} else {
+			c.todof(wizard, "launch", target.line, "WixShellExecTarget=%q: launch.file names a file of the package", v)
+		}
+	case custom != nil && custom.attr("FileRef")+custom.attr("FileKey") != "":
+		// The finish button runs a file of the package.
+		launch.set("file", custom.attr("FileRef")+custom.attr("FileKey"))
+
+		launch.set("arguments", c.value(custom, "ExeCommand"))
+	default:
+		c.todof(wizard, "launch", 0, "the launch checkbox starts no file of the package that convert can tell; set launch.file")
 	}
 }
 

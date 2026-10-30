@@ -15,10 +15,11 @@ import (
 	"io"
 	"maps"
 	"slices"
-
 	"strings"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // Note is something the converter could not convert, with the line of the
@@ -92,26 +93,28 @@ func Convert(r io.Reader, opts Options) (*Result, error) {
 
 // converter holds the indexed source file and the output.
 type converter struct {
-	compByID     map[string]*comp
-	built        *BuiltPackage
-	claimed      map[string]bool // the built components a component took
-	advertised   []int           // the lines of advertised shortcuts
-	doc          *document
-	wixVars      map[string]string
-	dirs         map[string]*dir
-	wixUI        *elem
-	out          *omap
-	pkg          *elem
-	major        *elem
-	summary      *elem
-	usedVars     map[string]bool
-	groups       map[string]*group
-	actions      map[string]*elem
-	needDirs     map[string]bool
-	renames      map[string]string
-	installDir   *dir
-	uiSet        string
-	platform     string
+	compByID   map[string]*comp
+	built      *BuiltPackage
+	claimed    map[string]bool // the built components a component took
+	advertised []int           // the lines of advertised shortcuts
+	doc        *document
+	wixVars    map[string]string
+	dirs       map[string]*dir
+	wixUI      *elem
+	out        *omap
+	pkg        *elem
+	major      *elem
+	summary    *elem
+	usedVars   map[string]bool
+	groups     map[string]*group
+	actions    map[string]*elem
+	needDirs   map[string]bool
+	renames    map[string]string
+	installDir *dir
+	uiSet      string
+	platform   string
+	// scope is the package's install scope, as package.scope names it.
+	scope        string
 	launchAction string
 	properties   []*elem
 	// progressTexts are the ProgressText elements, which become the
@@ -126,15 +129,19 @@ type converter struct {
 	uiNav         []*elem
 	errorRows     []*elem
 	usedErrors    map[*elem]bool
+	// firewallNames are the lines of the firewall exceptions by name.
+	firewallNames map[string]int
 	// newerClaimed is the property that detects newer versions.
 	newerClaimed string
 	icons        []*elem
 	defines      [][2]string
-	sequences    []*elem
-	setters      []*elem
-	structure    map[string]func(c *converter, e *elem, sc scope)
-	features     []*feature
-	featureByID  map[string]*feature
+	// defined are the define values with earlier defines filled in.
+	defined     map[string]string
+	sequences   []*elem
+	setters     []*elem
+	structure   map[string]func(c *converter, e *elem, sc scope)
+	features    []*feature
+	featureByID map[string]*feature
 	// quietCommands are the command line sources of the quiet exec
 	// actions, and consumed the sources they take in.
 	quietCommands map[string]commandSource
@@ -223,20 +230,21 @@ type featureGroup struct {
 
 func newConverter(doc *document) *converter {
 	return &converter{
-		doc:         doc,
-		dirs:        make(map[string]*dir),
-		compByID:    make(map[string]*comp),
-		groups:      make(map[string]*group),
-		featureByID: make(map[string]*feature),
-		featureGrps: make(map[string]*featureGroup),
-		actions:     make(map[string]*elem),
-		wixVars:     make(map[string]string),
-		renames:     make(map[string]string),
-		needDirs:    make(map[string]bool),
-		usedVars:    make(map[string]bool),
-		usedErrors:  make(map[*elem]bool),
-		out:         newMap(),
-		structure:   structureHandlers(),
+		doc:           doc,
+		dirs:          make(map[string]*dir),
+		compByID:      make(map[string]*comp),
+		groups:        make(map[string]*group),
+		featureByID:   make(map[string]*feature),
+		featureGrps:   make(map[string]*featureGroup),
+		actions:       make(map[string]*elem),
+		wixVars:       make(map[string]string),
+		firewallNames: make(map[string]int),
+		renames:       make(map[string]string),
+		needDirs:      make(map[string]bool),
+		usedVars:      make(map[string]bool),
+		usedErrors:    make(map[*elem]bool),
+		out:           newMap(),
+		structure:     structureHandlers(),
 	}
 }
 
@@ -489,7 +497,7 @@ func (c *converter) addDir(elm *elem, parentID string, standard bool) *dir {
 		return d
 	}
 
-	folder := &dir{id: dirID, name: elm.attr("Name"), parentID: parentID, line: elm.line, generated: elm.attr("Id") == ""}
+	folder := &dir{id: dirID, name: c.expandVars(elm, elm.attr("Name")), parentID: parentID, line: elm.line, generated: elm.attr("Id") == ""}
 
 	if dirID == "TARGETDIR" || standard || isStandardFolder(dirID) {
 		folder.std, folder.name, folder.parentID = true, "", ""
@@ -499,6 +507,69 @@ func (c *converter) addDir(elm *elem, parentID string, standard bool) *dir {
 	c.dirOrder = append(c.dirOrder, folder)
 
 	return folder
+}
+
+// keyFileID returns the Id of a component's key path, which WiX gives a
+// component without an Id, or "" when WiX generates it.
+func (c *converter) keyFileID(elm *elem) string {
+	key := keyElem(elm)
+
+	switch {
+	case key == nil:
+		return ""
+	case key.has("Id") || !key.is("File"):
+		return key.attr("Id")
+	}
+
+	// WiX gives a File without an Id its name, when that is an identifier
+	// of at most 72 characters.
+	name := c.literal(key.attr("Name"))
+	if name == "" {
+		source := strings.ReplaceAll(c.literal(key.attr("Source")), `\`, "/")
+		name = source[strings.LastIndex(source, "/")+1:]
+	}
+
+	if config.IsIdentifier(name) && len(name) <= config.MaxIdentifierLength {
+		return name
+	}
+
+	return ""
+}
+
+// keyElem returns a component's key path: the element marked KeyPath, also
+// one inside a RegistryKey, else the first File.
+func keyElem(elm *elem) *elem {
+	var first *elem
+
+	for _, kid := range elm.kids {
+		switch {
+		case kid.yes("KeyPath"):
+			return kid
+		case kid.is("RegistryKey"):
+			if key := markedKey(kid); key != nil {
+				return key
+			}
+		case kid.is("File") && first == nil:
+			first = kid
+		}
+	}
+
+	return first
+}
+
+// markedKey returns the element marked KeyPath below a RegistryKey.
+func markedKey(elm *elem) *elem {
+	for _, kid := range elm.kids {
+		if kid.yes("KeyPath") {
+			return kid
+		}
+
+		if key := markedKey(kid); key != nil {
+			return key
+		}
+	}
+
+	return nil
 }
 
 // subdir adds the folders of a Subdirectory path, such as bin\\x64, below a
@@ -573,11 +644,19 @@ func implicitComponent(file *elem) *elem {
 
 func (c *converter) addComp(elm *elem, within scope) {
 	comp := &comp{e: elm, id: elm.attr("Id"), dir: elm.attr(attrDirectory)}
+	if comp.id == "" {
+		// Two files of one name in other folders would give two components
+		// one Id; the later one gets a generated one.
+		if id := c.keyFileID(elm); c.compByID[id] == nil {
+			comp.id = id
+		}
+	}
+
 	if comp.dir == "" {
 		comp.dir = within.dir
 	}
 
-	if sub := elm.attr("Subdirectory"); sub != "" {
+	if sub := c.expandVars(elm, elm.attr("Subdirectory")); sub != "" {
 		comp.dir = c.subdir(comp.dir, sub, elm.line)
 	}
 

@@ -615,6 +615,10 @@ firewall:
   permissions.
 - The core `PermissionEx` with an `Sddl` attribute, and `Permission`,
   replace the permissions; write an SDDL string in `sddl` for those.
+  For a `Permission`, add `(A;OICI;FA;;;SY)`: Windows Installer also
+  gives SYSTEM full access to every object it locks through
+  `Permission`, which a WiX package reads back as
+  `D:P(A;OICI;FA;;;WD)(A;OICI;FA;;;SY)` for `User="Everyone"`.
   Registry values take only `sddl`, so a `util:PermissionEx` on a registry
   key becomes an SDDL string too.
 - `Scope="any"` is the default; `remoteAddresses` limits the rule and
@@ -792,6 +796,12 @@ folder, written as a path below a standard folder like
 `CommonAppDataFolder/Example/Hello`; a public directory ID such as
 `DATADIR`, which the command line could point anywhere, is rejected. It
 takes a `condition`, such as `DELETE_DATA="1"`.
+
+`msi-builder convert` keeps a `util:RemoveFolderEx` whose property only
+reads back, by a `RegistrySearch`, the component's own folder from a
+registry value of that component: it becomes `purge` on the component.
+`On="install"`, which empties the folder before the install, has no
+counterpart and is left out with a note.
 
 ## Signing
 
