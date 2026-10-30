@@ -280,7 +280,7 @@ func endOfBlock(data []byte) int {
 }
 
 const broadcastConfig = `schema: msi-builder/v1
-product: { name: MsiBuilderBroadcast%[1]s, manufacturer: msi-builder tests, version: 1.0.0 }
+product: { name: MsiBuilderBroadcast%[1]s, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: %[4]s }
 package: { platform: x64, scope: %[2]s }
 installDir: { name: MsiBuilderBroadcast%[1]s }
 components:
@@ -347,12 +347,12 @@ func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // ms
 	t.Logf("after a plain reg add: messages %q, shell sees %s=%s", changes.take(), raw, shellSees(raw))
 
 	for _, tc := range []struct { //nolint:paralleltest // msiexec runs one installation at a time
-		name, scope, env, variable, key string
+		name, scope, env, variable, key, upgradeCode string
 	}{
-		{"Machine", "perMachine", "machine", "MSIBUILDER_MACHINE", `HKLM\System\CurrentControlSet\Control\Session Manager\Environment`},
-		{"UserFromMachine", "perMachine", "user", "MSIBUILDER_USER_PM", `HKCU\Environment`},
-		{"UserFromUser", "perUser", "user", "MSIBUILDER_USER_PU", `HKCU\Environment`},
-		{"NoVariable", "perMachine", "", "", ""},
+		{"Machine", "perMachine", "machine", "MSIBUILDER_MACHINE", `HKLM\System\CurrentControlSet\Control\Session Manager\Environment`, "5b0e7c3a-2f41-4d8e-9a16-c7e2b4f80d51"},
+		{"UserFromMachine", "perMachine", "user", "MSIBUILDER_USER_PM", `HKCU\Environment`, "a3d94f12-6c8b-4e70-b5a2-1f9e0c7d3b64"},
+		{"UserFromUser", "perUser", "user", "MSIBUILDER_USER_PU", `HKCU\Environment`, "e81c2b57-04d9-4a3f-8e6b-9d2a5c1f7e08"},
+		{"NoVariable", "perMachine", "", "", "", "2c7f5e90-b38a-4d16-a0e4-6b1d9f3c8a27"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			environment := ""
@@ -361,7 +361,7 @@ func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // ms
 			}
 
 			dir := t.TempDir()
-			path := buildConfig(t, dir, "broadcast", fmt.Sprintf(broadcastConfig, tc.name, tc.scope, environment), map[string][]byte{"app.txt": []byte("app\n")})
+			path := buildConfig(t, dir, "broadcast", fmt.Sprintf(broadcastConfig, tc.name, tc.scope, environment, tc.upgradeCode), map[string][]byte{"app.txt": []byte("app\n")})
 
 			t.Cleanup(func() {
 				_ = exec.Command("msiexec", "/x", path, "/qn").Run() //nolint:noctx // cleanup after the test context ends
