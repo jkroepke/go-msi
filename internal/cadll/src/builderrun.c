@@ -1971,19 +1971,23 @@ __declspec(dllexport) UINT WINAPI BuilderCloseSchedule(MSIHANDLE install)
     return result;
 }
 
-// endRunning ends the processes of one path and returns how many it found.
-static DWORD endRunning(MSIHANDLE install, const WCHAR *path, closeTarget *targets, WCHAR *image)
+// endRunning ends the processes of one path and returns how many it found;
+// *ended counts those it ended or found gone.
+static DWORD endRunning(MSIHANDLE install, const WCHAR *path, closeTarget *targets, WCHAR *image, DWORD *ended)
 {
     DWORD n = findRunning(install, path, PROCESS_TERMINATE, targets, image);
+    *ended = 0;
     for (DWORD i = 0; i < n; i++) {
         HANDLE process = targets[i].process;
         if (WaitForSingleObject(process, 0) == WAIT_OBJECT_0) {
             logPid(install, msgGone, targets[i].pid, path, 0);
+            (*ended)++;
         } else if (!TerminateProcess(process, ERROR_INSTALL_USEREXIT)) {
             logPid(install, msgEndFailed, targets[i].pid, path, GetLastError());
         } else {
             DWORD wait = WaitForSingleObject(process, TERMINATE_WAIT_MS);
             logPid(install, wait == WAIT_OBJECT_0 ? msgEnded : msgNotGone, targets[i].pid, path, 0);
+            *ended += wait == WAIT_OBJECT_0;
         }
         CloseHandle(process);
     }
@@ -2003,12 +2007,14 @@ __declspec(dllexport) UINT WINAPI BuilderClose(MSIHANDLE install)
     for (WCHAR *path = data; image && targets && path;) {
         WCHAR *next = field(path, '|');
         if (*path) {
-            DWORD n = endRunning(install, path, targets, image);
+            // Another pass only finds more when this one was full and
+            // freed a slot by ending a process.
+            DWORD ended, n = endRunning(install, path, targets, image, &ended);
             if (!n) {
                 logft(install, tmplClose, path, msgNoneRunning, 0);
             }
-            for (int pass = 1; n == CLOSE_MAX && pass < CLOSE_PASSES; pass++) {
-                n = endRunning(install, path, targets, image);
+            for (int pass = 1; n == CLOSE_MAX && ended && pass < CLOSE_PASSES; pass++) {
+                n = endRunning(install, path, targets, image, &ended);
             }
         }
         path = next;

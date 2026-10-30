@@ -24,7 +24,9 @@ func newInspectCmd() *cobra.Command {
 		Long: `Inspect prints the code page, the summary information, the streams and
 every table of a package, or a single table with --table. Columns are
 separated by tabs; the second line of a table holds the column types, with
-"!" marking key columns. Cabinets stay in the file and are listed by size.`,
+"!" marking key columns. Control characters in a value are shown as their
+control pictures (U+2400 to U+2421), so a newline appears as "␊". Cabinets
+stay in the file and are listed by size.`,
 		Example: `  msi-builder inspect hello.msi
   msi-builder inspect --table File hello.msi`,
 		Args:              exactlyOne("package"),
@@ -186,14 +188,18 @@ func formatValue(v any) string {
 	}
 }
 
-// showControls replaces the C0 control characters in a value with their
-// control pictures (U+2400 to U+241F), so that a tab, a newline or the
+// showControls replaces the C0 control characters and DEL in a value with
+// their control pictures (U+2400 to U+2421), so that a tab, a newline or the
 // U+001F separator in the private properties of the embedded custom
 // action DLL keeps one row on one line and the output text.
 func showControls(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r < 0x20 {
 			return 0x2400 + r
+		}
+
+		if r == 0x7f {
+			return 0x2421
 		}
 
 		return r
