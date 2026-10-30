@@ -1027,7 +1027,7 @@ as key path.
 | perUser 1.0.0 with HKCU key paths (early removal) upgraded to 2.0.0 with a late removal and so file key paths again | files kept, repair as above (run 40969857298); **the uninstall left 1.0.0's HKCU values behind** when 2.0.0 had no Registry rows for them (run 40974297757); the builder therefore writes the value with a late removal too, without making it the key path; then the uninstall removed them (runs 40976031652 and 40976459274) |
 | perUser package installed, repaired after deleting its file and removed by a standard user | exit 0 each time, the file restored (non-admin step, run 40969857298) |
 | ICE suite on every scope, with files on the desktop and in a Start menu folder in the perUser and perMachine packages | no ICE38 or ICE64 finding and no error; the variant with the old file key paths reports ICE38 |
-| ICE suite on the perUser and perMachine packages with `removeOld: afterInstallExecute`, whose components keep their key files next to the HKCU value | ICE38 reports them, as the validator warns; no other finding and no error (run 40976459274) |
+| ICE suite on the perUser and perMachine packages with `removeOld: afterInstallExecute`, whose components keep their key files next to the HKCU value | ICE38 reports them, as the validator warns; no ICE64 finding, no error and no failure (run 40976459274) |
 | ICE suite on a perUser component keyed on its own HKMU value | no ICE38 finding: ICE38 accepts root −1 there |
 
 - A full repair restores missing files whatever the key path is, so the
