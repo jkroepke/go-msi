@@ -11,17 +11,28 @@ import (
 // takes in its value, as the WiX preprocessor does: msi-builder does not
 // expand a variable inside a vars value.
 func (c *converter) emitVars() {
-	c.defined = make(map[string]string)
+	c.resolveDefines()
 
 	for _, define := range c.defines {
-		value := c.literal(define[1])
-		c.defined[define[0]] = value
-		c.out.child("vars").set(define[0], c.expand(c.pkg, value))
+		c.out.child("vars").set(define[0], c.expand(c.pkg, c.defined[define[0]]))
 	}
 }
 
-// literal fills the values of the defines known so far into text.
+// resolveDefines fills the values of earlier defines into each define.
+func (c *converter) resolveDefines() {
+	c.defined = make(map[string]string)
+
+	for _, define := range c.defines {
+		c.defined[define[0]] = c.literal(define[1])
+	}
+}
+
+// literal fills the values of the defines into text.
 func (c *converter) literal(text string) string {
+	if c.defined == nil {
+		c.resolveDefines()
+	}
+
 	return preprocessorVar.ReplaceAllStringFunc(text, func(ref string) string {
 		parts := preprocessorVar.FindStringSubmatch(ref)
 		if v, ok := c.defined[varName(parts[2])]; ok && parts[1] != "env" && parts[1] != "sys" {

@@ -511,7 +511,7 @@ func (c *converter) addDir(elm *elem, parentID string, standard bool) *dir {
 
 // keyFileID returns the Id of a component's key path, which WiX gives a
 // component without an Id, or "" when WiX generates it.
-func keyFileID(elm *elem) string {
+func (c *converter) keyFileID(elm *elem) string {
 	key := keyElem(elm)
 
 	switch {
@@ -521,14 +521,15 @@ func keyFileID(elm *elem) string {
 		return key.attr("Id")
 	}
 
-	// WiX gives a File without an Id its name, when that is an identifier.
-	name := key.attr("Name")
+	// WiX gives a File without an Id its name, when that is an identifier
+	// of at most 72 characters.
+	name := c.literal(key.attr("Name"))
 	if name == "" {
-		source := strings.ReplaceAll(key.attr("Source"), `\`, "/")
+		source := strings.ReplaceAll(c.literal(key.attr("Source")), `\`, "/")
 		name = source[strings.LastIndex(source, "/")+1:]
 	}
 
-	if config.IsIdentifier(name) {
+	if config.IsIdentifier(name) && len(name) <= config.MaxIdentifierLength {
 		return name
 	}
 
@@ -646,7 +647,7 @@ func (c *converter) addComp(elm *elem, within scope) {
 	if comp.id == "" {
 		// Two files of one name in other folders would give two components
 		// one Id; the later one gets a generated one.
-		if id := keyFileID(elm); c.compByID[id] == nil {
+		if id := c.keyFileID(elm); c.compByID[id] == nil {
 			comp.id = id
 		}
 	}

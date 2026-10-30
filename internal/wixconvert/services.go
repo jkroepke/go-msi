@@ -706,8 +706,11 @@ func (c *converter) firewallProtocol(rule *omap, elm *elem) {
 // compID returns the component's ID, giving it one when WiX generated it.
 func (c *converter) compID(comp *comp) string {
 	if comp.id == "" {
-		c.anonymous++
-		comp.id = "Component" + strconv.Itoa(c.anonymous)
+		// Skip the IDs that components took from the source.
+		for comp.id == "" || c.compByID[comp.id] != nil {
+			c.anonymous++
+			comp.id = "Component" + strconv.Itoa(c.anonymous)
+		}
 
 		if comp.out != nil {
 			comp.out.set("id", comp.id)

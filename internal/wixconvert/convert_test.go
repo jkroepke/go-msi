@@ -604,3 +604,49 @@ func TestConvertBuiltCodeOfKeyPathID(t *testing.T) {
 		t.Errorf("a component with a registry key path took the code of a file component:\n%s", res.YAML)
 	}
 }
+
+// TestConvertKeyFileIDs checks the Ids that components without one take
+// from their key file: a define is filled in, a name over 72 characters is
+// no Id, and a generated Id skips the names files took.
+func TestConvertKeyFileIDs(t *testing.T) {
+	t.Parallel()
+
+	long := strings.Repeat("A", 76) + ".dll"
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <?define Exe = "hello.exe" ?>
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component><RegistryValue Root="HKLM" Key="Software\Example\Hello" Name="a" Value="1" Type="string" KeyPath="yes" /></Component>
+        <Component><File Source="Component1" /></Component>
+        <Component><File Source="dist\$(var.Exe)" /></Component>
+        <Component><File Source="` + long + `" /></Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main"><ComponentRef Id="hello.exe" /></Feature>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(string(res.YAML), "id: "+long) {
+		t.Errorf("a name over 72 characters became an Id:\n%s", res.YAML)
+	}
+
+	if !strings.Contains(string(res.YAML), "- id: hello.exe\n") {
+		t.Errorf("the component of $(var.Exe) is not hello.exe:\n%s", res.YAML)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, res.YAML)
+	}
+}
