@@ -132,9 +132,9 @@ ui: { enabled: false }
 	for _, row := range rows(t, database, "Environment") {
 		carrier := fmt.Sprint(row[3])
 		cond := cell(t, database, "Component", "Condition", func(r []any) bool { return r[0] == carrier })
-		attrs, _ := cell(t, database, "Component", "Attributes", func(r []any) bool { return r[0] == carrier }).(int)
+		attrs, ok := cell(t, database, "Component", "Attributes", func(r []any) bool { return r[0] == carrier }).(int)
 
-		if cond != want[fmt.Sprint(row[1])] || attrs&transitive == 0 || attrs&bits64 == 0 {
+		if !ok || cond != want[fmt.Sprint(row[1])] || attrs&transitive == 0 || attrs&bits64 == 0 {
 			t.Errorf("carrier of %v: condition %v, attributes %#x; want %s, transitive and 64-bit",
 				row[1], cond, attrs, want[fmt.Sprint(row[1])])
 		}
