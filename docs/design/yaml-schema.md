@@ -1155,6 +1155,9 @@ removeRegistry:
     root: HKLM
     key: SOFTWARE\Example\App
     name: Arguments                  # one value
+  - root: HKCR
+    key: Directory\shell\exampleapp   # a key the program creates while it runs
+    on: uninstall                    # install (default) | uninstall | both
 ```
 
 Each entry is a `RemoveRegistry` row of the component (name `-` for a whole
@@ -1171,6 +1174,23 @@ HKCU value of section 4.4, unless it removes per-machine entries). Removing the 
 of a key is not supported. The same root, key and name twice in one
 component is an error, with or without `id`, and so is a per-user package
 that removes from HKLM or HKCR.
+
+`on: uninstall` deletes a whole key with its values and subkeys when the
+component is removed, for keys the program creates while it runs (shell
+verbs, settings) that the package does not write. It is a `Registry` row
+with name `-` and a Null value: the install neither creates nor touches
+the key, a repair leaves it, and uninstall deletes it in the component's
+registry view (REG-08, observed on Windows). The old product's removal in
+a major upgrade removes its components too, so with the default
+`removeOld: afterInstallInitialize` an upgrade deletes the key although the
+new version has the same entry; `afterInstallExecute` keeps the components
+installed and the key with them (REG-08, see MSISPEC chapter 16). `on: both` adds the install
+removal of a `RemoveRegistry` row. Both forms take whole keys only: a
+single value cannot be removed at uninstall without writing it, because a
+`Registry` row with a name and no value writes an empty value (REG-04); a
+value the package writes with `registry` is removed at uninstall anyway.
+An uninstall entry is a row of the `Registry` table, so its `id` must not
+be the `id` of a `registry` entry.
 
 **Services** (only in a component whose key file is the service executable):
 
