@@ -181,6 +181,8 @@ func (b *build) deriveProductCode() error { //nolint:cyclop // one pass over the
 		hasher.Write(f.digest[:])
 	}
 
+	b.hashProfileKeyPaths(hasher)
+
 	// Icons, binaries (custom action DLLs) and binary cells of custom
 	// tables are installed content too: a changed DLL with the same
 	// ProductCode would be refused as "already installed" (error 1638).
@@ -720,9 +722,14 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 		// same automatic GUID.
 		b.uniqueGUID(path, comp.ID, info.guid)
 
+		// A component keyed on its folder creates it, also when a
+		// generated registry value becomes its key path.
+		info.createFolder = info.keyPath == nil || comp.CreateFolder
+
+		b.profileKeyPath(info)
 		b.table("Component").Add(comp.ID, info.guid, comp.Directory, info.attributes, nullable(comp.Condition), info.keyPath)
 
-		if info.keyPath == nil || comp.CreateFolder {
+		if info.createFolder {
 			b.table("CreateFolder").Add(comp.Directory, comp.ID)
 		}
 
@@ -801,8 +808,9 @@ func (b *build) resolveKeyPath(path string, info *componentInfo) error { //nolin
 	if info.keyFile != nil {
 		info.keyPath = info.keyFile.Key
 
-		// A companion file never is a key path (section 8.6).
-		if v, ok := info.keyFile.Version.(string); ok {
+		// A companion file never is a key path (section 8.6); a component
+		// that gets an HKCU key path does not use it as one.
+		if v, ok := info.keyFile.Version.(string); ok && !b.needsProfileKeyPath(comp) {
 			if _, err := config.ParseVersion(v); err != nil {
 				b.errorf(path+".keyPath", "the key file %s is a companion file of %s", info.keyFile.Key, v)
 			}

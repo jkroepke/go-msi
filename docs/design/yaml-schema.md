@@ -82,7 +82,7 @@ closes each one.
 | Corrupted cabinet data (MSZIP-01, CAB-04) | Wrong DEFLATE history, or a bit flip without a checksum, installs a corrupted file | Writer: every cabinet data block gets a checksum, and the builder re-extracts every cabinet after writing it and compares each file's SHA-256 with the source. Neither can be turned off, so the schema has no field for them. |
 | Script custom actions (CA-02) | Inline JScript/VBScript actions (types 37/38) report success whatever they return; a Binary script returning 5 ends the install with 0 and leaves files unregistered | There are no script custom actions. Actions run an executable (`exec`, `execProperty`, `exe`), a command through msi-builder's DLL (`run`), a DLL (`dll`), set a property or directory, or fail with an error. |
 | EXE exit codes (CA-02) | Any non-zero exit fails the install unless the action ignores it | `customActions[].return` is required for `exec`, `execProperty`, `exe` and `run` actions (`check` or `ignore`), so the author decides. |
-| Same ProductCode, new package (UPG-03) | Installing a rebuilt package over the installed one fails with 1638 | `product.productCode: auto` derives the code from the upgrade code, version, platform and a digest of every input, including the contents of the wizard's licenses and theme pictures; the release that added these derives a new code once for every configuration that uses them. Changed content gives a new ProductCode (a major upgrade); unchanged content gives the same package byte for byte. Keys whose value means the same as a missing key (null, `""`, `[]`, `{}`) are left out of the digest, so a key a later version adds to the schema (as a pointer, string, list or mapping, or left out when empty) does not change the code of a configuration that does not use it; `false` and `0` stay in, since an explicit `secure: false` is not the default. The release that introduced this pruning derives a new code once for every configuration, unchanged ones included. So did renaming `ui.installDirPage` to `chooseDirectory` (its `false` was in every digest), and renaming `ui.wizard` to `enabled` does for every configuration with `wizard: true`. A pinned ProductCode makes the validator warn. |
+| Same ProductCode, new package (UPG-03) | Installing a rebuilt package over the installed one fails with 1638 | `product.productCode: auto` derives the code from the upgrade code, version, platform and a digest of every input, including the contents of the wizard's licenses and theme pictures; the release that added these derives a new code once for every configuration that uses them. Changed content gives a new ProductCode (a major upgrade); unchanged content gives the same package byte for byte. Keys whose value means the same as a missing key (null, `""`, `[]`, `{}`) are left out of the digest, so a key a later version adds to the schema (as a pointer, string, list or mapping, or left out when empty) does not change the code of a configuration that does not use it; `false` and `0` stay in, since an explicit `secure: false` is not the default. The release that introduced this pruning derives a new code once for every configuration, unchanged ones included. So did renaming `ui.installDirPage` to `chooseDirectory` (its `false` was in every digest), and renaming `ui.wizard` to `enabled` does for every configuration with `wizard: true`. The release that writes HKCU key paths for components in the user profile (INST-04) derives a new code once for every configuration with such a component. A pinned ProductCode makes the validator warn. |
 | Quote in a firewall rule description (CA-04) | netsh drops the quote and stores the rest of the description | `firewall[].name` and `firewall[].description` must not contain a double quote. |
 | Firewall rule named `all` (CA-06) | `add rule` refuses the name, `delete rule name=all dir=in` deletes every inbound rule, in lower or upper case and with or without double quotes (also `\"all\"` through `cmd`) | `firewall[].name` must not be `all` in any case (spaces around it included) and must not contain `[` or `]`. |
 | Versions that differ in the fourth field only (UPG-01) | Without an inclusive maximum both products stay installed side by side | `upgrade.allowSameVersion` defaults to `true` (maximum inclusive), so `0.32.0.5` replaces `0.32.0.4`. Four-field versions get a warning that Windows compares only three. |
@@ -413,10 +413,42 @@ lands in it, so an explicit tree never gains an unused folder.
 
 A per-user install dir lies in the user profile. Windows Installer wants an
 HKCU registry value as the key path of such components (ICE38) and
-RemoveFolder rows for their folders (ICE64). The builder writes the
-RemoveFolder rows (a `RemoveFile` row with no filename, at uninstall, for
-every folder from the component's up to the profile folder); the validator
-warns about the key path.
+RemoveFolder rows for their folders (ICE64). The builder writes both, for
+every component below a profile folder in every scope: the RemoveFolder
+rows (a `RemoveFile` row with no filename, at uninstall, for every folder
+from the component's up to the profile folder), and a `Registry` row
+`HKCU\Software\[Manufacturer]\[ProductName]` with a generated value name
+and the DWORD 1 as its key path (INST-04). The value is left out when the
+key path already is an HKCU value, or an HKMU value in a `perUser` package
+(a dual package installed per machine writes HKMU to HKLM). The
+ComponentId is derived before that, from the key file, registry value or
+folder the component would have had, so a package built before keeps its
+component codes; the automatic ProductCode changes once, so a rebuild of
+an unchanged configuration does not collide with the package an older
+msi-builder made (error 1638). These components keep their key path and
+get the ICE38 warning instead: one with an explicit `keyPath`, one with
+services (the key path is the executable), one with `neverOverwrite`,
+`preserve` or `sharedDllRefCount`, whose engine checks test the key path
+(reported), and one that writes a per-machine registry value (HKLM, HKU,
+and HKMU or HKCR outside a `perUser` package), which an HKCU key path
+would mix with per-user data (ICE57). With `upgrade.removeOld`
+`afterInstallExecute` or `afterInstallFinalize` (also set by `preserve`)
+the value is written but not made the key path: an upgrade from a file key
+path to the HKCU value with that removal lost the component's files
+(INST-04). Turning the late removal on in a later version (or adding
+`preserve`, which does) changes those key paths back; that upgrade kept
+the files, and since the new version writes the same values, its
+uninstall removes them too (INST-04). Event log sources count as per-machine registry
+values, and so do machine environment variables, HKLM and HKU
+`removeRegistry` entries, and file types and HKMU or HKCR removals outside
+a `perUser` package. A firewall carrier in the profile
+gets the value. A `component` search for the GUID of a component whose
+key path becomes the value finds the registry value after the upgrade, not the file
+(not tested). In a per-machine install the desktop and Start menu folders
+are the all-users ones; the value still goes to the installing user's
+HKCU, as ICE38 asks. A dual package's install dir is under Program Files in the
+package, so its components keep their key files; components in profile
+folders get the HKCU value in both contexts.
 
 A component's `directory` is a directory ID, a standard folder, or a folder
 path. A path starts at its first segment when that is a directory ID or a
@@ -545,7 +577,9 @@ components:
 **GUIDs.** `auto` derives a UUIDv5 from the upgrade code, the bitness and
 the key path's canonical location (directory path and filename, or
 registry root, key and value name). A changed key path therefore gets a new
-GUID, as the component rules require. A pinned GUID is kept as it is (the
+GUID, as the component rules require. The HKCU value the builder adds as
+the key path of a component in the user profile is the exception: the GUID
+follows the key path the component would have without it (section 4.4). A pinned GUID is kept as it is (the
 windows_exporter executable component keeps the GUID of its released
 packages). `none` writes a NULL ComponentId and is only accepted with
 `permanent: true`, because such a component is never removed (specification
@@ -670,7 +704,9 @@ components:
 ```
 
 **Key path.** Default: the first file, else the first registry value, else
-the directory, which gets a `CreateFolder` row (ICE18). A component with a
+the directory, which gets a `CreateFolder` row (ICE18). A component below a
+profile folder gets a generated HKCU value instead, with the exceptions in
+section 4.4. A component with a
 service must have the service executable as key file.
 
 **Files.**
@@ -751,8 +787,7 @@ SHORTCUT-01 installed and removed shortcuts from an own HKCU-keyed component and
 from the file's own component alike, and removed an empty Start menu folder
 without a `RemoveFile` row; the Windows tests run the ICE suite on the
 generated layout of a per-machine package (desktop, Start menu, a Start
-menu subfolder and an icon). A per-user package still gets the ICE38
-warning of section 4.4 for its files. An `icon` is stored in the `Icon` table and
+menu subfolder and an icon), in per-machine, per-user and dual packages. An `icon` is stored in the `Icon` table and
 written to the product's installer folder; without one the shell shows the
 target's icon, and `iconIndex` without `icon` is an error. Advertised
 shortcuts are not supported (section 6).
@@ -1070,7 +1105,8 @@ package ends up with exactly the package's values, without values the user
 added there (REG-02). `HKMU` in a per-machine package is `HKLM`. In a per-machine package an `HKCU` entry
 can only reach the profile of the user who runs the install; other users'
 profiles are not touched (not tested). A component that only removes
-registry entries has its directory as key path. Removing the default value
+registry entries has its directory as key path (in the user profile the
+HKCU value of section 4.4, unless it removes per-machine entries). Removing the default value
 of a key is not supported. The same root, key and name twice in one
 component is an error, with or without `id`, and so is a per-user package
 that removes from HKLM or HKCR.
@@ -1287,7 +1323,7 @@ the folder is the YAML file's folder or one above it.
   left out; give a component `createFolder: true` for an empty one. The
   `source` folder itself is not installed, only its content.
 - **One component per file.** Every file is the key path of its own
-  component with an `auto` GUID. That GUID comes from the upgrade code,
+  component (below a profile folder the HKCU value of section 4.4 is) with an `auto` GUID. That GUID comes from the upgrade code,
   the bitness and the install path in lower case (see GUIDs above), not
   from the source path or the generated IDs, so a file that stays at its
   install path keeps its component in every later build, also when the

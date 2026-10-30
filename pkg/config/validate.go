@@ -753,11 +753,13 @@ func (v *validator) components(cfg *Config, known *refs) {
 			v.errorf(p+".bitness", "64-bit components need an x64 or arm64 package")
 		}
 
-		files := v.componentFiles(cfg, p, comp, fileIDs, paths)
+		// The builder replaces the key file of a profile component.
+		generated := profileKeyPath(cfg, known, comp)
+		files := v.componentFiles(cfg, p, comp, fileIDs, paths, generated)
 		v.componentRegistry(p, comp, regIDs, perUser)
 		v.componentRemoveRegistry(p, comp, removeIDs, perUser)
 		v.componentRemoveFiles(cfg, p, comp, known, removeFileIDs)
-		keyFile := v.componentKeyFile(p, comp, files)
+		keyFile := v.componentKeyFile(p, comp, files, generated)
 
 		for j, svc := range comp.Services {
 			svcPath := fmt.Sprintf("%s.services[%d]", p, j)
@@ -809,7 +811,6 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 		return
 	}
 
-	perUser := cfg.Package.Scope.MayBePerUser()
 	top := known.topFolder(comp.Directory)
 
 	// The component of a folder source reports these once, not once per
@@ -827,11 +828,28 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 		v.errorf(compPath+".directory", "%s cannot install under %s (ICE105)", v.perUserPackage(), top)
 	}
 
+	// Without a keyPath the builder writes an HKCU value as the key path
+	// (INST-04), except where the key path must stay. HKMU is HKCU only in
+	// a per-user package; a dual one writes it to HKLM per machine.
 	switch {
-	case !profileFolders[top]:
-	case !userRegistryKeyPath(comp, perUser):
-		v.warnf(compPath+".directory", "a component in the user profile (%s) needs an HKCU registry value "+
-			"as key path (ICE38)", top)
+	case !profileFolders[top] || userRegistryKeyPath(comp, cfg.Package.Scope == ScopePerUser):
+	case len(comp.Services) > 0:
+		v.warnf(compPath+".directory", "a component with services in the user profile (%s) keeps the service "+
+			"executable as key path, but ICE38 asks for an HKCU registry value", top)
+	case comp.NeverOverwrite || comp.SharedDLLRefCount:
+		v.warnf(compPath+".directory", "a component in the user profile (%s) with neverOverwrite, preserve or "+
+			"sharedDllRefCount keeps its key path, which those test, but ICE38 asks for an HKCU registry value", top)
+	case machineRegistry(cfg, comp):
+		v.warnf(compPath+".directory", "a component in the user profile (%s) that writes per-machine registry "+
+			"values keeps its key path (ICE57), but ICE38 asks for an HKCU registry value; "+
+			"move the values to a component of their own", top)
+	case lateRemoval(cfg):
+		v.warnf(compPath+".directory", "a component in the user profile (%s) keeps its key path with removeOld %s, "+
+			"since an upgrade that changed it lost the files (INST-04), but ICE38 asks for an HKCU registry value",
+			top, cfg.Upgrade.RemoveOld)
+	case comp.KeyPath != "" && comp.FirewallFeature() == "":
+		v.warnf(compPath+".keyPath", "a component in the user profile (%s) needs an HKCU registry value "+
+			"as key path (ICE38); without keyPath the builder writes one", top)
 	}
 }
 
@@ -850,8 +868,11 @@ func (v *validator) componentGUID(compPath string, comp *Component) {
 }
 
 // componentKeyFile checks keyPath and returns the component's key file, if
-// its key path is a file. keyFile is the file componentFiles picked.
-func (v *validator) componentKeyFile(compPath string, comp *Component, keyFile *File) *File { //nolint:cyclop // a flat list of independent checks
+// its key path is a file. keyFile is the file componentFiles picked;
+// generated says that the builder replaces it with an HKCU value.
+//
+//nolint:cyclop // a flat list of independent checks
+func (v *validator) componentKeyFile(compPath string, comp *Component, keyFile *File, generated bool) *File {
 	switch keyPath := comp.KeyPath; {
 	case keyPath == "" || keyPath == KeyPathDirectory:
 	case keyFileByRef(comp, keyPath) != nil:
@@ -866,7 +887,7 @@ func (v *validator) componentKeyFile(compPath string, comp *Component, keyFile *
 		keyFile = nil
 	}
 
-	if keyFile != nil && keyFile.Version == None && len(comp.Files) > 1 {
+	if keyFile != nil && keyFile.Version == None && len(comp.Files) > 1 && !generated {
 		v.warnf(compPath+".keyPath", "the key file is unversioned; other files of the component are only "+
 			"replaced together with it")
 	}
@@ -1066,10 +1087,11 @@ func exclusiveComponents(a, b *Component) bool {
 	return a.Directory != b.Directory && a.Condition != "" && b.Condition != ""
 }
 
-// componentFiles validates the files of c and returns its default key file.
+// componentFiles validates the files of c and returns its default key file;
+// generated says that the builder replaces it with an HKCU value.
 //
 //nolint:cyclop // flat checks
-func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component, ids map[string]string, paths *folderPaths) *File {
+func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component, ids map[string]string, paths *folderPaths, generated bool) *File {
 	versioned := 0
 
 	for j, file := range comp.Files {
@@ -1120,7 +1142,7 @@ func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component
 		}
 	}
 
-	if comp.GUID == Auto && versioned > 1 && len(comp.Files) > 1 {
+	if comp.GUID == Auto && versioned > 1 && len(comp.Files) > 1 && !generated {
 		v.warnf(compPath+".files", "more than one versioned file in a component: only the key file decides "+
 			"whether the others are replaced")
 	}
@@ -1244,7 +1266,7 @@ func (v *validator) registryLocation(entryPath, root, key string, perUser bool) 
 
 	// A dual package's HKCR rows follow the context like HKMU ones
 	// (Registry.Root 0, spec section 8.2); a per-user package has none.
-	if perUser && (root == "HKLM" || root == "HKCR" && !v.scope.Dual()) {
+	if perUser && (root == rootHKLM || root == "HKCR" && !v.scope.Dual()) {
 		v.errorf(entryPath+".root", "%s cannot change %s (ICE105)", v.perUserPackage(), root)
 	}
 
@@ -1580,7 +1602,7 @@ func (v *validator) environment(envPath string, env *Environment, perUser bool) 
 	v.oneOf(envPath+".action", env.Action, "set", "setIfAbsent", "append", "prepend", "remove")
 	v.oneOf(envPath+".scope", env.Scope, "machine", "user")
 
-	if env.Scope == "machine" && perUser {
+	if env.Scope == envMachine && perUser {
 		v.errorf(envPath+".scope", "%s cannot change machine variables", v.perUserPackage())
 	}
 
@@ -2338,4 +2360,96 @@ func (v *validator) tableRow(rowPath string, cols []Column, row []any) { //nolin
 			}
 		}
 	}
+}
+
+// profileKeyPath reports whether the builder gives a component an HKCU
+// registry value as its key path (INST-04): one below a profile folder
+// whose key path is not an HKCU value already and that keepsKeyPath does
+// not hold. The builder's needsProfileKeyPath makes the same decision; with
+// a late removeOld (keepsKeyPath) it still writes the value, as an ordinary
+// row that is not the key path.
+func profileKeyPath(cfg *Config, known *refs, comp *Component) bool {
+	if keepsKeyPath(cfg, comp) || shortcutsOnly(comp) || !profileFolders[known.topFolder(comp.Directory)] {
+		return false
+	}
+
+	return !userRegistryKeyPath(comp, cfg.Package.Scope == ScopePerUser)
+}
+
+// keepsKeyPath reports whether a component's key path stays as configured:
+// an explicit keyPath (a firewall carrier's is generated), services, which
+// need their executable, neverOverwrite and sharedDllRefCount, which test
+// the key path, per-machine registry values, which an HKCU key path would
+// mix with per-user data (ICE57), and a late removeOld.
+func keepsKeyPath(cfg *Config, comp *Component) bool {
+	return comp.KeyPath != "" && comp.FirewallFeature() == "" || len(comp.Services) > 0 ||
+		comp.NeverOverwrite || comp.SharedDLLRefCount || machineRegistry(cfg, comp) || lateRemoval(cfg)
+}
+
+// lateRemoval reports whether a major upgrade removes the old product
+// after the new one has installed its files. An upgrade from a version
+// with file key paths to one with HKCU key paths and the same ComponentIds
+// lost the files then (INST-04), so components keep their key paths.
+func lateRemoval(cfg *Config) bool {
+	if cfg.Upgrade == nil || cfg.Upgrade.Disabled {
+		return false
+	}
+
+	return cfg.Upgrade.RemoveOld == PreserveRemoveOld || cfg.Upgrade.RemoveOld == "afterInstallFinalize"
+}
+
+// machineRegistry reports whether a component writes or removes per-machine
+// registry data: HKLM and HKU values and removals, event log sources and
+// machine environment variables (HKLM values too), and HKMU and HKCR
+// values, removals and file types unless the package only installs per
+// user.
+func machineRegistry(cfg *Config, comp *Component) bool {
+	perUser := cfg.Package.Scope == ScopePerUser
+
+	if len(comp.EventLog) > 0 {
+		return true
+	}
+
+	roots := componentRoots(comp)
+
+	return slices.ContainsFunc(roots, func(root string) bool {
+		return root == rootHKLM || root == "HKU" || !perUser && (root == rootHKMU || root == "HKCR")
+	})
+}
+
+// rootHKLM and rootHKMU are the machine and the context-dependent registry
+// roots.
+const (
+	rootHKLM = "HKLM"
+	rootHKMU = "HKMU"
+	// envMachine is the scope of a system environment variable.
+	envMachine = "machine"
+)
+
+// componentRoots lists the registry roots a component writes to or
+// removes from: its values and removals, HKCR for its file types and HKLM
+// for its machine environment variables.
+func componentRoots(comp *Component) []string {
+	roots := make([]string, 0, len(comp.Registry)+len(comp.RemoveRegistry)+len(comp.Files))
+	for _, reg := range comp.Registry {
+		roots = append(roots, reg.Root)
+	}
+
+	for _, entry := range comp.RemoveRegistry {
+		roots = append(roots, entry.Root)
+	}
+
+	for _, file := range comp.Files {
+		if len(file.FileTypes) > 0 {
+			roots = append(roots, "HKCR")
+		}
+	}
+
+	for _, env := range comp.Environment {
+		if env.Scope == envMachine {
+			roots = append(roots, rootHKLM)
+		}
+	}
+
+	return roots
 }

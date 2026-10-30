@@ -221,6 +221,7 @@ Silent-failure cases a producer has to guard against itself:
 | BUILD-02 | Partial | [ci](msitest/results/BUILD-02/ci/log.md); CI run 40941177928, `TestDeterministicAcrossProcesses`: 20 fresh processes build one SHA-256 on the Linux and on the Windows runner; the two hosts' hashes are not compared and insertion order is not shuffled |
 | INST-01 | Confirmed | Labelled substitute (published `minimal.msi` not in the repository), [x64](msitest/results/INST-01/x64-substitute/log.md) and [Intel](msitest/results/INST-01/intel-substitute/log.md) |
 | INST-02 | Confirmed | [admin](msitest/results/INST-02/admin/log.md), [non-admin](msitest/results/INST-02/nonadmin/log.md), [non-admin on CI](msitest/results/INST-02/nonadmin-ci/log.md); SERVER2025, 2026-10-29, `msitest/inst02/run.ps1`: `MSIINSTALLPERUSER` selects the context of an `ALLUSERS=2` package for admins and standard users, files, HKMU, HKCR, shortcuts and registration follow it, a standard user's per-user install needs no Word Count bit 3, a per-machine one fails with 1925; a context switch in the UI sequence leaves the client-resolved `INSTALLDIR` in the old context; a major upgrade does not cross contexts; on CI, `TestNonAdminInstallScopes` repeats the four scopes as a standard user on every run since CI run 40942811121 (exit codes, error 1925, install folder) |
+| INST-04 | Confirmed | CI runs 40966711286, 40967057615, 40969857298, 40974297757, 40976031652 and 40976459274, `TestMsiexecProfileKeyPath`, `TestICEProfileKeyPath`, `TestICEProfileHKMUKeyPath`, `TestNonAdminInstallScopes`; [details](#hkcu-key-paths-for-profile-components-inst-04) |
 | FILE-01 | Confirmed | [empty version, REP 1401](msitest/results/FILE-01/empty-version-rep1401/log.md) deletes the file |
 | FILE-02 | Confirmed | [log](msitest/results/FILE-02/file-hash/log.md) |
 | FILE-03 | Confirmed | [removefile-upgrade](msitest/results/FILE-03/removefile-upgrade/log.md), [purge-upgrade](msitest/results/FILE-03/purge-upgrade/log.md); `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
@@ -1007,3 +1008,33 @@ Windows Defender Firewall service is stopped (MSISPEC section 16, WiX issues
   product and the work folder were removed.
 
 The stopped-service install did not run: Not tested.
+
+## HKCU key paths for profile components (INST-04)
+
+Run on 2026-10-29 in the `Build & Test (windows-latest)` job (Windows Server
+2025 x64, elevated, and its non-admin step) of PR #135 by the tests in
+`internal/builder/nativetest/profile_windows_test.go` and
+`TestNonAdminInstallScopes`. The package installs `tool.exe` and
+`readme.txt` to `AppDataFolder\MsiBuilderProfile\data` and, per user, `app.exe`
+to the install dir under `%LOCALAPPDATA%\Programs`; the builder gives each
+component an HKCU value under `Software\msi-builder tests\MsiBuilderProfile`
+as key path.
+
+| Variant | Result |
+| --- | --- |
+| perMachine, perUserOrMachine per user and per machine (`MSIINSTALLPERUSER=""`), perMachineOrUser per machine and per user (`MSIINSTALLPERUSER=1`) | files and HKCU value installed, product registered in the expected context, all removed at uninstall, `%APPDATA%\MsiBuilderProfile` gone (run 40966230365 onwards) |
+| perUser 1.0.0 with file key paths, upgraded to 2.0.0 with HKCU key paths, same ComponentIds, `RemoveExistingProducts` after `InstallInitialize` | files kept, values written; after deleting all three files `msiexec /f` restored them; the uninstall removed files, folders and values |
+| the same upgrade with `RemoveExistingProducts` after `InstallExecute` | **all files of the components were gone after the upgrade** (runs 40966711286 and 40967057615); the builder therefore keeps file key paths with a late removal |
+| perUser 1.0.0 with HKCU key paths (early removal) upgraded to 2.0.0 with a late removal and so file key paths again | files kept, repair as above (run 40969857298); **the uninstall left 1.0.0's HKCU values behind** when 2.0.0 had no Registry rows for them (run 40974297757); the builder therefore writes the value with a late removal too, without making it the key path; then the uninstall removed them (runs 40976031652 and 40976459274) |
+| perUser package installed, repaired after deleting its file and removed by a standard user | exit 0 each time, the file restored (non-admin step, run 40969857298) |
+| ICE suite on every scope, with files on the desktop and in a Start menu folder in the perUser and perMachine packages | no ICE38 or ICE64 finding and no error; the variant with the old file key paths reports ICE38 |
+| ICE suite on the perUser and perMachine packages with `removeOld: afterInstallExecute`, whose components keep their key files next to the HKCU value | ICE38 reports them, as the validator warns; no ICE64 finding, no error and no failure (run 40976459274) |
+| ICE suite on a perUser component keyed on its own HKMU value | no ICE38 finding: ICE38 accepts root −1 there |
+
+- A full repair restores missing files whatever the key path is, so the
+  repair step shows that the HKCU-keyed layout repairs, not which key path
+  the engine checked.
+- Not covered: the cause of the lost files with the late removal (no log
+  kept), a `CompLocator` search for such a ComponentId, a second
+  administrator's uninstall of a per-machine install, Windows Server 2016.
+

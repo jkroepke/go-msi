@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -595,17 +596,6 @@ func TestFolderReportsOncePerComponent(t *testing.T) {
 				"components: [{ preserve: true, files: [{ source: dist/lib/ }] }]\n",
 			"components[0].preserve", "needs removeOld afterInstallExecute",
 		},
-		{
-			"user profile",
-			folderHeader + "components: [{ directory: AppDataFolder/Sample, files: [{ source: dist/lib/ }] }]\n",
-			"components[0].directory", "user profile",
-		},
-		{
-			"per-user install dir",
-			strings.Replace(folderHeader, "platform: x64", "platform: x64, scope: perUser", 1) +
-				"components: [{ files: [{ source: dist/lib/ }] }]\n",
-			"components[0].directory", "user profile",
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -630,6 +620,26 @@ func TestFolderReportsOncePerComponent(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A folder source in the user profile gets no ICE38 warning: the builder
+// writes the HKCU key path of each of its components (INST-04).
+func TestFolderInProfileNeedsNoKeyPath(t *testing.T) {
+	t.Parallel()
+
+	for _, text := range []string{
+		folderHeader + "components: [{ directory: AppDataFolder/Sample, files: [{ source: dist/lib/ }] }]\n",
+		strings.Replace(folderHeader, "platform: x64", "platform: x64, scope: perUser", 1) +
+			"components: [{ files: [{ source: dist/lib/ }] }]\n",
+	} {
+		first, second := bothPasses(t, text)
+
+		for pass, diags := range []config.Diagnostics{first, second} {
+			if strings.Contains(fmt.Sprint(diags), "ICE38") {
+				t.Errorf("pass %d: %s", pass+1, diags)
+			}
+		}
 	}
 }
 

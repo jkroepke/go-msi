@@ -211,7 +211,9 @@ components:
 // TestNonAdminInstallScopes installs packages of each scope silently as a
 // standard user (INST-02 on the CI runner): perUser and perUserOrMachine
 // install into the user's profile without elevation, and perMachine and
-// perMachineOrUser fail with 1603 after error 1925, as on SERVER2025.
+// perMachineOrUser fail with 1603 after error 1925, as on SERVER2025. The
+// perUser package's component has the HKCU key path the builder adds
+// (INST-04); a repair as the user restores its deleted file.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestNonAdminInstallScopes(t *testing.T) {
@@ -259,6 +261,20 @@ func TestNonAdminInstallScopes(t *testing.T) {
 
 			if _, err := os.Stat(installed); err != nil {
 				t.Errorf("app.exe after the install: %v", err)
+			}
+
+			if tc.scope == "perUser" {
+				if err := os.Remove(installed); err != nil {
+					t.Fatal(err)
+				}
+
+				if code := user.msiexec(t, filepath.Join(dir, "repair.log"), "/f", path); code != 0 {
+					t.Errorf("msiexec /f returned %d", code)
+				}
+
+				if _, err := os.Stat(installed); err != nil {
+					t.Errorf("app.exe after the repair: %v", err)
+				}
 			}
 
 			if code := user.msiexec(t, filepath.Join(dir, "uninstall.log"), "/x", path); code != 0 {

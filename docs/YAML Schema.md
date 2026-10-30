@@ -507,20 +507,13 @@ package:
 components:
   - files:
       - source: hello.exe
-    registry:
-      - id: HelloInstalled
-        root: HKCU
-        key: Software\Example\Hello
-        name: Installed
-        type: dword
-        value: 1
-    keyPath: HelloInstalled
 ```
 
 The package then installs to `%LOCALAPPDATA%\Programs\Hello` and into
 the user's part of the registry, so it cannot install services or write to
 HKLM. Windows Installer wants each component in the user's profile to
-mark itself with an HKCU value (`keyPath`); without one msi-builder warns.
+mark itself with an HKCU value; msi-builder writes one under
+`HKCU\Software\<manufacturer>\<product name>` for you.
 `perUserOrMachine` and `perMachineOrUser` let the user choose.
 
 ### Ask for a restart

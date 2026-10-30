@@ -188,6 +188,8 @@ type componentInfo struct {
 	index      int
 	attributes int
 	is64       bool
+	// createFolder records that the component has a CreateFolder row.
+	createFolder bool
 }
 
 // fileInfo is a payload file.

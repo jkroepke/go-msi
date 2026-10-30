@@ -273,7 +273,7 @@ func (b *build) rememberInstallDir() error {
 
 	if !b.cfg.Package.Scope.Dual() {
 		root := regRootLocalMachine
-		if config.RememberRoot(b.cfg) == "HKCU" {
+		if config.RememberRoot(b.cfg) == rootHKCU {
 			root = regRootCurrentUser
 		}
 

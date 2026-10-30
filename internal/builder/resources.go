@@ -11,10 +11,20 @@ import (
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
-// regTypeKey marks a registry row that creates a key without a value.
-const regTypeKey = "key"
+const (
+	// regTypeKey marks a registry row that creates a key without a value.
+	regTypeKey = "key"
+	// The registry roots of the Registry table.
+	rootHKMU = "HKMU"
+	rootHKCR = "HKCR"
+	rootHKCU = "HKCU"
+	rootHKLM = "HKLM"
+	rootHKU  = "HKU"
+	// envMachine is the scope of a system environment variable.
+	envMachine = "machine"
+)
 
-var registryRoots = map[string]int{"HKMU": -1, "HKCR": 0, "HKCU": 1, "HKLM": 2, "HKU": 3} //nolint:gochecknoglobals // lookup table
+var registryRoots = map[string]int{rootHKMU: -1, rootHKCR: 0, rootHKCU: 1, rootHKLM: 2, rootHKU: 3} //nolint:gochecknoglobals // lookup table
 
 // registryID returns the Registry key of a value: the explicit id, else one
 // generated from the value's identity.
@@ -120,9 +130,9 @@ func (b *build) writeRegistry(info *componentInfo) {
 
 	for _, e := range comp.EventLog {
 		key := eventLogKey(e)
-		tbl.Add(eventLogID(comp, e), registryRoots["HKLM"], key, "EventMessageFile",
+		tbl.Add(eventLogID(comp, e), registryRoots[rootHKLM], key, "EventMessageFile",
 			"#%"+e.MessageFile, comp.ID)
-		tbl.Add(generatedID("reg", "EventLog", comp.ID, e.Log, e.Source, "TypesSupported"), registryRoots["HKLM"], key, "TypesSupported",
+		tbl.Add(generatedID("reg", "EventLog", comp.ID, e.Log, e.Source, "TypesSupported"), registryRoots[rootHKLM], key, "TypesSupported",
 			"#"+strconv.Itoa(*e.TypesSupported), comp.ID)
 	}
 }
@@ -161,7 +171,7 @@ func (b *build) writeEnvironment(info *componentInfo) {
 			prefix += "-"
 		}
 
-		if env.Scope == "machine" {
+		if env.Scope == envMachine {
 			prefix += "*"
 		}
 
@@ -369,7 +379,7 @@ func (b *build) startCarrier(info *componentInfo, svc *config.Service) string {
 	}
 
 	b.table("Component").Add(carrier, guid, comp.Directory, attributes, cond, registry)
-	b.table("Registry").Add(registry, registryRoots["HKLM"], `Software\[Manufacturer]\[ProductName]`, carrier, "#1", carrier)
+	b.table("Registry").Add(registry, registryRoots[rootHKLM], `Software\[Manufacturer]\[ProductName]`, carrier, "#1", carrier)
 	b.carriers[comp.ID] = append(b.carriers[comp.ID], carrier)
 
 	return carrier
