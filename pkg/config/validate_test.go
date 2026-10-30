@@ -222,6 +222,27 @@ func TestValidate(t *testing.T) {
 `,
 			sevError, "customActions[0].run.command", "must be quoted",
 		},
+		// A property alone may be an UninstallString, which is quoted already.
+		"run bare property executable": {
+			base + appComponent + `customActions:
+  - id: Run
+    run: {command: '[INNO_UNINSTALL] /VERYSILENT'}
+    execute: deferred
+    return: check
+    schedule: [{sequence: execute, after: InstallFiles}]
+`,
+			sevWarning, "customActions[0].run.command", "property [INNO_UNINSTALL] alone",
+		},
+		"run directory alone": {
+			base + appComponent + `customActions:
+  - id: Run
+    run: {command: '[INSTALLDIR] /S'}
+    execute: deferred
+    return: check
+    schedule: [{sequence: execute, after: InstallFiles}]
+`,
+			sevError, "customActions[0].run.command", "must be quoted",
+		},
 		"exec unquoted executable": {
 			base + appComponent + `customActions:
   - id: Run

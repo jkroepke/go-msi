@@ -1773,7 +1773,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 		}
 	case action.Exec != nil:
 		v.required(actionPath+".exec.command", action.Exec.Command)
-		v.quotedExecutable(actionPath+".exec.command", action.Exec.Command)
+		v.quotedExecutable(actionPath+".exec.command", action.Exec.Command, known)
 
 		if action.Exec.Directory != targetDir && known.dirs[action.Exec.Directory] == nil && !standardFolders[action.Exec.Directory] {
 			v.errorf(actionPath+".exec.directory", "directory %q is not defined", action.Exec.Directory)
@@ -1792,7 +1792,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 		}
 	case action.Run != nil:
 		v.required(actionPath+".run.command", action.Run.Command)
-		v.quotedExecutable(actionPath+".run.command", action.Run.Command)
+		v.quotedExecutable(actionPath+".run.command", action.Run.Command, known)
 
 		if dir := action.Run.Directory; dir != "" && dir != targetDir && known.dirs[dir] == nil && !standardFolders[dir] {
 			v.errorf(actionPath+".run.directory", "directory %q is not defined", dir)
@@ -1819,18 +1819,43 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 // space (C:\Program Files\App\tool.exe) has the same problem and is the
 // author's to quote, since the token C:\Program alone does not show where
 // the path ends.
-func (v *validator) quotedExecutable(field, command string) {
+func (v *validator) quotedExecutable(field, command string, known *refs) {
 	command = strings.TrimLeft(command, " \t")
 	if command == "" || command[0] == '"' {
 		return
 	}
 
 	token, _, _ := strings.Cut(command, " ")
-	if strings.Contains(token, "[") {
-		v.errorf(field, "the executable must be quoted when it comes from a property or folder, as in \"%s\": "+
-			"an unquoted path with a space is tried piece by piece (C:\\Program.exe first), and a deferred action without "+
-			"impersonation runs as LocalSystem", token)
+	if !strings.Contains(token, "[") {
+		return
 	}
+
+	// A property alone may hold a command line that is quoted already, such
+	// as an UninstallString from a registry search, which quoting would break.
+	// A directory key is a path, which is the case the error is about.
+	if bareProperty(token) && !known.isDirectory(token[1:len(token)-1]) {
+		v.warnf(field, "the executable is the property %s alone: if it holds a bare path, quote it (\"%s\"), because an "+
+			"unquoted path with a space is tried piece by piece (C:\\Program.exe first) and a deferred action without "+
+			"impersonation runs as LocalSystem; if it holds a quoted command line, such as an UninstallString, leave it", token, token)
+
+		return
+	}
+
+	v.errorf(field, "the executable must be quoted when it comes from a property or folder, as in \"%s\": "+
+		"an unquoted path with a space is tried piece by piece (C:\\Program.exe first), and a deferred action without "+
+		"impersonation runs as LocalSystem", token)
+}
+
+// bareProperty reports whether token is exactly one [PROPERTY] reference: not
+// a file, component, environment or escape reference, which always format to
+// a bare path, and nothing before or after it.
+func bareProperty(token string) bool {
+	if len(token) < 3 || token[0] != '[' || token[len(token)-1] != ']' ||
+		strings.Count(token, "[") != 1 || strings.Count(token, "]") != 1 {
+		return false
+	}
+
+	return !strings.ContainsRune(`#!$%\~`, rune(token[1]))
 }
 
 // actionRun checks how a custom action runs: impersonation, return
@@ -2479,4 +2504,10 @@ func componentRoots(comp *Component) []string {
 	}
 
 	return roots
+}
+
+// isDirectory reports whether name is a directory key of the package or a
+// standard folder.
+func (r *refs) isDirectory(name string) bool {
+	return name == targetDir || r.dirs[name] != nil || standardFolders[name]
 }
