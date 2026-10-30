@@ -287,18 +287,15 @@ func (c *converter) emitUpgrade() {
 // newerProperty sets the property that the detection of newer versions sets,
 // with a TODO when the file tests two of them.
 func (c *converter) newerProperty(upgrade *omap, prop string, line int) {
-	current := upgrade.str("newerProperty")
-	if current == "" {
-		current = config.DefaultNewerProperty
-	}
-
-	switch {
-	case prop == current:
-	case current != config.DefaultNewerProperty:
+	switch current := c.newerClaimed; {
+	case current == "":
+		c.newerClaimed = prop
+		if prop != config.DefaultNewerProperty {
+			upgrade.set("newerProperty", prop)
+		}
+	case prop != current:
 		c.todof(upgrade, "newerProperty", line, "the file tests both %s and %s for a newer version; msi-builder sets only %s, "+
 			"use it in both places", current, prop, current)
-	default:
-		upgrade.set("newerProperty", prop)
 	}
 }
 

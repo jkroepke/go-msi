@@ -61,7 +61,7 @@ func (c *converter) shortcut(elm *elem, dirID string, tree map[*dir]bool) *omap 
 		switch kid.qname() {
 		case "ShortcutProperty":
 			if key, ok := c.shellPropertyName(link, kid); ok {
-				link.child("properties").set(key, c.value(kid, "Value"))
+				link.child("properties").set(key, clsidValue(key, c.value(kid, "Value")))
 			}
 		case "Icon":
 			c.icons = append(c.icons, kid)
@@ -77,6 +77,22 @@ func (c *converter) shortcut(elm *elem, dirID string, tree map[*dir]bool) *omap 
 // propertyKey is a shell property key in the "{FMTID}, PID" form.
 var propertyKey = regexp.MustCompile(`^\{?([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})\}?\s*,\s*([0-9]+)$`)
 
+// canonicalProperty is the canonical name of a shell property, such as
+// System.AppUserModel.ID.
+var canonicalProperty = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$`)
+
+// bareGUID is a GUID without braces.
+var bareGUID = regexp.MustCompile(`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`)
+
+// clsidValue adds the braces that a CLSID shell property needs.
+func clsidValue(key, value string) string {
+	if strings.HasSuffix(key, "CLSID") && bareGUID.MatchString(value) {
+		return "{" + value + "}"
+	}
+
+	return value
+}
+
 // appUserModelFMTID is the format ID of the System.AppUserModel properties.
 const appUserModelFMTID = "9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"
 
@@ -91,15 +107,15 @@ var appUserModelPIDs = map[string]string{ //nolint:gochecknoglobals // lookup ta
 // shellPropertyName returns the canonical name msi-builder takes for a
 // ShortcutProperty Key, which WiX also takes as "{FMTID}, PID".
 func (c *converter) shellPropertyName(link *omap, kid *elem) (string, bool) {
-	key := kid.attr("Key")
+	key := strings.TrimSpace(kid.attr("Key"))
 
-	m := propertyKey.FindStringSubmatch(key)
-	if m == nil {
+	if m := propertyKey.FindStringSubmatch(key); m != nil {
+		pid, _ := strconv.Atoi(m[2])
+		if name, ok := appUserModelPIDs[strconv.Itoa(pid)]; ok && strings.EqualFold(m[1], appUserModelFMTID) {
+			return "System.AppUserModel." + name, true
+		}
+	} else if canonicalProperty.MatchString(key) {
 		return key, true
-	}
-
-	if name, ok := appUserModelPIDs[m[2]]; ok && strings.EqualFold(m[1], appUserModelFMTID) {
-		return "System.AppUserModel." + name, true
 	}
 
 	c.todof(link, "", kid.line, "the shell property %s was left out: write it by its canonical name, such as System.AppUserModel.ID", key)

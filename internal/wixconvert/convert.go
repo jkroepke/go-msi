@@ -114,6 +114,8 @@ type converter struct {
 	uiNav        []*elem
 	errorRows    []*elem
 	usedErrors   map[*elem]bool
+	// newerClaimed is the property that detects newer versions.
+	newerClaimed string
 	icons        []*elem
 	defines      [][2]string
 	sequences    []*elem
