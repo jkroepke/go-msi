@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
+# Converted from fragments.wxs by msi-builder convert.
+# Review it, resolve the TODO comments, then run msi-builder validate.
+# WiX variables became ${NAME} references; pass them with --var NAME=value: ProductName.
+# TODO(line 42): <?if $(var.Arch) = "arm64"?> is not evaluated: only its first branch was converted
+# TODO(line 44): the <?else?> branch was left out; convert it by hand if your build takes it
+# TODO(line 41): the extension attributes util:Extra on <Component> have no counterpart
+# TODO(line 55): advertised shortcuts are never supported; this one is a plain shortcut
+# TODO(line 55): the shortcut "Hello Help" has no Target: advertised shortcuts are never supported; point it at a file
+schema: msi-builder/v1
+product:
+  name: ${ProductName}
+  manufacturer: Example
+  version: 1.0.0
+  upgradeCode: 5d9b2f3a-7c1e-4b8d-9f0a-2e6c4a8b1d37
+package:
+  platform: x64
+# TODO(line 29): an <Upgrade> for the package's own UpgradeCode is a hand-made major upgrade; msi-builder writes its own, check the upgrade keys
+installDir:
+  id: INSTALLFOLDER
+  name: Hello
+features:
+  - id: Main
+    title: Hello
+    components: [PluginA, MainExe, Notes]
+    features:
+      - id: Samples
+        title: Samples
+        default: off
+        components: [SampleFile]
+components:
+  - id: PluginA
+    directory: plugins
+    files:
+      - source: dist/plugins/a.dll
+        id: plugin_a.dll
+  - id: MainExe
+    files:
+      - source: dist/arm64/hello.exe
+        id: hello.exe
+  - id: Notes
+    files:
+      - source: dist/notes.txt
+        id: notes.txt
+  - id: SampleFile
+    files:
+      - source: dist/sample.txt
+        id: sample.txt
+properties:
+  GREETING: Welcome to ${ProductName}

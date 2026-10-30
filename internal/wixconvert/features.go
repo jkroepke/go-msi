@@ -1,8 +1,109 @@
 package wixconvert
 
-import "slices"
+import (
+	"maps"
+	"slices"
+	"strings"
+)
 
-import "strings"
+// addFeature indexes a Feature where it sits: in a feature, in a feature
+// group or at the top.
+func (c *converter) addFeature(elm *elem, within scope) {
+	feat := &feature{e: elm}
+	if id := elm.attr("Id"); id != "" {
+		feat = c.featureFor(id)
+		if feat.e != nil {
+			c.todof(nil, "", elm.line, "the feature %s is defined twice; only the first one was converted", id)
+
+			return
+		}
+
+		feat.e = elm
+	}
+
+	switch {
+	case within.feature != nil:
+		within.feature.kids = append(within.feature.kids, feat)
+	case within.featureGroup != nil:
+		within.featureGroup.features = append(within.featureGroup.features, feat)
+	default:
+		c.features = append(c.features, feat)
+	}
+
+	c.walk(elm, scope{dir: within.dir, feature: feat})
+}
+
+// featureFor returns the feature with an ID, which a FeatureRef may name
+// before the Feature defines it.
+func (c *converter) featureFor(id string) *feature {
+	feat, ok := c.featureByID[id]
+	if !ok {
+		feat = &feature{}
+		c.featureByID[id] = feat
+	}
+
+	return feat
+}
+
+func (c *converter) featureGroup(id string) *featureGroup {
+	grp, ok := c.featureGrps[id]
+	if !ok {
+		grp = &featureGroup{}
+		c.featureGrps[id] = grp
+	}
+
+	return grp
+}
+
+// resolveFeatures puts the content of each FeatureGroupRef in its place
+// and notes the FeatureRefs to features the file does not define.
+func (c *converter) resolveFeatures() {
+	for _, id := range c.topGroupRefs {
+		c.spliceGroup(nil, id)
+	}
+
+	c.eachFeature(func(feat *feature) {
+		for _, id := range feat.groupRefs {
+			c.spliceGroup(feat, id)
+		}
+	})
+
+	for _, id := range slices.Sorted(maps.Keys(c.featureByID)) {
+		if feat := c.featureByID[id]; feat.e == nil {
+			c.todof(nil, "", feat.refLine, "FeatureRef %s names no feature of this file; its components are in no feature", id)
+		}
+	}
+}
+
+// spliceGroup adds a feature group's features and components to a feature,
+// or its features to the top level when feat is nil.
+func (c *converter) spliceGroup(feat *feature, groupID string) {
+	grp := c.featureGrps[groupID]
+	if grp == nil {
+		c.todof(nil, "", 0, "FeatureGroupRef %s names no feature group of this file", groupID)
+
+		return
+	}
+
+	if grp.used {
+		c.todof(nil, "", 0, "the feature group %s is referenced twice; a feature has one parent, so only the first reference was converted", groupID)
+
+		return
+	}
+
+	grp.used = true
+
+	if feat == nil {
+		c.features = append(c.features, grp.features...)
+	} else {
+		feat.kids = append(feat.kids, grp.features...)
+		feat.members = append(feat.members, grp.members...)
+	}
+
+	for _, ref := range grp.groupRefs {
+		c.spliceGroup(feat, ref)
+	}
+}
 
 func (c *converter) eachFeature(fn func(*feature)) {
 	var walk func([]*feature)

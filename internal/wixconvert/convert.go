@@ -117,6 +117,9 @@ type converter struct {
 	setters      []*elem
 	structure    map[string]func(c *converter, e *elem, sc scope)
 	features     []*feature
+	featureByID  map[string]*feature
+	featureGrps  map[string]*featureGroup
+	topGroupRefs []string
 	comps        []*comp
 	notes        []Note
 	header       []string
@@ -131,10 +134,14 @@ type converter struct {
 
 type dir struct {
 	parent *dir
-	id     string
-	name   string
-	line   int
-	std    bool
+	// parentID is the Directory or DirectoryRef the directory sits in. The
+	// parents are linked once every fragment is read, so a DirectoryRef
+	// may come before the Directory it names.
+	parentID string
+	id       string
+	name     string
+	line     int
+	std      bool
 }
 
 type comp struct {
@@ -162,21 +169,36 @@ type feature struct {
 	e       *elem
 	kids    []*feature
 	members []member
+	// groupRefs are the FeatureGroupRefs inside the feature.
+	groupRefs []string
+	// refLine is the line of the first FeatureRef to the feature.
+	refLine int
+}
+
+// featureGroup is a FeatureGroup: the features and components that a
+// FeatureGroupRef puts in its place.
+type featureGroup struct {
+	features  []*feature
+	members   []member
+	groupRefs []string
+	used      bool
 }
 
 func newConverter(doc *document) *converter {
 	return &converter{
-		doc:       doc,
-		dirs:      make(map[string]*dir),
-		compByID:  make(map[string]*comp),
-		groups:    make(map[string]*group),
-		actions:   make(map[string]*elem),
-		wixVars:   make(map[string]string),
-		renames:   make(map[string]string),
-		needDirs:  make(map[string]bool),
-		usedVars:  make(map[string]bool),
-		out:       newMap(),
-		structure: structureHandlers(),
+		doc:         doc,
+		dirs:        make(map[string]*dir),
+		compByID:    make(map[string]*comp),
+		groups:      make(map[string]*group),
+		featureByID: make(map[string]*feature),
+		featureGrps: make(map[string]*featureGroup),
+		actions:     make(map[string]*elem),
+		wixVars:     make(map[string]string),
+		renames:     make(map[string]string),
+		needDirs:    make(map[string]bool),
+		usedVars:    make(map[string]bool),
+		out:         newMap(),
+		structure:   structureHandlers(),
 	}
 }
 
@@ -216,6 +238,7 @@ func (c *converter) todof(target *omap, key string, line int, format string, arg
 // index walks the file once and records the elements by kind.
 func (c *converter) index() error {
 	c.preprocessor()
+	c.extensionAttrs()
 
 	var packages []*elem
 
@@ -245,6 +268,8 @@ func (c *converter) index() error {
 		}
 	}
 
+	c.linkDirs()
+	c.resolveFeatures()
 	c.chooseInstallDir()
 	c.choosePlatform()
 
@@ -254,9 +279,10 @@ func (c *converter) index() error {
 // scope is where an element sits: its directory, component group and
 // feature.
 type scope struct {
-	group   *group
-	feature *feature
-	dir     string
+	group        *group
+	feature      *feature
+	featureGroup *featureGroup
+	dir          string
 }
 
 func (c *converter) walk(parent *elem, within scope) {
@@ -287,15 +313,17 @@ func (c *converter) walk(parent *elem, within scope) {
 func structureHandlers() map[string]func(c *converter, e *elem, sc scope) {
 	return map[string]func(c *converter, e *elem, sc scope){
 		"StandardDirectory": func(c *converter, e *elem, sc scope) {
-			c.addDir(e, nil, true)
-			c.walk(e, scope{dir: e.attr("Id"), group: sc.group, feature: sc.feature})
+			c.addDir(e, "", true)
+			sc.dir = e.attr("Id")
+			c.walk(e, sc)
 		},
 		"Directory": func(c *converter, e *elem, sc scope) {
-			added := c.addDir(e, c.dirs[sc.dir], false)
-			c.walk(e, scope{dir: added.id, group: sc.group, feature: sc.feature})
+			sc.dir = c.addDir(e, sc.dir, false).id
+			c.walk(e, sc)
 		},
 		"DirectoryRef": func(c *converter, e *elem, sc scope) {
-			c.walk(e, scope{dir: e.attr("Id"), group: sc.group, feature: sc.feature})
+			sc.dir = e.attr("Id")
+			c.walk(e, sc)
 		},
 		"ComponentGroup": func(conv *converter, elm *elem, sc scope) {
 			inner := scope{dir: sc.dir, group: conv.group(elm.attr("Id"))}
@@ -308,22 +336,33 @@ func structureHandlers() map[string]func(c *converter, e *elem, sc scope) {
 		"Component":         (*converter).addComp,
 		"ComponentRef":      func(c *converter, e *elem, sc scope) { c.addMember(sc, member{ref: e.attr("Id")}) },
 		"ComponentGroupRef": func(c *converter, e *elem, sc scope) { c.addMember(sc, member{group: e.attr("Id")}) },
-		"Feature": func(conv *converter, elm *elem, within scope) {
-			feat := &feature{e: elm}
-			if within.feature != nil {
-				within.feature.kids = append(within.feature.kids, feat)
-			} else {
-				conv.features = append(conv.features, feat)
+		"Feature":           (*converter).addFeature,
+		// A FeatureRef adds the components and features it contains to
+		// the feature it names.
+		"FeatureRef": func(conv *converter, elm *elem, within scope) {
+			feat := conv.featureFor(elm.attr("Id"))
+			if feat.refLine == 0 {
+				feat.refLine = elm.line
 			}
 
 			conv.walk(elm, scope{dir: within.dir, feature: feat})
 		},
-		// References only pull fragments in; the converter reads every
-		// fragment of the file anyway.
-		"FeatureRef":      func(*converter, *elem, scope) {},
-		"FeatureGroupRef": func(*converter, *elem, scope) {},
-		"PropertyRef":     func(*converter, *elem, scope) {},
-		"FeatureGroup":    func(c *converter, e *elem, sc scope) { c.walk(e, sc) },
+		"FeatureGroup": func(c *converter, e *elem, sc scope) {
+			c.walk(e, scope{dir: sc.dir, featureGroup: c.featureGroup(e.attr("Id"))})
+		},
+		"FeatureGroupRef": func(conv *converter, e *elem, sc scope) {
+			switch groupID := e.attr("Id"); {
+			case sc.feature != nil:
+				sc.feature.groupRefs = append(sc.feature.groupRefs, groupID)
+			case sc.featureGroup != nil:
+				sc.featureGroup.groupRefs = append(sc.featureGroup.groupRefs, groupID)
+			default:
+				conv.topGroupRefs = append(conv.topGroupRefs, groupID)
+			}
+		},
+		// A PropertyRef only pulls a fragment in; the converter reads
+		// every fragment of the file anyway.
+		"PropertyRef": func(*converter, *elem, scope) {},
 	}
 }
 
@@ -352,14 +391,20 @@ var packageElems = map[string]func(c *converter, e *elem){ //nolint:gochecknoglo
 	"Media":                    func(c *converter, e *elem) { c.media = append(c.media, e) },
 	"MediaTemplate":            func(c *converter, e *elem) { c.media = append(c.media, e) },
 	"Launch":                   func(c *converter, e *elem) { c.launches = append(c.launches, e) },
-	"Condition":                func(c *converter, e *elem) { c.launches = append(c.launches, e) },
+	elemCondition:              func(c *converter, e *elem) { c.launches = append(c.launches, e) },
 	"SummaryInformation":       func(c *converter, e *elem) { c.summary = e },
 }
 
 // walkElem indexes one core element and reports whether it knows it.
-func (c *converter) walkElem(elm *elem, sc scope) bool {
+func (c *converter) walkElem(elm *elem, within scope) bool {
+	// A v3 feature condition is read by the feature; it is not a launch
+	// condition.
+	if elm.name == elemCondition && within.feature != nil {
+		return true
+	}
+
 	if fn, ok := c.structure[elm.name]; ok {
-		fn(c, elm, sc)
+		fn(c, elm, within)
 
 		return true
 	}
@@ -389,7 +434,7 @@ func (c *converter) walkExtension(e *elem) {
 	}
 }
 
-func (c *converter) addDir(elm *elem, parent *dir, standard bool) *dir {
+func (c *converter) addDir(elm *elem, parentID string, standard bool) *dir {
 	dirID := elm.attr("Id")
 	if dirID == "" {
 		dirID = fmt.Sprintf("dir_line%d", elm.line)
@@ -399,20 +444,25 @@ func (c *converter) addDir(elm *elem, parent *dir, standard bool) *dir {
 		return d
 	}
 
-	folder := &dir{id: dirID, name: elm.attr("Name"), parent: parent, line: elm.line}
+	folder := &dir{id: dirID, name: elm.attr("Name"), parentID: parentID, line: elm.line}
 
-	switch {
-	case dirID == "TARGETDIR":
-		folder.std, folder.name, folder.parent = true, "", nil
-	case standard, isStandardFolder(dirID):
-		folder.std, folder.name = true, ""
-		folder.parent = nil
+	if dirID == "TARGETDIR" || standard || isStandardFolder(dirID) {
+		folder.std, folder.name, folder.parentID = true, "", ""
 	}
 
 	c.dirs[dirID] = folder
 	c.dirOrder = append(c.dirOrder, folder)
 
 	return folder
+}
+
+// linkDirs links each directory to its parent.
+func (c *converter) linkDirs() {
+	for _, folder := range c.dirOrder {
+		if folder.parentID != "" {
+			folder.parent = c.dirs[folder.parentID]
+		}
+	}
 }
 
 func (c *converter) group(id string) *group {
@@ -439,17 +489,19 @@ func (c *converter) addComp(e *elem, within scope) {
 	c.addMember(within, member{comp: comp})
 }
 
-func (c *converter) addMember(sc scope, entry member) {
+func (c *converter) addMember(within scope, entry member) {
 	switch {
-	case sc.feature != nil:
-		sc.feature.members = append(sc.feature.members, entry)
-	case sc.group != nil:
-		sc.group.members = append(sc.group.members, entry)
+	case within.feature != nil:
+		within.feature.members = append(within.feature.members, entry)
+	case within.featureGroup != nil:
+		within.featureGroup.members = append(within.featureGroup.members, entry)
+	case within.group != nil:
+		within.group.members = append(within.group.members, entry)
 	}
 }
 
 // preprocessor turns <?define?> into vars and notes everything else.
-func (c *converter) preprocessor() {
+func (c *converter) preprocessor() { //nolint:cyclop // one branch per processing instruction
 	for _, proc := range c.doc.procs {
 		switch proc.target {
 		case "define":
@@ -464,14 +516,36 @@ func (c *converter) preprocessor() {
 			c.defines = append(c.defines, [2]string{varName(strings.TrimSpace(name)), value})
 		case "include":
 			c.todof(nil, "", proc.line, "<?include %s?>: convert the included file and merge it in by hand", proc.inst)
-		case "if", "ifdef", "ifndef", "elseif", "else", "foreach":
-			c.todof(nil, "", proc.line,
-				"<?%s %s?>: preprocessor conditions and loops are not evaluated; the elements of every branch were converted",
-				proc.target, proc.inst)
+		case "if", "ifdef", "ifndef":
+			c.todof(nil, "", proc.line, "<?%s %s?> is not evaluated: only its first branch was converted", proc.target, proc.inst)
+		case "elseif", "else":
+			if proc.skipped {
+				c.todof(nil, "", proc.line, "the <?%s?> branch was left out; convert it by hand if your build takes it", strings.TrimSpace(proc.target+" "+proc.inst))
+			}
+		case "foreach":
+			c.todof(nil, "", proc.line, "<?foreach %s?> is not expanded: its body was converted once", proc.inst)
 		case "endif", "endforeach":
 		default:
 			c.todof(nil, "", proc.line, "<?%s %s?> has no counterpart", proc.target, proc.inst)
 		}
+	}
+}
+
+// extensionAttrs notes the extension attributes on WiX elements, once per
+// element. The parser records them element by element.
+func (c *converter) extensionAttrs() {
+	attrs := c.doc.extAttrs
+
+	for len(attrs) > 0 {
+		first, names := attrs[0], []string{attrs[0].name}
+
+		attrs = attrs[1:]
+		for len(attrs) > 0 && attrs[0].line == first.line && attrs[0].elem == first.elem {
+			names = append(names, attrs[0].name)
+			attrs = attrs[1:]
+		}
+
+		c.todof(nil, "", first.line, "the extension attributes %s on <%s> have no counterpart", strings.Join(names, ", "), first.elem)
 	}
 }
 

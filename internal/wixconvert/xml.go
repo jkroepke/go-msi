@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 )
 
@@ -104,12 +105,24 @@ type procInst struct {
 	target string
 	inst   string
 	line   int
+	// skipped is set on an elseif or else whose branch was left out.
+	skipped bool
 }
 
 // document is a parsed source file.
 type document struct {
 	root  *elem
 	procs []procInst
+	// extAttrs are the extension attributes on WiX elements, which the
+	// converter does not read.
+	extAttrs []extAttr
+}
+
+// extAttr is an extension attribute, such as util:Foo on a File.
+type extAttr struct {
+	elem string
+	name string
+	line int
 }
 
 // parse reads a .wxs file into an element tree. Preprocessor instructions
@@ -123,8 +136,14 @@ func parse(r io.Reader) (*document, error) {
 	dec := xml.NewDecoder(bytes.NewReader(data))
 	tree := &treeBuilder{doc: &document{}}
 
+	// line counts the newlines up to the token, without rescanning the
+	// file for every token.
+	line, counted := 1, int64(0)
+
 	for {
 		offset := dec.InputOffset()
+		line += bytes.Count(data[counted:offset], []byte("\n"))
+		counted = offset
 
 		tok, err := dec.Token()
 		if errors.Is(err, io.EOF) {
@@ -135,7 +154,7 @@ func parse(r io.Reader) (*document, error) {
 			return nil, fmt.Errorf("parse: %w", err)
 		}
 
-		if err := tree.token(tok, 1+bytes.Count(data[:offset], []byte("\n"))); err != nil {
+		if err := tree.token(tok, line); err != nil {
 			return nil, err
 		}
 	}
@@ -152,12 +171,61 @@ type treeBuilder struct {
 	doc      *document
 	stack    []*elem
 	comments []string
+	// branches has one entry per open <?if?>: whether the branch being
+	// read is one the converter leaves out.
+	branches []bool
+	// skipDepth counts the open elements of a left-out branch.
+	skipDepth int
 }
 
-func (b *treeBuilder) token(tok xml.Token, line int) error {
+// skipping reports whether the tokens belong to a left-out branch.
+func (b *treeBuilder) skipping() bool {
+	return slices.Contains(b.branches, true)
+}
+
+// procInst records a processing instruction. Only the first branch of an
+// <?if?> is read: converting every branch makes duplicate IDs, and the
+// first branch is usually the default build.
+func (b *treeBuilder) procInst(tok xml.ProcInst, line int) {
+	if tok.Target == "xml" {
+		return
+	}
+
+	proc := procInst{target: tok.Target, inst: strings.TrimSpace(string(tok.Inst)), line: line}
+
+	switch proc.target {
+	case "if", "ifdef", "ifndef":
+		b.branches = append(b.branches, false)
+	case "elseif", "else":
+		if len(b.branches) > 0 {
+			proc.skipped = !b.skipping()
+			b.branches[len(b.branches)-1] = true
+		}
+	case "endif":
+		if len(b.branches) > 0 {
+			b.branches = b.branches[:len(b.branches)-1]
+		}
+	}
+
+	b.doc.procs = append(b.doc.procs, proc)
+}
+
+func (b *treeBuilder) token(tok xml.Token, line int) error { //nolint:cyclop // one branch per token type
+	if b.skip(tok) {
+		return nil
+	}
+
 	switch tok := tok.(type) {
 	case xml.StartElement:
-		return b.start(newElem(tok, line, b.comments))
+		elm := newElem(tok, line, b.comments)
+		for _, attr := range tok.Attr {
+			if attr.Name.Space != "" && attr.Name.Space != "xmlns" && !strings.HasPrefix(attr.Name.Space, "http://www.w3.org/") {
+				name := prefix(attr.Name.Space) + ":" + attr.Name.Local
+				b.doc.extAttrs = append(b.doc.extAttrs, extAttr{elem: elm.qname(), name: name, line: line})
+			}
+		}
+
+		return b.start(elm)
 	case xml.EndElement:
 		b.stack = b.stack[:len(b.stack)-1]
 		b.comments = nil
@@ -168,12 +236,35 @@ func (b *treeBuilder) token(tok xml.Token, line int) error {
 	case xml.Comment:
 		b.comments = append(b.comments, string(tok))
 	case xml.ProcInst:
-		if tok.Target != "xml" {
-			b.doc.procs = append(b.doc.procs, procInst{target: tok.Target, inst: strings.TrimSpace(string(tok.Inst)), line: line})
-		}
+		b.procInst(tok, line)
 	}
 
 	return nil
+}
+
+// skip drops a token of a left-out branch and reports whether it did. The
+// end of an element that began before the branch is kept.
+func (b *treeBuilder) skip(tok xml.Token) bool {
+	if b.skipDepth == 0 && !b.skipping() {
+		return false
+	}
+
+	switch tok.(type) {
+	case xml.ProcInst:
+		return false
+	case xml.StartElement:
+		b.skipDepth++
+	case xml.EndElement:
+		if b.skipDepth == 0 {
+			return false
+		}
+
+		b.skipDepth--
+	}
+
+	b.comments = nil
+
+	return true
 }
 
 func (b *treeBuilder) start(elm *elem) error {
@@ -225,6 +316,15 @@ func newElem(tok xml.StartElement, line int, comments []string) *elem {
 	}
 
 	return elm
+}
+
+// prefix names a namespace as a WiX author writes it, such as util.
+func prefix(uri string) string {
+	if short, ok := namespaces[uri]; ok && short != nsOther {
+		return short
+	}
+
+	return shortSpace(uri)
 }
 
 // shortSpace names an unknown namespace by its last path segment.

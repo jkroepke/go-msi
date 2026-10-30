@@ -124,12 +124,25 @@ func (m *omap) del(key string) {
 	}
 }
 
-// comment adds comment lines above key.
+// comment adds comment lines above key. A key that is never set keeps its
+// place, so the comment moves to the next key.
 func (m *omap) comment(key string, lines ...string) {
+	m.addKey(key)
 	m.comments[key] = append(m.comments[key], lines...)
 }
 
 func (m *omap) empty() bool { return len(m.values) == 0 }
+
+// commentLines returns the comment lines of an empty mapping: those above
+// it and those of its keys.
+func (m *omap) commentLines() []string {
+	lines := slices.Clone(m.head)
+	for _, key := range m.keys {
+		lines = append(lines, m.comments[key]...)
+	}
+
+	return lines
+}
 
 func isEmpty(value any) bool {
 	switch val := value.(type) {
@@ -204,6 +217,9 @@ func (m *omap) node() *yaml.Node { //nolint:cyclop // one pass in a fixed order;
 		}
 
 		if sub, ok := value.(*omap); ok && sub.empty() && !sub.keep {
+			// The mapping is left out; its comments are not.
+			pending = append(pending, sub.commentLines()...)
+
 			continue
 		}
 

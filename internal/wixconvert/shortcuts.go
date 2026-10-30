@@ -109,6 +109,8 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 
 	switch match := folderTarget.FindStringSubmatch(target); {
 	case target == "":
+		// The shortcut is left out; its notes stay with the component.
+		pending.comp.out.head = append(pending.comp.out.head, link.commentLines()...)
 		c.todof(pending.comp.out, "", elm.line,
 			"the shortcut %q has no Target: advertised shortcuts are never supported; point it at a file", elm.attr("Name"))
 

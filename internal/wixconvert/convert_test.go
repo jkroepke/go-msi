@@ -114,3 +114,25 @@ func TestConvertNotes(t *testing.T) {
 		}
 	}
 }
+
+// TestConvertV3Scope checks that a WiX v3 package without InstallScope,
+// which Windows Installer installs per user, is not silently made a
+// per-machine package.
+func TestConvertV3Scope(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <Package Platform="x64" />
+  </Product>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(res.YAML), "no InstallScope") {
+		t.Errorf("no scope note in\n%s", res.YAML)
+	}
+}

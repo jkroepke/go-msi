@@ -10,8 +10,7 @@ bind variables, hand-built dialogs and extensions without a counterpart,
 becomes a "# TODO" comment in the YAML file and a line on stderr.
 
 The YAML file goes to stdout, or to the file --output names. Review it, then
-check it with msi-builder validate. docs/Migrating from WiX.md explains
-each mapping.
+check it with msi-builder validate.
 
 ## Usage
 

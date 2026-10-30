@@ -46,8 +46,11 @@
     </ComponentGroup>
 
     <Feature Id="Complete" Title="Hello Tools" Level="1" Absent="disallow">
-      <ComponentRef Id="Readme" />
       <ComponentGroupRef Id="Tools" />
+    </Feature>
+    <Feature Id="Docs" Title="Documentation" Level="1">
+      <Condition Level="0">NOT INSTALLDOCS</Condition>
+      <ComponentRef Id="Readme" />
     </Feature>
 
     <CustomAction Id="Echo" BinaryKey="WixCA" DllEntry="CAQuietExec" Execute="immediate" Return="ignore" />

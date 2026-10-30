@@ -2,8 +2,8 @@
 # Converted from v3.wxs by msi-builder convert.
 # Review it, resolve the TODO comments, then run msi-builder validate.
 # WiX variables became ${NAME} references; pass them with --var NAME=value: BinDir, ProductVersion.
-# TODO(line 14): <?if $(var.Edition) = "full"?>: preprocessor conditions and loops are not evaluated; the elements of every branch were converted
-# TODO(line 16): <?else ?>: preprocessor conditions and loops are not evaluated; the elements of every branch were converted
+# TODO(line 14): <?if $(var.Edition) = "full"?> is not evaluated: only its first branch was converted
+# TODO(line 16): the <?else?> branch was left out; convert it by hand if your build takes it
 schema: msi-builder/v1
 product:
   name: Hello Tools
@@ -39,7 +39,11 @@ features:
   - id: Complete
     title: Hello Tools
     allowAbsent: false
-    components: [Readme, ToolExe]
+    components: [ToolExe]
+  - id: Docs
+    title: Documentation
+    # TODO(line 52): conditional feature levels have no counterpart; the condition was "NOT INSTALLDOCS"
+    components: [Readme]
 components:
   - id: Readme
     guid: '{2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E61}'
@@ -74,7 +78,7 @@ components:
         scope: user
     keyPath: ToolExe_KeyPath
 properties:
-  EDITION: lite
+  EDITION: full
 launchConditions:
   - condition: Installed OR VersionNT >= 603
     message: Hello Tools needs Windows 10.

@@ -74,6 +74,10 @@ func TestConvert(t *testing.T) {
 		t.Errorf("missing input: exit %d, stderr %q", code, stderr.String())
 	}
 
+	if code := run([]string{"convert", "--force", wxs}, &stdout, &stderr); code != 2 {
+		t.Errorf("--force without --output: exit %d", code)
+	}
+
 	if code := run([]string{"convert"}, &stdout, &stderr); code != 2 {
 		t.Errorf("no argument: exit %d", code)
 	}

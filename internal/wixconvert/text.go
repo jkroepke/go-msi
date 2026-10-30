@@ -33,19 +33,7 @@ func (c *converter) value(e *elem, attr string) string {
 // in and the others are noted. Directory references renamed by the
 // converter are updated.
 func (c *converter) expand(elm *elem, text string) string {
-	text = preprocessorVar.ReplaceAllStringFunc(text, func(m string) string {
-		parts := preprocessorVar.FindStringSubmatch(m)
-		if parts[1] == "sys" {
-			c.todof(nil, "", elm.line, "%s is a WiX system variable; replace it", m)
-
-			return m
-		}
-
-		name := varName(parts[2])
-		c.usedVars[name] = true
-
-		return "${" + name + "}"
-	})
+	text = c.expandVars(elm, text)
 
 	text = bindVar.ReplaceAllStringFunc(text, func(match string) string {
 		parts := bindVar.FindStringSubmatch(match)
@@ -71,19 +59,36 @@ func (c *converter) expand(elm *elem, text string) string {
 	return text
 }
 
+// expandVars turns preprocessor variables into ${NAME} references.
+func (c *converter) expandVars(elm *elem, text string) string {
+	return preprocessorVar.ReplaceAllStringFunc(text, func(m string) string {
+		parts := preprocessorVar.FindStringSubmatch(m)
+		if parts[1] == "sys" {
+			c.todof(nil, "", elm.line, "%s is a WiX system variable; replace it", m)
+
+			return m
+		}
+
+		name := varName(parts[2])
+		c.usedVars[name] = true
+
+		return "${" + name + "}"
+	})
+}
+
 // bindValue resolves the bind variables the converter can fill in.
 func (c *converter) bindValue(kind, name string) (string, bool) {
 	switch kind {
 	case "wix":
 		v, ok := c.wixVars[name]
 
-		return v, ok
+		return c.expandVars(c.pkg, v), ok
 	case "bind":
 		switch name {
 		case "Property.ProductName":
-			return c.pkg.attr("Name"), c.pkg.has("Name")
+			return c.expandVars(c.pkg, c.pkg.attr("Name")), c.pkg.has("Name")
 		case "Property.Manufacturer":
-			return c.pkg.attr("Manufacturer"), c.pkg.has("Manufacturer")
+			return c.expandVars(c.pkg, c.pkg.attr("Manufacturer")), c.pkg.has("Manufacturer")
 		}
 	}
 

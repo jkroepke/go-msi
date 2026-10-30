@@ -75,6 +75,13 @@ func (c *converter) emitComponents(tree map[*dir]bool) {
 
 	for _, comp := range c.comps {
 		if comp.dropIfEmpty && !hasContent(comp.out) {
+			// Its notes move to the file header.
+			for _, line := range comp.out.commentLines() {
+				if strings.HasPrefix(line, "TODO") {
+					c.header = append(c.header, line)
+				}
+			}
+
 			comp.out = nil
 
 			continue
@@ -158,6 +165,7 @@ const (
 	attrDirectory  = "Directory"
 	attrProperty   = "Property"
 	elemPermission = "Permission"
+	elemCondition  = "Condition"
 	rightsFull     = "full"
 )
 
@@ -223,7 +231,7 @@ var componentChildren = map[string]func(cc *compConv, e *elem){ //nolint:gocheck
 	"fw:FirewallException":  func(cc *compConv, e *elem) { cc.c.firewall(e, cc.cp, "") },
 	"ProgId":                (*compConv).progID,
 	// WiX v3: the condition is the text.
-	"Condition": func(cc *compConv, e *elem) { cc.out.set("condition", cc.c.expand(e, strings.TrimSpace(e.text))) },
+	elemCondition: func(cc *compConv, e *elem) { cc.out.set("condition", cc.c.expand(e, strings.TrimSpace(e.text))) },
 }
 
 const elemShortcut = "Shortcut"

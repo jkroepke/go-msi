@@ -29,13 +29,16 @@ bind variables, hand-built dialogs and extensions without a counterpart,
 becomes a "# TODO" comment in the YAML file and a line on stderr.
 
 The YAML file goes to stdout, or to the file --output names. Review it, then
-check it with msi-builder validate. docs/Migrating from WiX.md explains
-each mapping.`,
+check it with msi-builder validate.`,
 		Example: `  msi-builder convert app.wxs
   msi-builder convert -o msi.yaml app.wxs`,
 		Args:              exactlyOne("app.wxs"),
 		ValidArgsFunction: fileArg("wxs"),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if force && out == "" {
+				return usageError{errors.New("--force needs --output")}
+			}
+
 			return convert(cmd, args[0], out, force)
 		},
 	}

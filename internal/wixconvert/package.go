@@ -155,21 +155,50 @@ func (c *converter) emitScope(pkgOut *omap) {
 		scope = c.value(c.summary, "InstallScope")
 	}
 
-	for _, e := range c.properties {
-		if e.attr("Id") == "ALLUSERS" {
-			switch c.value(e, "Value") {
-			case "2":
-				c.todof(pkgOut, "scope", e.line,
-					"ALLUSERS=2 lets the user choose the scope; use scope perUserOrMachine or perMachineOrUser")
-			case "":
-				scope = "perUser"
-			}
-		}
+	scope, allUsers := c.allUsers(pkgOut, scope)
+	if c.v3 && scope == "" && !allUsers {
+		c.perUserNote(pkgOut)
 	}
 
 	if scope != "" && scope != "perMachine" {
 		pkgOut.set("scope", scope)
 	}
+}
+
+// allUsers applies an ALLUSERS property to the scope and reports whether
+// the file sets one.
+func (c *converter) allUsers(pkgOut *omap, scope string) (string, bool) {
+	found := false
+
+	for _, elm := range c.properties {
+		if elm.attr("Id") != "ALLUSERS" {
+			continue
+		}
+
+		found = true
+
+		switch c.value(elm, "Value") {
+		case "2":
+			c.todof(pkgOut, "scope", elm.line,
+				"ALLUSERS=2 lets the user choose the scope; use scope perUserOrMachine or perMachineOrUser")
+		case "":
+			scope = "perUser"
+		}
+	}
+
+	return scope, found
+}
+
+// perUserNote notes a WiX v3 package that sets no scope at all.
+func (c *converter) perUserNote(pkgOut *omap) {
+	line := c.pkg.line
+	if c.summary != nil {
+		line = c.summary.line
+	}
+
+	c.todof(pkgOut, "scope", line,
+		"the WiX v3 Package has no InstallScope and the file sets no ALLUSERS, which Windows Installer installs per user; "+
+			"msi-builder installs per machine by default, set scope: perUser to keep the per-user install")
 }
 
 func (c *converter) emitMedia(pkgOut *omap) {
