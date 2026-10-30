@@ -82,13 +82,13 @@ func (v *validator) movableGrants(cfg *Config, known *refs, compPath string, com
 }
 
 // nestedReference reports whether a formatted string has a [ inside a
-// [...] reference, apart from the escapes [\[] and [\]].
+// [...] reference; an escape such as [\[] outside one is text.
 func nestedReference(text string) bool {
 	open := false
 
 	for i := 0; i < len(text); i++ {
 		switch {
-		case strings.HasPrefix(text[i:], `[\`) && len(text) > i+3 && text[i+3] == ']':
+		case !open && strings.HasPrefix(text[i:], `[\`) && len(text) > i+3 && text[i+3] == ']':
 			i += 3
 		case text[i] == '[':
 			if open {

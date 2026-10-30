@@ -436,7 +436,8 @@ components:
 // secure, so the engine drops the user's value ("Ignoring disallowed
 // property"); the control package declares SVC_ACCOUNT secure: true, and
 // there the user's value reaches the server. On the CI runner the engine
-// refuses the silent repair with 1730 before any action runs (SECREPAIR:
+// refuses the silent repair with error 1730 (exit 1603) in
+// InstallInitialize, before the grant actions run (SECREPAIR:
 // the package has an elevated custom action, and a standard user's repair
 // then needs a credential prompt); a Windows that runs the repair grants to
 // the remembered account in the default case and to the user with
@@ -498,13 +499,13 @@ func TestNonAdminGrantRepair(t *testing.T) {
 
 			granted := strings.Contains(sddl, ";;;"+userSID+")")
 
-			switch code {
-			case 1730:
+			switch {
+			case code == 1603 && strings.Contains(repair, "Error 1730."):
 				// The repair stopped in InstallInitialize, before the grants.
 				if granted {
 					t.Errorf("the refused repair granted the folder to %s\n%s", user.name, sddl)
 				}
-			case 0:
+			case code == 0:
 				if granted != (tc.serverValue != "") {
 					t.Errorf("the folder grants to %s: %v, want %v\n%s", user.name, granted, tc.serverValue != "", sddl)
 				}
@@ -513,7 +514,7 @@ func TestNonAdminGrantRepair(t *testing.T) {
 					t.Errorf("the repair fell back to the remembered account: %v, want %v", fellBack, tc.serverValue == "")
 				}
 			default:
-				t.Fatalf("msiexec /i REINSTALL=ALL as %s returned %d, want 0 or 1730\n%s", user.name, code, repair)
+				t.Fatalf("msiexec /i REINSTALL=ALL as %s returned %d, want 0, or 1603 after error 1730\n%s", user.name, code, repair)
 			}
 
 			if !strings.Contains(sddl, ";;;NS)") {

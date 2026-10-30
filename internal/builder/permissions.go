@@ -372,16 +372,7 @@ func (b *build) grantProperties() []string {
 			sources[name] = true
 		}
 
-		for dirID, depth := grant.folder, 0; dirID != "" && depth < 64; depth++ {
-			// A standard folder resolves itself, whatever its parent.
-			dir, ok := b.dirs[dirID]
-			if !ok || dir.standard {
-				break
-			}
-
-			sources[dirID] = true
-			dirID = dir.parent
-		}
+		b.folderSources(sources, grant.folder)
 	}
 
 	b.actionSources(sources)
@@ -397,9 +388,32 @@ func (b *build) grantProperties() []string {
 	return sortedKeys(set)
 }
 
+// folderSources adds dirID and the directories above it, up to the
+// standard folder it is in, to sources and reports whether one was new.
+func (b *build) folderSources(sources map[string]bool, dirID string) bool {
+	added := false
+
+	for depth := 0; dirID != "" && depth < 64; depth++ {
+		// A standard folder resolves itself, whatever its parent.
+		dir, ok := b.dirs[dirID]
+		if !ok || dir.standard {
+			break
+		}
+
+		if !sources[dirID] {
+			sources[dirID] = true
+			added = true
+		}
+
+		dirID = dir.parent
+	}
+
+	return added
+}
+
 // actionSources adds to sources the properties in the value of each
 // setDirectory or setProperty action that sets one of them, until nothing
-// new is found.
+// new is found; a directory in a value brings its parents.
 func (b *build) actionSources(sources map[string]bool) {
 	for changed := true; changed; {
 		changed = false
@@ -423,6 +437,11 @@ func (b *build) actionSources(sources map[string]bool) {
 			for _, name := range propertyRefs(value) {
 				if !sources[name] {
 					sources[name] = true
+					changed = true
+				}
+
+				// A directory in the value moves with its parents.
+				if b.folderSources(sources, name) {
 					changed = true
 				}
 			}

@@ -1304,9 +1304,9 @@ repair that runs grants to the remembered account. `secure:
 true` in `properties` keeps one secure, and so does a `search`; the
 builder then warns about the repair unless the wizard sets the property.
 The wizard needs `secure: true` when a dialog field, the folder page or
-the feature tree sets the account or folder, and the builder warns about
+the feature tree sets the account or folder, and the builder warns when
 a property the wizard sets, or a configurable directory other than the
-install dir, that is not secure. A `setProperty` or `setDirectory`
+install dir, loses the secure status it would otherwise have. A `setProperty` or `setDirectory`
 action that sets such a property makes the properties in its value count
 too. An account cannot use a nested reference (`[[NAME]]`, `[A[B]]`). Per-user packages are not affected. Three actions on the embedded custom action
 DLL apply them, after `InstallFiles` (after `InstallServices` when the

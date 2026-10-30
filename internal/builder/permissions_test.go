@@ -342,6 +342,9 @@ func TestPermissionGrantErrors(t *testing.T) {
 		"nested reference in account": {func(c *config.Component) {
 			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "[[WHICH]]", Rights: config.StringList{"read"}}}}
 		}, "[[B]]"},
+		"escape inside a reference": {func(c *config.Component) {
+			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: `[SVC_ACCOUN[\T]]`, Rights: config.StringList{"read"}}}}
+		}, "[[B]]"},
 		"inner reference in account": {func(c *config.Component) {
 			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "[SVC_[WHICH]]", Rights: config.StringList{"read"}}}}
 		}, "[[B]]"},
