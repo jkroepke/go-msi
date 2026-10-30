@@ -192,7 +192,7 @@ func formatValue(v any) string {
 // their control pictures (U+2400 to U+2421), so that a tab, a newline or the
 // U+001F separator in the private properties of the embedded custom
 // action DLL keeps one row on one line and the output text.
-func showControls(s string) string {
+func showControls(value string) string {
 	return strings.Map(func(r rune) rune {
 		if r < 0x20 {
 			return 0x2400 + r
@@ -203,5 +203,5 @@ func showControls(s string) string {
 		}
 
 		return r
-	}, s)
+	}, value)
 }
