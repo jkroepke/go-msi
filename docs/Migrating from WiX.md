@@ -790,7 +790,7 @@ msi-builder signs on Linux and macOS too; see [Signing](signing.md).
 | `util:User`, `util:Group`, `util:FileShare`, `util:PerformanceCategory`, IIS, SQL and HTTP extensions | A `run` action, if you need it |
 | `util:CloseApplication` | The built-in files-in-use dialog and Restart Manager |
 | `util:BroadcastEnvironmentChange` | Drop it: Windows Installer broadcasts environment changes itself; see [Environment variables](#environment-variables) |
-| `util:BroadcastSettingChange` | Not needed for anything msi-builder writes |
+| `util:BroadcastSettingChange` | None; if your `registry` values are a setting that Windows reads only on `WM_SETTINGCHANGE`, send it from a `run` action |
 | `DiskPrompt`, `Media DiskPrompt` and `VolumeLabel` | Leave them out: they only matter for packages on several disks |
 | Several `Media` disks, spanned cabinets | Large payloads are split into several cabinets automatically; above 2 GB, `package.embedCabinets: false` puts them beside the `.msi` |
 | XML fragments, `<?include?>`, raw table XML | No XML input; `tables` adds tables the schema does not cover, but cannot change the standard ones |

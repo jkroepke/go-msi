@@ -415,7 +415,7 @@ func (c *converter) emitActionRefs() {
 				"drop %s: Windows Installer announces environment changes itself", refID)
 		case strings.Contains(refID, "BroadcastSettingChange"):
 			c.todof(nil, "", ref.line,
-				"%s has no counterpart, and nothing msi-builder writes needs it", refID)
+				"%s has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action", refID)
 		default:
 			c.todof(nil, "", ref.line, "the custom action %s comes from a WiX extension and has no counterpart", refID)
 		}

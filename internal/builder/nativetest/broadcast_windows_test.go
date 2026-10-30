@@ -117,7 +117,7 @@ func listenSettingChanges(t *testing.T) *settingChanges {
 		var msg [48]byte
 		for {
 			r, _, _ := pGetMessageW.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
-			if r == 0 || r == ^uintptr(0) {
+			if r == 0 || r&0xffffffff == 0xffffffff { // BOOL -1: an error
 				return
 			}
 
@@ -306,8 +306,9 @@ components:
 // variables. Where the session has a shell, Explorer's environment block,
 // which programs started from the Start menu or Run inherit, must follow:
 // it must show the variable after install and repair and lose it after the
-// uninstall, and it must also pick up a variable written to the registry
-// without any broadcast, which shows that the broadcast made it reload.
+// uninstall, and it must also pick up the new value of a variable written
+// to the registry without a broadcast just before each step, which shows
+// that this step's broadcast made it reload.
 func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
 	if testing.Short() {
 		t.Skip("installing needs msiexec time and elevation")
@@ -326,7 +327,11 @@ func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // ms
 	changes := listenSettingChanges(t)
 
 	shell := explorerPID()
-	if shell == 0 {
+
+	switch {
+	case shell == 0 && interactive():
+		t.Fatal("no shell window in an interactive session")
+	case shell == 0:
 		t.Log("no Explorer in this session: only the broadcast is checked")
 	}
 
@@ -344,11 +349,18 @@ func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // ms
 		return value, ok
 	}
 
-	// A user variable written to the registry without any broadcast.
-	const raw = "MSIBUILDER_UNANNOUNCED"
-	if out, err := exec.CommandContext(t.Context(), "reg.exe", "add", `HKCU\Environment`, "/v", raw, "/d", "1", "/f").CombinedOutput(); err != nil {
-		t.Fatalf("reg add: %v\n%s", err, out)
+	// A user variable written to the registry without any broadcast; its
+	// name is new to every run, because Explorer keeps it after the cleanup.
+	raw := fmt.Sprintf("MSIBUILDER_UNANNOUNCED_%d", time.Now().UnixNano())
+	unannounced := func(t *testing.T, value string) {
+		t.Helper()
+
+		if out, err := exec.CommandContext(t.Context(), "reg.exe", "add", `HKCU\Environment`, "/v", raw, "/d", value, "/f").CombinedOutput(); err != nil {
+			t.Fatalf("reg add: %v\n%s", err, out)
+		}
 	}
+
+	unannounced(t, "start")
 
 	t.Cleanup(func() {
 		_ = exec.Command("reg.exe", "delete", `HKCU\Environment`, "/v", raw, "/f").Run() //nolint:noctx // cleanup after the test context ends
@@ -388,6 +400,10 @@ func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // ms
 
 			step := func(verb string, installed bool, args ...string) {
 				changes.take()
+
+				if tc.env != "" && shell != 0 {
+					unannounced(t, verb+tc.name)
+				}
 
 				if code := msiexec(t, append(args, "/qn")...); code != 0 {
 					t.Fatalf("msiexec %s: exit %d", verb, code)
@@ -432,8 +448,8 @@ func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // ms
 					t.Errorf("%s: Explorer has %s=%q (%t), want it set to the install folder: %t", verb, tc.variable, value, ok, installed)
 				}
 
-				if _, ok := shellSees(t, raw); !ok {
-					t.Errorf("%s: Explorer did not reload its environment: %s is missing", verb, raw)
+				if got, _ := shellSees(t, raw); got != verb+tc.name {
+					t.Errorf("%s: Explorer did not reload its environment: %s=%q, want %q", verb, raw, got, verb+tc.name)
 				}
 			}
 
