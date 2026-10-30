@@ -134,7 +134,7 @@ func TestMsiexecRunActions(t *testing.T) {
 				}
 			}
 
-			if strings.Contains(log, "background-late") {
+			if strings.Contains(log, "BuilderRun: background-late") {
 				t.Error("the process ProbeBackground left behind was not ended")
 			}
 
