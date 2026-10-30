@@ -597,6 +597,7 @@ error names the line or the key, such as `components[0].files[1].source`.
   package.
 - [End User Guide](End%20User%20Guide.md) is for the people who install
   your package.
+- [Migrating from WiX](Migrating%20from%20WiX.md) ports a `.wxs` file.
 - [YAML Schema Design](design/yaml-schema.md) has every key, every default,
   the generated tables and the Windows test results behind each rule.
 - The [examples](../examples) folder holds complete files, such as a
