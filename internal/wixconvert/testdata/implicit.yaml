@@ -22,7 +22,7 @@ features:
     components: [Spy, Links, hello.exe, Component1, Component2, StartMenu]
   - id: Docs
     title: Documentation
-    components: [Component3]
+    components: [TxtAssoc, Component3]
 components:
   # A Subdirectory is not the install folder.
   - id: Spy
@@ -48,10 +48,22 @@ components:
         directory: ProgramMenuFolder/Hello Project
         properties:
           System.AppUserModel.ID: Example.Hello
+  # An optional file association for a file of another feature.
+  - id: TxtAssoc
+    guid: 6a0f1c2e-7d3b-4e58-9a61-2b4c8d0e1f38
   - id: hello.exe
     files:
       - source: dist/hello.exe
         id: hello.exe
+        fileTypes:
+          # TODO(line 31): the ProgId Example.HelloText was in features Docs, the file it opens in Main; msi-builder installs file types with their file, so this one is no longer optional
+          - progId: Example.HelloText
+            description: Hello text
+            extensions:
+              - extension: hellotxt
+            verbs:
+              - id: open
+                arguments: '"%1"'
   - id: Component1
     directory: tools
     files:

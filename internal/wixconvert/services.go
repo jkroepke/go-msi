@@ -588,7 +588,48 @@ func (c *converter) placeTypes() {
 		}
 
 		file.out.add("fileTypes", pending.out)
+		c.typeFeatureNote(pending, file)
 	}
+}
+
+// typeFeatureNote notes a ProgId whose component is in other features than
+// the file it opens: its file type now installs with the file.
+func (c *converter) typeFeatureNote(pending pendingType, file *fileRef) {
+	if file.comp == pending.comp {
+		return
+	}
+
+	own, target := c.featureIDs(pending.comp), c.featureIDs(file.comp)
+	if slices.Equal(own, target) {
+		return
+	}
+
+	c.todof(pending.out, "", pending.e.line, "the ProgId %s was in features %s, the file it opens in %s; "+
+		"msi-builder installs file types with their file, so this one is no longer optional", pending.e.attr("Id"),
+		orNone(own), orNone(target))
+}
+
+// featureIDs returns the IDs of the features that hold a component, sorted.
+func (c *converter) featureIDs(cp *comp) []string {
+	var ids []string
+
+	c.eachFeature(func(f *feature) {
+		if slices.Contains(c.members(f.members, make(map[string]bool)), cp) {
+			ids = append(ids, f.e.attr("Id"))
+		}
+	})
+
+	slices.Sort(ids)
+
+	return slices.Compact(ids)
+}
+
+func orNone(ids []string) string {
+	if len(ids) == 0 {
+		return "none"
+	}
+
+	return strings.Join(ids, ", ")
 }
 
 // Rights names of grants.
