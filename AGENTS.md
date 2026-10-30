@@ -243,8 +243,8 @@ go test ./... -shuffle=on -race
   `[ProductName]` was resolved on the progress page and in the log, and a
   deferred action's text is resolved when the script is written (its
   `ActionStart` operation). A `/qn` log omits an immediate action's
-  description; it appears as `Action hh:mm:ss: <name>. <text>` only with a
-  UI (CA-08).
+  description; it appears as `Action hh:mm:ss: <name>. <text>` with the full
+  UI (CA-08; `/qb` not tested).
 - To see what a broadcast reaches, `broadcast_windows_test.go` logs
   `WM_SETTINGCHANGE` in a hidden top-level window (message-only windows
   get no broadcasts: documented, unverified) and reads Explorer's current environment block

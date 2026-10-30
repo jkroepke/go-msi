@@ -21,7 +21,7 @@ type Language struct {
 	Dialogs map[string]*LanguageDialog `yaml:"dialogs"`
 	// Launch replaces the texts of ui.launch.
 	Launch *LanguageLaunch `yaml:"launch"`
-	// Progress replaces the progress texts of customActions, by action id.
+	// Progress replaces the progress texts of customActions, by action ID.
 	Progress map[string]string `yaml:"progress"`
 	// FinishText replaces ui.finishText.
 	FinishText string `yaml:"finishText"`

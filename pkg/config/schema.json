@@ -622,7 +622,7 @@
           },
           "progress": {
             "type": "string",
-            "description": "Description shown on the progress page and in basic UI while the action runs, and written to the log (ActionText table). Formatted: [Property] references are resolved."
+            "description": "Description in the ActionText table: the wizard's progress page shows a deferred action's text while it runs, and the verbose log writes it. Formatted: [Property] references are resolved."
           },
           "schedule": {
             "type": "array",
@@ -870,7 +870,7 @@
               },
               "progress": {
                 "type": "object",
-                "description": "Replaces the progress texts of customActions in this language, by action id.",
+                "description": "Replaces the progress texts of customActions in this language, by action ID.",
                 "additionalProperties": {
                   "type": "string"
                 }

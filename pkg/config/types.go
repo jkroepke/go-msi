@@ -608,8 +608,8 @@ type CustomAction struct { //nolint:govet // field order is the YAML key order
 	HideTarget   bool          `yaml:"hideTarget"`
 	Once         string        `yaml:"once"`
 	// Progress is the action's description in the ActionText table, shown
-	// by the progress page and basic UI while the action runs and written
-	// to the log.
+	// by the wizard's progress page while a deferred action runs and
+	// written to the log.
 	Progress string      `yaml:"progress"`
 	Schedule []Placement `yaml:"schedule"`
 

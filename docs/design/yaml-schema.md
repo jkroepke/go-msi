@@ -1630,8 +1630,10 @@ customActions:
 
 The builder writes it to the `ActionText` table, without a template.
 The text is formatted, so `[ProductName]` and other properties work: the
-wizard's progress page shows it while the action runs (basic UI is
-documented to as well, not tested), and the verbose
+wizard's progress page shows a deferred action's text while it runs (an
+immediate action's was not watched there, and one in the `ui` sequence
+runs before the progress page; basic UI is documented to show it, not
+tested), and the verbose
 log writes it as `Action hh:mm:ss: <id>. <text>` when there is a UI, and
 for a deferred action as the script's `ActionStart` line also under `/qn`
 (CA-08). A deferred action's text is formatted when the script is written,

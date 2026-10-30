@@ -167,14 +167,24 @@ func (c *converter) emitActions() {
 	c.leftoverProgress(progress)
 }
 
-// leftoverProgress notes the progress texts that no converted action took.
-// A custom action left here was not converted and has a note of its own.
+// leftoverProgress notes the progress texts that no converted action took:
+// those of standard or extension actions, and those of custom actions that
+// became part of another action or were not converted.
 func (c *converter) leftoverProgress(progress map[string]*elem) {
 	for _, id := range slices.Sorted(maps.Keys(progress)) {
-		if c.actions[id] == nil {
+		if c.actions[id] == nil && !c.isSetter(id) {
 			c.todof(nil, "", progress[id].line, "the progress text of %s cannot be converted: msi-builder writes progress texts only for its customActions", id)
+
+			continue
 		}
+
+		c.todof(nil, "", progress[id].line, "the progress text of %s is dropped: the action was not converted to a customActions entry of its own", id)
 	}
+}
+
+// isSetter reports whether id names a SetProperty or SetDirectory element.
+func (c *converter) isSetter(id string) bool {
+	return slices.ContainsFunc(c.setters, func(setter *elem) bool { return setterName(setter) == id })
 }
 
 // progress indexes the ProgressText elements by action. setProgress

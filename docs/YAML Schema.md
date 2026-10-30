@@ -509,8 +509,8 @@ on `PATH`. Pass a folder as `"[INSTALLDIR]."`, not `"[INSTALLDIR]"`, whose
 trailing backslash would escape the closing quote. Everything the
 command starts ends with it: a background process it leaves behind is
 ended when the action finishes, so start a service through `services`,
-not from a command. `progress` is optional: without it the progress
-page shows no text while a long command runs. A `ui.languages` entry
+not from a command. `progress` is optional: it names the step on
+the progress page while the command runs. A `ui.languages` entry
 translates it with `progress: {InitConfig: ...}`. Prefer the
 recipes above where one fits: they also undo themselves on uninstall.
 
