@@ -1030,7 +1030,7 @@ func TestConvertCloseApplication(t *testing.T) {
 		"closes hello.com, which is no program ending in .exe",
 		"closes example.exe, which is no single file of this package; when a Files glob (line 7) installs it",
 		"also sets the property HELLORUNNING while hello.exe in INSTALLFOLDER runs",
-		"the attributes PromptToContinue of <util:CloseApplication> map to it only roughly or not at all",
+		"the attributes RebootPrompt, PromptToContinue of <util:CloseApplication> map to it only roughly or not at all",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the YAML lacks %q:\n%s", want, out)
@@ -1112,7 +1112,7 @@ func TestConvertCloseApplicationUndefinedVar(t *testing.T) {
 	}
 
 	// Both copies of hello.exe get every note, told apart by their folder.
-	if got := strings.Count(out, "the attributes Timeout of"); got != 2 {
+	if got := strings.Count(out, "the attributes RebootPrompt, Timeout of"); got != 2 {
 		t.Errorf("the YAML notes Timeout on %d files, want 2:\n%s", got, out)
 	}
 }

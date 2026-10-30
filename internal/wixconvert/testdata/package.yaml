@@ -119,7 +119,6 @@ components:
               - extension: hellovault
                 contentType: application/x-hello-vault
             verbs: []
-        # TODO(line 164): close of bin/hello.exe in INSTALLFOLDER sends the program WM_CLOSE and waits close.timeout; the attributes RebootPrompt of <util:CloseApplication> map to it only roughly or not at all
         # TODO(line 164): close of bin/hello.exe in INSTALLFOLDER came from <util:CloseApplication>: WiX matches the running program by its file name, close by its installed path; set the property MSIRESTARTMANAGERCONTROL to Disable, so that the Restart Manager does not close the program as well
         close: {terminate: false}
     registry:

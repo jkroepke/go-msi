@@ -149,13 +149,19 @@ func (c *converter) globLines() []string {
 	return lines
 }
 
-// roughCloseAttrs returns the util:CloseApplication attributes set on elm
-// that close maps only roughly or not at all.
+// roughCloseAttrs returns the util:CloseApplication attributes of elm
+// that close maps only roughly or not at all. RebootPrompt is yes unless
+// set to no, and close never asks for a reboot; TerminateProcess ends the
+// program, so no reboot is needed there.
 func roughCloseAttrs(elm *elem) []string {
 	var rough []string
 
+	if !elm.no("RebootPrompt") && !elm.has("TerminateProcess") {
+		rough = append(rough, "RebootPrompt")
+	}
+
 	for _, name := range []string{
-		"EndSessionMessage", "ElevatedCloseMessage", "ElevatedEndSessionMessage", "RebootPrompt",
+		"EndSessionMessage", "ElevatedCloseMessage", "ElevatedEndSessionMessage",
 		"PromptToContinue", "Description", "Sequence", "Timeout",
 	} {
 		if elm.has(name) {
