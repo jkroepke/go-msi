@@ -173,6 +173,7 @@ BYTE WINAPI SystemFunction036(void *, DWORD); // returns BOOLEAN, one byte
 BOOL WINAPI ConvertStringSidToSidW(const WCHAR *, void **);
 BOOL WINAPI LookupAccountNameW(const WCHAR *, const WCHAR *, void *, DWORD *, WCHAR *, DWORD *, int *);
 DWORD WINAPI GetNamedSecurityInfoW(const WCHAR *, int, DWORD, void **, void **, ACL **, ACL **, void **);
+DWORD WINAPI GetSecurityInfo(HANDLE, int, DWORD, void **, void **, ACL **, ACL **, void **);
 DWORD WINAPI SetNamedSecurityInfoW(WCHAR *, int, DWORD, void *, void *, ACL *, ACL *);
 BOOL WINAPI GetSecurityDescriptorControl(void *, unsigned short *, DWORD *);
 BOOL WINAPI InitializeAcl(ACL *, DWORD, DWORD);
@@ -282,6 +283,9 @@ enum {
     DACL_SECURITY_INFORMATION = 4,
     UNPROTECTED_DACL_SECURITY_INFORMATION = 0x20000000,
     SE_DACL_PROTECTED = 0x1000,
+    OWNER_SECURITY_INFORMATION = 1,
+    READ_CONTROL_ = 0x20000,
+    FileStandardInfo_ = 1,
     ACL_REVISION = 2,
     ACCESS_ALLOWED_ACE_TYPE = 0,
     INHERITED_ACE = 0x10,
@@ -2275,11 +2279,39 @@ static int renameInto(HANDLE h, HANDLE dir, const WCHAR *name)
     return ok != 0;
 }
 
-// deleteHandle marks the object of h for deletion, clearing its read-only
-// attribute first; it goes when h is closed.
+// openRelative opens the entry name (bytes long, not terminated) of the
+// folder dir without following a reparse point; 0 on failure.
+static HANDLE openRelative(HANDLE dir, WCHAR *name, DWORD bytes, DWORD access)
+{
+    UNICODE_STRING us = {(unsigned short)bytes, (unsigned short)bytes, name};
+    OBJECT_ATTRIBUTES oa = {sizeof oa, dir, &us, 0, 0, 0};
+    IO_STATUS_BLOCK io;
+    HANDLE h = 0;
+    long st = NtCreateFile(&h, access | SYNCHRONIZE_ | FILE_READ_ATTRIBUTES, &oa, &io, 0, 0, FILE_SHARE_ALL, FILE_OPEN_,
+                           FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_FOR_BACKUP_INTENT, 0, 0);
+    return st >= 0 ? h : 0;
+}
+
+// plainFolder reports whether h is a folder that is no reparse point.
+static int plainFolder(HANDLE h)
+{
+    DWORD tag[2] = {0, 0};
+    return GetFileInformationByHandleEx(h, FileAttributeTagInfo_, tag, sizeof tag) && (tag[0] & FILE_ATTRIBUTE_DIRECTORY) &&
+           !(tag[0] & FILE_ATTRIBUTE_REPARSE_POINT);
+}
+
+// deleteHandle marks the object of h for deletion; it goes when h is
+// closed. A read-only attribute is cleared first, but not on a file with
+// more than one name, whose other name may be outside the tree.
 static int deleteHandle(HANDLE h, DWORD attrs)
 {
-    if (attrs & FILE_ATTRIBUTE_READONLY) {
+    struct {
+        long long allocation, size;
+        DWORD links;
+        BYTE pending, directory;
+    } standard = {0, 0, 0, 0, 0};
+    if ((attrs & FILE_ATTRIBUTE_READONLY) && GetFileInformationByHandleEx(h, FileStandardInfo_, &standard, sizeof standard) &&
+        standard.links <= 1) {
         struct {
             long long times[4];
             DWORD attributes;
@@ -2302,7 +2334,7 @@ typedef struct {
 } DIRINFO;
 _Static_assert(__builtin_offsetof(DIRINFO, FileName) == 68, "FILE_FULL_DIR_INFO layout");
 
-enum { DIR_BUFFER = 64 * 1024 };
+enum { DIR_BUFFER = 64 * 1024, MAX_PASSES = 4096 };
 
 // emptyFolder deletes everything in the folder of dir: each entry is opened
 // relative to dir, a junction or link as itself, so nothing outside the
@@ -2314,13 +2346,15 @@ static int emptyFolder(HANDLE dir, int depth)
     if (!buf) {
         return 0;
     }
-    int ok = 1;
     // Each pass reads the first batch afresh, since deleting changes the
-    // listing; a pass that deletes nothing ends it.
-    for (int progress = 1; progress;) {
+    // listing. The folder is empty when a pass sees nothing; a pass that
+    // deletes nothing, or too many passes for someone still adding
+    // entries, ends it.
+    int empty = 0;
+    for (int pass = 0, progress = 1; progress && pass < MAX_PASSES; pass++) {
         progress = 0;
         if (!GetFileInformationByHandleEx(dir, FileFullDirectoryRestartInfo_, buf, DIR_BUFFER)) {
-            ok = GetLastError() == ERROR_NO_MORE_FILES;
+            empty = GetLastError() == ERROR_NO_MORE_FILES;
             break;
         }
         int seen = 0;
@@ -2330,27 +2364,18 @@ static int emptyFolder(HANDLE dir, int depth)
             if (!dot) {
                 seen = 1;
                 int isDir = (e->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) && !(e->FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT);
-                UNICODE_STRING name = {(unsigned short)e->FileNameLength, (unsigned short)e->FileNameLength, e->FileName};
-                OBJECT_ATTRIBUTES oa = {sizeof oa, dir, &name, OBJ_CASE_INSENSITIVE, 0, 0};
-                IO_STATUS_BLOCK io;
-                HANDLE h = 0;
-                DWORD access = DELETE_ | SYNCHRONIZE_ | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES | (isDir ? FILE_LIST_DIRECTORY : 0);
-                long st = NtCreateFile(&h, access, &oa, &io, 0, 0, FILE_SHARE_ALL, FILE_OPEN_, FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_FOR_BACKUP_INTENT, 0, 0);
+                HANDLE h = openRelative(dir, e->FileName, e->FileNameLength, DELETE_ | FILE_WRITE_ATTRIBUTES | (isDir ? FILE_LIST_DIRECTORY : 0));
                 DWORD tag[2] = {0, 0};
-                if (st >= 0 && GetFileInformationByHandleEx(h, FileAttributeTagInfo_, tag, sizeof tag)) {
+                if (h && GetFileInformationByHandleEx(h, FileAttributeTagInfo_, tag, sizeof tag)) {
                     int nowDir = (tag[0] & FILE_ATTRIBUTE_DIRECTORY) && !(tag[0] & FILE_ATTRIBUTE_REPARSE_POINT);
                     // An entry that changed between file, link and folder
                     // since it was listed is left to the next pass, which
                     // lists it afresh.
                     if (nowDir == isDir && (!isDir || emptyFolder(h, depth + 1)) && deleteHandle(h, tag[0])) {
                         progress = 1;
-                    } else if (nowDir == isDir) {
-                        ok = 0;
                     }
-                } else {
-                    ok = 0;
                 }
-                if (st >= 0) {
+                if (h) {
                     CloseHandle(h);
                 }
             }
@@ -2359,59 +2384,108 @@ static int emptyFolder(HANDLE dir, int depth)
             }
         }
         if (!seen) {
+            empty = 1;
             break;
-        }
-        if (!progress) {
-            ok = 0;
         }
     }
     HeapFree(GetProcessHeap(), 0, buf);
-    return ok;
+    return empty;
 }
 
-// deleteTree deletes the folder at path, which must not be a reparse
-// point, with everything in it.
-static int deleteTree(const WCHAR *path)
+// deleteFolder deletes the folder of h with everything in it.
+static int deleteFolder(HANDLE h)
 {
-    HANDLE h = openNoFollow(path, DELETE_ | FILE_LIST_DIRECTORY | FILE_WRITE_ATTRIBUTES);
+    DWORD tag[2] = {0, 0};
+    return emptyFolder(h, 0) && GetFileInformationByHandleEx(h, FileAttributeTagInfo_, tag, sizeof tag) && deleteHandle(h, tag[0]);
+}
+
+// sidIs reports whether sid is the SID in text form.
+static int sidIs(void *sid, const WCHAR *text)
+{
+    WCHAR *s = 0;
+    int same = text && ConvertSidToStringSidW(sid, &s) && samePath(s, text);
+    if (s) {
+        LocalFree(s);
+    }
+    return same;
+}
+
+// openBackup opens the backup folder at root for access, and only when it
+// is the folder this removal created: a plain folder at that very path,
+// owned by LocalSystem, the administrators or the account the action runs
+// as, with a protected access list. A folder or junction someone else put
+// there with the token from a log is refused. 0 otherwise.
+static HANDLE openBackup(const WCHAR *root, DWORD access)
+{
+    HANDLE h = openNoFollow(root, access | READ_CONTROL_);
     if (!h) {
         return 0;
     }
-    DWORD tag[2] = {0, 0};
-    int ok = emptyFolder(h, 0) && GetFileInformationByHandleEx(h, FileAttributeTagInfo_, tag, sizeof tag) && deleteHandle(h, tag[0]);
-    CloseHandle(h);
-    return ok;
+    WCHAR *final = finalPathOf(h), *user = userSid();
+    void *owner = 0, *sd = 0;
+    ACL *dacl = 0;
+    unsigned short control = 0;
+    DWORD revision = 0;
+    SIZE_T n = wlen(root);
+    int ok = final && wlen(final) == n + 1 && CompareStringOrdinal(final, (int)n, root, (int)n, 1) == CSTR_EQUAL &&
+             !GetSecurityInfo(h, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION, &owner, 0, &dacl, 0, &sd) &&
+             GetSecurityDescriptorControl(sd, &control, &revision) && (control & SE_DACL_PROTECTED) &&
+             (sidIs(owner, u"S-1-5-18") || sidIs(owner, u"S-1-5-32-544") || sidIs(owner, user));
+    if (sd) {
+        LocalFree(sd);
+    }
+    HeapFree(GetProcessHeap(), 0, user);
+    HeapFree(GetProcessHeap(), 0, final);
+    if (!ok) {
+        CloseHandle(h);
+        return 0;
+    }
+    return h;
+}
+
+// openMoved opens backup folder <index> relative to root.
+static HANDLE openMoved(HANDLE root, DWORD index, DWORD access)
+{
+    WCHAR num[12];
+    SIZE_T pos = 0;
+    wappendnum(num, &pos, index);
+    HANDLE h = openRelative(root, num, (DWORD)(pos * sizeof(WCHAR)), access);
+    if (h && !plainFolder(h)) {
+        CloseHandle(h);
+        h = 0;
+    }
+    return h;
 }
 
 // moveAside moves folder, opened without following a reparse point and
-// checked to still be the folder at that path, into backup as <index>.
-// The backup folder is created on the first call for its volume, and only
-// a folder this call created is used: one that existed before could carry
-// any owner and access list.
-static int moveAside(MSIHANDLE install, const WCHAR *folder, const WCHAR *token, DWORD index)
+// checked to still be the folder at that path, into the backup folder as
+// <index>. The backup folder is created on the first call for its volume
+// (created holds a bit per drive letter), and only a folder this removal
+// created is used: one that existed before could carry any owner and
+// access list.
+static int moveAside(MSIHANDLE install, const WCHAR *folder, const WCHAR *token, DWORD index, DWORD *created)
 {
-    static DWORD created;
-    DWORD volume = 1u << (wlower(folder[0]) - 'a');
     WCHAR *root = backupPath(folder, token, 0), *final = 0;
+    DWORD volume = 1u << (wlower(folder[0]) - 'a');
     HANDLE dir = 0, h = 0;
     int ok = 0;
     if (!root) {
         logft(install, tmplRemove, msgNoMemory, 0, 0);
         return 0;
     }
-    if (!(created & volume)) {
+    if (!(*created & volume)) {
         // A new folder of the token's own: only LocalSystem, the
         // administrators and its owner may open it.
         void *sd = 0;
         if (ConvertStringSecurityDescriptorToSecurityDescriptorW(backupSddl, 1, &sd, 0)) {
             SECURITY_ATTRIBUTES sa = {sizeof sa, sd, 0};
             if (CreateDirectoryW(root, &sa)) {
-                created |= volume;
+                *created |= volume;
             }
             LocalFree(sd);
         }
     }
-    dir = created & volume ? openNoFollow(root, FILE_ADD_SUBDIRECTORY) : 0;
+    dir = *created & volume ? openBackup(root, FILE_ADD_SUBDIRECTORY) : 0;
     h = dir ? openNoFollow(folder, DELETE_) : 0;
     final = h ? finalPathOf(h) : 0;
     if (!dir) {
@@ -2421,10 +2495,8 @@ static int moveAside(MSIHANDLE install, const WCHAR *folder, const WCHAR *token,
         if (GetFileAttributesW(folder) != INVALID_FILE_ATTRIBUTES) {
             logft(install, tmplRemove, folder, msgRemoveChanged, 0);
         }
-        ok = 1;
     } else if (!final || !samePath(final, folder)) {
         logft(install, tmplRemove, folder, msgRemoveChanged, 0);
-        ok = 1;
     } else {
         WCHAR num[12];
         SIZE_T pos = 0;
@@ -2447,6 +2519,40 @@ static int moveAside(MSIHANDLE install, const WCHAR *folder, const WCHAR *token,
     return ok;
 }
 
+// restore moves backup folder <index> back to folder (with its trailing
+// backslash): by handle into the parent folder, opened without following a
+// reparse point and checked to still be at that path, so that a junction
+// put in place of a folder above it cannot send the tree elsewhere.
+static int restore(HANDLE root, DWORD index, WCHAR *folder)
+{
+    SIZE_T n = wlen(folder) - 1, cut = n;
+    while (cut && folder[cut - 1] != '\\') {
+        cut--;
+    }
+    HANDLE moved = openMoved(root, index, DELETE_), parent = 0;
+    WCHAR *final = 0;
+    int ok = 0;
+    if (moved && cut >= 3) {
+        WCHAR keep = folder[cut];
+        folder[cut] = 0;
+        parent = openNoFollow(folder, FILE_ADD_SUBDIRECTORY);
+        final = parent ? finalPathOf(parent) : 0;
+        int same = final && samePath(final, folder);
+        folder[cut] = keep;
+        folder[n] = 0;
+        ok = same && renameInto(moved, parent, folder + cut);
+        folder[n] = '\\';
+    }
+    HeapFree(GetProcessHeap(), 0, final);
+    if (parent) {
+        CloseHandle(parent);
+    }
+    if (moved) {
+        CloseHandle(moved);
+    }
+    return ok;
+}
+
 // The deferred, rollback and commit side; see the comment above
 // BuilderRemoveFolders.
 __declspec(dllexport) UINT WINAPI BuilderRemoveFoldersExec(MSIHANDLE install)
@@ -2461,43 +2567,49 @@ __declspec(dllexport) UINT WINAPI BuilderRemoveFoldersExec(MSIHANDLE install)
         HeapFree(GetProcessHeap(), 0, data);
         return ERROR_SUCCESS;
     }
-    DWORD index = 0;
+    DWORD index = 0, created = 0, volumes = 0;
     for (WCHAR *folder = folders; folder && *folder;) {
         WCHAR *next = field(folder, '\n');
-        WCHAR *backup = backupPath(folder, token, ++index);
-        WCHAR *root = backupPath(folder, token, 0);
-        if (!backup || !root) {
+        WCHAR *rootPath = backupPath(folder, token, 0);
+        volumes |= 1u << (wlower(folder[0]) - 'a');
+        index++;
+        if (!rootPath) {
             logft(install, tmplRemove, msgNoMemory, 0, 0);
-        } else if (op == 'm' || op == 'd') {
-            if (moveAside(install, folder, token, index) && op == 'd' && GetFileAttributesW(backup) != INVALID_FILE_ATTRIBUTES) {
-                if (deleteTree(backup)) {
-                    logft(install, tmplRemove, msgRemoveDeleted, folder, 0);
-                } else {
-                    logft(install, tmplRemove, msgRemoveLeft, backup, 0);
-                }
-            }
-        } else if (GetFileAttributesW(backup) != INVALID_FILE_ATTRIBUTES) {
-            if (op == 'c' && deleteTree(backup)) {
-                logft(install, tmplRemove, msgRemoveDeleted, folder, 0);
-            } else if (op == 'c') {
-                logft(install, tmplRemove, msgRemoveLeft, backup, 0);
-            } else {
-                // MoveFileExW takes the folder without its backslash.
-                folder[wlen(folder) - 1] = 0;
-                if (MoveFileExW(backup, folder, 0)) {
+        } else if ((op == 'm' || op == 'd') && !moveAside(install, folder, token, index, &created)) {
+            // Left in place and logged.
+        } else if (op != 'm') {
+            HANDLE root = openBackup(rootPath, DELETE_ | FILE_LIST_DIRECTORY | FILE_WRITE_ATTRIBUTES);
+            HANDLE moved = root && op != 'u' ? openMoved(root, index, DELETE_ | FILE_LIST_DIRECTORY | FILE_WRITE_ATTRIBUTES) : 0;
+            if (op == 'u' && root) {
+                if (restore(root, index, folder)) {
                     logft(install, tmplRemove, folder, msgRemoveRestored, 0);
                 } else {
-                    logft(install, tmplRemove, msgRemoveRestore, backup, GetLastError());
+                    logft(install, tmplRemove, msgRemoveRestore, rootPath, GetLastError());
                 }
+            } else if (moved && deleteFolder(moved)) {
+                logft(install, tmplRemove, msgRemoveDeleted, folder, 0);
+            } else if (moved) {
+                logft(install, tmplRemove, msgRemoveLeft, rootPath, 0);
+            }
+            if (moved) {
+                CloseHandle(moved);
+            }
+            if (root) {
+                CloseHandle(root);
             }
         }
-        // The backup folder goes once it is empty.
-        if (root && op != 'm') {
-            RemoveDirectoryW(root);
-        }
-        HeapFree(GetProcessHeap(), 0, root);
-        HeapFree(GetProcessHeap(), 0, backup);
+        HeapFree(GetProcessHeap(), 0, rootPath);
         folder = next;
+    }
+    // Each backup folder goes once it is empty.
+    for (WCHAR drive = 'a'; op != 'm' && drive <= 'z'; drive++) {
+        WCHAR *rootPath = volumes & (1u << (drive - 'a')) ? backupPath(&drive, token, 0) : 0;
+        HANDLE root = rootPath ? openBackup(rootPath, DELETE_) : 0;
+        if (root) {
+            deleteHandle(root, 0);
+            CloseHandle(root);
+        }
+        HeapFree(GetProcessHeap(), 0, rootPath);
     }
     HeapFree(GetProcessHeap(), 0, data);
     return ERROR_SUCCESS;

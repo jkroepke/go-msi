@@ -56,7 +56,7 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     GetFinalPathNameByHandleW:16 ExpandEnvironmentStringsW:12 SetFileInformationByHandle:16 GetFileInformationByHandleEx:16 \
     CreateDirectoryW:8 RemoveDirectoryW:4 MoveFileExW:12 >"$tmp/$out/kernel32.def"
   imports advapi32 OpenThreadToken:16 DuplicateTokenEx:24 CreateProcessAsUserW:44 SystemFunction036:8 \
-    ConvertStringSidToSidW:8 LookupAccountNameW:28 GetNamedSecurityInfoW:32 SetNamedSecurityInfoW:28 \
+    ConvertStringSidToSidW:8 LookupAccountNameW:28 GetNamedSecurityInfoW:32 GetSecurityInfo:32 SetNamedSecurityInfoW:28 \
     GetSecurityDescriptorControl:12 InitializeAcl:12 GetAce:12 AddAce:20 AddAccessAllowedAceEx:20 \
     EqualSid:8 GetLengthSid:4 RegCreateKeyExW:36 RegOpenKeyExW:20 RegSetValueExW:24 \
     RegQueryValueExW:24 RegDeleteTreeW:8 RegCloseKey:4 RegEnumKeyExW:32 OpenProcessToken:12 GetTokenInformation:20 ConvertSidToStringSidW:8 \

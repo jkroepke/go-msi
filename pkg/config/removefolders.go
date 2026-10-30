@@ -42,6 +42,13 @@ func (v *validator) componentRemoveFolders(cfg *Config, known *refs, compPath st
 		}
 
 		v.removeFolderSource(cfg, known, entryPath+".property", name, set)
+
+		// The installer decides which files to copy before the folder is
+		// moved away, so a repair or upgrade would lose the files it kept.
+		if entry.On != RemoveOnUninstall && (name == cfg.InstallDir.ID || known.dirs[name] != nil) {
+			v.errorf(entryPath+".on", "on: %s cannot remove %s, a folder of the package: a repair would move away the files "+
+				"the installer keeps there; remove it on uninstall, or name a folder the package does not install to", entry.On, name)
+		}
 	}
 }
 

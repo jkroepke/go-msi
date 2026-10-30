@@ -67,7 +67,7 @@ components:
 customActions:
   - id: StdInside
     setProperty: { name: TemplateFolder, value: '[GUARD_STD]Inner\' }
-    schedule: [{ sequence: execute, after: AppSearch, condition: GUARD_STD }]   # before BuilderRemoveFolders, which runs right before CostInitialize
+    schedule: [{ sequence: execute, after: AppSearch, condition: GUARD_STD }]   # before BuilderRemoveFolders, which runs right after RemoveFiles
   - id: FailRemove
     run: { command: '"[System64Folder]cmd.exe" /c (if not exist "[DATA_DIR]a.txt" if not exist "[DATA_DIR]nested\deeper\d.txt" echo removed>"[MARKER]") & exit 1' }
     execute: deferred

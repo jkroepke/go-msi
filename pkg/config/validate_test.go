@@ -743,6 +743,10 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: INSTALLDIR}]\n    files:", 1),
 			sevWarning, "components[0].removeFolders[0].property", "installDir.remember",
 		},
+		"removeFolders install on a package folder": {
+			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: INSTALLDIR, on: both}]\n    files:", 1),
+			sevError, "components[0].removeFolders[0].on", "a folder of the package",
+		},
 		"removeFolders unset property": {
 			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: NVS_HOME}]\n    files:", 1),
 			sevWarning, "components[0].removeFolders[0].property", "only the command line",

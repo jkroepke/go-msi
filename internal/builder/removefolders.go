@@ -58,9 +58,15 @@ func (b *build) removeFolders() error {
 func (b *build) removeFoldersActions() {
 	actions := []*actionInfo{
 		{name: cadll.RemoveFolders, typ: caDLL, source: cadll.Key, target: cadll.RemoveFolders},
-		{name: cadll.RemoveFoldersUndo, typ: caDLL | caRollback | caNoImpersonate, source: cadll.Key, target: cadll.RemoveFoldersExec},
-		{name: cadll.RemoveFoldersExec, typ: caDLL | caDeferred | caNoImpersonate, source: cadll.Key, target: cadll.RemoveFoldersExec},
-		{name: cadll.RemoveFoldersCommit, typ: caDLL | caCommit | caNoImpersonate, source: cadll.Key, target: cadll.RemoveFoldersExec},
+		{name: cadll.RemoveFoldersUndo, typ: caDLL | caRollback | caNoImpersonate | caHideTarget, source: cadll.Key, target: cadll.RemoveFoldersExec},
+		{name: cadll.RemoveFoldersExec, typ: caDLL | caDeferred | caNoImpersonate | caHideTarget, source: cadll.Key, target: cadll.RemoveFoldersExec},
+		{name: cadll.RemoveFoldersCommit, typ: caDLL | caCommit | caNoImpersonate | caHideTarget, source: cadll.Key, target: cadll.RemoveFoldersExec},
+	}
+
+	// The data names the private backup folder; keep it out of the log,
+	// where the account that started a repair could read it.
+	for _, name := range []string{cadll.RemoveFoldersUndo, cadll.RemoveFoldersExec, cadll.RemoveFoldersCommit} {
+		b.hidden[name] = true
 	}
 
 	b.standardAt(seqInstallExecute, actRemoveFiles)

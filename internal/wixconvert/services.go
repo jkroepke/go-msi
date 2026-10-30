@@ -362,11 +362,11 @@ func (cc *compConv) purge(elm *elem) {
 		return
 	}
 
-	cc.removeFolders(cmp.Or(prop, cc.cp.dir), when, cond)
+	cc.removeFolders(elm, cmp.Or(prop, cc.cp.dir), when, cond)
 }
 
 // removeFolders writes the removeFolders entry of a util:RemoveFolderEx.
-func (cc *compConv) removeFolders(prop, when, cond string) {
+func (cc *compConv) removeFolders(elm *elem, prop, when, cond string) {
 	conv := cc.c
 	entry := newMap().set("property", conv.dirRef(prop))
 
@@ -375,6 +375,13 @@ func (cc *compConv) removeFolders(prop, when, cond string) {
 	// installDir.remember searches for it, as WiX packages do with a
 	// RegistrySearch of their own.
 	inst := conv.installDir
+	if _, isDir := conv.dirs[prop]; isDir && (when == onInstall || when == onBoth) {
+		conv.todof(cc.out, "", elm.line, "util:RemoveFolderEx On=%q on %s was not converted: removeFolders removes a folder of the "+
+			"package on uninstall only, since a repair would lose the files the installer keeps there", when, prop)
+
+		return
+	}
+
 	if inst != nil && conv.dirRef(inst.id) == conv.dirRef(prop) {
 		install := conv.out.child("installDir")
 		if install.get("remember") == nil {

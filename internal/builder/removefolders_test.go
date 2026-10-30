@@ -62,9 +62,9 @@ properties:
 		name, typ, cond string
 	}{
 		{"BuilderRemoveFolders", "1", ""},
-		{"BuilderRemoveFoldersUndo", "3329", "BuilderRemoveFoldersUndo"},
-		{"BuilderRemoveFoldersExec", "3073", "BuilderRemoveFoldersExec"},
-		{"BuilderRemoveFoldersCommit", "3585", "BuilderRemoveFoldersCommit"},
+		{"BuilderRemoveFoldersUndo", "11521", "BuilderRemoveFoldersUndo"},
+		{"BuilderRemoveFoldersExec", "11265", "BuilderRemoveFoldersExec"},
+		{"BuilderRemoveFoldersCommit", "11777", "BuilderRemoveFoldersCommit"},
 	} {
 		row := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == action.name })
 
@@ -90,6 +90,13 @@ properties:
 	}
 
 	rowWhere(t, database, "Binary", func(r []any) bool { return r[0] == "BuilderRun" })
+
+	hidden := fmt.Sprint(cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "MsiHiddenProperties" }))
+	for _, want := range []string{"BuilderRemoveFoldersUndo", "BuilderRemoveFoldersExec", "BuilderRemoveFoldersCommit"} {
+		if !strings.Contains(";"+hidden+";", ";"+want+";") {
+			t.Errorf("MsiHiddenProperties %q lacks %s", hidden, want)
+		}
+	}
 
 	secure := fmt.Sprint(cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "SecureCustomProperties" }))
 	for _, want := range []string{"DATA_DIR", "DELETE_DATA", "OLD_DIR", "INSTALLDIR"} {

@@ -790,8 +790,10 @@ components:
 Like `purge`, it keeps the folder when an upgrade replaces the product.
 Unlike `RemoveFolderEx`, which hands the subfolders to the engine's file
 removal, it moves the folder aside and deletes it at the end without
-following junctions, so a failed uninstall puts it back and a junction
-swapped in during the uninstall cannot redirect the deletion. It refuses drive roots,
+following junctions, so a failed uninstall is expected to put it back
+and a junction swapped in during the uninstall not to redirect the
+deletion (being tested on Windows). It removes a folder the package
+installs to on uninstall only. It refuses drive roots,
 standard folders such as Program Files and the folders that hold them,
 other users' profiles, folders in the Windows folder and folders behind
 junctions.
