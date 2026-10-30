@@ -522,6 +522,37 @@ func TestConvertRemoveFolderExDirectory(t *testing.T) {
 	}
 }
 
+// TestConvertRemoveFolderExBothOwnFolder checks that On="both" on the
+// component's own fixed folder keeps its uninstall half as purge.
+func TestConvertRemoveFolderExBothOwnFolder(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DataDir" Name="Hello" />
+    </StandardDirectory>
+    <Feature Id="Main">
+      <Component Directory="DataDir">
+        <File Source="hello.conf" />
+        <util:RemoveFolderEx On="both" Property="DataDir" />
+      </Component>
+    </Feature>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{"purge: true", "the install half of util:RemoveFolderEx"} {
+		if !strings.Contains(string(res.YAML), want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, res.YAML)
+		}
+	}
+}
+
 // TestConvertUnmappedNotes checks the TODOs of WiX constructs whose output
 // cannot validate or would be lost silently.
 func TestConvertUnmappedNotes(t *testing.T) {

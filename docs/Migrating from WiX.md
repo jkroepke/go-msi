@@ -858,7 +858,8 @@ reads back, by a `RegistrySearch`, the component's own folder from a
 registry value of that component: it becomes `purge` on the component.
 Any other `util:RemoveFolderEx`, and one with `On="install"` or
 `On="both"`, becomes a `removeFolders` entry; on a directory of the
-package `On="install"` and `On="both"` are left out with a note.
+package `On="install"` is left out with a note, and `On="both"` keeps
+only its uninstall half, also with a note.
 
 ## Signing
 

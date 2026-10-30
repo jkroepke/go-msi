@@ -475,6 +475,8 @@ func (cc *compConv) purge(elm *elem) {
 		prop = cc.cp.dir
 	}
 
+	when = cc.uninstallHalf(elm, cmp.Or(prop, cc.cp.dir), when)
+
 	if (prop == "" || prop == cc.cp.dir) && (when == "" || when == "uninstall") && conv.movableDir(cc.cp.dir) == "" &&
 		cc.out.get("purge") == nil {
 		if cond != "" {
@@ -489,6 +491,22 @@ func (cc *compConv) purge(elm *elem) {
 	cc.removeFolders(elm, cmp.Or(prop, cc.cp.dir), when, cond)
 }
 
+// uninstallHalf returns the On a util:RemoveFolderEx keeps: a folder of
+// the package is removed on uninstall only, so the install half of
+// On="both" is left out with a note.
+func (cc *compConv) uninstallHalf(elm *elem, folder, when string) string {
+	conv := cc.c
+	if _, isDir := conv.dirs[folder]; !isDir || when != onBoth {
+		return when
+	}
+
+	conv.todof(cc.out, "", elm.line, "the install half of util:RemoveFolderEx On=\"both\" on %s was not converted: "+
+		"removeFolders removes a folder of the package on uninstall only, since a repair would lose the files the "+
+		"installer keeps there", folder)
+
+	return ""
+}
+
 // removeFolders writes the removeFolders entry of a util:RemoveFolderEx.
 func (cc *compConv) removeFolders(elm *elem, prop, when, cond string) {
 	conv := cc.c
@@ -499,9 +517,9 @@ func (cc *compConv) removeFolders(elm *elem, prop, when, cond string) {
 	// installDir.remember searches for it, as WiX packages do with a
 	// RegistrySearch of their own.
 	inst := conv.installDir
-	if _, isDir := conv.dirs[prop]; isDir && (when == onInstall || when == onBoth) {
-		conv.todof(cc.out, "", elm.line, "util:RemoveFolderEx On=%q on %s was not converted: removeFolders removes a folder of the "+
-			"package on uninstall only, since a repair would lose the files the installer keeps there", when, prop)
+	if _, isDir := conv.dirs[prop]; isDir && when == onInstall {
+		conv.todof(cc.out, "", elm.line, "util:RemoveFolderEx On=\"install\" on %s was not converted: removeFolders removes a folder "+
+			"of the package on uninstall only, since a repair would lose the files the installer keeps there", prop)
 
 		return
 	}

@@ -2147,7 +2147,12 @@ static const WCHAR *profileRefusal(const WCHAR *folder)
             why = msgRemoveNoProfiles;
             break;
         }
-        int mine = own && wlen(own) == n && CompareStringOrdinal(own, (int)n, sid, (int)n, 1) == CSTR_EQUAL;
+        // Windows keeps a profile it could not load under "<SID>.bak",
+        // usually with the same ProfileImagePath; that SID is still ours.
+        static const WCHAR bak[] = u".bak";
+        SIZE_T ownLen = own ? wlen(own) : 0;
+        int mine = own && (n == ownLen || (n == ownLen + 4 && CompareStringOrdinal(sid + ownLen, 4, bak, 4, 1) == CSTR_EQUAL)) &&
+                   CompareStringOrdinal(own, (int)ownLen, sid, (int)ownLen, 1) == CSTR_EQUAL;
         why = profileCheck(folder, regFolder(sub, profileImagePath), mine, msgRemoveOtherProfile);
         RegCloseKey(sub);
     }
