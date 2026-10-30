@@ -581,7 +581,7 @@ func TestConvertBuiltCodeOfKeyPathID(t *testing.T) {
 	}
 
 	for _, want := range []string{"guid: '{00000000-0000-4000-8000-000000000001}'", "- id: installed\n",
-		"guid: '{00000000-0000-4000-8000-000000000002}'",
+		"guid: '{00000000-0000-4000-8000-000000000002}'", "keyPath: installed\n",
 	} {
 		if !strings.Contains(string(res.YAML), want) {
 			t.Errorf("YAML lacks %q:\n%s", want, res.YAML)

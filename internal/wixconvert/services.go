@@ -219,6 +219,13 @@ func (cc *compConv) otherControls() {
 		if elm := cc.c.borrowedControl(name); elm != nil {
 			cc.ownControl(svc, elm)
 
+			withOwn, _ := cc.c.serviceInstallers(name)
+			if slices.ContainsFunc(withOwn, func(comp *comp) bool { return slices.Contains(comp.e.kids, elm) }) {
+				cc.c.todof(svc, "", cc.serviceLines[i], "services[].control of %s comes from the ServiceControl on line %d, "+
+					"which belongs to another component that installs it; WiX runs that one only when its own component "+
+					"is installed, so check that this component needs it", name, elm.line)
+			}
+
 			continue
 		}
 

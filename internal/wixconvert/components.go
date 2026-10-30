@@ -205,13 +205,17 @@ func (c *converter) bitness(out *omap, elm *elem) {
 
 // compConv converts the content of one component.
 type compConv struct {
-	c            *converter
-	cp           *comp
-	out          *omap
-	tree         map[*dir]bool
-	controlled   map[*omap]bool
+	c          *converter
+	cp         *comp
+	out        *omap
+	tree       map[*dir]bool
+	controlled map[*omap]bool
+	// firstKey is a key path RegistryValue that came before any other
+	// resource, and firstKeyID its ID.
+	firstKey     *omap
 	keyPath      string // the key path a File or RegistryValue asks for
 	keyFile      string // the name of the key path file WiX picks
+	firstKeyID   string
 	hkcuKeyPaths []*omap
 	removeFolder []*omap
 	services     []*omap
@@ -332,10 +336,15 @@ func (cc *compConv) shortcut(e *elem) {
 func (cc *compConv) finish() { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
 	cc.resolveControls()
 
-	if cc.keyIsDir && (cc.files > 0 || cc.out.get("registry") != nil) {
+	switch {
+	case cc.keyIsDir && (cc.files > 0 || cc.out.get("registry") != nil):
 		cc.out.set("keyPath", keyDirectory)
-	} else if cc.keyPath != "" {
+	case cc.keyPath != "":
 		cc.out.set("keyPath", cc.keyPath)
+	case cc.firstKey != nil && cc.files > 0:
+		// A File after it would be msi-builder's default key path.
+		cc.firstKey.set("id", cc.firstKeyID)
+		cc.out.set("keyPath", cc.firstKeyID)
 	}
 
 	if cc.shortcuts > 0 {
@@ -592,8 +601,13 @@ func (cc *compConv) registryValue(elm *elem, root, key string) { //nolint:cyclop
 
 	if cc.files > 0 || cc.out.get("registry") != nil {
 		cc.keyPath = entry.str("id")
-	} else if elm.attr("Id") == "" {
-		entry.del("id")
+	} else {
+		// The first resource is the default key path, unless a File
+		// follows; finish decides.
+		cc.firstKey, cc.firstKeyID = entry, entry.str("id")
+		if elm.attr("Id") == "" {
+			entry.del("id")
+		}
 	}
 
 	cc.out.add("registry", entry)
