@@ -28,10 +28,13 @@
     <InstallUISequence>
       <Custom Action="OverridePerMachineFolder" After="WixSetDefaultPerMachineFolder" />
     </InstallUISequence>
-    <!-- Placed on the left-out setter, so it moves to that one's place. -->
-    <SetProperty Id="HELLOMODE" Value="dual" After="OverridePerMachineFolder" Sequence="execute" />
+    <CustomAction Id="OverrideAgain" Property="WixPerMachineFolder" Value="[ProgramFiles64Folder]Example\Hello" />
+    <!-- Placed on left-out setters, so they move to those setters' place. -->
+    <SetProperty Id="HELLOMODE" Value="dual" After="OverrideAgain" Sequence="execute" />
+    <SetProperty Id="UIMODE" Value="dual" After="OverrideAgain" />
     <InstallExecuteSequence>
       <Custom Action="OverridePerMachineFolder" After="WixSetDefaultPerMachineFolder" />
+      <Custom Action="OverrideAgain" After="OverridePerMachineFolder" />
       <RemoveExistingProducts After="InstallValidate" Condition="NOT UPGRADINGPRODUCTCODE" />
     </InstallExecuteSequence>
   </Package>

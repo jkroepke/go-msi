@@ -366,29 +366,12 @@ type anchorKey struct{ action, sequence string }
 // sequence. It returns the function that does so, for the schedules of
 // SetProperty and SetDirectory.
 func (c *converter) reanchor(byAction map[string][]any) func([]any) {
-	anchors, sourceIDs := c.sourceAnchors(byAction)
+	anchors, sources := c.sourceAnchors(byAction)
 
 	move := func(entries []any) {
 		for i, entry := range entries {
-			placement, ok := entry.(*omap)
-			if !ok {
-				continue
-			}
-
-			name := placement.str("after")
-			if name == "" {
-				name = placement.str("before")
-			}
-
-			if !sourceIDs[name] {
-				continue
-			}
-
-			if anchor := anchors[anchorKey{name, placement.str("sequence")}]; anchor != nil {
-				entries[i] = moveAnchor(placement, anchor)
-			} else {
-				c.todof(placement, "", 0, "this action was scheduled next to %s, which is not in the %s sequence; schedule it yourself",
-					name, placement.str("sequence"))
+			if placement, ok := entry.(*omap); ok {
+				entries[i] = c.followAnchors(placement, anchors, sources)
 			}
 		}
 	}
@@ -400,14 +383,53 @@ func (c *converter) reanchor(byAction map[string][]any) func([]any) {
 	return move
 }
 
+// The keys of a placement that name its anchor.
+const (
+	keyBefore = "before"
+	keyAfter  = "after"
+)
+
+// followAnchors moves a placement on a left-out setter to that setter's
+// anchor, and on through setters that are left out too. A setter that is
+// not in the placement's sequence leaves the placement at CostFinalize,
+// which both sequences have, with a note.
+func (c *converter) followAnchors(placement *omap, anchors map[anchorKey]*omap, sources map[string]*elem) *omap {
+	for range len(sources) + 1 {
+		key := keyAfter
+		if placement.str(keyBefore) != "" {
+			key = keyBefore
+		}
+
+		name := placement.str(key)
+
+		src := sources[name]
+		if src == nil {
+			return placement
+		}
+
+		anchor := anchors[anchorKey{name, placement.str("sequence")}]
+		if anchor == nil {
+			moved := moveAnchor(placement, flowMap().set(key, "CostFinalize"))
+			c.todof(moved, "", src.line, "this action was scheduled next to %s, which is not in the %s sequence; convert "+
+				"placed it %s CostFinalize, check that place", name, placement.str("sequence"), key)
+
+			return moved
+		}
+
+		placement = moveAnchor(placement, anchor)
+	}
+
+	return placement
+}
+
 // sourceAnchors returns the placement of each left-out setter in each
-// sequence, and the names of the setters.
-func (c *converter) sourceAnchors(byAction map[string][]any) (map[anchorKey]*omap, map[string]bool) {
+// sequence, and the setters by name.
+func (c *converter) sourceAnchors(byAction map[string][]any) (map[anchorKey]*omap, map[string]*elem) {
 	anchors := make(map[anchorKey]*omap)
-	sourceIDs := make(map[string]bool)
+	sources := make(map[string]*elem)
 
 	for _, src := range append(c.consumedSources(), c.perMachineSources()...) {
-		sourceIDs[src.id] = true
+		sources[src.id] = src.e
 
 		schedule := byAction[src.id]
 		if src.e.is("SetProperty") {
@@ -424,7 +446,7 @@ func (c *converter) sourceAnchors(byAction map[string][]any) (map[anchorKey]*oma
 		}
 	}
 
-	return anchors, sourceIDs
+	return anchors, sources
 }
 
 // perMachineSources returns the setters of WixPerMachineFolder, which
