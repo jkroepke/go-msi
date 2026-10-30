@@ -1280,10 +1280,10 @@ func (v *validator) registryLocation(entryPath, root, key string, perUser bool) 
 // componentRemoveRegistry checks the registry keys and values a component
 // deletes when it is installed or removed. Uninstall removals are Registry
 // rows, so their ids share regIDs with the registry entries.
-func (v *validator) componentRemoveRegistry(p string, c *Component, ids, regIDs map[string]bool, perUser bool) {
+func (v *validator) componentRemoveRegistry(p string, comp *Component, ids, regIDs map[string]bool, perUser bool) {
 	seen := make(map[[4]string]bool)
 
-	for j, entry := range c.RemoveRegistry {
+	for j, entry := range comp.RemoveRegistry {
 		entryPath := fmt.Sprintf("%s.removeRegistry[%d]", p, j)
 
 		if entry.On != "" {
@@ -1293,24 +1293,65 @@ func (v *validator) componentRemoveRegistry(p string, c *Component, ids, regIDs 
 		v.removeRegistryID(entryPath, entry, ids, regIDs)
 		v.registryLocation(entryPath, entry.Root, entry.Key, perUser)
 
-		if entry.Name == "-" {
-			v.errorf(entryPath+".name", "leave name out to delete the whole key")
-		}
+		v.removeRegistryName(entryPath, comp, entry)
 
-		// Only a whole key can be removed at uninstall without writing
-		// anything at install: a Registry row with a name and no value
-		// writes an empty value (REG-04).
-		if entry.Name != "" && (entry.On == RemoveOnUninstall || entry.On == RemoveOnBoth) {
-			v.errorf(entryPath+".name", "on: %s removes whole keys only; a value the package writes is removed with it already", entry.On)
-		}
+		// Install removals are RemoveRegistry rows and uninstall removals
+		// Registry rows; both is one of each, and a table holds each
+		// key or value once.
+		for _, table := range removeRegistryTables(entry.On) {
+			key := [4]string{table, entry.Root, strings.ToLower(entry.Key), strings.ToLower(entry.Name)}
+			if seen[key] {
+				v.errorf(entryPath, "this key or value is already removed by this component")
 
-		key := [4]string{entry.Root, strings.ToLower(entry.Key), strings.ToLower(entry.Name), cmp.Or(entry.On, RemoveOnInstall)}
-		if seen[key] {
-			v.errorf(entryPath, "this key or value is already removed by this component")
-		}
+				break
+			}
 
-		seen[key] = true
+			seen[key] = true
+		}
 	}
+}
+
+// removeRegistryName checks the name of a removeRegistry entry and the
+// generated id of an uninstall removal.
+func (v *validator) removeRegistryName(entryPath string, comp *Component, entry *RemoveRegistry) {
+	if entry.Name == "-" {
+		v.errorf(entryPath+".name", "leave name out to delete the whole key")
+	}
+
+	if entry.On != RemoveOnUninstall && entry.On != RemoveOnBoth {
+		return
+	}
+
+	// Only a whole key can be removed at uninstall without writing
+	// anything at install: a Registry row with a name and no value writes
+	// an empty value (REG-04).
+	if entry.Name != "" {
+		v.errorf(entryPath+".name", "on: %s removes whole keys only; a value the package writes is removed with it already", entry.On)
+	}
+
+	if entry.ID == "" && writesDashValue(comp, entry) {
+		v.errorf(entryPath+".id", "a registry entry named - on this key has the same generated id; set id on one of them")
+	}
+}
+
+// removeRegistryTables names the tables a removeRegistry entry adds rows to.
+func removeRegistryTables(on string) []string {
+	switch on {
+	case RemoveOnUninstall:
+		return []string{"Registry"}
+	case RemoveOnBoth:
+		return []string{"RemoveRegistry", "Registry"}
+	default:
+		return []string{"RemoveRegistry"}
+	}
+}
+
+// writesDashValue reports whether the component writes a registry value
+// named - without an id on the key that entry removes at uninstall.
+func writesDashValue(comp *Component, entry *RemoveRegistry) bool {
+	return slices.ContainsFunc(comp.Registry, func(reg *RegistryValue) bool {
+		return reg.ID == "" && reg.Name == "-" && reg.Type != registryTypeKey && reg.Root == entry.Root && strings.EqualFold(reg.Key, entry.Key)
+	})
 }
 
 // removeRegistryID checks the id of a removeRegistry entry: unique among

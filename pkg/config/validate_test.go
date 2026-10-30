@@ -955,6 +955,19 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X, on: uninstall}, {root: HKLM, key: software\\x, on: uninstall}]\n    files:", 1),
 			sevError, "components[0].removeRegistry[1]", "already removed",
 		},
+		"remove registry install and both": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X}, {root: HKLM, key: Software\\X, on: both}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[1]", "already removed",
+		},
+		"remove registry uninstall and both": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X, on: uninstall}, {root: HKLM, key: Software\\X, on: both}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[1]", "already removed",
+		},
+		"remove registry uninstall over a value named dash": {
+			base + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\X, name: '-', value: v}]\n"+
+				"    removeRegistry: [{root: HKLM, key: software\\x, on: uninstall}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[0].id", "same generated id",
+		},
 		"remove registry uninstall id of a registry entry": {
 			base + strings.Replace(appComponent, "    files:", "    registry: [{id: A, root: HKLM, key: Software\\X, name: N, value: v}]\n"+
 				"    removeRegistry: [{id: A, root: HKLM, key: Software\\Y, on: both}]\n    files:", 1),
