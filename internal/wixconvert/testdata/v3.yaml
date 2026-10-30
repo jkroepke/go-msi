@@ -4,6 +4,7 @@
 # WiX variables became ${NAME} references; pass them with --var NAME=value: BinDir, Edition, ProductVersion.
 # TODO(line 19): <?if $(var.Edition) = "full"?> is not evaluated: only its first branch was converted
 # TODO(line 21): the <?else?> branch was left out; convert it by hand if your build takes it
+# TODO(line 90): the standard action InstallServices runs only when NOT (NO_SERVICE = 1); msi-builder has no conditions on standard actions, so put the condition on the components whose resources it handles (components[].condition)
 schema: msi-builder/v1
 product:
   name: Hello Tools
@@ -50,15 +51,24 @@ features:
     components: [ToolExe]
   - id: Docs
     title: Documentation
-    # TODO(line 59): the conditional level "40000" with condition "1" was not converted: the level is not a number from 0 to 32767
-    # TODO(line 60): the conditional level "2" with condition "Installed" was not converted: Installed is always false there, because msi-builder applies feature conditions to first installs only
+    # TODO(line 78): the conditional level "40000" with condition "1" was not converted: the level is not a number from 0 to 32767
+    # TODO(line 79): the conditional level "2" with condition "Installed" was not converted: Installed is always false there, because msi-builder applies feature conditions to first installs only
     conditions:
       - condition: NOT INSTALLDOCS
         default: disabled
       - condition: EDITION = "${Edition}"
         default: off
-    components: [Readme]
+    components: [Readme, ToolCfgKey, ToolsMenuLinks]
 components:
+  # The RemoveFolder and HKCU key path of this shortcut component were left out:
+  # msi-builder writes both for every shortcut.
+  - id: ToolsMenuLinks
+    directory: ProgramMenuFolder/Hello Tools
+    guid: '{2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E64}'
+    shortcuts:
+      - name: Read me
+        file: readme.txt
+        directory: ProgramMenuFolder/Hello Tools
   - id: Readme
     guid: '{2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E61}'
     files:
@@ -91,6 +101,21 @@ components:
         action: prepend
         scope: user
     keyPath: ToolExe_KeyPath
+  # Without an Id the component takes the Id of its key path.
+  - id: ToolCfgKey
+    directory: BIN
+    guid: '{2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E63}'
+    files:
+      - source: ${BinDir}/tool.cfg
+        id: tool.cfg
+    registry:
+      - id: ToolCfgKey
+        root: HKCU
+        key: Software\Example\Hello Tools
+        name: config
+        type: dword
+        value: "1"
+    keyPath: ToolCfgKey
 properties:
   EDITION: full
 launchConditions:
@@ -108,7 +133,7 @@ customActions:
       command: '"[#tool.exe]" --setup'
     execute: commit
     return: asyncWait
-    # TODO(line 72): the progress template of RunTool is not converted: msi-builder writes no ActionText templates
+    # TODO(line 94): the progress template of RunTool is not converted: msi-builder writes no ActionText templates
     progress: Setting up the tool
     schedule:
       - {sequence: execute, after: InstallFiles, condition: NOT Installed AND NOT REMOVE}

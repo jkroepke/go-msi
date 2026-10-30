@@ -203,6 +203,32 @@ func (c *converter) emitFeatures() {
 	}
 }
 
+// featureLevel converts the Level of a feature, with its defines filled in.
+func (c *converter) featureLevel(out *omap, elm *elem) {
+	text := strings.TrimSpace(c.literal(elm.attr("Level")))
+	if text == "" {
+		return
+	}
+
+	if _, ok := parseLevel(text); !ok {
+		out.set("default", "off")
+		c.todof(out, "default", elm.line, "the feature level %q is not a number from 0 to %d; convert assumed default off", text, maxLevel)
+
+		return
+	}
+
+	if text != "1" {
+		conditionLevel(out, text)
+	}
+}
+
+// parseLevel reads a feature level, a number from 0 to maxLevel.
+func parseLevel(text string) (int, bool) {
+	level, err := strconv.Atoi(text)
+
+	return level, err == nil && level >= 0 && level <= maxLevel
+}
+
 func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat list of independent WiX attributes
 	elm := feat.e
 	out := newMap()
@@ -212,7 +238,9 @@ func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat lis
 	out.set("title", c.value(elm, "Title"))
 	out.set("description", c.value(elm, "Description"))
 
-	c.featureLevel(out, "", elm.line, elm.attr("Level"))
+	// default: off is level 2; other levels keep their number, which the
+	// package's INSTALLLEVEL property, if any, still compares.
+	c.featureLevel(out, elm)
 
 	switch display := elm.attr("Display"); display {
 	case "":
@@ -263,28 +291,17 @@ func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat lis
 	return out
 }
 
-// featureLevel sets default for the levels it names (0, 1 and 2) and level
-// for any other, on a feature (key "") or one of its conditions (key
-// "condition"); a condition always gets one of the two.
-func (c *converter) featureLevel(out *omap, key string, line int, level string) {
-	switch level {
-	case "", "1":
-		if key != "" {
-			out.set("default", "on")
-		}
-	case "0":
+// conditionLevel sets default for the levels it names (0, 1 and 2) and
+// level for any other; conditionalLevelProblem has checked the number.
+func conditionLevel(out *omap, level string) {
+	switch number, _ := strconv.Atoi(level); number {
+	case 0:
 		out.set("default", "disabled")
-	case "2":
+	case 1:
+		out.set("default", "on")
+	case 2:
 		out.set("default", "off")
 	default:
-		number, err := strconv.Atoi(level)
-		if err != nil || number < 0 || number > maxLevel {
-			out.set("default", "off")
-			c.todof(out, key, line, "Level=%q is not a number from 0 to %d; set level", level, maxLevel)
-
-			return
-		}
-
 		out.set("level", number)
 	}
 }
@@ -302,9 +319,9 @@ func (c *converter) featureConditions(out *omap, elm *elem) {
 
 		switch {
 		case kid.is("Condition"):
-			level, cond = kid.attr("Level"), c.expand(kid, strings.TrimSpace(kid.text))
+			level, cond = strings.TrimSpace(c.literal(kid.attr("Level"))), c.expand(kid, strings.TrimSpace(kid.text))
 		case kid.is("Level"):
-			level, cond = kid.attr("Value"), c.value(kid, "Condition")
+			level, cond = strings.TrimSpace(c.literal(kid.attr("Value"))), c.value(kid, "Condition")
 		default:
 			continue
 		}
@@ -318,7 +335,7 @@ func (c *converter) featureConditions(out *omap, elm *elem) {
 		entry := newMap()
 		entry.order("condition", "default", "level")
 		entry.set("condition", cond)
-		c.featureLevel(entry, "condition", kid.line, level)
+		conditionLevel(entry, level)
 		out.add("conditions", entry)
 	}
 }
@@ -327,7 +344,7 @@ func (c *converter) featureConditions(out *omap, elm *elem) {
 // conditions entry, or returns "". A condition with ${NAME} references is
 // only checked once the variables are substituted.
 func conditionalLevelProblem(level, cond string) string {
-	if number, err := strconv.Atoi(level); err != nil || number < 0 || number > maxLevel {
+	if _, ok := parseLevel(level); !ok {
 		return fmt.Sprintf("the level is not a number from 0 to %d", maxLevel)
 	}
 

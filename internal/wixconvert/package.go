@@ -7,15 +7,49 @@ import (
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
+// emitVars writes the defines as vars. A define that uses an earlier one
+// takes in its value, as the WiX preprocessor does: msi-builder does not
+// expand a variable inside a vars value.
+func (c *converter) emitVars() {
+	c.resolveDefines()
+
+	for _, define := range c.defines {
+		c.out.child("vars").set(define[0], c.expand(c.pkg, c.defined[define[0]]))
+	}
+}
+
+// resolveDefines fills the values of earlier defines into each define.
+func (c *converter) resolveDefines() {
+	c.defined = make(map[string]string)
+
+	for _, define := range c.defines {
+		c.defined[define[0]] = c.literal(define[1])
+	}
+}
+
+// literal fills the values of the defines into text.
+func (c *converter) literal(text string) string {
+	if c.defined == nil {
+		c.resolveDefines()
+	}
+
+	return preprocessorVar.ReplaceAllStringFunc(text, func(ref string) string {
+		parts := preprocessorVar.FindStringSubmatch(ref)
+		if v, ok := c.defined[varName(parts[2])]; ok && parts[1] != "env" && parts[1] != "sys" {
+			return v
+		}
+
+		return ref
+	})
+}
+
 // emit writes the output in msi-builder's key order.
 func (c *converter) emit() {
 	c.out.set("schema", "msi-builder/v1")
 	c.out.order("vars", "product", "package", "upgrade", "installDir", "directories", "features", "components",
 		"properties", "launchConditions", "customActions", "icons", "binaries", "firewall", "scheduleReboot", "ui")
 
-	for _, d := range c.defines {
-		c.out.child("vars").set(d[0], c.expand(c.pkg, d[1]))
-	}
+	c.emitVars()
 
 	c.markNeededDirs()
 	tree := c.treeDirs()
@@ -164,7 +198,8 @@ func (c *converter) emitScope(pkgOut *omap) {
 		c.perUserNote(pkgOut)
 	}
 
-	if scope != "" && scope != "perMachine" {
+	c.scope = scope
+	if scope != "" && scope != scopeMachine {
 		pkgOut.set("scope", scope)
 	}
 }
@@ -175,7 +210,7 @@ func (c *converter) allUsers(pkgOut *omap, scope string) (string, bool) {
 	found := false
 
 	for _, elm := range c.properties {
-		if elm.attr("Id") != "ALLUSERS" {
+		if elm.attr("Id") != propAllUsers {
 			continue
 		}
 
@@ -184,9 +219,9 @@ func (c *converter) allUsers(pkgOut *omap, scope string) (string, bool) {
 		switch c.value(elm, "Value") {
 		case "2":
 			c.todof(pkgOut, "scope", elm.line,
-				"ALLUSERS=2 lets the user choose the scope; use scope perUserOrMachine or perMachineOrUser")
+				"ALLUSERS=2 lets the user choose the scope; use scope perUserOrMachine or perMachineOrUser, which need installerVersion 5.0")
 		case "":
-			scope = "perUser"
+			scope = scopeUser
 		}
 	}
 
@@ -202,7 +237,9 @@ func (c *converter) perUserNote(pkgOut *omap) {
 
 	c.todof(pkgOut, "scope", line,
 		"the WiX v3 Package has no InstallScope and the file sets no ALLUSERS, which Windows Installer installs per user; "+
-			"msi-builder installs per machine by default, set scope: perUser to keep the per-user install")
+			"msi-builder installs per machine by default. Keep that when the package writes to Program Files or other "+
+			"machine-wide places, which a per-user package cannot; an upgrade may then not find a version installed per user. "+
+			"Set scope: perUser only for a package that installs into the user profile")
 }
 
 func (c *converter) emitMedia(pkgOut *omap) {
@@ -324,6 +361,18 @@ const (
 	valueNone = "none"
 )
 
+// The install scopes, as package.scope and components[].scope name them.
+const (
+	scopeMachine       = "perMachine"
+	scopeUser          = "perUser"
+	scopeUserOrMachine = "perUserOrMachine"
+	scopeMachineOrUser = "perMachineOrUser"
+	// propAllUsers is the property that selects the scope.
+	propAllUsers = "ALLUSERS"
+	// propPerMachineFolder is WixUI_Advanced's per-machine install folder.
+	propPerMachineFolder = "WixPerMachineFolder"
+)
+
 func orAny(version string) string {
 	if version == "" {
 		return valueAny
@@ -347,7 +396,8 @@ func (c *converter) ownUpgradeRow(upgrade *omap, kid *elem) bool {
 			"check the conditions that test it", kid.attr("Property"))
 	case !kid.yes("OnlyDetect"):
 		c.todof(upgrade, "", kid.line, "an UpgradeVersion for the package's own UpgradeCode (versions %s to %s) is a hand-made major upgrade; "+
-			"msi-builder writes its own, which removes every older version, check the upgrade keys",
+			"msi-builder writes its own, which removes every older version and never a newer one (downgrade: allow installs "+
+			"next to a newer version), check the upgrade keys",
 			orAny(c.value(kid, "Minimum")), orAny(c.value(kid, "Maximum")))
 	default:
 		return false
@@ -432,7 +482,7 @@ func skippedProperty(id string) bool {
 	}
 
 	switch id {
-	case "ALLUSERS", "WixShellExecTarget", "QtExecCmdLine", "QtExec64CmdLine", "WixQuietExecCmdLine", "WixQuietExec64CmdLine", "WIXUI_INSTALLDIR",
+	case propAllUsers, "WixShellExecTarget", "QtExecCmdLine", "QtExec64CmdLine", "WixQuietExecCmdLine", "WixQuietExec64CmdLine", "WIXUI_INSTALLDIR",
 		"WIXUI_EXITDIALOGOPTIONALCHECKBOX", "WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT", "WIXUI_EXITDIALOGOPTIONALTEXT":
 		return true
 	}

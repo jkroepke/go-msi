@@ -2,19 +2,21 @@
 # Converted from package.wxs by msi-builder convert.
 # Review it, resolve the TODO comments, then run msi-builder validate.
 # WiX variables became ${NAME} references; pass them with --var NAME=value: Version.
-# TODO(line 4): <?include common.wxi?>: convert the included file and merge it in by hand
-# TODO(line 45): the hand-built dialog PortDlg cannot be converted; ui.dialogs lays out text, password, checkbox and choice fields
-# TODO(line 165): rescheduling the standard action RemoveExistingProducts in InstallExecuteSequence has no counterpart
-# TODO(line 48): a second progress text for InstallFiles is ignored
-# TODO(line 155): the custom action Greet is a script; script custom actions are never supported, use a run action
-# TODO(line 156): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
-# TODO(line 47): the progress text of InstallFiles cannot be converted: msi-builder writes progress texts only for its customActions
-# TODO(line 49): the progress text of LaunchHello is dropped: the action was not converted to a customActions entry of its own
-# TODO(line 167): drop Wix4BroadcastEnvironmentChange_X64: Windows Installer announces environment changes itself
-# TODO(line 168): Wix4BroadcastSettingChange_X64 has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action
+# TODO(line 7): <?include common.wxi?>: convert the included file and merge it in by hand
+# TODO(line 48): the hand-built dialog PortDlg cannot be converted; ui.dialogs lays out text, password, checkbox and choice fields
+# TODO(line 178): rescheduling the standard action RemoveExistingProducts in InstallExecuteSequence has no counterpart
+# TODO(line 51): a second progress text for InstallFiles is ignored
+# TODO(line 168): the custom action Greet is a script; script custom actions are never supported, use a run action
+# TODO(line 169): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
+# TODO(line 50): the progress text of InstallFiles cannot be converted: msi-builder writes progress texts only for its customActions
+# TODO(line 52): the progress text of LaunchHello is dropped: the action was not converted to a customActions entry of its own
+# TODO(line 180): drop Wix4BroadcastEnvironmentChange_X64: Windows Installer announces environment changes itself
+# TODO(line 181): Wix4BroadcastSettingChange_X64 has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action
 schema: msi-builder/v1
 vars:
   Port: "8080"
+  ShortName: Hello
+  ShortcutName: Hello App
 product:
   name: Hello
   manufacturer: Example
@@ -33,7 +35,7 @@ package:
   summary:
     keywords: hello,service
 upgrade:
-  # TODO(line 12): WiX generated the Guid of Component2, Component1; msi-builder generates other codes, and removing the old version after installing this one deletes their files on the first upgrade from the WiX package. Run msi-builder convert again with --msi and the package WiX built, or set each guid from msi-builder inspect --table Component
+  # TODO(line 15): WiX generated the Guid of manual.pdf, hello.yaml; msi-builder generates other codes, and removing the old version after installing this one deletes their files on the first upgrade from the WiX package. Run msi-builder convert again with --msi and the package WiX built, or set each guid from msi-builder inspect --table Component
   removeOld: afterInstallExecute
   downgrade: allow
   downgradeMessage: A newer version of Hello is already installed.
@@ -55,7 +57,7 @@ directories:
         configurable: true
         children:
           - id: LogsDir
-            name: logs
+            name: ${ShortName} logs
   - id: CommonAppDataFolder
     children:
       - id: DataDir
@@ -65,26 +67,26 @@ features:
     title: Hello
     directory: INSTALLFOLDER
     allowAbsent: false
-    components: [HelloExe, Component1, Logs, Data, StartMenu]
+    components: [HelloExe, hello.yaml, Logs, Data, StartMenu]
     features:
       - id: Docs
         title: Documentation
-        # TODO(line 71): the conditional level "5" with condition "&Main = 3" was not converted: a feature condition cannot ask for feature or component states (&Main)
+        # TODO(line 74): the conditional level "5" with condition "&Main = 3" was not converted: a feature condition cannot ask for feature or component states (&Main)
         default: off
         conditions:
           - condition: INSTALLDOCS = 1
             default: on
         display: expanded
-        components: [Component2]
+        components: [manual.pdf]
   - id: Firewall
     title: Firewall rule
     level: 3
     components: [FirewallRule]
 components:
-  - id: Component2
+  - id: manual.pdf
     files:
       - source: docs/manual.pdf
-  # TODO(line 116): <util:XmlFile> is not supported: ship the complete file, or edit it with a run action (no rollback)
+  # TODO(line 125): <util:XmlFile> is not supported: ship the complete file, or edit it with a run action (no rollback)
   - id: HelloExe
     guid: 0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a10
     files:
@@ -92,7 +94,7 @@ components:
         id: hello.exe
         checksum: true
         shortcuts:
-          - name: Hello
+          - name: ${ShortcutName}
             directory: DesktopFolder
             arguments: --gui
         fileTypes:
@@ -106,6 +108,14 @@ components:
               - id: open
                 text: Open with Hello
                 arguments: '"%1"'
+          # TODO(line 107): <MIME> in an Extension has no counterpart
+          - progId: Example.HelloVault
+            description: Hello vault
+            iconIndex: 2
+            extensions:
+              - extension: hellovault
+                contentType: application/x-hello-vault
+            verbs: []
     registry:
       - root: HKLM
         key: SOFTWARE\Example\Hello
@@ -146,7 +156,7 @@ components:
         dependencies: [Tcpip]
         control:
           wait: false
-        # TODO(line 91): the recovery action "reboot" has no counterpart; restart and none are supported
+        # TODO(line 94): the recovery action "reboot" has no counterpart; restart and none are supported
         recovery:
           resetAfterDays: 1
           actions: [restart, restart, none]
@@ -169,7 +179,7 @@ components:
         value: '[INSTALLFOLDER]'
         action: append
         scope: machine
-  - id: Component1
+  - id: hello.yaml
     directory: config
     files:
       - source: config/hello.yaml
@@ -181,6 +191,7 @@ components:
     guid: 0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a12
     removeFiles:
       - name: '*.log'
+    # TODO(line 133): <Permission> replaces the object's permissions; write them as an SDDL string in folderPermissions.sddl and add (A;OICI;FA;;;SY): Windows Installer also gives SYSTEM full access to an object it locks
     createFolder: true
   - id: Data
     directory: DataDir
@@ -200,7 +211,7 @@ components:
           rights: ["0x120116"]
   # The RemoveFolder and HKCU key path of this shortcut component were left out:
   # msi-builder writes both for every shortcut.
-  # TODO(line 135): msi-builder writes its own HKCU key path for this shortcut component; with the late removeOld the WiX value HKCU\Software\Example\Hello\installed stays behind after the upgrade and the uninstall, so remove it with removeRegistry in another component
+  # TODO(line 146): msi-builder writes its own HKCU key path for this shortcut component; with the late removeOld the WiX value HKCU\Software\Example\Hello\installed stays behind after the upgrade and the uninstall, so remove it with removeRegistry in another component
   - id: StartMenu
     directory: ProgramMenuFolder/Example
     guid: 0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a14
@@ -276,6 +287,13 @@ customActions:
     error: Hello does not install on 32-bit Windows.
     schedule:
       - {sequence: execute, before: LaunchConditions, condition: NOT VersionNT64}
+  # Runs in the UI sequence, or in the execute sequence of a quiet install.
+  - id: SetHELLO_EDITION
+    setProperty: {name: HELLO_EDITION, value: full}
+    once: firstSequence
+    schedule:
+      - {sequence: ui, after: AppSearch}
+      - {sequence: execute, after: AppSearch}
   - id: SetHELLO_ARGS
     setProperty: {name: HELLO_ARGS, value: '--config "[#hello.yaml]"'}
     schedule:

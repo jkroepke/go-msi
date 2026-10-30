@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- A sample package in WiX v4 syntax with most of what msi-builder convert maps. -->
 <?define Port = 8080 ?>
+<?define ShortName = "Hello" ?>
+<!-- Takes in ShortName: msi-builder does not expand vars inside vars. -->
+<?define ShortcutName = "$(var.ShortName) App" ?>
 <?include common.wxi ?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
@@ -53,7 +56,7 @@
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Hello">
         <Directory Id="CONFIGDIR" Name="config" />
-        <Directory Id="LogsDir" Name="logs" />
+        <Directory Id="LogsDir" Name="$(var.ShortName) logs" />
       </Directory>
     </StandardDirectory>
     <StandardDirectory Id="CommonAppDataFolder">
@@ -81,7 +84,7 @@
     <ComponentGroup Id="Core" Directory="INSTALLFOLDER">
       <Component Id="HelloExe" Guid="0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a10">
         <File Id="hello.exe" Source="bin\hello.exe" KeyPath="yes" Checksum="yes">
-          <Shortcut Id="DesktopShortcut" Directory="DesktopFolder" Name="Hello" Arguments="--gui" />
+          <Shortcut Id="DesktopShortcut" Directory="DesktopFolder" Name="$(var.ShortcutName)" Arguments="--gui" />
         </File>
         <ServiceInstall Name="Hello" DisplayName="Hello Service" Description="Answers hello requests."
                         Type="ownProcess" Start="auto" ErrorControl="normal" Vital="yes"
@@ -96,6 +99,12 @@
         <ProgId Id="Example.HelloDoc" Description="Hello document" Icon="hello.exe" IconIndex="1">
           <Extension Id="hello" ContentType="application/x-hello">
             <Verb Id="open" Command="Open with Hello" Argument="&quot;%1&quot;" />
+          </Extension>
+        </ProgId>
+        <!-- Only names an icon; it opens nothing. -->
+        <ProgId Id="Example.HelloVault" Description="Hello vault" Icon="hello.exe" IconIndex="2">
+          <Extension Id="hellovault" ContentType="application/x-hello-vault">
+            <MIME ContentType="application/x-hello-vault" Default="yes" />
           </Extension>
         </ProgId>
         <ServiceControl Id="HelloControl" Name="Hello" Start="install" Stop="both" Remove="uninstall" Wait="no" />
@@ -119,8 +128,10 @@
         <File Id="hello.yaml" Source="config\hello.yaml" />
       </Component>
       <Component Id="Logs" Directory="LogsDir" Guid="0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a12">
-        <CreateFolder />
         <RemoveFile Id="RemoveLogs" Name="*.log" On="uninstall" />
+        <CreateFolder>
+          <Permission User="Administrators" GenericAll="yes" />
+        </CreateFolder>
       </Component>
       <Component Id="Data" Directory="DataDir" Guid="0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a13">
         <CreateFolder>
@@ -144,6 +155,8 @@
       <fw:FirewallException Id="HelloRule" Name="Hello" Program="[#hello.exe]" Protocol="tcp" Port="[PORT]" Scope="localSubnet" />
     </Component>
 
+    <!-- Runs in the UI sequence, or in the execute sequence of a quiet install. -->
+    <SetProperty Id="HELLO_EDITION" Value="full" After="AppSearch" Sequence="first" />
     <SetProperty Id="HELLO_ARGS" Value="--config &quot;[#hello.yaml]&quot;" Before="InstallFiles" Sequence="execute" Condition="NOT HELLO_ARGS" />
     <SetDirectory Id="LogsDir" Value="[%SYSTEMROOT]\Temp\Hello" Sequence="execute" />
     <CustomAction Id="StopClients" FileRef="hello.exe" ExeCommand="detach --all" Execute="deferred" Impersonate="no" Return="ignore" />
