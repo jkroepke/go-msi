@@ -107,6 +107,23 @@ func TestCloseApps(t *testing.T) {
 		t.Errorf("setters %v, want one for hello.exe", setters)
 	}
 
+	// The reset runs first and unconditionally, so a value set before
+	// does not reach the deferred action.
+	reset := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == "BuilderCloseReset" })
+	if fmt.Sprint(reset[1]) != "51" || reset[2] != "BuilderCloseExec" || reset[3] != "|" {
+		t.Errorf("reset row %v", reset)
+	}
+
+	if cond := conds["BuilderCloseReset"]; cond != nil && cond != "" {
+		t.Errorf("BuilderCloseReset condition %v, want none", cond)
+	}
+
+	for _, name := range setters {
+		if seq["BuilderCloseReset"] >= seq[name] {
+			t.Errorf("BuilderCloseReset at %d is not before %s at %d", seq["BuilderCloseReset"], name, seq[name])
+		}
+	}
+
 	if rowWhere(t, database, "Binary", func(r []any) bool { return r[0] == "BuilderRun" }) == nil {
 		t.Error("the DLL is not in the Binary table")
 	}

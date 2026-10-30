@@ -35,7 +35,7 @@ func (b *build) closeApps() error {
 
 		comp := file.Component.cfg.ID
 		cond := "$" + comp + "=2 OR $" + comp + "=3"
-		path := "[" + file.Component.dir.id + "]" + file.LongName
+		path := "[" + file.Component.dir.id + "]" + escapeFormatted(file.LongName)
 		// Validation caps the timeout at config.MaxCloseTimeout.
 		ms := uint32(closing.TimeoutOrDefault() / time.Millisecond) //nolint:gosec // at most 300000
 		lines = append(lines, cadll.CloseEntry(cond, ms, path))
@@ -70,6 +70,13 @@ func (b *build) closeApps() error {
 	b.addAction(&actionInfo{name: cadll.CloseExec, typ: caDLL | caDeferred | caNoImpersonate, source: cadll.Key, target: cadll.CloseEntryPoint})
 	b.standardAt(seqInstallExecute, actRemoveFiles)
 	b.schedule(seqInstallExecute, cadll.CloseExec, cadll.CloseExec, actRemoveFiles, "", 0)
+
+	// A fixed seed first, so that nothing an impersonated action set in
+	// BuilderCloseExec before survives into the list; the DLL skips the
+	// empty path it leaves.
+	reset := "BuilderCloseReset"
+	b.addAction(&actionInfo{name: reset, typ: caSetProperty, source: cadll.CloseExec, target: cadll.CloseExecSeparator})
+	b.schedule(seqInstallExecute, reset, "", cadll.CloseExec, "", 0)
 
 	for _, s := range setters {
 		b.addAction(&actionInfo{

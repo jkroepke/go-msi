@@ -927,16 +927,17 @@ What gets ended, and when:
   recovery actions may start it again.
 - In the first major upgrade from a version without `close`, the old
   version is removed before the deferred action runs when `removeOld` is
-  early (the default), so a windowless program of the old version still
-  runs from a pending-delete copy until it is ended right after. From then
-  on both versions carry `close`.
+  early (the default), so a windowless program of the old version keeps
+  running while its file goes to a pending-delete copy; whether the
+  deferred action still finds it by path afterwards is not tested. From
+  then on both versions carry `close`.
 
 Only files that end in `.exe` take `close`, and a folder source does not.
 
 Set `MSIRESTARTMANAGERCONTROL: Disable` with `close`. Restart Manager
 otherwise asks every process that holds a package file to shut down in a
 silent install, also an unrelated one that only has the file open, and
-waits for the user in a basic UI (close-apps evaluation, 2026-10-25);
+waits for the user in a basic UI (reported by the close-apps evaluation, 2026-10-25);
 `close` covers the programs the package knows about. Not adopted from WiX:
 closing a program by name wherever it runs, end-session messages
 (`WM_QUERYENDSESSION`), registering programs for a restart after the

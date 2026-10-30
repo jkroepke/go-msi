@@ -32,9 +32,11 @@ components:
   - files: [{ source: keep.exe, close: { timeout: 2s, terminate: false } }]
 `
 
-// closeHelperSource is a program with two modes: "window <marker>" opens a
-// hidden top-level window, writes <marker>.ready, and on WM_CLOSE writes
-// <marker> and exits with 0; "console" sleeps without a window.
+// closeHelperSource is a program with three modes: "window <marker>" opens
+// a hidden top-level window, writes <marker>.ready, and on WM_CLOSE writes
+// <marker> and exits with 0; "visible <marker>" does the same with a
+// visible window and also opens a hidden one, which writes <marker>.hidden
+// when it gets WM_CLOSE; "console" sleeps without a window.
 const closeHelperSource = `//go:build windows
 
 package main
@@ -81,8 +83,8 @@ var (
 )
 
 func main() {
-	if len(os.Args) > 2 && os.Args[1] == "window" {
-		window(os.Args[2])
+	if len(os.Args) > 2 && (os.Args[1] == "window" || os.Args[1] == "visible") {
+		window(os.Args[2], os.Args[1] == "visible")
 		return
 	}
 	for {
@@ -90,14 +92,19 @@ func main() {
 	}
 }
 
-func window(marker string) {
+var mainWindow uintptr
+
+func window(marker string, visible bool) {
 	proc := syscall.NewCallback(func(hwnd, m, wp, lp uintptr) uintptr {
-		switch m {
-		case 0x10: // WM_CLOSE
+		switch {
+		case m == 0x10 && hwnd != mainWindow: // WM_CLOSE to the helper window
+			_ = os.WriteFile(marker+".hidden", []byte("WM_CLOSE"), 0o644)
+			return 0
+		case m == 0x10: // WM_CLOSE
 			_ = os.WriteFile(marker, []byte("WM_CLOSE"), 0o644)
 			destroyWindow.Call(hwnd)
 			return 0
-		case 0x2: // WM_DESTROY
+		case m == 0x2 && hwnd == mainWindow: // WM_DESTROY
 			postQuitMessage.Call(0)
 			return 0
 		}
@@ -111,10 +118,18 @@ func window(marker string) {
 	if r, _, err := registerClassEx.Call(uintptr(unsafe.Pointer(&wc))); r == 0 {
 		panic(err)
 	}
-	hwnd, _, err := createWindowEx.Call(0, uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(cls)), 0xCF0000, 0, 0, 200, 100, 0, 0, inst, 0)
+	style := uintptr(0xCF0000) // WS_OVERLAPPEDWINDOW
+	if visible {
+		style |= 0x10000000 // WS_VISIBLE
+		if h, _, err := createWindowEx.Call(0, uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(cls)), 0xCF0000, 0, 0, 200, 100, 0, 0, inst, 0); h == 0 {
+			panic(err)
+		}
+	}
+	hwnd, _, err := createWindowEx.Call(0, uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(cls)), style, 0, 0, 200, 100, 0, 0, inst, 0)
 	if hwnd == 0 {
 		panic(err)
 	}
+	mainWindow = hwnd
 	_ = os.WriteFile(marker+".ready", nil, 0o644)
 	var m msg
 	for {
@@ -278,9 +293,15 @@ func TestMsiexecClosesApps(t *testing.T) {
 		gui := startHelper(t, filepath.Join(installDir, "gui.exe"), "window", marker)
 		con := startHelper(t, filepath.Join(installDir, "cli.exe"), "console")
 
-		var keep *running
+		var keep, vis *running
+
+		visMarker := filepath.Join(dir, step.name+".visible")
 		if step.name == "repair" {
 			keep = startHelper(t, filepath.Join(installDir, "keep.exe"), "console")
+			// A program with a visible window and a hidden one: only the
+			// visible window gets WM_CLOSE.
+			vis = startHelper(t, filepath.Join(installDir, "keep.exe"), "visible", visMarker)
+			waitFile(t, visMarker+".ready")
 		}
 
 		waitFile(t, marker+".ready")
@@ -307,6 +328,16 @@ func TestMsiexecClosesApps(t *testing.T) {
 
 		if got := elsewhere.exited(time.Second); got != -1 {
 			t.Errorf("%s: the copy of cli.exe in another folder exited with %d", step.name, got)
+		}
+
+		if vis != nil {
+			if got := vis.exited(15 * time.Second); got != 0 {
+				t.Errorf("%s: keep.exe with a visible window exit code %d, want 0 after WM_CLOSE (-1: still running)", step.name, got)
+			}
+
+			if _, err := os.Stat(visMarker + ".hidden"); err == nil {
+				t.Errorf("%s: the hidden window of a program with a visible one got WM_CLOSE", step.name)
+			}
 		}
 
 		if keep != nil {

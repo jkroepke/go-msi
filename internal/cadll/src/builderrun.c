@@ -1660,8 +1660,8 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
 // point BuilderClose) runs as LocalSystem after StopServices and before
 // RemoveFiles and ends every process still running from one of the paths in
 // its CustomActionData, `|`-separated, in any session. That list is built by
-// type-51 actions of the engine, one per file that terminates, not by the
-// schedule action: the impersonated custom action server runs with the
+// type-51 actions of the engine, a reset to `|` and then one per file that
+// terminates, not by the schedule action: the impersonated custom action server runs with the
 // user's token, so what it hands to LocalSystem must not decide which
 // processes are ended. A process matches by its full image path, compared
 // without regard to case, so a copy of the program in another folder is
@@ -1995,14 +1995,17 @@ __declspec(dllexport) UINT WINAPI BuilderClose(MSIHANDLE install)
     if (!image || !targets) {
         logft(install, tmplClose, msgNoMemory, 0, 0);
     }
-    for (WCHAR *path = data; image && targets && path && *path;) {
+    // The data starts with the builder's empty seed and ends with `|`.
+    for (WCHAR *path = data; image && targets && path;) {
         WCHAR *next = field(path, '|');
-        DWORD n = endRunning(install, path, targets, image);
-        if (!n) {
-            logft(install, tmplClose, path, msgNoneRunning, 0);
-        }
-        for (int pass = 1; n == CLOSE_MAX && pass < CLOSE_PASSES; pass++) {
-            n = endRunning(install, path, targets, image);
+        if (*path) {
+            DWORD n = endRunning(install, path, targets, image);
+            if (!n) {
+                logft(install, tmplClose, path, msgNoneRunning, 0);
+            }
+            for (int pass = 1; n == CLOSE_MAX && pass < CLOSE_PASSES; pass++) {
+                n = endRunning(install, path, targets, image);
+            }
         }
         path = next;
     }
