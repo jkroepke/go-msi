@@ -1289,15 +1289,18 @@ A package with services has at most 44 grants, 19 when a service uses
 `delayedAutoStart` or `failureActionsOnNonCrashFailures`, fewer with other
 actions after `InstallServices` such as `recovery`; the builder says how
 many fit. The account and the
-folder still come from properties, and a standard user can presumably
-repair a per-machine product with their own `SVC_ACCOUNT=...` on the
-command line, which the engine passes only for a secure property. So the
+folder still come from properties, and a standard user can start a
+repair of a per-machine product with their own `SVC_ACCOUNT=...` on the
+command line, which the engine passes only for a secure property (SEC-03;
+current Windows then refuses a silent repair of a package with grants
+with error 1730 unless an administrator enters credentials, older builds
+presumably do not). So the
 properties in an account and the public directories above a folder
 grant's folder, or a file grant's component directory, up to the standard
 folder (`INSTALLDIR` for `INSTALLDIR/data`) are not secure, unlike other
 public properties: an administrator's command line still reaches the
-installation, and a standard user's value is expected to be dropped, so
-the grant uses the remembered account (SEC-03, not run yet). `secure:
+installation, and a standard user's value is dropped (SEC-03), so a
+repair that runs grants to the remembered account. `secure:
 true` in `properties` keeps one secure, and so does a `search`; the
 builder then warns about the repair unless the wizard sets the property.
 The wizard needs `secure: true` when a dialog field, the folder page or

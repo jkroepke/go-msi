@@ -431,12 +431,16 @@ components:
 
 // TestNonAdminGrantRepair installs a per-machine package with a folder
 // grant to [SVC_ACCOUNT] as the administrator, with NetworkService, and
-// then repairs it as a standard user who passes their own account on the
-// command line (SEC-03). The builder no longer makes SVC_ACCOUNT secure, so
-// the engine drops the user's value, the grant falls back to the
-// remembered account and the user gets no ACE; the control package
-// declares SVC_ACCOUNT secure: true, and there the repair grants the
-// folder to the standard user.
+// then repairs it silently as a standard user who passes their own account
+// on the command line (SEC-03). The builder no longer makes SVC_ACCOUNT
+// secure, so the engine drops the user's value ("Ignoring disallowed
+// property"); the control package declares SVC_ACCOUNT secure: true, and
+// there the user's value reaches the server. On the CI runner the engine
+// refuses the silent repair with 1730 before any action runs (SECREPAIR:
+// the package has an elevated custom action, and a standard user's repair
+// then needs a credential prompt); a Windows that runs the repair grants to
+// the remembered account in the default case and to the user with
+// secure: true.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestNonAdminGrantRepair(t *testing.T) {
@@ -454,11 +458,10 @@ func TestNonAdminGrantRepair(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name, suffix, upgradeCode, property string
-		userGranted                         bool
+		name, suffix, upgradeCode, property, serverValue string
 	}{
-		{"default", "", "6c3a9e15-2b7d-4f80-a4c1-8d5e0b2f7a63", "", false},
-		{"secure", "Secure", "9d4b0f26-3c8e-4a91-b5d2-7e6f1c3a8b04", "secure: true", true},
+		{"default", "", "6c3a9e15-2b7d-4f80-a4c1-8d5e0b2f7a63", "", ""},
+		{"secure", "Secure", "9d4b0f26-3c8e-4a91-b5d2-7e6f1c3a8b04", "secure: true", `.\` + user.name},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := nonAdminDir(t, "grant-"+tc.name)
@@ -466,8 +469,9 @@ func TestNonAdminGrantRepair(t *testing.T) {
 				map[string][]byte{"app.exe": app})
 			data := filepath.Join(os.Getenv("ProgramData"), "MsiBuilderSec03"+tc.suffix, "data")
 
+			// t.Context is canceled before cleanups run.
 			t.Cleanup(func() {
-				_ = msiexecCode(t, filepath.Join(dir, "cleanup.log"), "/x", path)
+				_ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn").Run()
 				_ = os.RemoveAll(filepath.Dir(data))
 			})
 
@@ -479,23 +483,37 @@ func TestNonAdminGrantRepair(t *testing.T) {
 			code := user.msiexec(t, log, "/i", path, "REINSTALL=ALL", "REINSTALLMODE=amus", `SVC_ACCOUNT=.\`+user.name)
 			sddl := objectSDDL(t, data)
 			repair := readLog(log)
+			server := serverProperties(repair)["SVC_ACCOUNT"]
 
 			t.Logf("SEC-03 %s: repair as %s exit %d, server SVC_ACCOUNT %q, %s\nfolder %s",
-				tc.name, user.name, code, serverProperties(repair)["SVC_ACCOUNT"],
-				grepLog(repair, "SVC_ACCOUNT", "BuilderGrant"), sddl)
+				tc.name, user.name, code, server, grepLog(repair, "disallowed property", "SECREPAIR", "MSI_LUA", "Error 1730", "BuilderGrant: "), sddl)
 
-			if code != 0 {
-				t.Fatalf("msiexec /i REINSTALL=ALL as %s returned %d\n%s", user.name, code, repair)
+			if server != tc.serverValue {
+				t.Errorf("the server's SVC_ACCOUNT is %q, want %q", server, tc.serverValue)
 			}
 
-			if got := strings.Contains(sddl, ";;;"+userSID+")"); got != tc.userGranted {
-				t.Errorf("the folder grants to %s (%s): %v, want %v\n%s", user.name, userSID, got, tc.userGranted, sddl)
+			if dropped := strings.Contains(repair, "Ignoring disallowed property SVC_ACCOUNT"); dropped != (tc.serverValue == "") {
+				t.Errorf("the log says the engine dropped SVC_ACCOUNT: %v, want %v", dropped, tc.serverValue == "")
 			}
 
-			// The NetworkService ACE is there since the install; the log
-			// line shows that the repair's grant ran and fell back to it.
-			if fellBack := strings.Contains(repair, "granting to the remembered account"); fellBack == tc.userGranted {
-				t.Errorf("the repair fell back to the remembered account: %v, want %v", fellBack, !tc.userGranted)
+			granted := strings.Contains(sddl, ";;;"+userSID+")")
+
+			switch code {
+			case 1730:
+				// The repair stopped in InstallInitialize, before the grants.
+				if granted {
+					t.Errorf("the refused repair granted the folder to %s\n%s", user.name, sddl)
+				}
+			case 0:
+				if granted != (tc.serverValue != "") {
+					t.Errorf("the folder grants to %s: %v, want %v\n%s", user.name, granted, tc.serverValue != "", sddl)
+				}
+
+				if fellBack := strings.Contains(repair, "granting to the remembered account"); fellBack != (tc.serverValue == "") {
+					t.Errorf("the repair fell back to the remembered account: %v, want %v", fellBack, tc.serverValue == "")
+				}
+			default:
+				t.Fatalf("msiexec /i REINSTALL=ALL as %s returned %d, want 0 or 1730\n%s", user.name, code, repair)
 			}
 
 			if !strings.Contains(sddl, ";;;NS)") {

@@ -212,6 +212,10 @@ go test ./... -shuffle=on -race
   such an action changes (a grant's account or folder) stays out of
   `SecureCustomProperties` (`unsecureGrantProperties`, spec 17.7);
   `TestNonAdminGrantRepair` repairs as the standard user to check that.
+  On the CI runner such a silent repair of a package with an elevated
+  custom action fails with 1730 in `InstallInitialize` (`SECREPAIR`,
+  `MSI_LUA` credential prompt), after the property decisions are logged,
+  so read those from the log rather than from what the repair changed.
 - CI splits Windows into two runners: suite `unit` runs every package but
   `internal/builder/nativetest` under `-race`, suite `native` runs
   nativetest verbose and without `-race` (msiexec installs one package at a
