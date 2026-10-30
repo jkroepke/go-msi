@@ -123,10 +123,19 @@ func TestMsiexecRunActions(t *testing.T) {
 				"BuilderRun: exit code 3",
 				"BuilderRun: immediate-after-finalize",
 				"BuilderRun: exit code 0",
+				"BuilderRun: cr-one",
+				"BuilderRun: cr-two",
+				"BuilderRun: cr-three",
+				"BuilderRun: background-spawned",
+				"BuilderRun: a process the command started keeps the output open",
 			} {
 				if !strings.Contains(log, want) {
 					t.Errorf("install log lacks %q", want)
 				}
+			}
+
+			if strings.Contains(log, "BuilderRun: background-late") {
+				t.Error("the process ProbeBackground left behind was not ended")
 			}
 
 			if strings.Contains(log, "BuilderRun: about-to-fail") {

@@ -501,7 +501,10 @@ unquoted `[INSTALLDIR]hello.exe` is rejected, because Windows would try
 only sets the working directory; name the program with its folder or
 `[#hello.exe]`, since a bare `hello.exe` is looked up next to msiexec and
 on `PATH`. Pass a folder as `"[INSTALLDIR]."`, not `"[INSTALLDIR]"`, whose
-trailing backslash would escape the closing quote. Prefer the
+trailing backslash would escape the closing quote. Everything the
+command starts ends with it: a background process it leaves behind is
+ended when the action finishes, so start a service through `services`,
+not from a command. Prefer the
 recipes above where one fits: they also undo themselves on uninstall.
 
 ### Install for the current user only
