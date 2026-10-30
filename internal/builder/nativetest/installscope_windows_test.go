@@ -3,6 +3,7 @@
 package nativetest_test
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -267,11 +268,11 @@ func TestICEInstallScope(t *testing.T) {
 		// the perMachine component in a package that starts per user,
 		// never about the machine variable, and is silent in one that
 		// starts per machine (ENVVAR-03).
-		var ice105 []string
+		tables := map[string]int{}
 
 		for _, finding := range findings {
 			if finding.ICE == "ICE105" && finding.Type != ice.Info {
-				ice105 = append(ice105, finding.String())
+				tables[finding.Table]++
 				t.Logf("ENVVAR-03 %s: %s", scope, finding)
 
 				if finding.Table != "Registry" && finding.Table != "RemoveRegistry" || finding.Type != ice.Warning {
@@ -280,8 +281,15 @@ func TestICEInstallScope(t *testing.T) {
 			}
 		}
 
-		if got := len(ice105) > 0; got != (scope == "perUserOrMachine") {
-			t.Errorf("%s: ICE105 findings %q; want warnings only in perUserOrMachine", scope, ice105)
+		// The HKLM value and the two rows of the event log source, and
+		// the HKLM removal.
+		want := map[string]int{}
+		if scope == "perUserOrMachine" {
+			want = map[string]int{"Registry": 3, "RemoveRegistry": 1}
+		}
+
+		if !maps.Equal(tables, want) {
+			t.Errorf("%s: ICE105 warnings per table %v, want %v", scope, tables, want)
 		}
 	}
 }

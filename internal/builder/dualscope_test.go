@@ -134,7 +134,15 @@ ui: { enabled: false }
 		t.Fatalf("%d Environment rows, want %d", len(variables), len(want))
 	}
 
+	seen := map[string]bool{}
+
 	for _, row := range variables {
+		if name := fmt.Sprint(row[1]); seen[name] {
+			t.Errorf("%s is written twice", name)
+		} else {
+			seen[name] = true
+		}
+
 		carrier := fmt.Sprint(row[3])
 		cond := cell(t, database, "Component", "Condition", func(r []any) bool { return r[0] == carrier })
 		attrs, ok := cell(t, database, "Component", "Attributes", func(r []any) bool { return r[0] == carrier }).(int)
