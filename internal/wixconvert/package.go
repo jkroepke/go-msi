@@ -513,13 +513,6 @@ func (c *converter) emitProperties() {
 			continue
 		}
 
-		if propID == "INSTALLLEVEL" {
-			c.todof(props, "", elm.line, "INSTALLLEVEL %s was left out: the features up to that level became default: on, "+
-				"the others default: off, which msi-builder writes for its INSTALLLEVEL of 1", c.value(elm, "Value"))
-
-			continue
-		}
-
 		propOut := newMap()
 		propOut.keep = true
 		propOut.set("value", c.value(elm, "Value"))

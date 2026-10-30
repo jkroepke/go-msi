@@ -164,14 +164,19 @@ func (cc *compConv) resolveControls() {
 			}
 		}
 
+		chosen, installed := cc.c.serviceControl(name)
+
 		switch {
-		case own != nil:
+		case own != nil && elm == chosen:
 			cc.ownControl(own, elm)
-		case cc.c.findElem(func(e *elem) bool { return e.is("ServiceInstall") && cc.c.value(e, "Name") == name }) != nil:
+		case !installed:
+			cc.foreignControl(elm)
+		case elm == chosen:
 			cc.c.todof(cc.out, "", elm.line, "the ServiceControl for %s became services[].control of the component "+
 				"that installs it, which keeps that component's condition and feature instead of this one's", name)
 		default:
-			cc.foreignControl(elm)
+			cc.c.todof(cc.out, "", elm.line, "the ServiceControl for %s was left out: msi-builder takes one control per "+
+				"service, and services[].control comes from the ServiceControl on line %d; merge the events there", name, chosen.line)
 		}
 	}
 
@@ -187,9 +192,7 @@ func (cc *compConv) otherControls() {
 		}
 
 		name := svc.str("name")
-		if elm := cc.c.findElem(func(e *elem) bool {
-			return e.is("ServiceControl") && cc.c.value(e, "Name") == name
-		}); elm != nil {
+		if elm, _ := cc.c.serviceControl(name); elm != nil {
 			cc.ownControl(svc, elm)
 
 			continue
@@ -199,6 +202,26 @@ func (cc *compConv) otherControls() {
 			"the WiX package has no ServiceControl for %v; msi-builder starts it on install and stops and deletes it by default (services[].control)",
 			name)
 	}
+}
+
+// serviceControl returns the ServiceControl that becomes the control of a
+// service: the one in the component that installs the service, else the
+// first in the file, and whether the package installs the service.
+func (c *converter) serviceControl(name string) (*elem, bool) {
+	named := func(kind string) func(e *elem) bool {
+		return func(e *elem) bool { return e.is(kind) && c.value(e, "Name") == name }
+	}
+
+	installer := c.findElem(func(e *elem) bool {
+		return e.is("Component") && slices.ContainsFunc(e.kids, named("ServiceInstall"))
+	})
+	if installer != nil {
+		if i := slices.IndexFunc(installer.kids, named("ServiceControl")); i >= 0 {
+			return installer.kids[i], true
+		}
+	}
+
+	return c.findElem(named("ServiceControl")), installer != nil
 }
 
 // findElem returns the first element of the file that match accepts.

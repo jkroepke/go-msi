@@ -11,6 +11,7 @@ import (
 // fileRef is a converted file, for shortcuts and firewall rules that point
 // at it.
 type fileRef struct {
+	e    *elem
 	comp *comp
 	out  *omap
 	key  string
@@ -416,7 +417,7 @@ func (cc *compConv) file(elm *elem) { //nolint:cyclop // a flat list of independ
 	}
 
 	key := config.FileKey(&config.File{Source: src, Name: name, ID: elm.attr("Id")})
-	ref := &fileRef{key: key, dir: cc.cp.dir, name: name, comp: cc.cp, out: file}
+	ref := &fileRef{e: elm, key: key, dir: cc.cp.dir, name: name, comp: cc.cp, out: file}
 	conv.files = append(conv.files, ref)
 
 	if elm.yes("KeyPath") && cc.files > 0 {

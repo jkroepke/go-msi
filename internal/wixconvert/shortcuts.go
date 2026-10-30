@@ -205,12 +205,12 @@ func (c *converter) advertisedFile(pending pendingShortcut) *fileRef {
 
 	var first *fileRef
 
-	key := keyFileID(pending.comp.e)
+	key := keyElem(pending.comp.e)
 
 	for _, ref := range c.files {
 		switch {
 		case ref.comp != pending.comp:
-		case ref.key == key:
+		case ref.e == key:
 			return ref
 		case first == nil:
 			first = ref

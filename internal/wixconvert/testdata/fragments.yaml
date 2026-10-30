@@ -30,6 +30,7 @@ features:
     features:
       - id: Samples
         title: Samples
+        default: off
         components: [SampleFile]
 components:
   - id: PluginA
@@ -50,5 +51,6 @@ components:
       - source: dist/sample.txt
         id: sample.txt
 properties:
-  # TODO(line 41): INSTALLLEVEL 2 was left out: the features up to that level became default: on, the others default: off, which msi-builder writes for its INSTALLLEVEL of 1
+  # Installs the level 2 features by default.
+  INSTALLLEVEL: "2"
   GREETING: ${Greeting}, welcome to ${ProductName}

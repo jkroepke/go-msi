@@ -200,33 +200,23 @@ func (c *converter) emitFeatures() {
 	}
 }
 
-// installLevel is the package's INSTALLLEVEL: features up to that level
-// install by default.
-func (c *converter) installLevel() int {
-	for _, p := range c.properties {
-		if p.attr("Id") == "INSTALLLEVEL" {
-			if n, err := strconv.Atoi(c.value(p, "Value")); err == nil {
-				return n
-			}
-		}
-	}
-
-	return 1
-}
-
 func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat list of independent WiX attributes
 	elm := feat.e
 	out := newMap()
-	out.order("id", "title", "description", "default", "display", "directory", "allowAbsent", "components", "features")
+	out.order("id", "title", "description", "default", "level", "display", "directory", "allowAbsent", "components", "features")
 	out.head = comments(elm)
 	out.set("id", elm.attr("Id"))
 	out.set("title", c.value(elm, "Title"))
 	out.set("description", c.value(elm, "Description"))
 
+	// default: off is level 2; other levels keep their number, which the
+	// package's INSTALLLEVEL property, if any, still compares.
 	switch level, err := strconv.Atoi(elm.attr("Level")); {
-	case elm.attr("Level") == "" || err == nil && level > 0 && level <= c.installLevel():
+	case elm.attr("Level") == "" || err == nil && level == 1:
 	case err == nil && level == 0:
 		out.set("default", "disabled")
+	case err == nil && level != 2:
+		out.set("level", level)
 	default:
 		out.set("default", "off")
 	}

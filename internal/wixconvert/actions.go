@@ -275,16 +275,17 @@ func (c *converter) extensionAnchors(action *omap, custom *elem) {
 
 			// CostFinalize is in every sequence that takes custom
 			// actions, before the installation changes anything; a
-			// deferred action must run inside the script.
+			// deferred action must run inside the script. Keeping before
+			// or after keeps the order of the actions around the anchor,
+			// such as a rollback action before its deferred one.
 			target := "CostFinalize"
 			if action.str("execute") != "" {
-				target = "InstallInitialize"
+				target = "InstallFiles"
 			}
 
-			placement.del(key)
-			placement.set("after", target)
+			placement.set(key, target)
 			c.todof(action, "schedule", custom.line, "%s is an action of a WiX extension, which the msi-builder package "+
-				"does not have; convert placed this action after %s, check that place", anchor, target)
+				"does not have; convert placed this action %s %s, check that place", anchor, key, target)
 		}
 	}
 }
@@ -309,8 +310,12 @@ func (c *converter) perMachineFolder(action *elem, property string, byAction map
 		return false
 	}
 
-	delete(byAction, setterName(action))
-	delete(byAction, action.attr("Id"))
+	if action.is("SetProperty") {
+		delete(byAction, setterName(action))
+	} else {
+		delete(byAction, action.attr("Id"))
+	}
+
 	c.todof(nil, "", action.line, "the action %s, which sets WixPerMachineFolder for WixUI_Advanced, was left out: "+
 		"msi-builder sets the install folder of each scope itself", action.attr("Id"))
 
