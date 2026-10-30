@@ -340,6 +340,7 @@ enum {
     // FILE_INFO_BY_HANDLE_CLASS values.
     FileBasicInfo_ = 0,
     FileDispositionInfo_ = 4,
+    FileDispositionInfoEx_ = 21,
     FileAttributeTagInfo_ = 9,
     FileFullDirectoryInfo_ = 14,
     FileFullDirectoryRestartInfo_ = 15,
@@ -2492,10 +2493,17 @@ static int plainFolder(HANDLE h)
 }
 
 // deleteHandle marks the object of h for deletion; it goes when h is
-// closed. A read-only attribute is cleared first, but not on a file with
-// more than one name, whose other name may be outside the tree.
+// closed. Since Windows 10 1809 the disposition ignores a read-only
+// attribute itself, which leaves the attribute alone; before that it is
+// cleared first, but not on a file with more than one name, whose other
+// name may be outside the tree.
 static int deleteHandle(HANDLE h, DWORD attrs)
 {
+    // FILE_DISPOSITION_FLAG_DELETE | FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE
+    DWORD flags = 0x1 | 0x10;
+    if (SetFileInformationByHandle(h, FileDispositionInfoEx_, &flags, sizeof flags)) {
+        return 1;
+    }
     struct {
         long long allocation, size;
         DWORD links;

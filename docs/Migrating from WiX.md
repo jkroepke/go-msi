@@ -853,13 +853,14 @@ not with one feature, on install or on repair, whichever property names it,
 for example one a `SetDirectory` or `SetProperty` points at `INSTALLFOLDER`
 (tested for an upgrade, expected for a repair and a feature removal).
 
-`msi-builder convert` keeps a `util:RemoveFolderEx` whose property only
-reads back, by a `RegistrySearch`, the component's own folder from a
-registry value of that component: it becomes `purge` on the component.
-Any other `util:RemoveFolderEx`, and one with `On="install"` or
-`On="both"`, becomes a `removeFolders` entry; on a directory of the
-package `On="install"` is left out with a note, and `On="both"` keeps
-only its uninstall half, also with a note.
+`msi-builder convert` turns a `util:RemoveFolderEx` on the component's
+own folder into `purge` when that folder is a fixed one (no directory up
+to its root can point elsewhere): one without `Property`, one whose
+`Property` is that directory, and one whose property only reads the
+folder back, by a `RegistrySearch`, from a registry value of that
+component. Any other `util:RemoveFolderEx` becomes a `removeFolders`
+entry. On a directory of the package `On="install"` is left out with a
+note, and `On="both"` keeps only its uninstall half, also with a note.
 
 ## Signing
 

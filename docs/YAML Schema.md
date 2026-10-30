@@ -494,8 +494,8 @@ components:
 ### Delete a folder that a property names
 
 `removeFolders` deletes the folder in a property, with everything in it,
-when the product, or the feature that holds the component, is removed,
-but not when an upgrade replaces the product. It works for any directory,
+when the product is removed (and, expected but not tested, the feature
+that holds the component), but not when an upgrade replaces the product. It works for any directory,
 the install folder (with `installDir.remember`, so the uninstall finds a
 folder chosen at install time) and a folder the first install remembered
 in the registry. The folder is moved aside and deleted at the end, so a
