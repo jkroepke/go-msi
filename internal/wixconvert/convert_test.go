@@ -373,3 +373,35 @@ func TestConvertBuiltCodesOnce(t *testing.T) {
 		t.Errorf("notes %v lack the unmatched component in line 9", res.Notes)
 	}
 }
+
+// Advertised shortcuts get a note when the old version is removed late.
+func TestConvertAdvertisedLateRemoval(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade Schedule="afterInstallExecute" DowngradeErrorMessage="A newer version is installed." />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <Component Id="Main" Directory="INSTALLFOLDER" Guid="6d1c0a42-93b8-4e57-a2f1-0c7e5d9b3a61">
+      <File Source="hello.exe">
+        <Shortcut Name="Hello" Directory="ProgramMenuFolder" Advertise="yes" />
+      </File>
+    </Component>
+  </Package>
+</Wix>
+`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool {
+		return strings.HasPrefix(n.Message, "the WiX package's advertised shortcuts (line 10) are deleted by this late removal")
+	}) {
+		t.Errorf("notes %v lack the advertised shortcut", res.Notes)
+	}
+}

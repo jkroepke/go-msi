@@ -866,6 +866,11 @@ msi-builder's own HKCU key path, so the HKCU value WiX wrote for it
 stays behind after a late removal and the uninstall; convert names it in a
 `# TODO`, and a `removeRegistry` entry in another component removes it. Without `--msi`, convert leaves one `# TODO` at
 `upgrade.removeOld` that names the components without a WiX `Guid`.
+Advertised WiX shortcuts are lost in that upgrade even with every GUID
+kept: msi-builder installs plain shortcuts at the same paths, and the late
+removal of the WiX package then deletes them (seen in a real-world port).
+Convert leaves a `# TODO` for them; remove the old version early, at least
+for the first upgrade from WiX, or give the shortcuts other names.
 `msi-builder inspect --table Component old.msi` shows the GUIDs of the WiX
 package, also the ones WiX generated. A folder source cannot take a `guid`,
 so its files are safe only with the early removal, which a package with

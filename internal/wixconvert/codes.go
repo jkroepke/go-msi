@@ -116,6 +116,7 @@ func (c *converter) checkCodes() {
 	open, pinned := c.openCodes()
 
 	c.noteDroppedValues()
+	c.noteAdvertised()
 
 	if c.built == nil {
 		c.noteLateRemoval(open)
@@ -166,6 +167,29 @@ func (c *converter) noteDroppedValues() {
 				"HKCU\\%s stays behind after the upgrade and the uninstall, so remove it with removeRegistry in another component",
 			strings.Join(comp.droppedValues, ", HKCU\\"))
 	}
+}
+
+// noteAdvertised notes the advertised shortcuts of the WiX package under a
+// late removal. A real-world port lost all of them with every component
+// code pinned: the old product's removal deleted them after this package
+// had installed its plain shortcuts at the same paths, presumably because
+// an advertised shortcut goes with its feature, not with its component.
+func (c *converter) noteAdvertised() {
+	upgrade := c.out.mapAt("upgrade")
+	if len(c.advertised) == 0 || upgrade == nil || !lateRemoval[upgrade.str("removeOld")] {
+		return
+	}
+
+	lines := "line " + c.advertised[0]
+	if len(c.advertised) > 1 {
+		lines = "lines " + strings.Join(c.advertised, ", ")
+	}
+
+	c.todof(upgrade, "removeOld", 0,
+		"the WiX package's advertised shortcuts (%s) are deleted by this late removal after this package installed its "+
+			"own at the same paths, also with every guid pinned; remove the old version early (afterInstallInitialize), at "+
+			"least for the first upgrade from WiX, or give the shortcuts other names",
+		lines)
 }
 
 // openCodes returns the components whose Guid WiX generated and that have

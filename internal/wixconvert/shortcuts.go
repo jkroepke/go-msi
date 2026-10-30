@@ -49,6 +49,7 @@ func (c *converter) shortcut(elm *elem, dirID string, tree map[*dir]bool) *omap 
 
 	if elm.yes("Advertise") {
 		c.todof(link, "", elm.line, "advertised shortcuts are never supported; this one is a plain shortcut")
+		c.advertised = append(c.advertised, strconv.Itoa(elm.line))
 	}
 
 	for _, a := range []string{"Hotkey", "DescriptionResourceDll", "DisplayResourceDll"} {
