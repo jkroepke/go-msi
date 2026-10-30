@@ -350,7 +350,7 @@ type File struct { //nolint:govet // field order is the YAML key order
 }
 
 // Close stops the running copies of an installed program when its
-// component is installed, repaired or removed (specification section 17.8):
+// component is installed, repaired or removed (specification section 17.9):
 // windows on the installing user's desktop get WM_CLOSE before
 // InstallValidate, and with Terminate the processes still running from the
 // installed path are ended after StopServices. "close: true" is the short
@@ -656,7 +656,11 @@ type CustomAction struct { //nolint:govet // field order is the YAML key order
 	Return       string        `yaml:"return"`
 	HideTarget   bool          `yaml:"hideTarget"`
 	Once         string        `yaml:"once"`
-	Schedule     []Placement   `yaml:"schedule"`
+	// Progress is the action's description in the ActionText table, shown
+	// by the wizard's progress page while a deferred action runs and
+	// written to the verbose log (under /qn only for deferred actions).
+	Progress string      `yaml:"progress"`
+	Schedule []Placement `yaml:"schedule"`
 
 	// origin is the YAML path of the service argument an action was
 	// generated from.

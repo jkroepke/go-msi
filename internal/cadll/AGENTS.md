@@ -95,7 +95,7 @@ the root `AGENTS.md` first.
   repairs run without the first install's command line properties (observed
   on the CI runner, SEC-02). Wide strings in this part
   are `u"..."` literals, which clang types as `unsigned short` arrays.
-- `close` (spec 17.8) uses the exports `BuilderCloseSchedule` (immediate,
+- `close` (spec 17.9) uses the exports `BuilderCloseSchedule` (immediate,
   before InstallValidate, as the user: `WM_CLOSE` to the visible unowned
   top-level windows of every process whose image path equals the file's,
   to its hidden ones only when it has none, then a wait) and `BuilderClose`

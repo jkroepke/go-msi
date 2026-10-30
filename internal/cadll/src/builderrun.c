@@ -1645,7 +1645,7 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
     return result;
 }
 
-// Closing running copies of package files (spec 17.8). BuilderCloseSchedule,
+// Closing running copies of package files (spec 17.9). BuilderCloseSchedule,
 // an immediate action before InstallValidate, reads the property
 // BuilderCloseApps that the builder writes, one entry per line:
 //

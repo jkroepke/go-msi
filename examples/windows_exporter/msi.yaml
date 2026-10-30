@@ -160,6 +160,7 @@ customActions:
     execute: deferred
     impersonate: false
     return: check
+    progress: Creating the configuration file
     schedule:
       - { sequence: execute, before: InstallServices, condition: CONFIG_FILE="config.yaml" AND $Executable=3 }
 

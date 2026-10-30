@@ -10,7 +10,7 @@ import (
 // closeApps writes the files with a close block into the BuilderCloseApps
 // property, one line per file with the condition that its component is
 // installed, repaired or removed, and adds the actions on the embedded DLL
-// that stop the running copies (specification section 17.8):
+// that stop the running copies (specification section 17.9):
 // BuilderCloseSchedule, immediate and before InstallValidate, so that the
 // files-in-use check after it no longer finds the programs that closed,
 // posts WM_CLOSE to their windows as the installing user and waits; the

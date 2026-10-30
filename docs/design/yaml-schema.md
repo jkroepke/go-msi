@@ -950,7 +950,7 @@ files:
       terminate: false             # default true: end what is still running
 ```
 
-Two actions on the embedded DLL do it (specification section 17.8).
+Two actions on the embedded DLL do it (specification section 17.9).
 Before `InstallValidate`, as the installing user, every process whose
 image is the installed file gets `WM_CLOSE` on its visible top-level
 windows (on its hidden ones when it has no visible window, as a program in
@@ -1749,7 +1749,39 @@ temporary file of an `asyncNoWait` action is not tested.
 Options: `execute` (default `immediate`), `impersonate` (default `true`;
 `false` needs a deferred action), `return` (required for `exec`,
 `execProperty`, `exe` and `run`, default `check` otherwise), `hideTarget`, `once`
-(`firstSequence`, `oncePerProcess`, `clientRepeat`).
+(`firstSequence`, `oncePerProcess`, `clientRepeat`), `progress`.
+
+**Progress text.** `progress` names what the action does while it runs:
+
+```yaml
+customActions:
+  - id: ImportData
+    run: { command: '"[#hello.exe]" import' }
+    execute: deferred
+    impersonate: false
+    return: check
+    progress: Importing the existing data
+    schedule:
+      - { sequence: execute, after: InstallFiles, when: install }
+```
+
+The builder writes it to the `ActionText` table, without a template.
+The text is formatted, so `[ProductName]` and other properties work: the
+wizard's progress page shows a deferred action's text while it runs (an
+immediate action's was not watched there, and one in the `ui` sequence
+runs before the progress page; basic UI is documented to show it, not
+tested), and the verbose
+log writes it as `Action hh:mm:ss: <id>. <text>` with the full UI (basic
+UI not tested), and
+for a deferred action as the script's `ActionStart` line also under `/qn`
+(CA-08). A deferred action's text is formatted when the script is written,
+so it shows property values from that moment.
+A `ui.languages` entry translates it with `progress: {<id>: text}`. A
+blank text is an error, and one longer than 64 characters, the width of
+`ActionText.Description`, is a warning (ICE03). Standard actions keep the
+engine's own texts, and the actions msi-builder generates (firewall rules,
+grants, service arguments) get none; specification section 17.8 records
+why, and why there is no `Template`.
 
 **Schedule.** A list of placements, one per sequence table: `execute`, `ui`,
 `adminExecute`, `adminUI`. Each has exactly one of `before`, `after` or
@@ -2202,9 +2234,10 @@ configuration; a `languages` entry translates them with `dialogs` and
 `launch` (below), and the buttons of a `ui.dialogs` page follow the
 language on their own.
 
-Messages that the engine itself shows (error and progress action texts)
-come from the engine in the language of `ProductLanguage`, since
-msi-builder writes no `Error` or `ActionText` table (UI-06). Full-UI
+Messages that the engine itself shows (error texts and the progress texts
+of standard actions) come from the engine in the language of
+`ProductLanguage`, since msi-builder writes no `Error` table and
+`ActionText` rows only for `customActions[].progress` (UI-06). Full-UI
 installs of a German package (code page 1252, language 1031) and of a
 Russian and Japanese one (code page 65001) passed on Windows Server 2025
 (UI-06).
@@ -2280,9 +2313,11 @@ A `languages` key is a decimal LCID or a language tag: a full tag such as
 `de` (1031), `es` (3082) or `hi` (1081) the language's main locale. `pt`,
 `sr` and `zh` have no short tag, because their spellings or scripts differ
 (`pt-BR`/`pt-PT`, `zh-CN`/`zh-TW`); `product.language` stays a decimal
-LCID. An entry may set `strings`, `finishText`, `license`, `launch` and
-`dialogs`, which replace `ui.strings`, `ui.finishText`, `ui.license`,
-`ui.launch.text` and the texts of `ui.dialogs` in that language; a field it
+LCID. An entry may set `strings`, `finishText`, `license`, `launch`,
+`dialogs` and `progress`, which replace `ui.strings`, `ui.finishText`,
+`ui.license`, `ui.launch.text`, the texts of `ui.dialogs` and the
+`progress` texts of `customActions` (keyed by action ID; an ID without a
+base text is an error) in that language; a field it
 leaves out keeps the base language's value, and a text key it leaves out
 takes the built-in translation, and without one the base language's text.
 Two keys for one LCID, or an entry for `product.language`, are errors. A

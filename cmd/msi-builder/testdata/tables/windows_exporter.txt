@@ -6,7 +6,7 @@ summary  4: prometheus-community
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install windows_exporter.
 summary  7: x64;1033
-summary  9: {533B1402-63BA-52E9-BD90-E12888D9568E}
+summary  9: {DA76087E-CF80-5ECB-8E12-D0350BE4969E}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500
@@ -14,6 +14,11 @@ summary 15: 2
 summary 18: msi-builder
 summary 19: 2
 streams: windows_exporter.cab (379 bytes)
+
+== ActionText (1 rows)
+Action	Description	Template
+s72!	L64	L128
+CreateConfigFile	Creating the configuration file	
 
 == AdminExecuteSequence (8 rows)
 Action	Condition	Sequence
@@ -532,7 +537,7 @@ LISTEN_PORT	9182
 MSIRESTARTMANAGERCONTROL	Disable
 Manufacturer	prometheus-community
 MsiHiddenProperties	SERVICE_PASSWORD
-ProductCode	{F54AA32A-2A4F-587E-BCF9-BE376D551941}
+ProductCode	{6830FEB2-7C7B-5CC0-911B-F29F11722313}
 ProductLanguage	1033
 ProductName	windows_exporter
 ProductVersion	0.32.0.5
@@ -632,9 +637,12 @@ s38!	S20!	S20!	S255!	i4!	S255	s72
 {66A6EB5B-1FC2-4B14-A362-5CEEC6413308}		0.32.0.5		513		OLDERVERSIONBEINGUPGRADED
 {66A6EB5B-1FC2-4B14-A362-5CEEC6413308}	0.32.0.5			2		NEWERVERSIONDETECTED
 
-== _Validation (173 rows)
+== _Validation (176 rows)
 Table	Column	Nullable	MinValue	MaxValue	KeyTable	KeyColumn	Category	Set	Description
 s32!	s32!	s4	I4	I4	S255	I2	S32	S255	S255
+ActionText	Action	N					Identifier		Name of action to be described.
+ActionText	Description	Y					Text		Localized description displayed in progress dialog and log when action is executing.
+ActionText	Template	Y					Template		Optional localized format template used to format action data records for display during action execution.
 AdminExecuteSequence	Action	N					Identifier		Name of action to invoke, either in the engine or the handler DLL.
 AdminExecuteSequence	Condition	Y					Condition		Optional expression which skips the action if evaluates to expFalse.
 AdminExecuteSequence	Sequence	Y	-4	32767					Number that determines the sort order in which the actions are to be executed.  Leave blank to suppress action.

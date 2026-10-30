@@ -19,6 +19,8 @@ func (c *converter) walkUI(e *elem) { //nolint:cyclop // one case per kind of UI
 			c.uiNav = append(c.uiNav, kid)
 		case kid.is("Property"):
 			c.properties = append(c.properties, kid)
+		case kid.is("ProgressText"):
+			c.progressTexts = append(c.progressTexts, kid)
 		case kid.is("Dialog"):
 			c.todof(nil, "", kid.line, "the hand-built dialog %s cannot be converted; ui.dialogs lays out text, password, checkbox and choice fields",
 				kid.attr("Id"))
