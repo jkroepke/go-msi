@@ -122,9 +122,9 @@ func TestMsiexecFeatureConditions(t *testing.T) {
 			{"uninstall v2", true, []string{"/x"}, nil},
 		},
 		{
-			// MigrateFeatureStates requests absent for Soft, which v1 had
-			// available but not installed, over its true row; Assoc, which
-			// v1 had disabled, follows its row.
+			// Soft, which v1 had available but not installed, is requested
+			// absent over its true row (presumably MigrateFeatureStates);
+			// Assoc, which v1 had disabled, follows its row.
 			{"install v1", false, nil, []string{app}},
 			{"upgrade to v2 ASSOC=1 SOFT=1", true, []string{"ASSOC=1", "SOFT=1"}, []string{app, assoc}},
 			{"uninstall v2", true, []string{"/x"}, nil},

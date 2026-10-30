@@ -335,6 +335,12 @@ func conditionalLevelProblem(level, cond string) string {
 		return "a feature condition cannot ask for feature or component states (" + strings.Join(states, ", ") + ")"
 	}
 
+	for _, name := range condition.Properties(cond) {
+		if name == "Installed" || name == "REMOVE" || name == "REINSTALL" {
+			return name + " is not set at a first install, and msi-builder applies feature conditions to first installs only"
+		}
+	}
+
 	if strings.Contains(cond, "${") {
 		return ""
 	}

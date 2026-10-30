@@ -221,8 +221,7 @@ type FeatureCondition struct { //nolint:govet // field order is the YAML key ord
 
 // FullCondition returns the Condition row's condition: the condition
 // applies to first installs only, because a feature that is disabled
-// (level 0) when the product is removed keeps its files and registry
-// values (INST-05).
+// (level 0) when the product is removed keeps its files (INST-05).
 func (c *FeatureCondition) FullCondition() string {
 	return "NOT Installed AND (" + c.Condition + ")"
 }

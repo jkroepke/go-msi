@@ -602,14 +602,17 @@ features:
   builder writes each row as `NOT Installed AND (<condition>)`: the engine
   evaluates the rows at every run, also with `ADDLOCAL` and at the
   uninstall, and a feature that a row disables when the product is removed
-  keeps its files and registry values (INST-05). The conditions therefore
+  keeps its files (INST-05). The conditions therefore
   decide first installs and major upgrades only; a feature disabled at the
   first install can be added later with `ADDLOCAL`. A major upgrade that
   does not get the property again disables the feature, and the old
-  version's copy is removed; with `off` instead of `disabled` the upgrade
-  keeps a feature the old version installed. An upgrade keeps an `off`
-  feature that the old version left out absent, even when its condition is
-  true, while one that the old version disabled follows its condition.
+  version's copy is removed. A feature that is off by default and has no
+  `disabled` condition was kept by an upgrade when the old version had
+  installed it, and stayed absent when the old version had left it out,
+  even with its condition true; one that the old version had disabled
+  followed its condition. A condition with `default: off` was not tested
+  in an upgrade. A condition cannot use `Installed`, `REMOVE` or
+  `REINSTALL`, which are never set at a first install.
   When several conditions are true, the higher level won (INST-05).
 - Every component is in at least one feature (ICE21). A component used by
   two features is defined once in `components` and named by ID in both.

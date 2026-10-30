@@ -409,7 +409,8 @@ features:
 
 msi-builder adds `NOT Installed` to each condition, because a feature
 that its condition disables when the product is removed keeps its files.
-A condition cannot test feature or component states.
+A condition cannot test feature or component states, nor `Installed`,
+`REMOVE` or `REINSTALL`; `convert` leaves such levels as a `# TODO`.
 
 `AllowAbsent` and `ConfigurableDirectory` are `allowAbsent` and
 `directory` on the feature, and `Display` is `display` with the values

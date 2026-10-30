@@ -57,6 +57,7 @@
       <Condition Level="0">NOT INSTALLDOCS</Condition>
       <Condition Level="2">EDITION = "$(var.Edition)"</Condition>
       <Condition Level="40000">1</Condition>
+      <Condition Level="2">Installed</Condition>
       <ComponentRef Id="Readme" />
     </Feature>
 

@@ -664,6 +664,22 @@ func (v *validator) featureConditionLevel(condPath string, cond *FeatureConditio
 	return true
 }
 
+// maintenanceProperties returns the properties of a condition that are
+// only set when the product is already installed (Installed, REMOVE,
+// REINSTALL), in order. A feature condition that uses them is always false
+// or always true, because the builder applies it to first installs only.
+func maintenanceProperties(cond string) []string {
+	var out []string
+
+	for _, name := range condition.Properties(cond) {
+		if slices.Contains([]string{"Installed", "REMOVE", "REINSTALL"}, name) && !slices.Contains(out, name) {
+			out = append(out, name)
+		}
+	}
+
+	return out
+}
+
 // featureCondition checks the condition of a Condition row: its syntax,
 // its length, and that it asks for no feature or component state. The
 // engine evaluates the Condition table before it reads installed states
@@ -685,6 +701,11 @@ func (v *validator) featureCondition(field string, cond *FeatureCondition) {
 	if states := condition.States(cond.Condition); len(states) > 0 {
 		v.errorf(field, "refers to the state of %s, but the engine evaluates feature conditions before "+
 			"features and components have one (documented); use a property instead", strings.Join(states, ", "))
+	}
+
+	if names := maintenanceProperties(cond.Condition); len(names) > 0 {
+		v.errorf(field, "uses %s, which is not set at a first install; the builder applies feature conditions "+
+			"to first installs only (NOT Installed, INST-05)", strings.Join(names, ", "))
 	}
 
 	if full := cond.FullCondition(); len(full) > maxComponentCondition {

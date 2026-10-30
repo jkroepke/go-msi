@@ -208,6 +208,10 @@ func TestValidate(t *testing.T) {
 			strings.Replace(base, "    components: [App]\n", "    components: [App]\n    conditions:\n      - { condition: X = 1, default: maybe }\n", 1) + appComponent,
 			sevError, "features[0].conditions[0].default", "not one of",
 		},
+		"feature condition on Installed": {
+			strings.Replace(base, "    components: [App]\n", "    components: [App]\n    conditions:\n      - { condition: Installed OR X, default: off }\n", 1) + appComponent,
+			sevError, "features[0].conditions[0].condition", "not set at a first install",
+		},
 		"feature conditions share a level": {
 			strings.Replace(base, "    components: [App]\n", "    components: [App]\n    conditions:\n      - { condition: X = 1, default: off }\n      - { condition: Y = 1, level: 2 }\n", 1) + appComponent,
 			sevError, "features[0].conditions[1]", "join the conditions with OR",
