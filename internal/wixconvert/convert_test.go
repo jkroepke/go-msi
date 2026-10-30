@@ -1016,7 +1016,7 @@ func TestConvertCloseApplication(t *testing.T) {
     <Feature Id="Main"><ComponentGroupRef Id="Harvested" /><ComponentGroupRef Id="Own" /></Feature>
     <util:CloseApplication Target="hello.com" CloseMessage="yes" />
     <util:CloseApplication Target="example.exe" CloseMessage="yes" />
-    <util:CloseApplication Target="hello.exe" CloseMessage="yes" Property="HELLORUNNING" />
+    <util:CloseApplication Target="hello.exe" CloseMessage="yes" Property="HELLORUNNING" PromptToContinue="yes" />
   </Package>
 </Wix>`
 
@@ -1030,6 +1030,7 @@ func TestConvertCloseApplication(t *testing.T) {
 		"closes hello.com, which is no program ending in .exe",
 		"closes example.exe, which is no single file of this package; when a Files glob (line 7) installs it",
 		"also sets the property HELLORUNNING while hello.exe runs",
+		"the attributes PromptToContinue of <util:CloseApplication> map to it only roughly or not at all",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the YAML lacks %q:\n%s", want, out)
@@ -1070,5 +1071,34 @@ func TestConvertCloseApplicationV3Src(t *testing.T) {
 
 	if !strings.Contains(string(res.YAML), "close: {terminate: false}") {
 		t.Errorf("hello.exe is not closed:\n%s", res.YAML)
+	}
+}
+
+// TestConvertCloseApplicationUndefinedVar checks that a Target with a
+// variable defined only on the WiX command line still closes the file of
+// the same name.
+func TestConvertCloseApplicationUndefinedVar(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component>
+          <File Source="bin\$(var.ExeName)" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <util:CloseApplication Target="$(var.ExeName)" CloseMessage="yes" />
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(res.YAML), "close: {terminate: false}") {
+		t.Errorf("the file is not closed:\n%s", res.YAML)
 	}
 }

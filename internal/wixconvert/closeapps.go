@@ -11,8 +11,7 @@ const elemCloseApp = "util:CloseApplication"
 
 // closeNote lists what files[].close does differently from
 // util:CloseApplication.
-const closeNote = "WiX matches the running program by its file name, close by its installed path; RebootPrompt and " +
-	"ElevatedCloseMessage map only roughly, and Timeout is not converted (close.timeout); set the property " +
+const closeNote = "WiX matches the running program by its file name, close by its installed path; set the property " +
 	"MSIRESTARTMANAGERCONTROL to Disable, so that the Restart Manager does not close the program as well"
 
 // emitCloseApps converts util:CloseApplication elements that close a
@@ -37,23 +36,29 @@ func (c *converter) emitCloseApps() {
 			continue
 		}
 
-		refs := c.filesNamed(target)
+		c.closeTarget(elm, target, found)
+	}
+}
 
-		switch {
-		case !strings.EqualFold(path.Ext(target), ".exe"):
-			c.todof(nil, "", elm.line, "<util:CloseApplication>%s closes %s, which is no program ending in .exe; "+
-				"files[].close closes only programs", found, target)
-		case len(refs) == 0 && len(c.globLines()) > 0:
-			c.todof(nil, "", elm.line, "<util:CloseApplication>%s closes %s, which is no single file of this package; "+
-				"when a Files glob (line %s) installs it, exclude it there and list it as a file of its own with close",
-				found, target, strings.Join(c.globLines(), ", "))
-		case len(refs) == 0:
-			c.todof(nil, "", elm.line, "<util:CloseApplication>%s closes %s, which is no file this package installs; "+
-				"files[].close closes only files of the package", found, target)
-		default:
-			for _, ref := range refs {
-				c.closeFile(ref.out, elm)
-			}
+// closeTarget closes the files of the package named target, or notes why
+// files[].close cannot close it.
+func (c *converter) closeTarget(elm *elem, target, found string) {
+	refs := c.filesNamed(target)
+
+	switch {
+	case !strings.EqualFold(path.Ext(target), ".exe") && !strings.Contains(target, "$("):
+		c.todof(nil, "", elm.line, "<util:CloseApplication>%s closes %s, which is no program ending in .exe; "+
+			"files[].close closes only programs", found, target)
+	case len(refs) == 0 && len(c.globLines()) > 0:
+		c.todof(nil, "", elm.line, "<util:CloseApplication>%s closes %s, which is no single file of this package; "+
+			"when a Files glob (line %s) installs it, exclude it there and list it as a file of its own with close",
+			found, target, strings.Join(c.globLines(), ", "))
+	case len(refs) == 0:
+		c.todof(nil, "", elm.line, "<util:CloseApplication>%s closes %s, which is no file this package installs; "+
+			"files[].close closes only files of the package", found, target)
+	default:
+		for _, ref := range refs {
+			c.closeFile(ref.out, elm)
 		}
 	}
 }
@@ -115,6 +120,11 @@ func (c *converter) closeFile(file *omap, elm *elem) {
 			"sets no property, so conditions that read it need another check", p, source)
 	}
 
+	if rough := roughCloseAttrs(elm); len(rough) > 0 {
+		c.todof(file, "close", elm.line, "close sends the program WM_CLOSE and waits close.timeout; the attributes %s "+
+			"of <util:CloseApplication> map to it only roughly or not at all", strings.Join(rough, ", "))
+	}
+
 	c.todof(file, "close", elm.line, "close of %s came from <util:CloseApplication>: %s", source, closeNote)
 }
 
@@ -130,4 +140,21 @@ func (c *converter) globLines() []string {
 	}
 
 	return lines
+}
+
+// roughCloseAttrs returns the util:CloseApplication attributes set on elm
+// that close maps only roughly or not at all.
+func roughCloseAttrs(elm *elem) []string {
+	var rough []string
+
+	for _, name := range []string{
+		"EndSessionMessage", "ElevatedCloseMessage", "ElevatedEndSessionMessage", "RebootPrompt",
+		"PromptToContinue", "Description", "Sequence", "Timeout",
+	} {
+		if elm.has(name) {
+			rough = append(rough, name)
+		}
+	}
+
+	return rough
 }
