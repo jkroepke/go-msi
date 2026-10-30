@@ -15,7 +15,7 @@ import (
 
 // TestBinaries checks every committed DLL against SHA256SUMS and inspects
 // its PE headers: the machine of its platform, the exported entry point and
-// no import beyond kernel32, advapi32 and msi.
+// no import beyond kernel32, advapi32, msi and user32.
 func TestBinaries(t *testing.T) {
 	t.Parallel()
 
@@ -75,11 +75,11 @@ func TestBinaries(t *testing.T) {
 
 			slices.Sort(libs)
 
-			if want := []string{"advapi32.dll", "kernel32.dll", "msi.dll"}; !slices.Equal(libs, want) {
+			if want := []string{"advapi32.dll", "kernel32.dll", "msi.dll", "user32.dll"}; !slices.Equal(libs, want) {
 				t.Errorf("imports %v, want %v", libs, want)
 			}
 
-			for _, entry := range []string{cadll.Entry, cadll.GrantEntryPoint, cadll.GrantSchedule} {
+			for _, entry := range []string{cadll.Entry, cadll.GrantEntryPoint, cadll.GrantSchedule, cadll.CloseEntryPoint, cadll.CloseSchedule} {
 				if !bytes.Contains(data, []byte(entry+"\x00")) {
 					t.Errorf("export %s not found", entry)
 				}
@@ -87,7 +87,9 @@ func TestBinaries(t *testing.T) {
 
 			// The log template and the immediate property are UTF-16 arrays
 			// in the C source, which a rename of the Go constants misses.
-			for _, want := range []string{cadll.Entry + ": [1]", cadll.GrantEntryPoint + ": [1]", cadll.DataProperty, cadll.GrantProperty, cadll.GrantExec, cadll.GrantRollback, cadll.GrantCommit} {
+			for _, want := range []string{cadll.Entry + ": [1]", cadll.GrantEntryPoint + ": [1]", cadll.DataProperty, cadll.GrantProperty, cadll.GrantExec, cadll.GrantRollback, cadll.GrantCommit,
+				cadll.CloseEntryPoint + ": [1]", cadll.CloseProperty, cadll.CloseExec,
+			} {
 				if !bytes.Contains(data, utf16z(want)) {
 					t.Errorf("UTF-16 string %q not found", want)
 				}

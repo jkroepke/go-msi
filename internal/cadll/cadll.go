@@ -86,6 +86,27 @@ func GrantEntry(condition string, kind byte, mask, flags uint32, account, object
 	return strings.Join([]string{condition, fmt.Sprintf("%c|%x|%x", kind, mask, flags), account, object}, grantSeparator)
 }
 
+// Closing running programs: the property the builder lists the files in,
+// the immediate action that asks them to close, the entry point and the
+// deferred action that ends what is left, and the flag that asks for it.
+const (
+	CloseProperty   = "BuilderCloseApps"
+	CloseSchedule   = "BuilderCloseSchedule"
+	CloseEntryPoint = "BuilderClose"
+	CloseExec       = "BuilderCloseExec"
+
+	CloseTerminate = 1
+)
+
+// CloseEntry encodes one line of the BuilderCloseApps property: the
+// condition under which it applies, the time in milliseconds the programs
+// get to close, the flags and the path of the program, which
+// BuilderCloseSchedule formats. None of the texts may contain a line break
+// or U+001F.
+func CloseEntry(condition string, timeoutMS, flags uint32, path string) string {
+	return strings.Join([]string{condition, fmt.Sprintf("%x|%x|", timeoutMS, flags), path}, grantSeparator)
+}
+
 // Data encodes the working directory and command line the DLL expects.
 func Data(directory, command string) string {
 	return directory + Separator + command

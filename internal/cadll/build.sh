@@ -51,7 +51,9 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     ReadFile:20 GetOverlappedResult:16 CancelIoEx:8 WaitForSingleObject:8 WaitForMultipleObjects:16 \
     GetTickCount64:0 GetExitCodeProcess:8 CloseHandle:4 GetCurrentThread:0 \
     GetProcessHeap:0 HeapAlloc:12 HeapReAlloc:16 HeapFree:12 GetLastError:0 \
-    MultiByteToWideChar:24 TerminateProcess:8 LocalFree:4 GetComputerNameW:8 >"$tmp/$out/kernel32.def"
+    MultiByteToWideChar:24 TerminateProcess:8 LocalFree:4 GetComputerNameW:8 \
+    CreateToolhelp32Snapshot:8 Process32FirstW:8 Process32NextW:8 OpenProcess:12 \
+    QueryFullProcessImageNameW:16 CompareStringOrdinal:20 >"$tmp/$out/kernel32.def"
   imports advapi32 OpenThreadToken:16 DuplicateTokenEx:24 CreateProcessAsUserW:44 SystemFunction036:8 \
     ConvertStringSidToSidW:8 LookupAccountNameW:28 GetNamedSecurityInfoW:32 SetNamedSecurityInfoW:28 \
     GetSecurityDescriptorControl:12 InitializeAcl:12 GetAce:12 AddAce:20 AddAccessAllowedAceEx:20 \
@@ -59,7 +61,8 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     RegQueryValueExW:24 RegDeleteTreeW:8 RegCloseKey:4 >"$tmp/$out/advapi32.def"
   imports msi MsiGetPropertyW:16 MsiCreateRecord:4 MsiRecordSetStringW:12 MsiRecordSetInteger:12 MsiProcessMessage:12 \
     MsiCloseHandle:4 MsiSetPropertyW:12 MsiFormatRecordW:16 MsiEvaluateConditionW:8 >"$tmp/$out/msi.def"
-  for lib in kernel32 advapi32 msi; do
+  imports user32 EnumWindows:8 GetWindowThreadProcessId:8 PostMessageW:16 GetClassNameW:12 >"$tmp/$out/user32.def"
+  for lib in kernel32 advapi32 msi user32; do
     "$DLLTOOL" -m "$arch" -k -d "$tmp/$out/$lib.def" -l "$tmp/$out/$lib.lib"
   done
   "$CLANG" --target="$triple-pc-windows-msvc" -std=c11 -O2 -Wall -Wextra -Werror \
@@ -68,8 +71,9 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     -c src/builderrun.c -o "$tmp/$out/builderrun.obj"
   "$CLANG" --target="$triple-pc-windows-msvc" -fuse-ld=lld -nostdlib -shared \
     -o "builderrun-$out.dll" "$tmp/$out/builderrun.obj" \
-    "$tmp/$out/kernel32.lib" "$tmp/$out/advapi32.lib" "$tmp/$out/msi.lib" \
+    "$tmp/$out/kernel32.lib" "$tmp/$out/advapi32.lib" "$tmp/$out/msi.lib" "$tmp/$out/user32.lib" \
     -Wl,/Brepro -Wl,/nodefaultlib -Wl,/entry:_DllMainCRTStartup -Wl,/export:BuilderRun -Wl,/export:BuilderGrant -Wl,/export:BuilderGrantSchedule \
+    -Wl,/export:BuilderClose -Wl,/export:BuilderCloseSchedule \
     -Wl,/release -Wl,/opt:ref -Wl,/opt:icf -Wl,/subsystem:windows
 done
 sha256sum builderrun-x86.dll builderrun-x64.dll builderrun-arm64.dll >SHA256SUMS

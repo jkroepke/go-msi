@@ -1712,6 +1712,30 @@
                   "additionalProperties": false
                 }
               },
+              "close": {
+                "description": "Close running copies of this program (an .exe) when its component is installed, repaired or removed: WM_CLOSE to its windows on the installing user's desktop before InstallValidate, then, unless terminate is false, the processes still running from the installed path are ended after StopServices. Copies in other folders are left alone.",
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/bool"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "timeout": {
+                        "type": "string",
+                        "description": "A Go duration such as 10s: how long the program gets to close, at most 5m.",
+                        "default": "5s"
+                      },
+                      "terminate": {
+                        "$ref": "#/$defs/bool",
+                        "description": "End the processes that are still running after the timeout.",
+                        "default": true
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              },
               "include": {
                 "$ref": "#/$defs/stringList",
                 "description": "Folder sources only: doublestar glob patterns of the files to add, default all. A pattern without / matches a name in any folder; ** matches any number of folders; a trailing / matches folders only. Case is ignored."
