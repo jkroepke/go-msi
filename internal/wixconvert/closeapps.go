@@ -1,6 +1,7 @@
 package wixconvert
 
 import (
+	"slices"
 	"strings"
 )
 
@@ -8,19 +9,28 @@ const elemCloseApp = "util:CloseApplication"
 
 // closeNote lists what files[].close does differently from
 // util:CloseApplication.
-const closeNote = "WiX matches the running program by its file name, close by its installed path; RebootPrompt, Timeout " +
-	"and ElevatedCloseMessage map only roughly; set the property MSIRESTARTMANAGERCONTROL to Disable, so that the " +
-	"Restart Manager does not close the program as well"
+const closeNote = "WiX matches the running program by its file name, close by its installed path; RebootPrompt and " +
+	"ElevatedCloseMessage map only roughly, and Timeout is not converted (close.timeout); set the property " +
+	"MSIRESTARTMANAGERCONTROL to Disable, so that the Restart Manager does not close the program as well"
 
 // emitCloseApps converts util:CloseApplication elements that close a
-// program the package installs into files[].close of its file.
+// program the package installs into files[].close of its file, in the
+// order of the source.
 func (c *converter) emitCloseApps() {
-	for _, elm := range c.closeApps {
+	apps := slices.Clone(c.closeApps)
+	slices.SortStableFunc(apps, func(a, b *elem) int { return a.line - b.line })
+
+	for _, elm := range apps {
 		target := strings.TrimSpace(c.literal(elm.attr("Target")))
 
 		if !closesApp(elm) {
-			c.todof(nil, "", elm.line, "<util:CloseApplication> for %s only detects the running program (Property %s), "+
-				"which has no counterpart; files[].close on the program's file closes it instead", target, elm.attr("Property"))
+			found := ""
+			if p := elm.attr(attrProperty); p != "" {
+				found = " (Property " + p + ")"
+			}
+
+			c.todof(nil, "", elm.line, "<util:CloseApplication> for %s only detects the running program%s, "+
+				"which has no counterpart; files[].close on the program's file closes it instead", target, found)
 
 			continue
 		}
@@ -46,12 +56,22 @@ func closesApp(elm *elem) bool {
 		elm.yes("ElevatedEndSessionMessage") || elm.has("TerminateProcess")
 }
 
-// filesNamed returns the files of the package with an installed name.
+// filesNamed returns the files of the package with an installed name, with
+// the defines in their Name or Source filled in.
 func (c *converter) filesNamed(name string) []*fileRef {
 	var refs []*fileRef
 
 	for _, ref := range c.files {
-		if name != "" && strings.EqualFold(ref.name, name) && ref.out != nil {
+		if ref.out == nil || ref.e == nil || name == "" {
+			continue
+		}
+
+		installed := c.literal(ref.e.attr("Name"))
+		if installed == "" {
+			installed = baseName(sourcePath(c.literal(ref.e.attr("Source"))))
+		}
+
+		if strings.EqualFold(installed, name) {
 			refs = append(refs, ref)
 		}
 	}
@@ -59,18 +79,22 @@ func (c *converter) filesNamed(name string) []*fileRef {
 	return refs
 }
 
-// closeFile sets close on a file: WiX ends the program only with
-// TerminateProcess, close by default.
+// closeFile sets close on a file. WiX ends the program only with
+// TerminateProcess, close by default; when several elements close one
+// file, one that ends it wins, as WiX runs them all.
 func (c *converter) closeFile(file *omap, elm *elem) {
-	if elm.has("TerminateProcess") {
+	switch prev := file.get("close"); {
+	case elm.has("TerminateProcess"):
 		file.set("close", true)
-	} else {
+	case prev == nil:
 		file.set("close", flowMap().set("terminate", false))
 	}
 
+	source := file.str("source")
+
 	if cond := c.condition(elm); cond != "" {
-		c.todof(file, "close", elm.line, "<util:CloseApplication> closes the program only when %s; close has no condition", cond)
+		c.todof(file, "close", elm.line, "<util:CloseApplication> closes %s only when %s; close has no condition", source, cond)
 	}
 
-	c.todof(file, "close", elm.line, "close came from <util:CloseApplication>: "+closeNote)
+	c.todof(file, "close", elm.line, "close of %s came from <util:CloseApplication>: %s", source, closeNote)
 }
