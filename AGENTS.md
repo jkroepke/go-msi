@@ -206,6 +206,12 @@ go test ./... -shuffle=on -race
   non-administrator installs with 1625 unless the machine policy `DisableMsi`
   is 0, and a per-user test package needs `INSTALLDIR` under
   `LocalAppDataFolder`, or it stops with 1303 at Program Files.
+- A standard user can repair a per-machine product, and its deferred
+  actions without impersonation then run as LocalSystem with the user's
+  command-line values of secure properties. A property that steers what
+  such an action changes (a grant's account or folder) stays out of
+  `SecureCustomProperties` (`unsecureGrantProperties`, spec 17.7);
+  `TestNonAdminGrantRepair` repairs as the standard user to check that.
 - CI splits Windows into two runners: suite `unit` runs every package but
   `internal/builder/nativetest` under `-race`, suite `native` runs
   nativetest verbose and without `-race` (msiexec installs one package at a

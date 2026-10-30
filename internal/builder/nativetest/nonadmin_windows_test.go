@@ -413,3 +413,88 @@ func TestNonAdminSecureProperties(t *testing.T) {
 		})
 	}
 }
+
+const grantRepairConfig = `schema: msi-builder/v1
+product: { name: MsiBuilderSec03%[1]s, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: %[2]s }
+package: { platform: x64, compression: none }
+installDir: { name: MsiBuilderSec03%[1]s }
+properties:
+  SVC_ACCOUNT: { %[3]s }
+components:
+  - files: [{ source: app.exe }]
+  - id: Data
+    directory: CommonAppDataFolder/MsiBuilderSec03%[1]s/data
+    createFolder: true
+    folderPermissions:
+      grant: [{ account: '[SVC_ACCOUNT]', rights: modify }]
+`
+
+// TestNonAdminGrantRepair installs a per-machine package with a folder
+// grant to [SVC_ACCOUNT] as the administrator, with NetworkService, and
+// then repairs it as a standard user who passes their own account on the
+// command line (SEC-03). The builder no longer makes SVC_ACCOUNT secure, so
+// the engine drops the user's value, the grant falls back to the
+// remembered account and the user gets no ACE; the control package
+// declares SVC_ACCOUNT secure: true, and there the repair grants the
+// folder to the standard user.
+//
+//nolint:paralleltest // msiexec runs one installation at a time
+func TestNonAdminGrantRepair(t *testing.T) {
+	user := standardUser(t)
+	app := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+
+	sid, _, _, err := syscall.LookupSID("", user.name)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	userSID, err := sid.String()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name, suffix, upgradeCode, property string
+		userGranted                         bool
+	}{
+		{"default", "", "6c3a9e15-2b7d-4f80-a4c1-8d5e0b2f7a63", "", false},
+		{"secure", "Secure", "9d4b0f26-3c8e-4a91-b5d2-7e6f1c3a8b04", "secure: true", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := nonAdminDir(t, "grant-"+tc.name)
+			path := buildConfig(t, dir, "grant", fmt.Sprintf(grantRepairConfig, tc.suffix, tc.upgradeCode, tc.property),
+				map[string][]byte{"app.exe": app})
+			data := filepath.Join(os.Getenv("ProgramData"), "MsiBuilderSec03"+tc.suffix, "data")
+
+			t.Cleanup(func() {
+				_ = msiexecCode(t, filepath.Join(dir, "cleanup.log"), "/x", path)
+				_ = os.RemoveAll(filepath.Dir(data))
+			})
+
+			if code := msiexecCode(t, filepath.Join(dir, "install.log"), "/i", path, "SVC_ACCOUNT=NS"); code != 0 {
+				t.Fatalf("msiexec /i as the administrator returned %d\n%s", code, readLog(filepath.Join(dir, "install.log")))
+			}
+
+			log := filepath.Join(dir, "repair.log")
+			code := user.msiexec(t, log, "/i", path, "REINSTALL=ALL", "REINSTALLMODE=amus", `SVC_ACCOUNT=.\`+user.name)
+			sddl := objectSDDL(t, data)
+			repair := readLog(log)
+
+			t.Logf("SEC-03 %s: repair as %s exit %d, server SVC_ACCOUNT %q, %s\nfolder %s",
+				tc.name, user.name, code, serverProperties(repair)["SVC_ACCOUNT"],
+				grepLog(repair, "SVC_ACCOUNT", "BuilderGrant"), sddl)
+
+			if code != 0 {
+				t.Fatalf("msiexec /i REINSTALL=ALL as %s returned %d\n%s", user.name, code, repair)
+			}
+
+			if got := strings.Contains(sddl, ";;;"+userSID+")"); got != tc.userGranted {
+				t.Errorf("the folder grants to %s (%s): %v, want %v\n%s", user.name, userSID, got, tc.userGranted, sddl)
+			}
+
+			if !strings.Contains(sddl, ";;;NS)") {
+				t.Errorf("the folder lost the NetworkService grant\n%s", sddl)
+			}
+		})
+	}
+}

@@ -1289,11 +1289,19 @@ A package with services has at most 44 grants, 19 when a service uses
 `delayedAutoStart` or `failureActionsOnNonCrashFailures`, fewer with other
 actions after `InstallServices` such as `recovery`; the builder says how
 many fit. The account and the
-folder still come from properties: a standard user who repairs a
-per-machine product can presumably set a secure property on the command
-line (not tested), so
-keep the account and directory properties of a grant `secure: false`
-unless the wizard sets them. Three actions on the embedded custom action
+folder still come from properties, and a standard user can repair a
+per-machine product with their own `SVC_ACCOUNT=...` on the command line,
+which the engine passes only for a secure property. So the properties in
+an account and the public directories above a folder grant's folder up to
+its standard folder (`INSTALLDIR` for `INSTALLDIR/data`) are not secure,
+unlike other public properties: an administrator's command line still
+reaches the installation, a standard user's value is dropped and the
+grant uses the remembered account (SEC-03). `secure: true` in `properties`
+keeps one secure, and so does a `search`; the builder then warns about
+the repair. The wizard needs `secure: true` when a dialog field, the
+folder page or the feature tree sets the account or folder, and the
+builder warns about a property the wizard sets that is not secure.
+Per-user packages are not affected. Three actions on the embedded custom action
 DLL apply them, after `InstallFiles` (after `InstallServices` when the
 package has services) and before `StartServices`, so a service can use its
 folder when it starts: the deferred `BuilderGrantExec` grants without
@@ -1693,7 +1701,7 @@ properties:
 | Key | Default | Notes |
 |---|---|---|
 | `value` | none | Written to the Property table; an empty value writes no row. With `search` it is set by an action after `AppSearch` instead (see below) |
-| `secure` | `true` for public names | Listed in `SecureCustomProperties` |
+| `secure` | `true` for public names, except those a permission grant's account or folder comes from | Listed in `SecureCustomProperties` |
 | `hidden` | `false` | Listed in `MsiHiddenProperties` |
 | `search` | none | Fills the property from the registry, a folder, a file or an installed component; one search or a list, see below |
 

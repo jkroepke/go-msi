@@ -183,7 +183,9 @@ The rights apply to the subfolders and files too. Files and services take
 `grant` in their `permissions` block. The account can also be a property,
 `account: '[SERVICE_ACCOUNT]'`; the account is remembered, so a repair
 from Apps & Features grants to it again, but a major upgrade needs it on
-its command line again. To replace the permissions
+its command line again. Such a property is not secure, so only an
+administrator's command line sets it, not a standard user's repair; a
+wizard field for it needs `secure: true` in `properties`. To replace the permissions
 instead of adding to them, write an SDDL string in `sddl`.
 
 ### Add the program to PATH

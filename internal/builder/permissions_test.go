@@ -2,6 +2,9 @@ package builder_test
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -371,4 +374,113 @@ func TestPermissionGrantErrors(t *testing.T) {
 			t.Errorf("err %v, diagnostics %s", err, res.Diagnostics)
 		}
 	})
+}
+
+// TestGrantPropertiesNotSecure checks that the properties a grant's account
+// or folder comes from are not secure unless the configuration says so
+// (specification section 17.7), with a warning when they are and when the
+// wizard sets one that is not.
+func TestGrantPropertiesNotSecure(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+
+	const src = `schema: msi-builder/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64, scope: %s }
+installDir: { name: Hello }
+properties:
+  OTHER: {}
+%s
+components:
+  - files:
+      - source: hello.exe
+        permissions: { grant: [{ account: '.\[SVC_ACCOUNT]', rights: read }] }
+  - directory: INSTALLDIR/data
+    createFolder: true
+    folderPermissions: { grant: [{ account: NS, rights: modify, inherit: false }] }
+%s`
+
+	for _, tc := range []struct {
+		name, scope, props, extra string
+		secure, notSecure         []string
+		warnings                  []string
+	}{
+		{
+			name: "default", scope: "perMachine", props: "  SVC_ACCOUNT: {}",
+			secure: []string{"OTHER"}, notSecure: []string{"SVC_ACCOUNT", "INSTALLDIR"},
+		},
+		{
+			name: "explicit", scope: "perMachine", props: "  SVC_ACCOUNT: { secure: true }\n  INSTALLDIR: { secure: true }",
+			secure:   []string{"OTHER", "SVC_ACCOUNT", "INSTALLDIR"},
+			warnings: []string{"properties.SVC_ACCOUNT.secure", "properties.INSTALLDIR.secure"},
+		},
+		{
+			name: "wizard", scope: "perMachine", props: "  SVC_ACCOUNT: {}",
+			extra: "ui:\n  enabled: true\n  chooseDirectory: true\n  dialogs:\n" +
+				"    - { id: AccountDlg, title: Account, after: WelcomeDlg, fields: [{ property: SVC_ACCOUNT, label: Account }] }\n",
+			secure:    []string{"OTHER"},
+			notSecure: []string{"SVC_ACCOUNT", "INSTALLDIR"},
+			warnings:  []string{"properties.SVC_ACCOUNT:", "properties.INSTALLDIR:"},
+		},
+		{
+			name: "search", scope: "perMachine", props: `  SVC_ACCOUNT: { search: { registry: { root: HKLM, key: SOFTWARE\Example, name: Account } } }`,
+			secure:   []string{"OTHER", "SVC_ACCOUNT"},
+			warnings: []string{"properties.SVC_ACCOUNT.search"},
+		},
+		{
+			name: "per user", scope: "perUser", props: "  SVC_ACCOUNT: { secure: true }",
+			secure: []string{"OTHER", "SVC_ACCOUNT"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			cfg, err := config.Parse(fmt.Appendf(nil, src, tc.scope, tc.props, tc.extra), config.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			cfg.BaseDir = dir
+			res := mustBuild(t, cfg)
+
+			value := fmt.Sprint(cell(t, res.Database, "Property", "Value", func(r []any) bool { return r[0] == "SecureCustomProperties" }))
+			secure := strings.Split(value, ";")
+
+			for _, name := range tc.secure {
+				if !slices.Contains(secure, name) {
+					t.Errorf("SecureCustomProperties %q lacks %s", value, name)
+				}
+			}
+
+			for _, name := range tc.notSecure {
+				if slices.Contains(secure, name) {
+					t.Errorf("SecureCustomProperties %q has %s", value, name)
+				}
+			}
+
+			var grantWarnings []string
+
+			for _, diag := range res.Diagnostics {
+				if strings.Contains(diag.Message, "permission grant") {
+					grantWarnings = append(grantWarnings, diag.Path+": "+diag.Message)
+				}
+			}
+
+			if len(grantWarnings) != len(tc.warnings) {
+				t.Errorf("grant warnings %q, want %d", grantWarnings, len(tc.warnings))
+			}
+
+			for _, want := range tc.warnings {
+				if !slices.ContainsFunc(grantWarnings, func(w string) bool { return strings.HasPrefix(w, want) }) {
+					t.Errorf("no warning at %s in %q", want, grantWarnings)
+				}
+			}
+		})
+	}
 }

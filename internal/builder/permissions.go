@@ -30,6 +30,7 @@ type grantInfo struct {
 	component string
 	condition string
 	object    string
+	folder    string // the Directory of a folder grant
 	kind      byte
 	flags     uint32
 }
@@ -46,11 +47,12 @@ func (b *build) permissions() error {
 	for _, file := range b.files {
 		if file.cfg.Permissions != nil {
 			b.lock(lockFile, file.Key, file.cfg.Permissions)
-			b.grant(file.Component.cfg.ID, "[#"+file.Key+"]", cadll.GrantFile, 0, file.cfg.Permissions)
+			b.grant(file.Component.cfg.ID, "[#"+file.Key+"]", "", cadll.GrantFile, 0, file.cfg.Permissions)
 		}
 	}
 
 	b.grantActions()
+	b.unsecureGrantProperties()
 
 	return nil
 }
@@ -61,7 +63,7 @@ func (b *build) lockComponent(path string, comp *config.Component, info *compone
 			b.errorf(path+".folderPermissions", "the component creates no folder row; set createFolder: true")
 		} else {
 			b.lock(lockFolder, comp.Directory, comp.FolderPermissions)
-			b.grant(comp.ID, "["+comp.Directory+"]", cadll.GrantFile, grantInherit, comp.FolderPermissions)
+			b.grant(comp.ID, "["+comp.Directory+"]", comp.Directory, cadll.GrantFile, grantInherit, comp.FolderPermissions)
 		}
 	}
 
@@ -74,7 +76,7 @@ func (b *build) lockComponent(path string, comp *config.Component, info *compone
 	for _, svc := range comp.Services {
 		if svc.Permissions != nil {
 			b.lock(lockService, b.componentServiceID("svi", comp, svc.Name), svc.Permissions)
-			b.grant(comp.ID, svc.Name, cadll.GrantService, 0, svc.Permissions)
+			b.grant(comp.ID, svc.Name, "", cadll.GrantService, 0, svc.Permissions)
 		}
 	}
 }
@@ -87,11 +89,11 @@ func (b *build) lock(table, object string, perm *config.Permissions) {
 	b.table(lockTableName).Add(generatedID("lpe", table, object), object, table, perm.SDDL, nullable(perm.Condition))
 }
 
-// grant records the grants of a block for grantActions. flags are the ACE
-// flags of a folder grant that inherits.
-func (b *build) grant(component, object string, kind byte, flags uint32, perm *config.Permissions) {
+// grant records the grants of a block for grantActions. folder is the
+// Directory of a folder grant, flags are the ACE flags of one that inherits.
+func (b *build) grant(component, object, folder string, kind byte, flags uint32, perm *config.Permissions) {
 	for _, g := range perm.Grant {
-		info := &grantInfo{cfg: g, component: component, condition: perm.Condition, object: object, kind: kind}
+		info := &grantInfo{cfg: g, component: component, condition: perm.Condition, object: object, folder: folder, kind: kind}
 		if flags != 0 && (g.Inherit == nil || *g.Inherit) {
 			info.flags = flags
 		}
@@ -246,4 +248,139 @@ func (b *build) grantSchedule(anchor string) {
 
 		b.schedule(seqInstallExecute, action.name, cond, "", anchor, 0)
 	}
+}
+
+// unsecureGrantProperties takes the properties a grant's account or folder
+// comes from out of SecureCustomProperties (specification section 17.7):
+// the [PROPERTY] references in an account, and the public directories from
+// a folder grant's folder up to the standard folder it is in. A standard user who repairs a
+// per-machine product could otherwise set them on the command line, and
+// LocalSystem would grant the rights to that account or on that folder;
+// an administrator's values reach the server anyway (PROP-01). An explicit
+// secure: true, and a search, which needs a secure property, keep one
+// secure with a warning; a property the wizard sets gets a warning that a
+// standard user's value from it no longer arrives.
+func (b *build) unsecureGrantProperties() {
+	names := b.grantProperties()
+	if len(names) == 0 {
+		return
+	}
+
+	wizard := b.uiSetProperties()
+
+	// A per-user installation runs as the user, who gains nothing.
+	perMachine := b.cfg.Package.Scope != config.ScopePerUser
+
+	for _, name := range names {
+		b.unsecureGrantProperty(name, wizard[name], perMachine)
+	}
+}
+
+// unsecureGrantProperty handles one property for unsecureGrantProperties.
+func (b *build) unsecureGrantProperty(name string, wizard, perMachine bool) {
+	path := "properties." + name
+
+	if field := b.secureOptIn(name); field != "" {
+		if perMachine {
+			b.warnf(path+field, "%s names the account or folder of a permission grant and is secure (secure: true, or a search, "+
+				"which needs it), so a standard user who repairs the product can set it on the command line, and LocalSystem "+
+				"then grants the rights to that account or on that folder; keep it secure only when the wizard has to set it", name)
+		}
+
+		return
+	}
+
+	delete(b.secure, name)
+
+	if wizard && perMachine {
+		b.warnf(path, "%s names the account or folder of a permission grant, so it is not secure, and the wizard's value "+
+			"reaches the installation only when an administrator installs; set properties.%s.secure: true to pass a standard "+
+			"user's value, which also lets a standard user set it on a repair", name, name)
+	}
+}
+
+// secureOptIn returns the field of a properties entry that keeps it secure:
+// .secure for secure: true, .search for a search, which validation requires
+// to be secure; "" for none.
+func (b *build) secureOptIn(name string) string {
+	prop := b.cfg.Properties[name]
+
+	switch {
+	case prop == nil:
+		return ""
+	case prop.Secure != nil && *prop.Secure:
+		return ".secure"
+	case prop.Search != nil && b.secure[name]:
+		return ".search"
+	default:
+		return ""
+	}
+}
+
+// grantProperties returns, sorted, the public properties a grant's account
+// or folder comes from.
+func (b *build) grantProperties() []string {
+	set := make(map[string]bool)
+
+	for _, grant := range b.grants {
+		for _, name := range propertyRefs(grant.cfg.Account) {
+			if config.IsPublicProperty(name) {
+				set[name] = true
+			}
+		}
+
+		for dirID, depth := grant.folder, 0; dirID != "" && depth < 64; depth++ {
+			// A standard folder resolves itself, whatever its parent.
+			dir, ok := b.dirs[dirID]
+			if !ok || dir.standard {
+				break
+			}
+
+			if config.IsPublicProperty(dirID) {
+				set[dirID] = true
+			}
+
+			dirID = dir.parent
+		}
+	}
+
+	return sortedKeys(set)
+}
+
+// uiSetProperties returns the properties the wizard sets: the dialog
+// fields', the install dir on the folder page, and the feature folders the
+// feature tree can change.
+func (b *build) uiSetProperties() map[string]bool {
+	set := make(map[string]bool)
+	if !b.cfg.UI.Enabled {
+		return set
+	}
+
+	for _, dialog := range b.cfg.UI.Dialogs {
+		for _, field := range dialog.Fields {
+			set[field.Property] = true
+		}
+	}
+
+	if b.cfg.UI.ChooseDirectory {
+		set[b.cfg.InstallDir.ID] = true
+	}
+
+	if b.cfg.UI.ChooseFeatures {
+		var walk func([]*config.Feature)
+
+		walk = func(features []*config.Feature) {
+			for _, feature := range features {
+				if feature.Directory != "" {
+					set[feature.Directory] = true
+				}
+
+				walk(feature.Features)
+			}
+		}
+
+		walk(b.cfg.Features)
+	}
+
+	return set
 }
