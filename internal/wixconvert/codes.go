@@ -220,7 +220,20 @@ func (c *converter) noteHarvested() {
 	}
 
 	for _, comp := range c.comps {
-		if comp.out == nil || comp.folder == nil || comp.pinned {
+		if comp.out == nil || comp.folder == nil {
+			continue
+		}
+
+		if len(comp.tied) > 0 {
+			slices.Sort(comp.tied)
+			c.todof(comp.folder, "", comp.e.line,
+				"another Files glob into the same folder adds %s too, so convert kept no code for them and the late removeOld "+
+					"deletes them on the first upgrade from the WiX package; add the ComponentId WiX gave each one to the guids "+
+					"of one glob and exclude it from the other",
+				strings.Join(comp.tied, ", "))
+		}
+
+		if comp.pinned {
 			continue
 		}
 
@@ -317,7 +330,11 @@ func (c *converter) harvestedCodes() map[*comp]map[string]*BuiltComponent {
 			continue
 		}
 
-		src, rel := c.nearestHarvest(sources, row)
+		src, rel, tied := c.nearestHarvest(sources, row)
+		for _, other := range tied {
+			other.comp.tied = append(other.comp.tied, rel)
+		}
+
 		if src == nil || seen[src.comp][strings.ToLower(rel)] {
 			// Windows matches names ignoring case, and so does the build.
 			continue
@@ -337,15 +354,11 @@ func (c *converter) harvestedCodes() map[*comp]map[string]*BuiltComponent {
 
 // nearestHarvest returns the folder source that adds the key file of row
 // and whose folder is nearest above it, with the file's path below that
-// folder, or nil when none adds it or two with the same folder do.
-func (c *converter) nearestHarvest(sources []harvest, row *BuiltComponent) (*harvest, string) {
-	var (
-		best    *harvest
-		bestRel string
-		tie     bool
-	)
-
-	depth := -1
+// folder. When none adds it, it returns nil; when several with the same
+// folder do, nil and those sources.
+func (c *converter) nearestHarvest(sources []harvest, row *BuiltComponent) (*harvest, string, []*harvest) {
+	nearest := make([]*harvest, 0, len(sources))
+	bestRel, depth := "", -1
 
 	for i := range sources {
 		folder, below := c.builtPath(row.Directory, sources[i].target)
@@ -356,18 +369,21 @@ func (c *converter) nearestHarvest(sources []harvest, row *BuiltComponent) (*har
 		}
 
 		switch steps := strings.Count(rel, "/"); {
-		case best == nil || steps < depth:
-			best, bestRel, depth, tie = &sources[i], rel, steps, false
+		case len(nearest) == 0 || steps < depth:
+			nearest, bestRel, depth = append(nearest[:0], &sources[i]), rel, steps
 		case steps == depth:
-			tie = true
+			nearest = append(nearest, &sources[i])
 		}
 	}
 
-	if tie {
-		return nil, ""
+	switch len(nearest) {
+	case 0:
+		return nil, "", nil
+	case 1:
+		return nearest[0], bestRel, nil
 	}
 
-	return best, bestRel
+	return nil, bestRel, nearest
 }
 
 // listed are the built components that a component of the source stands

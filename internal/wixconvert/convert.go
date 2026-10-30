@@ -183,6 +183,9 @@ type comp struct {
 	dir    string
 	// keyFile is the name of the key path file WiX picks, if any.
 	keyFile string
+	// tied are the files of a folder source that another one with the same
+	// folder adds too, so that neither keeps their code.
+	tied []string
 	// droppedValues are the HKCU key path values of a shortcut component
 	// that msi-builder replaces with its own.
 	droppedValues []string

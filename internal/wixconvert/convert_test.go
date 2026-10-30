@@ -605,3 +605,62 @@ func TestConvertBuiltCodesNestedGlobs(t *testing.T) {
 		t.Errorf("glob notes in lines %v, want [7 9]", lines)
 	}
 }
+
+// A file that two globs into the same folder add keeps no code, and both
+// globs name it, also when each pinned other files.
+func TestConvertBuiltCodesTiedGlobs(t *testing.T) {
+	t.Parallel()
+
+	const src = `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade Schedule="afterInstallExecute" DowngradeErrorMessage="A newer version is installed." />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" />
+    </StandardDirectory>
+    <Files Include="bin\a*" Directory="INSTALLFOLDER" />
+    <Files Include="lib\*.exe" Directory="INSTALLFOLDER" />
+  </Package>
+</Wix>
+`
+
+	built := &wixconvert.BuiltPackage{
+		Name: "hello.msi",
+		Components: []wixconvert.BuiltComponent{
+			{ID: "fil1", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "INSTALLFOLDER", KeyFile: "app.exe"},
+			{ID: "fil2", Code: "{00000000-0000-4000-8000-000000000002}", Directory: "INSTALLFOLDER", KeyFile: "abc.txt"},
+			{ID: "fil3", Code: "{00000000-0000-4000-8000-000000000003}", Directory: "INSTALLFOLDER", KeyFile: "x.exe"},
+		},
+		Directories: []wixconvert.BuiltDirectory{
+			{ID: "TARGETDIR", Name: "SourceDir"},
+			{ID: "ProgramFiles64Folder", Parent: "TARGETDIR", Name: "PFiles64"},
+			{ID: "INSTALLFOLDER", Parent: "ProgramFiles64Folder", Name: "Hello"},
+		},
+	}
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{Built: built})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{" abc.txt: '{00000000-0000-4000-8000-000000000002}'", " x.exe: '{00000000-0000-4000-8000-000000000003}'"} {
+		if !strings.Contains(string(res.YAML), want) {
+			t.Errorf("YAML lacks %q:\n%s", want, res.YAML)
+		}
+	}
+
+	if strings.Contains(string(res.YAML), "000000000001") {
+		t.Errorf("a glob took app.exe:\n%s", res.YAML)
+	}
+
+	var lines []int
+
+	for _, note := range res.Notes {
+		if strings.HasPrefix(note.Message, "another Files glob into the same folder adds app.exe too") {
+			lines = append(lines, note.Line)
+		}
+	}
+
+	if !slices.Equal(lines, []int{7, 8}) {
+		t.Errorf("tie notes in lines %v, want [7 8]: %v", lines, res.Notes)
+	}
+}

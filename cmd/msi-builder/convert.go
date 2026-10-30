@@ -218,16 +218,23 @@ func builtDirectories(database *msidb.Database) []wixconvert.BuiltDirectory {
 	dirs := make([]wixconvert.BuiltDirectory, 0, len(table.Rows))
 
 	for _, row := range table.Rows {
-		// DefaultDir is target[:source], each short|long.
-		target, _, _ := strings.Cut(cellString(row, name), ":")
-		if _, long, ok := strings.Cut(target, "|"); ok {
-			target = long
-		}
-
-		dirs = append(dirs, wixconvert.BuiltDirectory{ID: cellString(row, key), Parent: cellString(row, parent), Name: target})
+		dirs = append(dirs, wixconvert.BuiltDirectory{
+			ID: cellString(row, key), Parent: cellString(row, parent), Name: targetName(cellString(row, name)),
+		})
 	}
 
 	return dirs
+}
+
+// targetName returns the long target name of a DefaultDir value,
+// target[:source], each short|long.
+func targetName(defaultDir string) string {
+	target, _, _ := strings.Cut(defaultDir, ":")
+	if _, long, ok := strings.Cut(target, "|"); ok {
+		return long
+	}
+
+	return target
 }
 
 func cellString(row []any, col int) string {

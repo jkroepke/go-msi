@@ -279,3 +279,20 @@ components:
 		}
 	}
 }
+
+func TestTargetName(t *testing.T) {
+	t.Parallel()
+
+	for value, want := range map[string]string{
+		"docs":                       "docs",
+		"LONGNA~1|Long Name":         "Long Name",
+		"SHORT~1|Long:SRC~1|SrcLong": "Long",
+		"bin:src":                    "bin",
+		".":                          ".",
+		".:SourceDir":                ".",
+	} {
+		if got := targetName(value); got != want {
+			t.Errorf("targetName(%q) = %q, want %q", value, got, want)
+		}
+	}
+}
