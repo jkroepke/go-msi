@@ -1,6 +1,9 @@
 package condition //nolint:testpackage // the tests reach unexported encoders
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestValid(t *testing.T) {
 	t.Parallel()
@@ -80,5 +83,14 @@ func TestProperties(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("%v", got)
 		}
+	}
+}
+
+func TestActionStates(t *testing.T) {
+	t.Parallel()
+
+	got := ActionStates(`&Main=3 AND !Main<>3 OR $Comp=2 AND ?Comp=3 AND %PATH AND START="1"`)
+	if want := []string{"&Main", "$Comp"}; !slices.Equal(got, want) {
+		t.Errorf("ActionStates = %v, want %v", got, want)
 	}
 }

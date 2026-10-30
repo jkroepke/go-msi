@@ -732,6 +732,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 		v.componentID(p, comp, seen, known)
 		v.componentDirectory(cfg, p, comp, known)
 		v.componentScope(p, comp)
+		v.componentConditionStates(p+".condition", comp.Condition)
 
 		if folderComponent(comp) {
 			v.folderComponent(cfg, p, comp)
@@ -1496,11 +1497,27 @@ func (v *validator) serviceControl(ctlPath string, ctl *ServiceControl, start st
 			v.errorf(ctlPath+".startCondition", "needs startOnInstall")
 		} else if err := condition.Check(ctl.StartCondition); err != nil {
 			v.errorf(ctlPath+".startCondition", "%v", err)
+		} else {
+			v.componentConditionStates(ctlPath+".startCondition", ctl.StartCondition)
 		}
 	}
 
 	if ctl.WaitForStart != nil && !*ctl.StartOnInstall {
 		v.warnf(ctlPath+".waitForStart", "has no effect without startOnInstall")
+	}
+}
+
+// componentConditionStates rejects feature and component action states in a
+// condition that ends up in Component.Condition. The engine evaluates
+// component conditions in CostFinalize, before features and components have
+// an action state (reported, Conditional Statement Syntax), so such a term
+// never holds: a service whose start condition asked for &Feature=3 never
+// started (observed, SVC-09).
+func (v *validator) componentConditionStates(field, cond string) {
+	if states := condition.ActionStates(cond); len(states) > 0 {
+		v.errorf(field, "refers to the action state of %s, but component conditions are evaluated before "+
+			"features and components have one (SVC-09); use a property instead, for example one that a "+
+			"dialog checkbox sets", strings.Join(states, ", "))
 	}
 }
 

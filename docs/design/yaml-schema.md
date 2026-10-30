@@ -1254,7 +1254,12 @@ properties in the condition become secure, so a value set in the wizard
 reaches the server. SVC-08 showed the start following the property at a
 first install. How a repair or a major upgrade treats the generated
 component (for example, whether a repair starts the service again) is not
-tested. It needs `startOnInstall`.
+tested. It needs `startOnInstall`. Like a component's `condition`, it
+cannot ask for a feature's or a component's action state (`&Feature`,
+`$Component`): component conditions are evaluated before those exist, and
+a start condition on `&StartService=3` never started the service (SVC-09),
+so the validator rejects both. A feature's checkbox has to set a property
+instead.
 
 `recovery` becomes a deferred, no-impersonate `sc.exe failure` action after
 InstallServices, with its exit code ignored (SVC-01). Each step is `restart`,

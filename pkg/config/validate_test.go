@@ -873,6 +873,14 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, control: {startCondition: 'A AND'}}]\n    files:", 1),
 			sevError, "components[0].services[0].control.startCondition", "",
 		},
+		"start condition on a feature state": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, control: {startCondition: '&Main=3'}}]\n    files:", 1),
+			sevError, "components[0].services[0].control.startCondition", "action state of &Main",
+		},
+		"component condition on a component state": {
+			base + strings.Replace(appComponent, "    files:", "    condition: '$App=3 OR ?App=3'\n    files:", 1),
+			sevError, "components[0].condition", "action state of $App",
+		},
 		"service control without event": {
 			base + strings.Replace(appComponent, "    files:", "    serviceControl: [{name: Old}]\n    files:", 1),
 			sevError, "components[0].serviceControl[0]", "no event",
