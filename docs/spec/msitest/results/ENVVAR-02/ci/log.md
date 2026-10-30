@@ -4,18 +4,20 @@
   interactive session with Explorer, 2026-10-30
 - CI runs 41039238183 (commit 8233970, broadcast only) and 41049121338
   (commit 0c5a51f, broadcast and Explorer), PR #142, with the probe
-  version of the test that logged instead of asserting; the asserting
-  test that merged (shell found with `GetShellWindow`, a fresh
-  unannounced value before each step) passed on the PR's last CI run
+  version of the test that logged instead of asserting. The asserting
+  test passed in CI run 41051717271 (commit 9db6b3a), and its final
+  version (shell found with `GetShellWindow`, a fresh unannounced value
+  before each step) in CI run 41052974347 (commit 9647272)
 - Test: `TestMsiexecEnvironmentBroadcast` in
   `internal/builder/nativetest/broadcast_windows_test.go`
 
 A hidden top-level window on a thread of the test process logs every
 `WM_SETTINGCHANGE`. Explorer's environment block is read through its PEB
 (`ProcessParameters` at PEB+0x20, `Environment` at +0x80), which is what a
-program started from the Start menu or Run inherits (inferred). Before the packages
-run, `reg add HKCU\Environment /v MSIBUILDER_UNANNOUNCED /d 1` writes a
-variable without a broadcast. Each package installs `app.txt` and sets its
+program started from the Start menu or Run inherits (inferred). Before
+each step, `reg add HKCU\Environment` writes a fresh value to a variable
+named `MSIBUILDER_UNANNOUNCED_<time>` without a broadcast (the probe runs
+wrote one value once, before the first install). Each package installs `app.txt` and sets its
 variable to `[INSTALLDIR]`; every step runs `msiexec /qn` and waits 5 s.
 
 | Package | Step | Messages | Registry | Explorer sees the variable |
@@ -27,10 +29,13 @@ variable to `[INSTALLDIR]`; every step runs `msiexec /qn` and waits 5 s.
 | perUser, `scope: user` | install, repair, uninstall | the same each time | set, set, removed | yes, yes, no |
 | perMachine, no `Environment` rows | install, repair, uninstall | none | — | — |
 
-- After the plain `reg add` and 5 s, the window had received nothing and
+- In the probe runs, after the plain `reg add` and 5 s, the window had received nothing and
   Explorer did not have `MSIBUILDER_UNANNOUNCED`. After the first install
   it had it, so Explorer reloaded its whole environment because of the
   engine's broadcast.
+- In the final run, the fresh value written before each install, repair
+  and uninstall was in Explorer's block after that step, for all three
+  variants.
 - The first run read only the first entry of Explorer's block (a parser
   bug, fixed in the second run); its broadcast results were the same.
 - A `SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0,
