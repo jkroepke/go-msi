@@ -64,7 +64,7 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
   imports msi MsiGetPropertyW:16 MsiCreateRecord:4 MsiRecordSetStringW:12 MsiRecordSetInteger:12 MsiProcessMessage:12 \
     MsiCloseHandle:4 MsiSetPropertyW:12 MsiFormatRecordW:16 MsiEvaluateConditionW:8 \
     MsiGetMode:8 >"$tmp/$out/msi.def"
-  imports ntdll NtCreateFile:44 >"$tmp/$out/ntdll.def"
+  imports ntdll NtCreateFile:44 NtSetInformationFile:20 RtlNtStatusToDosError:4 >"$tmp/$out/ntdll.def"
   for lib in kernel32 advapi32 msi ntdll; do
     "$DLLTOOL" -m "$arch" -k -d "$tmp/$out/$lib.def" -l "$tmp/$out/$lib.lib"
   done

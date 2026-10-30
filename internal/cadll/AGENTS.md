@@ -74,7 +74,7 @@ The custom action DLL of `run` actions and permission grants. Read the root
   layouts the DLL declares itself are pinned by `_Static_assert`s on their
   documented sizes for 32- and 64-bit builds.
 - `cadll_test.go` checks the checksums, the PE machine, the export and that
-  the imports are only kernel32, advapi32, msi and ntdll (NtCreateFile). `testdata/probe` is the
+  the imports are only kernel32, advapi32, msi and ntdll (NtCreateFile, NtSetInformationFile, RtlNtStatusToDosError). `testdata/probe` is the
   CA-03 package that `internal/builder/nativetest` installs on Windows
   (`TestMsiexecRunActions`), natively on the x64 and arm64 runners. The x64
   package under emulation on arm64 passed once (CA-03) and is not rerun.
@@ -105,7 +105,10 @@ The custom action DLL of `run` actions and permission grants. Read the root
   (`FILE_FLAG_OPEN_REPARSE_POINT`), re-check the final path by that
   handle, rename by that handle into `X:\BuilderRemoveFolders.<token>`,
   and delete entries opened relative to their folder's handle with
-  `NtCreateFile` (the one ntdll import), deleting links as links. The
+  `NtCreateFile`, deleting links as links. Rename into a directory handle
+  with `NtSetInformationFile(FileRenameInformation)`:
+  `SetFileInformationByHandle(FileRenameInfo)` with `RootDirectory` set
+  fails with error 87 (FILE-11, CI run 41064763472). The
   guards (drive roots, standard folder properties and their parents
   compared by final path, profiles by token SID, the Windows folder, a
   reparse point as the folder, a junction or link above it; not a volume

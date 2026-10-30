@@ -6,7 +6,7 @@
 // ERROR_INSTALL_FAILURE for anything else.
 //
 // The DLL is freestanding: it includes no SDK header and links no C runtime,
-// only kernel32.dll, advapi32.dll, msi.dll and, for NtCreateFile alone,
+// only kernel32.dll, advapi32.dll, msi.dll and, for handle-relative opens and renames,
 // ntdll.dll, whose prototypes are written out below from Microsoft's
 // documentation of each function. It is built by
 // build.sh with clang and lld for x86, x64 and arm64.
@@ -203,7 +203,9 @@ int WINAPI MsiEvaluateConditionW(MSIHANDLE, const WCHAR *);
 BOOL WINAPI MsiGetMode(MSIHANDLE, int);
 
 // ntdll.dll: NtCreateFile opens a name relative to a directory handle,
-// which no kernel32 function does.
+// which no kernel32 function does, and NtSetInformationFile renames into
+// a directory handle, which SetFileInformationByHandle refuses with
+// ERROR_INVALID_PARAMETER (FILE-11, CI run 41064763472).
 typedef struct {
     unsigned short Length, MaximumLength;
     WCHAR *Buffer;
@@ -225,6 +227,8 @@ typedef struct {
 _Static_assert(sizeof(OBJECT_ATTRIBUTES) == (sizeof(void *) == 4 ? 24 : 48), "OBJECT_ATTRIBUTES layout");
 _Static_assert(sizeof(IO_STATUS_BLOCK) == (sizeof(void *) == 4 ? 8 : 16), "IO_STATUS_BLOCK layout");
 long WINAPI NtCreateFile(HANDLE *, DWORD, OBJECT_ATTRIBUTES *, IO_STATUS_BLOCK *, void *, DWORD, DWORD, DWORD, DWORD, void *, DWORD);
+long WINAPI NtSetInformationFile(HANDLE, IO_STATUS_BLOCK *, void *, DWORD, int);
+DWORD WINAPI RtlNtStatusToDosError(long);
 
 // Values that do not fit an int are macros: C11 allows only int-sized
 // enumerators (6.7.2.2), and clang accepts larger ones silently.
@@ -317,13 +321,15 @@ enum {
     FILE_ATTRIBUTE_NORMAL = 0x80,
     ERROR_ALREADY_EXISTS = 183,
     ERROR_NO_MORE_FILES = 18,
+    ERROR_NOT_ENOUGH_MEMORY = 8,
     // FILE_INFO_BY_HANDLE_CLASS values.
     FileBasicInfo_ = 0,
-    FileRenameInfo_ = 3,
     FileDispositionInfo_ = 4,
     FileAttributeTagInfo_ = 9,
     FileFullDirectoryInfo_ = 14,
     FileFullDirectoryRestartInfo_ = 15,
+    // NtSetInformationFile FILE_INFORMATION_CLASS.
+    FileRenameInformation_ = 10,
     // NtCreateFile.
     OBJ_CASE_INSENSITIVE = 0x40,
     FILE_OPEN_ = 1,
@@ -2254,29 +2260,31 @@ static HANDLE openNoFollow(const WCHAR *path, DWORD access)
     return h;
 }
 
-// renameInto moves the object of h into the folder dir as name.
-static int renameInto(HANDLE h, HANDLE dir, const WCHAR *name)
+// renameInto moves the object of h into the folder dir as name; 0 on
+// success, else the Windows error.
+static DWORD renameInto(HANDLE h, HANDLE dir, const WCHAR *name)
 {
     SIZE_T n = wlen(name);
-    // FILE_RENAME_INFO.
+    // FILE_RENAME_INFORMATION.
     struct rename {
         DWORD flags;
         HANDLE root;
         DWORD length;
         WCHAR name[1];
     };
-    _Static_assert(__builtin_offsetof(struct rename, name) == (sizeof(void *) == 4 ? 12 : 20), "FILE_RENAME_INFO layout");
+    _Static_assert(__builtin_offsetof(struct rename, name) == (sizeof(void *) == 4 ? 12 : 20), "FILE_RENAME_INFORMATION layout");
     SIZE_T size = sizeof(struct rename) + n * sizeof(WCHAR);
     struct rename *info = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size);
     if (!info) {
-        return 0;
+        return ERROR_NOT_ENOUGH_MEMORY;
     }
     info->root = dir;
     info->length = (DWORD)(n * sizeof(WCHAR));
     memcpy(info->name, name, n * sizeof(WCHAR));
-    BOOL ok = SetFileInformationByHandle(h, FileRenameInfo_, info, (DWORD)size);
+    IO_STATUS_BLOCK io;
+    long st = NtSetInformationFile(h, &io, info, (DWORD)size, FileRenameInformation_);
     HeapFree(GetProcessHeap(), 0, info);
-    return ok != 0;
+    return st >= 0 ? 0 : RtlNtStatusToDosError(st);
 }
 
 // openRelative opens the entry name (bytes long, not terminated) of the
@@ -2501,11 +2509,12 @@ static int moveAside(MSIHANDLE install, const WCHAR *folder, const WCHAR *token,
         WCHAR num[12];
         SIZE_T pos = 0;
         wappendnum(num, &pos, index);
-        if (renameInto(h, dir, num)) {
+        DWORD err = renameInto(h, dir, num);
+        if (!err) {
             logft(install, tmplRemove, folder, msgRemoveMoved, 0);
             ok = 1;
         } else {
-            logft(install, tmplRemove, folder, msgRemoveBusy, GetLastError());
+            logft(install, tmplRemove, folder, msgRemoveBusy, err);
         }
     }
     HeapFree(GetProcessHeap(), 0, final);
@@ -2540,7 +2549,7 @@ static int restore(HANDLE root, DWORD index, WCHAR *folder)
         int same = final && samePath(final, folder);
         folder[cut] = keep;
         folder[n] = 0;
-        ok = same && renameInto(moved, parent, folder + cut);
+        ok = same && !renameInto(moved, parent, folder + cut);
         folder[n] = '\\';
     }
     HeapFree(GetProcessHeap(), 0, final);
