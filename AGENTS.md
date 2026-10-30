@@ -23,8 +23,10 @@ versioning after 1.0.
   validated `*config.Config` and never reads YAML. Folder sources (a file
   `source` ending in `/`) are the one part that lists folders:
   `Config.ExpandFolders` (`folder.go`) replaces their component with one per
-  file through the `AddTree` code (`tree.go`, patterns in `glob.go` via
-  doublestar), and `builder.Build` calls it between two validation passes.
+  file through the `AddTree` code (`tree.go`, patterns in
+  [`internal/folderglob`](internal/folderglob) via doublestar, which
+  `wixconvert` shares), and `builder.Build` calls it between two validation
+  passes. A folder source's `guids` pin the codes of single files.
   Replaced components stay in `Config.folders`, so the second pass still
   reports problems at their YAML path.
 - [`pkg/builder`](pkg/builder): the public `Build`, `Options`, `Result` and
@@ -78,7 +80,12 @@ versioning after 1.0.
   component codes WiX generated, matched by `Id` or by key file (`codes.go`),
   because a late `removeOld` deletes the files of every changed code
   (UPG-11); a WiX shortcut component, which keeps its shortcut, is pinned too (UPG-11
-  shows a shared code keeps it; with WiX's other key path it is inferred). The fixtures are our own sample app: never copy
+  shows a shared code keeps it; with WiX's other key path it is inferred). A `Files`
+  glob keeps the code of each harvested file in the folder source's `guids`
+  (`pinHarvested`, after the components took theirs): the key file's path
+  comes from the built `Directory` table below the glob's folder, filtered by
+  the same include/exclude matcher as the build (UPG-12, which installs a real
+  WiX 5 package on CI). The fixtures are our own sample app: never copy
   third-party `.wxs` files in, and never read WiX source code (clean room).
 - [`internal/spool`](internal/spool), [`internal/memtest`](internal/memtest),
   [`internal/testpe`](internal/testpe): the spool target shared by file and

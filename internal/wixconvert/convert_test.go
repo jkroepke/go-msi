@@ -374,8 +374,10 @@ func TestConvertBuiltCodesOnce(t *testing.T) {
 }
 
 // A Files element: one file outside a component matches by its name, and a
-// glob, which became a folder source without a guid, gets the early removal
-// as its note instead of a guid to copy, also in a component with an Id.
+// glob, which became a folder source, keeps the codes of the files it adds
+// in guids, found by their path below its folder; a file it excludes, or
+// one another component took, keeps none there. A glob without a file in
+// the package gets the note instead, also in a component with an Id.
 func TestConvertBuiltCodesFiles(t *testing.T) {
 	t.Parallel()
 
@@ -385,36 +387,64 @@ func TestConvertBuiltCodesFiles(t *testing.T) {
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Hello" />
     </StandardDirectory>
-    <Files Include="dist\tools\**" Directory="INSTALLFOLDER" Subdirectory="tools" />
+    <Files Include="dist\tools\**" Directory="INSTALLFOLDER" Subdirectory="tools"><Exclude Files="dist\tools\*.pdb" /></Files>
     <Files Include="dist\LICENSE.txt" Directory="INSTALLFOLDER" />
     <Component Id="Tools" Directory="INSTALLFOLDER"><Files Include="dist\more\*.dll" /></Component>
   </Package>
 </Wix>
 `
-	built := &wixconvert.BuiltPackage{Name: "hello.msi", Components: []wixconvert.BuiltComponent{
-		{ID: "fil1", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "INSTALLFOLDER", KeyFile: "LICENSE.txt"},
-		{ID: "fil2", Code: "{00000000-0000-4000-8000-000000000002}", Directory: "dirA1", KeyFile: "tool.exe"},
-		{ID: "Tools", Code: "{00000000-0000-4000-8000-000000000003}", Directory: "INSTALLFOLDER", KeyFile: "a.dll"},
-	}}
+	built := &wixconvert.BuiltPackage{
+		Name: "hello.msi",
+		Components: []wixconvert.BuiltComponent{
+			{ID: "fil1", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "INSTALLFOLDER", KeyFile: "LICENSE.txt"},
+			{ID: "fil2", Code: "{00000000-0000-4000-8000-000000000002}", Directory: "dirA1", KeyFile: "tool.exe"},
+			{ID: "fil4", Code: "{00000000-0000-4000-8000-000000000004}", Directory: "dirA2", KeyFile: "Help.md"},
+			{ID: "fil5", Code: "{00000000-0000-4000-8000-000000000005}", Directory: "dirA1", KeyFile: "tool.pdb"},
+			{ID: "Tools", Code: "{00000000-0000-4000-8000-000000000003}", Directory: "INSTALLFOLDER", KeyFile: "a.dll"},
+		},
+		Directories: []wixconvert.BuiltDirectory{
+			{ID: "TARGETDIR", Name: "SourceDir"},
+			{ID: "ProgramFiles64Folder", Parent: "TARGETDIR", Name: "PFiles64"},
+			{ID: "INSTALLFOLDER", Parent: "ProgramFiles64Folder", Name: "Hello"},
+			{ID: "dirA1", Parent: "INSTALLFOLDER", Name: "tools"},
+			{ID: "dirA2", Parent: "dirA1", Name: "docs"},
+		},
+	}
 
-	for _, opts := range []wixconvert.Options{{Built: built}, {}} {
-		res, err := wixconvert.Convert(strings.NewReader(src), opts)
-		if err != nil {
-			t.Fatal(err)
-		}
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{Built: built})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		lines := globNotes(t, res.Notes, opts.Built != nil)
-		if !slices.Equal(lines, []int{7, 9}) {
-			t.Errorf("Built %t: glob notes in lines %v, want [7 9]", opts.Built != nil, lines)
-		}
+	if lines := globNotes(t, res.Notes, true); !slices.Equal(lines, []int{9}) {
+		t.Errorf("glob notes in lines %v, want [9]", lines)
+	}
 
-		if pinned := strings.Contains(string(res.YAML), "guid: '{00000000-0000-4000-8000-000000000001}'"); pinned != (opts.Built != nil) {
-			t.Errorf("Built %t: LICENSE.txt pinned %t:\n%s", opts.Built != nil, pinned, res.YAML)
+	for _, want := range []string{
+		"guid: '{00000000-0000-4000-8000-000000000001}'",
+		"guids:\n",
+		"docs/Help.md: '{00000000-0000-4000-8000-000000000004}'",
+		"tool.exe: '{00000000-0000-4000-8000-000000000002}'",
+		"The guids of 2 files that WiX harvested with Files come from hello.msi.",
+	} {
+		if !strings.Contains(string(res.YAML), want) {
+			t.Errorf("YAML lacks %q:\n%s", want, res.YAML)
 		}
+	}
 
-		if strings.Contains(string(res.YAML), "000000000002") || strings.Contains(string(res.YAML), "000000000003") {
-			t.Errorf("a folder source got a guid:\n%s", res.YAML)
+	for _, code := range []string{"000000000003", "000000000005"} {
+		if strings.Contains(string(res.YAML), code) {
+			t.Errorf("YAML has %s:\n%s", code, res.YAML)
 		}
+	}
+
+	res, err = wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if lines := globNotes(t, res.Notes, false); !slices.Equal(lines, []int{7, 9}) {
+		t.Errorf("without a package: glob notes in lines %v, want [7 9]", lines)
 	}
 }
 
@@ -427,7 +457,8 @@ func globNotes(t *testing.T, notes []wixconvert.Note, built bool) []int {
 
 	for _, note := range notes {
 		switch {
-		case strings.HasPrefix(note.Message, "WiX gave each file of this Files glob a component of its own"):
+		case strings.HasPrefix(note.Message, "WiX gave each file of this Files glob a component of its own"),
+			strings.HasPrefix(note.Message, "hello.msi has no component for a file of this Files glob"):
 			lines = append(lines, note.Line)
 		case strings.Contains(note.Message, "no matching component"), strings.HasPrefix(note.Message, "WiX generated the Guid"):
 			if built || !strings.Contains(note.Message, "the component in line 8;") {

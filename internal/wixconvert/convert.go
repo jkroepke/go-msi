@@ -92,28 +92,30 @@ func Convert(r io.Reader, opts Options) (*Result, error) {
 
 // converter holds the indexed source file and the output.
 type converter struct {
-	compByID     map[string]*comp
-	built        *BuiltPackage
-	claimed      map[string]bool // the built components a component took
-	advertised   []int           // the lines of advertised shortcuts
-	doc          *document
-	wixVars      map[string]string
-	dirs         map[string]*dir
-	wixUI        *elem
-	out          *omap
-	pkg          *elem
-	major        *elem
-	summary      *elem
-	usedVars     map[string]bool
-	groups       map[string]*group
-	actions      map[string]*elem
-	needDirs     map[string]bool
-	renames      map[string]string
-	installDir   *dir
-	uiSet        string
-	platform     string
-	launchAction string
-	properties   []*elem
+	compByID map[string]*comp
+	built    *BuiltPackage
+	claimed  map[string]bool // the built components a component took
+	// builtDirIndex holds the folders of the built package by ID.
+	builtDirIndex map[string]*BuiltDirectory
+	advertised    []int // the lines of advertised shortcuts
+	doc           *document
+	wixVars       map[string]string
+	dirs          map[string]*dir
+	wixUI         *elem
+	out           *omap
+	pkg           *elem
+	major         *elem
+	summary       *elem
+	usedVars      map[string]bool
+	groups        map[string]*group
+	actions       map[string]*elem
+	needDirs      map[string]bool
+	renames       map[string]string
+	installDir    *dir
+	uiSet         string
+	platform      string
+	launchAction  string
+	properties    []*elem
 	// progressTexts are the ProgressText elements, which become the
 	// progress key of the action they name.
 	progressTexts []*elem
@@ -185,9 +187,9 @@ type comp struct {
 	// when the built package gave it one.
 	generated bool
 	pinned    bool
-	// harvests is set when a Files glob became a folder source, which
-	// takes no guid.
-	harvests bool
+	// folder is the folder source a Files glob became, whose files keep
+	// the codes WiX gave them in its guids.
+	folder *omap
 }
 
 type group struct {

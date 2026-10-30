@@ -1754,6 +1754,13 @@
               "exclude": {
                 "$ref": "#/$defs/stringList",
                 "description": "Folder sources only: glob patterns of files and folders to leave out, like include; exclude wins."
+              },
+              "guids": {
+                "type": "object",
+                "description": "Folder sources only: the component GUID of a file, by its slash path below the folder (case is ignored). Keeps the codes another tool gave each file; the other files get generated ones.",
+                "additionalProperties": {
+                  "$ref": "#/$defs/guid"
+                }
               }
             },
             "required": [

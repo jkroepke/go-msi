@@ -1,4 +1,6 @@
-package config
+// Package folderglob matches the include and exclude patterns of a folder
+// source: the paths below the folder that a build adds.
+package folderglob
 
 import (
 	"errors"
@@ -16,6 +18,13 @@ import (
 type globPattern struct {
 	pattern string
 	dirOnly bool
+}
+
+// Check reports what is wrong with an include or exclude pattern.
+func Check(pattern string) error {
+	_, err := parseGlob(pattern)
+
+	return err
 }
 
 // parseGlob checks a pattern and returns it in lower case, anchored.
@@ -62,15 +71,15 @@ func (g globPattern) matches(rel string, dir bool) bool {
 	return doublestar.MatchUnvalidated(g.pattern, strings.ToLower(rel))
 }
 
-// folderFilter decides which entries below a folder source are added.
-type folderFilter struct {
+// Filter decides which entries below a folder source are added.
+type Filter struct {
 	include []globPattern
 	exclude []globPattern
 }
 
-// newFolderFilter parses the patterns of a folder source.
-func newFolderFilter(include, exclude []string) (*folderFilter, error) {
-	filter := &folderFilter{}
+// New parses the patterns of a folder source.
+func New(include, exclude []string) (*Filter, error) {
+	filter := &Filter{}
 
 	for _, list := range []struct {
 		into     *[]globPattern
@@ -90,16 +99,17 @@ func newFolderFilter(include, exclude []string) (*folderFilter, error) {
 	return filter, nil
 }
 
-// excluded reports whether an exclude pattern matches rel or one of its
-// folders, so that the walk can skip a whole folder.
-func (f *folderFilter) excluded(rel string, dir bool) bool {
+// Excluded reports whether an exclude pattern matches the slash path rel
+// below the folder or one of its folders, so that a walk can skip a whole
+// folder.
+func (f *Filter) Excluded(rel string, dir bool) bool {
 	return anyMatch(f.exclude, rel, dir)
 }
 
-// included reports whether the file rel is added: no exclude pattern
+// Included reports whether the file rel is added: no exclude pattern
 // matches it or a folder of it, and an include pattern does, or there is
 // none.
-func (f *folderFilter) included(rel string) bool {
+func (f *Filter) Included(rel string) bool {
 	if anyMatch(f.exclude, rel, false) {
 		return false
 	}

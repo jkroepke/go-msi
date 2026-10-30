@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/jkroepke/msi-builder/internal/msidb"
 	"github.com/jkroepke/msi-builder/internal/wixconvert"
 )
 
@@ -33,8 +34,10 @@ becomes a "# TODO" comment in the YAML file and a line on stderr.
 
 With --msi and the package WiX built from the source file, every component
 whose Guid WiX generated (Guid="*" or none) keeps the ComponentId it has in
-that package, when convert finds it there by its ID or its key file; the
-others get a "# TODO" comment. Without them, msi-builder generates other component codes, and
+that package, when convert finds it there by its ID or its key file, and
+each file a WiX Files glob harvested keeps its code in the guids of the
+folder source the glob became; the others get a "# TODO" comment. Without
+them, msi-builder generates other component codes, and
 an upgrade that removes the old version after installing the new one
 (MajorUpgrade Schedule="afterInstallExecute", and presumably
 "afterInstallFinalize") deletes the files of every component whose code
@@ -147,8 +150,8 @@ func writeNew(path string, data []byte, force bool) error {
 	return nil
 }
 
-// builtPackage reads the components of a package and the long names of
-// their key files.
+// builtPackage reads the components of a package, the long names of their
+// key files and the folders.
 func builtPackage(path string) (*wixconvert.BuiltPackage, error) {
 	database, closePackage, err := openPackage(path)
 	if err != nil {
@@ -184,7 +187,7 @@ func builtPackage(path string) (*wixconvert.BuiltPackage, error) {
 		return nil, fmt.Errorf("%s: the Component table lacks a standard column", path)
 	}
 
-	pkg := &wixconvert.BuiltPackage{Name: filepath.Base(path)}
+	pkg := &wixconvert.BuiltPackage{Name: filepath.Base(path), Directories: builtDirectories(database)}
 
 	for _, row := range components.Rows {
 		comp := wixconvert.BuiltComponent{
@@ -201,6 +204,30 @@ func builtPackage(path string) (*wixconvert.BuiltPackage, error) {
 	}
 
 	return pkg, nil
+}
+
+// builtDirectories reads the Directory table: the ID, the parent and the
+// long target name of each folder.
+func builtDirectories(database *msidb.Database) []wixconvert.BuiltDirectory {
+	table := database.Table("Directory")
+	if table == nil {
+		return nil
+	}
+
+	key, parent, name := table.Column("Directory"), table.Column("Directory_Parent"), table.Column("DefaultDir")
+	dirs := make([]wixconvert.BuiltDirectory, 0, len(table.Rows))
+
+	for _, row := range table.Rows {
+		// DefaultDir is target[:source], each short|long.
+		target, _, _ := strings.Cut(cellString(row, name), ":")
+		if _, long, ok := strings.Cut(target, "|"); ok {
+			target = long
+		}
+
+		dirs = append(dirs, wixconvert.BuiltDirectory{ID: cellString(row, key), Parent: cellString(row, parent), Name: target})
+	}
+
+	return dirs
 }
 
 func cellString(row []any, col int) string {

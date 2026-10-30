@@ -343,6 +343,12 @@ type File struct { //nolint:govet // field order is the YAML key order
 	// source (one that ends in a slash); see Config.ExpandFolders.
 	Include StringList `yaml:"include"`
 	Exclude StringList `yaml:"exclude"`
+	// GUIDs gives files of a folder source a fixed component GUID: the key
+	// is the slash path of the file below the folder, matched ignoring
+	// case, the value its GUID. A port keeps the codes of the components
+	// another tool gave each file this way; the other files keep generated
+	// ones.
+	GUIDs map[string]string `yaml:"guids"`
 
 	// FS, when set, is where Source is read from, overriding Config.FS for
 	// this file. AddTree sets it. It is never read from YAML.

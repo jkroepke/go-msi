@@ -896,8 +896,21 @@ Convert leaves a `# TODO` for them; remove the old version early, at least
 for the first upgrade from WiX, or give the shortcuts other names (both
 untested for advertised shortcuts).
 `msi-builder inspect --table Component old.msi` shows the GUIDs of the WiX
-package, also the ones WiX generated. A folder source cannot take a `guid`,
-so its files are safe only with the early removal, which a package with
-`preserve: true` cannot use.
-Convert leaves a `# TODO` on a WiX `Files` glob it turned into a folder
-source under a late removal.
+package, also the ones WiX generated. WiX gives each file of a `Files`
+glob or a Heat harvest a component and GUID of its own; a folder source
+keeps them in `guids`, by the path of each file below the folder, and
+convert with `--msi` fills it in from the WiX package (UPG-12 upgraded a
+WiX `Files` package this way and kept every file):
+
+```yaml
+components:
+  - files:
+      - source: dist/
+        guids:
+          app.exe: '{6D1C0A42-93B8-4E57-A2F1-0C7E5D9B3A61}'
+          lib/readme.txt: '{2B8F4E17-5A0C-4D93-B6E2-9F1A3C7D5E08}'
+```
+
+Files added in a later version need no entry. Without `--msi`, convert
+leaves a `# TODO` on a WiX `Files` glob it turned into a folder source
+under a late removal.
