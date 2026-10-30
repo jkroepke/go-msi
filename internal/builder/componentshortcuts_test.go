@@ -460,7 +460,7 @@ func TestShortcutCarrierNotPermanent(t *testing.T) {
     shortcuts: [{ name: Docs, url: "https://a" }]
 `))
 
-	generated := 0
+	generated, siteCarriers := 0, 0
 
 	for _, row := range rows(t, res.Database, "Component") {
 		attributes, ok := row[3].(int)
@@ -483,7 +483,13 @@ func TestShortcutCarrierNotPermanent(t *testing.T) {
 			}
 
 			// Site's carrier keeps its condition and the transitive bit.
-			if row[4] == "SITE" && attributes&0x40 == 0 { // msidbComponentAttributesTransitive
+			if row[4] != "SITE" {
+				continue
+			}
+
+			siteCarriers++
+
+			if attributes&0x40 == 0 { // msidbComponentAttributesTransitive
 				t.Errorf("carrier %v of Site lost the transitive bit (attributes %v)", row[0], row[3])
 			}
 		}
@@ -491,5 +497,9 @@ func TestShortcutCarrierNotPermanent(t *testing.T) {
 
 	if generated != 2 {
 		t.Errorf("%d generated shortcut components, want 2 (Conf and Site)", generated)
+	}
+
+	if siteCarriers != 1 {
+		t.Errorf("%d carriers with condition SITE, want 1", siteCarriers)
 	}
 }
