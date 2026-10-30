@@ -21,6 +21,11 @@
         </ServiceInstall>
         <util:RemoveFolderEx Property="INSTALLFOLDER" On="uninstall" />
       </Component>
+      <!-- Controls the service of another component. -->
+      <Component Id="HelloSvcControl" Condition="&amp;Complete = 3">
+        <File Id="hello.yaml" Source="dist\hello.yaml" />
+        <ServiceControl Id="HelloSvcStart" Name="HelloSvc" Start="install" Stop="both" Remove="uninstall" />
+      </Component>
     </ComponentGroup>
 
     <Component Id="ConsoleLink" Directory="AppMenu">

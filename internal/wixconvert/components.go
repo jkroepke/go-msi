@@ -1,6 +1,7 @@
 package wixconvert
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -132,7 +133,7 @@ func (c *converter) component(comp *comp, tree map[*dir]bool) *omap {
 		out.set("guid", guid)
 	}
 
-	out.set("condition", c.value(elm, "Condition"))
+	c.componentCondition(out, elm.line, c.value(elm, "Condition"))
 
 	for _, flag := range componentFlags {
 		if elm.yes(flag[0]) {
@@ -232,10 +233,28 @@ var componentChildren = map[string]func(cc *compConv, e *elem){ //nolint:gocheck
 	"fw:FirewallException":  func(cc *compConv, e *elem) { cc.c.firewall(e, cc.cp, "") },
 	"ProgId":                (*compConv).progID,
 	// WiX v3: the condition is the text.
-	elemCondition: func(cc *compConv, e *elem) { cc.out.set("condition", cc.c.expand(e, strings.TrimSpace(e.text))) },
+	elemCondition: func(cc *compConv, e *elem) {
+		cc.c.componentCondition(cc.out, e.line, cc.c.expand(e, strings.TrimSpace(e.text)))
+	},
 }
 
 const elemShortcut = "Shortcut"
+
+// actionState matches a feature or component action state, &Feature or
+// $Component, in a condition.
+var actionState = regexp.MustCompile(`[&$][A-Za-z_][A-Za-z0-9_.]*`)
+
+// componentCondition sets a component's condition. The installer evaluates
+// it before features and components have action states, so msi-builder
+// rejects one that tests them.
+func (c *converter) componentCondition(out *omap, line int, cond string) {
+	out.set("condition", cond)
+
+	if state := actionState.FindString(cond); state != "" {
+		c.todof(out, "condition", line, "the condition tests the action state %s, which is not set yet when the installer "+
+			"evaluates component conditions; msi-builder rejects it, so test a property instead", state)
+	}
+}
 
 func (cc *compConv) child(elm *elem) {
 	if hint, ok := unsupported[elm.qname()]; ok {

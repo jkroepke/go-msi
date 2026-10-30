@@ -2,7 +2,7 @@
 # Converted from actions.wxs by msi-builder convert.
 # Review it, resolve the TODO comments, then run msi-builder validate.
 # TODO(line 5): the WiX package has no MajorUpgrade; msi-builder adds the standard major upgrade (set upgrade: false to leave it out)
-# TODO(line 60): the Error row 1316 has no counterpart; only error actions take in their message
+# TODO(line 65): the Error row 1316 has no counterpart; only error actions take in their message
 schema: msi-builder/v1
 product:
   name: Hello
@@ -30,14 +30,21 @@ components:
           - name: Hello
             directory: ProgramMenuFolder/Hello
     services:
-      # TODO(line 19): the WiX package has no ServiceControl for HelloSvc; msi-builder starts it on install and stops and deletes it by default (services[].control)
       - name: HelloSvc
         start: auto
         recovery:
           actions: [restart, restart, none]
           restartDelay: 0s
-  # TODO(line 31): RemoveRegistryKey HKCR\*\shell\Hello was left out: msi-builder has no removal on uninstall only, and removeRegistry removes the key on install
-  # TODO(line 32): RemoveRegistryValue HKCU\Software\Example\Hello without Name removes the default value and was left out: removeRegistry without name removes the whole key
+  # Controls the service of another component.
+  # TODO(line 27): the ServiceControl for HelloSvc became services[].control of the component that installs it, which keeps that component's condition and feature instead of this one's
+  - id: HelloSvcControl
+    files:
+      - source: dist/hello.yaml
+        id: hello.yaml
+    # TODO(line 25): the condition tests the action state &Complete, which is not set yet when the installer evaluates component conditions; msi-builder rejects it, so test a property instead
+    condition: '&Complete = 3'
+  # TODO(line 36): RemoveRegistryKey HKCR\*\shell\Hello was left out: msi-builder has no removal on uninstall only, and removeRegistry removes the key on install
+  # TODO(line 37): RemoveRegistryValue HKCU\Software\Example\Hello without Name removes the default value and was left out: removeRegistry without name removes the whole key
   # The RemoveFolder and HKCU key path of this shortcut component were left out:
   # msi-builder writes both for every shortcut.
   - id: ConsoleLink
@@ -89,7 +96,7 @@ customActions:
     schedule:
       - {sequence: execute, after: InstallFinalize, condition: NOT REMOVE}
   - id: StartMonitor
-    # TODO(line 56): check [MONITOR]: quote it if it holds a bare path; leave it if it holds a quoted command line such as an UninstallString
+    # TODO(line 61): check [MONITOR]: quote it if it holds a bare path; leave it if it holds a quoted command line such as an UninstallString
     exec:
       command: '[MONITOR] --monitor'
       directory: INSTALLFOLDER

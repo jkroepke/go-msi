@@ -463,7 +463,7 @@ func (c *converter) addDir(elm *elem, parentID string, standard bool) *dir {
 		return d
 	}
 
-	folder := &dir{id: dirID, name: elm.attr("Name"), parentID: parentID, line: elm.line}
+	folder := &dir{id: dirID, name: c.expandVars(elm, elm.attr("Name")), parentID: parentID, line: elm.line}
 
 	if dirID == "TARGETDIR" || standard || isStandardFolder(dirID) {
 		folder.std, folder.name, folder.parentID = true, "", ""
@@ -551,7 +551,7 @@ func (c *converter) addComp(elm *elem, within scope) {
 		comp.dir = within.dir
 	}
 
-	if sub := elm.attr("Subdirectory"); sub != "" {
+	if sub := c.expandVars(elm, elm.attr("Subdirectory")); sub != "" {
 		comp.dir = c.subdir(comp.dir, sub, elm.line)
 	}
 

@@ -149,7 +149,9 @@ func (c *converter) recovery(svc *omap, elm *elem) {
 	svc.set("recovery", recovery)
 }
 
-// control is a ServiceControl of a service the component installs.
+// resolveControls converts the ServiceControls of the component. One of a
+// service that another component of the package installs goes to that
+// service's control, which msi-builder requires.
 func (cc *compConv) resolveControls() {
 	for _, elm := range cc.controls {
 		name := cc.c.value(elm, "Name")
@@ -162,20 +164,62 @@ func (cc *compConv) resolveControls() {
 			}
 		}
 
-		if own != nil {
+		switch {
+		case own != nil:
 			cc.ownControl(own, elm)
-		} else {
+		case cc.c.findElem(func(e *elem) bool { return e.is("ServiceInstall") && cc.c.value(e, "Name") == name }) != nil:
+			cc.c.todof(cc.out, "", elm.line, "the ServiceControl for %s became services[].control of the component "+
+				"that installs it, which keeps that component's condition and feature instead of this one's", name)
+		default:
 			cc.foreignControl(elm)
 		}
 	}
 
-	for i, s := range cc.services {
-		if !cc.controlled[s] {
-			cc.c.todof(s, "", cc.serviceLines[i],
-				"the WiX package has no ServiceControl for %v; msi-builder starts it on install and stops and deletes it by default (services[].control)",
-				s.get("name"))
+	cc.otherControls()
+}
+
+// otherControls gives the services without a ServiceControl in their own
+// component the one of another component, or notes msi-builder's default.
+func (cc *compConv) otherControls() {
+	for i, svc := range cc.services {
+		if cc.controlled[svc] {
+			continue
 		}
+
+		name := svc.str("name")
+		if elm := cc.c.findElem(func(e *elem) bool {
+			return e.is("ServiceControl") && cc.c.value(e, "Name") == name
+		}); elm != nil {
+			cc.ownControl(svc, elm)
+
+			continue
+		}
+
+		cc.c.todof(svc, "", cc.serviceLines[i],
+			"the WiX package has no ServiceControl for %v; msi-builder starts it on install and stops and deletes it by default (services[].control)",
+			name)
 	}
+}
+
+// findElem returns the first element of the file that match accepts.
+func (c *converter) findElem(match func(e *elem) bool) *elem {
+	var find func(e *elem) *elem
+
+	find = func(e *elem) *elem {
+		if match(e) {
+			return e
+		}
+
+		for _, kid := range e.kids {
+			if found := find(kid); found != nil {
+				return found
+			}
+		}
+
+		return nil
+	}
+
+	return find(c.doc.root)
 }
 
 // events reports whether a ServiceControl event value includes install and

@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- A sample package in WiX v4 syntax with most of what msi-builder convert maps. -->
 <?define Port = 8080 ?>
+<?define ShortName = "Hello" ?>
+<!-- Takes in ShortName: msi-builder does not expand vars inside vars. -->
+<?define ShortcutName = "$(var.ShortName) App" ?>
 <?include common.wxi ?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
@@ -53,7 +56,7 @@
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Hello">
         <Directory Id="CONFIGDIR" Name="config" />
-        <Directory Id="LogsDir" Name="logs" />
+        <Directory Id="LogsDir" Name="$(var.ShortName) logs" />
       </Directory>
     </StandardDirectory>
     <StandardDirectory Id="CommonAppDataFolder">
@@ -79,7 +82,7 @@
     <ComponentGroup Id="Core" Directory="INSTALLFOLDER">
       <Component Id="HelloExe" Guid="0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a10">
         <File Id="hello.exe" Source="bin\hello.exe" KeyPath="yes" Checksum="yes">
-          <Shortcut Id="DesktopShortcut" Directory="DesktopFolder" Name="Hello" Arguments="--gui" />
+          <Shortcut Id="DesktopShortcut" Directory="DesktopFolder" Name="$(var.ShortcutName)" Arguments="--gui" />
         </File>
         <ServiceInstall Name="Hello" DisplayName="Hello Service" Description="Answers hello requests."
                         Type="ownProcess" Start="auto" ErrorControl="normal" Vital="yes"

@@ -7,15 +7,34 @@ import (
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
+// emitVars writes the defines as vars. A define that uses an earlier one
+// takes in its value, as the WiX preprocessor does: msi-builder does not
+// expand a variable inside a vars value.
+func (c *converter) emitVars() {
+	defined := make(map[string]string)
+
+	for _, define := range c.defines {
+		value := preprocessorVar.ReplaceAllStringFunc(define[1], func(ref string) string {
+			parts := preprocessorVar.FindStringSubmatch(ref)
+			if v, ok := defined[varName(parts[2])]; ok && parts[1] != "env" && parts[1] != "sys" {
+				return v
+			}
+
+			return ref
+		})
+
+		defined[define[0]] = value
+		c.out.child("vars").set(define[0], c.expand(c.pkg, value))
+	}
+}
+
 // emit writes the output in msi-builder's key order.
 func (c *converter) emit() {
 	c.out.set("schema", "msi-builder/v1")
 	c.out.order("vars", "product", "package", "upgrade", "installDir", "directories", "features", "components",
 		"properties", "launchConditions", "customActions", "icons", "binaries", "firewall", "scheduleReboot", "ui")
 
-	for _, d := range c.defines {
-		c.out.child("vars").set(d[0], c.expand(c.pkg, d[1]))
-	}
+	c.emitVars()
 
 	c.markNeededDirs()
 	tree := c.treeDirs()

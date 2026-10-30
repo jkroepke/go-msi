@@ -2,20 +2,22 @@
 # Converted from package.wxs by msi-builder convert.
 # Review it, resolve the TODO comments, then run msi-builder validate.
 # WiX variables became ${NAME} references; pass them with --var NAME=value: Version.
-# TODO(line 4): <?include common.wxi?>: convert the included file and merge it in by hand
-# TODO(line 45): the hand-built dialog PortDlg cannot be converted; ui.dialogs lays out text, password, checkbox and choice fields
-# TODO(line 163): rescheduling the standard action RemoveExistingProducts in InstallExecuteSequence has no counterpart
-# TODO(line 48): a second progress text for InstallFiles is ignored
-# TODO(line 153): the custom action Greet is a script; script custom actions are never supported, use a run action
-# TODO(line 154): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
-# TODO(line 47): the progress text of InstallFiles cannot be converted: msi-builder writes progress texts only for its customActions
-# TODO(line 49): the progress text of LaunchHello is dropped: the action was not converted to a customActions entry of its own
-# TODO(line 165): drop Wix4BroadcastEnvironmentChange_X64: Windows Installer announces environment changes itself
-# TODO(line 166): Wix4BroadcastSettingChange_X64 has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action
+# TODO(line 7): <?include common.wxi?>: convert the included file and merge it in by hand
+# TODO(line 48): the hand-built dialog PortDlg cannot be converted; ui.dialogs lays out text, password, checkbox and choice fields
+# TODO(line 166): rescheduling the standard action RemoveExistingProducts in InstallExecuteSequence has no counterpart
+# TODO(line 51): a second progress text for InstallFiles is ignored
+# TODO(line 156): the custom action Greet is a script; script custom actions are never supported, use a run action
+# TODO(line 157): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
+# TODO(line 50): the progress text of InstallFiles cannot be converted: msi-builder writes progress texts only for its customActions
+# TODO(line 52): the progress text of LaunchHello is dropped: the action was not converted to a customActions entry of its own
+# TODO(line 168): drop Wix4BroadcastEnvironmentChange_X64: Windows Installer announces environment changes itself
+# TODO(line 169): Wix4BroadcastSettingChange_X64 has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action
 # TODO: WiX generated the GUIDs of Component2, Component1, and msi-builder generates other ones; with removeOld afterInstallExecute an upgrade from the WiX package then deletes their files. Copy WiX's GUIDs into components[].guid: msi-builder inspect --table Component wix.msi
 schema: msi-builder/v1
 vars:
   Port: "8080"
+  ShortName: Hello
+  ShortcutName: Hello App
 product:
   name: Hello
   manufacturer: Example
@@ -55,7 +57,7 @@ directories:
         configurable: true
         children:
           - id: LogsDir
-            name: logs
+            name: ${ShortName} logs
   - id: CommonAppDataFolder
     children:
       - id: DataDir
@@ -80,7 +82,7 @@ components:
   - id: Component2
     files:
       - source: docs/manual.pdf
-  # TODO(line 114): <util:XmlFile> is not supported: ship the complete file, or edit it with a run action (no rollback)
+  # TODO(line 117): <util:XmlFile> is not supported: ship the complete file, or edit it with a run action (no rollback)
   - id: HelloExe
     guid: 0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a10
     files:
@@ -88,7 +90,7 @@ components:
         id: hello.exe
         checksum: true
         shortcuts:
-          - name: Hello
+          - name: ${ShortcutName}
             directory: DesktopFolder
             arguments: --gui
         fileTypes:
@@ -142,7 +144,7 @@ components:
         dependencies: [Tcpip]
         control:
           wait: false
-        # TODO(line 89): the recovery action "reboot" has no counterpart; restart and none are supported
+        # TODO(line 92): the recovery action "reboot" has no counterpart; restart and none are supported
         recovery:
           resetAfterDays: 1
           actions: [restart, restart, none]
