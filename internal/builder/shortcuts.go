@@ -3,6 +3,7 @@ package builder
 import (
 	"cmp"
 	"fmt"
+	"io"
 	"iter"
 	"maps"
 	"slices"
@@ -174,6 +175,27 @@ func (b *build) createFolder(carrier, dirID string, created map[string]bool) {
 	b.table("CreateFolder").Add(dirID, carrier)
 }
 
+// hashRemovableCarriers adds a marker to the ProductCode digest when a
+// permanent component has shortcuts in a generated component. Builds that
+// made that component permanent gave it another ComponentId (carrierGUID),
+// so the rebuild needs another code, or installing it over the old one
+// fails with 1638.
+func (b *build) hashRemovableCarriers(hasher io.Writer) {
+	if slices.ContainsFunc(b.cfg.Components, func(comp *config.Component) bool {
+		return comp.Permanent && !shortcutsOnly(comp) && hasShortcuts(comp)
+	}) {
+		_, _ = hasher.Write([]byte("shortcuts:removable-carrier"))
+	}
+}
+
+// hasShortcuts reports whether a component lists shortcuts, of its own or
+// of its files.
+func hasShortcuts(comp *config.Component) bool {
+	return len(comp.Shortcuts) > 0 || slices.ContainsFunc(comp.Files, func(file *config.File) bool {
+		return len(file.Shortcuts) > 0
+	})
+}
+
 // shortcutsOnly reports whether a component holds nothing but shortcuts,
 // as the config package decides it: it gets no Component row of its own,
 // and the generated component that carries its shortcuts takes its id.
@@ -257,10 +279,10 @@ func (b *build) carrierGUID(info *componentInfo, own bool, bitness, carrier stri
 
 	seed := b.upgradeCode + "|" + bitness + "|shortcuts|" + carrier
 
-	// Builds before this rule made the carrier of a permanent component
-	// permanent too, and Windows keeps a permanent ComponentId registered
-	// after uninstall, so a later package with the same code would keep its
-	// shortcuts as well. A new code leaves that registration behind.
+	// Builds that made the carrier of a permanent component permanent as
+	// well left its ComponentId registered after uninstall, and a later
+	// package with the same code kept its shortcuts too (observed). A new
+	// code leaves that registration behind.
 	if !own && info.attributes&compPermanent != 0 {
 		seed += "|removable"
 	}

@@ -520,18 +520,31 @@ func TestShortcutCarrierGUIDOfPermanentComponent(t *testing.T) {
         shortcuts: [{ name: Edit }]
 `, permanent)))
 
+		var guids []any
+
 		for _, row := range rows(t, res.Database, "Component") {
 			if row[0] != "Conf" {
-				return row[1]
+				guids = append(guids, row[1])
 			}
 		}
 
-		t.Fatal("no generated shortcut component")
+		if len(guids) != 1 {
+			t.Fatalf("generated shortcut components %v, want 1", guids)
+		}
 
-		return nil
+		return guids[0]
 	}
 
-	if kept, removable := carrierGUID(false), carrierGUID(true); kept == removable {
+	// The carrier of a removable component keeps the ComponentId that
+	// every earlier build gave it.
+	const earlier = "{E8F093D1-5257-5AA8-804A-DF8360647E81}"
+
+	kept, removable := carrierGUID(false), carrierGUID(true)
+	if kept != earlier {
+		t.Errorf("carrier of a removable component has the ComponentId %v, want %v", kept, earlier)
+	}
+
+	if removable == kept {
 		t.Errorf("carrier of a permanent component has the ComponentId %v of a removable one", kept)
 	}
 }
