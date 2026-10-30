@@ -17,9 +17,13 @@ syntax; v3 names are mentioned where they differ.
 1. Let msi-builder write a first `msi.yaml`:
    `msi-builder convert -o msi.yaml app.wxs`. It converts what it can and
    leaves a `# TODO` comment for everything else; see
-   [convert](cli/msi-builder_convert.md).
+   [convert](cli/msi-builder_convert.md). It reads one `.wxs` file, the one
+   with `Package` (v3 `Product`); port fragments from other files by hand.
 2. Work through the TODO comments with the table and the sections below,
-   and check the result with `msi-builder validate msi.yaml`.
+   and check the result with `msi-builder validate`. WiX variables become
+   `${NAME}` references, which the comment at the top of the file lists;
+   pass each one, such as `msi-builder validate --var Version=1.4.0 msi.yaml`,
+   or give it a default under `vars:`.
 3. Build it, and compare the tables of both packages with
    `msi-builder inspect`, which reads any `.msi`, also one built by WiX:
    `msi-builder inspect --table Registry old.msi`.
