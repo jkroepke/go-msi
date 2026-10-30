@@ -303,3 +303,22 @@ func Properties(s string) []string {
 		}
 	}
 }
+
+// ActionStates returns the feature and component action state references of
+// a condition (&Feature, $Component), in order.
+func ActionStates(s string) []string {
+	l := &lexer{s: s}
+
+	var out []string
+
+	for {
+		tok, err := l.next()
+		if err != nil || tok.kind == tokEOF {
+			return out
+		}
+
+		if tok.kind == tokPrefix && (tok.text[0] == '&' || tok.text[0] == '$') {
+			out = append(out, tok.text)
+		}
+	}
+}

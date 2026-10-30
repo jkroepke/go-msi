@@ -733,6 +733,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 		v.componentID(p, comp, seen, known)
 		v.componentDirectory(cfg, p, comp, known)
 		v.componentScope(p, comp)
+		v.componentCondition(p+".condition", comp.Condition)
 
 		if folderComponent(comp) {
 			v.folderComponent(cfg, p, comp)
@@ -1496,13 +1497,37 @@ func (v *validator) serviceControl(ctlPath string, ctl *ServiceControl, start st
 	if ctl.StartCondition != "" {
 		if !*ctl.StartOnInstall {
 			v.errorf(ctlPath+".startCondition", "needs startOnInstall")
-		} else if err := condition.Check(ctl.StartCondition); err != nil {
-			v.errorf(ctlPath+".startCondition", "%v", err)
+		} else {
+			v.componentCondition(ctlPath+".startCondition", ctl.StartCondition)
 		}
 	}
 
 	if ctl.WaitForStart != nil && !*ctl.StartOnInstall {
 		v.warnf(ctlPath+".waitForStart", "has no effect without startOnInstall")
+	}
+}
+
+// componentCondition checks a condition that ends up in
+// Component.Condition: its syntax, and that it asks for no feature or
+// component action state. The engine evaluates component conditions only in
+// CostFinalize (reported, Component table), and action states are set by
+// CostFinalize (reported, Conditional Statement Syntax), so such a term sees
+// no action state: a service whose start condition asked for &Feature=3
+// did not start at a first install (observed, SVC-09; $Component was not
+// tested). Installed
+// states (!Feature, ?Component) stay allowed, as the Component table
+// documents them for this column.
+func (v *validator) componentCondition(field, cond string) {
+	if err := condition.Check(cond); err != nil {
+		v.errorf(field, "%v", err)
+
+		return
+	}
+
+	if states := condition.ActionStates(cond); len(states) > 0 {
+		v.errorf(field, "refers to the action state of %s, but component conditions are evaluated before "+
+			"features and components have one (SVC-09); use a property instead, for example one that a "+
+			"wizard checkbox field sets", strings.Join(states, ", "))
 	}
 }
 
