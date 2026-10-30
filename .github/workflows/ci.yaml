@@ -163,8 +163,9 @@ jobs:
           "MSI_BUILDER_NONADMIN_PASSWORD=$password" >> $env:GITHUB_ENV
 
       # Linux runs -short and uploads its coverage. Windows runs every package
-      # but nativetest under -race; the builder code the native tests run is
-      # the same code these tests check for races.
+      # but nativetest under -race. The builder code the native tests run is
+      # checked for races here; only internal/ice's Windows code, which the
+      # native tests call one at a time, runs without -race.
       - name: go test
         if: matrix.suite == 'unit'
         shell: bash
