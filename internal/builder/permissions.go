@@ -30,7 +30,7 @@ type grantInfo struct {
 	component string
 	condition string
 	object    string
-	folder    string // the Directory of a folder grant
+	folder    string // the Directory of a folder or file grant
 	kind      byte
 	flags     uint32
 }
@@ -47,7 +47,7 @@ func (b *build) permissions() error {
 	for _, file := range b.files {
 		if file.cfg.Permissions != nil {
 			b.lock(lockFile, file.Key, file.cfg.Permissions)
-			b.grant(file.Component.cfg.ID, "[#"+file.Key+"]", "", cadll.GrantFile, 0, file.cfg.Permissions)
+			b.grant(file.Component.cfg.ID, "[#"+file.Key+"]", file.Component.cfg.Directory, cadll.GrantFile, 0, file.cfg.Permissions)
 		}
 	}
 
@@ -90,7 +90,8 @@ func (b *build) lock(table, object string, perm *config.Permissions) {
 }
 
 // grant records the grants of a block for grantActions. folder is the
-// Directory of a folder grant, flags are the ACE flags of one that inherits.
+// Directory of a folder grant or of a file grant's component, flags are the
+// ACE flags of a folder grant that inherits.
 func (b *build) grant(component, object, folder string, kind byte, flags uint32, perm *config.Permissions) {
 	for _, g := range perm.Grant {
 		info := &grantInfo{cfg: g, component: component, condition: perm.Condition, object: object, folder: folder, kind: kind}
@@ -261,6 +262,11 @@ func (b *build) grantSchedule(anchor string) {
 // secure with a warning; a property the wizard sets gets a warning that a
 // standard user's value from it no longer arrives.
 func (b *build) unsecureGrantProperties() {
+	// A per-user installation runs as the user, who gains nothing.
+	if b.cfg.Package.Scope == config.ScopePerUser {
+		return
+	}
+
 	names := b.grantProperties()
 	if len(names) == 0 {
 		return
@@ -268,35 +274,72 @@ func (b *build) unsecureGrantProperties() {
 
 	wizard := b.uiSetProperties()
 
-	// A per-user installation runs as the user, who gains nothing.
-	perMachine := b.cfg.Package.Scope != config.ScopePerUser
-
 	for _, name := range names {
-		b.unsecureGrantProperty(name, wizard[name], perMachine)
+		b.unsecureGrantProperty(name, wizard[name])
 	}
 }
 
 // unsecureGrantProperty handles one property for unsecureGrantProperties.
-func (b *build) unsecureGrantProperty(name string, wizard, perMachine bool) {
-	path := "properties." + name
-
+// An explicit opt-in that no wizard page needs gets a warning; one the
+// wizard needs is what the warning advises. A property that loses a secure
+// status it had for the wizard or as a configurable directory gets a
+// warning that a standard user's value no longer arrives.
+func (b *build) unsecureGrantProperty(name string, wizard bool) {
 	if field := b.secureOptIn(name); field != "" {
-		if perMachine {
-			b.warnf(path+field, "%s names the account or folder of a permission grant and is secure (secure: true, or a search, "+
-				"which needs it), so a standard user who repairs the product can set it on the command line, and LocalSystem "+
-				"then grants the rights to that account or on that folder; keep it secure only when the wizard has to set it", name)
+		if !wizard {
+			b.warnf("properties."+name+field, "%s names the account or folder of a permission grant and is secure (secure: true, "+
+				"or a search, which needs it), so a standard user who repairs the product can set it on the command line, and "+
+				"LocalSystem then grants the rights to that account or on that folder; keep it secure only when the wizard sets it", name)
 		}
 
 		return
 	}
 
+	// The install dir is configurable by default; only the wizard's
+	// folder page makes its value one the author asked for.
+	dir, isDir := b.dirs[name]
+	configurable := isDir && name != b.cfg.InstallDir.ID && b.configurable(name)
+
 	delete(b.secure, name)
 
-	if wizard && perMachine {
-		b.warnf(path, "%s names the account or folder of a permission grant, so it is not secure, and the wizard's value "+
-			"reaches the installation only when an administrator installs; set properties.%s.secure: true to pass a standard "+
-			"user's value, which also lets a standard user set it on a repair", name, name)
+	if !wizard && !configurable {
+		return
 	}
+
+	b.warnf(b.propertyPath(name, dir), "%s names the account or folder of a permission grant, so it is not secure: a value from the wizard or "+
+		"the command line reaches the installation only when an administrator installs; set properties.%s.secure: true to "+
+		"pass a standard user's value, which also lets a standard user set it on a repair", name, name)
+}
+
+// propertyPath returns the configuration key a warning about a property
+// points at: installDir or directories for a directory, dir being nil for
+// a property.
+func (b *build) propertyPath(name string, dir *dirInfo) string {
+	switch {
+	case dir != nil && name == b.cfg.InstallDir.ID:
+		return "installDir"
+	case dir != nil && dir.long != "":
+		return "directories"
+	default:
+		return "properties." + name
+	}
+}
+
+// configurable reports whether the directory is configurable.
+func (b *build) configurable(dirID string) bool {
+	var find func([]*config.Directory) bool
+
+	find = func(dirs []*config.Directory) bool {
+		for _, dir := range dirs {
+			if dir.ID == dirID && dir.Configurable || find(dir.Children) {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	return find(b.cfg.Directories)
 }
 
 // secureOptIn returns the field of a properties entry that keeps it secure:

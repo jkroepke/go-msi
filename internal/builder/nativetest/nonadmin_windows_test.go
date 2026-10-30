@@ -492,6 +492,12 @@ func TestNonAdminGrantRepair(t *testing.T) {
 				t.Errorf("the folder grants to %s (%s): %v, want %v\n%s", user.name, userSID, got, tc.userGranted, sddl)
 			}
 
+			// The NetworkService ACE is there since the install; the log
+			// line shows that the repair's grant ran and fell back to it.
+			if fellBack := strings.Contains(repair, "granting to the remembered account"); fellBack == tc.userGranted {
+				t.Errorf("the repair fell back to the remembered account: %v, want %v", fellBack, !tc.userGranted)
+			}
+
 			if !strings.Contains(sddl, ";;;NS)") {
 				t.Errorf("the folder lost the NetworkService grant\n%s", sddl)
 			}

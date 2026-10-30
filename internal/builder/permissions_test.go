@@ -339,6 +339,9 @@ func TestPermissionGrantErrors(t *testing.T) {
 		"pipe in account": {func(c *config.Component) {
 			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "a|b", Rights: config.StringList{"read"}}}}
 		}, "cannot contain |"},
+		"nested reference in account": {func(c *config.Component) {
+			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "[[WHICH]]", Rights: config.StringList{"read"}}}}
+		}, "[[...]]"},
 		"line break in condition": {func(c *config.Component) {
 			c.Files[0].Permissions = &config.Permissions{Condition: "A=1\nOR B=1", Grant: []*config.Grant{{Account: "NS", Rights: config.StringList{"read"}}}}
 		}, "line breaks"},
@@ -378,8 +381,9 @@ func TestPermissionGrantErrors(t *testing.T) {
 
 // TestGrantPropertiesNotSecure checks that the properties a grant's account
 // or folder comes from are not secure unless the configuration says so
-// (specification section 17.7), with a warning when they are and when the
-// wizard sets one that is not.
+// (specification section 17.7), with a warning when one is secure without a
+// wizard page that needs it and when the wizard or a configurable directory
+// loses a value that is not.
 func TestGrantPropertiesNotSecure(t *testing.T) {
 	t.Parallel()
 
@@ -396,10 +400,14 @@ components:
   - files:
       - source: hello.exe
         permissions: { grant: [{ account: '.\[SVC_ACCOUNT]', rights: read }] }
-  - directory: INSTALLDIR/data
+%s`
+
+	const folderGrant = `  - directory: INSTALLDIR/data
     createFolder: true
     folderPermissions: { grant: [{ account: NS, rights: modify, inherit: false }] }
-%s`
+`
+
+	const dialog = "  dialogs:\n    - { id: AccountDlg, title: Account, after: WelcomeDlg, fields: [{ property: SVC_ACCOUNT, label: Account }] }\n"
 
 	for _, tc := range []struct {
 		name, scope, props, extra string
@@ -407,21 +415,22 @@ components:
 		warnings                  []string
 	}{
 		{
-			name: "default", scope: "perMachine", props: "  SVC_ACCOUNT: {}",
+			name: "default", scope: "perMachine", props: "  SVC_ACCOUNT: {}", extra: folderGrant,
 			secure: []string{"OTHER"}, notSecure: []string{"SVC_ACCOUNT", "INSTALLDIR"},
 		},
 		{
-			name: "explicit", scope: "perMachine", props: "  SVC_ACCOUNT: { secure: true }\n  INSTALLDIR: { secure: true }",
+			name: "file grant only", scope: "perMachine", props: "  SVC_ACCOUNT: {}",
+			secure: []string{"OTHER"}, notSecure: []string{"SVC_ACCOUNT", "INSTALLDIR"},
+		},
+		{
+			name: "explicit", scope: "perMachine", props: "  SVC_ACCOUNT: { secure: true }\n  INSTALLDIR: { secure: true }", extra: folderGrant,
 			secure:   []string{"OTHER", "SVC_ACCOUNT", "INSTALLDIR"},
 			warnings: []string{"properties.SVC_ACCOUNT.secure", "properties.INSTALLDIR.secure"},
 		},
 		{
-			name: "wizard", scope: "perMachine", props: "  SVC_ACCOUNT: {}",
-			extra: "ui:\n  enabled: true\n  chooseDirectory: true\n  dialogs:\n" +
-				"    - { id: AccountDlg, title: Account, after: WelcomeDlg, fields: [{ property: SVC_ACCOUNT, label: Account }] }\n",
-			secure:    []string{"OTHER"},
-			notSecure: []string{"SVC_ACCOUNT", "INSTALLDIR"},
-			warnings:  []string{"properties.SVC_ACCOUNT:", "properties.INSTALLDIR:"},
+			name: "explicit for the wizard", scope: "perMachine", props: "  SVC_ACCOUNT: { secure: true }",
+			extra:  folderGrant + "ui:\n  enabled: true\n" + dialog,
+			secure: []string{"OTHER", "SVC_ACCOUNT"},
 		},
 		{
 			name: "search", scope: "perMachine", props: `  SVC_ACCOUNT: { search: { registry: { root: HKLM, key: SOFTWARE\Example, name: Account } } }`,
@@ -429,7 +438,35 @@ components:
 			warnings: []string{"properties.SVC_ACCOUNT.search"},
 		},
 		{
-			name: "per user", scope: "perUser", props: "  SVC_ACCOUNT: { secure: true }",
+			name: "wizard", scope: "perMachine", props: "  SVC_ACCOUNT: {}",
+			extra:     folderGrant + "ui:\n  enabled: true\n  chooseDirectory: true\n" + dialog,
+			secure:    []string{"OTHER"},
+			notSecure: []string{"SVC_ACCOUNT", "INSTALLDIR"},
+			warnings:  []string{"properties.SVC_ACCOUNT:", "installDir:"},
+		},
+		{
+			name: "feature tree", scope: "perMachine", props: "  SVC_ACCOUNT: {}",
+			extra:     "ui:\n  enabled: true\n  chooseFeatures: true\n",
+			secure:    []string{"OTHER"},
+			notSecure: []string{"SVC_ACCOUNT", "INSTALLDIR"},
+			warnings:  []string{"installDir:"},
+		},
+		{
+			name: "configurable folder", scope: "perMachine", props: "  SVC_ACCOUNT: {}",
+			extra: "  - directory: DATADIR\n    createFolder: true\n" +
+				"    folderPermissions: { grant: [{ account: NS, rights: modify, inherit: false }] }\n" +
+				"directories:\n  - id: CommonAppDataFolder\n    children: [{ id: DATADIR, name: HelloData, configurable: true }]\n",
+			secure:    []string{"OTHER"},
+			notSecure: []string{"SVC_ACCOUNT", "DATADIR"},
+			warnings:  []string{"directories:"},
+		},
+		{
+			name: "dual scope", scope: "perUserOrMachine", props: "  SVC_ACCOUNT: { secure: true }",
+			secure:   []string{"OTHER", "SVC_ACCOUNT"},
+			warnings: []string{"properties.SVC_ACCOUNT.secure"},
+		},
+		{
+			name: "per user", scope: "perUser", props: "  SVC_ACCOUNT: {}",
 			secure: []string{"OTHER", "SVC_ACCOUNT"},
 		},
 	} {

@@ -47,6 +47,11 @@ func (v *validator) grant(path string, grant *Grant, kind string) {
 		v.errorf(path+".account", "account is empty")
 	case strings.ContainsFunc(grant.Account, func(r rune) bool { return r == '|' || r < 0x20 }):
 		v.errorf(path+".account", "an account name cannot contain | or control characters")
+	case strings.Contains(grant.Account, "[["):
+		// The builder keeps the properties of an account out of
+		// SecureCustomProperties, which it cannot do for a property whose
+		// name comes from another one (specification section 17.7).
+		v.errorf(path+".account", "an account cannot name its property through another property ([[...]])")
 	}
 
 	if _, err := rights.Mask(grant.Rights, kind == permService); err != nil {
