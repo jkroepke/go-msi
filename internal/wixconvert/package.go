@@ -29,6 +29,7 @@ func (c *converter) emit() {
 	c.emitActions()
 	c.emitFiles()
 	c.emitUI()
+	c.emitErrorRows()
 	c.emitActionRefs()
 	c.guidNote()
 }

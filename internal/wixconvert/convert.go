@@ -112,6 +112,8 @@ type converter struct {
 	media        []*elem
 	launches     []*elem
 	uiNav        []*elem
+	errorRows    []*elem
+	usedErrors   map[*elem]bool
 	icons        []*elem
 	defines      [][2]string
 	sequences    []*elem
@@ -202,6 +204,7 @@ func newConverter(doc *document) *converter {
 		renames:     make(map[string]string),
 		needDirs:    make(map[string]bool),
 		usedVars:    make(map[string]bool),
+		usedErrors:  make(map[*elem]bool),
 		out:         newMap(),
 		structure:   structureHandlers(),
 	}

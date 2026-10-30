@@ -2,6 +2,7 @@
 # Converted from actions.wxs by msi-builder convert.
 # Review it, resolve the TODO comments, then run msi-builder validate.
 # TODO(line 5): the WiX package has no MajorUpgrade; msi-builder adds the standard major upgrade (set upgrade: false to leave it out)
+# TODO(line 53): the Error row 1316 has no counterpart; only error actions take in their message
 schema: msi-builder/v1
 product:
   name: Hello
@@ -68,3 +69,14 @@ customActions:
     return: check
     schedule:
       - {sequence: execute, after: InstallFiles, condition: NOT Installed}
+  # Started without waiting for it, and an error with its own message.
+  - id: StartTray
+    exec:
+      command: '"[#hello.exe]" --tray'
+    return: asyncNoWait
+    schedule:
+      - {sequence: execute, after: InstallFinalize, condition: NOT REMOVE}
+  - id: NeedsAdmin
+    error: Hello needs administrator rights.
+    schedule:
+      - {sequence: execute, after: LaunchConditions, condition: NOT Privileged}

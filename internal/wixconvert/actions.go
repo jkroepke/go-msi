@@ -485,16 +485,34 @@ func (c *converter) action(custom *elem) *omap {
 		return nil
 	}
 
+	c.asyncExec(action, custom)
 	c.actionFlags(action, custom, true)
 
 	return action
+}
+
+// asyncExec makes a run action that WiX does not wait for an exec action:
+// the run DLL waits for its command, so run refuses asyncNoWait.
+func (c *converter) asyncExec(action *omap, custom *elem) {
+	run := action.mapAt("run")
+	if run == nil || custom.attr("Return") != "asyncNoWait" {
+		return
+	}
+
+	action.del("run")
+	action.set("exec", run)
+
+	if quietExec[custom.attr("DllEntry")] {
+		c.todof(action, "exec", custom.line, "%s does not wait for its command, which run actions do; "+
+			"exec starts the command with its window", custom.attr("DllEntry"))
+	}
 }
 
 // setterKind converts the actions that set a value or show an error.
 func (c *converter) setterKind(action *omap, custom *elem) bool {
 	switch {
 	case custom.has("Error"):
-		action.set("error", c.value(custom, "Error"))
+		action.set("error", c.errorText(c.value(custom, "Error")))
 	case custom.has(attrProperty) && custom.has("Value"):
 		action.set("setProperty", flowMap().set("name", custom.attr(attrProperty)).set("value", c.value(custom, "Value")))
 	case custom.has(attrDirectory) && custom.has("Value"):
