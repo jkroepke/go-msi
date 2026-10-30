@@ -322,6 +322,7 @@ enum {
     ERROR_ALREADY_EXISTS = 183,
     ERROR_NO_MORE_FILES = 18,
     ERROR_NOT_ENOUGH_MEMORY = 8,
+    ERROR_NOT_SAME_DEVICE = 17,
     // FILE_INFO_BY_HANDLE_CLASS values.
     FileBasicInfo_ = 0,
     FileDispositionInfo_ = 4,
@@ -1796,11 +1797,12 @@ static const WCHAR msgRemoveSchedule[] = u"cannot hand the folders to the deferr
 static const WCHAR msgRemoveMoved[] = u"moved aside";
 static const WCHAR msgRemoveChanged[] = u"left in place, it is no longer the folder that was checked";
 static const WCHAR msgRemoveBusy[] = u"left in place, it cannot be moved (a file in it may be in use)";
-static const WCHAR msgRemoveBackup[] = u"cannot create the backup folder";
+static const WCHAR msgRemoveBackup[] = u"left in place, the backup folder at the root of its volume cannot be created";
+static const WCHAR msgRemoveVolume[] = u"left in place, it is on a volume mounted in a folder";
 static const WCHAR msgRemoveRestored[] = u"restored";
-static const WCHAR msgRemoveRestore[] = u"cannot restore the folder from";
+static const WCHAR msgRemoveRestore[] = u"cannot be restored, it stays in the backup folder at the root of its volume";
 static const WCHAR msgRemoveDeleted[] = u"deleted";
-static const WCHAR msgRemoveLeft[] = u"could not delete everything, left in";
+static const WCHAR msgRemoveLeft[] = u"not everything could be deleted, the rest stays in the backup folder at the root of its volume";
 static const WCHAR backupSddl[] = u"D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;OW)";
 
 // The standard folder properties a removal must not reach: neither the
@@ -2497,7 +2499,7 @@ static int moveAside(MSIHANDLE install, const WCHAR *folder, const WCHAR *token,
     h = dir ? openNoFollow(folder, DELETE_) : 0;
     final = h ? finalPathOf(h) : 0;
     if (!dir) {
-        logft(install, tmplRemove, msgRemoveBackup, root, GetLastError());
+        logft(install, tmplRemove, folder, msgRemoveBackup, GetLastError());
     } else if (!h) {
         // Gone since the immediate action, or a reparse point now.
         if (GetFileAttributesW(folder) != INVALID_FILE_ATTRIBUTES) {
@@ -2513,6 +2515,10 @@ static int moveAside(MSIHANDLE install, const WCHAR *folder, const WCHAR *token,
         if (!err) {
             logft(install, tmplRemove, folder, msgRemoveMoved, 0);
             ok = 1;
+        } else if (err == ERROR_NOT_SAME_DEVICE) {
+            // The backup folder is on the drive letter's volume, not on a
+            // volume mounted in a folder above this one.
+            logft(install, tmplRemove, folder, msgRemoveVolume, 0);
         } else {
             logft(install, tmplRemove, folder, msgRemoveBusy, err);
         }
@@ -2532,6 +2538,8 @@ static int moveAside(MSIHANDLE install, const WCHAR *folder, const WCHAR *token,
 // backslash): by handle into the parent folder, opened without following a
 // reparse point and checked to still be at that path, so that a junction
 // put in place of a folder above it cannot send the tree elsewhere.
+// It returns 1 when restored, 0 when nothing was moved for index (the
+// folder was left in place, or a second entry named it) and -1 on failure.
 static int restore(HANDLE root, DWORD index, WCHAR *folder)
 {
     SIZE_T n = wlen(folder) - 1, cut = n;
@@ -2540,7 +2548,7 @@ static int restore(HANDLE root, DWORD index, WCHAR *folder)
     }
     HANDLE moved = openMoved(root, index, DELETE_), parent = 0;
     WCHAR *final = 0;
-    int ok = 0;
+    int ok = moved ? -1 : 0;
     if (moved && cut >= 3) {
         WCHAR keep = folder[cut];
         folder[cut] = 0;
@@ -2549,7 +2557,7 @@ static int restore(HANDLE root, DWORD index, WCHAR *folder)
         int same = final && samePath(final, folder);
         folder[cut] = keep;
         folder[n] = 0;
-        ok = same && !renameInto(moved, parent, folder + cut);
+        ok = same && !renameInto(moved, parent, folder + cut) ? 1 : -1;
         folder[n] = '\\';
     }
     HeapFree(GetProcessHeap(), 0, final);
@@ -2576,12 +2584,29 @@ __declspec(dllexport) UINT WINAPI BuilderRemoveFoldersExec(MSIHANDLE install)
         HeapFree(GetProcessHeap(), 0, data);
         return ERROR_SUCCESS;
     }
-    DWORD index = 0, created = 0, volumes = 0;
-    for (WCHAR *folder = folders; folder && *folder;) {
-        WCHAR *next = field(folder, '\n');
+    // The lines in order; the rollback runs backwards, so that a folder
+    // moved after one inside it is back before that one returns into it.
+    DWORD count = 0, created = 0, volumes = 0;
+    for (WCHAR *line = folders; line && *line; line = field(line, '\n')) {
+        count++;
+    }
+    WCHAR **list = HeapAlloc(GetProcessHeap(), 0, (count ? count : 1) * sizeof(WCHAR *));
+    if (!list) {
+        logft(install, tmplRemove, msgNoMemory, 0, 0);
+        HeapFree(GetProcessHeap(), 0, data);
+        return ERROR_SUCCESS;
+    }
+    // field cut each line at its end.
+    WCHAR *line = folders;
+    for (DWORD i = 0; i < count; i++) {
+        list[i] = line;
+        line += wlen(line) + 1;
+    }
+    for (DWORD i = 0; i < count; i++) {
+        DWORD index = op == 'u' ? count - i : i + 1;
+        WCHAR *folder = list[index - 1];
         WCHAR *rootPath = backupPath(folder, token, 0);
         volumes |= 1u << (wlower(folder[0]) - 'a');
-        index++;
         if (!rootPath) {
             logft(install, tmplRemove, msgNoMemory, 0, 0);
         } else if ((op == 'm' || op == 'd') && !moveAside(install, folder, token, index, &created)) {
@@ -2589,16 +2614,15 @@ __declspec(dllexport) UINT WINAPI BuilderRemoveFoldersExec(MSIHANDLE install)
         } else if (op != 'm') {
             HANDLE root = openBackup(rootPath, DELETE_ | FILE_LIST_DIRECTORY | FILE_WRITE_ATTRIBUTES);
             HANDLE moved = root && op != 'u' ? openMoved(root, index, DELETE_ | FILE_LIST_DIRECTORY | FILE_WRITE_ATTRIBUTES) : 0;
-            if (op == 'u' && root) {
-                if (restore(root, index, folder)) {
-                    logft(install, tmplRemove, folder, msgRemoveRestored, 0);
-                } else {
-                    logft(install, tmplRemove, msgRemoveRestore, rootPath, GetLastError());
-                }
+            int restored = op == 'u' && root ? restore(root, index, folder) : 0;
+            if (restored > 0) {
+                logft(install, tmplRemove, folder, msgRemoveRestored, 0);
+            } else if (restored < 0) {
+                logft(install, tmplRemove, folder, msgRemoveRestore, GetLastError());
             } else if (moved && deleteFolder(moved)) {
                 logft(install, tmplRemove, msgRemoveDeleted, folder, 0);
             } else if (moved) {
-                logft(install, tmplRemove, msgRemoveLeft, rootPath, 0);
+                logft(install, tmplRemove, folder, msgRemoveLeft, 0);
             }
             if (moved) {
                 CloseHandle(moved);
@@ -2608,8 +2632,8 @@ __declspec(dllexport) UINT WINAPI BuilderRemoveFoldersExec(MSIHANDLE install)
             }
         }
         HeapFree(GetProcessHeap(), 0, rootPath);
-        folder = next;
     }
+    HeapFree(GetProcessHeap(), 0, list);
     // Each backup folder goes once it is empty.
     for (WCHAR drive = 'a'; op != 'm' && drive <= 'z'; drive++) {
         WCHAR *rootPath = volumes & (1u << (drive - 'a')) ? backupPath(&drive, token, 0) : 0;

@@ -26,7 +26,9 @@ import (
 // that holds TemplateFolder, which StdInside points into it) must be
 // refused, and so must GUARD_LINK, a folder reached through a junction,
 // and GUARD_PROFILE, a folder in the Public profile; OWN_DIR, a folder in
-// the installing account's own profile, must not be. FailRemove fails a
+// the installing account's own profile, must not be. NESTED_DIR, a folder
+// inside DATA_DIR listed before it, is moved first and must come back
+// inside DATA_DIR on a rollback. FailRemove fails a
 // removal after the folders were moved aside when FAIL_REMOVE is set, so
 // the installation rolls back; it first writes MARKER when the read-only
 // and the hidden file are gone from DATA_DIR at that point, so the test
@@ -43,6 +45,7 @@ properties:
   DATA_DIR:
     search: { registry: { root: HKLM, key: SOFTWARE\MsiBuilderRemoveFolders, name: DataDir, type: directory } }
   OLD_DIR: {}
+  NESTED_DIR: {}
   GUARD_WIN: {}
   GUARD_STD: {}
   GUARD_LINK: {}
@@ -57,6 +60,7 @@ components:
     registry: [{ root: HKLM, key: SOFTWARE\MsiBuilderRemoveFolders, name: DataDir, value: '[DATA_DIR]' }]
     removeFolders:
       - property: INSTALLDIR
+      - property: NESTED_DIR
       - property: DATA_DIR
       - { property: OLD_DIR, on: install }
       - property: GUARD_WIN
@@ -286,6 +290,9 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 	guards := []string{
 		"GUARD_WIN=" + tree.guardWin + `\`, "GUARD_STD=" + tree.guardStd + `\`, "GUARD_LINK=" + tree.guardLink + `\`,
 		"GUARD_PROFILE=" + tree.guardProfile + `\`, "OWN_DIR=" + tree.own + `\`,
+		// A folder inside DATA_DIR, listed before it: moved first, so the
+		// rollback must put DATA_DIR back before it.
+		"NESTED_DIR=" + filepath.Join(tree.data, "nested") + `\`,
 	}
 
 	log := filepath.Join(logs, "install.log")
@@ -327,6 +334,10 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 
 	if !strings.Contains(text, "BuilderRemoveFolders: to remove: "+tree.data+`\`) {
 		t.Error("the log does not show the removal of DATA_DIR")
+	}
+
+	if strings.Contains(text, "cannot be restored") {
+		t.Error("the rollback left a folder in the backup folder")
 	}
 
 	// Without the marker the files may never have been deleted, and the
