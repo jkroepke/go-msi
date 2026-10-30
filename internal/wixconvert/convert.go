@@ -94,6 +94,7 @@ func Convert(r io.Reader, opts Options) (*Result, error) {
 type converter struct {
 	compByID     map[string]*comp
 	built        *BuiltPackage
+	claimed      map[string]bool // the built components a component took
 	doc          *document
 	wixVars      map[string]string
 	dirs         map[string]*dir

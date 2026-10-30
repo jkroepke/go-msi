@@ -102,7 +102,9 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 		c.workingDirectory(link, elm, file.dir)
 
 		// A shortcut component with a code stays, so that an upgrade
-		// that removes the old version late keeps its shortcut (UPG-11).
+		// that removes the old version late presumably keeps its
+		// shortcut: UPG-11 kept it with the code shared, though with the
+		// same key path in both versions, which a WiX port does not have.
 		if pending.comp.dropIfEmpty && hasCode(pending.comp.out) {
 			link.set("file", file.key)
 			pending.comp.out.add("shortcuts", link)

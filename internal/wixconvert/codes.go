@@ -46,6 +46,12 @@ func (c *converter) pinCode(comp *comp, keyFile string) bool {
 	comp.out.set("guid", built.Code)
 	comp.pinned = true
 
+	if c.claimed == nil {
+		c.claimed = make(map[string]bool)
+	}
+
+	c.claimed[built.ID] = true
+
 	return true
 }
 
@@ -68,7 +74,7 @@ func (c *converter) builtComponent(comp *comp, keyFile string) *BuiltComponent {
 
 	for i := range c.built.Components {
 		row := &c.built.Components[i]
-		if row.Code == "" || !strings.EqualFold(row.KeyFile, keyFile) || !anyDir && row.Directory != comp.dir {
+		if !c.free(row) || !strings.EqualFold(row.KeyFile, keyFile) || !anyDir && row.Directory != comp.dir {
 			continue
 		}
 
@@ -80,6 +86,15 @@ func (c *converter) builtComponent(comp *comp, keyFile string) *BuiltComponent {
 	}
 
 	return found
+}
+
+// free reports whether a built component may match by key file: it has a
+// code, and neither a source Id names it nor another component took it, so
+// that two components never share a code.
+func (c *converter) free(row *BuiltComponent) bool {
+	_, named := c.compByID[row.ID]
+
+	return row.Code != "" && !named && !c.claimed[row.ID]
 }
 
 // builtByID returns the component of the built package with an Id and a

@@ -859,7 +859,8 @@ GUIDs with `guid` on those components, or keep the early removal.
 `msi-builder convert --msi old.msi` does this for you: it takes the GUID
 of each component from the WiX package, by its `Id` or, for a component
 without one, by its key file, keeps a shortcut component that has a GUID
-instead of moving its shortcut onto the file, and leaves a `# TODO` on any
+instead of moving its shortcut onto the file (a shared GUID kept the
+shortcut in UPG-11; with WiX's own key path value this is inferred), and leaves a `# TODO` on any
 component it cannot find there. Such a kept shortcut component gets
 msi-builder's own HKCU key path, so the HKCU value WiX wrote for it
 probably stays behind after a late removal; convert names it in a

@@ -335,3 +335,41 @@ func TestConvertBuiltCodes(t *testing.T) {
 		t.Errorf("notes %v lack %v", res.Notes, want)
 	}
 }
+
+// A row that a source Id names is not matched again by key file.
+func TestConvertBuiltCodesOnce(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" />
+    </StandardDirectory>
+    <Component Id="X" Directory="INSTALLFOLDER">
+      <File Source="a.txt" />
+    </Component>
+    <Component Directory="INSTALLFOLDER" Subdirectory="copy">
+      <File Source="a.txt" />
+    </Component>
+  </Package>
+</Wix>
+`
+	built := &wixconvert.BuiltPackage{Name: "hello.msi", Components: []wixconvert.BuiltComponent{
+		{ID: "X", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "INSTALLFOLDER", KeyFile: "a.txt"},
+	}}
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{Built: built})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if n := strings.Count(string(res.YAML), "guid: '{00000000-0000-4000-8000-000000000001}'"); n != 1 {
+		t.Errorf("the code is pinned %d times:\n%s", n, res.YAML)
+	}
+
+	if !slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool {
+		return n.Line == 9 && strings.HasPrefix(n.Message, "hello.msi has no matching component")
+	}) {
+		t.Errorf("notes %v lack the unmatched component in line 9", res.Notes)
+	}
+}
