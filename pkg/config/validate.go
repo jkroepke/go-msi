@@ -2508,6 +2508,6 @@ func componentRoots(comp *Component) []string {
 
 // isDirectory reports whether name is a directory key of the package or a
 // standard folder.
-func (k *refs) isDirectory(name string) bool {
-	return name == targetDir || k.dirs[name] != nil || standardFolders[name]
+func (r *refs) isDirectory(name string) bool {
+	return name == targetDir || r.dirs[name] != nil || standardFolders[name]
 }
