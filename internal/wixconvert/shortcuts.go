@@ -60,7 +60,9 @@ func (c *converter) shortcut(elm *elem, dirID string, tree map[*dir]bool) *omap 
 	for _, kid := range elm.kids {
 		switch kid.qname() {
 		case "ShortcutProperty":
-			link.child("properties").set(kid.attr("Key"), c.value(kid, "Value"))
+			if key, ok := c.shellPropertyName(link, kid); ok {
+				link.child("properties").set(key, clsidValue(key, c.value(kid, "Value")))
+			}
 		case "Icon":
 			c.icons = append(c.icons, kid)
 			link.set("icon", kid.attr("Id"))
@@ -70,6 +72,55 @@ func (c *converter) shortcut(elm *elem, dirID string, tree map[*dir]bool) *omap 
 	}
 
 	return link
+}
+
+// propertyKey is a shell property key in the "{FMTID}, PID" form.
+var propertyKey = regexp.MustCompile(`^\{?([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})\}?\s*,\s*([0-9]+)$`)
+
+// canonicalProperty is the canonical name of a shell property, such as
+// System.AppUserModel.ID.
+var canonicalProperty = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$`)
+
+// bareGUID is a GUID without braces.
+var bareGUID = regexp.MustCompile(`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`)
+
+// clsidValue adds the braces that a CLSID shell property needs.
+func clsidValue(key, value string) string {
+	if strings.HasSuffix(key, "CLSID") && bareGUID.MatchString(value) {
+		return "{" + value + "}"
+	}
+
+	return value
+}
+
+// appUserModelFMTID is the format ID of the System.AppUserModel properties.
+const appUserModelFMTID = "9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"
+
+// appUserModelPIDs are the canonical names of the System.AppUserModel
+// properties by property ID, from the Windows property system reference.
+var appUserModelPIDs = map[string]string{ //nolint:gochecknoglobals // lookup table
+	"2": "RelaunchCommand", "3": "RelaunchIconResource", "4": "RelaunchDisplayNameResource", "5": "ID",
+	"8": "ExcludeFromShowInNewInstall", "9": "PreventPinning", "11": "IsDualMode", "12": "StartPinOption",
+	"26": "ToastActivatorCLSID",
+}
+
+// shellPropertyName returns the canonical name msi-builder takes for a
+// ShortcutProperty Key, which WiX also takes as "{FMTID}, PID".
+func (c *converter) shellPropertyName(link *omap, kid *elem) (string, bool) {
+	key := strings.TrimSpace(kid.attr("Key"))
+
+	if m := propertyKey.FindStringSubmatch(key); m != nil {
+		pid, _ := strconv.Atoi(m[2])
+		if name, ok := appUserModelPIDs[strconv.Itoa(pid)]; ok && strings.EqualFold(m[1], appUserModelFMTID) {
+			return "System.AppUserModel." + name, true
+		}
+	} else if canonicalProperty.MatchString(key) {
+		return key, true
+	}
+
+	c.todof(link, "", kid.line, "the shell property %s was left out: write it by its canonical name, such as System.AppUserModel.ID", key)
+
+	return "", false
 }
 
 // fileShortcut converts a Shortcut nested in a File.
@@ -93,8 +144,11 @@ func (c *converter) workingDirectory(s *omap, e *elem, fileDir string) {
 	}
 }
 
-// placeShortcut puts a Shortcut outside a File onto the file it starts, or
-// makes it a shortcut of its component.
+// placeShortcut puts a Shortcut outside a File onto the file it starts when
+// that file is in the shortcut's component. On a file of another component
+// it would take that component's lifetime, such as permanence, so it stays
+// in its own component: a [#file] target as file, which the builder writes
+// as WiX does, and a [DIRECTORY]name target as the same program path.
 func (c *converter) placeShortcut(pending pendingShortcut) {
 	elm := pending.e
 
@@ -105,7 +159,7 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 	}
 
 	target := elm.attr("Target")
-	if file := c.targetFile(target); file != nil {
+	if file := c.targetFile(target); file != nil && (file.comp == pending.comp || fileTarget.MatchString(target)) {
 		c.fileTargetShortcut(pending, file)
 
 		return
@@ -135,27 +189,27 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 	c.markAdvertised(elm)
 }
 
-// fileTargetShortcut puts a Shortcut whose Target is a packaged file onto
-// that file, or keeps it on its shortcut component.
+// fileTargetShortcut places a shortcut to a packaged file: on the file when
+// it is in the shortcut's component, else in its own component with file.
 func (c *converter) fileTargetShortcut(pending pendingShortcut, file *fileRef) {
-	elm := pending.e
-	c.markAdvertised(elm)
+	c.markAdvertised(pending.e)
 
-	link := c.shortcut(elm, pending.comp.dir, pending.tree)
-	c.workingDirectory(link, elm, file.dir)
+	link := c.shortcut(pending.e, pending.comp.dir, pending.tree)
+	c.workingDirectory(link, pending.e, file.dir)
 
-	// A shortcut component with a code stays, so that an upgrade that
-	// removes the old version late presumably keeps its shortcut: UPG-11
-	// kept it with the code shared, though with the same key path in both
-	// versions, which a WiX port does not have.
-	if pending.comp.dropIfEmpty && hasCode(pending.comp.out) {
-		link.set("file", file.key)
-		pending.comp.out.add("shortcuts", link)
+	if file.comp == pending.comp {
+		file.out.add("shortcuts", link)
 
 		return
 	}
 
-	file.out.add("shortcuts", link)
+	name := file.out.str("id")
+	if name == "" {
+		name = file.name
+	}
+
+	link.set("file", name)
+	pending.comp.out.add("shortcuts", link)
 }
 
 // isDir reports whether an ID names a directory of the file or a standard

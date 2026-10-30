@@ -77,7 +77,7 @@ versioning after 1.0.
   must stay valid configs. With `--msi` (`Options.Built`) it pins the
   component codes WiX generated, matched by `Id` or by key file (`codes.go`),
   because a late `removeOld` deletes the files of every changed code
-  (UPG-11); a shortcut component with a code keeps its shortcut (UPG-11
+  (UPG-11); a pinned shortcut component keeps its shortcut (UPG-11
   shows a shared code keeps it; with WiX's other key path it is inferred). The fixtures are our own sample app: never copy
   third-party `.wxs` files in, and never read WiX source code (clean room).
 - [`internal/spool`](internal/spool), [`internal/memtest`](internal/memtest),

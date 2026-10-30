@@ -130,17 +130,6 @@ func (c *converter) checkCodes() {
 	}
 
 	for _, comp := range open {
-		if comp.out == nil {
-			// The shortcut moved onto its file, into a component with a
-			// generated code.
-			c.todof(nil, "", comp.e.line,
-				"%s has no matching component for this shortcut component, so its shortcut went onto the file and a late "+
-					"removeOld deletes it; set its Id to the Component key WiX generated for it (msi-builder inspect "+
-					"--table Component) and convert again", c.built.Name)
-
-			continue
-		}
-
 		c.todof(comp.out, "", comp.e.line,
 			"%s has no matching component; set guid to the ComponentId WiX gave this one (msi-builder inspect --table Component)",
 			c.built.Name)
@@ -211,9 +200,8 @@ func (c *converter) openCodes() ([]*comp, int) {
 		switch {
 		case comp.out != nil && comp.pinned:
 			pinned++
-		case comp.generated && (comp.out == nil || comp.out.get("guid") == nil):
-			// A dropped shortcut component counts too: its shortcut is
-			// on the file now, in a component with another code.
+		case comp.generated && comp.out != nil && comp.out.get("guid") == nil:
+			// A dropped component installs nothing, so it loses nothing.
 			open = append(open, comp)
 		}
 	}

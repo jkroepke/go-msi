@@ -448,8 +448,9 @@ components:
 Values the package writes are removed on uninstall, as in WiX.
 `removeRegistry` removes keys and values that exist before the install,
 when the component is installed. `RemoveRegistryKey` with
-`Action="removeOnUninstall"` is a `type: key` entry with
-`removeOnUninstall: true`.
+`Action="removeOnUninstall"` has no counterpart: it removes a key on
+uninstall without ever creating it, and a `type: key` entry with
+`removeOnUninstall: true` also creates the key on install.
 
 ## Environment variables
 
@@ -505,6 +506,12 @@ components:
 A shortcut starts in its program's folder. Shortcuts to folders and to
 programs outside the package are component shortcuts with `folder` or
 `program`. Advertised shortcuts (`Advertise="yes"`) are not supported.
+
+`msi-builder convert` moves a shortcut onto its file only when the file is
+in the shortcut's own component; on a file of another component it would
+take that component's lifetime, such as `permanent`. Otherwise the shortcut
+stays a component shortcut: a `[#file]` target becomes `file`, and a
+`[DIRECTORY]name` target stays the same path as `program`.
 
 ## Services
 
@@ -860,9 +867,9 @@ of every component whose GUID changed (case UPG-11 in the spec). Keep the WiX
 GUIDs with `guid` on those components, or keep the early removal.
 `msi-builder convert --msi old.msi` does this for you: it takes the GUID
 of each component from the WiX package, by its `Id` or, for a component
-without one, by its key file, keeps a shortcut component that has a GUID
-instead of moving its shortcut onto the file (a shared GUID kept the
-shortcut in UPG-11; with WiX's own key path value this is inferred), and leaves a `# TODO` on any
+without one, by its key file, also for a shortcut component, which keeps
+its shortcut (a shared GUID kept the shortcut in UPG-11; with WiX's own
+key path value this is inferred), and leaves a `# TODO` on any
 component it cannot find there. Such a kept shortcut component gets
 msi-builder's own HKCU key path, so the HKCU value WiX wrote for it
 stays behind after a late removal and the uninstall; convert names it in a

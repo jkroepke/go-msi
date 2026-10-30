@@ -3,6 +3,8 @@ package wixconvert
 import (
 	"strconv"
 	"strings"
+
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // emit writes the output in msi-builder's key order.
@@ -29,6 +31,7 @@ func (c *converter) emit() {
 	c.emitActions()
 	c.emitFiles()
 	c.emitUI()
+	c.emitErrorRows()
 	c.emitActionRefs()
 	c.checkCodes()
 }
@@ -213,7 +216,7 @@ func (c *converter) emitMedia(pkgOut *omap) {
 			pkgOut.set("cabinet", c.value(medium, "Cabinet"))
 		}
 
-		if medium.attr("CompressionLevel") == "none" {
+		if medium.attr("CompressionLevel") == valueNone {
 			pkgOut.set("compression", "none")
 		}
 
@@ -232,14 +235,7 @@ func (c *converter) emitUpgrade() {
 	}
 
 	for _, upgradeElem := range c.upgrades {
-		if strings.Trim(strings.ToLower(upgradeElem.attr("Id")), "{}") == upgradeCode {
-			c.todof(upgrade, "", upgradeElem.line,
-				"an <Upgrade> for the package's own UpgradeCode is a hand-made major upgrade; msi-builder writes its own, check the upgrade keys")
-
-			continue
-		}
-
-		c.emitRelated(upgrade, upgradeElem)
+		c.emitRelated(upgrade, upgradeElem, strings.Trim(strings.ToLower(upgradeElem.attr("Id")), "{}") == upgradeCode)
 	}
 
 	if c.major == nil && len(c.upgrades) == 0 {
@@ -253,7 +249,27 @@ func (c *converter) emitUpgrade() {
 	}
 
 	if strings.Contains(text, "WIX_DOWNGRADE_DETECTED") {
-		upgrade.set("newerProperty", "WIX_DOWNGRADE_DETECTED")
+		c.newerProperty(upgrade, "WIX_DOWNGRADE_DETECTED", 0)
+	}
+}
+
+// newerProperty sets the property that the detection of newer versions sets,
+// with a TODO when the file tests two of them.
+func (c *converter) newerProperty(upgrade *omap, prop string, line int) {
+	switch current := c.newerClaimed; {
+	case current == "":
+		c.newerClaimed = prop
+		if prop != config.DefaultNewerProperty {
+			upgrade.set("newerProperty", prop)
+		}
+	case prop != current:
+		key := "newerProperty"
+		if upgrade.str(key) == "" {
+			key = ""
+		}
+
+		c.todof(upgrade, key, line, "the file tests both %s and %s for a newer version; msi-builder sets only %s, "+
+			"use it in both places", current, prop, current)
 	}
 }
 
@@ -295,11 +311,63 @@ func (c *converter) emitMajor(upgrade *omap, major *elem) {
 	}
 }
 
-func (c *converter) emitRelated(upgrade *omap, upgradeElem *elem) {
+// majorUpgradeProperty are the properties of the major upgrade msi-builder
+// writes, which a related row cannot take.
+var majorUpgradeProperty = map[string]bool{ //nolint:gochecknoglobals // lookup table
+	config.DefaultUpgradeProperty: true, config.DefaultNewerProperty: true, "WIX_UPGRADE_DETECTED": true, "WIX_DOWNGRADE_DETECTED": true,
+}
+
+// valueAny and valueNone are WiX and msi-builder words for no limit and
+// for nothing.
+const (
+	valueAny  = "any"
+	valueNone = "none"
+)
+
+func orAny(version string) string {
+	if version == "" {
+		return valueAny
+	}
+
+	return version
+}
+
+// ownUpgradeRow handles an UpgradeVersion row of the package's own
+// UpgradeCode that does not carry over to upgrade.related and reports
+// whether it did.
+func (c *converter) ownUpgradeRow(upgrade *omap, kid *elem) bool {
+	switch {
+	case kid.yes("OnlyDetect") && kid.no("IncludeMinimum") && !kid.has("Maximum") &&
+		kid.attr("Minimum") == c.pkg.attr("Version") && kid.has("Property"):
+		// The detection of newer versions, which msi-builder writes
+		// itself; keep the property conditions test.
+		c.newerProperty(upgrade, kid.attr("Property"), kid.line)
+	case majorUpgradeProperty[kid.attr("Property")]:
+		c.todof(upgrade, "", kid.line, "the UpgradeVersion property %s is one msi-builder sets for its own major upgrade; "+
+			"check the conditions that test it", kid.attr("Property"))
+	case !kid.yes("OnlyDetect"):
+		c.todof(upgrade, "", kid.line, "an UpgradeVersion for the package's own UpgradeCode (versions %s to %s) is a hand-made major upgrade; "+
+			"msi-builder writes its own, which removes every older version, check the upgrade keys",
+			orAny(c.value(kid, "Minimum")), orAny(c.value(kid, "Maximum")))
+	default:
+		return false
+	}
+
+	return true
+}
+
+// emitRelated converts the UpgradeVersion rows of an Upgrade element. For
+// the package's own UpgradeCode only the detect-only rows carry over: the
+// rows that remove older versions are the major upgrade msi-builder writes
+// itself.
+func (c *converter) emitRelated(upgrade *omap, upgradeElem *elem, own bool) {
 	for _, kid := range upgradeElem.kids {
-		if !kid.is("UpgradeVersion") {
+		switch {
+		case !kid.is("UpgradeVersion"):
 			c.todof(upgrade, "", kid.line, "<%s> in <Upgrade> has no counterpart", kid.qname())
 
+			continue
+		case own && c.ownUpgradeRow(upgrade, kid):
 			continue
 		}
 

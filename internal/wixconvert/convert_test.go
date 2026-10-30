@@ -238,7 +238,7 @@ const codesSource = `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
       <Shortcut Name="Hello notes" Target="[#main.exe]" Arguments="notes" />
       <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="notes" Value="1" KeyPath="yes" />
     </Component>
-    <Component Id="Unmanaged" Directory="ProgramMenuFolder" Guid="">
+    <Component Id="Unmanaged" Directory="ProgramMenuFolder" Guid="" Permanent="yes">
       <Shortcut Name="Hello tools" Target="[#main.exe]" Arguments="tools" />
     </Component>
     <Component Directory="INSTALLFOLDER" Subdirectory="bin">
@@ -280,9 +280,8 @@ func TestConvertBuiltCodes(t *testing.T) {
 		// The shortcut component keeps its code and its shortcut.
 		"guid: '{00000000-0000-4000-8000-000000000006}'\n    shortcuts:\n      - name: Hello\n        file: main.exe",
 		"guid: '{00000000-0000-4000-8000-000000000007}'",
-		// An unmanaged shortcut component keeps nothing: its shortcut
-		// stays on the file.
-		"arguments: tools",
+		// An unmanaged shortcut component keeps its shortcut too.
+		"guid: none\n    permanent: true\n    shortcuts:\n      - name: Hello tools",
 		"The guid of 4 components whose Guid WiX generated comes from hello.msi.",
 	} {
 		if !strings.Contains(text, want) {
@@ -308,7 +307,6 @@ func TestConvertBuiltCodes(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"hello.msi has no matching component for this shortcut component",
 		`the WiX value HKCU\Software\Example\Hello\menu stays behind`,
 	} {
 		if !strings.Contains(text, want) {
@@ -321,7 +319,7 @@ func TestConvertBuiltCodes(t *testing.T) {
 	}
 
 	// Without the package, the late removal names every component, also
-	// the shortcut component whose shortcut moved onto the file.
+	// the shortcut component.
 	res, err = wixconvert.Convert(strings.NewReader(codesSource), wixconvert.Options{})
 	if err != nil {
 		t.Fatal(err)

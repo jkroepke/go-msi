@@ -76,6 +76,11 @@ func (c *converter) standardAction(entry, seq *elem) {
 	case entry.is("RemoveExistingProducts") && c.major == nil && removeOldAfter[entry.attr("After")]:
 		c.out.child("upgrade").set("removeOld", "after"+entry.attr("After"))
 		c.removeLine = entry.line
+
+		if cond := c.condition(entry); cond != "" {
+			c.todof(c.out.child("upgrade"), "removeOld", entry.line,
+				"RemoveExistingProducts runs only when %s; msi-builder removes the old version whenever it finds one", cond)
+		}
 	case entry.is("Show"):
 		c.todof(nil, "", entry.line, "<Show Dialog=%q> schedules a dialog; use the ui keys", entry.attr("Dialog"))
 	default:
@@ -561,16 +566,37 @@ func (c *converter) action(custom *elem) *omap {
 		return nil
 	}
 
+	c.asyncExec(action, custom)
 	c.actionFlags(action, custom, true)
 
 	return action
+}
+
+// runKey returns the kind a program action becomes: run, or exec for one
+// WiX does not wait for, since the run DLL waits for its command and run
+// refuses asyncNoWait.
+func runKey(custom *elem) string {
+	if custom.attr("Return") == "asyncNoWait" {
+		return "exec"
+	}
+
+	return "run"
+}
+
+// asyncExec notes that a quiet exec action WiX does not wait for became an
+// exec action, which shows the program's window.
+func (c *converter) asyncExec(action *omap, custom *elem) {
+	if runKey(custom) == "exec" && quietExec[custom.attr("DllEntry")] {
+		c.todof(action, "exec", custom.line, "%s does not wait for its command, which run actions do; "+
+			"exec starts the command with its window", custom.attr("DllEntry"))
+	}
 }
 
 // setterKind converts the actions that set a value or show an error.
 func (c *converter) setterKind(action *omap, custom *elem) bool {
 	switch {
 	case custom.has("Error"):
-		action.set("error", c.value(custom, "Error"))
+		action.set("error", c.errorText(custom))
 	case custom.has(attrProperty) && custom.has("Value"):
 		action.set("setProperty", flowMap().set("name", custom.attr(attrProperty)).set("value", c.value(custom, "Value")))
 	case custom.has(attrDirectory) && custom.has("Value"):
@@ -591,11 +617,11 @@ func (c *converter) programKind(action *omap, custom *elem) bool { //nolint:cycl
 
 	switch {
 	case file != "" && custom.has("ExeCommand"):
-		action.set("run", newMap().set("command", strings.TrimSpace(`"[#`+file+`]" `+exe)))
+		action.set(runKey(custom), newMap().set("command", strings.TrimSpace(`"[#`+file+`]" `+exe)))
 	case custom.has(attrDirectory) && custom.has("ExeCommand"):
-		action.set("run", newMap().set("command", exe).set("directory", c.dirRef(custom.attr(attrDirectory))))
+		action.set(runKey(custom), newMap().set("command", exe).set("directory", c.dirRef(custom.attr(attrDirectory))))
 
-		c.quoteNote(action, custom.line, exe)
+		c.quoteNote(action, runKey(custom), custom.line, exe)
 	case custom.has(attrProperty) && custom.has("ExeCommand"):
 		action.set("execProperty", newMap().set("property", custom.attr(attrProperty)).set("arguments", exe))
 	case binary != "" && quietExec[custom.attr("DllEntry")]:
@@ -622,15 +648,15 @@ func (c *converter) programKind(action *omap, custom *elem) bool { //nolint:cycl
 	return true
 }
 
-func (c *converter) quietExecRun(action *omap, ca *elem) {
-	cmd, ok := c.command(ca)
+func (c *converter) quietExecRun(action *omap, quiet *elem) {
+	cmd, ok := c.command(quiet)
 	if !ok {
-		c.todof(action, "", ca.line, "the command line of %s is set elsewhere; write it into run.command", ca.attr("DllEntry"))
+		c.todof(action, "", quiet.line, "the command line of %s is set elsewhere; write it into %s.command", quiet.attr("DllEntry"), runKey(quiet))
 	}
 
 	run := newMap().set("command", cmd)
 	run.keep = true
-	action.set("run", run)
+	action.set(runKey(quiet), run)
 }
 
 func (c *converter) actionFlags(action *omap, custom *elem, program bool) { //nolint:cyclop // a flat list of independent WiX attributes
@@ -778,7 +804,7 @@ func (c *converter) setCondition(schedule *omap, cond string) {
 // reference: a property alone may hold a quoted command line already (an
 // UninstallString), anything else formats to a bare path that CreateProcess
 // tries piece by piece (CWE-428), which msi-builder rejects.
-func (c *converter) quoteNote(action *omap, line int, command string) {
+func (c *converter) quoteNote(action *omap, key string, line int, command string) {
 	token, _, _ := strings.Cut(strings.TrimLeft(command, " \t"), " ")
 	if strings.HasPrefix(token, `"`) || !strings.Contains(token, "[") {
 		return
@@ -787,10 +813,10 @@ func (c *converter) quoteNote(action *omap, line int, command string) {
 	bare := len(token) >= 3 && token[0] == '[' && token[len(token)-1] == ']' &&
 		strings.Count(token, "[") == 1 && strings.Count(token, "]") == 1 && !strings.ContainsRune(`#!$%\~`, rune(token[1]))
 	if bare {
-		c.todof(action, "run", line, "check %s: quote it if it holds a bare path; leave it if it holds a quoted command line such as an UninstallString", token)
+		c.todof(action, key, line, "check %s: quote it if it holds a bare path; leave it if it holds a quoted command line such as an UninstallString", token)
 
 		return
 	}
 
-	c.todof(action, "run", line, "quote the executable %s: an unquoted path with a space is tried piece by piece by CreateProcess", token)
+	c.todof(action, key, line, "quote the executable %s: an unquoted path with a space is tried piece by piece by CreateProcess", token)
 }
