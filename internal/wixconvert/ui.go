@@ -60,6 +60,8 @@ func (c *converter) emitUI() {
 
 	switch wizardID := c.uiID(); wizardID {
 	case "":
+		c.uiNavigation(nil, "")
+
 		return
 	case "WixUI_Minimal":
 		wizard.set("enabled", true)
@@ -107,13 +109,15 @@ const (
 // other row reorders the WiX dialogs and stays a TODO.
 func (c *converter) uiNavigation(wizard *omap, wizardID string) {
 	skips, known := licenseSkips[wizardID]
-	skipped := false
+	skipping := func(row *elem, want navRow) bool {
+		return known && navRow{row.attr("Dialog"), row.attr("Control"), row.attr("Value")} == want && alwaysTrue(c.condition(row))
+	}
+
+	// The Back row only belongs to the skip when the Next row is there.
+	skipped := slices.ContainsFunc(c.uiNav, func(row *elem) bool { return skipping(row, skips[0]) })
 
 	for _, row := range c.uiNav {
-		nav := navRow{row.attr("Dialog"), row.attr("Control"), row.attr("Value")}
-		if known && (nav == skips[0] || nav == skips[1]) && alwaysTrue(c.condition(row)) {
-			skipped = skipped || nav == skips[0]
-
+		if skipped && (skipping(row, skips[0]) || skipping(row, skips[1])) {
 			continue
 		}
 

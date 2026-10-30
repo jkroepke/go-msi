@@ -421,6 +421,11 @@ func (c *converter) firewall(elm *elem, comp *comp, program string) { //nolint:c
 	}
 
 	rule.set("program", program)
+
+	if program == "" {
+		c.todof(rule, "program", elm.line, "the firewall exception names no program; msi-builder rules open ports for one program, set program")
+	}
+
 	c.firewallProtocol(rule, elm)
 
 	var remote []string
