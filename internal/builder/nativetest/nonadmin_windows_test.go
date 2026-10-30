@@ -18,7 +18,7 @@ import (
 )
 
 // The non-administrator tests install packages as a standard user that the
-// CI step "go test (non-admin)" creates on the disposable runner. They read
+// CI step "Create a standard user" makes on the disposable runner. They read
 // the account from MSI_BUILDER_NONADMIN_USER and MSI_BUILDER_NONADMIN_PASSWORD
 // and skip without them; never run them on a machine you keep, since
 // TestNonAdminSecureProperties turns on AlwaysInstallElevated for its run.
