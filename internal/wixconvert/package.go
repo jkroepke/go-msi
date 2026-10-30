@@ -247,7 +247,7 @@ func (c *converter) emitMedia(pkgOut *omap) {
 			pkgOut.set("cabinet", c.value(medium, "Cabinet"))
 		}
 
-		if medium.attr("CompressionLevel") == "none" {
+		if medium.attr("CompressionLevel") == valueNone {
 			pkgOut.set("compression", "none")
 		}
 
@@ -348,8 +348,12 @@ var majorUpgradeProperty = map[string]bool{ //nolint:gochecknoglobals // lookup 
 	config.DefaultUpgradeProperty: true, config.DefaultNewerProperty: true, "WIX_UPGRADE_DETECTED": true, "WIX_DOWNGRADE_DETECTED": true,
 }
 
-// valueAny is the WiX and msi-builder word for no limit.
-const valueAny = "any"
+// valueAny and valueNone are WiX and msi-builder words for no limit and
+// for nothing.
+const (
+	valueAny  = "any"
+	valueNone = "none"
+)
 
 func orAny(version string) string {
 	if version == "" {

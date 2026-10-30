@@ -120,7 +120,7 @@ func (c *converter) recovery(svc *omap, elm *elem) {
 	for _, a := range []string{"FirstFailureActionType", "SecondFailureActionType", "ThirdFailureActionType"} {
 		switch v := elm.attr(a); v {
 		case "":
-		case "restart", "none":
+		case "restart", valueNone:
 			actions = append(actions, v)
 		default:
 			c.todof(svc, "recovery", elm.line, "the recovery action %q has no counterpart; restart and none are supported", v)
@@ -626,7 +626,7 @@ func (c *converter) featureIDs(cp *comp) []string {
 
 func orNone(ids []string) string {
 	if len(ids) == 0 {
-		return "none"
+		return valueNone
 	}
 
 	return strings.Join(ids, ", ")
