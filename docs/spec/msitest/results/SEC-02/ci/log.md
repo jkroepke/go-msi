@@ -1,6 +1,6 @@
 # SEC-02: SDDL without the P flag, and permission grants (CI)
 
-- Runner: GitHub `windows-latest` (Windows Server 2025), elevated, 2026-10-29
+- Runner: GitHub `windows-latest` (Windows Server 2025), elevated, 2026-10-29 and 2026-10-30
 - Tests: `TestMsiexecSDDLWithoutProtection` and `TestMsiexecGrants` in
   `internal/builder/nativetest/permissions_windows_test.go`
 
@@ -48,11 +48,12 @@ creates `Existing` before the install, and writes `New\Key` and
 | --- | --- |
 | `New` (created by the install) | `O:SYG:SYD:P(A;CI;KA;;;SY)(A;CI;KR;;;NS)(A;CI;KA;;;BA)` |
 | `New\Key` | `O:SYG:SYD:(A;CIID;KA;;;SY)(A;CIID;KA;;;BA)(A;CIID;KR;;;NS)` |
-| `Existing` (created by the test) | `O:LA…D:AI(A;CIID;KR;;;BU)(A;CIID;KA;;;BA)(A;CIID;KA;;;SY)…`, unchanged |
+| `Existing` (created by the test) | `O:LA…D:AI(A;CIID;KR;;;BU)(A;CIID;KA;;;BA)(A;CIID;KA;;;SY)…`, inherited from `HKLM\SOFTWARE` (not logged before the install) |
 | `Existing\Key` | `O:SYG:SYD:P(A;CI;KA;;;SY)(A;CI;KR;;;NS)(A;CI;KA;;;BA)` |
 
-So the topmost key the install creates gets the authored SDDL as a
-protected DACL, and keys below it inherit it. The test asserts all three
+So the key the install creates below an existing key gets the authored
+SDDL as a protected DACL, and the Registry row's key below it inherits it.
+Only one created level was tested. The test asserts all three
 installed keys.
 
 ## Grants

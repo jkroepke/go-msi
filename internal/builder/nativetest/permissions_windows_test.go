@@ -85,7 +85,7 @@ func objectSDDL(t *testing.T, path string) string {
 // explicit ACEs. A registry key below a key that exists before the install
 // gets the same protected DACL; when the install creates the parent too, the
 // parent gets it and the key reads back with the authored ACEs marked
-// inherited, and none of HKLM\SOFTWARE's.
+// inherited, and none of the existing key's above it.
 // An SDDL replaces the DACL whatever its flags, which is why grants exist.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
@@ -104,13 +104,12 @@ func TestMsiexecSDDLWithoutProtection(t *testing.T) {
 	grantGuests(t, existing)
 
 	regKey := `HKLM\` + sec02Key
-	deleteKey := func() { _ = exec.CommandContext(context.Background(), "reg", "delete", regKey, "/f").Run() }
+	deleteKey := func() { _ = exec.CommandContext(context.Background(), "reg", "delete", regKey, "/f", "/reg:64").Run() }
 
 	// Another run may have left the key; its subkeys must not exist yet.
 	deleteKey()
 
-	//nolint:gosec // the key is a test constant
-	if out, err := exec.CommandContext(t.Context(), "reg", "add", regKey+`\Existing`, "/f").CombinedOutput(); err != nil {
+	if out, err := exec.CommandContext(t.Context(), "reg", "add", regKey+`\Existing`, "/f", "/reg:64").CombinedOutput(); err != nil {
 		t.Fatalf("reg add: %v\n%s", err, out)
 	}
 
@@ -121,6 +120,7 @@ func TestMsiexecSDDLWithoutProtection(t *testing.T) {
 	t.Cleanup(func() {
 		_ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn").Run()
 		_ = os.RemoveAll(root)
+
 		deleteKey()
 	})
 
@@ -154,9 +154,9 @@ func TestMsiexecSDDLWithoutProtection(t *testing.T) {
 		t.Errorf(`registry key Existing\Key: %s, want a protected DACL with the authored ACEs only`, key)
 	}
 
-	// The key the install creates below HKLM\SOFTWARE gets the protected
-	// DACL, and the key below it inherits the authored ACEs and none of
-	// HKLM\SOFTWARE's.
+	// The key the install creates below the root gets the protected DACL,
+	// and the key below it inherits the authored ACEs and none of the
+	// root's.
 	if key := objectSDDL(t, regPath+`\New`); !strings.Contains(key, "D:P(") || strings.Count(key, "(") != 3 ||
 		!strings.Contains(key, "(A;CI;KA;;;SY)") || !strings.Contains(key, "(A;CI;KA;;;BA)") || !strings.Contains(key, "(A;CI;KR;;;NS)") {
 		t.Errorf(`registry key New: %s, want a protected DACL with the authored ACEs only`, key)

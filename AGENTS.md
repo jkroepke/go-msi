@@ -211,7 +211,7 @@ go test ./... -shuffle=on -race
   creates must not share registry keys or folders with other tests: give it
   its own root and delete it before and after. Whether a key's parent exists
   before the install changes the DACL `MsiLockPermissionsEx` gives the key
-  (the topmost created key gets the protected DACL, keys below inherit it;
+  (a created parent gets the protected DACL and the key inherits it;
   SEC-02 flaked with a shared `HKLM\SOFTWARE\MsiBuilderTest` parent).
 - Wizard changes need a full-UI run: `/qn` never shows a dialog, so dialog
   bugs (wrong event names, missing ErrorIcon) only appear with the full UI.
