@@ -207,8 +207,8 @@ jobs:
       # Windows on Arm installs the run action probe, the remembered install
       # folder package, the shortcut property package and the language
       # transform packages natively (Arm64 packages, the first with the arm64
-      # DLL), and the x64 package that refuses Arm64 (PROP-03). msiexec is slow on this runner, so the rest of the native suite
-      # stays on x64.
+      # DLL), and the x64 package that refuses Arm64 (PROP-03). msiexec is
+      # slow on this runner, so the rest of the native suite stays on x64.
       - name: go test (Windows on Arm)
         if: matrix.suite == 'arm'
         shell: bash
