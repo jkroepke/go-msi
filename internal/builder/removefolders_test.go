@@ -236,3 +236,23 @@ func TestRemoveFoldersRoom(t *testing.T) {
 		t.Errorf("build error %v, want the removeFolders room message", err)
 	}
 }
+
+// TestRemoveFoldersLongCondition rejects an entry whose condition, with the
+// component's state, does not fit InstallExecuteSequence.Condition.
+func TestRemoveFoldersLongCondition(t *testing.T) {
+	t.Parallel()
+
+	cfg := shortcutConfig(t, `
+  - files:
+      - source: app.exe
+    removeFolders:
+      - { property: DATA_DIR, on: both, condition: 'DELETE_DATA="`+strings.Repeat("x", 200)+`"' }
+properties:
+  DATA_DIR: { value: 'C:\Data\' }
+`)
+
+	_, err := builder.Build(cfg, builder.Options{})
+	if err == nil || !strings.Contains(err.Error(), "removeFolders[0].condition") {
+		t.Errorf("build error %v, want one for the long condition", err)
+	}
+}

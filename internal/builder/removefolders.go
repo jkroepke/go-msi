@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"fmt"
 	"slices"
 	"strconv"
 
@@ -24,10 +25,19 @@ func (b *build) removeFolders() error {
 	// the server anyway (PROP-01), and a secure folder property would let
 	// a standard user's command line steer every other use of it in an
 	// elevated session, where the DLL removes nothing.
-	for _, comp := range b.cfg.Components {
-		for _, e := range comp.RemoveFolders {
-			_, packageDir := b.dirs[e.Property]
-			entries = append(entries, removeFolderCondition(comp.ID, e, packageDir), e.Property)
+	for i, comp := range b.cfg.Components {
+		for index, entry := range comp.RemoveFolders {
+			_, packageDir := b.dirs[entry.Property]
+			cond := removeFolderCondition(comp.ID, entry, packageDir)
+
+			// The condition goes into InstallExecuteSequence.Condition.
+			if len(cond) > maxTargetLength {
+				b.errorf(fmt.Sprintf("%s.removeFolders[%d].condition", comp.Path(i), index),
+					"the condition with the component's state is %d characters, InstallExecuteSequence.Condition holds %d",
+					len(cond), maxTargetLength)
+			}
+
+			entries = append(entries, cond, entry.Property)
 		}
 	}
 
