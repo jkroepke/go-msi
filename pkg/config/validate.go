@@ -625,20 +625,7 @@ func (v *validator) featureConditions(featurePath string, feature *Feature) {
 
 		v.featureCondition(condPath, cond)
 
-		switch {
-		case cond.Default != "" && cond.Level != nil:
-			v.errorf(condPath+".default", "set default or level, not both")
-
-			continue
-		case cond.Default != "":
-			v.oneOf(condPath+".default", cond.Default, FeatureOn, FeatureOff, FeatureDisabled)
-		case cond.Level == nil:
-			v.errorf(condPath, "set default or level")
-
-			continue
-		case *cond.Level < 0 || *cond.Level > maxSequenceNumber:
-			v.errorf(condPath+".level", "must be between 0 and %d", maxSequenceNumber)
-
+		if !v.featureConditionLevel(condPath, cond) {
 			continue
 		}
 
@@ -649,6 +636,32 @@ func (v *validator) featureConditions(featurePath string, feature *Feature) {
 
 		levels[level] = true
 	}
+}
+
+// featureConditionLevel checks the default or level of a conditional
+// level and reports whether it names a valid level.
+func (v *validator) featureConditionLevel(condPath string, cond *FeatureCondition) bool {
+	switch {
+	case cond.Default != "" && cond.Level != nil:
+		v.errorf(condPath+".default", "set default or level, not both")
+
+		return false
+	case cond.Default != "" && !slices.Contains([]string{FeatureOn, FeatureOff, FeatureDisabled}, cond.Default):
+		v.oneOf(condPath+".default", cond.Default, FeatureOn, FeatureOff, FeatureDisabled)
+
+		return false
+	case cond.Default != "":
+	case cond.Level == nil:
+		v.errorf(condPath, "set default or level")
+
+		return false
+	case *cond.Level < 0 || *cond.Level > maxSequenceNumber:
+		v.errorf(condPath+".level", "must be between 0 and %d", maxSequenceNumber)
+
+		return false
+	}
+
+	return true
 }
 
 // featureCondition checks the condition of a Condition row: its syntax,

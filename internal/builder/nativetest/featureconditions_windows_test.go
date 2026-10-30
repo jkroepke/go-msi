@@ -116,14 +116,17 @@ func TestMsiexecFeatureConditions(t *testing.T) {
 		},
 		{
 			// The disabled row drops Assoc from the upgrade unless ASSOC
-			// is passed again.
+			// is passed again; Soft, installed by v1, is kept.
 			{"install v1 ASSOC=1 SOFT=1", false, []string{"ASSOC=1", "SOFT=1"}, []string{app, assoc, soft}},
 			{"upgrade to v2", true, nil, []string{app, soft}},
 			{"uninstall v2", true, []string{"/x"}, nil},
 		},
 		{
+			// MigrateFeatureStates requests absent for Soft, which v1 had
+			// available but not installed, over its true row; Assoc, which
+			// v1 had disabled, follows its row.
 			{"install v1", false, nil, []string{app}},
-			{"upgrade to v2 ASSOC=1 SOFT=1", true, []string{"ASSOC=1", "SOFT=1"}, []string{app, assoc, soft}},
+			{"upgrade to v2 ASSOC=1 SOFT=1", true, []string{"ASSOC=1", "SOFT=1"}, []string{app, assoc}},
 			{"uninstall v2", true, []string{"/x"}, nil},
 		},
 	} {
@@ -153,7 +156,7 @@ func featureConditionRun(t *testing.T, dir, folder string, packages []string, st
 		args = append(args, step.args...)
 	}
 
-	log := filepath.Join(dir, strings.ReplaceAll(step.name, " ", "_")+".log")
+	log := filepath.Join(dir, strings.NewReplacer(" ", "_", "/", "", "=", "-").Replace(step.name)+".log")
 	code := msiexecCode(t, log, args...)
 
 	var states []string

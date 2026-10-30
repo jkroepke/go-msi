@@ -69,7 +69,7 @@ features:
     features:
       - id: Docs
         title: Documentation
-        # TODO(line 71): the conditional level "5" with condition "&Main = 3" has no counterpart; a feature condition needs a level and cannot ask for feature or component states
+        # TODO(line 71): the conditional level "5" with condition "&Main = 3" was not converted: a feature condition cannot ask for feature or component states (&Main)
         default: off
         conditions:
           - condition: INSTALLDOCS = 1

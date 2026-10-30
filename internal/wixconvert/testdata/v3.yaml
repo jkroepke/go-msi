@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
 # Converted from v3.wxs by msi-builder convert.
 # Review it, resolve the TODO comments, then run msi-builder validate.
-# WiX variables became ${NAME} references; pass them with --var NAME=value: BinDir, ProductVersion.
+# WiX variables became ${NAME} references; pass them with --var NAME=value: BinDir, Edition, ProductVersion.
 # TODO(line 19): <?if $(var.Edition) = "full"?> is not evaluated: only its first branch was converted
 # TODO(line 21): the <?else?> branch was left out; convert it by hand if your build takes it
 schema: msi-builder/v1
@@ -50,9 +50,12 @@ features:
     components: [ToolExe]
   - id: Docs
     title: Documentation
+    # TODO(line 59): the conditional level "40000" with condition "1" was not converted: the level is not a number from 0 to 32767
     conditions:
       - condition: NOT INSTALLDOCS
         default: disabled
+      - condition: EDITION = "${Edition}"
+        default: off
     components: [Readme]
 components:
   - id: Readme
@@ -104,7 +107,7 @@ customActions:
       command: '"[#tool.exe]" --setup'
     execute: commit
     return: asyncWait
-    # TODO(line 69): the progress template of RunTool is not converted: msi-builder writes no ActionText templates
+    # TODO(line 71): the progress template of RunTool is not converted: msi-builder writes no ActionText templates
     progress: Setting up the tool
     schedule:
       - {sequence: execute, after: InstallFiles, condition: NOT Installed AND NOT REMOVE}

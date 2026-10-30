@@ -1,6 +1,7 @@
 package wixconvert
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -277,9 +278,9 @@ func (c *converter) featureLevel(out *omap, key string, line int, level string) 
 		out.set("default", "off")
 	default:
 		number, err := strconv.Atoi(level)
-		if err != nil {
+		if err != nil || number < 0 || number > maxLevel {
 			out.set("default", "off")
-			c.todof(out, key, line, "Level=%q is not a number; set level", level)
+			c.todof(out, key, line, "Level=%q is not a number from 0 to %d; set level", level, maxLevel)
 
 			return
 		}
@@ -287,6 +288,10 @@ func (c *converter) featureLevel(out *omap, key string, line int, level string) 
 		out.set("level", number)
 	}
 }
+
+// maxLevel is the largest feature level (Feature.Level and Condition.Level
+// are i2 columns between 0 and 32767).
+const maxLevel = 32767
 
 // featureConditions converts the conditional levels of a feature: WiX v3
 // writes <Condition Level="0">text</Condition>, WiX v4 and later
@@ -297,16 +302,15 @@ func (c *converter) featureConditions(out *omap, elm *elem) {
 
 		switch {
 		case kid.is("Condition"):
-			level, cond = kid.attr("Level"), strings.TrimSpace(kid.text)
+			level, cond = kid.attr("Level"), c.expand(kid, strings.TrimSpace(kid.text))
 		case kid.is("Level"):
 			level, cond = kid.attr("Value"), c.value(kid, "Condition")
 		default:
 			continue
 		}
 
-		if states := condition.States(cond); condition.Check(cond) != nil || len(states) > 0 || level == "" {
-			c.todof(out, "default", kid.line, "the conditional level %q with condition %q has no counterpart; "+
-				"a feature condition needs a level and cannot ask for feature or component states", level, cond)
+		if reason := conditionalLevelProblem(level, cond); reason != "" {
+			c.todof(out, "default", kid.line, "the conditional level %q with condition %q was not converted: %s", level, cond, reason)
 
 			continue
 		}
@@ -317,4 +321,27 @@ func (c *converter) featureConditions(out *omap, elm *elem) {
 		c.featureLevel(entry, "condition", kid.line, level)
 		out.add("conditions", entry)
 	}
+}
+
+// conditionalLevelProblem says why a conditional level cannot become a
+// conditions entry, or returns "". A condition with ${NAME} references is
+// only checked once the variables are substituted.
+func conditionalLevelProblem(level, cond string) string {
+	if number, err := strconv.Atoi(level); err != nil || number < 0 || number > maxLevel {
+		return fmt.Sprintf("the level is not a number from 0 to %d", maxLevel)
+	}
+
+	if states := condition.States(cond); len(states) > 0 {
+		return "a feature condition cannot ask for feature or component states (" + strings.Join(states, ", ") + ")"
+	}
+
+	if strings.Contains(cond, "${") {
+		return ""
+	}
+
+	if err := condition.Check(cond); err != nil {
+		return err.Error()
+	}
+
+	return ""
 }

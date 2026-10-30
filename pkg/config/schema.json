@@ -1335,7 +1335,7 @@
         },
         "conditions": {
           "type": "array",
-          "description": "Levels that replace the feature's level at a first install when their condition is true (Condition table). Not evaluated when ADDLOCAL, REMOVE or another feature request is set.",
+          "description": "Levels that replace the feature's level when their condition is true (Condition table). The builder adds NOT Installed, so they apply to first installs and upgrades only; Windows applies them also when ADDLOCAL is set.",
           "items": {
             "$ref": "#/$defs/featureCondition"
           }
