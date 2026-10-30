@@ -348,7 +348,7 @@ func (b *build) customActions() error { //nolint:cyclop // one pass over the for
 
 	for i, custom := range b.cfg.CustomActions {
 		path := fmt.Sprintf("customActions[%d]", i)
-		action := &actionInfo{name: custom.ID}
+		action := &actionInfo{name: custom.ID, progress: custom.Progress}
 		setter := ""
 
 		switch {
@@ -733,6 +733,12 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 		}
 
 		caTable.Add(a.name, a.typ, a.source, a.target, nil)
+
+		// Without a template: the action kinds msi-builder writes send
+		// no ActionData messages (specification section 17.8).
+		if a.progress != "" {
+			b.table("ActionText").Add(a.name, a.progress, nil)
+		}
 	}
 
 	return nil

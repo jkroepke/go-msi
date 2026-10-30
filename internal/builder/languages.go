@@ -106,6 +106,7 @@ func (b *build) languageBuild(lcid int, path string, entry *config.Language) (*m
 		}
 
 		cfg.UI.Dialogs = translatedDialogs(cfg.UI.Dialogs, entry.Dialogs)
+		cfg.CustomActions = translatedProgress(cfg.CustomActions, entry.Progress)
 	}
 
 	variant := newBuild(&cfg, b.opts, nil)
@@ -154,6 +155,32 @@ func translatedDialogs(dialogs []*config.Dialog, texts map[string]*config.Langua
 			translated.Fields[j] = translatedField(field, entry.Fields[field.Property])
 		}
 
+		out[i] = &translated
+	}
+
+	return out
+}
+
+// translatedProgress returns copies of actions with the progress texts
+// that a ui.languages entry replaces; the base configuration stays
+// unchanged.
+func translatedProgress(actions []*config.CustomAction, texts map[string]string) []*config.CustomAction {
+	if len(texts) == 0 {
+		return actions
+	}
+
+	out := make([]*config.CustomAction, len(actions))
+
+	for i, action := range actions {
+		text, ok := texts[action.ID]
+		if !ok {
+			out[i] = action
+
+			continue
+		}
+
+		translated := *action
+		translated.Progress = text
 		out[i] = &translated
 	}
 

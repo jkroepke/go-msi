@@ -105,31 +105,34 @@ type converter struct {
 	platform     string
 	launchAction string
 	properties   []*elem
-	actionOrder  []*elem
-	actionRefs   []*elem
-	binaries     []*elem
-	upgrades     []*elem
-	media        []*elem
-	launches     []*elem
-	icons        []*elem
-	defines      [][2]string
-	sequences    []*elem
-	setters      []*elem
-	structure    map[string]func(c *converter, e *elem, sc scope)
-	features     []*feature
-	featureByID  map[string]*feature
-	featureGrps  map[string]*featureGroup
-	topGroupRefs []string
-	comps        []*comp
-	notes        []Note
-	header       []string
-	dirOrder     []*dir
-	files        []*fileRef
-	pending      []pendingShortcut
-	pendingTypes []pendingType
-	anonymous    int
-	uiLine       int
-	v3           bool
+	// progressTexts are the ProgressText elements, which become the
+	// progress key of the action they name.
+	progressTexts []*elem
+	actionOrder   []*elem
+	actionRefs    []*elem
+	binaries      []*elem
+	upgrades      []*elem
+	media         []*elem
+	launches      []*elem
+	icons         []*elem
+	defines       [][2]string
+	sequences     []*elem
+	setters       []*elem
+	structure     map[string]func(c *converter, e *elem, sc scope)
+	features      []*feature
+	featureByID   map[string]*feature
+	featureGrps   map[string]*featureGroup
+	topGroupRefs  []string
+	comps         []*comp
+	notes         []Note
+	header        []string
+	dirOrder      []*dir
+	files         []*fileRef
+	pending       []pendingShortcut
+	pendingTypes  []pendingType
+	anonymous     int
+	uiLine        int
+	v3            bool
 }
 
 type dir struct {

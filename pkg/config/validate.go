@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/jkroepke/msi-builder/internal/condition"
 	"github.com/jkroepke/msi-builder/internal/msidb"
@@ -1670,6 +1671,7 @@ func (v *validator) customActions(cfg *Config, known *refs) {
 		v.actionKind(cfg, actionPath, action, known)
 		inScript := action.Execute != executeImmediate
 		v.actionRun(cfg, actionPath, action)
+		v.checkProgress(actionPath+".progress", action.Progress)
 
 		if len(action.Schedule) == 0 {
 			v.errorf(actionPath+".schedule", "required: an action that is never scheduled never runs")
@@ -1681,6 +1683,23 @@ func (v *validator) customActions(cfg *Config, known *refs) {
 	}
 
 	v.runDataIDs(cfg)
+}
+
+// progressWidth is the width of ActionText.Description.
+const progressWidth = 64
+
+// checkProgress checks a custom action's progress text at path: not blank,
+// and a warning when it is wider than its column.
+func (v *validator) checkProgress(at, text string) {
+	if text != "" && strings.TrimSpace(text) == "" {
+		v.errorf(at, "the text is blank; leave it out for no progress text")
+
+		return
+	}
+
+	if n := utf8.RuneCountInString(text); n > progressWidth {
+		v.warnf(at, "%d characters exceed the column width of %d (ICE03)", n, progressWidth)
+	}
 }
 
 // runDataIDs rejects an action named like the <id>.Data action the builder

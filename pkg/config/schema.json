@@ -620,6 +620,10 @@
               }
             ]
           },
+          "progress": {
+            "type": "string",
+            "description": "Description shown on the progress page and in basic UI while the action runs, and written to the log (ActionText table). Plain text: the engine does not format it."
+          },
           "schedule": {
             "type": "array",
             "items": {
@@ -863,6 +867,13 @@
               "license": {
                 "type": "string",
                 "description": "Replaces ui.license in this language."
+              },
+              "progress": {
+                "type": "object",
+                "description": "Replaces the progress texts of customActions in this language, by action id.",
+                "additionalProperties": {
+                  "type": "string"
+                }
               },
               "launch": {
                 "type": [

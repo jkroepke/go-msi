@@ -1,6 +1,7 @@
 package wixconvert
 
 import (
+	"cmp"
 	"maps"
 	"slices"
 	"strconv"
@@ -125,6 +126,7 @@ func (c *converter) scheduleReboot(entry *elem) {
 func (c *converter) emitActions() {
 	byAction := c.placements()
 	consumed := c.quietExecSetters()
+	progress := c.progress()
 
 	for _, custom := range c.actionOrder {
 		actionID := custom.attr("Id")
@@ -137,6 +139,7 @@ func (c *converter) emitActions() {
 			continue
 		}
 
+		c.setProgress(action, actionID, progress)
 		action.set("schedule", byAction[actionID])
 		delete(byAction, actionID)
 		c.out.add("customActions", action)
@@ -145,6 +148,7 @@ func (c *converter) emitActions() {
 	for _, setter := range c.setters {
 		action, schedule := c.setter(setter)
 		id := action.str("id")
+		c.setProgress(action, id, progress)
 		action.set("schedule", append(schedule, byAction[id]...))
 		delete(byAction, id)
 		c.out.add("customActions", action)
@@ -154,6 +158,44 @@ func (c *converter) emitActions() {
 		if c.actions[id] == nil && id != c.launchAction {
 			c.todof(nil, "", 0, "the sequences schedule %s, which this file does not define (an extension's action?)", id)
 		}
+	}
+
+	for _, id := range slices.Sorted(maps.Keys(progress)) {
+		c.todof(nil, "", progress[id].line, "the progress text of %s cannot be converted: msi-builder writes progress texts only for its customActions", id)
+	}
+}
+
+// progress indexes the ProgressText elements by action. setProgress
+// removes the ones it uses, so the rest can be reported.
+func (c *converter) progress() map[string]*elem {
+	texts := make(map[string]*elem, len(c.progressTexts))
+	for _, e := range c.progressTexts {
+		texts[e.attr("Action")] = e
+	}
+
+	return texts
+}
+
+// setProgress sets the progress key of the action id from its
+// ProgressText: the Message attribute of WiX v4 or later, or the element
+// text of WiX v3.
+func (c *converter) setProgress(action *omap, id string, texts map[string]*elem) {
+	e := texts[id]
+	if e == nil {
+		return
+	}
+
+	delete(texts, id)
+
+	text := cmp.Or(e.attr("Message"), strings.TrimSpace(e.text))
+	if text == "" {
+		return
+	}
+
+	action.set("progress", text)
+
+	if e.has("Template") {
+		c.todof(action, "progress", e.line, "the progress template of %s is not converted: msi-builder writes no ActionText templates", id)
 	}
 }
 
@@ -219,7 +261,7 @@ func (c *converter) command(quiet *elem) (string, bool) {
 func newAction(e *elem) *omap {
 	action := newMap()
 	action.order("id", "setProperty", "setDirectory", "error", "exec", "execProperty", "dll", "exe", "run",
-		"execute", "impersonate", "return", "hideTarget", "once", "schedule")
+		"execute", "impersonate", "return", "hideTarget", "once", "progress", "schedule")
 	action.head = comments(e)
 
 	return action

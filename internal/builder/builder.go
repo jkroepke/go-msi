@@ -217,6 +217,8 @@ type actionInfo struct {
 	target any
 	name   string
 	typ    int
+	// progress is the ActionText description of the action.
+	progress string
 	// fromUI marks an action that a control runs with DoAction.
 	fromUI bool
 }
