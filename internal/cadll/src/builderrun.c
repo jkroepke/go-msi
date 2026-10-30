@@ -110,6 +110,18 @@ typedef struct {
     SIZE_T ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemoryUsed, PeakJobMemoryUsed;
 } JOBOBJECT_EXTENDED_LIMIT_INFORMATION;
 
+// WIN32_FIND_DATAW as minwinbase.h lays it out (592 bytes on every
+// platform: no member is pointer-sized).
+typedef struct {
+    DWORD dwFileAttributes;
+    DWORD ftCreationTime[2], ftLastAccessTime[2], ftLastWriteTime[2];
+    DWORD nFileSizeHigh, nFileSizeLow;
+    DWORD dwReserved0, dwReserved1;
+    WCHAR cFileName[260];
+    WCHAR cAlternateFileName[14];
+} WIN32_FIND_DATAW;
+
+_Static_assert(sizeof(WIN32_FIND_DATAW) == 592, "WIN32_FIND_DATAW layout");
 _Static_assert(sizeof(OVERLAPPED) == (sizeof(void *) == 4 ? 20 : 32), "OVERLAPPED layout");
 _Static_assert(sizeof(STARTUPINFOEXW) == (sizeof(void *) == 4 ? 72 : 112), "STARTUPINFOEXW layout");
 _Static_assert(sizeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION) == (sizeof(void *) == 4 ? 112 : 144), "JOBOBJECT_EXTENDED_LIMIT_INFORMATION layout");
@@ -145,6 +157,12 @@ DWORD WINAPI GetLastError(void);
 int WINAPI MultiByteToWideChar(UINT, DWORD, const char *, int, WCHAR *, int);
 void *WINAPI LocalFree(void *);
 BOOL WINAPI GetComputerNameW(WCHAR *, DWORD *);
+HANDLE WINAPI FindFirstFileW(const WCHAR *, WIN32_FIND_DATAW *);
+BOOL WINAPI FindNextFileW(HANDLE, WIN32_FIND_DATAW *);
+BOOL WINAPI FindClose(HANDLE);
+DWORD WINAPI GetFileAttributesW(const WCHAR *);
+DWORD WINAPI GetLongPathNameW(const WCHAR *, WCHAR *, DWORD);
+int WINAPI CompareStringOrdinal(const WCHAR *, int, const WCHAR *, int, BOOL);
 
 // advapi32.dll
 BOOL WINAPI OpenThreadToken(HANDLE, DWORD, BOOL, HANDLE *);
@@ -181,12 +199,18 @@ UINT WINAPI MsiCloseHandle(MSIHANDLE);
 UINT WINAPI MsiSetPropertyW(MSIHANDLE, const WCHAR *, const WCHAR *);
 UINT WINAPI MsiFormatRecordW(MSIHANDLE, MSIHANDLE, WCHAR *, DWORD *);
 int WINAPI MsiEvaluateConditionW(MSIHANDLE, const WCHAR *);
+MSIHANDLE WINAPI MsiGetActiveDatabase(MSIHANDLE);
+UINT WINAPI MsiDatabaseOpenViewW(MSIHANDLE, const WCHAR *, MSIHANDLE *);
+UINT WINAPI MsiViewExecute(MSIHANDLE, MSIHANDLE);
+UINT WINAPI MsiViewModify(MSIHANDLE, int, MSIHANDLE);
+UINT WINAPI MsiViewClose(MSIHANDLE);
 
 // Values that do not fit an int are macros: C11 allows only int-sized
 // enumerators (6.7.2.2), and clang accepts larger ones silently.
 #define PROTECTED_DACL_SECURITY_INFORMATION 0x80000000u
 #define MAXDWORD_ 0xFFFFFFFFu
 #define INVALID_HANDLE_VALUE ((HANDLE)(INTPTR)-1)
+#define INVALID_FILE_ATTRIBUTES 0xFFFFFFFFu
 
 enum {
     ERROR_SUCCESS = 0,
@@ -251,6 +275,10 @@ enum {
     REG_SZ = 1,
     REG_DWORD = 4,
     MSICONDITION_TRUE = 1,
+    MSIMODIFY_INSERT_TEMPORARY = 7,
+    FILE_ATTRIBUTE_DIRECTORY = 0x10,
+    FILE_ATTRIBUTE_REPARSE_POINT = 0x400,
+    CSTR_EQUAL = 2,
     MSICONDITION_NONE = 2,
 
     // SID_NAME_USE
@@ -1643,6 +1671,415 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
     HeapFree(heap, 0, path.s);
     HeapFree(heap, 0, data);
     return result;
+}
+
+// Folder removal. The immediate action BuilderRemoveFolders reads the
+// private property BuilderRemoveFolders, one line per removeFolders entry:
+//
+//     <condition> US <component> US <mode> US <anchor> US <property>
+//
+// (US is U+001F). The builder puts the component state into the condition
+// ($Component=2 AND NOT UPGRADINGPRODUCTCODE for a removal, $Component=3
+// for an install), so the uninstall half of a major upgrade, which runs this
+// action of the old package with UPGRADINGPRODUCTCODE set, keeps the folder.
+// For an entry whose condition holds, the action reads the folder from the
+// property, refuses a folder that is not one an application could own (a
+// drive root, a folder that is or holds a standard folder, a folder in the
+// Windows folder, a junction or another reparse point), and lists the
+// folders below it. It then adds temporary RemoveFile rows for the
+// component, with the entry's install mode: for each subfolder, deepest
+// first, a `*` row and a folder row on a property of its own, then a folder
+// row for the folder itself, whose `*` row the package carries already (it
+// also keeps the RemoveFile table in the package). Last it sets the anchor
+// property that those two rows name, which stays empty when the entry is
+// skipped, so the package's own rows then remove nothing. The engine's
+// RemoveFiles action deletes the files and folders and restores them on a
+// rollback. A folder behind a junction is not entered, so the junction and
+// the folders above it stay. The action never fails the installation: what
+// it cannot do is logged as `BuilderRemoveFolders: ...` and left in place.
+
+static const WCHAR tmplRemove[] = u"BuilderRemoveFolders: [1]";
+static const WCHAR propRemove[] = u"BuilderRemoveFolders";
+static const WCHAR queryRemoveFile[] = u"SELECT `FileKey`, `Component_`, `FileName`, `DirProperty`, `InstallMode` FROM `RemoveFile`";
+static const WCHAR msgRemoveData[] = u"malformed folder removal data";
+static const WCHAR msgRemoveEmpty[] = u"the property is empty; nothing removed";
+static const WCHAR msgRemoveMissing[] = u"the folder does not exist; nothing removed";
+static const WCHAR msgRemovePath[] = u"refused, not a full local folder path";
+static const WCHAR msgRemoveRoot[] = u"refused, a drive root";
+static const WCHAR msgRemoveStandard[] = u"refused, it is or holds the standard folder";
+static const WCHAR msgRemoveWindows[] = u"refused, inside the Windows folder";
+static const WCHAR msgRemoveReparse[] = u"refused, a junction or another reparse point";
+static const WCHAR msgRemoveSkipLink[] = u"left in place with the folders above it, a junction or another reparse point";
+static const WCHAR msgRemoveList[] = u"cannot list the folder";
+static const WCHAR msgRemoveTable[] = u"cannot add RemoveFile rows";
+static const WCHAR msgRemoving[] = u"removing";
+static const WCHAR msgRemoveCount[] = u"subfolders listed";
+static const WCHAR star[] = u"*";
+
+// The standard folder properties a removal must not reach: neither the
+// folder itself nor a folder that holds it may be removed.
+static const WCHAR *const protectedFolders[] = {
+    u"WindowsVolume", u"WindowsFolder", u"SystemFolder", u"System64Folder", u"System16Folder",
+    u"ProgramFilesFolder", u"ProgramFiles64Folder", u"CommonFilesFolder", u"CommonFiles64Folder",
+    u"CommonAppDataFolder", u"AppDataFolder", u"LocalAppDataFolder", u"TempFolder",
+    u"PersonalFolder", u"DesktopFolder", u"FavoritesFolder", u"MyPicturesFolder", u"TemplateFolder",
+    u"ProgramMenuFolder", u"StartMenuFolder", u"StartupFolder", u"SendToFolder", u"RecentFolder",
+    u"NetHoodFolder", u"PrintHoodFolder", u"AdminToolsFolder", u"FontsFolder",
+};
+
+// wstrdup copies a string into a heap buffer with room for extra more
+// characters.
+static WCHAR *wstrdup(const WCHAR *s, SIZE_T extra)
+{
+    SIZE_T n = wlen(s);
+    WCHAR *out = HeapAlloc(GetProcessHeap(), 0, (n + extra + 1) * sizeof(WCHAR));
+    if (out) {
+        memcpy(out, s, (n + 1) * sizeof(WCHAR));
+    }
+    return out;
+}
+
+// longPath returns the long form of an existing path with a trailing
+// backslash, or 0 when it does not exist.
+static WCHAR *longPath(const WCHAR *path)
+{
+    DWORD n = GetLongPathNameW(path, 0, 0);
+    if (!n) {
+        return 0;
+    }
+    WCHAR *out = HeapAlloc(GetProcessHeap(), 0, ((SIZE_T)n + 2) * sizeof(WCHAR));
+    if (!out) {
+        return 0;
+    }
+    DWORD got = GetLongPathNameW(path, out, n);
+    if (!got || got >= n) {
+        HeapFree(GetProcessHeap(), 0, out);
+        return 0;
+    }
+    if (out[got - 1] != '\\') {
+        out[got++] = '\\';
+        out[got] = 0;
+    }
+    return out;
+}
+
+// below reports whether path is folder or a folder below it, ignoring case.
+// Both end with a backslash.
+static int below(const WCHAR *path, const WCHAR *folder)
+{
+    SIZE_T n = wlen(folder), m = wlen(path);
+    return n <= m && CompareStringOrdinal(path, (int)n, folder, (int)n, 1) == CSTR_EQUAL;
+}
+
+// plainPath reports whether path is a full local path, C:\ and folder names,
+// without the . and .. segments, a forward slash or a control character.
+static int plainPath(const WCHAR *path)
+{
+    WCHAR d = wlower(path[0]);
+    if (d < 'a' || d > 'z' || path[1] != ':' || path[2] != '\\') {
+        return 0;
+    }
+    for (const WCHAR *p = path + 2; *p; p++) {
+        if (*p < 0x20 || *p == '/' || *p == ':' || *p == '*' || *p == '?' || *p == '"' || *p == '<' || *p == '>' || *p == '|') {
+            return 0;
+        }
+        if (*p == '\\') {
+            const WCHAR *seg = p + 1;
+            SIZE_T dots = 0;
+            while (seg[dots] == '.') {
+                dots++;
+            }
+            if ((seg[0] == '\\') || (dots && (seg[dots] == '\\' || seg[dots] == 0))) {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+// refusal returns why a folder must not be removed, or 0. folder is a long
+// path with a trailing backslash; protectedName receives the property name
+// of a standard folder it reaches.
+static const WCHAR *refusal(MSIHANDLE install, const WCHAR *folder, const WCHAR **protectedName)
+{
+    if (wlen(folder) <= 3) {
+        return msgRemoveRoot;
+    }
+    DWORD attrs = GetFileAttributesW(folder);
+    if (attrs == INVALID_FILE_ATTRIBUTES || !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+        return msgRemoveMissing;
+    }
+    if (attrs & FILE_ATTRIBUTE_REPARSE_POINT) {
+        return msgRemoveReparse;
+    }
+    const WCHAR *why = 0;
+    for (SIZE_T i = 0; !why && i < sizeof(protectedFolders) / sizeof(protectedFolders[0]); i++) {
+        WCHAR *value = property(install, protectedFolders[i]);
+        WCHAR *full = value ? longPath(value) : 0;
+        const WCHAR *std = full ? full : value;
+        if (std && wlen(std) && std[wlen(std) - 1] == '\\') {
+            if (below(std, folder)) {
+                why = msgRemoveStandard;
+                *protectedName = protectedFolders[i];
+            } else if (i == 1 && below(folder, std)) {
+                why = msgRemoveWindows;
+            }
+        }
+        HeapFree(GetProcessHeap(), 0, full);
+        HeapFree(GetProcessHeap(), 0, value);
+    }
+    return why;
+}
+
+// plist is a growing list of heap strings.
+typedef struct {
+    WCHAR **items;
+    SIZE_T len, cap;
+} plist;
+
+static int plistAdd(plist *l, WCHAR *s)
+{
+    if (l->len == l->cap) {
+        SIZE_T cap = l->cap ? l->cap * 2 : 16;
+        WCHAR **grown = l->items ? HeapReAlloc(GetProcessHeap(), 0, l->items, cap * sizeof(WCHAR *)) : HeapAlloc(GetProcessHeap(), 0, cap * sizeof(WCHAR *));
+        if (!grown) {
+            return 0;
+        }
+        l->items = grown;
+        l->cap = cap;
+    }
+    l->items[l->len++] = s;
+    return 1;
+}
+
+static void plistFree(plist *l)
+{
+    for (SIZE_T i = 0; i < l->len; i++) {
+        HeapFree(GetProcessHeap(), 0, l->items[i]);
+    }
+    HeapFree(GetProcessHeap(), 0, l->items);
+}
+
+static int dotName(const WCHAR *name)
+{
+    return name[0] == '.' && (name[1] == 0 || (name[1] == '.' && name[2] == 0));
+}
+
+// listFolders appends every folder below the first entry of l, breadth
+// first, so that a folder comes after the folder that holds it. Junctions
+// and other reparse points are not entered and not listed.
+static int listFolders(MSIHANDLE install, plist *l)
+{
+    WIN32_FIND_DATAW *found = HeapAlloc(GetProcessHeap(), 0, sizeof(WIN32_FIND_DATAW));
+    if (!found) {
+        return 0;
+    }
+    int ok = 1;
+    for (SIZE_T i = 0; ok && i < l->len; i++) {
+        WCHAR *pattern = wstrdup(l->items[i], 1);
+        if (!pattern) {
+            ok = 0;
+            break;
+        }
+        SIZE_T n = wlen(pattern);
+        pattern[n] = '*';
+        pattern[n + 1] = 0;
+        HANDLE find = FindFirstFileW(pattern, found);
+        if (find == INVALID_HANDLE_VALUE) {
+            logft(install, tmplRemove, msgRemoveList, l->items[i], GetLastError());
+        } else {
+            do {
+                if (!(found->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || dotName(found->cFileName)) {
+                    continue;
+                }
+                SIZE_T base = wlen(l->items[i]), name = wlen(found->cFileName);
+                WCHAR *sub = HeapAlloc(GetProcessHeap(), 0, (base + name + 2) * sizeof(WCHAR));
+                if (!sub) {
+                    ok = 0;
+                    break;
+                }
+                SIZE_T pos = 0;
+                sub[0] = 0;
+                wappend(sub, &pos, l->items[i]);
+                wappend(sub, &pos, found->cFileName);
+                sub[pos++] = '\\';
+                sub[pos] = 0;
+                if (found->dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+                    logft(install, tmplRemove, sub, msgRemoveSkipLink, 0);
+                    HeapFree(GetProcessHeap(), 0, sub);
+                } else if (!plistAdd(l, sub)) {
+                    HeapFree(GetProcessHeap(), 0, sub);
+                    ok = 0;
+                }
+            } while (ok && FindNextFileW(find, found));
+            FindClose(find);
+        }
+        HeapFree(GetProcessHeap(), 0, pattern);
+    }
+    HeapFree(GetProcessHeap(), 0, found);
+    return ok;
+}
+
+// insertRow adds one temporary RemoveFile row; fileName 0 is a folder row.
+static int insertRow(MSIHANDLE view, const WCHAR *key, const WCHAR *component, const WCHAR *fileName, const WCHAR *dirProperty, int mode)
+{
+    MSIHANDLE rec = MsiCreateRecord(5);
+    if (!rec) {
+        return 0;
+    }
+    MsiRecordSetStringW(rec, 1, key);
+    MsiRecordSetStringW(rec, 2, component);
+    if (fileName) {
+        MsiRecordSetStringW(rec, 3, fileName);
+    }
+    MsiRecordSetStringW(rec, 4, dirProperty);
+    MsiRecordSetInteger(rec, 5, mode);
+    UINT err = MsiViewModify(view, MSIMODIFY_INSERT_TEMPORARY, rec);
+    MsiCloseHandle(rec);
+    return err == ERROR_SUCCESS;
+}
+
+// subName writes <anchor>_<index><suffix> into buf, which holds 96
+// characters; the anchor has at most 72.
+static void subName(WCHAR *buf, const WCHAR *anchor, DWORD index, WCHAR suffix)
+{
+    static const WCHAR under[] = u"_";
+    SIZE_T pos = 0;
+    buf[0] = 0;
+    wappend(buf, &pos, anchor);
+    wappend(buf, &pos, under);
+    wappendnum(buf, &pos, index);
+    if (suffix) {
+        buf[pos++] = suffix;
+        buf[pos] = 0;
+    }
+}
+
+// removeTree adds the rows that remove folder and everything below it.
+static void removeTree(MSIHANDLE install, MSIHANDLE view, const WCHAR *component, int mode, const WCHAR *anchor, WCHAR *folder)
+{
+    plist folders = {0, 0, 0};
+    if (!plistAdd(&folders, folder)) {
+        HeapFree(GetProcessHeap(), 0, folder);
+        logft(install, tmplRemove, msgNoMemory, 0, 0);
+        return;
+    }
+    logft(install, tmplRemove, msgRemoving, folder, 0);
+    if (!listFolders(install, &folders)) {
+        logft(install, tmplRemove, msgNoMemory, 0, 0);
+        plistFree(&folders);
+        return;
+    }
+    WCHAR count[12];
+    SIZE_T pos = 0;
+    wappendnum(count, &pos, (DWORD)(folders.len - 1));
+    logft(install, tmplRemove, msgRemoveCount, count, 0);
+    WCHAR *buf = HeapAlloc(GetProcessHeap(), 0, 3 * 96 * sizeof(WCHAR));
+    int ok = buf != 0;
+    // Deepest first: a folder row removes its folder only once it is empty.
+    for (SIZE_T i = folders.len - 1; ok && i > 0; i--) {
+        WCHAR *prop = buf, *fileKey = buf + 96, *dirKey = buf + 192;
+        subName(prop, anchor, (DWORD)i, 0);
+        subName(fileKey, anchor, (DWORD)i, 'f');
+        subName(dirKey, anchor, (DWORD)i, 'd');
+        ok = MsiSetPropertyW(install, prop, folders.items[i]) == ERROR_SUCCESS && insertRow(view, fileKey, component, star, prop, mode) &&
+             insertRow(view, dirKey, component, 0, prop, mode);
+    }
+    if (ok) {
+        subName(buf, anchor, 0, 'd');
+        ok = insertRow(view, buf, component, 0, anchor, mode) && MsiSetPropertyW(install, anchor, folder) == ERROR_SUCCESS;
+    }
+    if (!ok) {
+        logft(install, tmplRemove, msgRemoveTable, folder, 0);
+    }
+    HeapFree(GetProcessHeap(), 0, buf);
+    plistFree(&folders);
+}
+
+// removeEntry handles one line of BuilderRemoveFolders.
+static void removeEntry(MSIHANDLE install, MSIHANDLE view, WCHAR *line)
+{
+    WCHAR *component = field(line, 0x1F);
+    WCHAR *mode = component ? field(component, 0x1F) : 0;
+    WCHAR *anchor = mode ? field(mode, 0x1F) : 0;
+    WCHAR *name = anchor ? field(anchor, 0x1F) : 0;
+    if (!name || !*name || !*component || mode[0] < '1' || mode[0] > '3' || mode[1] || wlen(anchor) > 72) {
+        logft(install, tmplRemove, msgRemoveData, 0, 0);
+        return;
+    }
+    if (*line) {
+        int cond = MsiEvaluateConditionW(install, line);
+        if (cond != MSICONDITION_TRUE && cond != MSICONDITION_NONE) {
+            if (cond != 0) {
+                logft(install, tmplRemove, msgCondition, line, 0);
+            }
+            return;
+        }
+    }
+    WCHAR *value = property(install, name), *folder = 0;
+    const WCHAR *why = 0, *std = 0;
+    if (!value || !*trim(value)) {
+        why = msgRemoveEmpty;
+    } else {
+        WCHAR *path = wstrdup(trim(value), 1);
+        if (path) {
+            SIZE_T n = wlen(path);
+            if (n && path[n - 1] != '\\') {
+                path[n] = '\\';
+                path[n + 1] = 0;
+            }
+            if (!plainPath(path)) {
+                why = msgRemovePath;
+            } else if ((folder = longPath(path)) == 0) {
+                why = msgRemoveMissing;
+            } else {
+                why = refusal(install, folder, &std);
+            }
+            HeapFree(GetProcessHeap(), 0, path);
+        } else {
+            why = msgNoMemory;
+        }
+    }
+    if (why) {
+        static const WCHAR space[] = u" ";
+        wbuf text = {0, 0, 0};
+        const WCHAR *shown = folder ? folder : (value ? value : name);
+        if (wbufAdd(&text, why, wlen(why)) && (!std || (wbufAdd(&text, space, 1) && wbufAdd(&text, std, wlen(std))))) {
+            logft(install, tmplRemove, shown, text.s, 0);
+        }
+        HeapFree(GetProcessHeap(), 0, text.s);
+        HeapFree(GetProcessHeap(), 0, folder);
+    } else {
+        removeTree(install, view, component, mode[0] - '0', anchor, folder);
+    }
+    HeapFree(GetProcessHeap(), 0, value);
+}
+
+__declspec(dllexport) UINT WINAPI BuilderRemoveFolders(MSIHANDLE install)
+{
+    WCHAR *list = property(install, propRemove);
+    if (!list) {
+        return ERROR_SUCCESS;
+    }
+    MSIHANDLE db = MsiGetActiveDatabase(install), view = 0;
+    if (!db || MsiDatabaseOpenViewW(db, queryRemoveFile, &view) != ERROR_SUCCESS || MsiViewExecute(view, 0) != ERROR_SUCCESS) {
+        logft(install, tmplRemove, msgRemoveTable, 0, 0);
+    } else {
+        for (WCHAR *line = list; line && *line;) {
+            WCHAR *next = field(line, '\n');
+            removeEntry(install, view, line);
+            line = next;
+        }
+    }
+    if (view) {
+        MsiViewClose(view);
+        MsiCloseHandle(view);
+    }
+    if (db) {
+        MsiCloseHandle(db);
+    }
+    HeapFree(GetProcessHeap(), 0, list);
+    return ERROR_SUCCESS;
 }
 
 BOOL WINAPI _DllMainCRTStartup(HANDLE instance, DWORD reason, void *reserved)

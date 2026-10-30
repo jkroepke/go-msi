@@ -13,6 +13,7 @@ package cadll
 import (
 	"embed"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -84,6 +85,19 @@ const (
 // formats. None of the texts may contain a line break or U+001F.
 func GrantEntry(condition string, kind byte, mask, flags uint32, account, object string) string {
 	return strings.Join([]string{condition, fmt.Sprintf("%c|%x|%x", kind, mask, flags), account, object}, grantSeparator)
+}
+
+// RemoveFolders names the immediate action of folder removal, its entry
+// point and the property that lists the folders.
+const RemoveFolders = "BuilderRemoveFolders"
+
+// RemoveFoldersEntry encodes one line of the BuilderRemoveFolders property:
+// the condition under which the folder is removed, the component and
+// RemoveFile install mode of the rows, the private anchor property that the
+// package's own rows name, and the property that holds the folder. None of
+// the texts may contain a line break or U+001F.
+func RemoveFoldersEntry(condition, component string, mode int, anchor, property string) string {
+	return strings.Join([]string{condition, component, strconv.Itoa(mode), anchor, property}, grantSeparator)
 }
 
 // Data encodes the working directory and command line the DLL expects.

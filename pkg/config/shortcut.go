@@ -88,7 +88,7 @@ func shortcutsOnly(comp *Component) bool {
 		return false
 	}
 
-	return len(comp.Files)+len(comp.Registry)+len(comp.RemoveRegistry)+len(comp.RemoveFiles)+
+	return len(comp.Files)+len(comp.Registry)+len(comp.RemoveRegistry)+len(comp.RemoveFiles)+len(comp.RemoveFolders)+
 		len(comp.Services)+len(comp.ServiceControl)+len(comp.EventLog)+len(comp.Environment) == 0
 }
 
