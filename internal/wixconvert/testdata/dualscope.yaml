@@ -72,7 +72,7 @@ customActions:
     setProperty: {name: UIMODE, value: dual}
     # TODO(line 34): WixSetDefaultPerMachineFolder is an action of a WiX extension, which the msi-builder package does not have; convert placed this action after CostFinalize, check that place
     schedule:
-      # TODO(line 31): this action was scheduled next to OverrideAgain, which is not in the ui sequence; convert placed it after CostFinalize, check that place
+      # TODO(line 31): SetUIMODE was scheduled next to OverrideAgain, which is not in the ui sequence; convert placed it after CostFinalize, check that place
       - {sequence: ui, after: CostFinalize}
       - {sequence: execute, after: CostFinalize}
 ui:

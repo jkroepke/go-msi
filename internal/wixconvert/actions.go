@@ -188,9 +188,9 @@ func (c *converter) emitActions() {
 		}
 
 		action, schedule := c.setter(setter)
-		reanchor(schedule)
-
 		id := action.str("id")
+		reanchor(id, schedule)
+
 		c.setProgress(action, id, progress)
 		action.set("schedule", append(schedule, byAction[id]...))
 		delete(byAction, id)
@@ -365,19 +365,19 @@ type anchorKey struct{ action, sequence string }
 // WixPerMachineFolder setter, to that action's own anchor in the same
 // sequence. It returns the function that does so, for the schedules of
 // SetProperty and SetDirectory.
-func (c *converter) reanchor(byAction map[string][]any) func([]any) {
+func (c *converter) reanchor(byAction map[string][]any) func(string, []any) {
 	anchors, sources := c.sourceAnchors(byAction)
 
-	move := func(entries []any) {
+	move := func(id string, entries []any) {
 		for i, entry := range entries {
 			if placement, ok := entry.(*omap); ok {
-				entries[i] = c.followAnchors(placement, anchors, sources)
+				entries[i] = c.followAnchors(id, placement, anchors, sources)
 			}
 		}
 	}
 
-	for _, entries := range byAction {
-		move(entries)
+	for _, id := range slices.Sorted(maps.Keys(byAction)) {
+		move(id, byAction[id])
 	}
 
 	return move
@@ -392,8 +392,9 @@ const (
 // followAnchors moves a placement on a left-out setter to that setter's
 // anchor, and on through setters that are left out too. A setter that is
 // not in the placement's sequence leaves the placement at CostFinalize,
-// which both sequences have, with a note.
-func (c *converter) followAnchors(placement *omap, anchors map[anchorKey]*omap, sources map[string]*elem) *omap {
+// which both sequences have, or at InstallFiles for an action that runs in
+// the install script, with a note.
+func (c *converter) followAnchors(id string, placement *omap, anchors map[anchorKey]*omap, sources map[string]*elem) *omap {
 	for range len(sources) + 1 {
 		key := keyAfter
 		if placement.str(keyBefore) != "" {
@@ -409,9 +410,14 @@ func (c *converter) followAnchors(placement *omap, anchors map[anchorKey]*omap, 
 
 		anchor := anchors[anchorKey{name, placement.str("sequence")}]
 		if anchor == nil {
-			moved := moveAnchor(placement, flowMap().set(key, "CostFinalize"))
-			c.todof(moved, "", src.line, "this action was scheduled next to %s, which is not in the %s sequence; convert "+
-				"placed it %s CostFinalize, check that place", name, placement.str("sequence"), key)
+			target := "CostFinalize"
+			if custom := c.actions[id]; custom != nil && !immediate(custom) {
+				target = "InstallFiles"
+			}
+
+			moved := moveAnchor(placement, flowMap().set(key, target))
+			c.todof(moved, "", src.line, "%s was scheduled next to %s, which is not in the %s sequence; convert "+
+				"placed it %s %s, check that place", id, name, placement.str("sequence"), key, target)
 
 			return moved
 		}
