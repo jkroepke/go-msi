@@ -57,7 +57,17 @@ func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one 
 		return nil, err
 	}
 
-	lookup := func(name string) (string, bool) {
+	var errs []error
+
+	// A value from the file's vars may use other variables, which are
+	// expanded like any other string; values from the command line and the
+	// environment are taken as they are.
+	resolving := make(map[string]bool)
+	resolved := make(map[string]string)
+
+	var lookup func(string) (string, bool)
+
+	lookup = func(name string) (string, bool) {
 		if v, ok := opts.Vars[name]; ok {
 			return v, true
 		}
@@ -68,12 +78,28 @@ func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one 
 			}
 		}
 
-		v, ok := vars[name]
+		if v, ok := resolved[name]; ok {
+			return v, true
+		}
 
-		return v, ok
+		value, ok := vars[name]
+		if !ok {
+			return "", false
+		}
+
+		if resolving[name] {
+			errs = append(errs, fmt.Errorf("vars.%s: refers to itself through ${%s}", name, name))
+
+			return "", true
+		}
+
+		resolving[name] = true
+		value = expand(value, "vars."+name, lookup, &errs)
+		resolving[name] = false
+		resolved[name] = value
+
+		return value, true
 	}
-
-	var errs []error
 
 	for i := 0; i < len(root.Content); i += 2 {
 		if root.Content[i].Value == "vars" {
@@ -145,33 +171,39 @@ var yamlNulls = map[string]bool{"null": true, "Null": true, "NULL": true, "~": t
 
 var varPattern = regexp.MustCompile(`\$\$\{|\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
+// expand replaces ${NAME} in s; "$${" writes a literal "${". where names
+// the place for an error.
+func expand(s, where string, lookup func(string) (string, bool), errs *[]error) string {
+	return varPattern.ReplaceAllStringFunc(s, func(m string) string {
+		if m == "$${" {
+			return "${"
+		}
+
+		name := m[2 : len(m)-1]
+
+		value, ok := lookup(name)
+		if !ok {
+			*errs = append(*errs, fmt.Errorf("%s: undefined variable ${%s}", where, name))
+		}
+
+		if !utf8.ValidString(value) {
+			*errs = append(*errs, fmt.Errorf("%s: variable ${%s} is not valid UTF-8", where, name))
+		}
+
+		return value
+	})
+}
+
 // substitute replaces ${NAME} in every scalar value below node. Mapping keys
 // are left alone. "$${" writes a literal "${".
-func substitute(node *yaml.Node, lookup func(string) (string, bool), errs *[]error) { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
+func substitute(node *yaml.Node, lookup func(string) (string, bool), errs *[]error) {
 	switch node.Kind {
 	case yaml.ScalarNode:
 		if !strings.Contains(node.Value, "${") {
 			return
 		}
 
-		node.Value = varPattern.ReplaceAllStringFunc(node.Value, func(m string) string {
-			if m == "$${" {
-				return "${"
-			}
-
-			name := m[2 : len(m)-1]
-
-			value, ok := lookup(name)
-			if !ok {
-				*errs = append(*errs, fmt.Errorf("line %d: undefined variable ${%s}", node.Line, name))
-			}
-
-			if !utf8.ValidString(value) {
-				*errs = append(*errs, fmt.Errorf("line %d: variable ${%s} is not valid UTF-8", node.Line, name))
-			}
-
-			return value
-		})
+		node.Value = expand(node.Value, fmt.Sprintf("line %d", node.Line), lookup, errs)
 
 		// Resolve the tag again from the substituted text, so that an
 		// integer field can take "${PORT}". A value that spells null stays

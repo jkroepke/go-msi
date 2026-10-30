@@ -186,6 +186,47 @@ properties: {P: "${PORT}"}
 	}
 }
 
+// A value in vars may use other variables; one from the command line is
+// taken as it is.
+func TestNestedVariables(t *testing.T) {
+	t.Parallel()
+
+	doc := `schema: msi-builder/v1
+vars: {SHORT: Hello, NAME: "${SHORT} App", FULL: "${NAME} ${VERSION}", RAW: "$${KEEP}"}
+product: {name: "${FULL}", manufacturer: "${RAW}", version: "${VERSION}"}
+package: {platform: x64}
+properties: {P: "${CLI}"}
+`
+
+	cfg, err := config.Parse([]byte(doc), config.Options{Vars: map[string]string{"VERSION": "1.2.3", "CLI": "${SHORT}"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.Product.Name != "Hello App 1.2.3" {
+		t.Errorf("name = %q, want the nested vars and the --var expanded", cfg.Product.Name)
+	}
+
+	if cfg.Product.Manufacturer != "${KEEP}" {
+		t.Errorf("manufacturer = %q: $${ in a vars value is a literal", cfg.Product.Manufacturer)
+	}
+
+	if cfg.Properties["P"].Value != "${SHORT}" {
+		t.Errorf("P = %q: a --var value is taken as it is", cfg.Properties["P"].Value)
+	}
+
+	for name, vars := range map[string]string{
+		"cycle":     `{A: "${B}", B: "${A}"}`,
+		"self":      `{A: "x${A}"}`,
+		"undefined": `{A: "${NOPE}"}`,
+	} {
+		_, err := config.Parse([]byte("schema: msi-builder/v1\nvars: "+vars+"\nproduct: {name: \"${A}\"}\n"), config.Options{})
+		if err == nil || !strings.Contains(err.Error(), "vars.") {
+			t.Errorf("%s: err = %v, want an error naming the vars entry", name, err)
+		}
+	}
+}
+
 func TestPlatformTokens(t *testing.T) {
 	t.Parallel()
 
