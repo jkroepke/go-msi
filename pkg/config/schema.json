@@ -620,6 +620,10 @@
               }
             ]
           },
+          "progress": {
+            "type": "string",
+            "description": "Description in the ActionText table: the wizard's progress page shows a deferred action's text while it runs, and the verbose log writes it (under /qn only for deferred actions). Formatted: [Property] references are resolved."
+          },
           "schedule": {
             "type": "array",
             "items": {
@@ -863,6 +867,13 @@
               "license": {
                 "type": "string",
                 "description": "Replaces ui.license in this language."
+              },
+              "progress": {
+                "type": "object",
+                "description": "Replaces the progress texts of customActions in this language, by action ID.",
+                "additionalProperties": {
+                  "type": "string"
+                }
               },
               "launch": {
                 "type": [
@@ -2191,11 +2202,13 @@
                 ]
               },
               "scope": {
+                "description": "Default: user in a per-user package or component, auto (per machine or per user as installed) in a dual package, machine otherwise.",
                 "anyOf": [
                   {
                     "enum": [
                       "machine",
-                      "user"
+                      "user",
+                      "auto"
                     ]
                   },
                   {
@@ -2219,6 +2232,20 @@
         },
         "condition": {
           "$ref": "#/$defs/condition"
+        },
+        "scope": {
+          "description": "In a perUserOrMachine or perMachineOrUser package only: install the component only in this context. A perMachine component may write HKLM values and machine variables.",
+          "anyOf": [
+            {
+              "enum": [
+                "perMachine",
+                "perUser"
+              ]
+            },
+            {
+              "$ref": "#/$defs/var"
+            }
+          ]
         },
         "permanent": {
           "$ref": "#/$defs/bool"

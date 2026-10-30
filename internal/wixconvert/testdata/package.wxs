@@ -43,6 +43,10 @@
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchHello"
                Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed" />
       <Dialog Id="PortDlg" Width="370" Height="270" Title="Port" />
+      <ProgressText Action="StopClients" Message="Stopping the hello $(var.Version) clients" />
+      <ProgressText Action="InstallFiles" Message="Copying the hello files" />
+      <ProgressText Action="InstallFiles" Message="Copying again" />
+      <ProgressText Action="LaunchHello" Message="Starting hello" />
     </UI>
     <CustomAction Id="LaunchHello" BinaryRef="Wix4UtilCA_X64" DllEntry="WixShellExec" Impersonate="yes" />
 
