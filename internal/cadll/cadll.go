@@ -13,9 +13,11 @@ package cadll
 import (
 	"embed"
 	"fmt"
+	"strings"
 )
 
-// Key is the Binary table key of the DLL and Entry its exported entry point.
+// Key is the Binary table key of the DLL and Entry the exported entry point
+// of run actions.
 const (
 	Key   = "BuilderRun"
 	Entry = "BuilderRun"
@@ -55,6 +57,33 @@ func Binary(platform string) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+// Permission grants: the property the builder lists them in, the actions
+// that apply them (named like their entry points where they have their own)
+// and the kinds of object.
+const (
+	GrantProperty   = "BuilderGrants"
+	GrantSchedule   = "BuilderGrantSchedule"
+	GrantEntryPoint = "BuilderGrant"
+	GrantExec       = "BuilderGrantExec"
+	GrantRollback   = "BuilderGrantRollback"
+	GrantCommit     = "BuilderGrantCommit"
+
+	GrantFile    = 'f'
+	GrantService = 's'
+
+	// grantSeparator separates the fields of a BuilderGrants line: the
+	// condition, the rights, the account and the object.
+	grantSeparator = "\x1f"
+)
+
+// GrantEntry encodes one line of the BuilderGrants property: the condition
+// under which it applies, the kind of object, the access mask, the ACE
+// inheritance flags, and the account and object, which BuilderGrantSchedule
+// formats. None of the texts may contain a line break or U+001F.
+func GrantEntry(condition string, kind byte, mask, flags uint32, account, object string) string {
+	return strings.Join([]string{condition, fmt.Sprintf("%c|%x|%x", kind, mask, flags), account, object}, grantSeparator)
 }
 
 // Data encodes the working directory and command line the DLL expects.

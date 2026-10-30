@@ -407,7 +407,7 @@ func (v *validator) folderFile(filePath string, file *File) {
 
 	v.folderPatterns(filePath+".include", file.Include)
 	v.folderPatterns(filePath+".exclude", file.Exclude)
-	v.permissions(filePath+".permissions", file.Permissions)
+	v.permissions(filePath+".permissions", file.Permissions, permFile)
 }
 
 // filePatterns rejects include and exclude on a file that is not a folder

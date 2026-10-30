@@ -158,6 +158,33 @@ installation, which is rolled back. It is
 stopped and removed on uninstall, and runs as LocalSystem unless `account`
 and `password` say otherwise.
 
+### Give a service account access to a folder
+
+`grant` adds rights for an account to the folder and keeps the permissions
+it already has, including the ones it inherits from `ProgramData`:
+
+```yaml
+components:
+  - files:
+      - source: hello.exe
+    services:
+      - name: Hello
+        account: NT AUTHORITY\NetworkService
+  - directory: CommonAppDataFolder/Hello/data
+    createFolder: true
+    folderPermissions:
+      grant:
+        - account: NT AUTHORITY\NetworkService
+          rights: modify        # full, modify, readExecute, read or write
+```
+
+The rights apply to the subfolders and files too. Files and services take
+`grant` in their `permissions` block. The account can also be a property,
+`account: '[SERVICE_ACCOUNT]'`; the account is remembered, so a repair
+from Apps & Features grants to it again, but a major upgrade needs it on
+its command line again. To replace the permissions
+instead of adding to them, write an SDDL string in `sddl`.
+
 ### Add the program to PATH
 
 ```yaml

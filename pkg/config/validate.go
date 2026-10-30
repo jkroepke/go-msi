@@ -763,11 +763,12 @@ func (v *validator) components(cfg *Config, known *refs) {
 			svcPath := fmt.Sprintf("%s.services[%d]", p, j)
 			v.service(svcPath, svc, keyFile, perUser)
 			v.startConditionLength(svcPath+".control.startCondition", comp.Condition, svc.Control.StartCondition)
-			v.permissions(svcPath+".permissions", svc.Permissions)
+			v.permissions(svcPath+".permissions", svc.Permissions, permService)
 		}
 
 		v.componentServiceControl(p, comp, services, perUser)
 		v.componentPermissions(p, comp)
+		v.movableGrants(cfg, known, p, comp)
 		v.componentEvents(p, comp, perUser)
 	}
 }
@@ -877,15 +878,15 @@ func (v *validator) componentKeyFile(compPath string, comp *Component, keyFile *
 // registry values and folder.
 func (v *validator) componentPermissions(compPath string, comp *Component) {
 	for j, file := range comp.Files {
-		v.permissions(fmt.Sprintf("%s.files[%d].permissions", compPath, j), file.Permissions)
+		v.permissions(fmt.Sprintf("%s.files[%d].permissions", compPath, j), file.Permissions, permFile)
 	}
 
 	for j, value := range comp.Registry {
-		v.permissions(fmt.Sprintf("%s.registry[%d].permissions", compPath, j), value.Permissions)
+		v.permissions(fmt.Sprintf("%s.registry[%d].permissions", compPath, j), value.Permissions, permRegistry)
 	}
 
 	directoryKey := comp.KeyPath == KeyPathDirectory || comp.KeyPath == "" && len(comp.Files) == 0 && len(comp.Registry) == 0
-	if v.permissions(compPath+".folderPermissions", comp.FolderPermissions) && !comp.CreateFolder && !directoryKey {
+	if v.permissions(compPath+".folderPermissions", comp.FolderPermissions, permFolder) && !comp.CreateFolder && !directoryKey {
 		v.errorf(compPath+".folderPermissions", "the component creates no folder row; set createFolder: true")
 	}
 }
@@ -922,20 +923,25 @@ func (v *validator) componentEvents(compPath string, comp *Component, perUser bo
 	}
 }
 
-// permissions validates an SDDL block and reports whether one is set.
-func (v *validator) permissions(field string, perm *Permissions) bool {
+// permissions validates a permissions block on an object of the kind
+// (permFile, ...) and reports whether one is set.
+func (v *validator) permissions(field string, perm *Permissions, kind string) bool {
 	if perm == nil {
 		return false
 	}
 
-	warnings, err := CheckSDDL(perm.SDDL)
-	if err != nil {
-		v.errorf(field+".sddl", "%v", err)
+	if perm.SDDL != "" || len(perm.Grant) == 0 {
+		warnings, err := CheckSDDL(perm.SDDL)
+		if err != nil {
+			v.errorf(field+".sddl", "%v", err)
+		}
+
+		for _, warning := range warnings {
+			v.warnf(field+".sddl", "%s", warning)
+		}
 	}
 
-	for _, warning := range warnings {
-		v.warnf(field+".sddl", "%s", warning)
-	}
+	v.grants(field, perm, kind)
 
 	if perm.Condition != "" {
 		if err := condition.Check(perm.Condition); err != nil {
