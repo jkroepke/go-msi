@@ -214,6 +214,7 @@ type compConv struct {
 // componentChildren convert the elements a Component holds.
 var componentChildren = map[string]func(cc *compConv, e *elem){ //nolint:gochecknoglobals // dispatch table
 	"File":                  (*compConv).file,
+	"Files":                 (*compConv).folderFiles,
 	"RegistryKey":           func(cc *compConv, e *elem) { cc.registry(e, e.attr("Root"), "") },
 	"RegistryValue":         func(cc *compConv, e *elem) { cc.registry(e, e.attr("Root"), "") },
 	"RemoveRegistryKey":     (*compConv).removeRegistry,
@@ -642,4 +643,53 @@ func (cc *compConv) inProfile() bool {
 	top := cc.c.top(folder)
 
 	return top != nil && config.IsProfileFolder(top.id)
+}
+
+// folderFiles converts a WiX 4 Files element, which harvests a glob, to a
+// folder source with include and exclude patterns.
+func (cc *compConv) folderFiles(elm *elem) {
+	conv := cc.c
+	src, include := splitGlob(sourcePath(conv.expand(elm, elm.attr("Include"))))
+
+	files := newMap()
+	files.order("source", "include", "exclude")
+	files.head = comments(elm)
+	files.set("source", src)
+
+	if include != "**" {
+		files.set("include", []string{include})
+	}
+
+	var exclude []string
+
+	for _, kid := range elm.kids {
+		if kid.is("Exclude") {
+			_, pattern := splitGlob(sourcePath(conv.expand(kid, kid.attr("Files"))))
+			exclude = append(exclude, strings.TrimPrefix(pattern, src))
+		} else {
+			conv.todof(files, "", kid.line, "<%s> in <Files> has no counterpart", kid.qname())
+		}
+	}
+
+	files.set("exclude", exclude)
+	cc.out.add("files", files)
+	cc.files++
+}
+
+// splitGlob splits a glob path into the folder before its first wildcard,
+// with a trailing slash, and the pattern below that folder.
+func splitGlob(pattern string) (string, string) {
+	parts := strings.Split(pattern, "/")
+	for i, part := range parts {
+		if strings.ContainsAny(part, "*?[") {
+			folder := strings.Join(parts[:i], "/")
+			if folder == "" {
+				folder = "."
+			}
+
+			return folder + "/", strings.Join(parts[i:], "/")
+		}
+	}
+
+	return pattern, ""
 }

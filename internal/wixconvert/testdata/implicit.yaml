@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
+# Converted from implicit.wxs by msi-builder convert.
+# Review it, resolve the TODO comments, then run msi-builder validate.
+schema: msi-builder/v1
+product:
+  name: Hello
+  manufacturer: Example
+  version: 1.0.0
+  upgradeCode: 0b7e8c41-2f6d-4a39-8c15-7d2e9f0a6b54
+package:
+  platform: x64
+upgrade:
+  downgradeMessage: A newer version is installed.
+installDir:
+  # WiX ID Hello_Dir; the install folder must be an upper-case public property,
+  # so every [Hello_Dir] reference became [HELLO_DIR].
+  id: HELLO_DIR
+  name: Hello
+features:
+  - id: Main
+    title: Hello
+    components: [Spy, Links, Component1, Component2]
+  - id: Docs
+    title: Documentation
+    components: [Component3]
+components:
+  # A Subdirectory is not the install folder.
+  - id: Spy
+    directory: spy
+    files:
+      - source: dist/spy.dll
+  # A Subdirectory below a standard folder that no element declares.
+  - id: Links
+    directory: ProgramMenuFolder/Hello Project
+    shortcuts:
+      - name: Hello website
+        url: https://example.com
+        directory: ProgramMenuFolder/Hello Project
+  - id: Component1
+    files:
+      - source: dist/hello.exe
+  - id: Component2
+    directory: tools
+    files:
+      - source: dist/tools/
+        exclude: ['**/*.pdb']
+  - id: Component3
+    files:
+      - source: dist/readme.txt

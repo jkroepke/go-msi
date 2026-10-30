@@ -149,6 +149,8 @@ type dir struct {
 	name     string
 	line     int
 	std      bool
+	// sub marks a folder that a component's Subdirectory made.
+	sub bool
 }
 
 type comp struct {
@@ -341,7 +343,11 @@ func structureHandlers() map[string]func(c *converter, e *elem, sc scope) {
 
 			conv.walk(elm, inner)
 		},
-		"Component":         (*converter).addComp,
+		"Component": (*converter).addComp,
+		// WiX 4 lets a File or Files stand outside a Component; each one
+		// is a component of its own.
+		"File":              func(c *converter, e *elem, sc scope) { c.addComp(implicitComponent(e), sc) },
+		"Files":             func(c *converter, e *elem, sc scope) { c.addComp(implicitComponent(e), sc) },
 		"ComponentRef":      func(c *converter, e *elem, sc scope) { c.addMember(sc, member{ref: e.attr("Id")}) },
 		"ComponentGroupRef": func(c *converter, e *elem, sc scope) { c.addMember(sc, member{group: e.attr("Id")}) },
 		"Feature":           (*converter).addFeature,
@@ -467,10 +473,16 @@ func (c *converter) addDir(elm *elem, parentID string, standard bool) *dir {
 // subdir adds the folders of a Subdirectory path, such as bin\\x64, below a
 // directory and returns the ID of the last one.
 func (c *converter) subdir(parentID, path string, line int) string {
+	if c.dirs[parentID] == nil && isStandardFolder(parentID) {
+		folder := &dir{id: parentID, std: true, line: line}
+		c.dirs[parentID] = folder
+		c.dirOrder = append(c.dirOrder, folder)
+	}
+
 	for _, name := range strings.FieldsFunc(path, func(r rune) bool { return r == '\\' || r == '/' }) {
 		dirID := parentID + "_" + idPart(name)
 		if _, ok := c.dirs[dirID]; !ok {
-			folder := &dir{id: dirID, name: name, parentID: parentID, line: line}
+			folder := &dir{id: dirID, name: name, parentID: parentID, line: line, sub: true}
 			c.dirs[dirID] = folder
 			c.dirOrder = append(c.dirOrder, folder)
 		}
@@ -509,6 +521,21 @@ func (c *converter) group(id string) *group {
 	}
 
 	return grp
+}
+
+// implicitComponent wraps a File or Files outside a Component in the
+// component WiX makes for it, which takes its Directory and Subdirectory.
+func implicitComponent(file *elem) *elem {
+	component := &elem{attrs: make(map[string]string), ns: file.ns, space: file.space, name: "Component", kids: []*elem{file}, line: file.line}
+
+	for _, name := range []string{attrDirectory, "Subdirectory"} {
+		if v, ok := file.attrs[name]; ok {
+			component.attrs[name] = v
+			component.order = append(component.order, name)
+		}
+	}
+
+	return component
 }
 
 func (c *converter) addComp(elm *elem, within scope) {

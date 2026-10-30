@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A sample WiX 4 package with files outside components and component
+     subdirectories. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="0b7e8c41-2f6d-4a39-8c15-7d2e9f0a6b54">
+    <MajorUpgrade DowngradeErrorMessage="A newer version is installed." />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="Hello_Dir" Name="Hello" />
+    </StandardDirectory>
+
+    <!-- A Subdirectory is not the install folder. -->
+    <Component Id="Spy" Directory="Hello_Dir" Subdirectory="spy">
+      <File Source="dist\spy.dll" />
+    </Component>
+    <!-- A Subdirectory below a standard folder that no element declares. -->
+    <Component Id="Links" Directory="ProgramMenuFolder" Subdirectory="Hello Project">
+      <util:InternetShortcut Id="Web" Name="Hello website" Target="https://example.com" />
+    </Component>
+
+    <Feature Id="Main" Title="Hello">
+      <ComponentRef Id="Spy" />
+      <ComponentRef Id="Links" />
+      <File Source="dist\hello.exe" Directory="Hello_Dir" />
+      <Files Include="dist\tools\**" Directory="Hello_Dir" Subdirectory="tools">
+        <Exclude Files="dist\tools\**\*.pdb" />
+      </Files>
+    </Feature>
+    <Feature Id="Docs" Title="Documentation">
+      <File Source="dist\readme.txt" Directory="Hello_Dir" />
+    </Feature>
+  </Package>
+</Wix>
