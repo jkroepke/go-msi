@@ -27,6 +27,7 @@
       <RemoveFolder Id="RemoveAppMenu" On="uninstall" />
       <!-- Removed on uninstall only, never created. -->
       <RemoveRegistryKey Root="HKCR" Key="*\shell\Hello" Action="removeOnUninstall" />
+      <RemoveRegistryValue Root="HKCU" Key="Software\Example\Hello" />
       <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="console" Type="integer" Value="1" KeyPath="yes" />
     </Component>
 

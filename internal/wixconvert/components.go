@@ -577,8 +577,11 @@ func (cc *compConv) removeRegistry(elm *elem) {
 	if elm.is("RemoveRegistryValue") {
 		name := conv.value(elm, "Name")
 		if name == "" {
-			conv.todof(entry, "", elm.line,
-				"RemoveRegistryValue without Name removes the default value; msi-builder's removeRegistry without name removes the key")
+			// removeRegistry without a name would delete the whole key.
+			conv.todof(cc.out, "", elm.line, "RemoveRegistryValue %s\\%s without Name removes the default value and was left out: "+
+				"removeRegistry without name removes the whole key", elm.attr("Root"), conv.value(elm, "Key"))
+
+			return
 		}
 
 		entry.set("name", name)
