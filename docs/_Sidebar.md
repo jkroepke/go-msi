@@ -6,6 +6,7 @@
 - [Getting Started](Getting%20Started.md)
 - [Installation](Installation.md)
 - [End User Guide](End%20User%20Guide.md)
+- [Migrating from WiX](Migrating%20from%20WiX.md)
 
 **Configure and build**
 

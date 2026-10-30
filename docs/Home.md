@@ -20,6 +20,8 @@ of your release.
   the container image.
 - [End User Guide](End%20User%20Guide.md) shows the people who install your
   package how to install, upgrade and remove it, silently too.
+- [Migrating from WiX](Migrating%20from%20WiX.md) turns a `.wxs` file into an
+  `msi.yaml` file, element by element.
 
 ## Reference
 

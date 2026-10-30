@@ -16,6 +16,8 @@ With the exception of `README.md` files and the Windows test harness in
   (`cmd/msi-builder/guide_test.go`) builds every YAML block of it, the later
   ones as parts of the first, and fails on a warning. Keep table rows,
   generated IDs, ICE details and spec case IDs in `design/yaml-schema.md`.
+- `Migrating from WiX.md` maps WiX elements to `msi.yaml` keys. Its YAML
+  blocks are built by the same test, with the first block as the whole file.
 - `cli/` is generated with `go generate ./cmd/msi-builder`; do not edit it by hand.
 
 The wiki has one flat list of page names. `.github/scripts/wiki.py` gives

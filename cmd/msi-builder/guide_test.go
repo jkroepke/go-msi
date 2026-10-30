@@ -20,8 +20,10 @@ import (
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
-// guidePage is the user guide whose examples TestGuideExamples builds.
-const guidePage = "../../docs/YAML Schema.md"
+// guidePages returns the user guides whose examples TestGuideExamples builds.
+func guidePages() []string {
+	return []string{"../../docs/YAML Schema.md", "../../docs/Migrating from WiX.md"}
+}
 
 // yamlBlock matches a fenced YAML code block of the guide.
 var yamlBlock = regexp.MustCompile("(?ms)^```yaml\n(.*?)^```")
@@ -29,16 +31,28 @@ var yamlBlock = regexp.MustCompile("(?ms)^```yaml\n(.*?)^```")
 // heading matches a heading line of the guide.
 var heading = regexp.MustCompile("(?m)^#+ (.+)$")
 
-// TestGuideExamples builds every YAML example of the user guide without a
-// warning. The first example is a whole file; every later one is a part of
-// a file, whose top-level keys replace those of the first. A part with
+// TestGuideExamples builds every YAML example of the user guides without a
+// warning. The first example of a page is a whole file; every later one is a
+// part of a file, whose top-level keys replace those of the first. A part with
 // components or features replaces both, so its files are not installed
 // twice. Subtests are named after the heading above the example. Each file
 // a source or license names is created: a versioned program for .exe and
 // .dll, text otherwise, and a folder source gets a program, a .pdb and a
-// text file.
+// text file. Each file that icons and binaries name is text too.
 func TestGuideExamples(t *testing.T) {
 	t.Parallel()
+
+	for _, guidePage := range guidePages() {
+		t.Run(path.Base(guidePage), func(t *testing.T) {
+			t.Parallel()
+
+			testGuidePage(t, guidePage)
+		})
+	}
+}
+
+func testGuidePage(t *testing.T, guidePage string) {
+	t.Helper()
 
 	page, err := os.ReadFile(guidePage)
 	if err != nil {
@@ -124,7 +138,8 @@ func buildGuideExample(t *testing.T, base map[string]any, example []byte) {
 	}
 }
 
-// guideInputs returns the values of every source and license key in value.
+// guideInputs returns the values of every source and license key in value,
+// and the files of the icons and binaries maps.
 func guideInputs(value any) []string {
 	var names []string
 
@@ -133,6 +148,16 @@ func guideInputs(value any) []string {
 		for key, item := range value {
 			if name, ok := item.(string); ok && (key == "source" || key == "license") {
 				names = append(names, name)
+
+				continue
+			}
+
+			if files, ok := item.(map[string]any); ok && (key == "icons" || key == "binaries") {
+				for _, file := range files {
+					if name, ok := file.(string); ok {
+						names = append(names, name)
+					}
+				}
 
 				continue
 			}
