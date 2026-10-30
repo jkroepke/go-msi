@@ -3,7 +3,9 @@
 package nativetest_test
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -73,7 +75,7 @@ func TestMsiexecRemoveFoldersUserSID(t *testing.T) {
 	logs := t.TempDir()
 
 	cleanup := func() {
-		_ = msiexecCode(t, filepath.Join(logs, "cleanup.log"), "/x", pkg)
+		_ = exec.CommandContext(context.Background(), "msiexec", "/x", pkg, "/qn").Run()
 		_ = os.RemoveAll(data)
 	}
 	cleanup()
