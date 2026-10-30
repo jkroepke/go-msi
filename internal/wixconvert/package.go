@@ -30,6 +30,38 @@ func (c *converter) emit() {
 	c.emitFiles()
 	c.emitUI()
 	c.emitActionRefs()
+	c.guidNote()
+}
+
+// guidNote warns about components whose GUID WiX generated when the old
+// version is removed late. msi-builder generates other GUIDs, so the
+// upgrade sees new components, and removing the old package then deletes
+// files the new one installed.
+func (c *converter) guidNote() {
+	upgrade := c.out.mapAt("upgrade")
+	if upgrade == nil {
+		return
+	}
+
+	if removeOld := upgrade.str("removeOld"); removeOld != "afterInstallExecute" && removeOld != "afterInstallFinalize" {
+		return
+	}
+
+	var generated []string
+
+	for _, comp := range c.comps {
+		if comp.out != nil && comp.out.get("guid") == nil {
+			generated = append(generated, c.compID(comp))
+		}
+	}
+
+	if len(generated) == 0 {
+		return
+	}
+
+	c.todof(nil, "", 0, "WiX generated the GUIDs of %s, and msi-builder generates other ones; with removeOld %s an upgrade "+
+		"from the WiX package then deletes their files. Copy WiX's GUIDs into components[].guid: msi-builder inspect --table Component wix.msi",
+		strings.Join(generated, ", "), upgrade.str("removeOld"))
 }
 
 func (c *converter) emitProduct() {

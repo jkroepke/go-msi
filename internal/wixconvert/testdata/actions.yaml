@@ -17,19 +17,30 @@ installDir:
   id: INSTALLFOLDER
   name: Hello
 components:
-  # TODO(line 16): util:RemoveFolderEx was not converted: purge refuses a folder below INSTALLFOLDER, a public directory ID that can point anywhere; keep the data in a folder with private (mixed-case) IDs below a fixed standard folder, such as CommonAppDataFolder/Vendor/Product, and purge that
+  # TODO(line 20): util:RemoveFolderEx was not converted: purge refuses a folder below INSTALLFOLDER, a public directory ID that can point anywhere; keep the data in a folder with private (mixed-case) IDs below a fixed standard folder, such as CommonAppDataFolder/Vendor/Product, and purge that
   - id: HelloExe
     directory: bin
     files:
       - source: dist/hello.exe
         id: hello.exe
     services:
-      # TODO(line 13): the WiX package has no ServiceControl for HelloSvc; msi-builder starts it on install and stops and deletes it by default (services[].control)
+      # TODO(line 17): the WiX package has no ServiceControl for HelloSvc; msi-builder starts it on install and stops and deletes it by default (services[].control)
       - name: HelloSvc
         start: auto
         recovery:
           actions: [restart, restart, none]
           restartDelay: 0s
+  # The RemoveFolder and HKCU key path of this shortcut component were left out:
+  # msi-builder writes both for every shortcut.
+  - id: ConsoleLink
+    directory: ProgramMenuFolder/Hello
+    shortcuts:
+      # The target is a property that holds a URL, not a folder.
+      - name: Hello Console
+        program: '[CONSOLEURL]'
+        directory: ProgramMenuFolder/Hello
+properties:
+  CONSOLEURL: http://localhost:4985/
 customActions:
   - id: StopHello
     run:

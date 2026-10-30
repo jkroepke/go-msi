@@ -586,6 +586,32 @@ var serviceRights = map[string]string{ //nolint:gochecknoglobals // lookup table
 	"ServicePauseContinue": "pauseContinue",
 }
 
+// wellKnownAccounts are the SDDL aliases of built-in accounts by their
+// English names, which other Windows languages translate.
+var wellKnownAccounts = map[string]string{ //nolint:gochecknoglobals // lookup table
+	"administrators": "BA", "users": "BU", "guests": "BG", "power users": "PU", "everyone": "WD",
+	"authenticated users": "AU", "system": "SY", "localsystem": "SY", "local service": "LS", "localservice": "LS",
+	"network service": "NS", "networkservice": "NS", "interactive": "IU", "remote desktop users": "RD",
+}
+
+// grantAccount names a util:PermissionEx account the way grants take it:
+// a built-in account by its SDDL alias, so the name resolves in every
+// Windows language.
+func grantAccount(domain, user string) string {
+	switch strings.ToLower(domain) {
+	case "", "builtin", "nt authority":
+		if alias, ok := wellKnownAccounts[strings.ToLower(user)]; ok {
+			return alias
+		}
+	}
+
+	if domain != "" {
+		return domain + `\` + user
+	}
+
+	return user
+}
+
 // permission converts a permission element into the permissions key of target.
 func (c *converter) permission(target *omap, key string, elm *elem, kind string) {
 	perms := target.mapAt(key)
@@ -607,10 +633,7 @@ func (c *converter) permission(target *omap, key string, elm *elem, kind string)
 	case elemPermission:
 		c.todof(target, key, elm.line, "<Permission> replaces the object's permissions; write them as an SDDL string in %s.sddl", key)
 	case "util:PermissionEx":
-		account := c.value(elm, "User")
-		if d := c.value(elm, "Domain"); d != "" {
-			account = d + `\` + account
-		}
+		account := grantAccount(c.value(elm, "Domain"), c.value(elm, "User"))
 
 		g := newMap().set("account", account).set("rights", c.rights(target, key, elm, kind))
 		perms.add("grant", g)

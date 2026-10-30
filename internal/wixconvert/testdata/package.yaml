@@ -8,6 +8,7 @@
 # TODO(line 149): the custom action Greet is a script; script custom actions are never supported, use a run action
 # TODO(line 150): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
 # TODO(line 161): Wix4BroadcastEnvironmentChange_X64 has no counterpart: programs that are already running keep the old environment until they restart
+# TODO: WiX generated the GUIDs of Component2, Component1, and msi-builder generates other ones; with removeOld afterInstallExecute an upgrade from the WiX package then deletes their files. Copy WiX's GUIDs into components[].guid: msi-builder inspect --table Component wix.msi
 schema: msi-builder/v1
 vars:
   Port: "8080"
@@ -147,7 +148,7 @@ components:
           restartDelay: 120s
         permissions:
           grant:
-            - account: Users
+            - account: BU
               rights: [start, stop]
     serviceControl:
       - name: HelloLegacy
@@ -188,9 +189,9 @@ components:
     createFolder: true
     folderPermissions:
       grant:
-        - account: NT AUTHORITY\NetworkService
+        - account: NS
           rights: [full]
-        - account: Users
+        - account: BU
           rights: ["0x120116"]
   # The RemoveFolder and HKCU key path of this shortcut component were left out:
   # msi-builder writes both for every shortcut.

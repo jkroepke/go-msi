@@ -108,6 +108,9 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 	link := c.shortcut(elm, pending.comp.dir, pending.tree)
 
 	switch match := folderTarget.FindStringSubmatch(target); {
+	case match != nil && !c.isDir(match[1]):
+		// A property, such as a URL, not a folder.
+		link.set("program", c.expand(elm, target))
 	case target == "":
 		// The shortcut is left out; its notes stay with the component.
 		pending.comp.out.head = append(pending.comp.out.head, link.commentLines()...)
@@ -123,6 +126,12 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 
 	link.set("workingDirectory", c.dirRef(elm.attr("WorkingDirectory")))
 	pending.comp.out.add("shortcuts", link)
+}
+
+// isDir reports whether an ID names a directory of the file or a standard
+// folder.
+func (c *converter) isDir(id string) bool {
+	return c.dirs[id] != nil || isStandardFolder(id)
 }
 
 // targetFile finds the packaged file a shortcut target names, as [#id] or
