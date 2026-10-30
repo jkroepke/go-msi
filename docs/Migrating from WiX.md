@@ -744,9 +744,8 @@ ui:
 ```
 
 `WixUI_Advanced` sets the per-user folder to `%LOCALAPPDATA%\Apps\<folder>`
-(seen in a real-world port, also with `/qn`). msi-builder leaves the
-per-user folder to Windows Installer, which uses
-`%LOCALAPPDATA%\Programs\<folder>`. A per-user msi-builder upgrade of
+(seen in a real-world port, also with `/qn`). msi-builder installs per
+user to `%LOCALAPPDATA%\Programs\<folder>`. A per-user msi-builder upgrade of
 such an installation should therefore move the files there.
 
 The wizard pages are msi-builder's own, with its own bitmaps. It has no
