@@ -58,7 +58,7 @@ func (c *converter) closeTarget(elm *elem, target, found string) {
 			"files[].close closes only files of the package", found, target)
 	default:
 		for _, ref := range refs {
-			c.closeFile(ref.out, elm)
+			c.closeFile(ref, elm)
 		}
 	}
 }
@@ -90,7 +90,7 @@ func (c *converter) filesNamed(name string) []*fileRef {
 			installed = baseName(sourcePath(c.literal(src)))
 		}
 
-		if strings.EqualFold(installed, name) {
+		if strings.EqualFold(installed, name) || strings.EqualFold(afterVars(installed), name) {
 			refs = append(refs, ref)
 		}
 	}
@@ -101,7 +101,9 @@ func (c *converter) filesNamed(name string) []*fileRef {
 // closeFile sets close on a file. WiX ends the program only with
 // TerminateProcess, close by default; when several elements close one
 // file, one that ends it wins, as WiX runs them all.
-func (c *converter) closeFile(file *omap, elm *elem) {
+func (c *converter) closeFile(ref *fileRef, elm *elem) {
+	file := ref.out
+
 	switch prev := file.get("close"); {
 	case elm.has("TerminateProcess"):
 		file.set("close", true)
@@ -109,7 +111,12 @@ func (c *converter) closeFile(file *omap, elm *elem) {
 		file.set("close", flowMap().set("terminate", false))
 	}
 
+	// The folder tells apart files of one source in several folders, as
+	// todof drops a note it has already recorded.
 	source := file.str("source")
+	if ref.dir != "" {
+		source += " in " + ref.dir
+	}
 
 	if cond := c.condition(elm); cond != "" {
 		c.todof(file, "close", elm.line, "<util:CloseApplication> closes %s only when %s; close has no condition", source, cond)
@@ -121,8 +128,8 @@ func (c *converter) closeFile(file *omap, elm *elem) {
 	}
 
 	if rough := roughCloseAttrs(elm); len(rough) > 0 {
-		c.todof(file, "close", elm.line, "close sends the program WM_CLOSE and waits close.timeout; the attributes %s "+
-			"of <util:CloseApplication> map to it only roughly or not at all", strings.Join(rough, ", "))
+		c.todof(file, "close", elm.line, "close of %s sends the program WM_CLOSE and waits close.timeout; the "+
+			"attributes %s of <util:CloseApplication> map to it only roughly or not at all", source, strings.Join(rough, ", "))
 	}
 
 	c.todof(file, "close", elm.line, "close of %s came from <util:CloseApplication>: %s", source, closeNote)
@@ -157,4 +164,16 @@ func roughCloseAttrs(elm *elem) []string {
 	}
 
 	return rough
+}
+
+// afterVars returns the part of an installed name after the last
+// variable or bind path that convert could not fill in, as in
+// $(var.App.TargetDir)hello.exe, or "" when there is none.
+func afterVars(name string) string {
+	end := strings.LastIndex(name, ")")
+	if end < 0 || !strings.Contains(name[:end], "$(") && !strings.Contains(name[:end], "!(") {
+		return ""
+	}
+
+	return name[end+1:]
 }

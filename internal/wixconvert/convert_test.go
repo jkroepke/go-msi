@@ -1029,7 +1029,7 @@ func TestConvertCloseApplication(t *testing.T) {
 	for _, want := range []string{
 		"closes hello.com, which is no program ending in .exe",
 		"closes example.exe, which is no single file of this package; when a Files glob (line 7) installs it",
-		"also sets the property HELLORUNNING while hello.exe runs",
+		"also sets the property HELLORUNNING while hello.exe in INSTALLFOLDER runs",
 		"the attributes PromptToContinue of <util:CloseApplication> map to it only roughly or not at all",
 	} {
 		if !strings.Contains(out, want) {
@@ -1074,9 +1074,10 @@ func TestConvertCloseApplicationV3Src(t *testing.T) {
 	}
 }
 
-// TestConvertCloseApplicationUndefinedVar checks that a Target with a
-// variable defined only on the WiX command line still closes the file of
-// the same name.
+// TestConvertCloseApplicationUndefinedVar checks that variables defined
+// only on the WiX command line, in the Target or before the file name in
+// the Source, still close the file, and that files of one source in
+// several folders each get their notes.
 func TestConvertCloseApplicationUndefinedVar(t *testing.T) {
 	t.Parallel()
 
@@ -1086,10 +1087,17 @@ func TestConvertCloseApplicationUndefinedVar(t *testing.T) {
       <Directory Id="INSTALLFOLDER" Name="Hello">
         <Component>
           <File Source="bin\$(var.ExeName)" />
+          <File Source="$(var.App.TargetDir)hello.exe" />
         </Component>
+        <Directory Id="X86" Name="x86">
+          <Component>
+            <File Source="$(var.App.TargetDir)hello.exe" />
+          </Component>
+        </Directory>
       </Directory>
     </StandardDirectory>
     <util:CloseApplication Target="$(var.ExeName)" CloseMessage="yes" />
+    <util:CloseApplication Target="hello.exe" CloseMessage="yes" Timeout="10" />
   </Package>
 </Wix>`
 
@@ -1098,7 +1106,13 @@ func TestConvertCloseApplicationUndefinedVar(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(string(res.YAML), "close: {terminate: false}") {
-		t.Errorf("the file is not closed:\n%s", res.YAML)
+	out := string(res.YAML)
+	if got := strings.Count(out, "close: {terminate: false}"); got != 3 {
+		t.Errorf("the YAML closes %d files, want 3:\n%s", got, out)
+	}
+
+	// Both copies of hello.exe get every note, told apart by their folder.
+	if got := strings.Count(out, "the attributes Timeout of"); got != 2 {
+		t.Errorf("the YAML notes Timeout on %d files, want 2:\n%s", got, out)
 	}
 }
