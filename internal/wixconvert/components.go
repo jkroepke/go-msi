@@ -125,8 +125,9 @@ func (c *converter) component(comp *comp, tree map[*dir]bool) *omap {
 	out.set(keyDirectory, c.dirValue(comp.dir, tree))
 
 	switch guid := c.value(elm, "Guid"); {
-	case guid == "*":
-	case guid == "" && elm.has("Guid"):
+	case guid == "*", !elm.has("Guid"):
+		comp.generated = true
+	case guid == "":
 		out.set("guid", "none")
 	default:
 		out.set("guid", guid)
@@ -142,12 +143,16 @@ func (c *converter) component(comp *comp, tree map[*dir]bool) *omap {
 
 	c.bitness(out, elm)
 
-	cc := &compConv{c: c, cp: comp, out: out, tree: tree, keyIsDir: elm.yes("KeyPath")}
+	content := &compConv{c: c, cp: comp, out: out, tree: tree, keyIsDir: elm.yes("KeyPath")}
 	for _, kid := range elm.kids {
-		cc.child(kid)
+		content.child(kid)
 	}
 
-	cc.finish()
+	content.finish()
+
+	if comp.generated && c.built != nil {
+		c.pinCode(comp, content.keyFile)
+	}
 
 	return out
 }
@@ -201,6 +206,7 @@ type compConv struct {
 	tree         map[*dir]bool
 	controlled   map[*omap]bool
 	keyPath      string // the key path a File or RegistryValue asks for
+	keyFile      string // the name of the key path file WiX picks
 	hkcuKeyPaths []*omap
 	removeFolder []*omap
 	services     []*omap
@@ -350,6 +356,10 @@ func (cc *compConv) file(elm *elem) { //nolint:cyclop // a flat list of independ
 
 	if elm.yes("KeyPath") && cc.files > 0 {
 		cc.keyPath = name
+	}
+
+	if cc.files == 0 || elm.yes("KeyPath") {
+		cc.keyFile = name
 	}
 
 	cc.files++

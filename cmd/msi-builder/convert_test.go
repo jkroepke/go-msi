@@ -82,3 +82,89 @@ func TestConvert(t *testing.T) {
 		t.Errorf("no argument: exit %d", code)
 	}
 }
+
+// TestConvertKeepsBuiltCodes converts with --msi: a package with the
+// component codes WiX generated stands in for WiX's build, one component
+// found by its Id and one, without an Id, by its key file.
+func TestConvertKeepsBuiltCodes(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	built := `schema: msi-builder/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+installDir: { id: INSTALLFOLDER, name: Hello }
+components:
+  - { id: Main, guid: 6d1c0a42-93b8-4e57-a2f1-0c7e5d9b3a61, files: [{ source: hello.exe }] }
+  - { id: cmpNotes, guid: 2b8f4e17-5a0c-4d93-b6e2-9f1a3c7d5e08, files: [{ source: notes.txt }] }
+`
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade Schedule="afterInstallExecute" DowngradeErrorMessage="A newer version is installed." />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" />
+    </StandardDirectory>
+    <Component Id="Main" Directory="INSTALLFOLDER">
+      <File Source="hello.exe" />
+    </Component>
+    <Component Directory="INSTALLFOLDER">
+      <File Source="notes.txt" />
+    </Component>
+    <Component Id="Readme" Directory="INSTALLFOLDER">
+      <File Source="readme.txt" />
+    </Component>
+  </Package>
+</Wix>
+`
+
+	for name, data := range map[string]string{"msi.yaml": built, "app.wxs": src, "hello.exe": "MZ", "notes.txt": "notes"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+
+	pkg := filepath.Join(dir, "hello-1.0.0.msi")
+	if code := run([]string{"build", "-o", pkg, filepath.Join(dir, "msi.yaml")}, &stdout, &stderr); code != 0 {
+		t.Fatalf("build: exit %d: %s", code, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+
+	wxs := filepath.Join(dir, "app.wxs")
+	if code := run([]string{"convert", "--msi", pkg, wxs}, &stdout, &stderr); code != 0 {
+		t.Fatalf("convert --msi: exit %d: %s", code, stderr.String())
+	}
+
+	for _, want := range []string{
+		"guid: '{6D1C0A42-93B8-4E57-A2F1-0C7E5D9B3A61}'",
+		"guid: '{2B8F4E17-5A0C-4D93-B6E2-9F1A3C7D5E08}'",
+		"The guid of 2 components whose Guid WiX generated comes from hello-1.0.0.msi.",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("stdout lacks %q:\n%s", want, stdout.String())
+		}
+	}
+
+	if want := wxs + ":13: TODO: hello-1.0.0.msi has no matching component"; !strings.Contains(stderr.String(), want) {
+		t.Errorf("stderr %q, want %q", stderr.String(), want)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+
+	// Without --msi, the late removal gets a note instead.
+	if code := run([]string{"convert", wxs}, &stdout, &stderr); code != 0 {
+		t.Fatalf("convert: exit %d: %s", code, stderr.String())
+	}
+
+	if want := wxs + ":3: TODO: WiX generated the Guid of Main, the component in line 10, Readme;"; !strings.Contains(stderr.String(), want) {
+		t.Errorf("stderr %q, want %q", stderr.String(), want)
+	}
+
+	if code := run([]string{"convert", "--msi", filepath.Join(dir, "notes.txt"), wxs}, &stdout, &stderr); code != 1 {
+		t.Errorf("--msi with a file that is no package: exit %d", code)
+	}
+}

@@ -29,6 +29,7 @@ package:
   summary:
     keywords: hello,service
 upgrade:
+  # TODO(line 12): WiX generated the Guid of Component2, Component1; msi-builder generates other codes, and removing the old version after installing this one deletes their files on the first upgrade from the WiX package. Run msi-builder convert again with --msi and the package WiX built, or set each guid from msi-builder inspect --table Component
   removeOld: afterInstallExecute
   downgrade: allow
   downgradeMessage: A newer version of Hello is already installed.

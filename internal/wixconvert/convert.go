@@ -50,6 +50,10 @@ type Result struct {
 
 // Options tune the conversion.
 type Options struct {
+	// Built is the package WiX built from the source, or nil. A component
+	// whose Guid WiX generated keeps the code it has there, so that a major
+	// upgrade from that package that removes it late keeps the files.
+	Built *BuiltPackage
 	// Source names the input in the header comment, such as app.wxs.
 	Source string
 }
@@ -67,6 +71,8 @@ func Convert(r io.Reader, opts Options) (*Result, error) {
 	}
 
 	conv := newConverter(doc)
+	conv.built = opts.Built
+
 	if err := conv.index(); err != nil {
 		return nil, err
 	}
@@ -87,6 +93,7 @@ func Convert(r io.Reader, opts Options) (*Result, error) {
 // converter holds the indexed source file and the output.
 type converter struct {
 	compByID     map[string]*comp
+	built        *BuiltPackage
 	doc          *document
 	wixVars      map[string]string
 	dirs         map[string]*dir
@@ -128,6 +135,7 @@ type converter struct {
 	pending      []pendingShortcut
 	pendingTypes []pendingType
 	anonymous    int
+	pinned       int
 	uiLine       int
 	v3           bool
 }
@@ -151,6 +159,8 @@ type comp struct {
 	dir         string
 	inFeature   bool
 	dropIfEmpty bool
+	// generated is set when WiX generates the component's Guid.
+	generated bool
 }
 
 type group struct {
@@ -434,10 +444,13 @@ func (c *converter) walkExtension(e *elem) {
 	}
 }
 
+// anonymousDir starts the ID of a Directory without one.
+const anonymousDir = "dir_line"
+
 func (c *converter) addDir(elm *elem, parentID string, standard bool) *dir {
 	dirID := elm.attr("Id")
 	if dirID == "" {
-		dirID = fmt.Sprintf("dir_line%d", elm.line)
+		dirID = fmt.Sprintf("%s%d", anonymousDir, elm.line)
 	}
 
 	if d, ok := c.dirs[dirID]; ok {

@@ -30,6 +30,7 @@ func (c *converter) emit() {
 	c.emitFiles()
 	c.emitUI()
 	c.emitActionRefs()
+	c.checkCodes()
 }
 
 func (c *converter) emitProduct() {
