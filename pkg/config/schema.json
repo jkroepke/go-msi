@@ -10,7 +10,7 @@
     },
     "vars": {
       "type": "object",
-      "description": "Defaults for ${NAME} substitution.",
+      "description": "Defaults for ${NAME} substitution. A value may use other variables; --var and --env values override it.",
       "additionalProperties": {
         "type": [
           "string",

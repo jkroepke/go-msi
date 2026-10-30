@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -52,35 +53,24 @@ func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one 
 
 	root := doc.Content[0]
 
-	vars, err := fileVars(root)
+	vars, lines, err := fileVars(root)
 	if err != nil {
 		return nil, err
 	}
 
-	lookup := func(name string) (string, bool) {
-		if v, ok := opts.Vars[name]; ok {
-			return v, true
-		}
-
-		if opts.LookupEnv != nil {
-			if v, ok := opts.LookupEnv(name); ok {
-				return v, true
-			}
-		}
-
-		v, ok := vars[name]
-
-		return v, ok
-	}
-
 	var errs []error
+
+	res := &resolver{
+		opts: opts, vars: vars, lines: lines, resolved: make(map[string]string),
+		docLeft: maxSubstituted, varsLeft: maxSubstituted, errs: &errs,
+	}
 
 	for i := 0; i < len(root.Content); i += 2 {
 		if root.Content[i].Value == "vars" {
 			continue
 		}
 
-		substitute(root.Content[i+1], lookup, &errs)
+		substitute(root.Content[i+1], res.resolve, &res.docLeft, &errs)
 	}
 
 	if len(errs) > 0 {
@@ -122,22 +112,107 @@ func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one 
 	return cfg, nil
 }
 
-func fileVars(root *yaml.Node) (map[string]string, error) {
+// fileVars returns the file's vars and the line of each value. A value
+// that comes in through a merge key gets the line of the vars mapping.
+func fileVars(root *yaml.Node) (map[string]string, map[string]int, error) {
+	lines := make(map[string]int)
+
 	for i := 0; i < len(root.Content); i += 2 {
 		if root.Content[i].Value != "vars" {
 			continue
 		}
 
+		node := root.Content[i+1]
+
 		vars := make(map[string]string)
-		if err := root.Content[i+1].Decode(&vars); err != nil {
-			return nil, fmt.Errorf("vars: %w", err)
+		if err := node.Decode(&vars); err != nil {
+			return nil, nil, fmt.Errorf("vars: %w", err)
 		}
 
-		return vars, nil
+		for name := range vars {
+			lines[name] = node.Line
+		}
+
+		if node.Kind == yaml.MappingNode {
+			for j := 0; j+1 < len(node.Content); j += 2 {
+				if _, ok := vars[node.Content[j].Value]; ok && node.Content[j].Value != "<<" {
+					lines[node.Content[j].Value] = node.Content[j+1].Line
+				}
+			}
+		}
+
+		return vars, lines, nil
 	}
 
-	return make(map[string]string), nil
+	return make(map[string]string), lines, nil
 }
+
+// resolver looks up variables for substitution. A value from the file's
+// vars may use other variables, which are expanded like any other string;
+// values from the command line and the environment are taken as they are.
+// Text inserted into vars values and text inserted into the document each
+// count against a budget, so doubling vars cannot blow up exponentially.
+type resolver struct {
+	opts     Options
+	vars     map[string]string
+	lines    map[string]int
+	resolved map[string]string
+	errs     *[]error
+	stack    []string
+	docLeft  int
+	varsLeft int
+}
+
+func (r *resolver) resolve(name string) (string, bool) {
+	if v, ok := r.opts.Vars[name]; ok {
+		return v, true
+	}
+
+	if r.opts.LookupEnv != nil {
+		if v, ok := r.opts.LookupEnv(name); ok {
+			return v, true
+		}
+	}
+
+	if v, ok := r.resolved[name]; ok {
+		return v, true
+	}
+
+	value, ok := r.vars[name]
+	if !ok {
+		return "", false
+	}
+
+	// The cycle is reported on the entry that closes it.
+	if i := slices.Index(r.stack, name); i >= 0 {
+		chain := "${" + strings.Join(append(slices.Clone(r.stack[i:]), name), "} -> ${") + "}"
+		*r.errs = append(*r.errs, fmt.Errorf("%s: %s is a cycle", r.where(r.stack[len(r.stack)-1]), chain))
+
+		return "", true
+	}
+
+	r.stack = append(r.stack, name)
+	before := len(*r.errs)
+	value = expand(value, r.where(name), r.resolve, &r.varsLeft, r.errs)
+	r.stack = r.stack[:len(r.stack)-1]
+
+	// A broken entry is reported once, here, and not again where it is used.
+	if len(*r.errs) > before {
+		value = ""
+	}
+
+	r.resolved[name] = value
+
+	return value, true
+}
+
+func (r *resolver) where(name string) string {
+	return fmt.Sprintf("line %d: vars.%s", r.lines[name], name)
+}
+
+// maxSubstituted caps the text that variables insert into the document, and
+// separately the text they insert into vars values.
+const maxSubstituted = 16 << 20
 
 // yamlNulls are the plain scalars YAML 1.1 and 1.2 read as null, except the
 // empty string, which leaves an optional field unset.
@@ -145,33 +220,51 @@ var yamlNulls = map[string]bool{"null": true, "Null": true, "NULL": true, "~": t
 
 var varPattern = regexp.MustCompile(`\$\$\{|\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
+// expand replaces ${NAME} in s; "$${" writes a literal "${". where names
+// the place for an error. Every inserted value is charged to budget; once
+// it is spent, values are left out and only the first overrun is reported.
+func expand(s, where string, lookup func(string) (string, bool), budget *int, errs *[]error) string {
+	return varPattern.ReplaceAllStringFunc(s, func(m string) string {
+		if m == "$${" {
+			return "${"
+		}
+
+		name := m[2 : len(m)-1]
+
+		value, ok := lookup(name)
+		if !ok {
+			*errs = append(*errs, fmt.Errorf("%s: undefined variable ${%s}", where, name))
+		}
+
+		if !utf8.ValidString(value) {
+			*errs = append(*errs, fmt.Errorf("%s: variable ${%s} is not valid UTF-8", where, name))
+		}
+
+		if *budget < 0 {
+			return ""
+		}
+
+		*budget -= len(value)
+		if *budget < 0 {
+			*errs = append(*errs, fmt.Errorf("%s: variables insert more than %d bytes", where, maxSubstituted))
+
+			return ""
+		}
+
+		return value
+	})
+}
+
 // substitute replaces ${NAME} in every scalar value below node. Mapping keys
 // are left alone. "$${" writes a literal "${".
-func substitute(node *yaml.Node, lookup func(string) (string, bool), errs *[]error) { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
+func substitute(node *yaml.Node, lookup func(string) (string, bool), budget *int, errs *[]error) {
 	switch node.Kind {
 	case yaml.ScalarNode:
 		if !strings.Contains(node.Value, "${") {
 			return
 		}
 
-		node.Value = varPattern.ReplaceAllStringFunc(node.Value, func(m string) string {
-			if m == "$${" {
-				return "${"
-			}
-
-			name := m[2 : len(m)-1]
-
-			value, ok := lookup(name)
-			if !ok {
-				*errs = append(*errs, fmt.Errorf("line %d: undefined variable ${%s}", node.Line, name))
-			}
-
-			if !utf8.ValidString(value) {
-				*errs = append(*errs, fmt.Errorf("line %d: variable ${%s} is not valid UTF-8", node.Line, name))
-			}
-
-			return value
-		})
+		node.Value = expand(node.Value, fmt.Sprintf("line %d", node.Line), lookup, budget, errs)
 
 		// Resolve the tag again from the substituted text, so that an
 		// integer field can take "${PORT}". A value that spells null stays
@@ -185,11 +278,11 @@ func substitute(node *yaml.Node, lookup func(string) (string, bool), errs *[]err
 		}
 	case yaml.MappingNode:
 		for i := 1; i < len(node.Content); i += 2 {
-			substitute(node.Content[i], lookup, errs)
+			substitute(node.Content[i], lookup, budget, errs)
 		}
 	case yaml.SequenceNode, yaml.DocumentNode:
 		for _, c := range node.Content {
-			substitute(c, lookup, errs)
+			substitute(c, lookup, budget, errs)
 		}
 	case yaml.AliasNode:
 		// Aliases point at nodes that are substituted where they are defined.

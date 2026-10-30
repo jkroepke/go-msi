@@ -17,6 +17,7 @@ func FuzzParse(f *testing.F) {
 	f.Add([]byte(strings.Replace(base, "name: App\n  manufacturer", "name: ${V}\n  manufacturer", 1)+appComponent), "null")
 	f.Add([]byte(strings.Replace(base, "name: App\n  manufacturer", "name: ${V}\n  manufacturer", 1)+appComponent), "a: b\nc: d")
 	f.Add([]byte(base+appComponent+"vars:\n  V: x\n"), "$${V}")
+	f.Add([]byte(strings.Replace(base, "name: App\n  manufacturer", "name: ${A}\n  manufacturer", 1)+appComponent+"vars:\n  A: ${B}${B}\n  B: ${V}${A}\n"), "x")
 
 	f.Fuzz(func(_ *testing.T, doc []byte, value string) {
 		cfg, err := config.Parse(doc, config.Options{Vars: map[string]string{"V": value}})

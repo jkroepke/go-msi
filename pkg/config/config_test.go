@@ -186,6 +186,145 @@ properties: {P: "${PORT}"}
 	}
 }
 
+// A value in vars may use other variables; one from the command line is
+// taken as it is.
+func TestNestedVariables(t *testing.T) {
+	t.Parallel()
+
+	doc := `schema: msi-builder/v1
+vars: {SHORT: Hello, NAME: "${SHORT} App", FULL: "${NAME} ${VERSION}", RAW: "$${KEEP}"}
+product: {name: "${FULL}", manufacturer: "${RAW}", version: "${VERSION}"}
+package: {platform: x64}
+properties: {P: "${CLI}"}
+`
+
+	cfg, err := config.Parse([]byte(doc), config.Options{Vars: map[string]string{"VERSION": "1.2.3", "CLI": "${SHORT}"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.Product.Name != "Hello App 1.2.3" {
+		t.Errorf("name = %q, want the nested vars and the --var expanded", cfg.Product.Name)
+	}
+
+	if cfg.Product.Manufacturer != "${KEEP}" {
+		t.Errorf("manufacturer = %q: $${ in a vars value is a literal", cfg.Product.Manufacturer)
+	}
+
+	if cfg.Properties["P"].Value != "${SHORT}" {
+		t.Errorf("P = %q: a --var value is taken as it is", cfg.Properties["P"].Value)
+	}
+
+	for _, tc := range []struct{ name, vars, want string }{
+		{"self", `{A: "x${A}"}`, "line 2: vars.A: ${A} -> ${A} is a cycle"},
+		{"cycle", `{A: "${B}", B: "${A}"}`, "line 2: vars.B: ${A} -> ${B} -> ${A} is a cycle"},
+		{"three", `{A: "${B}", B: "${C}", C: "${A}"}`, "line 2: vars.C: ${A} -> ${B} -> ${C} -> ${A} is a cycle"},
+		{"undefined", `{A: "${NOPE}"}`, "line 2: vars.A: undefined variable ${NOPE}"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := config.Parse([]byte("schema: msi-builder/v1\nvars: "+tc.vars+"\nproduct: {name: \"${A}\", manufacturer: \"${A}\"}\n"), config.Options{})
+			if err == nil || err.Error() != tc.want {
+				t.Errorf("err = %v, want exactly %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// A --var or environment value replaces a vars entry everywhere, also where
+// another vars entry uses it; an entry nothing uses is not checked.
+func TestNestedVariablePrecedence(t *testing.T) {
+	t.Parallel()
+
+	doc := `schema: msi-builder/v1
+vars: {A: "x${B}", B: vb, C: "${D}", SELF: "${SELF}", BROKEN: "${NOPE}"}
+product: {name: "${A}", manufacturer: "${C}", version: "${SELF}"}
+`
+	env := map[string]string{"D": "from-env"}
+
+	cfg, err := config.Parse([]byte(doc), config.Options{
+		Vars:      map[string]string{"B": "cli", "SELF": "1.0.0"},
+		LookupEnv: func(name string) (string, bool) {
+			v, ok := env[name]
+
+			return v, ok
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.Product.Name != "xcli" || cfg.Product.Manufacturer != "from-env" || cfg.Product.Version != "1.0.0" {
+		t.Errorf("product = %q, %q, %q, want xcli, from-env, 1.0.0", cfg.Product.Name, cfg.Product.Manufacturer, cfg.Product.Version)
+	}
+}
+
+// Doubling vars cannot grow a document without bound.
+func TestNestedVariableBomb(t *testing.T) {
+	t.Parallel()
+
+	var doc strings.Builder
+
+	doc.WriteString("schema: msi-builder/v1\nvars:\n")
+
+	for i := range 40 {
+		fmt.Fprintf(&doc, "  V%d: \"${V%d}${V%d}\"\n", i, i+1, i+1)
+	}
+
+	doc.WriteString("  V40: xx\nproduct: {name: \"${V0}\"}\n")
+
+	_, err := config.Parse([]byte(doc.String()), config.Options{})
+	if err == nil || !strings.Contains(err.Error(), ": vars.V") || !strings.Contains(err.Error(), "variables insert more than") {
+		t.Fatalf("err = %v, want the size limit on a vars entry", err)
+	}
+
+	if n := strings.Count(err.Error(), "\n") + 1; n != 1 {
+		t.Errorf("%d errors, want 1: %v", n, err)
+	}
+}
+
+// Text passing through one vars entry is charged once to vars and once to
+// the document, so a large --var used through vars still fits.
+func TestNestedVariableLargeValue(t *testing.T) {
+	t.Parallel()
+
+	big := strings.Repeat("x", 9<<20)
+
+	cfg, err := config.Parse([]byte("schema: msi-builder/v1\nvars: {X: \"${BIG}\"}\nproduct: {name: \"${X}\"}\n"),
+		config.Options{Vars: map[string]string{"BIG": big}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(cfg.Product.Name) != len(big) {
+		t.Errorf("name has %d bytes, want %d", len(cfg.Product.Name), len(big))
+	}
+}
+
+// A vars entry from a merge key is reported on the line of vars.
+func TestNestedVariableMergeKeyLine(t *testing.T) {
+	t.Parallel()
+
+	doc := "schema: msi-builder/v1\nbase: &b {M: \"${NOPE}\"}\nvars:\n  <<: *b\nproduct: {name: \"${M}\"}\n"
+
+	_, err := config.Parse([]byte(doc), config.Options{})
+	if err == nil || !strings.Contains(err.Error(), "line 4: vars.M: undefined variable ${NOPE}") {
+		t.Errorf("err = %v, want the line of the vars mapping", err)
+	}
+}
+
+// An invalid --var used through a vars entry is reported once.
+func TestNestedVariableInvalidUTF8(t *testing.T) {
+	t.Parallel()
+
+	_, err := config.Parse([]byte("schema: msi-builder/v1\nvars: {A: \"${C}\"}\nproduct: {name: \"${A}\"}\n"),
+		config.Options{Vars: map[string]string{"C": "\xff"}})
+	if err == nil || err.Error() != "line 2: vars.A: variable ${C} is not valid UTF-8" {
+		t.Errorf("err = %v, want one error on the vars entry", err)
+	}
+}
+
 func TestPlatformTokens(t *testing.T) {
 	t.Parallel()
 

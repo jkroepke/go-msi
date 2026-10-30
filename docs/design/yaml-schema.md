@@ -131,8 +131,17 @@ tables: []               # escape hatch: custom tables
 `${NAME}` anywhere in a string value is replaced before parsing the rest of
 the file. Values come, in order of precedence, from the command line
 (`--var NAME=value`), from the environment when the CLI is started with
-`--env`, and from `vars`. An undefined variable is an error; `$${` writes a
-literal `${`. Windows Installer's own `[Property]` syntax is left alone, so
+`--env`, and from `vars`. A value in `vars` may itself use variables,
+which are expanded the same way; a value from the command line or the
+environment is taken as it is, and a `vars` entry it overrides is not
+expanded at all. A cycle (`A: ${B}`, `B: ${A}`, or `A: ${A}`) is an error,
+reported on the entry that closes it. An undefined variable is an error
+where it is used, so a `vars` entry that nothing uses is not checked.
+`$${` writes a literal `${`, also inside `vars`. The text that variables
+insert into the document is capped at 16 MiB, and so is the text they
+insert into `vars` values (a value nested through several entries counts at
+each one), so doubling `vars` cannot blow up a document.
+Windows Installer's own `[Property]` syntax is left alone, so
 `[INSTALLDIR]` and `${VERSION}` never collide. Inside a flow mapping
 (`{ … }`) a value that starts with `${` must be quoted, as YAML reads `{` as
 the start of a mapping.
@@ -140,7 +149,9 @@ the start of a mapping.
 ```yaml
 vars:
   ARCH: x64
+  NAME: Acme ${ARCH}
 product:
+  name: ${NAME}
   version: ${VERSION}
 package:
   platform: ${ARCH}

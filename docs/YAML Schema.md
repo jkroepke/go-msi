@@ -69,7 +69,8 @@ msi-builder build --var VERSION=1.4.0 -o hello.msi msi.yaml
 ```
 
 With `--env`, environment variables are used too. `vars:` at the top of the
-file sets defaults. `[INSTALLDIR]` and other names in brackets are not
+file sets defaults, and a default may use other variables
+(`NAME: Acme ${ARCH}`); `--var` and `--env` values replace it. `[INSTALLDIR]` and other names in brackets are not
 variables: Windows Installer fills them in at install time.
 
 ## Recipes
