@@ -2,8 +2,8 @@
 # Converted from v3.wxs by msi-builder convert.
 # Review it, resolve the TODO comments, then run msi-builder validate.
 # WiX variables became ${NAME} references; pass them with --var NAME=value: BinDir, ProductVersion.
-# TODO(line 14): <?if $(var.Edition) = "full"?> is not evaluated: only its first branch was converted
-# TODO(line 16): the <?else?> branch was left out; convert it by hand if your build takes it
+# TODO(line 19): <?if $(var.Edition) = "full"?> is not evaluated: only its first branch was converted
+# TODO(line 21): the <?else?> branch was left out; convert it by hand if your build takes it
 schema: msi-builder/v1
 product:
   name: Hello Tools
@@ -19,6 +19,14 @@ package:
   cabinet: tools.cab
 upgrade:
   downgradeMessage: A newer version of [ProductName] is already installed.
+  related:
+    - upgradeCode: '{6A3F1B2C-1D2E-4F50-9A8B-7C6D5E4F3A21}'
+      minVersion: 1.0.0
+      maxVersion: 2.0.0
+      includeMax: true
+      onlyDetect: true
+      property: SAMEMAJORFOUND
+  newerProperty: NEWERFOUND
 installDir:
   # WiX ID ToolsDir; the install folder must be an upper-case public property,
   # so every [ToolsDir] reference became [TOOLSDIR].
@@ -42,7 +50,7 @@ features:
     components: [ToolExe]
   - id: Docs
     title: Documentation
-    # TODO(line 52): conditional feature levels have no counterpart; the condition was "NOT INSTALLDOCS"
+    # TODO(line 57): conditional feature levels have no counterpart; the condition was "NOT INSTALLDOCS"
     components: [Readme]
 components:
   - id: Readme
@@ -94,7 +102,7 @@ customActions:
       command: '"[#tool.exe]" --setup'
     execute: commit
     return: asyncWait
-    # TODO(line 64): the progress template of RunTool is not converted: msi-builder writes no ActionText templates
+    # TODO(line 69): the progress template of RunTool is not converted: msi-builder writes no ActionText templates
     progress: Setting up the tool
     schedule:
       - {sequence: execute, after: InstallFiles, condition: NOT Installed AND NOT REMOVE}

@@ -76,7 +76,7 @@ func (c *converter) firstDirBelow(prefix string) *dir {
 
 		for {
 			kids := c.childDirs(folder)
-			if len(kids) != 1 || c.hasComponents(folder) {
+			if len(kids) != 1 || c.hasComponents(folder) || kids[0].sub {
 				return folder
 			}
 

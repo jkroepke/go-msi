@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A sample WiX 4 package with files outside components and component
+     subdirectories. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="0b7e8c41-2f6d-4a39-8c15-7d2e9f0a6b54">
+    <MajorUpgrade DowngradeErrorMessage="A newer version is installed." />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="Hello_Dir" Name="Hello" />
+    </StandardDirectory>
+
+    <!-- A Subdirectory is not the install folder. -->
+    <Component Id="Spy" Directory="Hello_Dir" Subdirectory="spy">
+      <File Source="dist\spy.dll" />
+    </Component>
+    <!-- A Subdirectory below a standard folder that no element declares. -->
+    <Component Id="Links" Directory="ProgramMenuFolder" Subdirectory="Hello Project">
+      <util:InternetShortcut Id="Web" Name="Hello website" Target="https://example.com" />
+    </Component>
+
+    <!-- A shortcut to a file of another component stays here. -->
+    <Component Id="StartMenu" Directory="ProgramMenuFolder" Subdirectory="Hello Project">
+      <Shortcut Id="HelloLink" Name="Hello" Target="[#hello.exe]">
+        <ShortcutProperty Key="{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}, 5" Value="Example.Hello" />
+        <ShortcutProperty Key="{12345678-1234-1234-1234-123456789ABC}, 2" Value="1" />
+      </Shortcut>
+      <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="menu" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <!-- An optional file association for a file of another feature. -->
+    <Component Id="TxtAssoc" Directory="Hello_Dir" Guid="6a0f1c2e-7d3b-4e58-9a61-2b4c8d0e1f38">
+      <ProgId Id="Example.HelloText" Description="Hello text">
+        <Extension Id="hellotxt">
+          <Verb Id="open" TargetFile="hello.exe" Argument="&quot;%1&quot;" />
+        </Extension>
+      </ProgId>
+    </Component>
+
+    <Feature Id="Main" Title="Hello">
+      <ComponentRef Id="Spy" />
+      <ComponentRef Id="Links" />
+      <File Id="hello.exe" Source="dist\hello.exe" Directory="Hello_Dir" />
+      <Files Include="dist\tools\**" Directory="Hello_Dir" Subdirectory="tools">
+        <Exclude Files="dist\tools\**\*.pdb" />
+        <Exclude Files="dist\tools\debug\*" />
+      </Files>
+      <Files Include="dist\LICENSE.txt" Directory="Hello_Dir" />
+      <ComponentRef Id="StartMenu" />
+    </Feature>
+    <Feature Id="Docs" Title="Documentation">
+      <ComponentRef Id="TxtAssoc" />
+      <File Source="dist\readme.txt" Directory="Hello_Dir" />
+    </Feature>
+  </Package>
+</Wix>
