@@ -1,6 +1,7 @@
 package wixconvert
 
 import (
+	"cmp"
 	"strconv"
 	"strings"
 
@@ -292,30 +293,40 @@ func (cc *compConv) removeFile(elm *elem) {
 	cc.out.add("removeFiles", row)
 }
 
+// purge converts util:RemoveFolderEx. The removal of the component's own
+// folder on uninstall, when its directory ID is private, becomes purge,
+// whose deferred rmdir FILE-03 verified; any other folder, a public ID or
+// another On becomes a removeFolders entry, which reads the property at
+// install time.
 func (cc *compConv) purge(elm *elem) {
 	conv := cc.c
+	prop := elm.attr(attrProperty)
+	on := elm.attr("On")
+	cond := conv.value(elm, "Condition")
 
-	if p := elm.attr(attrProperty); p != "" && p != cc.cp.dir {
-		conv.todof(cc.out, "purge", elm.line,
-			"util:RemoveFolderEx removes the folder in %s; purge removes the component's folder, so put this component there", p)
-	}
-
-	if on := elm.attr("On"); on != "" && on != "uninstall" {
-		conv.todof(cc.out, "purge", elm.line, "purge runs on uninstall only, not On=%q", on)
-	}
-
-	if config.IsPublicProperty(cc.cp.dir) {
-		conv.todof(cc.out, "purge", elm.line,
-			"purge refuses %s, a public directory ID that can point anywhere; give the folder a private (mixed-case) ID", cc.cp.dir)
-	}
-
-	if cond := conv.value(elm, "Condition"); cond != "" {
-		cc.out.set("purge", newMap().set("condition", cond))
+	if (prop == "" || prop == cc.cp.dir) && (on == "" || on == "uninstall") && !config.IsPublicProperty(cc.cp.dir) &&
+		cc.out.get("purge") == nil {
+		if cond != "" {
+			cc.out.set("purge", newMap().set("condition", cond))
+		} else {
+			cc.out.set("purge", true)
+		}
 
 		return
 	}
 
-	cc.out.set("purge", true)
+	entry := newMap().set("property", cmp.Or(prop, cc.cp.dir))
+
+	switch on {
+	case onInstall, onBoth:
+		entry.set("on", on)
+	}
+
+	if cond != "" {
+		entry.set("condition", cond)
+	}
+
+	cc.out.add("removeFolders", entry)
 }
 
 func (cc *compConv) eventSource(elm *elem) {

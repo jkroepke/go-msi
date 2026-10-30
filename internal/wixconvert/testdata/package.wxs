@@ -115,6 +115,7 @@
       <Component Id="Logs" Directory="LogsDir" Guid="0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a12">
         <CreateFolder />
         <RemoveFile Id="RemoveLogs" Name="*.log" On="uninstall" />
+        <util:RemoveFolderEx On="both" Property="INSTALLFOLDER" />
       </Component>
       <Component Id="Data" Directory="DataDir" Guid="0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a13">
         <CreateFolder>

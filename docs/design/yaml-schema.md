@@ -569,6 +569,7 @@ components:
     neverOverwrite: false
     preserve: false                  # neverOverwrite + a late removeOld, see below
     purge: false                     # true or {condition: …}, see below
+    removeFolders: []                # a folder from a property, with its subfolders, see below
     sharedDllRefCount: false
     keyPath: windows_exporter.exe   # file name, registry id or "directory"
     bitness: auto                    # auto (from platform) | 32 | 64
@@ -702,6 +703,45 @@ components:
     purge:
       condition: DELETE_DATA="1"
 ```
+
+**Folder trees from a property.** `removeFolders` deletes the folder that
+a property holds at install time, with every file and subfolder in it,
+including what the application wrote there. The property is a directory
+ID such as `INSTALLDIR` or a property that a search fills, for example a
+data folder that the first install remembered in the registry:
+
+```yaml
+properties:
+  DATA_DIR:
+    search: { registry: { root: HKLM, key: SOFTWARE\Example, name: DataDir, type: directory } }
+components:
+  - files: [{ source: app.exe }]
+    registry: [{ root: HKLM, key: SOFTWARE\Example, name: DataDir, value: '[DATA_DIR]' }]
+    removeFolders:
+      - property: INSTALLDIR          # on: uninstall (default) | install | both
+      - { property: DATA_DIR, condition: DELETE_DATA="1" }
+```
+
+An immediate action of the embedded DLL (specification section 17.8) runs
+after CostFinalize. It lists the subfolders and adds temporary `RemoveFile`
+rows for each, so the engine's RemoveFiles deletes the files and folders
+and restores them when the installation rolls back. `uninstall` removes
+when the component is removed, but not on the uninstall half of a major
+upgrade (`UPGRADINGPRODUCTCODE`); `install` removes when the component is
+installed, `both` in both cases. The condition is ANDed, and the public
+properties in it and the property itself are made secure. Unlike `purge`,
+the folder may be the install dir or any folder the property names. That
+is the point of the feature, and also its risk: `INSTALLDIR=D:\Tools` on the
+command line makes the uninstall empty `D:\Tools`. The action refuses an empty value, a path that is not a
+full local path (`C:\…`, no `.` or `..`), a drive root, every standard
+folder of the engine (Program Files, ProgramData, the Windows and system
+folders, the profile folders such as AppData, Documents and the Desktop,
+Temp) and every folder that holds one, any folder inside the Windows
+folder, and a junction or another reparse point; it logs the reason as
+`BuilderRemoveFolders: …` and removes nothing for that entry. A junction
+below the folder is not entered, so it stays, and so do the folders above
+it. The action never fails the installation. Profile folders that the
+engine has no property for, such as Downloads, are not recognized.
 
 **Key path.** Default: the first file, else the first registry value, else
 the directory, which gets a `CreateFolder` row (ICE18). A component below a
@@ -1303,7 +1343,7 @@ components:
 
 The folder must be the component's only file. Settings that name one file
 or one component cannot be copied to many: `guid` (other than `auto`),
-`keyPath`, `registry`, `removeRegistry`, `removeFiles`, `services`, `serviceControl`, `eventLog`,
+`keyPath`, `registry`, `removeRegistry`, `removeFiles`, `removeFolders`, `services`, `serviceControl`, `eventLog`,
 `environment`, `purge`, `createFolder` and `folderPermissions` on the
 component, and `name`, `id`, `version`, `language` and `shortcuts` on the
 file, are errors. Put them on a component of their own and exclude its file

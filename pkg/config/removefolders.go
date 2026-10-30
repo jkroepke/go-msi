@@ -48,7 +48,7 @@ func (v *validator) componentRemoveFolders(cfg *Config, known *refs, compPath st
 			set = setProperties(cfg)
 		}
 
-		if known.dirs[name] == nil && !set[name] {
+		if known.dirs[name] == nil && name != cfg.InstallDir.ID && !set[name] {
 			v.warnf(entryPath+".property", "nothing in the package sets %s, so only the command line can name the folder; "+
 				"use a directory ID or a property with a value or a search", name)
 		}

@@ -165,7 +165,7 @@ msi-builder does the same by default:
 | Heat harvesting, `Files` (v5) | A folder `source` ending in `/` |
 | `CreateFolder` | `components[].createFolder` |
 | `RemoveFile`, `RemoveFolder` | `components[].removeFiles` |
-| `util:RemoveFolderEx` | `components[].purge` |
+| `util:RemoveFolderEx` | `components[].purge` (the component's own folder), `components[].removeFolders` (a folder from a property) |
 | `RegistryKey`, `RegistryValue` | `components[].registry` |
 | `RemoveRegistryKey`, `RemoveRegistryValue` | `components[].removeRegistry` |
 | `Environment` | `components[].environment` |
@@ -761,6 +761,24 @@ folder, written as a path below a standard folder like
 `CommonAppDataFolder/Example/Hello`; a public directory ID such as
 `DATADIR`, which the command line could point anywhere, is rejected. It
 takes a `condition`, such as `DELETE_DATA="1"`.
+
+When the folder comes from a property, as `Property="APPLICATIONFOLDER"`
+with a registry search does, use `removeFolders` instead. It reads the
+property at install time and also removes the install folder:
+
+```yaml
+components:
+  - files:
+      - source: hello.exe
+    removeFolders:
+      - property: INSTALLFOLDER       # util:RemoveFolderEx Property="INSTALLFOLDER"
+        on: uninstall                 # install, uninstall (the default) or both
+```
+
+Like `purge`, it keeps the folder when an upgrade replaces the product,
+and the engine restores everything if the uninstall rolls back. It refuses
+drive roots, standard folders such as Program Files and the folders that
+hold them, folders in the Windows folder and junctions.
 
 ## Signing
 

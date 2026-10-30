@@ -441,6 +441,33 @@ components:
       condition: DELETE_DATA="1"
 ```
 
+### Delete a folder that a property names
+
+`removeFolders` deletes the folder in a property, with everything in it,
+when the product is uninstalled, but not when an upgrade replaces it. It
+works for the install folder too, and for a folder the first install
+remembered in the registry. It refuses drive roots, standard folders such as
+Program Files, the folders that hold them and junctions, so a wrong value
+removes nothing, but a folder of the user's own, such as
+`INSTALLDIR=D:\Tools`, is emptied:
+
+```yaml
+properties:
+  DATA_DIR:
+    search:
+      registry: { root: HKLM, key: SOFTWARE\Example\Hello, name: DataDir, type: directory }
+
+components:
+  - files:
+      - source: hello.exe
+    registry:
+      - { root: HKLM, key: SOFTWARE\Example\Hello, name: DataDir, value: '[DATA_DIR]' }
+    removeFolders:
+      - property: INSTALLDIR      # also what the program wrote into it
+      - property: DATA_DIR
+        condition: DELETE_DATA="1"
+```
+
 ### Ask before deleting data on uninstall
 
 A `flow: remove` dialog adds a page to the wizard's remove path, after
@@ -589,6 +616,7 @@ The keys used most inside them:
 | `components[].environment` | none | Environment variables such as `PATH` |
 | `components[].preserve` | `false` | Keep the user's changes on upgrade |
 | `components[].purge` | `false` | Delete the folder on uninstall |
+| `components[].removeFolders` | none | Delete the folder in a property on uninstall |
 | `features[].default` | `on` | `off` installs only on request |
 | `ui.enabled` | `false` | The setup wizard |
 | `ui.license` | none | License page |
