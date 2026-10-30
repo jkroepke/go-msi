@@ -274,8 +274,8 @@ When the package installs, repairs or removes `hello.exe` while it runs,
 its windows are asked to close and get up to five seconds to do so. Then,
 when the files are about to be replaced or removed, every `hello.exe` still
 running from the installed folder is ended, also a copy without a window
-(which gets no grace time), those other users run on the same machine and
-also on a repair that does not replace the file. A copy of `hello.exe` in another folder keeps running.
+(which gets no grace time) and copies other users run on the same machine.
+This also happens on a repair that does not replace the file. A copy of `hello.exe` in another folder keeps running.
 `close: { timeout: 30s, terminate: false }` waits longer and never ends
 the program; Windows Installer then treats the file as in use.
 

@@ -365,8 +365,8 @@ type Close struct {
 // close.timeout is not set.
 const DefaultCloseTimeout = 5 * time.Second
 
-// MaxCloseTimeout is the longest close.timeout: the install waits that long
-// before InstallValidate.
+// MaxCloseTimeout is the longest close.timeout: the install waits up to that
+// long for each such file before InstallValidate.
 const MaxCloseTimeout = 5 * time.Minute
 
 // Enabled reports whether c asks for the program to be closed.

@@ -1828,7 +1828,7 @@ typedef struct {
     DWORD n;
     // hidden is 0 in the first pass, which posts to visible windows that no
     // other window owns, and 1 in the second, which posts to the hidden
-    // windows of targets that have no such window, as a program that only
+    // unowned windows of targets that have no such window, as a program that only
     // sits in the notification area has.
     int hidden;
 } closeWindows;
@@ -1850,7 +1850,7 @@ static BOOL WINAPI postClose(HWND window, INTPTR param)
         if (w->targets[i].pid != pid) {
             continue;
         }
-        if (w->hidden ? w->targets[i].visible != 0 || IsWindowVisible(window) : !IsWindowVisible(window) || GetWindow(window, GW_OWNER)) {
+        if ((w->hidden ? w->targets[i].visible != 0 || IsWindowVisible(window) : !IsWindowVisible(window)) || GetWindow(window, GW_OWNER)) {
             break;
         }
         WCHAR cls[24];

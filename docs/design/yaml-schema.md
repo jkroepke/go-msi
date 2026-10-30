@@ -912,7 +912,7 @@ Before `InstallValidate`, as the installing user, every process whose
 image is the installed file gets `WM_CLOSE` on its visible top-level
 windows (on its hidden ones when it has no visible window, as a program in
 the notification area), and the install waits up to `timeout` for those
-to exit. After `StopServices` and before `RemoveFiles`, as LocalSystem in a
+to exit, per file: two files with `30s` can wait a minute. After `StopServices` and before `RemoveFiles`, as LocalSystem in a
 per-machine install, the copies still running from that path are ended
 with exit code 1602, in every session. A process matches by its full path,
 compared without case, so a copy of the program in another folder (a
@@ -933,6 +933,9 @@ What gets ended, and when:
   the CI runner; other sessions are not tested). Ending a program loses what it has not saved, so
   `terminate: false` suits editors and tools where the user should decide;
   the engine's files-in-use handling then deals with what still runs.
+  A program without a visible window also gets `WM_CLOSE` on its hidden
+  helper windows; one that only hides itself then may keep running in a
+  broken state, so `terminate: false` suits programs with a main window.
 - That files-in-use check runs before the programs without a window are
   ended, so it still lists them, and also a program of the same name in
   another folder (observed, CLOSE-01). A silent install only logs this; a
