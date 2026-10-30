@@ -15,7 +15,9 @@ syntax; v3 names are mentioned where they differ.
 ## How a port goes
 
 1. Let msi-builder write a first `msi.yaml`:
-   `msi-builder convert -o msi.yaml app.wxs`. It converts what it can and
+   `msi-builder convert --msi app-1.4.0.msi -o msi.yaml app.wxs`, where
+   `app-1.4.0.msi` is your last release built by WiX from that file. It
+   converts what it can, keeps the component GUIDs WiX generated, and
    leaves a `# TODO` comment for everything else; see
    [convert](cli/msi-builder_convert.md). It reads one `.wxs` file, the one
    with `Package` (v3 `Product`); port fragments from other files by hand.
@@ -37,10 +39,11 @@ syntax; v3 names are mentioned where they differ.
 - **Names that users type**, such as the install folder property
   (`INSTALLFOLDER`) and the public properties of your command line
   (`PORT=8080`). Keep the install folder's ID with `installDir.id`.
-- **Component GUIDs you wrote yourself** go into `guid`. Components with
-  `Guid="*"` or no `Guid` get new GUIDs from msi-builder, which is fine with
-  the default upgrade, because it removes the old version before it installs
-  the new one. It matters only with a late removal; see
+- **Component GUIDs** go into `guid`: the ones you wrote yourself, and with
+  `msi-builder convert --msi` also the ones WiX generated for `Guid="*"` or
+  no `Guid`. Without them, msi-builder generates new GUIDs, which is fine
+  with the default upgrade, because it removes the old version before it
+  installs the new one. With a late removal the upgrade deletes files; see
   [Checking the port](#checking-the-port).
 
 ## A whole package
@@ -861,9 +864,28 @@ default `upgrade.removeOld` (`afterInstallInitialize`), or
 installed, and new GUIDs do no harm. With `afterInstallExecute`, which
 `preserve: true` also selects, the new version is installed first: it
 skips files that are already there, and removing the old version then
-deletes the files of every component whose GUID changed. Keep the WiX
+deletes the files, registry values, environment variables and shortcuts
+of every component whose GUID changed (case UPG-11 in the spec). Keep the WiX
 GUIDs with `guid` on those components, or keep the early removal.
+`msi-builder convert --msi old.msi` does this for you: it takes the GUID
+of each component from the WiX package, by its `Id` or, for a component
+without one, by its key file, also for a shortcut component, which keeps
+its shortcut (a shared GUID kept the shortcut in UPG-11; with WiX's own
+key path value this is inferred), and leaves a `# TODO` on any
+component it cannot find there. Such a kept shortcut component gets
+msi-builder's own HKCU key path, so the HKCU value WiX wrote for it
+stays behind after a late removal and the uninstall; convert names it in a
+`# TODO`, and a `removeRegistry` entry in another component removes it. Without `--msi`, convert leaves one `# TODO` at
+`upgrade.removeOld` that names the components without a WiX `Guid`.
+Advertised WiX shortcuts are lost in that upgrade even with every GUID
+kept: msi-builder installs plain shortcuts at the same paths, and the late
+removal of the WiX package then deletes them (seen in a real-world port).
+Convert leaves a `# TODO` for them; remove the old version early, at least
+for the first upgrade from WiX, or give the shortcuts other names (both
+untested for advertised shortcuts).
 `msi-builder inspect --table Component old.msi` shows the GUIDs of the WiX
 package, also the ones WiX generated. A folder source cannot take a `guid`,
 so its files are safe only with the early removal, which a package with
 `preserve: true` cannot use.
+Convert leaves a `# TODO` on a WiX `Files` glob it turned into a folder
+source under a late removal.

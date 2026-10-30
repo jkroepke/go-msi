@@ -1,6 +1,7 @@
 package wixconvert
 
 import (
+	"path"
 	"strconv"
 	"strings"
 
@@ -125,8 +126,9 @@ func (c *converter) component(comp *comp, tree map[*dir]bool) *omap {
 	out.set(keyDirectory, c.dirValue(comp.dir, tree))
 
 	switch guid := c.value(elm, "Guid"); {
-	case guid == "*":
-	case guid == "" && elm.has("Guid"):
+	case guid == "*", !elm.has("Guid"):
+		comp.generated = true
+	case guid == "":
 		out.set("guid", "none")
 	default:
 		out.set("guid", guid)
@@ -142,12 +144,17 @@ func (c *converter) component(comp *comp, tree map[*dir]bool) *omap {
 
 	c.bitness(out, elm)
 
-	cc := &compConv{c: c, cp: comp, out: out, tree: tree, keyIsDir: elm.yes("KeyPath")}
+	content := &compConv{c: c, cp: comp, out: out, tree: tree, keyIsDir: elm.yes("KeyPath")}
 	for _, kid := range elm.kids {
-		cc.child(kid)
+		content.child(kid)
 	}
 
-	cc.finish()
+	// A folder source takes no guid.
+	if comp.generated && !comp.harvests && c.built != nil {
+		c.pinCode(comp, content.keyFile)
+	}
+
+	content.finish()
 
 	return out
 }
@@ -201,6 +208,7 @@ type compConv struct {
 	tree         map[*dir]bool
 	controlled   map[*omap]bool
 	keyPath      string // the key path a File or RegistryValue asks for
+	keyFile      string // the name of the key path file WiX picks
 	hkcuKeyPaths []*omap
 	removeFolder []*omap
 	services     []*omap
@@ -310,6 +318,10 @@ func (cc *compConv) dropShortcutRows() {
 
 	cc.cp.dropIfEmpty = true
 
+	for _, value := range cc.hkcuKeyPaths {
+		cc.cp.droppedValues = append(cc.cp.droppedValues, value.str("key")+`\`+value.str("name"))
+	}
+
 	if cc.keyPath != "" && cc.out.get("registry") == nil {
 		cc.out.del("keyPath")
 	}
@@ -351,6 +363,10 @@ func (cc *compConv) file(elm *elem) { //nolint:cyclop // a flat list of independ
 
 	if elm.yes("KeyPath") && cc.files > 0 {
 		cc.keyPath = name
+	}
+
+	if cc.files == 0 || elm.yes("KeyPath") {
+		cc.keyFile = name
 	}
 
 	cc.files++
@@ -693,6 +709,19 @@ func (cc *compConv) folderFiles(elm *elem) {
 
 	files.set("exclude", exclude)
 	cc.out.add("files", files)
+	cc.countFiles(src, include != "")
+}
+
+// countFiles counts a Files element: a glob harvests, and one file is the
+// key file when it comes first.
+func (cc *compConv) countFiles(src string, glob bool) {
+	switch {
+	case glob:
+		cc.cp.harvests = true
+	case cc.files == 0:
+		cc.keyFile = path.Base(src)
+	}
+
 	cc.files++
 }
 
