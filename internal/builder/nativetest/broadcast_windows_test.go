@@ -27,6 +27,7 @@ var (
 	pDispatchMessageW          = user32.NewProc("DispatchMessageW")
 	pPostMessageW              = user32.NewProc("PostMessageW")
 	pPostQuitMessage           = user32.NewProc("PostQuitMessage")
+	pSendMessageTimeoutW       = user32.NewProc("SendMessageTimeoutW")
 	pOpenProcess               = kernel32.NewProc("OpenProcess")
 	pReadProcessMemory         = kernel32.NewProc("ReadProcessMemory")
 	pNtQueryInformationProcess = syscall.NewLazyDLL("ntdll.dll").NewProc("NtQueryInformationProcess")
@@ -314,6 +315,11 @@ func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // ms
 	shell := explorerPID(t)
 	t.Logf("explorer PID in this session: %d", shell)
 
+	if shell != 0 {
+		env, err := processEnvironment(shell)
+		t.Logf("shell environment: %d variables, Path set %t, SystemRoot=%q, error %v", len(env), env["PATH"] != "", env["SYSTEMROOT"], err)
+	}
+
 	shellSees := func(name string) string {
 		if shell == 0 {
 			return "no shell"
@@ -405,4 +411,16 @@ func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // ms
 			step("uninstall", "/x", path)
 		})
 	}
+
+	// The broadcast setx and WiX's custom action send, from this process.
+	area, _ := syscall.UTF16PtrFromString("Environment")
+
+	var result uintptr
+
+	const hwndBroadcast, smtoAbortIfHung = 0xffff, 0x0002
+
+	r, _, err := pSendMessageTimeoutW.Call(hwndBroadcast, wmSettingChange, 0, uintptr(unsafe.Pointer(area)), smtoAbortIfHung, 5000, uintptr(unsafe.Pointer(&result)))
+
+	time.Sleep(broadcastSettle)
+	t.Logf("own broadcast: SendMessageTimeoutW %d (%v); messages %q; shell sees %s=%s", r, err, changes.take(), raw, shellSees(raw))
 }
