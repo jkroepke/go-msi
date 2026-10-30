@@ -868,14 +868,17 @@ func (v *validator) componentScope(compPath string, comp *Component) {
 	v.contextConditionLength(compPath+".condition", comp.Condition)
 
 	// In a package that starts per user, ICE105 warns about the HKLM
-	// Registry rows of a perMachine component, whose condition keeps them
-	// out of a per-user install (ENVVAR-03); its message names HKU too.
-	machineRows := len(comp.EventLog) > 0 || slices.ContainsFunc(comp.Registry, func(reg *RegistryValue) bool {
-		return reg.Root == rootHKLM || reg.Root == "HKU"
-	})
+	// Registry and RemoveRegistry rows of a perMachine component, whose
+	// condition keeps them out of a per-user install (ENVVAR-03); its
+	// message names HKU too.
+	machine := func(root string) bool { return root == rootHKLM || root == "HKU" }
+
+	machineRows := len(comp.EventLog) > 0 ||
+		slices.ContainsFunc(comp.Registry, func(reg *RegistryValue) bool { return machine(reg.Root) }) ||
+		slices.ContainsFunc(comp.RemoveRegistry, func(entry *RemoveRegistry) bool { return machine(entry.Root) })
 	if comp.Scope == ScopePerMachine && v.scope == ScopePerUserOrMachine && machineRows {
-		v.warnf(compPath+".scope", "ICE105 warns about the HKLM and HKU values of this component, although it "+
-			"installs only per machine; use HKMU where the value may follow the context")
+		v.warnf(compPath+".scope", "ICE105 warns about the HKLM and HKU values and removals of this component, "+
+			"although it installs only per machine; use HKMU where the value may follow the context")
 	}
 
 	v.oneOf(compPath+".scope", string(comp.Scope), string(ScopePerMachine), string(ScopePerUser))

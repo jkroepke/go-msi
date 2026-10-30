@@ -1011,6 +1011,11 @@ func TestValidate(t *testing.T) {
 				"  - {id: Reg, directory: INSTALLDIR, scope: perMachine, registry: [{root: HKLM, key: Software\\X, name: N, value: v}]}\n",
 			sevWarning, "components[1].scope", "ICE105 warns",
 		},
+		"perMachine component removal in a per-user-first package": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent +
+				"  - {id: Reg, directory: INSTALLDIR, scope: perMachine, removeRegistry: [{root: HKLM, key: Software\\Old}]}\n",
+			sevWarning, "components[1].scope", "ICE105 warns",
+		},
 		"component scope dual": {
 			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent +
 				"  - {id: Reg, directory: INSTALLDIR, scope: perUserOrMachine, registry: [{root: HKMU, key: Software\\X, name: N, value: v}]}\n",

@@ -3,8 +3,10 @@
 - Runner: GitHub `windows-latest` (Windows Server 2025, x64), elevated,
   with a throwaway standard user for the non-admin step, 2026-10-30
 - CI runs 41054581404 (commit cfdb8db: installs, wizard, standard user,
-  ICE) and 41055965846 (commit 01d4cd1: the same plus the repair with
-  transitive components), PR #149
+  ICE), 41055965846 (commit 01d4cd1: the same plus the repair with
+  transitive components) and 41058183558 (commit 800f77c: plus an HKLM
+  removal and an event log source in `MachineOnly`, ICE105 findings
+  asserted), PR #149
 - Tests in `internal/builder/nativetest`: `TestMsiexecInstallScopes`,
   `TestFullUIInstallScope`, `TestICEInstallScope`
   (`installscope_windows_test.go`) and `TestNonAdminInstallScopes`
@@ -36,7 +38,11 @@ without writing the HKLM value or the machine variable (the user's own
 environment was not checked); `perMachineOrUser`
 failed with 1925 as in INST-02.
 
-ICE suite (`TestICEInstallScope`, no errors): `perUserOrMachine` got one
+In the third run `MachineOnly` also had an HKLM `removeRegistry` entry
+and an event log source (two HKLM `Registry` rows); the installs, the
+repair and the uninstall gave the same results.
+
+ICE suite (`TestICEInstallScope`, no errors in the first two runs): `perUserOrMachine` got one
 new warning, `ICE105 warning: msidbRegistryRootLocalMachine or
 msidbRegistryRootUsers cannot be defined as root for per user install of
 application. [Registry.Root]`, for the HKLM row of the conditioned
@@ -44,4 +50,11 @@ component. `perMachineOrUser` got no ICE105 finding, and neither package
 got one for the `*` Environment row. So ICE105 posts a warning for an
 HKLM row although its component's condition keeps it out of a per-user
 install, and posted nothing for the package that starts per machine.
-Whether it reports an unconditioned HKLM row as an error was not tested.
+In the third run ICE105 posted the same warning four times in
+`perUserOrMachine`, three tagged `[Registry.Root]` (the value and the two
+event log rows) and one `[RemoveRegistry.Root]`, and still nothing in
+`perMachineOrUser`. The event log source's message file
+`[SystemFolder]EventCreate.exe` in the 64-bit component also failed ICE80
+(a 32-bit folder property in a 64-bit component's registry value), so the
+test uses `[System64Folder]`. Whether ICE105 reports an unconditioned HKLM
+row as an error was not tested.

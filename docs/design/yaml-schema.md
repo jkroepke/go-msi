@@ -319,12 +319,12 @@ A `perMachine` component's resources are not installed per user at all,
 so a value that both contexts need belongs under HKMU, which follows the
 context. `scope` on a component of a package with a single context is an
 error. In a `perUserOrMachine` package ICE105 warns about the HKLM
-`Registry` rows of a `perMachine` component although the condition keeps
-them out of a per-user install, and the builder passes that warning on;
-it reported nothing for them in a `perMachineOrUser` package and nothing
-for the machine variable in either (ENVVAR-03). HKU values, HKLM
-`removeRegistry` entries and event log sources in such a component were
-not run through msiexec as a standard user.
+values, removals and event log sources of a `perMachine` component
+(`Registry` and `RemoveRegistry` rows) although the condition keeps them
+out of a per-user install, and the builder passes that warning on; it
+reported nothing for them in a `perMachineOrUser` package and nothing for
+the machine variable in either (ENVVAR-03). HKU values were not tested,
+and a standard user's install was tested with an HKLM value only.
 
 ### 4.3 `upgrade`
 

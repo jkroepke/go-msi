@@ -42,7 +42,7 @@ components:
     transitive: true
     registry: [{ root: HKLM, key: Software\MsiBuilderTest\ScopeMachine, name: Only, value: machine }]
     removeRegistry: [{ root: HKLM, key: Software\MsiBuilderTest\ScopeMachineOld }]
-    eventLog: [{ source: MsiBuilderScopeTest, messageFile: "[SystemFolder]EventCreate.exe" }]
+    eventLog: [{ source: MsiBuilderScopeTest, messageFile: "[System64Folder]EventCreate.exe" }]
   - id: UserOnly
     directory: INSTALLDIR
     scope: perUser
@@ -263,10 +263,10 @@ func TestICEInstallScope(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// ICE105 warns about the HKLM rows of the perMachine component in
-		// a package that starts per user, never about the machine
-		// variable or the removal, and is silent in one that starts per
-		// machine (ENVVAR-03).
+		// ICE105 warns about the HKLM Registry and RemoveRegistry rows of
+		// the perMachine component in a package that starts per user,
+		// never about the machine variable, and is silent in one that
+		// starts per machine (ENVVAR-03).
 		var ice105 []string
 
 		for _, finding := range findings {
@@ -274,7 +274,7 @@ func TestICEInstallScope(t *testing.T) {
 				ice105 = append(ice105, finding.String())
 				t.Logf("ENVVAR-03 %s: %s", scope, finding)
 
-				if finding.Table != "Registry" || finding.Type != ice.Warning {
+				if finding.Table != "Registry" && finding.Table != "RemoveRegistry" || finding.Type != ice.Warning {
 					t.Errorf("%s: unexpected ICE105 finding %s", scope, finding)
 				}
 			}
