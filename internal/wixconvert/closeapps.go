@@ -1,7 +1,9 @@
 package wixconvert
 
 import (
+	"path"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -23,12 +25,12 @@ func (c *converter) emitCloseApps() {
 	for _, elm := range apps {
 		target := strings.TrimSpace(c.literal(elm.attr("Target")))
 
-		if !closesApp(elm) {
-			found := ""
-			if p := elm.attr(attrProperty); p != "" {
-				found = " (Property " + p + ")"
-			}
+		found := ""
+		if p := elm.attr(attrProperty); p != "" {
+			found = " (Property " + p + ")"
+		}
 
+		if !closesApp(elm) {
 			c.todof(nil, "", elm.line, "<util:CloseApplication> for %s only detects the running program%s, "+
 				"which has no counterpart; files[].close on the program's file closes it instead", target, found)
 
@@ -36,15 +38,22 @@ func (c *converter) emitCloseApps() {
 		}
 
 		refs := c.filesNamed(target)
-		if len(refs) == 0 {
-			c.todof(nil, "", elm.line, "<util:CloseApplication> closes %s, which is no file this package installs; "+
-				"files[].close closes only files of the package", target)
 
-			continue
-		}
-
-		for _, ref := range refs {
-			c.closeFile(ref.out, elm)
+		switch {
+		case !strings.EqualFold(path.Ext(target), ".exe"):
+			c.todof(nil, "", elm.line, "<util:CloseApplication>%s closes %s, which is no program ending in .exe; "+
+				"files[].close closes only programs", found, target)
+		case len(refs) == 0 && len(c.globLines()) > 0:
+			c.todof(nil, "", elm.line, "<util:CloseApplication>%s closes %s, which is no single file of this package; "+
+				"when a Files glob (line %s) installs it, exclude it there and list it as a file of its own with close",
+				found, target, strings.Join(c.globLines(), ", "))
+		case len(refs) == 0:
+			c.todof(nil, "", elm.line, "<util:CloseApplication>%s closes %s, which is no file this package installs; "+
+				"files[].close closes only files of the package", found, target)
+		default:
+			for _, ref := range refs {
+				c.closeFile(ref.out, elm)
+			}
 		}
 	}
 }
@@ -96,5 +105,24 @@ func (c *converter) closeFile(file *omap, elm *elem) {
 		c.todof(file, "close", elm.line, "<util:CloseApplication> closes %s only when %s; close has no condition", source, cond)
 	}
 
+	if p := elm.attr(attrProperty); p != "" {
+		c.todof(file, "close", elm.line, "<util:CloseApplication> also sets the property %s while %s runs; close "+
+			"sets no property, so conditions that read it need another check", p, source)
+	}
+
 	c.todof(file, "close", elm.line, "close of %s came from <util:CloseApplication>: %s", source, closeNote)
+}
+
+// globLines returns the source lines of the Files globs, which install
+// files that c.files does not list one by one.
+func (c *converter) globLines() []string {
+	var lines []string
+
+	for _, comp := range c.comps {
+		if comp.folder != nil && comp.e != nil {
+			lines = append(lines, strconv.Itoa(comp.e.line))
+		}
+	}
+
+	return lines
 }

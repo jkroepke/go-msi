@@ -992,3 +992,51 @@ func TestConvertBuiltCodes6432Folder(t *testing.T) {
 		t.Errorf("no note on the missing folder: %v", res.Notes)
 	}
 }
+
+// TestConvertCloseApplication checks the util:CloseApplication cases that
+// cannot become files[].close: a target that is no program, one a Files
+// glob may install, and the Property a closing element also sets.
+func TestConvertCloseApplication(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" />
+    </StandardDirectory>
+    <ComponentGroup Id="Harvested" Directory="INSTALLFOLDER">
+      <Files Include="dist\**" />
+    </ComponentGroup>
+    <ComponentGroup Id="Own" Directory="INSTALLFOLDER">
+      <Component>
+        <File Source="hello.exe" />
+        <File Source="hello.com" />
+      </Component>
+    </ComponentGroup>
+    <Feature Id="Main"><ComponentGroupRef Id="Harvested" /><ComponentGroupRef Id="Own" /></Feature>
+    <util:CloseApplication Target="hello.com" CloseMessage="yes" />
+    <util:CloseApplication Target="example.exe" CloseMessage="yes" />
+    <util:CloseApplication Target="hello.exe" CloseMessage="yes" Property="HELLORUNNING" />
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"closes hello.com, which is no program ending in .exe",
+		"closes example.exe, which is no single file of this package; when a Files glob (line 7) installs it",
+		"also sets the property HELLORUNNING while hello.exe runs",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if got := strings.Count(out, "close:"); got != 1 {
+		t.Errorf("the YAML closes %d files, want only hello.exe:\n%s", got, out)
+	}
+}
