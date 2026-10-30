@@ -1166,10 +1166,13 @@ removeRegistry:
     root: HKLM
     key: SOFTWARE\Example\App
     name: Arguments                  # one value
+  - root: HKCR
+    key: Directory\shell\exampleapp   # a key the program creates while it runs
+    on: uninstall                    # install (default) | uninstall | both
 ```
 
-Each entry is a `RemoveRegistry` row of the component (name `-` for a whole
-key). The engine deletes it when the component is installed, in the
+An install entry (the default) is a `RemoveRegistry` row of the component
+(name `-` for a whole key). The engine deletes it when the component is installed, in the
 component's registry view only, again on a repair, and leaves it alone at
 uninstall (REG-02, observed on Windows). `RemoveRegistryValues` runs before
 `WriteRegistryValues`, so a key that is removed and also written by the
@@ -1180,8 +1183,33 @@ profiles are not touched (not tested). A component that only removes
 registry entries has its directory as key path (in the user profile the
 HKCU value of section 4.4, unless it removes per-machine entries). Removing the default value
 of a key is not supported. The same root, key and name twice in one
-component is an error, with or without `id`, and so is a per-user package
-that removes from HKLM or HKCR.
+component and table is an error, with or without `id` (an install and an
+uninstall entry for the same key are fine; `both` counts as either), and
+so is a per-user package that removes from HKLM or HKCR.
+
+`on: uninstall` deletes a whole key with its values and subkeys when the
+component is removed, for keys the program creates while it runs (shell
+verbs, settings) that the package does not write. It is a `Registry` row
+with name `-` and a Null value: the install neither creates nor deletes
+the key (one that existed before keeps its subkey and its value),
+a repair leaves a key that exists, and uninstall deletes it with its
+subkeys in the component's registry view (REG-08, observed on Windows per
+machine; per-user and dual-scope installs not tested; whether a repair
+would create a missing key not tested). The old product's removal in
+a major upgrade removes its components too, so with the default
+`removeOld: afterInstallInitialize` an upgrade deletes the key although the
+new version has the same entry; with `afterInstallExecute` the key stayed
+(REG-08), presumably because the new version keeps the components with the
+same ComponentId installed (inferred), so a component whose `id` or `guid`
+changes in the new version loses its key there too (not tested). `on: both` adds the install
+removal of a `RemoveRegistry` row. Both forms take whole keys only: a
+single value cannot be removed at uninstall without writing it, because a
+`Registry` row with a name and no value writes an empty value (REG-04); a
+value the package writes with `registry` is removed at uninstall anyway.
+An uninstall entry is a row of the `Registry` table, so its `id` must not
+be the `id` of a `registry` entry. An entry for a `shell` key under HKCR gets the ICE33
+warning that `fileTypes` rows get too (the engine would rather see the
+`Verb` table); it does not stop the build.
 
 **Services** (only in a component whose key file is the service executable):
 

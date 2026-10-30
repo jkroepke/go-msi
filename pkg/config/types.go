@@ -212,7 +212,7 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	Files     []*File          `yaml:"files"`
 	Registry  []*RegistryValue `yaml:"registry"`
 	// RemoveRegistry deletes registry keys or values when the component is
-	// installed.
+	// installed or, for whole keys, removed.
 	RemoveRegistry []*RemoveRegistry `yaml:"removeRegistry"`
 	// RemoveFiles deletes files or empty folders when the component is
 	// installed or removed (RemoveFile rows).
@@ -439,7 +439,8 @@ type RegistryValue struct { //nolint:govet // field order is the YAML key order
 }
 
 // RemoveRegistry is a registry key or value that is deleted when its
-// component is installed, before the component's own values are written.
+// component is installed, before the component's own values are written,
+// or a key that is deleted when the component is removed.
 type RemoveRegistry struct {
 	ID   string `yaml:"id"`
 	Root string `yaml:"root"`
@@ -447,6 +448,9 @@ type RemoveRegistry struct {
 	// Name is the value to delete; empty deletes the key with all its values
 	// and subkeys.
 	Name string `yaml:"name"`
+	// On is install (empty means install), uninstall or both. Uninstall
+	// and both delete whole keys only.
+	On string `yaml:"on"`
 }
 
 // RemoveFile is one RemoveFile row: the files of one folder that match a
@@ -462,7 +466,7 @@ type RemoveFile struct {
 	On string `yaml:"on"`
 }
 
-// Values of RemoveFile.On.
+// Values of RemoveFile.On and RemoveRegistry.On.
 const (
 	RemoveOnInstall   = "install"
 	RemoveOnUninstall = "uninstall"
