@@ -4,11 +4,11 @@
 # WiX variables became ${NAME} references; pass them with --var NAME=value: Version.
 # TODO(line 4): <?include common.wxi?>: convert the included file and merge it in by hand
 # TODO(line 45): the hand-built dialog PortDlg cannot be converted; ui.dialogs lays out text, password, checkbox and choice fields
-# TODO(line 158): rescheduling the standard action RemoveExistingProducts in InstallExecuteSequence has no counterpart
-# TODO(line 148): the custom action Greet is a script; script custom actions are never supported, use a run action
-# TODO(line 149): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
-# TODO(line 160): drop Wix4BroadcastEnvironmentChange_X64: Windows Installer announces environment changes itself
-# TODO(line 161): Wix4BroadcastSettingChange_X64 has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action
+# TODO(line 159): rescheduling the standard action RemoveExistingProducts in InstallExecuteSequence has no counterpart
+# TODO(line 149): the custom action Greet is a script; script custom actions are never supported, use a run action
+# TODO(line 150): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
+# TODO(line 161): drop Wix4BroadcastEnvironmentChange_X64: Windows Installer announces environment changes itself
+# TODO(line 162): Wix4BroadcastSettingChange_X64 has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action
 schema: msi-builder/v1
 vars:
   Port: "8080"
@@ -191,6 +191,8 @@ components:
       grant:
         - account: NT AUTHORITY\NetworkService
           rights: [full]
+        - account: Users
+          rights: ["0x120116"]
   # The RemoveFolder and HKCU key path of this shortcut component were left out:
   # msi-builder writes both for every shortcut.
   - id: StartMenu

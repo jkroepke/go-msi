@@ -589,7 +589,9 @@ firewall:
 - `util:PermissionEx` adds rights and keeps the permissions the object
   already has; so does `grant`. The rights are `full`, `modify`,
   `readExecute`, `read` and `write`, and more in
-  [YAML Schema Design](design/yaml-schema.md).
+  [YAML Schema Design](design/yaml-schema.md). `GenericWrite` becomes
+  `'0x120116'`, because `write` leaves out the right to read the
+  permissions.
 - The core `PermissionEx` with an `Sddl` attribute, and `Permission`,
   replace the permissions; write an SDDL string in `sddl` for those.
   Registry values take only `sddl`, so a `util:PermissionEx` on a registry
