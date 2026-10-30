@@ -83,8 +83,9 @@ func objectSDDL(t *testing.T, path string) string {
 // still get a protected DACL with the authored ACEs only, so they drop what
 // they inherit, and a folder that existed before the install loses its own
 // explicit ACEs. A registry key below a key that exists before the install
-// gets the same protected DACL; a key below a key the install creates reads
-// back with the authored ACEs marked inherited, and none of HKLM\SOFTWARE's.
+// gets the same protected DACL; when the install creates the parent too, the
+// parent gets it and the key reads back with the authored ACEs marked
+// inherited, and none of HKLM\SOFTWARE's.
 // An SDDL replaces the DACL whatever its flags, which is why grants exist.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
@@ -153,8 +154,14 @@ func TestMsiexecSDDLWithoutProtection(t *testing.T) {
 		t.Errorf(`registry key Existing\Key: %s, want a protected DACL with the authored ACEs only`, key)
 	}
 
-	// The key below the key the install creates: the authored ACEs, marked
-	// inherited, and none of HKLM\SOFTWARE's.
+	// The key the install creates below HKLM\SOFTWARE gets the protected
+	// DACL, and the key below it inherits the authored ACEs and none of
+	// HKLM\SOFTWARE's.
+	if key := objectSDDL(t, regPath+`\New`); !strings.Contains(key, "D:P(") || strings.Count(key, "(") != 3 ||
+		!strings.Contains(key, "(A;CI;KA;;;SY)") || !strings.Contains(key, "(A;CI;KA;;;BA)") || !strings.Contains(key, "(A;CI;KR;;;NS)") {
+		t.Errorf(`registry key New: %s, want a protected DACL with the authored ACEs only`, key)
+	}
+
 	if key := objectSDDL(t, regPath+`\New\Key`); strings.Contains(key, "D:P") || strings.Count(key, "(") != 3 ||
 		!strings.Contains(key, "(A;CIID;KA;;;SY)") || !strings.Contains(key, "(A;CIID;KA;;;BA)") || !strings.Contains(key, "(A;CIID;KR;;;NS)") {
 		t.Errorf(`registry key New\Key: %s, want the authored ACEs, marked inherited, and no others`, key)

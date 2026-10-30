@@ -31,18 +31,29 @@ install. The test now asserts this.
 ### Registry key below an existing key
 
 The key was `HKLM\SOFTWARE\MsiBuilderTest\Sec02`, and other tests create
-and delete `HKLM\SOFTWARE\MsiBuilderTest`. With `-shuffle=on` the parent
-sometimes existed before the install, and the key then read back as
+and delete `HKLM\SOFTWARE\MsiBuilderTest`. The key sometimes read back as
 `O:SYG:SYD:P(A;CI;KA;;;SY)(A;CI;KR;;;NS)(A;CI;KA;;;BA)` (main, CI run
 41018777226, 2026-10-30): a protected DACL with exactly the authored ACEs,
-as for files. The `ID` result above is what a key gets when the install
-also creates its parent.
+as for files. That the parent existed before the install in that run is
+inferred: the run did not log the test order, but the run below gives
+exactly this SDDL for a key below an existing key. Before PR #141,
+`TestMsiexecSearchesFiles` deleted only its `Locator` subkey and left the
+parent behind (a likely source, also inferred).
 
 Since PR #141 the test uses its own root `HKLM\SOFTWARE\MsiBuilderSec02`,
 creates `Existing` before the install, and writes `New\Key` and
-`Existing\Key`. CI run 41036088523 (2026-10-30) passed both assertions:
-`Existing\Key` has `D:P` with the three authored ACEs, `New\Key` the
-three authored ACEs marked `ID` and no others.
+`Existing\Key`. CI run 41036088523 (2026-10-30, the `-v` SEC-02 step) logged:
+
+| Key | SDDL after install |
+| --- | --- |
+| `New` (created by the install) | `O:SYG:SYD:P(A;CI;KA;;;SY)(A;CI;KR;;;NS)(A;CI;KA;;;BA)` |
+| `New\Key` | `O:SYG:SYD:(A;CIID;KA;;;SY)(A;CIID;KA;;;BA)(A;CIID;KR;;;NS)` |
+| `Existing` (created by the test) | `O:LA…D:AI(A;CIID;KR;;;BU)(A;CIID;KA;;;BA)(A;CIID;KA;;;SY)…`, unchanged |
+| `Existing\Key` | `O:SYG:SYD:P(A;CI;KA;;;SY)(A;CI;KR;;;NS)(A;CI;KA;;;BA)` |
+
+So the topmost key the install creates gets the authored SDDL as a
+protected DACL, and keys below it inherit it. The test asserts all three
+installed keys.
 
 ## Grants
 

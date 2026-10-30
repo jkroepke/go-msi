@@ -207,11 +207,12 @@ go test ./... -shuffle=on -race
   that way (`docs/spec/msitest/results/SEARCH-05/probe`). A probe opened as a
   pull request runs on every push too; keep the raw results in
   `docs/spec/msitest/results` before deleting it.
-- nativetests run in shuffled order, so a test that checks what an install
+- Native tests run in shuffled order, so a test that checks what an install
   creates must not share registry keys or folders with other tests: give it
   its own root and delete it before and after. Whether a key's parent exists
   before the install changes the DACL `MsiLockPermissionsEx` gives the key
-  (SEC-02 flaked on a shared `HKLM\SOFTWARE\MsiBuilderTest` parent).
+  (the topmost created key gets the protected DACL, keys below inherit it;
+  SEC-02 flaked with a shared `HKLM\SOFTWARE\MsiBuilderTest` parent).
 - Wizard changes need a full-UI run: `/qn` never shows a dialog, so dialog
   bugs (wrong event names, missing ErrorIcon) only appear with the full UI.
   `internal/builder/nativetest/fullui_windows_test.go` drives msiexec through
