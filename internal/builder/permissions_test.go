@@ -2,6 +2,7 @@ package builder_test
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -144,17 +145,6 @@ func TestPermissionGrants(t *testing.T) {
 
 	installed := "$" + comp.ID + "=3"
 	dir := "[" + comp.Directory + "]"
-	want := strings.Join([]string{
-		installed + " AND (DATA=1)\x1ff|1301bf|3\x1fNS\x1f" + dir,
-		installed + " AND (DATA=1)\x1ff|120089|0\x1f.\\svc\x1f" + dir,
-		installed + "\x1fs|30|0\x1fBU\x1fHelloSvc",
-		installed + "\x1ff|1300a9|0\x1f[SVC_ACCOUNT]\x1f[#hello.exe]",
-	}, "\n")
-
-	if got := cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "BuilderGrants" }); got != want {
-		t.Errorf("BuilderGrants\n%q\nwant\n%q", got, want)
-	}
-
 	seq := make(map[string]int)
 
 	conds := map[string]any{}
@@ -167,18 +157,84 @@ func TestPermissionGrants(t *testing.T) {
 		conds[fmt.Sprint(row[0])] = row[1]
 	}
 
-	// The schedule action runs on removal too; each deferred action runs
-	// when the schedule action gave it data.
+	// The engine builds the data: two complementary resets, then one
+	// type-51 action per grant with its condition, in authoring order.
+	data := "[BuilderGrantData]\n"
+	want := []struct{ cond, target string }{
+		{"NOT Installed", "i[ProductCode]"},
+		{"Installed", "m[ProductCode]"},
+		{installed + " AND (DATA=1)", data + "f|1301bf|3|NS|" + dir + "|NS"},
+		{installed + " AND (DATA=1)", data + "f|120089|0|.\\svc|" + dir + "|.\\svc"},
+		{installed, data + "s|30|0|BU|HelloSvc|BU"},
+		{installed, data + "f|1300a9|0|[\\[]SVC_ACCOUNT[\\]]|[#hello.exe]|[SVC_ACCOUNT]"},
+	}
+
+	var setters []string
+
+	for _, r := range rows(t, database, "CustomAction") {
+		if r[2] == "BuilderGrantData" {
+			setters = append(setters, fmt.Sprint(r[0]))
+		}
+	}
+
+	slices.SortFunc(setters, func(x, y string) int { return seq[x] - seq[y] })
+
+	if len(setters) != len(want) {
+		t.Fatalf("BuilderGrantData setters %v, want %d", setters, len(want))
+	}
+
+	for i, name := range setters {
+		r := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == name })
+		if fmt.Sprint(r[1]) != "51" || r[3] != want[i].target || fmt.Sprint(conds[name]) != want[i].cond {
+			t.Errorf("setter %d: %v condition %v, want %q if %q", i, r, conds[name], want[i].target, want[i].cond)
+		}
+	}
+
+	// Then the data of the deferred actions, set in every install, so that
+	// none comes from the command line, all before InstallValidate.
+	prevSetter := setters[len(setters)-1]
+
+	for _, final := range []struct{ name, property, target, cond string }{
+		{"BuilderGrantSetExec", "BuilderGrantExec", "+[BuilderGrantData]", ""},
+		{"BuilderGrantSetRollback", "BuilderGrantRollback", "-[BuilderGrantData]", ""},
+		{"BuilderGrantSetCommit", "BuilderGrantCommit", "c[BuilderGrantData]", ""},
+		{"BuilderGrantForget", "BuilderGrantCommit", "x[ProductCode]", `REMOVE~="ALL"`},
+	} {
+		r := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == final.name })
+		if fmt.Sprint(r[1]) != "51" || r[2] != final.property || r[3] != final.target {
+			t.Errorf("%s row %v", final.name, r)
+		}
+
+		if cond := conds[final.name]; (cond == nil && final.cond != "") || (cond != nil && fmt.Sprint(cond) != final.cond) {
+			t.Errorf("%s condition %v, want %q", final.name, cond, final.cond)
+		}
+
+		if seq[final.name] <= seq[prevSetter] {
+			t.Errorf("%s at %d is not after %s at %d", final.name, seq[final.name], prevSetter, seq[prevSetter])
+		}
+
+		prevSetter = final.name
+	}
+
+	if seq[prevSetter] >= seq["InstallValidate"] || seq[setters[0]] <= seq["CostFinalize"] {
+		t.Errorf("grant data setters %d..%d not between CostFinalize %d and InstallValidate %d",
+			seq[setters[0]], seq[prevSetter], seq["CostFinalize"], seq["InstallValidate"])
+	}
+
+	if _, ok := seq["BuilderGrantSchedule"]; ok {
+		t.Error("BuilderGrantSchedule is scheduled; the engine builds the data")
+	}
+
 	for name, want := range map[string]string{
-		"BuilderGrantRollback": "BuilderGrantRollback", "BuilderGrantExec": "BuilderGrantExec", "BuilderGrantCommit": "BuilderGrantCommit",
+		"BuilderGrantRollback": `NOT REMOVE~="ALL"`, "BuilderGrantExec": `NOT REMOVE~="ALL"`,
 	} {
 		if conds[name] != want {
 			t.Errorf("%s condition %v, want %q", name, conds[name], want)
 		}
 	}
 
-	if cond := conds["BuilderGrantSchedule"]; cond != nil && cond != "" {
-		t.Errorf("BuilderGrantSchedule condition %v, want none", cond)
+	if cond := conds["BuilderGrantCommit"]; cond != nil && cond != "" {
+		t.Errorf("BuilderGrantCommit condition %v, want none", cond)
 	}
 
 	prev := "InstallServices"
@@ -187,7 +243,6 @@ func TestPermissionGrants(t *testing.T) {
 		name, entry string
 		typ         int
 	}{
-		{"BuilderGrantSchedule", "BuilderGrantSchedule", 1},
 		{"BuilderGrantRollback", "BuilderGrant", 1 | 0x500 | 0x800}, // DLL, rollback, no impersonation
 		{"BuilderGrantExec", "BuilderGrant", 1 | 0x400 | 0x800},     // deferred
 		{"BuilderGrantCommit", "BuilderGrant", 1 | 0x600 | 0x800},   // commit

@@ -59,12 +59,11 @@ func Binary(platform string) ([]byte, error) {
 	return data, nil
 }
 
-// Permission grants: the property the builder lists them in, the actions
-// that apply them (named like their entry points where they have their own)
-// and the kinds of object.
+// Permission grants: the property the engine builds their data in, the
+// actions that apply them (named like their entry points where they have
+// their own) and the kinds of object.
 const (
-	GrantProperty   = "BuilderGrants"
-	GrantSchedule   = "BuilderGrantSchedule"
+	GrantData       = "BuilderGrantData"
 	GrantEntryPoint = "BuilderGrant"
 	GrantExec       = "BuilderGrantExec"
 	GrantRollback   = "BuilderGrantRollback"
@@ -73,17 +72,24 @@ const (
 	GrantFile    = 'f'
 	GrantService = 's'
 
-	// grantSeparator separates the fields of a BuilderGrants line: the
-	// condition, the rights, the account and the object.
-	grantSeparator = "\x1f"
+	// GrantInstall and GrantMaintenance follow the operation in the head
+	// line of the data: a first install or a maintenance install, which
+	// falls back to the remembered accounts.
+	GrantInstall     = 'i'
+	GrantMaintenance = 'm'
+
+	// GrantForget is the operation of the commit of a removal, which
+	// forgets the remembered accounts.
+	GrantForget = 'x'
 )
 
-// GrantEntry encodes one line of the BuilderGrants property: the condition
-// under which it applies, the kind of object, the access mask, the ACE
-// inheritance flags, and the account and object, which BuilderGrantSchedule
-// formats. None of the texts may contain a line break or U+001F.
-func GrantEntry(condition string, kind byte, mask, flags uint32, account, object string) string {
-	return strings.Join([]string{condition, fmt.Sprintf("%c|%x|%x", kind, mask, flags), account, object}, grantSeparator)
+// GrantEntry encodes one entry of the grant data, which a type-51 action
+// formats: the kind of object, the access mask, the ACE inheritance flags,
+// the account template (escaped, so that it arrives as authored), the object
+// and the account. The account comes last, so that a `|` in its value
+// cannot move the object.
+func GrantEntry(kind byte, mask, flags uint32, template, object, account string) string {
+	return fmt.Sprintf("%c|%x|%x|%s|%s|%s", kind, mask, flags, template, object, account)
 }
 
 // Closing running programs: the property the builder lists the files in,
@@ -96,6 +102,10 @@ const (
 	CloseEntryPoint    = "BuilderClose"
 	CloseExec          = "BuilderCloseExec"
 	CloseExecSeparator = "|"
+
+	// closeSeparator separates the fields of a BuilderCloseApps line: the
+	// condition, the timeout and the path.
+	closeSeparator = "\x1f"
 )
 
 // CloseEntry encodes one line of the BuilderCloseApps property: the
@@ -103,7 +113,7 @@ const (
 // get to close and the path of the program, which BuilderCloseSchedule
 // formats. None of the texts may contain a line break or U+001F.
 func CloseEntry(condition string, timeoutMS uint32, path string) string {
-	return strings.Join([]string{condition, fmt.Sprintf("%x|", timeoutMS), path}, grantSeparator)
+	return strings.Join([]string{condition, fmt.Sprintf("%x|", timeoutMS), path}, closeSeparator)
 }
 
 // Data encodes the working directory and command line the DLL expects.

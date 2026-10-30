@@ -79,15 +79,21 @@ func TestBinaries(t *testing.T) {
 				t.Errorf("imports %v, want %v", libs, want)
 			}
 
-			for _, entry := range []string{cadll.Entry, cadll.GrantEntryPoint, cadll.GrantSchedule, cadll.CloseEntryPoint, cadll.CloseSchedule} {
+			for _, entry := range []string{cadll.Entry, cadll.GrantEntryPoint, cadll.CloseEntryPoint, cadll.CloseSchedule} {
 				if !bytes.Contains(data, []byte(entry+"\x00")) {
 					t.Errorf("export %s not found", entry)
 				}
 			}
 
+			// The engine builds the grant data (spec 17.7); an action that
+			// runs as the user must not.
+			if bytes.Contains(data, []byte("BuilderGrantSchedule\x00")) {
+				t.Error("export BuilderGrantSchedule is back")
+			}
+
 			// The log template and the immediate property are UTF-16 arrays
 			// in the C source, which a rename of the Go constants misses.
-			for _, want := range []string{cadll.Entry + ": [1]", cadll.GrantEntryPoint + ": [1]", cadll.DataProperty, cadll.GrantProperty, cadll.GrantExec, cadll.GrantRollback, cadll.GrantCommit,
+			for _, want := range []string{cadll.Entry + ": [1]", cadll.GrantEntryPoint + ": [1]", cadll.DataProperty,
 				cadll.CloseEntryPoint + ": [1]", cadll.CloseProperty,
 			} {
 				if !bytes.Contains(data, utf16z(want)) {

@@ -916,27 +916,30 @@ done:
     return result;
 }
 
-// Permission grants. BuilderGrantSchedule, an immediate action, reads the
-// property BuilderGrants that the builder writes, one entry per line:
+// Permission grants. The deferred action BuilderGrantExec, its rollback
+// BuilderGrantRollback and the commit action BuilderGrantCommit, all on the
+// entry point BuilderGrant, get this CustomActionData:
 //
-//     <condition> US <kind>|<mask>|<flags> US <account> US <object>
-//
-// (US is U+001F). For every entry whose condition is true (an empty one is),
-// it formats account and object and hands the list to the deferred action
-// BuilderGrantExec, its rollback BuilderGrantRollback and the commit action
-// BuilderGrantCommit, all on the entry point BuilderGrant, as
-// CustomActionData:
-//
-//     <op><ProductCode>
-//     <kind>|<mask>|<flags>|<account>|<object>
-//     a|<account>|<account template>
+//     <op><mode><ProductCode>
+//     <kind>|<mask>|<flags>|<account template>|<object>|<account>
 //     ...
 //
-// op is `+` (grant), `-` (rollback), `c` (commit) or `x` (the product is
-// removed). kind is `f` (file or folder) or `s` (service), mask and flags are hexadecimal access rights and
-// ACE flags, the account is a SID string, an SDDL alias such as NS, a service
-// manager name such as LocalSystem, or a name for LookupAccountNameW
-// (`.\name` is a local account), and the object is a path or a service name.
+// The engine builds it, never an action that runs as the user (spec 17.7):
+// the builder writes one type-51 action per grant, conditioned on its
+// component being installed or repaired, that appends the entry to the
+// property BuilderGrantData, which an unconditioned type-51 action reset to
+// the head line before, and the engine formats account and object in it.
+// The template is escaped in the action, so it arrives as authored.
+//
+// op is `+` (grant), `-` (rollback), `c` (commit) or `x` (the commit of the
+// removal of the product, `x<ProductCode>` without a mode or entries). mode
+// is `i` on a first install and `m` in a maintenance install. kind is `f`
+// (file or folder) or `s` (service), mask and flags are hexadecimal access
+// rights and ACE flags, the account is a SID string, an SDDL alias such as
+// NS, a service manager name such as LocalSystem, or a name for
+// LookupAccountNameW (`.\name` is a local account), and the object is a path
+// or a service name. The account comes last, so a `|` in it cannot move the
+// object; an account with `|` or a control character is rejected.
 //
 // A grant adds the rights to the account's explicit allow ACE with the same
 // inheritance flags, or adds such an ACE after the last explicit ACE, and
@@ -949,8 +952,9 @@ done:
 // that were there before the install survive a rollback.
 //
 // An account that comes from a property, such as [SVC_ACCOUNT], is
-// remembered: the commit action stores the account of an `a` entry under its
-// template in HKLM\SOFTWARE\msi-builder\GrantAccounts\<ProductCode>, and a
+// remembered: the commit action stores the account of an entry whose
+// template contains `[` under that template in
+// HKLM\SOFTWARE\msi-builder\GrantAccounts\<ProductCode>, and a
 // maintenance install (a repair from Apps & Features, a self-repair, a
 // feature added later, a patch), whose command line does not have the
 // property, grants to the remembered account when every property in the
@@ -958,25 +962,18 @@ done:
 // there. The commit action of the removal of the product (`x`) deletes the
 // key. Log lines read `BuilderGrant: ...`.
 
-static const WCHAR propGrants[] = u"BuilderGrants";
-static const WCHAR propProductCode[] = u"ProductCode";
-static const WCHAR propExec[] = u"BuilderGrantExec";
-static const WCHAR propRollback[] = u"BuilderGrantRollback";
-static const WCHAR propCommit[] = u"BuilderGrantCommit";
 static const WCHAR rollbackKey[] = u"Software\\msi-builder\\GrantRollback\\";
 static const WCHAR accountsKey[] = u"SOFTWARE\\msi-builder\\GrantAccounts\\";
-static const WCHAR condRemoveAll[] = u"REMOVE~=\"ALL\"";
 static const WCHAR msgRemembered[] = u"the account is empty in a maintenance install; granting to the remembered account";
 static const WCHAR msgRemember[] = u"cannot remember the account of";
 static const WCHAR msgGrantData[] = u"malformed grant data";
 static const WCHAR msgNoAccount[] = u"no account to grant rights to";
 static const WCHAR msgSkipEmpty[] = u"the account is empty in a maintenance install and none is remembered; skipped";
-static const WCHAR propInstalled[] = u"Installed";
 static const WCHAR msgAccountType[] = u"the account names a domain, a deleted account or nothing";
 static const WCHAR msgBadAccount[] = u"the account contains | or a control character";
-static const WCHAR msgBadObject[] = u"the object contains a control character";
 static const WCHAR msgFormat[] = u"cannot format";
 static const WCHAR msgCondition[] = u"cannot evaluate the condition";
+static const WCHAR msgBadObject[] = u"the object contains a control character";
 static const WCHAR msgSid[] = u"cannot resolve the account";
 static const WCHAR msgGetSec[] = u"cannot read the permissions of";
 static const WCHAR msgSetSec[] = u"cannot write the permissions of";
@@ -1102,15 +1099,6 @@ static WCHAR *field(WCHAR *s, WCHAR sep)
     return s + 1;
 }
 
-// maintenance reports whether the product is installed already: a repair, a
-// reinstall, a patch or a feature change.
-static int maintenance(MSIHANDLE install)
-{
-    WCHAR *installed = property(install, propInstalled);
-    HeapFree(GetProcessHeap(), 0, installed);
-    return installed != 0;
-}
-
 // accountsPath returns HKLM's key of the remembered accounts of a product.
 static int accountsPath(wbuf *path, const WCHAR *product)
 {
@@ -1173,114 +1161,45 @@ static int hasBracket(const WCHAR *s)
     return 0;
 }
 
-// scheduleEntry formats one line of BuilderGrants and appends it to out. It
-// returns 0 when the install has to fail.
-static int scheduleEntry(MSIHANDLE install, const WCHAR *product, WCHAR *line, wbuf *out)
+// grantAccount returns the account an entry grants to: the formatted
+// account, or, in a maintenance install (again) where the template formatted
+// to its text without the [...] references, the account remembered for the
+// template, which *kept holds for the caller to free. It returns 0, after a
+// log line when log is set, when there is none: *fail tells whether that
+// fails the install (a first install) or skips the entry.
+static WCHAR *grantAccount(MSIHANDLE install, const WCHAR *product, int again, const WCHAR *template, WCHAR *account, WCHAR **kept, int log, int *fail)
 {
-    static const WCHAR nl[] = u"\n", bar[] = u"|";
-    WCHAR *spec = field(line, 0x1F);
-    WCHAR *account = spec ? field(spec, 0x1F) : 0;
-    WCHAR *object = account ? field(account, 0x1F) : 0;
-    if (!object) {
-        logft(install, tmplGrant, msgGrantData, 0, 0);
+    WCHAR *name = trim(account), *lit = hasBracket(template) ? literal(template) : 0;
+    *kept = 0;
+    *fail = 1;
+    // `.\[SVC_USER]` with an empty property is as unset as `[SVC_USER]`.
+    if (*name && lit && wieq(name, trim(lit))) {
+        *name = 0;
+    }
+    HeapFree(GetProcessHeap(), 0, lit);
+    if (!*name && again && (*kept = remembered(product, template)) != 0 && *trim(*kept)) {
+        // A property set on the command line of the first install is
+        // not there in a repair from Apps & Features, a self-repair or
+        // a patch, which replace files and add components.
+        name = trim(*kept);
+        if (log) {
+            logft(install, tmplGrant, msgRemembered, template, 0);
+        }
+    }
+    if (!*name) {
+        *fail = !again;
+        if (log) {
+            logft(install, tmplGrant, again ? msgSkipEmpty : msgNoAccount, template, 0);
+        }
         return 0;
     }
-    if (*line) {
-        int cond = MsiEvaluateConditionW(install, line);
-        if (cond != MSICONDITION_TRUE && cond != MSICONDITION_NONE) {
-            if (cond == 0) {
-                return 1;
-            }
-            logft(install, tmplGrant, msgCondition, line, 0);
-            return 0;
-        }
-    }
-    WCHAR *acct = format(install, account), *obj = format(install, object), *kept = 0;
-    int ok = 0;
-    if (!acct || !obj) {
-        logft(install, tmplGrant, msgFormat, acct ? object : account, 0);
-    } else {
-        WCHAR *name = trim(acct), *lit = hasBracket(account) ? literal(account) : 0;
-        int again = maintenance(install);
-        // `.\[SVC_USER]` with an empty property is as unset as `[SVC_USER]`.
-        if (*name && lit && wieq(name, trim(lit))) {
-            *name = 0;
-        }
-        HeapFree(GetProcessHeap(), 0, lit);
-        if (!*name && again && (kept = remembered(product, account)) != 0 && *trim(kept)) {
-            // A property set on the command line of the first install is
-            // not there in a repair from Apps & Features, a self-repair or
-            // a patch, which replace files and add components.
-            name = trim(kept);
-            logft(install, tmplGrant, msgRemembered, obj, 0);
-        }
-        if (!*name && again) {
-            logft(install, tmplGrant, msgSkipEmpty, obj, 0);
-            ok = 1;
-        } else if (!*name) {
-            logft(install, tmplGrant, msgNoAccount, obj, 0);
-        } else if (hasControl(name, 1)) {
+    if (hasControl(name, 1)) {
+        if (log) {
             logft(install, tmplGrant, msgBadAccount, name, 0);
-        } else if (hasControl(obj, 0) || !*obj) {
-            logft(install, tmplGrant, msgBadObject, obj, 0);
-        } else {
-            static const WCHAR remember[] = u"\na|";
-            ok = wbufAdd(out, nl, 1) && wbufAdd(out, spec, wlen(spec)) && wbufAdd(out, bar, 1) && wbufAdd(out, name, wlen(name)) &&
-                 wbufAdd(out, bar, 1) && wbufAdd(out, obj, wlen(obj));
-            if (ok && hasBracket(account) && !hasControl(account, 1)) {
-                ok = wbufAdd(out, remember, 3) && wbufAdd(out, name, wlen(name)) && wbufAdd(out, bar, 1) && wbufAdd(out, account, wlen(account));
-            }
-            if (!ok) {
-                logft(install, tmplGrant, msgNoMemory, 0, 0);
-            }
         }
+        return 0;
     }
-    HeapFree(GetProcessHeap(), 0, acct);
-    HeapFree(GetProcessHeap(), 0, obj);
-    HeapFree(GetProcessHeap(), 0, kept);
-    return ok;
-}
-
-__declspec(dllexport) UINT WINAPI BuilderGrantSchedule(MSIHANDLE install)
-{
-    HANDLE heap = GetProcessHeap();
-    WCHAR *list = property(install, propGrants);
-    WCHAR *product = property(install, propProductCode);
-    wbuf out = {0, 0, 0};
-    UINT result = ERROR_INSTALL_FAILURE;
-    static const WCHAR plus[] = u"+";
-    if (!product || !wbufAdd(&out, plus, 1) || !wbufAdd(&out, product, wlen(product))) {
-        logft(install, tmplGrant, msgGrantData, 0, 0);
-        goto done;
-    }
-    if (MsiEvaluateConditionW(install, condRemoveAll) == MSICONDITION_TRUE) {
-        // The removal only forgets the remembered accounts, in the commit
-        // action, so a failed removal keeps them.
-        out.s[0] = 'x';
-        result = MsiSetPropertyW(install, propCommit, out.s) == ERROR_SUCCESS ? ERROR_SUCCESS : ERROR_INSTALL_FAILURE;
-        goto done;
-    }
-    for (WCHAR *line = list; line && *line;) {
-        WCHAR *next = field(line, '\n');
-        if (!scheduleEntry(install, product, line, &out)) {
-            goto done;
-        }
-        line = next;
-    }
-    result = ERROR_SUCCESS;
-    const WCHAR *props[] = {propExec, propRollback, propCommit};
-    const WCHAR ops[] = {'+', '-', 'c'};
-    for (int i = 0; i < 3 && result == ERROR_SUCCESS; i++) {
-        out.s[0] = ops[i];
-        if (MsiSetPropertyW(install, props[i], out.s) != ERROR_SUCCESS) {
-            result = ERROR_INSTALL_FAILURE;
-        }
-    }
-done:
-    HeapFree(heap, 0, out.s);
-    HeapFree(heap, 0, product);
-    HeapFree(heap, 0, list);
-    return result;
+    return name;
 }
 
 // hexfield parses hexadecimal digits up to the next `|`, which it replaces
@@ -1453,22 +1372,37 @@ static int rebuild(ACL *dacl, void *sid, DWORD mask, DWORD flags, int grant, ACL
     return 1;
 }
 
-// applyEntry grants (or, on rollback, revokes) the rights of one entry. On a
-// grant, the rights it is about to add are recorded under valueName in key
-// (keyErr is why key is 0) before the object changes. It returns 0 on an
-// error.
-static int applyEntry(MSIHANDLE install, WCHAR *entry, int grant, HANDLE key, long keyErr, const WCHAR *valueName)
+// grantEntry is one parsed entry of the grant data.
+typedef struct {
+    DWORD mask, flags;
+    int type;
+    WCHAR *template, *object, *account;
+} grantEntry;
+
+// parseEntry splits an entry in place. It returns 0 when it is malformed. A
+// `|` in the object, which only an authored service name can have, moves
+// the rest into the account, which then fails as an account with `|`.
+static int parseEntry(WCHAR *entry, grantEntry *e)
+{
+    WCHAR *p = (entry[0] == 'f' || entry[0] == 's') && entry[1] == '|' ? hexfield(entry + 2, &e->mask) : 0;
+    p = p ? hexfield(p, &e->flags) : 0;
+    e->type = entry[0] == 's' ? SE_SERVICE : SE_FILE_OBJECT;
+    e->template = p;
+    e->object = p ? field(p, '|') : 0;
+    e->account = e->object ? field(e->object, '|') : 0;
+    return e->account && *e->template && *e->object && e->mask && !(e->flags & ~AUTHORED_INHERIT_FLAGS);
+}
+
+// applyEntry grants (or, on rollback, revokes) the rights of one entry to
+// account. On a grant, the rights it is about to add are recorded under
+// valueName in key (keyErr is why key is 0) before the object changes. It
+// returns 0 on an error.
+static int applyEntry(MSIHANDLE install, grantEntry *e, const WCHAR *account, int grant, HANDLE key, long keyErr, const WCHAR *valueName)
 {
     HANDLE heap = GetProcessHeap();
-    DWORD mask = 0, flags = 0;
-    int type = entry[0] == 's' ? SE_SERVICE : SE_FILE_OBJECT;
-    WCHAR *p = (entry[0] == 'f' || entry[0] == 's') && entry[1] == '|' ? hexfield(entry + 2, &mask) : 0;
-    p = p ? hexfield(p, &flags) : 0;
-    WCHAR *account = p, *object = p ? field(p, '|') : 0;
-    if (!object || !*object || !*account || !mask || (flags & ~AUTHORED_INHERIT_FLAGS)) {
-        logft(install, tmplGrant, msgGrantData, 0, 0);
-        return 0;
-    }
+    DWORD mask = e->mask, flags = e->flags;
+    int type = e->type;
+    WCHAR *object = e->object;
     if (!grant) {
         // Only what this install added is taken away.
         DWORD added = 0, size = sizeof added, kind = 0;
@@ -1549,19 +1483,14 @@ done:
     return ok;
 }
 
-// rememberEntry stores the account of an `a` entry under its template. The
-// commit action does it, so a failed install or repair leaves the account
-// that was remembered before. It never fails: without it, only a
-// maintenance install without the property skips the grant.
-static void rememberEntry(MSIHANDLE install, WCHAR *entry, const WCHAR *product)
+// rememberAccount stores an account under its template. The commit action
+// does it, so a failed install or repair leaves the account that was
+// remembered before. It never fails: without it, only a maintenance install
+// without the property skips the grant.
+static void rememberAccount(MSIHANDLE install, const WCHAR *product, const WCHAR *template, const WCHAR *account)
 {
     HANDLE heap = GetProcessHeap(), key = 0;
-    WCHAR *account = entry + 2, *template = field(account, '|');
     wbuf path = {0, 0, 0};
-    if (!template || !*template || !*account) {
-        logft(install, tmplGrant, msgGrantData, 0, 0);
-        return;
-    }
     if (!accountsPath(&path, product)) {
         logft(install, tmplGrant, msgNoMemory, 0, 0);
         return;
@@ -1581,23 +1510,25 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
 {
     HANDLE heap = GetProcessHeap();
     WCHAR *data = property(install, propData);
-    if (!data || (data[0] != '+' && data[0] != '-' && data[0] != 'c' && data[0] != 'x')) {
+    WCHAR op = data ? data[0] : 0;
+    int again = op && data[1] == 'm';
+    if (!data || (op != '+' && op != '-' && op != 'c' && op != 'x') || (op != 'x' && data[1] != 'i' && !again)) {
         logft(install, tmplGrant, msgGrantData, 0, 0);
         HeapFree(heap, 0, data);
         return data ? ERROR_INSTALL_FAILURE : ERROR_SUCCESS;
     }
-    WCHAR op = data[0];
-    WCHAR *entries = field(data + 1, '\n');
+    WCHAR *product = op == 'x' ? data + 1 : data + 2;
+    WCHAR *entries = field(product, '\n');
     wbuf path = {0, 0, 0};
     if (op == 'x') {
-        if (accountsPath(&path, data + 1)) {
+        if (accountsPath(&path, product)) {
             RegDeleteTreeW(HKLM_, path.s);
         }
         HeapFree(heap, 0, path.s);
         HeapFree(heap, 0, data);
         return ERROR_SUCCESS;
     }
-    if (!wbufAdd(&path, rollbackKey, wlen(rollbackKey)) || !wbufAdd(&path, data + 1, wlen(data + 1))) {
+    if (!wbufAdd(&path, rollbackKey, wlen(rollbackKey)) || !wbufAdd(&path, product, wlen(product))) {
         HeapFree(heap, 0, data);
         return op == '+' ? ERROR_INSTALL_FAILURE : ERROR_SUCCESS;
     }
@@ -1617,18 +1548,30 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
     }
     DWORD index = 0;
     for (WCHAR *entry = entries; entry && *entry; index++) {
-        WCHAR *next = field(entry, '\n');
+        WCHAR *next = field(entry, '\n'), *kept = 0, *account = 0;
         WCHAR name[12];
         SIZE_T pos = 0;
-        int remember = entry[0] == 'a' && entry[1] == '|';
+        grantEntry e;
+        int fail = 1;
         wappendnum(name, &pos, index);
-        // The commit remembers the accounts; a rollback undoes every grant
-        // it can and never fails.
-        if (op == 'c') {
-            if (remember) {
-                rememberEntry(install, entry, data + 1);
+        if (!parseEntry(entry, &e)) {
+            logft(install, tmplGrant, msgGrantData, 0, 0);
+        } else if (hasControl(e.object, 0)) {
+            logft(install, tmplGrant, msgBadObject, e.object, 0);
+        } else {
+            account = grantAccount(install, product, again, e.template, e.account, &kept, op == '+', &fail);
+        }
+        // The commit remembers the accounts that came from properties; a
+        // rollback undoes every grant it can and never fails.
+        if (account && op == 'c') {
+            if (hasBracket(e.template)) {
+                rememberAccount(install, product, e.template, account);
             }
-        } else if (!remember && !applyEntry(install, entry, op == '+', key, keyErr, name) && op == '+') {
+        } else if (account) {
+            fail = !applyEntry(install, &e, account, op == '+', key, keyErr, name);
+        }
+        HeapFree(heap, 0, kept);
+        if (fail && op == '+') {
             result = ERROR_INSTALL_FAILURE;
             break;
         }

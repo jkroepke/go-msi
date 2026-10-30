@@ -78,18 +78,22 @@ the root `AGENTS.md` first.
   CA-03 package that `internal/builder/nativetest` installs on Windows
   (`TestMsiexecRunActions`), natively on the x64 and arm64 runners. The x64
   package under emulation on arm64 passed once (CA-03) and is not rerun.
-- Permission grants (spec 17.7) use the exports `BuilderGrantSchedule`
-  (immediate) and `BuilderGrant` (the deferred `BuilderGrantExec`, its
-  rollback and the commit action, told apart by the first character of
-  `CustomActionData`: `+`, `-`, `c`, and `x` for the commit of a removal). The schedule action reads the
-  `BuilderGrants` property, evaluates each line's condition, formats account
-  and object separately and rejects `|` and control characters in what a
-  property could inject. The deferred action records the rights it adds in
+- Permission grants (spec 17.7) use the export `BuilderGrant` (the
+  deferred `BuilderGrantExec`, its rollback and the commit action, told
+  apart by the first character of `CustomActionData`: `+`, `-`, `c`, and
+  `x` for the commit of a removal; then `i` or `m` for a first or a
+  maintenance install). The engine builds that data with type-51 actions
+  the builder writes (`internal/builder/permissions.go`); never add an
+  immediate action that computes data for a deferred LocalSystem action,
+  because it runs as the installing user, who can change it. The deferred
+  action rejects `|` and control characters in a formatted account and
+  control characters in an object; the account is the last field of a
+  line. The deferred action records the rights it adds in
   `HKCU\Software\msi-builder\GrantRollback\<ProductCode>` (the LocalSystem
   hive) before it writes the DACL, so the rollback takes away only those;
   never make the rollback revoke the authored mask, which strips rights an
   object had before a failed repair or upgrade. An account from a property
-  is remembered by the commit action (`a` lines,
+  is remembered by the commit action (lines whose template has `[`,
   `HKLM\SOFTWARE\msi-builder\GrantAccounts\<ProductCode>`, value named
   after the template), because `msiexec /fa` and Apps & Features
   repairs run without the first install's command line properties (observed

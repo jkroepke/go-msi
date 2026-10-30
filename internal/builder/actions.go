@@ -76,6 +76,7 @@ const (
 	actDuplicateFiles       = "DuplicateFiles"
 
 	condNotInstalled = "NOT Installed"
+	condRemoveAll    = `REMOVE~="ALL"`
 	condVersionNT    = "VersionNT"
 	fwAny            = "any"
 	targetDir        = "TARGETDIR"
