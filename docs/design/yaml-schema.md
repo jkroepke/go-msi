@@ -929,10 +929,14 @@ What gets ended, and when:
   the file (`$Component=3`), and so does every removal.
 - Copies that other users run on the same machine, a terminal server
   included, are ended without a `WM_CLOSE`, because the first action only
-  reaches the installing user's desktop (CLOSE-01 checks the installing
-  user's side only). Ending a program loses what it has not saved, so
+  reaches the installing user's desktop (CLOSE-01 confirmed that side on
+  the CI runner; other sessions are not tested). Ending a program loses what it has not saved, so
   `terminate: false` suits editors and tools where the user should decide;
   the engine's files-in-use handling then deals with what still runs.
+- That files-in-use check runs before the programs without a window are
+  ended, so it still lists them, and also a program of the same name in
+  another folder (observed, CLOSE-01). A silent install only logs this; a
+  full UI may show its files-in-use dialog (not tested).
 - A console program has no window of its own (its console window is
   left alone), so it is ended, or left alone with `terminate: false`.
 - A service the package installs is stopped by its `control` events

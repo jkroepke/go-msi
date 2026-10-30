@@ -1039,3 +1039,30 @@ as key path.
   kept), a `CompLocator` search for such a ComponentId, a second
   administrator's uninstall of a per-machine install, Windows Server 2016.
 
+## Closing running programs (CLOSE-01)
+
+Run on 2026-10-30 in the `Build & Test (windows-latest, native)` job
+(Windows Server 2025 x64, elevated) of PR #151, run 41063132919, by
+`TestMsiexecClosesApps` in
+`internal/builder/nativetest/close_windows_test.go`. The package installs
+`gui.exe` and `cli.exe` with `close: true` and `keep.exe` with
+`close: {timeout: 2s, terminate: false}` to `C:\Program Files\MsiBuilderClose`,
+with `MSIRESTARTMANAGERCONTROL=Disable`. The test starts the helpers itself
+(`CREATE_NO_WINDOW`) and runs `msiexec /qn` with a verbose log.
+
+| Step | Result |
+| --- | --- |
+| `/fomus` repair with `gui.exe` (hidden window), `cli.exe` (console), `keep.exe` (console), `keep.exe` (visible main window plus a hidden helper window) and a copy of `cli.exe` in another folder running | exit 0. `BuilderCloseSchedule` logged "asked to close" and "exited" for `gui.exe` (exit code 0, its `WM_CLOSE` marker written) and for the visible `keep.exe` (exit 0, its hidden window got no `WM_CLOSE`), and "has no window to close on this desktop" for both console programs. `BuilderCloseExec` got `CustomActionData` `\|...\cli.exe\|...\gui.exe\|`, ended `cli.exe` (exit code 1602) and logged `gui.exe` as not running. The console `keep.exe` and the copy elsewhere kept running |
+| `/x` with `gui.exe`, `cli.exe` and the copy elsewhere running | exit 0. `gui.exe` closed by `WM_CLOSE` as above, `cli.exe` ended with 1602, the copy elsewhere kept running, the product was removed |
+
+- `InstallValidate` ran after `BuilderCloseSchedule` and logged `Info 1603.
+  The file ...\cli.exe is being held in use by the following process` twice
+  in the uninstall: for the installed `cli.exe` and for the copy in the other
+  folder, so the engine's files-in-use check matches by name. In a silent
+  install that is only a log line; `gui.exe`, closed before, was not listed.
+- The immediate action ran in the engine's impersonated custom action server
+  (`MSI (s)` in the log) and still reached the windows of the helpers, which
+  run in the same session as the elevated test process.
+- Not covered: a full-UI install (the files-in-use dialog), a standard user's
+  install, another user's session, a 32-bit or Arm64 package, a major
+  upgrade, Windows Server 2016.
