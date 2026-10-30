@@ -1096,7 +1096,7 @@ done:
 static const WCHAR rollbackKey[] = u"Software\\msi-builder\\GrantRollback\\";
 static const WCHAR accountsKey[] = u"SOFTWARE\\msi-builder\\GrantAccounts\\";
 static const WCHAR userAccountsKey[] = u"\\Software\\msi-builder\\GrantAccounts\\";
-static const WCHAR msgUserSid[] = u"the user's security identifier is missing or malformed; accounts are neither remembered nor looked up";
+static const WCHAR msgUserSid[] = u"the user's security identifier is missing or malformed; remembered accounts are not used";
 static const WCHAR msgRemembered[] = u"the account is empty in a maintenance install; granting to the remembered account";
 static const WCHAR msgRemember[] = u"cannot remember the account of";
 static const WCHAR condRemoveAll[] = u"REMOVE~=\"ALL\"";
