@@ -620,6 +620,10 @@
               }
             ]
           },
+          "progress": {
+            "type": "string",
+            "description": "Description in the ActionText table: the wizard's progress page shows a deferred action's text while it runs, and the verbose log writes it (under /qn only for deferred actions). Formatted: [Property] references are resolved."
+          },
           "schedule": {
             "type": "array",
             "items": {
@@ -863,6 +867,13 @@
               "license": {
                 "type": "string",
                 "description": "Replaces ui.license in this language."
+              },
+              "progress": {
+                "type": "object",
+                "description": "Replaces the progress texts of customActions in this language, by action ID.",
+                "additionalProperties": {
+                  "type": "string"
+                }
               },
               "launch": {
                 "type": [

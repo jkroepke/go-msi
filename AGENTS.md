@@ -239,6 +239,12 @@ go test ./... -shuffle=on -race
   absent from the control view the driver walks (UI-07). A PathEdit's
   text (the install folder) is among the window's names (UI-08). Each
   driver run starts with an empty log.
+- `ActionText.Description` is declared `Text`, but the engine formats it:
+  `[ProductName]` was resolved on the progress page and in the log, and a
+  deferred action's text is resolved when the script is written (its
+  `ActionStart` operation). A `/qn` log omits an immediate action's
+  description; it appears as `Action hh:mm:ss: <name>. <text>` with the full
+  UI (CA-08; `/qb` not tested).
 - To see what a broadcast reaches, `broadcast_windows_test.go` logs
   `WM_SETTINGCHANGE` in a hidden top-level window (message-only windows
   get no broadcasts: documented, unverified) and reads Explorer's current environment block

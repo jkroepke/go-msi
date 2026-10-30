@@ -610,7 +610,11 @@ type CustomAction struct { //nolint:govet // field order is the YAML key order
 	Return       string        `yaml:"return"`
 	HideTarget   bool          `yaml:"hideTarget"`
 	Once         string        `yaml:"once"`
-	Schedule     []Placement   `yaml:"schedule"`
+	// Progress is the action's description in the ActionText table, shown
+	// by the wizard's progress page while a deferred action runs and
+	// written to the verbose log (under /qn only for deferred actions).
+	Progress string      `yaml:"progress"`
+	Schedule []Placement `yaml:"schedule"`
 
 	// origin is the YAML path of the service argument an action was
 	// generated from.

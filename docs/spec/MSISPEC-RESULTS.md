@@ -275,6 +275,7 @@ Silent-failure cases a producer has to guard against itself:
 | CA-05 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40893135210 (PR #106): the engine copies the `Binary` program to `C:\Windows\Installer\MSIxxxx.tmp`, runs it in `C:\Windows\system32` and deletes it; deferred no-impersonate runs as LocalSystem, the rest as the user; exit 7 and exit 3010 are both error 1722 and msiexec 1603; [details](#exe-actions-ca-05) |
 | CA-06 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40925575633 (PR #117): `add rule name=all` fails in any case and quoted; `delete rule name=all` deletes every rule the other filters select, `"all"` and `\"all\"` included; unscoped with `dir=in` it deleted every inbound rule (208, two of them probe rules); names with spaces around `all` are ordinary names; [details](#reserved-firewall-rule-name-ca-06) |
 | CA-07 | Confirmed | [ci](msitest/results/CA-07/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40940932552: `localport=80,443,8000-8010` from the package and from a property is stored as written; uninstall removes the rule |
+| CA-08 | Confirmed | GitHub `windows-latest` runner, 2026-10-30, CI runs 41053365815 and 41058632106 (`TestMsiexecProgressText`, `TestFullUIProgressText`): the full-UI progress page shows a deferred action's `ActionText` description with `[ProductName]` resolved; the verbose log writes descriptions formatted; the German transform replaces the row; a `/qn` log has no description for an immediate action; [details](#progress-texts-ca-08) |
 | SHORTCUT-01 | Confirmed | [hkcu-folder](msitest/results/SHORTCUT-01/hkcu-folder/log.md), [file-component](msitest/results/SHORTCUT-01/file-component/log.md), [file-component-folder](msitest/results/SHORTCUT-01/file-component-folder/log.md), [advertised](msitest/results/SHORTCUT-01/advertised/log.md), [per-user](msitest/results/SHORTCUT-01/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-shortcut-01) |
 | SHORTCUT-02 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40882369236 (PR #98): the engine converts `PropVariantValue` to the property's type and formats it; a CLSID needs braces; an unknown name or a bad value is warning 1946 and the install goes on; [details](#shortcut-properties-shortcut-02) |
 | SHORTCUT-03 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI runs 40900720903 and 40908162979 (PR #105): WriteIniValues writes the `.url` as ANSI with CRLF, the shell reads the address, the `RemoveFile` row deletes it at uninstall after the shell added a section; [details](#shortcut-targets-shortcut-03-shortcut-04) |
@@ -1040,3 +1041,29 @@ as key path.
   kept), a `CompLocator` search for such a ComponentId, a second
   administrator's uninstall of a per-machine install, Windows Server 2016.
 
+## Progress texts (CA-08)
+
+Run on 2026-10-30 in CI runs 41053365815 and 41058632106 on the
+`Build & Test (windows-latest, native)` job (Windows Server 2025 x64,
+elevated, interactive session for the full UI) by the tests in
+`internal/builder/nativetest/progress_windows_test.go`. The package is the
+full-UI test package with two more actions: `SetMarker`, an immediate
+`setProperty` after `CostFinalize` with the description
+`Preparing [ProductName]`, and `WaitStep`, a deferred `run` action running
+`PING.EXE -n 6 127.0.0.1` (about 5 seconds) before `InstallFinalize` with
+`Waiting for [ProductName] to settle`. The `de` language entry translates
+`WaitStep` to `Warte auf [ProductName]`.
+
+| Run | Observed |
+| --- | --- |
+| full UI, driver reading every window each 500 ms | progress page: `Waiting for MsiBuilderFullUI to settle` in the `ActionText` control, above `Status:` and the page's own text |
+| full UI, verbose log | `Action 12:56:00: SetMarker. Preparing MsiBuilderFullUI`; `Action 12:56:00: WaitStep.Data. ` (no row); `Action 12:56:00: WaitStep. Waiting for MsiBuilderFullUI to settle` when it is scheduled and again when the script runs it; `Executing op: ActionStart(Name=WaitStep,Description=Waiting for MsiBuilderFullUI to settle,)` |
+| `/qn`, base language | `Action start 13:02:19: SetMarker.` with no description; `Executing op: ActionStart(Name=WaitStep,Description=Waiting for MsiBuilderFullUI to settle,)` |
+| `/qn`, `ProductLanguage=1031` | `Aktion gestartet um 13:02:24: SetMarker.`; `Executing op: ActionStart(Name=WaitStep,Description=Warte auf MsiBuilderFullUI,)` |
+
+- The `Description` column is declared `Text`, yet the engine formats it:
+  `[ProductName]` was resolved in every place it appeared.
+- The deferred action's text is already resolved in the script's
+  `ActionStart` operation, so it holds the property values of the moment the
+  script was written.
+- Not covered: basic UI (`/qb`).
