@@ -331,12 +331,16 @@ func conditionalLevelProblem(level, cond string) string {
 		return fmt.Sprintf("the level is not a number from 0 to %d", maxLevel)
 	}
 
+	if strings.TrimSpace(cond) == "" {
+		return "the condition is empty"
+	}
+
 	if states := condition.States(cond); len(states) > 0 {
 		return "a feature condition cannot ask for feature or component states (" + strings.Join(states, ", ") + ")"
 	}
 
 	if i := slices.IndexFunc(condition.Properties(cond), isMaintenanceProperty); i >= 0 {
-		return condition.Properties(cond)[i] + " is not set at a first install, and msi-builder applies feature conditions to first installs only"
+		return condition.Properties(cond)[i] + " selects maintenance runs, and msi-builder applies feature conditions to first installs only"
 	}
 
 	if strings.Contains(cond, "${") {

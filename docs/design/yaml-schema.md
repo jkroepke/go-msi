@@ -604,15 +604,16 @@ features:
   uninstall, and a feature that a row disables when the product is removed
   keeps its files (INST-05). The conditions therefore
   decide first installs and major upgrades only; a feature disabled at the
-  first install can be added later with `ADDLOCAL`. A major upgrade that
-  does not get the property again disables the feature, and the old
-  version's copy is removed. A feature that is off by default and has no
+  first install can be added later with `ADDLOCAL`. A major upgrade
+  without the property drops a feature whose `disabled` condition is then
+  true (`ASSOC <> 1`), and the old version's copy is removed. A feature that is off by default and has no
   `disabled` condition was kept by an upgrade when the old version had
   installed it, and stayed absent when the old version had left it out,
   even with its condition true; one that the old version had disabled
   followed its condition. A condition with `default: off` was not tested
   in an upgrade. A condition cannot use `Installed`, `REMOVE` or
-  `REINSTALL`, which are never set at a first install.
+  `REINSTALL`: they select maintenance runs, which the `NOT Installed`
+  guard excludes.
   When several conditions are true, the higher level won (INST-05).
 - Every component is in at least one feature (ICE21). A component used by
   two features is defined once in `components` and named by ID in both.

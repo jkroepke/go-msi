@@ -51,7 +51,7 @@ features:
   - id: Docs
     title: Documentation
     # TODO(line 59): the conditional level "40000" with condition "1" was not converted: the level is not a number from 0 to 32767
-    # TODO(line 60): the conditional level "2" with condition "Installed" was not converted: Installed is not set at a first install, and msi-builder applies feature conditions to first installs only
+    # TODO(line 60): the conditional level "2" with condition "Installed" was not converted: Installed selects maintenance runs, and msi-builder applies feature conditions to first installs only
     conditions:
       - condition: NOT INSTALLDOCS
         default: disabled

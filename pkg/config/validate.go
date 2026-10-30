@@ -688,7 +688,7 @@ func maintenanceProperties(cond string) []string {
 func (v *validator) featureCondition(field string, cond *FeatureCondition) {
 	field += ".condition"
 
-	if !v.required(field, cond.Condition) {
+	if !v.required(field, strings.TrimSpace(cond.Condition)) {
 		return
 	}
 
@@ -704,8 +704,8 @@ func (v *validator) featureCondition(field string, cond *FeatureCondition) {
 	}
 
 	if names := maintenanceProperties(cond.Condition); len(names) > 0 {
-		v.errorf(field, "uses %s, which is not set at a first install; the builder applies feature conditions "+
-			"to first installs only (NOT Installed, INST-05)", strings.Join(names, ", "))
+		v.errorf(field, "uses %s; Installed, REMOVE and REINSTALL select maintenance runs, but the builder applies feature conditions "+
+			"to first installs only (NOT Installed, INST-05), so the term is meaningless there", strings.Join(names, ", "))
 	}
 
 	if full := cond.FullCondition(); len(full) > maxComponentCondition {
