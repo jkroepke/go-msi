@@ -176,6 +176,7 @@ func (c *converter) emitActions() {
 		}
 
 		c.setProgress(action, actionID, progress)
+		reanchor(actionID, byAction[actionID])
 		action.set("schedule", byAction[actionID])
 		delete(byAction, actionID)
 		c.extensionAnchors(action, custom)
@@ -354,11 +355,11 @@ func (c *converter) onlyLaunch(actionID string, byAction map[string][]any) bool 
 // anchorKey names an action in one sequence.
 type anchorKey struct{ action, sequence string }
 
-// reanchor moves the placements anchored on an action that convert leaves
-// out, a command line setter that becomes part of its run action or a
-// WixPerMachineFolder setter, to that action's own anchor in the same
-// sequence. It returns the function that does so, for the schedules of
-// SetProperty and SetDirectory.
+// reanchor returns the function that moves the placements anchored on an
+// action that convert leaves out, a command line setter that becomes part
+// of its run action or a WixPerMachineFolder setter, to that action's own
+// anchor in the same sequence. emitActions calls it for the actions it
+// writes only, so that no note names a placement left out of the output.
 func (c *converter) reanchor(byAction map[string][]any) func(string, []any) {
 	anchors, sources := c.sourceAnchors(byAction)
 
@@ -368,10 +369,6 @@ func (c *converter) reanchor(byAction map[string][]any) func(string, []any) {
 				entries[i] = c.followAnchors(id, placement, anchors, sources)
 			}
 		}
-	}
-
-	for _, id := range slices.Sorted(maps.Keys(byAction)) {
-		move(id, byAction[id])
 	}
 
 	return move
@@ -423,7 +420,7 @@ func (c *converter) followAnchors(actionID string, placement *omap, anchors map[
 		anchor := anchors[anchorKey{name, placement.str("sequence")}]
 		if anchor == nil {
 			custom := c.actions[actionID]
-			target := fallbackAnchor(custom != nil && !immediate(custom))
+			target := fallbackAnchor(custom != nil && inScript(custom))
 
 			moved := moveAnchor(placement, flowMap().set(key, target))
 			c.todof(moved, "", src.line, "%s was scheduled next to %s, which is not in the %s sequence; convert "+
@@ -510,6 +507,17 @@ func moveAnchor(placement, anchor *omap) *omap {
 	}
 
 	return moved
+}
+
+// inScript reports whether a custom action runs in the install script:
+// deferred, rollback or commit.
+func inScript(ca *elem) bool {
+	switch ca.attr("Execute") {
+	case "deferred", "rollback", "commit":
+		return true
+	default:
+		return false
+	}
 }
 
 func immediate(ca *elem) bool {
