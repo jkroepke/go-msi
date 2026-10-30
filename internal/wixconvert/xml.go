@@ -105,8 +105,10 @@ type procInst struct {
 	target string
 	inst   string
 	line   int
-	// skipped is set on an elseif or else whose branch was left out.
+	// skipped is set on an instruction inside a left-out branch.
 	skipped bool
+	// leftOut is set on an elseif or else whose branch is left out.
+	leftOut bool
 }
 
 // document is a parsed source file.
@@ -195,16 +197,20 @@ func (b *treeBuilder) procInst(tok xml.ProcInst, line int) {
 
 	switch proc.target {
 	case "if", "ifdef", "ifndef":
+		proc.skipped = b.skipping()
 		b.branches = append(b.branches, false)
 	case "elseif", "else":
 		if len(b.branches) > 0 {
-			proc.skipped = !b.skipping()
+			outer := slices.Contains(b.branches[:len(b.branches)-1], true)
+			proc.skipped, proc.leftOut = outer, !outer
 			b.branches[len(b.branches)-1] = true
 		}
 	case "endif":
 		if len(b.branches) > 0 {
 			b.branches = b.branches[:len(b.branches)-1]
 		}
+	default:
+		proc.skipped = b.skipping()
 	}
 
 	b.doc.procs = append(b.doc.procs, proc)

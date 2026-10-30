@@ -503,6 +503,10 @@ func (c *converter) addMember(within scope, entry member) {
 // preprocessor turns <?define?> into vars and notes everything else.
 func (c *converter) preprocessor() { //nolint:cyclop // one branch per processing instruction
 	for _, proc := range c.doc.procs {
+		if proc.skipped {
+			continue
+		}
+
 		switch proc.target {
 		case "define":
 			name, value, ok := strings.Cut(proc.inst, "=")
@@ -519,7 +523,7 @@ func (c *converter) preprocessor() { //nolint:cyclop // one branch per processin
 		case "if", "ifdef", "ifndef":
 			c.todof(nil, "", proc.line, "<?%s %s?> is not evaluated: only its first branch was converted", proc.target, proc.inst)
 		case "elseif", "else":
-			if proc.skipped {
+			if proc.leftOut {
 				c.todof(nil, "", proc.line, "the <?%s?> branch was left out; convert it by hand if your build takes it", strings.TrimSpace(proc.target+" "+proc.inst))
 			}
 		case "foreach":
