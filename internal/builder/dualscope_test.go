@@ -129,7 +129,12 @@ ui: { enabled: false }
 
 	want := map[string]string{"=-*PATH": "(OPT) AND ALLUSERS=1", "=-PATH": "(OPT) AND NOT ALLUSERS"}
 
-	for _, row := range rows(t, database, "Environment") {
+	variables := rows(t, database, "Environment")
+	if len(variables) != len(want) {
+		t.Fatalf("%d Environment rows, want %d", len(variables), len(want))
+	}
+
+	for _, row := range variables {
 		carrier := fmt.Sprint(row[3])
 		cond := cell(t, database, "Component", "Condition", func(r []any) bool { return r[0] == carrier })
 		attrs, ok := cell(t, database, "Component", "Attributes", func(r []any) bool { return r[0] == carrier }).(int)
