@@ -83,6 +83,10 @@ func (c *converter) standardAction(entry, seq *elem) {
 		}
 	case entry.is("Show"):
 		c.todof(nil, "", entry.line, "<Show Dialog=%q> schedules a dialog; use the ui keys", entry.attr("Dialog"))
+	case c.condition(entry) != "":
+		c.todof(nil, "", entry.line, "the standard action %s runs only when %s; msi-builder has no conditions on standard "+
+			"actions, so put the condition on the components whose resources it handles (components[].condition)",
+			entry.name, c.condition(entry))
 	default:
 		c.todof(nil, "", entry.line, "rescheduling the standard action %s in %s has no counterpart", entry.name, seq.name)
 	}

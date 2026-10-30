@@ -4,6 +4,7 @@
 # WiX variables became ${NAME} references; pass them with --var NAME=value: BinDir, ProductVersion.
 # TODO(line 19): <?if $(var.Edition) = "full"?> is not evaluated: only its first branch was converted
 # TODO(line 21): the <?else?> branch was left out; convert it by hand if your build takes it
+# TODO(line 87): the standard action InstallServices runs only when NOT (NO_SERVICE = 1); msi-builder has no conditions on standard actions, so put the condition on the components whose resources it handles (components[].condition)
 schema: msi-builder/v1
 product:
   name: Hello Tools
@@ -50,9 +51,18 @@ features:
     components: [ToolExe]
   - id: Docs
     title: Documentation
-    # TODO(line 64): conditional feature levels have no counterpart; the condition was "NOT INSTALLDOCS"
-    components: [Readme, ToolCfgKey]
+    # TODO(line 76): conditional feature levels have no counterpart; the condition was "NOT INSTALLDOCS"
+    components: [Readme, ToolCfgKey, ToolsMenuLinks]
 components:
+  # The RemoveFolder and HKCU key path of this shortcut component were left out:
+  # msi-builder writes both for every shortcut.
+  # Its WiX GUID {2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E64} was left out with them: a component with other resources needs a new GUID.
+  - id: ToolsMenuLinks
+    directory: ProgramMenuFolder/Hello Tools
+    shortcuts:
+      - name: Read me
+        file: readme.txt
+        directory: ProgramMenuFolder/Hello Tools
   - id: Readme
     guid: '{2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E61}'
     files:
@@ -117,7 +127,7 @@ customActions:
       command: '"[#tool.exe]" --setup'
     execute: commit
     return: asyncWait
-    # TODO(line 77): the progress template of RunTool is not converted: msi-builder writes no ActionText templates
+    # TODO(line 91): the progress template of RunTool is not converted: msi-builder writes no ActionText templates
     progress: Setting up the tool
     schedule:
       - {sequence: execute, after: InstallFiles, condition: NOT Installed AND NOT REMOVE}
