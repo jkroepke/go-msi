@@ -783,8 +783,9 @@ an HKCU value under `Software\[Manufacturer]\[ProductName]` as its key path
 (ICE38, ICE43), `RemoveFile` rows for the folders it creates below a
 profile folder (ICE64), and in every feature of the file's component. In
 a per-user package that folder must not be a per-machine one (ICE105).
-The generated component is never permanent, so the shortcuts of a file in
-a `permanent` component are removed on uninstall while the file stays
+The generated component of a component that also installs something is
+never permanent, so the shortcuts of a file in a `permanent` component
+are removed on uninstall while the file stays
 (observed on a clean Windows machine: wazuh's "Edit conf" shortcut of its
 permanent `ossec.conf`). Builds before this rule made that component
 permanent, and Windows keeps a permanent ComponentId registered after
@@ -793,8 +794,9 @@ its key path value after its own uninstall (observed). The generated
 component of a `permanent` component therefore gets a ComponentId that no
 older build used, and the ProductCode digest changes with it, so that a
 rebuild of the same version does not fail with 1638. The old registration
-stays for good, but no longer keeps the new package's shortcuts (not
-tested yet).
+stays for good, but no longer keeps the new package's shortcuts: the new
+package's uninstall removed the shortcut and the key path value of the
+same name (observed).
 SHORTCUT-01 installed and removed shortcuts from an own HKCU-keyed component and
 from the file's own component alike, and removed an empty Start menu folder
 without a `RemoveFile` row; the Windows tests run the ICE suite on the

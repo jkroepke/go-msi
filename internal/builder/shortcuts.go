@@ -176,10 +176,10 @@ func (b *build) createFolder(carrier, dirID string, created map[string]bool) {
 }
 
 // hashRemovableCarriers adds a marker to the ProductCode digest when a
-// permanent component has shortcuts in a generated component. Builds that
-// made that component permanent gave it another ComponentId (carrierGUID),
-// so the rebuild needs another code, or installing it over the old one
-// fails with 1638.
+// permanent component has shortcuts in a generated component. Earlier
+// builds made the generated component permanent under the ComponentId that
+// carrierGUID now changes, so the rebuild needs another code, or installing
+// it over the old one fails with 1638.
 func (b *build) hashRemovableCarriers(hasher io.Writer) {
 	if slices.ContainsFunc(b.cfg.Components, func(comp *config.Component) bool {
 		return comp.Permanent && !shortcutsOnly(comp) && hasShortcuts(comp)

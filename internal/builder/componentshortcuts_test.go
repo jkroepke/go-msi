@@ -511,7 +511,7 @@ func TestShortcutCarrierNotPermanent(t *testing.T) {
 func TestShortcutCarrierGUIDOfPermanentComponent(t *testing.T) {
 	t.Parallel()
 
-	carrierGUID := func(permanent bool) any {
+	build := func(permanent bool) (any, string) {
 		res := mustBuild(t, shortcutConfig(t, fmt.Sprintf(`
   - id: Conf
     permanent: %v
@@ -532,19 +532,33 @@ func TestShortcutCarrierGUIDOfPermanentComponent(t *testing.T) {
 			t.Fatalf("generated shortcut components %v, want 1", guids)
 		}
 
-		return guids[0]
+		return guids[0], res.ProductCode
 	}
 
 	// The carrier of a removable component keeps the ComponentId that
 	// every earlier build gave it.
 	const earlier = "{E8F093D1-5257-5AA8-804A-DF8360647E81}"
 
-	kept, removable := carrierGUID(false), carrierGUID(true)
+	kept, keptCode := build(false)
+	removable, removableCode := build(true)
+
 	if kept != earlier {
 		t.Errorf("carrier of a removable component has the ComponentId %v, want %v", kept, earlier)
 	}
 
 	if removable == kept {
 		t.Errorf("carrier of a permanent component has the ComponentId %v of a removable one", kept)
+	}
+
+	// The ProductCode changes with it (hashRemovableCarriers), or a rebuild
+	// over an earlier build fails with 1638; the removable one keeps its own.
+	const keptCodeEarlier, permanentCodeEarlier = "{0F9FB8C6-3B99-519E-815E-27EE6DF18EB8}", "{9CB60842-0523-5131-9926-CDF051520981}"
+
+	if keptCode != keptCodeEarlier {
+		t.Errorf("ProductCode %v, want the earlier %v", keptCode, keptCodeEarlier)
+	}
+
+	if removableCode == permanentCodeEarlier {
+		t.Errorf("ProductCode %v of a permanent component's carrier did not change", removableCode)
 	}
 }
