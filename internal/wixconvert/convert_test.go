@@ -2,6 +2,7 @@ package wixconvert_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -202,6 +203,288 @@ func TestConvertV3Scope(t *testing.T) {
 
 	if !strings.Contains(string(res.YAML), "no InstallScope") {
 		t.Errorf("no scope note in\n%s", res.YAML)
+	}
+}
+
+// codesSource has components that a built package finds by Id, by key file,
+// and not at all, plus a shortcut component.
+const codesSource = `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Directory Id="DocsDir" Name="docs" />
+        <Directory Name="extra">
+          <Component>
+            <File Source="a.txt" />
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <Component Id="Main" Directory="INSTALLFOLDER">
+      <File Id="main.exe" Source="main.exe" />
+    </Component>
+    <Component Directory="INSTALLFOLDER">
+      <File Source="notes.txt" />
+    </Component>
+    <Component Directory="DocsDir">
+      <File Source="readme.txt" />
+    </Component>
+    <Component Id="Menu" Directory="ProgramMenuFolder">
+      <Shortcut Name="Hello" Target="[#main.exe]" />
+      <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="menu" Value="1" KeyPath="yes" />
+    </Component>
+    <Component Directory="ProgramMenuFolder">
+      <Shortcut Name="Hello notes" Target="[#main.exe]" Arguments="notes" />
+      <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="notes" Value="1" KeyPath="yes" />
+    </Component>
+    <Component Id="Unmanaged" Directory="ProgramMenuFolder" Guid="" Permanent="yes">
+      <Shortcut Name="Hello tools" Target="[#main.exe]" Arguments="tools" />
+    </Component>
+    <Component Directory="INSTALLFOLDER" Subdirectory="bin">
+      <File Source="tool.exe" />
+    </Component>
+    <InstallExecuteSequence>
+      <RemoveExistingProducts After="InstallExecute" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>
+`
+
+func TestConvertBuiltCodes(t *testing.T) {
+	t.Parallel()
+
+	built := &wixconvert.BuiltPackage{Name: "hello.msi", Components: []wixconvert.BuiltComponent{
+		{ID: "Main", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "INSTALLFOLDER", KeyFile: "main.exe"},
+		// Two rows with the key file notes.txt: no match.
+		{ID: "cmpA", Code: "{00000000-0000-4000-8000-000000000002}", Directory: "INSTALLFOLDER", KeyFile: "notes.txt"},
+		{ID: "cmpB", Code: "{00000000-0000-4000-8000-000000000003}", Directory: "INSTALLFOLDER", KeyFile: "notes.txt"},
+		// Another folder: no match.
+		{ID: "cmpC", Code: "{00000000-0000-4000-8000-000000000004}", Directory: "OtherDir", KeyFile: "readme.txt"},
+		// A folder without an Id matches any folder.
+		{ID: "cmpD", Code: "{00000000-0000-4000-8000-000000000005}", Directory: "dirE1A2", KeyFile: "a.txt"},
+		{ID: "Menu", Code: "{00000000-0000-4000-8000-000000000006}", Directory: "ProgramMenuFolder"},
+		// A Subdirectory folder has a generated ID in the package.
+		{ID: "cmpE", Code: "{00000000-0000-4000-8000-000000000007}", Directory: "dirB7C3", KeyFile: "tool.exe"},
+	}}
+
+	res, err := wixconvert.Convert(strings.NewReader(codesSource), wixconvert.Options{Built: built})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text := string(res.YAML)
+	for _, want := range []string{
+		"guid: '{00000000-0000-4000-8000-000000000001}'",
+		"guid: '{00000000-0000-4000-8000-000000000005}'",
+		// The shortcut component keeps its code and its shortcut.
+		"guid: '{00000000-0000-4000-8000-000000000006}'\n    shortcuts:\n      - name: Hello\n        file: main.exe",
+		"guid: '{00000000-0000-4000-8000-000000000007}'",
+		// An unmanaged shortcut component keeps its shortcut too.
+		"guid: none\n    permanent: true\n    shortcuts:\n      - name: Hello tools",
+		"The guid of 4 components whose Guid WiX generated comes from hello.msi.",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("YAML lacks %q:\n%s", want, text)
+		}
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v", err)
+	}
+
+	var lines []int
+
+	for _, n := range res.Notes {
+		if strings.HasPrefix(n.Message, "hello.msi has no matching component") {
+			lines = append(lines, n.Line)
+		}
+	}
+
+	for _, want := range []string{
+		`the WiX value HKCU\Software\Example\Hello\menu stays behind`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("YAML lacks %q:\n%s", want, text)
+		}
+	}
+
+	if !slices.Equal(lines, []int{17, 20, 27}) {
+		t.Errorf("unmatched components in lines %v, want [17 20 27]", lines)
+	}
+
+	// Without the package, the late removal names every component, also
+	// the shortcut component.
+	res, err = wixconvert.Convert(strings.NewReader(codesSource), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := wixconvert.Note{Line: 38, Message: "WiX generated the Guid of the component in line 7, Main, the component in line 17, " +
+		"the component in line 20, Menu and 2 more components; msi-builder generates other codes"}
+
+	if !slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool {
+		return n.Line == want.Line && strings.HasPrefix(n.Message, want.Message)
+	}) {
+		t.Errorf("notes %v lack %v", res.Notes, want)
+	}
+}
+
+// A row that a source Id names is not matched again by key file.
+func TestConvertBuiltCodesOnce(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" />
+    </StandardDirectory>
+    <Component Id="X" Directory="INSTALLFOLDER">
+      <File Source="a.txt" />
+    </Component>
+    <Component Directory="INSTALLFOLDER" Subdirectory="copy">
+      <File Source="a.txt" />
+    </Component>
+  </Package>
+</Wix>
+`
+	built := &wixconvert.BuiltPackage{Name: "hello.msi", Components: []wixconvert.BuiltComponent{
+		{ID: "X", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "INSTALLFOLDER", KeyFile: "a.txt"},
+	}}
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{Built: built})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if n := strings.Count(string(res.YAML), "guid: '{00000000-0000-4000-8000-000000000001}'"); n != 1 {
+		t.Errorf("the code is pinned %d times:\n%s", n, res.YAML)
+	}
+
+	if !slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool {
+		return n.Line == 9 && strings.HasPrefix(n.Message, "hello.msi has no matching component")
+	}) {
+		t.Errorf("notes %v lack the unmatched component in line 9", res.Notes)
+	}
+}
+
+// A Files element: one file outside a component matches by its name, and a
+// glob, which became a folder source without a guid, gets the early removal
+// as its note instead of a guid to copy, also in a component with an Id.
+func TestConvertBuiltCodesFiles(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade Schedule="afterInstallExecute" DowngradeErrorMessage="A newer version is installed." />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" />
+    </StandardDirectory>
+    <Files Include="dist\tools\**" Directory="INSTALLFOLDER" Subdirectory="tools" />
+    <Files Include="dist\LICENSE.txt" Directory="INSTALLFOLDER" />
+    <Component Id="Tools" Directory="INSTALLFOLDER"><Files Include="dist\more\*.dll" /></Component>
+  </Package>
+</Wix>
+`
+	built := &wixconvert.BuiltPackage{Name: "hello.msi", Components: []wixconvert.BuiltComponent{
+		{ID: "fil1", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "INSTALLFOLDER", KeyFile: "LICENSE.txt"},
+		{ID: "fil2", Code: "{00000000-0000-4000-8000-000000000002}", Directory: "dirA1", KeyFile: "tool.exe"},
+		{ID: "Tools", Code: "{00000000-0000-4000-8000-000000000003}", Directory: "INSTALLFOLDER", KeyFile: "a.dll"},
+	}}
+
+	for _, opts := range []wixconvert.Options{{Built: built}, {}} {
+		res, err := wixconvert.Convert(strings.NewReader(src), opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		lines := globNotes(t, res.Notes, opts.Built != nil)
+		if !slices.Equal(lines, []int{7, 9}) {
+			t.Errorf("Built %t: glob notes in lines %v, want [7 9]", opts.Built != nil, lines)
+		}
+
+		if pinned := strings.Contains(string(res.YAML), "guid: '{00000000-0000-4000-8000-000000000001}'"); pinned != (opts.Built != nil) {
+			t.Errorf("Built %t: LICENSE.txt pinned %t:\n%s", opts.Built != nil, pinned, res.YAML)
+		}
+
+		if strings.Contains(string(res.YAML), "000000000002") || strings.Contains(string(res.YAML), "000000000003") {
+			t.Errorf("a folder source got a guid:\n%s", res.YAML)
+		}
+	}
+}
+
+// globNotes returns the lines of the Files glob notes and fails on any
+// other note about codes but the late removal of the file in line 8.
+func globNotes(t *testing.T, notes []wixconvert.Note, built bool) []int {
+	t.Helper()
+
+	var lines []int
+
+	for _, note := range notes {
+		switch {
+		case strings.HasPrefix(note.Message, "WiX gave each file of this Files glob a component of its own"):
+			lines = append(lines, note.Line)
+		case strings.Contains(note.Message, "no matching component"), strings.HasPrefix(note.Message, "WiX generated the Guid"):
+			if built || !strings.Contains(note.Message, "the component in line 8;") {
+				t.Errorf("unexpected note %v", note)
+			}
+		}
+	}
+
+	return lines
+}
+
+// Advertised shortcuts get a note when the old version is removed late,
+// unless convert left them out.
+func TestConvertAdvertisedLateRemoval(t *testing.T) {
+	t.Parallel()
+
+	const src = `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    %s
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <Component Id="Main" Directory="INSTALLFOLDER" Guid="6d1c0a42-93b8-4e57-a2f1-0c7e5d9b3a61">
+      <File Source="hello.exe">
+        <Shortcut Name="Hello" Directory="ProgramMenuFolder" Advertise="yes" />
+        <Shortcut Name="Hello again" Directory="ProgramMenuFolder" Advertise="yes" />
+      </File>
+    </Component>
+    <Component Id="Menu" Directory="ProgramMenuFolder" Guid="2b8f4e17-5a0c-4d93-b6e2-9f1a3c7d5e08">
+      <Shortcut Name="Hello docs" Advertise="yes" />
+      <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="menu" Value="1" KeyPath="yes" />
+      <Shortcut Name="Hello link" Target="[#hello.exe]" Advertise="yes" />
+      <Shortcut Name="Hello folder" Target="[INSTALLFOLDER]" Advertise="yes" />
+    </Component>
+  </Package>
+</Wix>
+`
+
+	const note = "the WiX package's advertised shortcuts (lines 10, 11, 17, 18) are deleted by this late removal"
+
+	for upgrade, want := range map[string]bool{
+		`<MajorUpgrade Schedule="afterInstallExecute" DowngradeErrorMessage="A newer version is installed." />`:    true,
+		`<MajorUpgrade Schedule="afterInstallInitialize" DowngradeErrorMessage="A newer version is installed." />`: false,
+		``: false,
+	} {
+		res, err := wixconvert.Convert(strings.NewReader(fmt.Sprintf(src, upgrade)), wixconvert.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// The shortcut without a Target in line 15 is left out, so the
+		// note does not list it.
+		got := slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool { return strings.HasPrefix(n.Message, note) })
+		if got != want {
+			t.Errorf("%s: note %t, want %t: %v", upgrade, got, want, res.Notes)
+		}
 	}
 }
 

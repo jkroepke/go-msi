@@ -57,7 +57,7 @@ versioning after 1.0.
   (SIG-09). `nativetest/cabsign_windows_test.go` probes it with growing
   buffers, because a call without a buffer returns 0 and size 0.
 - [`internal/cadll`](internal/cadll): the custom action DLL that `run`
-  actions and permission grants embed, built from C by `build.sh` with
+  actions, permission grants and `close` embed, built from C by `build.sh` with
   clang and lld and committed for x86, x64 and arm64; see its `AGENTS.md`
   before touching it. [`internal/rights`](internal/rights) maps grant
   rights names to access masks for `pkg/config` and the builder.
@@ -74,7 +74,11 @@ versioning after 1.0.
   the schema's key order; everything without a counterpart becomes a
   `# TODO` comment next to the key it belongs to and a `Note` for stderr.
   Snapshots in `testdata/` (regenerate with `MSI_BUILDER_UPDATE_SNAPSHOTS=1`)
-  must stay valid configs. The fixtures are our own sample app: never copy
+  must stay valid configs. With `--msi` (`Options.Built`) it pins the
+  component codes WiX generated, matched by `Id` or by key file (`codes.go`),
+  because a late `removeOld` deletes the files of every changed code
+  (UPG-11); a WiX shortcut component, which keeps its shortcut, is pinned too (UPG-11
+  shows a shared code keeps it; with WiX's other key path it is inferred). The fixtures are our own sample app: never copy
   third-party `.wxs` files in, and never read WiX source code (clean room).
 - [`internal/spool`](internal/spool), [`internal/memtest`](internal/memtest),
   [`internal/testpe`](internal/testpe): the spool target shared by file and

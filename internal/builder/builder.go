@@ -367,6 +367,7 @@ func (b *build) writeTables() error {
 		b.firewall,
 		b.permissions,
 		b.removeFolders,
+		b.closeApps,
 		b.streams,
 		b.customTables,
 		b.ui,

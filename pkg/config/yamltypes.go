@@ -191,6 +191,36 @@ func (a RecoveryAction) MarshalYAML() (any, error) {
 }
 
 // UnmarshalYAML accepts a boolean or a mapping.
+func (c *Close) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		var on bool
+		if err := node.Decode(&on); err != nil {
+			return fmt.Errorf("line %d: close is true, false or a mapping: %w", node.Line, err)
+		}
+
+		c.Disabled = !on
+
+		return nil
+	}
+
+	type plain Close
+
+	return decodeStrict(node, (*plain)(c))
+}
+
+// MarshalYAML writes false for a disabled close, so that the product code
+// derived from the marshalled config tells it from an enabled one.
+func (c Close) MarshalYAML() (any, error) {
+	if c.Disabled {
+		return false, nil
+	}
+
+	type plain Close
+
+	return plain(c), nil
+}
+
+// UnmarshalYAML accepts a boolean or a mapping.
 func (p *Purge) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind == yaml.ScalarNode {
 		var on bool

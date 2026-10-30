@@ -396,6 +396,7 @@ func (v *validator) folderFile(filePath string, file *File) {
 		{"language", file.Language != "" && file.Language != Auto},
 		{"shortcuts", len(file.Shortcuts) > 0},
 		{"fileTypes", len(file.FileTypes) > 0},
+		{"close", file.Close.Enabled()},
 	} {
 		if field.set {
 			v.errorf(filePath+"."+field.name, "not allowed on a folder source, which adds every file below it; "+

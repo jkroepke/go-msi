@@ -143,10 +143,7 @@ LicenseAgreementDlg	BottomLine	Line	0	234	370	0	1
 LicenseAgreementDlg	Cancel	PushButton	304	243	56	17	3		Cancel	LicenseText	
 LicenseAgreementDlg	Description	Text	25	21	300	22	196611		Please read the following license agreement carefully.		
 LicenseAgreementDlg	LicenseAcceptedCheckBox	CheckBox	20	202	330	18	3	LicenseAccepted	I &accept the terms in the License Agreement	Print	
-LicenseAgreementDlg	LicenseText	ScrollableText	20	55	330	140	7		{\rtf1\ansi\ansicpg1252\deff0\uc1{\fonttbl{\f0\fmodern\fcharset0 Courier New;}}
-\f0\fs16 Example license\par
-}
-	LicenseAcceptedCheckBox	
+LicenseAgreementDlg	LicenseText	ScrollableText	20	55	330	140	7		{\rtf1\ansi\ansicpg1252\deff0\uc1{\fonttbl{\f0\fmodern\fcharset0 Courier New;}}␊\f0\fs16 Example license\par␊}␊	LicenseAcceptedCheckBox	
 LicenseAgreementDlg	Next	PushButton	236	243	56	17	3		&Next >	Cancel	
 LicenseAgreementDlg	Print	PushButton	20	243	56	17	3		&Print	Back	
 LicenseAgreementDlg	Title	Text	15	6	300	15	196611		{\TitleFont}End-User License Agreement		

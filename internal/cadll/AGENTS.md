@@ -1,7 +1,7 @@
 # internal/cadll
 
-The custom action DLL of `run` actions and permission grants. Read the root
-`AGENTS.md` first.
+The custom action DLL of `run` actions, permission grants and `close`. Read
+the root `AGENTS.md` first.
 
 - `src/builderrun.c` is the whole DLL: freestanding C11, no C runtime, no SDK
   header. Every Win32 and MSI prototype it uses is declared in the file from
@@ -74,7 +74,7 @@ The custom action DLL of `run` actions and permission grants. Read the root
   layouts the DLL declares itself are pinned by `_Static_assert`s on their
   documented sizes for 32- and 64-bit builds.
 - `cadll_test.go` checks the checksums, the PE machine, the export and that
-  the imports are only kernel32, advapi32, msi and ntdll (NtCreateFile, NtSetInformationFile, RtlNtStatusToDosError). `testdata/probe` is the
+  the imports are only kernel32, advapi32, msi, user32 and ntdll (NtCreateFile, NtSetInformationFile, RtlNtStatusToDosError). `testdata/probe` is the
   CA-03 package that `internal/builder/nativetest` installs on Windows
   (`TestMsiexecRunActions`), natively on the x64 and arm64 runners. The x64
   package under emulation on arm64 passed once (CA-03) and is not rerun.
@@ -95,7 +95,23 @@ The custom action DLL of `run` actions and permission grants. Read the root
   repairs run without the first install's command line properties (observed
   on the CI runner, SEC-02). Wide strings in this part
   are `u"..."` literals, which clang types as `unsigned short` arrays.
-- Folder removal (spec 17.9) is the immediate export `BuilderRemoveFolders`
+- `close` (spec 17.9) uses the exports `BuilderCloseSchedule` (immediate,
+  before InstallValidate, as the user: `WM_CLOSE` to the visible unowned
+  top-level windows of every process whose image path equals the file's,
+  to its hidden ones only when it has none, then a wait) and `BuilderClose`
+  (the deferred `BuilderCloseExec`, LocalSystem, after StopServices:
+  `TerminateProcess` with 1602). They are the only user32 imports; keep
+  user32 out of every other path. A process matches by
+  `QueryFullProcessImageNameW` and `CompareStringOrdinal` without case,
+  never by name alone, so copies elsewhere survive. The paths
+  `BuilderCloseExec` ends come from type-51 actions of the engine
+  (`[BuilderCloseExec][DIR]file|`), never from the schedule action: the
+  impersonated custom action server runs with the user's token, so data it
+  sets for a LocalSystem action is under the user's control. Grants
+  (above) predate this and still hand their data over from the schedule
+  action. Neither close action fails the install; the schedule action
+  returns `ERROR_INSTALL_USEREXIT` only after a cancel.
+- Folder removal (spec 17.10) is the immediate export `BuilderRemoveFolders`
   (checks, after RemoveFiles) and `BuilderRemoveFoldersExec` for the
   rollback (`u`), deferred (`m`, or `d` with rollback disabled) and commit
   (`c`) actions. Do not go back to temporary `RemoveFile` rows: RemoveFiles

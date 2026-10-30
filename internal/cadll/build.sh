@@ -54,7 +54,9 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     MultiByteToWideChar:24 TerminateProcess:8 LocalFree:4 GetComputerNameW:8 \
     GetFileAttributesW:4 GetLongPathNameW:12 CompareStringOrdinal:20 \
     GetFinalPathNameByHandleW:16 ExpandEnvironmentStringsW:12 SetFileInformationByHandle:16 GetFileInformationByHandleEx:16 \
-    CreateDirectoryW:8 RemoveDirectoryW:4 MoveFileExW:12 >"$tmp/$out/kernel32.def"
+    CreateDirectoryW:8 RemoveDirectoryW:4 MoveFileExW:12 \
+    CreateToolhelp32Snapshot:8 Process32FirstW:8 Process32NextW:8 OpenProcess:12 \
+    QueryFullProcessImageNameW:16 >"$tmp/$out/kernel32.def"
   imports advapi32 OpenThreadToken:16 DuplicateTokenEx:24 CreateProcessAsUserW:44 SystemFunction036:8 \
     ConvertStringSidToSidW:8 LookupAccountNameW:28 GetNamedSecurityInfoW:32 GetSecurityInfo:32 SetNamedSecurityInfoW:28 \
     GetSecurityDescriptorControl:12 InitializeAcl:12 GetAce:12 AddAce:20 AddAccessAllowedAceEx:20 \
@@ -65,7 +67,9 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     MsiCloseHandle:4 MsiSetPropertyW:12 MsiFormatRecordW:16 MsiEvaluateConditionW:8 \
     MsiGetMode:8 >"$tmp/$out/msi.def"
   imports ntdll NtCreateFile:44 NtSetInformationFile:20 RtlNtStatusToDosError:4 >"$tmp/$out/ntdll.def"
-  for lib in kernel32 advapi32 msi ntdll; do
+  imports user32 EnumWindows:8 GetWindowThreadProcessId:8 PostMessageW:16 GetClassNameW:12 \
+    IsWindowVisible:4 GetWindow:8 >"$tmp/$out/user32.def"
+  for lib in kernel32 advapi32 msi ntdll user32; do
     "$DLLTOOL" -m "$arch" -k -d "$tmp/$out/$lib.def" -l "$tmp/$out/$lib.lib"
   done
   "$CLANG" --target="$triple-pc-windows-msvc" -std=c11 -O2 -Wall -Wextra -Werror \
@@ -74,8 +78,9 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     -c src/builderrun.c -o "$tmp/$out/builderrun.obj"
   "$CLANG" --target="$triple-pc-windows-msvc" -fuse-ld=lld -nostdlib -shared \
     -o "builderrun-$out.dll" "$tmp/$out/builderrun.obj" \
-    "$tmp/$out/kernel32.lib" "$tmp/$out/advapi32.lib" "$tmp/$out/msi.lib" "$tmp/$out/ntdll.lib" \
-    -Wl,/Brepro -Wl,/nodefaultlib -Wl,/entry:_DllMainCRTStartup -Wl,/export:BuilderRun -Wl,/export:BuilderGrant -Wl,/export:BuilderGrantSchedule -Wl,/export:BuilderRemoveFolders -Wl,/export:BuilderRemoveFoldersExec \
+    "$tmp/$out/kernel32.lib" "$tmp/$out/advapi32.lib" "$tmp/$out/msi.lib" "$tmp/$out/ntdll.lib" "$tmp/$out/user32.lib" \
+    -Wl,/Brepro -Wl,/nodefaultlib -Wl,/entry:_DllMainCRTStartup -Wl,/export:BuilderRun -Wl,/export:BuilderGrant -Wl,/export:BuilderGrantSchedule \
+    -Wl,/export:BuilderClose -Wl,/export:BuilderCloseSchedule -Wl,/export:BuilderRemoveFolders -Wl,/export:BuilderRemoveFoldersExec \
     -Wl,/release -Wl,/opt:ref -Wl,/opt:icf -Wl,/subsystem:windows
 done
 sha256sum builderrun-x86.dll builderrun-x64.dll builderrun-arm64.dll >SHA256SUMS
