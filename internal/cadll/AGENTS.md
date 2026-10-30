@@ -121,11 +121,15 @@ the root `AGENTS.md` first.
   the rollback (`u`), deferred (`m`, or `d` with `RollbackDisabled`) and
   commit (`c`) actions. Type-51 actions of the engine right after
   RemoveFiles build its data (`internal/builder/removefolders.go`): the
-  head `<op><scope><ProductCode>:` plus one `#` per line, then `s<name>|value`
-  lines for the standard folders (`cadll.RemoveFoldersStandard`), `p<path>`
-  lines for the package's directories and one `f<property>|value` line per
-  entry whose condition held; `parseRemoveData` fails on a line count that
-  differs from the `#`s (FILE-13) and on lines out of that order. There is
+  head `<op><scope><ProductCode>:` plus one `#` per entry, then `n<count>`
+  with the number of fixed lines (written by the builder), `s<name>|value`
+  lines for the standard folders (`cadll.RemoveFoldersStandard()`),
+  `p<path>` lines for the package's directories and one `f<property>|value`
+  line per entry whose condition held; `parseRemoveData` fails on a line
+  count that differs (a line break in a formatted value; FILE-13, not run
+  yet) and on lines out of that order. Never put a count of fixed lines
+  into a setter's target as `#`s: with many directories it outgrows the
+  255 characters of ICE03. There is
   no immediate action any more: every check (`checkEntry`) runs in the
   deferred action as LocalSystem, the own profile is matched by the
   engine's `UserSID`, never by the token, which is LocalSystem's there.

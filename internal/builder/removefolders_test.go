@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/jkroepke/msi-builder/internal/builder"
 )
 
 // TestRemoveFolders builds the data of the rollback, deferred and commit
@@ -111,13 +113,24 @@ properties:
 	// The data: op, scope, ProductCode, `:` and one `#` per line, then the
 	// standard folders, the package's directories and the entries.
 	product := values["ProductCode"]
-	for op, property := range map[string]string{"u": "BuilderRemoveFoldersUndo", "m": "BuilderRemoveFoldersExec", "c": "BuilderRemoveFoldersCommit"} {
+	for operation, property := range map[string]string{"u": "BuilderRemoveFoldersUndo", "m": "BuilderRemoveFoldersExec", "c": "BuilderRemoveFoldersCommit"} {
 		data := values[property]
 		head, body, _ := strings.Cut(data, "\n")
 		lines := strings.Split(body, "\n")
+		entries := 0
 
-		if want := op + "k" + product + ":" + strings.Repeat("#", len(lines)); head != want {
+		for _, line := range lines {
+			if line[0] == 'f' {
+				entries++
+			}
+		}
+
+		if want := operation + "k" + product + ":" + strings.Repeat("#", entries); head != want {
 			t.Errorf("%s head %q, want %q", property, head, want)
+		}
+
+		if want := "n" + strconv.Itoa(len(lines)-1-entries); lines[0] != want {
+			t.Errorf("%s first line %q, want %q", property, lines[0], want)
 		}
 
 		var kinds string
@@ -128,8 +141,8 @@ properties:
 			}
 		}
 
-		if kinds != "spf" {
-			t.Errorf("%s line kinds %q, want s, p, f in that order", property, kinds)
+		if kinds != "nspf" {
+			t.Errorf("%s line kinds %q, want n, s, p, f in that order", property, kinds)
 		}
 
 		for _, want := range []string{"sWindowsFolder|C:\\WindowsFolder\\", "pC:\\INSTALLDIR\\", "fINSTALLDIR|C:\\INSTALLDIR\\", "fDATA_DIR|C:\\DATA_DIR\\", "fOLD_DIR|C:\\OLD_DIR\\"} {
@@ -149,6 +162,13 @@ properties:
 		if strings.HasPrefix(name, "BuilderRemoveFoldersEntry") {
 			row := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == name })
 			entryConds[strings.TrimPrefix(fmt.Sprint(row[3]), "[BuilderRemoveFoldersData]\n")] = cond
+		}
+	}
+
+	// Each entry's count setter shares its condition.
+	for name, cond := range conds {
+		if id, ok := strings.CutPrefix(name, "BuilderRemoveFoldersEntry"); ok && conds["BuilderRemoveFoldersCount"+id] != cond {
+			t.Errorf("BuilderRemoveFoldersCount%s condition %q, want %q like its entry", id, conds["BuilderRemoveFoldersCount"+id], cond)
 		}
 	}
 
@@ -189,5 +209,30 @@ properties:
 		if got := strings.Contains(";"+secure+";", ";"+name+";"); got != want {
 			t.Errorf("SecureCustomProperties %q: %s secure %t, want %t", secure, name, got, want)
 		}
+	}
+}
+
+// TestRemoveFoldersRoom reports entries that do not fit between
+// RemoveFiles and RemoveFolders with the folder removal's own message.
+func TestRemoveFoldersRoom(t *testing.T) {
+	t.Parallel()
+
+	var entries, props strings.Builder
+
+	for i := range 60 {
+		fmt.Fprintf(&entries, "      - property: DIR_%d\n", i)
+		fmt.Fprintf(&props, "  DIR_%d: { value: 'C:\\D%d\\' }\n", i, i)
+	}
+
+	cfg := shortcutConfig(t, `
+  - files:
+      - source: app.exe
+    removeFolders:
+`+entries.String()+`properties:
+`+props.String())
+
+	_, err := builder.Build(cfg, builder.Options{})
+	if err == nil || !strings.Contains(err.Error(), "removeFolders takes") || !strings.Contains(err.Error(), "60 entries") {
+		t.Errorf("build error %v, want the removeFolders room message", err)
 	}
 }

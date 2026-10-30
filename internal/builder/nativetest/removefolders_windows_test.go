@@ -389,7 +389,7 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 		t.Error("OWN_DIR, in the installing account's profile, is still there after the removal")
 	}
 
-	// Swap made sub a junction after the check; the bait files behind it
+	// Swap made sub a junction before RemoveFiles; the bait files behind it
 	// must stay (requireGuarded), and so must the target of the junction
 	// link, which goes as a link with DATA_DIR.
 	if _, err := os.Lstat(tree.data); err == nil {

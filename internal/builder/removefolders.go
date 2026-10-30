@@ -3,9 +3,9 @@ package builder
 import (
 	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/jkroepke/msi-builder/internal/cadll"
+	"github.com/jkroepke/msi-builder/internal/sequence"
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
@@ -95,18 +95,19 @@ func (b *build) removeFoldersData(entries []string) {
 
 	fixed := b.removeFoldersFixed()
 	scope := "[" + cadll.RemoveFoldersScope + "]"
-	data := scope + "[ProductCode][" + cadll.RemoveFoldersCount + "]" + strings.Repeat("#", len(fixed)) + "[" + cadll.RemoveFoldersData + "]"
+	data := scope + "[ProductCode][" + cadll.RemoveFoldersCount + "][" + cadll.RemoveFoldersData + "]"
 	setters := []setter{
 		{"BuilderRemoveFoldersResetCount", cadll.RemoveFoldersCount, "", ":"},
 		{"BuilderRemoveFoldersKeep", cadll.RemoveFoldersScope, "", string(cadll.RemoveFoldersKeep)},
 		{"BuilderRemoveFoldersAll", cadll.RemoveFoldersScope, condRemoveAll, string(cadll.RemoveFoldersAll)},
 	}
 
-	// The first setter resets the data, the others append, each with as
-	// many fixed lines as fit the 255 characters of CustomAction.Target
-	// (ICE03).
+	// The first setter resets the data to a line with the number of fixed
+	// lines, which the builder writes, so the DLL can count them; it and
+	// the others append as many fixed lines as fit the 255 characters of
+	// CustomAction.Target (ICE03).
 	appendData := "[" + cadll.RemoveFoldersData + "]"
-	target, parts := "", 0
+	target, parts := "\nn"+strconv.Itoa(len(fixed)), 0
 	flush := func() {
 		parts++
 		setters = append(setters, setter{"BuilderRemoveFoldersFixed" + strconv.Itoa(parts), cadll.RemoveFoldersData, "", target})
@@ -114,7 +115,7 @@ func (b *build) removeFoldersData(entries []string) {
 	}
 
 	for _, line := range fixed {
-		if target != "" && len(target)+1+len(line) > maxTargetLength {
+		if len(target)+1+len(line) > maxTargetLength {
 			flush()
 		}
 
@@ -144,7 +145,43 @@ func (b *build) removeFoldersData(entries []string) {
 	for _, s := range setters {
 		b.addAction(&actionInfo{name: s.name, typ: caSetProperty, source: s.property, target: s.target})
 		b.schedule(seqInstallExecute, s.name, s.cond, cadll.RemoveFoldersUndo, "", 0)
+		b.removeFolderActions = append(b.removeFolderActions, s.name)
 	}
+
+	b.removeFolderEntries, b.removeFolderDirs = len(entries)/2, len(fixed)-len(cadll.RemoveFoldersStandard())
+}
+
+// checkRemoveFoldersRoom reports removeFolders actions that do not fit
+// between RemoveFiles and the next numbered action, such as RemoveFolders
+// (3600), before numbering fails with a less helpful error: two per entry
+// and one per few fixed lines, of which every directory of the package
+// adds one, plus the three deferred actions.
+func (b *build) checkRemoveFoldersRoom() {
+	actions := b.schedules[seqInstallExecute]
+	if len(b.removeFolderActions) == 0 {
+		return
+	}
+
+	if _, err := sequence.Number(actions); err == nil {
+		return
+	}
+
+	ours := make(map[string]bool, len(b.removeFolderActions)+3)
+	for _, name := range b.removeFolderActions {
+		ours[name] = true
+	}
+
+	for _, name := range []string{cadll.RemoveFoldersUndo, cadll.RemoveFoldersExec, cadll.RemoveFoldersCommit} {
+		ours[name] = true
+	}
+
+	if _, err := sequence.Number(slices.DeleteFunc(slices.Clone(actions), func(a sequence.Action) bool { return ours[a.Name] })); err != nil {
+		return // the numbering error is not the folder removal's
+	}
+
+	b.errorf("components", "removeFolders takes %d actions after %s (two per entry for %d entries, the lines of the "+
+		"standard folders and of the package's %d directories, and three deferred ones), which do not fit before the next "+
+		"numbered action; remove entries or directories", len(ours), actRemoveFiles, b.removeFolderEntries, b.removeFolderDirs)
 }
 
 // removeFoldersActions schedules the rollback, deferred and commit actions

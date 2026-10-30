@@ -1746,6 +1746,7 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
 // known, and get this CustomActionData:
 //
 //     <op><scope><ProductCode>:<count>
+//     n<the number of s and p lines>
 //     s<standard folder property>|<its value>
 //     ...
 //     p<a directory of the package>
@@ -1758,9 +1759,9 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
 // BuilderRemoveFoldersData to the s and p lines, which the engine formats,
 // and append an f line for each entry whose condition holds; a second
 // type-51 action under the same condition appends `#` to
-// BuilderRemoveFoldersCount, and the data carries one more `#` per s and p
-// line, so a line break in a formatted value, which would add lines, makes
-// the data malformed. op is u (rollback), m (deferred), d (deferred with
+// BuilderRemoveFoldersCount, which gives count, and the builder writes the
+// number of s and p lines into the n line, so a line break in a formatted
+// value, which would add lines, makes the data malformed. op is u (rollback), m (deferred), d (deferred with
 // rollback disabled, which skips commit actions: it deletes right away) or
 // c (commit); scope is a when the whole product is removed, else k.
 //
@@ -2039,9 +2040,8 @@ static int userIsAdmin(void)
 // sessionIsAdmin reports, for the deferred side, whether the account that
 // started the session (the engine's UserSID) is LocalSystem or in the
 // Administrators group, as Authz computes its groups from the SID. The
-// CustomActionData comes from the immediate action, which runs in a
-// custom action server under that account's token, so for any other
-// account it could say anything; such data must not reach LocalSystem.
+// folder properties are secure, so for any other account its command line
+// may have named the folders; LocalSystem must not remove them for it.
 static int sessionIsAdmin(MSIHANDLE install)
 {
     static const WCHAR userSidProp[] = u"UserSID";
@@ -2317,23 +2317,34 @@ static WCHAR parseRemoveData(MSIHANDLE install, WCHAR *data, removeData *rd, WCH
     data[40] = 0;
     *product = data + 2;
     WCHAR *p = data + 41;
-    DWORD count = 0, lines = 0;
+    DWORD count = 0, fixed = 0, lines = 0, digits = 0;
     for (; *p == '#'; p++) {
         count++;
     }
-    if (*p && *p != '\n') {
+    // The first line is n and the number of fixed lines, which the builder
+    // wrote into the first fixed setter.
+    if (p[0] != '\n' || p[1] != 'n') {
         logft(install, tmplRemove, msgRemoveData, 0, 0);
         return 0;
     }
-    for (WCHAR *q = p; *q; q++) {
+    WCHAR *q = p + 2;
+    for (; *q >= '0' && *q <= '9' && digits < 6; q++, digits++) {
+        fixed = fixed * 10 + (DWORD)(*q - '0');
+    }
+    if (!digits || (*q && *q != '\n')) {
+        logft(install, tmplRemove, msgRemoveData, 0, 0);
+        return 0;
+    }
+    for (; *q; q++) {
         lines += *q == '\n';
     }
-    if (lines != count) {
+    if (lines != fixed + count) {
         // A line break in a formatted folder added lines.
         logft(install, tmplRemove, msgRemoveLines, 0, 0);
         return 0;
     }
-    WCHAR **all = HeapAlloc(GetProcessHeap(), 0, (count ? count : 1) * sizeof(WCHAR *));
+    p = p + 2 + digits;
+    WCHAR **all = HeapAlloc(GetProcessHeap(), 0, (lines ? lines : 1) * sizeof(WCHAR *));
     if (!all) {
         logft(install, tmplRemove, msgNoMemory, 0, 0);
         return 0;
@@ -2366,6 +2377,12 @@ static WCHAR parseRemoveData(MSIHANDLE install, WCHAR *data, removeData *rd, WCH
         } else {
             rd->count++;
         }
+    }
+    if (rd->count != count) {
+        logft(install, tmplRemove, msgRemoveLines, 0, 0);
+        HeapFree(GetProcessHeap(), 0, all);
+        rd->standard = 0;
+        return 0;
     }
     rd->package = all + rd->standards;
     rd->folders = rd->package + rd->packages;
@@ -2668,7 +2685,7 @@ static int moveAside(MSIHANDLE install, const WCHAR *folder, const WCHAR *token,
     if (!dir) {
         logft(install, tmplRemove, folder, msgRemoveBackup, GetLastError());
     } else if (!h) {
-        // Gone since the immediate action, or a reparse point now.
+        // Gone since the check, or a reparse point now.
         if (GetFileAttributesW(folder) != INVALID_FILE_ATTRIBUTES) {
             logft(install, tmplRemove, folder, msgRemoveChanged, 0);
         }
