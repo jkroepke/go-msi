@@ -1308,7 +1308,8 @@ the feature tree sets the account or folder, and the builder warns when
 a property the wizard sets, or a configurable directory other than the
 install dir, loses the secure status it would otherwise have. A `setProperty` or `setDirectory`
 action that sets such a property makes the properties in its value count
-too. An account cannot use a nested reference (`[[NAME]]`, `[A[B]]`). Per-user packages are not affected. Three actions on the embedded custom action
+too. An account, and the value of such an action, cannot use a nested
+reference (`[[NAME]]`, `[A[B]]`). Per-user packages are not affected. Three actions on the embedded custom action
 DLL apply them, after `InstallFiles` (after `InstallServices` when the
 package has services) and before `StartServices`, so a service can use its
 folder when it starts: the deferred `BuilderGrantExec` grants without

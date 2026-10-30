@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"fmt"
 	"slices"
 	"sort"
 	"strconv"
@@ -415,23 +416,23 @@ func (b *build) folderSources(sources map[string]bool, dirID string) bool {
 // setDirectory or setProperty action that sets one of them, until nothing
 // new is found; a directory in a value brings its parents.
 func (b *build) actionSources(sources map[string]bool) {
+	reported := make(map[int]bool)
+
 	for changed := true; changed; {
 		changed = false
 
-		for _, action := range b.cfg.CustomActions {
-			var target, value string
-
-			switch {
-			case action.SetDirectory != nil:
-				target, value = action.SetDirectory.Directory, action.SetDirectory.Value
-			case action.SetProperty != nil:
-				target, value = action.SetProperty.Name, action.SetProperty.Value
-			default:
+		for i, action := range b.cfg.CustomActions {
+			target, value, field := setAction(action)
+			if field == "" || !sources[target] {
 				continue
 			}
 
-			if !sources[target] {
-				continue
+			// The property a nested reference names is only known at
+			// install time, so it could not be kept out (section 17.7).
+			if len(innerRefs(value)) != len(propertyRefs(value)) && !reported[i] {
+				reported[i] = true
+				b.errorf(fmt.Sprintf("customActions[%d].%s.value", i, field), "%s sets %s, which a permission grant's account or "+
+					"folder comes from, so its value cannot name a property through another property ([[B]] or [A[B]])", action.ID, target)
 			}
 
 			for _, name := range innerRefs(value) {
@@ -485,6 +486,19 @@ func (b *build) uiSetProperties() map[string]bool {
 	}
 
 	return set
+}
+
+// setAction returns the target, the value and the YAML key of a
+// setDirectory or setProperty action, and "" as the key for other actions.
+func setAction(action *config.CustomAction) (string, string, string) {
+	switch {
+	case action.SetDirectory != nil:
+		return action.SetDirectory.Directory, action.SetDirectory.Value, "setDirectory"
+	case action.SetProperty != nil:
+		return action.SetProperty.Name, action.SetProperty.Value, "setProperty"
+	default:
+		return "", "", ""
+	}
 }
 
 // innerRefs lists the names after every [ in a formatted string, those of

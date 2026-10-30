@@ -467,12 +467,12 @@ components:
 			warnings:  []string{"directories:"},
 		},
 		{
-			name: "set by an action", scope: "perMachine", props: "  SVC_ACCOUNT: {}\n  ACCOUNT_SOURCE: {}\n  DATA_ROOT: {}\n  WHICH: {}",
+			name: "set by an action", scope: "perMachine", props: "  SVC_ACCOUNT: {}\n  ACCOUNT_SOURCE: {}\n  DATA_ROOT: {}",
 			extra: folderGrant + "customActions:\n" +
-				"  - { id: SetAccount, setProperty: { name: SVC_ACCOUNT, value: '[ACCOUNT_SOURCE][[WHICH]]' }, schedule: [{ sequence: execute, after: CostFinalize }] }\n" +
+				"  - { id: SetAccount, setProperty: { name: SVC_ACCOUNT, value: '[ACCOUNT_SOURCE]' }, schedule: [{ sequence: execute, after: CostFinalize }] }\n" +
 				"  - { id: SetData, setDirectory: { directory: INSTALLDIR, value: '[DATA_ROOT]x' }, schedule: [{ sequence: execute, after: CostFinalize }] }\n",
 			secure:    []string{"OTHER"},
-			notSecure: []string{"SVC_ACCOUNT", "ACCOUNT_SOURCE", "DATA_ROOT", "INSTALLDIR", "WHICH"},
+			notSecure: []string{"SVC_ACCOUNT", "ACCOUNT_SOURCE", "DATA_ROOT", "INSTALLDIR"},
 		},
 		{
 			name: "dual scope", scope: "perUserOrMachine", props: "  SVC_ACCOUNT: { secure: true }",
@@ -533,5 +533,44 @@ components:
 				}
 			}
 		})
+	}
+}
+
+// TestGrantSetActionNestedReference checks that a set action whose target a
+// grant's account comes from cannot use a nested reference, whose property
+// the builder cannot keep out of SecureCustomProperties.
+func TestGrantSetActionNestedReference(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Parse([]byte(`schema: msi-builder/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+properties:
+  SVC_ACCOUNT: {}
+  WHICH: { value: OTHER }
+  OTHER: {}
+components:
+  - files:
+      - source: hello.exe
+        permissions: { grant: [{ account: '[SVC_ACCOUNT]', rights: read }] }
+customActions:
+  - { id: SetAccount, setProperty: { name: SVC_ACCOUNT, value: '[[WHICH]]' }, schedule: [{ sequence: execute, after: CostFinalize }] }
+`), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.BaseDir = dir
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "customActions[0].setProperty.value") {
+		t.Errorf("err %v, diagnostics %s", err, res.Diagnostics)
 	}
 }
