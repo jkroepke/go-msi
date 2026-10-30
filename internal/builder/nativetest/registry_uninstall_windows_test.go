@@ -30,15 +30,15 @@ components:
   - id: App
     files: [{ source: app.exe }]
     removeRegistry:
-      - { root: HKLM, key: 'SOFTWARE\MsiBuilderTest\UninstallKey\Tree', on: uninstall }
-      - { root: HKLM, key: 'SOFTWARE\MsiBuilderTest\UninstallKey\Existing', on: uninstall }
+      - { root: HKLM, key: 'SOFTWARE\MsiBuilderUninstallKeyTest\Tree', on: uninstall }
+      - { root: HKLM, key: 'SOFTWARE\MsiBuilderUninstallKeyTest\Existing', on: uninstall }
       - { root: HKCR, key: 'Directory\shell\MsiBuilderTestVerb', on: uninstall }
-      - { root: HKLM, key: 'SOFTWARE\MsiBuilderTest\UninstallKey\Both', on: both }
+      - { root: HKLM, key: 'SOFTWARE\MsiBuilderUninstallKeyTest\Both', on: both }
   - id: Old32
     directory: DIR32
     bitness: "32"
     removeRegistry:
-      - { root: HKLM, key: 'SOFTWARE\MsiBuilderTest\UninstallKey\Only32', on: uninstall }
+      - { root: HKLM, key: 'SOFTWARE\MsiBuilderUninstallKeyTest\Only32', on: uninstall }
 `
 
 // buildRemoveOnUninstall writes the REG-08 package of one version.
@@ -71,7 +71,7 @@ func TestMsiexecRemovesKeysOnUninstall(t *testing.T) { //nolint:paralleltest // 
 	early := buildRemoveOnUninstall(t, dir, "1.0.1", "afterInstallInitialize")
 	late := buildRemoveOnUninstall(t, dir, "1.0.2", "afterInstallExecute")
 
-	base := `HKLM\SOFTWARE\MsiBuilderTest\UninstallKey`
+	base := `HKLM\SOFTWARE\MsiBuilderUninstallKeyTest`
 	verb := `HKLM\SOFTWARE\Classes\Directory\shell\MsiBuilderTestVerb`
 
 	cleanup := func() {
@@ -81,7 +81,7 @@ func TestMsiexecRemovesKeysOnUninstall(t *testing.T) { //nolint:paralleltest // 
 		}
 
 		for _, view := range []string{"/reg:64", "/reg:32"} {
-			_ = exec.CommandContext(ctx, "reg.exe", "delete", `HKLM\SOFTWARE\MsiBuilderTest`, "/f", view).Run()
+			_ = exec.CommandContext(ctx, "reg.exe", "delete", `HKLM\SOFTWARE\MsiBuilderUninstallKeyTest`, "/f", view).Run()
 			_ = exec.CommandContext(ctx, "reg.exe", "delete", `HKLM\SOFTWARE\Classes\Directory\shell\MsiBuilderTestVerb`, "/f", view).Run()
 		}
 	}
@@ -137,6 +137,10 @@ func TestMsiexecRemovesKeysOnUninstall(t *testing.T) { //nolint:paralleltest // 
 
 	// The install creates none of the keys and deletes only the both key.
 	expect("install", []regKey{existing, {"64", existing.key + `\Sub`}}, []regKey{tree64, verb64, both, only32})
+
+	if got := regData(t, existing.key+`\Sub`, "Value"); got != "old" {
+		t.Errorf(`Existing\Sub\Value is %q after the install, want old`, got)
+	}
 
 	seed()
 
