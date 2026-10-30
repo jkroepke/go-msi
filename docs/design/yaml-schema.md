@@ -1567,8 +1567,8 @@ Kinds, exactly one per action:
 **`run`.** The engine runs `exec` and `execProperty` commands with a visible
 console window and keeps none of their output (specification section
 17.1). `run` instead calls the custom action DLL that msi-builder embeds
-(`internal/cadll`, written into the `Binary` table once as `BuilderRun`, 7 to
-8 KB for the package's platform): it starts the command with no window,
+(`internal/cadll`, written into the `Binary` table once as `BuilderRun`, 25 to
+31 KB for the package's platform): it starts the command with no window,
 copies every line it writes to stdout or stderr into the verbose log as
 `BuilderRun: <line>`, logs the exit code and returns success for 0 and
 `ERROR_INSTALL_FAILURE` otherwise, which `return: ignore` turns into a
@@ -1576,7 +1576,9 @@ warning. The command line is formatted when the action is scheduled, like
 `exec`; a type-51 action named `<id>.Data` passes `<directory>|<command>`
 through `CustomActionData` to deferred, rollback and commit actions and
 through the `BuilderRun` property to immediate ones. `hideTarget` hides the
-command in both places. `return` is required (`check` or `ignore`;
+command in both places. The command runs in a job object: a cancel ends it
+with everything it started, and so does the end of the action, so a
+command cannot leave a background process behind. `return` is required (`check` or `ignore`;
 `asyncWait` is allowed, `asyncNoWait` is not). The executable must be
 quoted when it comes from a property or folder reference, as for `exec`;
 `directory` is the working directory only, not where a bare program name
