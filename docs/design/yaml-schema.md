@@ -1558,7 +1558,7 @@ Kinds, exactly one per action:
 | `setProperty` | 51 | Never deferred |
 | `setDirectory` | 35 | After CostFinalize |
 | `error` | 19 | Text or an `Error` table number |
-| `exec` | 34 | `command` is a formatted command line; deferred commands are formatted when the script is written, so no CustomActionData is needed. The executable must be quoted when it comes from a property or folder reference (`"[#tool.exe]" --init`): an unquoted path with a space is tried piece by piece by `CreateProcess`. A property alone (`[OLD_UNINSTALL] /S`) is a warning, since an `UninstallString` is quoted already |
+| `exec` | 34 | `command` is a formatted command line; deferred commands are formatted when the script is written, so no CustomActionData is needed. The executable must be quoted when it comes from a property or folder reference (`"[#tool.exe]" --init`): an unquoted path with a space is tried piece by piece by `CreateProcess`. A property alone (`[OLD_UNINSTALL] /S`) is a warning, since an `UninstallString` is usually quoted already; a directory key alone stays an error |
 | `execProperty` | 50 | `property` holds the executable, `arguments` the rest |
 | `run` | 1 + 51 | `command` and an optional `directory`; see below |
 | `dll` | 1 | `binary` (a `binaries` key) and `entry` |

@@ -233,6 +233,16 @@ func TestValidate(t *testing.T) {
 `,
 			sevWarning, "customActions[0].run.command", "property [INNO_UNINSTALL] alone",
 		},
+		"run directory alone": {
+			base + appComponent + `customActions:
+  - id: Run
+    run: {command: '[INSTALLDIR] /S'}
+    execute: deferred
+    return: check
+    schedule: [{sequence: execute, after: InstallFiles}]
+`,
+			sevError, "customActions[0].run.command", "must be quoted",
+		},
 		"exec unquoted executable": {
 			base + appComponent + `customActions:
   - id: Run
