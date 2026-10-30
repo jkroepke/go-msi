@@ -61,7 +61,7 @@ var aclFlags = []string{"NO_ACCESS_CONTROL", "AR", "AI", "P"} //nolint:gocheckno
 
 const (
 	// placeholderSID stands for an <account> form; installerSID for one
-	// that names SYSTEM or Administrators, which the engine runs as.
+	// that names SYSTEM, Administrators or Everyone, which let the engine in.
 	placeholderSID = "S-1-5-21-0-0-0-1000"
 	installerSID   = "SY"
 	minACEFields   = 6
@@ -254,8 +254,8 @@ var installerSIDs = map[string]bool{ //nolint:gochecknoglobals // lookup table
 }
 
 // grantsInstaller reports whether a DACL lets the engine in: it has no
-// access control at all, or an allow ACE for SYSTEM or Administrators that
-// applies to the object itself (no IO flag). Only the trustee is checked,
+// access control at all, or an allow ACE for SYSTEM, Administrators or
+// Everyone that applies to the object itself (no IO flag). Only the trustee is checked,
 // not the rights; object ACEs (OA) do not count.
 func grantsInstaller(body string) bool {
 	flags, aces, _ := strings.Cut(body, "(")
@@ -287,7 +287,7 @@ func checkACL(kind byte, body string) ([]string, error) {
 	var warnings []string
 
 	if kind == 'D' && !grantsInstaller(body) {
-		warnings = append(warnings, "the DACL grants neither SYSTEM nor Administrators access, so the installer, "+
+		warnings = append(warnings, "the DACL grants neither SYSTEM, Administrators nor Everyone access, so the installer, "+
 			"which runs as SYSTEM, can lock itself out: a folder locked this way failed the install and the "+
 			"rollback of an upgrade (section 6.2)")
 	}
