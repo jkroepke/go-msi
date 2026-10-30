@@ -1071,7 +1071,9 @@ full-UI test package with two more actions: `SetMarker`, an immediate
 ## Closing running programs (CLOSE-01)
 
 Run on 2026-10-30 in the `Build & Test (windows-latest, native)` job
-(Windows Server 2025 x64, elevated) of PR #151, run 41063132919, by
+(Windows Server 2025 x64, elevated) of PR #151, runs 41063132919 (commit
+090c35d) and 41070407809 (commit da6d3dd, the DLL this PR ships, after the
+pseudo-console and unowned-window filters), with the same results, by
 `TestMsiexecClosesApps` in
 `internal/builder/nativetest/close_windows_test.go`. The package installs
 `gui.exe` and `cli.exe` with `close: true` and `keep.exe` with
