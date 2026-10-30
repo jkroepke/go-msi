@@ -36,13 +36,12 @@ components:
           actions: [restart, restart, none]
           restartDelay: 0s
   # Controls the service of another component.
+  # TODO(line 25): the condition "&Complete = 3" was left out: it tests the action state &Complete, which is not set yet when the installer evaluates component conditions; test a property instead
   # TODO(line 27): the ServiceControl for HelloSvc became services[].control of the component that installs it, which keeps that component's condition and feature instead of this one's
   - id: HelloSvcControl
     files:
       - source: dist/hello.yaml
         id: hello.yaml
-    # TODO(line 25): the condition tests the action state &Complete, which is not set yet when the installer evaluates component conditions; msi-builder rejects it, so test a property instead
-    condition: '&Complete = 3'
   # TODO(line 36): RemoveRegistryKey HKCR\*\shell\Hello was left out: msi-builder has no removal on uninstall only, and removeRegistry removes the key on install
   # TODO(line 37): RemoveRegistryValue HKCU\Software\Example\Hello without Name removes the default value and was left out: removeRegistry without name removes the whole key
   # The RemoveFolder and HKCU key path of this shortcut component were left out:

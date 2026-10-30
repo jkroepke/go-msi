@@ -269,7 +269,7 @@ func (c *converter) scopeCondition(cond string) string {
 
 // componentCondition sets a component's condition. The installer evaluates
 // it before features and components have action states, so msi-builder
-// rejects one that tests them.
+// rejects one that tests them and convert leaves it out.
 func (c *converter) componentCondition(out *omap, line int, cond string) {
 	if scope := c.scopeCondition(cond); scope != "" {
 		// The condition the builder writes for components[].scope.
@@ -278,12 +278,14 @@ func (c *converter) componentCondition(out *omap, line int, cond string) {
 		return
 	}
 
-	out.set("condition", cond)
-
 	if state := actionState.FindString(cond); state != "" {
-		c.todof(out, "condition", line, "the condition tests the action state %s, which is not set yet when the installer "+
-			"evaluates component conditions; msi-builder rejects it, so test a property instead", state)
+		c.todof(out, "", line, "the condition %q was left out: it tests the action state %s, which is not set yet when "+
+			"the installer evaluates component conditions; test a property instead", cond, state)
+
+		return
 	}
+
+	out.set("condition", cond)
 }
 
 func (cc *compConv) child(elm *elem) {
