@@ -190,6 +190,7 @@ long WINAPI RegSetValueExW(HANDLE, const WCHAR *, DWORD, DWORD, const BYTE *, DW
 long WINAPI RegQueryValueExW(HANDLE, const WCHAR *, DWORD *, DWORD *, BYTE *, DWORD *);
 long WINAPI RegDeleteTreeW(HANDLE, const WCHAR *);
 long WINAPI RegCloseKey(HANDLE);
+long WINAPI RegEnumKeyExW(HANDLE, DWORD, WCHAR *, DWORD *, DWORD *, WCHAR *, DWORD *, void *);
 
 // msi.dll
 UINT WINAPI MsiGetPropertyW(MSIHANDLE, const WCHAR *, WCHAR *, DWORD *);
@@ -219,6 +220,7 @@ enum {
     ERROR_IO_PENDING = 997,
     ERROR_BROKEN_PIPE = 109,
     ERROR_MORE_DATA = 234,
+    ERROR_NO_MORE_ITEMS = 259,
     ERROR_NO_TOKEN = 1008,
     ERROR_INSTALL_USEREXIT = 1602,
     ERROR_INSTALL_FAILURE = 1603,
@@ -274,6 +276,7 @@ enum {
 
     KEY_QUERY_VALUE = 0x1,
     KEY_WOW64_64KEY = 0x100,
+    KEY_ENUMERATE_SUB_KEYS = 0x8,
     REG_EXPAND_SZ = 2,
     FILE_READ_ATTRIBUTES = 0x80,
     FILE_SHARE_ALL = 7,
@@ -321,6 +324,17 @@ void *memcpy(void *dst, const void *src, SIZE_T len)
         *d++ = *s++;
     }
     return dst;
+}
+
+// moveDown copies len bytes to a lower address of the same buffer, front to
+// back, which memcpy does not promise for overlapping ranges.
+static void moveDown(void *dst, const void *src, SIZE_T len)
+{
+    BYTE *d = dst;
+    const BYTE *s = src;
+    while (len--) {
+        *d++ = *s++;
+    }
 }
 
 static SIZE_T wlen(const WCHAR *s)
@@ -561,7 +575,7 @@ static void emitLines(MSIHANDLE install, output *o, SIZE_T scanFrom)
         start = i + 1;
     }
     if (start) {
-        memcpy(o->buf, o->buf + start, o->len - start);
+        moveDown(o->buf, o->buf + start, o->len - start);
         o->len -= start;
     }
     if (o->len == LINE_BUFFER) {
@@ -1721,9 +1735,13 @@ static const WCHAR msgRemoveStandard[] = u"refused, it is or holds the standard 
 static const WCHAR msgRemoveWindows[] = u"refused, inside the Windows folder";
 static const WCHAR msgRemoveReparse[] = u"refused, a junction or another reparse point";
 static const WCHAR msgRemoveRedirected[] = u"refused, reached through a junction, a symbolic link or a substituted drive, which leads to";
-static const WCHAR msgRemoveProfiles[] = u"refused, it is a user profile, the profiles folder or a folder that holds it";
+static const WCHAR msgRemoveProfiles[] = u"refused, it is a user profile, the profiles folder or a folder that holds one";
+static const WCHAR msgRemoveOtherProfile[] = u"refused, inside another user's profile";
+static const WCHAR msgRemoveNoProfiles[] = u"refused, the user profiles cannot be read";
 static const WCHAR profileListKey[] = u"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList";
 static const WCHAR profilesDirectory[] = u"ProfilesDirectory";
+static const WCHAR profileImagePath[] = u"ProfileImagePath";
+static const WCHAR localAppDataFolder[] = u"LocalAppDataFolder";
 static const WCHAR msgRemoveSkipLink[] = u"left in place with the folders above it, a junction or another reparse point";
 static const WCHAR msgRemoveList[] = u"cannot list the folder";
 static const WCHAR msgRemoveTable[] = u"cannot add RemoveFile rows";
@@ -1837,7 +1855,7 @@ static WCHAR *finalPath(const WCHAR *path)
             HeapFree(GetProcessHeap(), 0, out);
             out = 0;
         } else {
-            memcpy(out, out + 4, ((SIZE_T)got - 3) * sizeof(WCHAR));
+            moveDown(out, out + 4, ((SIZE_T)got - 3) * sizeof(WCHAR));
             got -= 4;
             if (out[got - 1] != '\\') {
                 out[got++] = '\\';
@@ -1855,51 +1873,95 @@ static int samePath(const WCHAR *a, const WCHAR *b)
     return n == wlen(b) && CompareStringOrdinal(a, (int)n, b, (int)n, 1) == CSTR_EQUAL;
 }
 
-// profilesRoot returns the final path of the folder that holds the user
-// profiles (ProfilesDirectory, C:\Users by default), or 0.
-static WCHAR *profilesRoot(void)
+// regFolder returns the final path of the folder that a REG_SZ or
+// REG_EXPAND_SZ value of key names, or 0.
+static WCHAR *regFolder(HANDLE key, const WCHAR *name)
 {
-    HANDLE key = 0;
-    WCHAR *raw = 0, *expanded = 0, *root = 0;
-    if (RegOpenKeyExW(HKLM_, profileListKey, 0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &key)) {
-        return 0;
-    }
+    WCHAR *raw = 0, *expanded = 0, *folder = 0;
     DWORD kind = 0, size = 0;
-    if (!RegQueryValueExW(key, profilesDirectory, 0, &kind, 0, &size) && (kind == REG_SZ || kind == REG_EXPAND_SZ) && size) {
+    if (!RegQueryValueExW(key, name, 0, &kind, 0, &size) && (kind == REG_SZ || kind == REG_EXPAND_SZ) && size) {
         raw = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (SIZE_T)size + 2 * sizeof(WCHAR));
-        if (raw && !RegQueryValueExW(key, profilesDirectory, 0, &kind, (BYTE *)raw, &size)) {
+        if (raw && !RegQueryValueExW(key, name, 0, &kind, (BYTE *)raw, &size)) {
             DWORD n = ExpandEnvironmentStringsW(raw, 0, 0);
             expanded = n ? HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, ((SIZE_T)n + 1) * sizeof(WCHAR)) : 0;
             if (expanded && ExpandEnvironmentStringsW(raw, expanded, n) && expanded[0]) {
-                root = finalPath(expanded);
+                folder = finalPath(expanded);
             }
         }
     }
-    RegCloseKey(key);
     HeapFree(GetProcessHeap(), 0, raw);
     HeapFree(GetProcessHeap(), 0, expanded);
-    return root;
+    return folder;
 }
 
-// inProfiles reports whether folder is the profiles folder, holds it, or is
-// a profile in it: another user's profile, Public or Default, which no
-// standard folder property of the installing account names.
-static int inProfiles(const WCHAR *folder)
+// profileCheck returns why folder must not be removed because of the
+// profile at profile (freed here), or 0. own is the installing account's
+// LocalAppDataFolder: inside its own profile only the standard folder
+// guards apply, which name that account's folders.
+static const WCHAR *profileCheck(const WCHAR *folder, WCHAR *profile, const WCHAR *own)
 {
-    WCHAR *root = profilesRoot();
-    if (!root) {
-        return 0;
+    const WCHAR *why = 0;
+    if (profile && below(profile, folder)) {
+        why = msgRemoveProfiles;
+    } else if (profile && below(folder, profile) && !(own && below(own, profile))) {
+        why = msgRemoveOtherProfile;
     }
-    int hit = below(root, folder);
-    if (!hit && below(folder, root)) {
+    HeapFree(GetProcessHeap(), 0, profile);
+    return why;
+}
+
+// profileRefusal returns why folder must not be removed because of the user
+// profiles, or 0: the profiles folder (ProfilesDirectory, C:\Users by
+// default), a folder that holds it, a folder directly in it, a folder that
+// is or holds a profile of ProfileList, Public or Default, and any folder
+// inside a profile other than the installing account's. A per-machine
+// removal as LocalSystem has no user profile of its own, so every user's
+// data is refused. When the profiles cannot be read, everything is.
+static const WCHAR *profileRefusal(MSIHANDLE install, const WCHAR *folder)
+{
+    HANDLE key = 0;
+    if (RegOpenKeyExW(HKLM_, profileListKey, 0, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS | KEY_WOW64_64KEY, &key)) {
+        return msgRemoveNoProfiles;
+    }
+    WCHAR *root = regFolder(key, profilesDirectory);
+    const WCHAR *why = root ? 0 : msgRemoveNoProfiles;
+    if (root && below(root, folder)) {
+        why = msgRemoveProfiles;
+    } else if (root && below(folder, root)) {
         const WCHAR *rest = folder + wlen(root);
         while (*rest && *rest != '\\') {
             rest++;
         }
-        hit = rest[0] == '\\' && rest[1] == 0;
+        if (rest[0] == '\\' && rest[1] == 0) {
+            why = msgRemoveProfiles;
+        }
     }
     HeapFree(GetProcessHeap(), 0, root);
-    return hit;
+    WCHAR *local = property(install, localAppDataFolder);
+    WCHAR *own = local && *local ? finalPath(local) : 0;
+    static const WCHAR *const shared[] = {u"Public", u"Default"};
+    for (SIZE_T i = 0; !why && i < sizeof(shared) / sizeof(shared[0]); i++) {
+        why = profileCheck(folder, regFolder(key, shared[i]), own);
+    }
+    WCHAR sid[256];
+    for (DWORD i = 0; !why; i++) {
+        DWORD n = sizeof(sid) / sizeof(sid[0]);
+        long err = RegEnumKeyExW(key, i, sid, &n, 0, 0, 0, 0);
+        if (err == ERROR_NO_MORE_ITEMS) {
+            break;
+        }
+        HANDLE sub = 0;
+        if (err || RegOpenKeyExW(key, sid, 0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &sub)) {
+            // A SID is far shorter than the buffer; skip what is not one.
+            continue;
+        }
+        why = profileCheck(folder, regFolder(sub, profileImagePath), own);
+        RegCloseKey(sub);
+    }
+    RegCloseKey(key);
+    HeapFree(GetProcessHeap(), 0, own);
+    HeapFree(GetProcessHeap(), 0, local);
+    return why;
 }
 
 // refusal returns why a folder must not be removed, or 0. folder is the
@@ -1911,10 +1973,7 @@ static const WCHAR *refusal(MSIHANDLE install, const WCHAR *folder, const WCHAR 
     if (wlen(folder) <= 3) {
         return msgRemoveRoot;
     }
-    if (inProfiles(folder)) {
-        return msgRemoveProfiles;
-    }
-    const WCHAR *why = 0;
+    const WCHAR *why = profileRefusal(install, folder);
     for (SIZE_T i = 0; !why && i < sizeof(protectedFolders) / sizeof(protectedFolders[0]); i++) {
         WCHAR *value = property(install, protectedFolders[i]);
         WCHAR *full = value ? finalPath(value) : 0;
@@ -2116,17 +2175,35 @@ static void removeTree(MSIHANDLE install, MSIHANDLE view, const WCHAR *component
     WCHAR *buf = HeapAlloc(GetProcessHeap(), 0, 3 * 96 * sizeof(WCHAR));
     int ok = buf != 0;
     // Deepest first: a folder row removes its folder only once it is empty.
+    // Every row goes in before any property is set, because a row whose
+    // property stays empty removes nothing: a failure part way leaves the
+    // whole tree in place.
     for (SIZE_T i = folders.len - 1; ok && i > 0; i--) {
         WCHAR *prop = buf, *fileKey = buf + 96, *dirKey = buf + 192;
         subName(prop, anchor, (DWORD)i, 0);
         subName(fileKey, anchor, (DWORD)i, 'f');
         subName(dirKey, anchor, (DWORD)i, 'd');
-        ok = MsiSetPropertyW(install, prop, folders.items[i]) == ERROR_SUCCESS && insertRow(view, fileKey, component, star, prop, mode) &&
-             insertRow(view, dirKey, component, 0, prop, mode);
+        ok = insertRow(view, fileKey, component, star, prop, mode) && insertRow(view, dirKey, component, 0, prop, mode);
     }
     if (ok) {
         subName(buf, anchor, 0, 'd');
-        ok = insertRow(view, buf, component, 0, anchor, mode) && MsiSetPropertyW(install, anchor, folder) == ERROR_SUCCESS;
+        ok = insertRow(view, buf, component, 0, anchor, mode);
+    }
+    for (SIZE_T i = folders.len - 1; ok && i > 0; i--) {
+        subName(buf, anchor, (DWORD)i, 0);
+        ok = MsiSetPropertyW(install, buf, folders.items[i]) == ERROR_SUCCESS;
+    }
+    // The anchor last: until it is set, the subfolder rows can only empty
+    // what the anchor's own row would also remove.
+    ok = ok && MsiSetPropertyW(install, anchor, folder) == ERROR_SUCCESS;
+    if (!ok && buf) {
+        // Clear what was set; an unset property removes nothing.
+        static const WCHAR none[] = {0};
+        for (SIZE_T i = folders.len - 1; i > 0; i--) {
+            subName(buf, anchor, (DWORD)i, 0);
+            MsiSetPropertyW(install, buf, none);
+        }
+        MsiSetPropertyW(install, anchor, none);
     }
     if (!ok) {
         logft(install, tmplRemove, msgRemoveTable, folder, 0);
@@ -2180,7 +2257,7 @@ static void removeEntry(MSIHANDLE install, MSIHANDLE view, WCHAR *line)
     if (why) {
         static const WCHAR space[] = u" ";
         wbuf text = {0, 0, 0};
-        const WCHAR *shown = value ? trim(value) : name;
+        const WCHAR *shown = value && *trim(value) ? trim(value) : name;
         if (wbufAdd(&text, why, wlen(why)) && (!detail || (wbufAdd(&text, space, 1) && wbufAdd(&text, detail, wlen(detail))))) {
             logft(install, tmplRemove, shown, text.s, 0);
         }

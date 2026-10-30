@@ -56,7 +56,7 @@ properties:
 	comp := fmt.Sprint(cell(t, database, "Component", "Component", func(r []any) bool { return r[2] == "INSTALLDIR" }))
 
 	for i, want := range []string{
-		"REMOVE AND NOT UPGRADINGPRODUCTCODE\x1f" + comp + "\x1f2\x1f" + modes["2"] + "\x1fINSTALLDIR",
+		"Installed AND NOT UPGRADINGPRODUCTCODE\x1f" + comp + "\x1f2\x1f" + modes["2"] + "\x1fINSTALLDIR",
 		"NOT UPGRADINGPRODUCTCODE AND (DELETE_DATA=\"1\")\x1f" + comp + "\x1f3\x1f" + modes["3"] + "\x1fDATA_DIR",
 		"\x1f" + comp + "\x1f1\x1f" + modes["1"] + "\x1fOLD_DIR",
 	} {

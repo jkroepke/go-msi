@@ -67,9 +67,11 @@ func (b *build) removeFolders() error {
 // entry's folder. Component states are not known before costing, so the
 // rows carry the component and the engine applies them only when it
 // installs (mode 1) or removes (mode 2) the component; the condition only
-// skips the listing where no row could apply: an uninstall entry when
-// nothing is removed or when the major upgrade of another product removes
-// this one, which must keep the folder.
+// skips the listing where no row could apply: an uninstall entry on a
+// first install, where nothing can be removed, or when the major upgrade
+// of another product removes this one, which must keep the folder. It does
+// not test REMOVE, which a session may only derive after this action; the
+// rows' mode leaves a component that stays alone.
 func removeFolderCondition(entry *config.RemoveFolder) string {
 	var cond string
 
@@ -78,7 +80,7 @@ func removeFolderCondition(entry *config.RemoveFolder) string {
 	case config.RemoveOnBoth:
 		cond = "NOT UPGRADINGPRODUCTCODE"
 	default:
-		cond = "REMOVE AND NOT UPGRADINGPRODUCTCODE"
+		cond = "Installed AND NOT UPGRADINGPRODUCTCODE"
 	}
 
 	switch {

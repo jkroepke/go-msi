@@ -472,7 +472,8 @@ type RemoveFolder struct {
 	Property string `yaml:"property"`
 	// On is install, uninstall (default) or both.
 	On string `yaml:"on"`
-	// Condition is ANDed with the component's state.
+	// Condition is ANDed with the condition that decides whether the folder is
+	// listed; the component's install or remove state still applies.
 	Condition string `yaml:"condition"`
 }
 

@@ -445,13 +445,13 @@ components:
 ### Delete a folder that a property names
 
 `removeFolders` deletes the folder in a property, with everything in it,
-when the product is uninstalled, but not when an upgrade replaces it. It
-works for the install folder too, and for a folder the first install
-remembered in the registry. The uninstall reads the property before the
+when the product is uninstalled, but not when an upgrade replaces it
+(both checked on Windows). It works for the install folder and for a
+folder the first install remembered in the registry. The uninstall reads the property before the
 folders are resolved, so the install folder needs `installDir.remember`
 and any other folder a property with a search. It refuses drive roots, standard folders such as
-Program Files, the folders that hold them, user profiles and folders behind
-junctions, but a folder of the user's own, such as `INSTALLDIR=D:\Tools`, is
+Program Files, the folders that hold them, other users' profiles and
+folders behind junctions, but a folder of the user's own, such as `INSTALLDIR=D:\Tools`, is
 emptied:
 
 ```yaml

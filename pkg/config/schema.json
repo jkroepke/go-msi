@@ -1886,7 +1886,7 @@
         },
         "removeFolders": {
           "type": "array",
-          "description": "Folders removed with every file and subfolder in them when the component is installed or removed, but not on the uninstall half of a major upgrade. The folder comes from a property at install time; drive roots, standard folders, folders that hold one, folders in the Windows folder and junctions are refused.",
+          "description": "Folders removed with every file and subfolder in them when the component is installed or removed, but not on the uninstall half of a major upgrade. The folder comes from a property at install time; drive roots, standard folders, folders that hold one, other users' profiles, folders in the Windows folder and junctions are refused.",
           "items": {
             "type": "object",
             "properties": {
@@ -1904,7 +1904,7 @@
               },
               "condition": {
                 "type": "string",
-                "description": "A condition ANDed with the component's state, for example DELETE_DATA=\"1\"."
+                "description": "A condition ANDed with the one that decides whether the folder is listed, for example DELETE_DATA=\"1\"; the component's install or remove state still applies."
               }
             },
             "required": [

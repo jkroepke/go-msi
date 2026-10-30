@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -117,6 +118,44 @@ func TestConvertNotes(t *testing.T) {
 		if res.Notes[i] != want[i] {
 			t.Errorf("note %d is %q, want %q", i, res.Notes[i], want[i])
 		}
+	}
+}
+
+// TestConvertRemoveFolderExDirectory checks that a util:RemoveFolderEx on a
+// directory other than the install dir becomes a TODO and no entry: the
+// directory has no path before costing, so the entry would remove nothing.
+func TestConvertRemoveFolderExDirectory(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Directory Id="DATADIR" Name="data" />
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main">
+      <Component Directory="DATADIR">
+        <File Source="hello.exe" />
+        <util:RemoveFolderEx On="uninstall" Property="DATADIR" />
+      </Component>
+    </Feature>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(string(res.YAML), "removeFolders:") {
+		t.Errorf("the YAML has a removeFolders entry:\n%s", res.YAML)
+	}
+
+	if !slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool {
+		return n.Line == 11 && strings.HasPrefix(n.Message, "util:RemoveFolderEx reads DATADIR before costing")
+	}) {
+		t.Errorf("notes %q lack the RemoveFolderEx TODO", res.Notes)
 	}
 }
 

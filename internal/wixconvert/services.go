@@ -328,9 +328,13 @@ func (cc *compConv) removeFolders(elm *elem, prop, when, cond string) {
 	// packages restore it with a RegistrySearch of their own.
 	inst := conv.installDir
 	if _, isDir := conv.dirs[prop]; isDir && (inst == nil || inst.id != prop) {
-		conv.todof(cc.out, "removeFolders", elm.line,
+		// The converted package may not even keep the directory's id, so
+		// an entry would build and silently remove nothing.
+		conv.todof(cc.out, "", elm.line,
 			"util:RemoveFolderEx reads %s before costing, where a directory has no path yet; remember the path in the registry "+
-				"and name a property with a search instead", prop)
+				"and add a removeFolders entry that names a property with a search instead", prop)
+
+		return
 	}
 
 	if inst != nil && conv.dirRef(inst.id) == conv.dirRef(prop) {

@@ -98,15 +98,17 @@ The custom action DLL of `run` actions and permission grants. Read the root
 - Folder removal (spec 17.8) is the export `BuilderRemoveFolders`, an
   immediate action before CostInitialize: costing collects the folders
   that `RemoveFile.DirProperty` names, and a temporary row on a property it
-  did not see fails InstallValidate with error 2727 (FILE-11). It only adds temporary `RemoveFile`
+  did not see fails InstallValidate with error 2727 (FILE-11, CI run
+  41055010441). It only adds temporary `RemoveFile`
   rows (`MsiViewModify(MSIMODIFY_INSERT_TEMPORARY)`) and sets the
   properties they name; the engine's RemoveFiles deletes and rolls back.
   Keep it that way: deleting in the DLL would need its own backup for a
   rollback. The package's own `*` row on the anchor property keeps the
   `RemoveFile` table in the package; without a table the insert fails. The
   guards (drive roots, standard folder properties and their parents
-  compared by final path, profiles, the Windows folder, reparse points on
-  the folder or above it) only ever skip an entry, never fail the
+  compared by final path, profiles, the Windows folder, a reparse point
+  as the folder, a junction or link above it; not a volume mounted in a
+  folder above it) only ever skip an entry, never fail the
   installation: a cleanup must not block an uninstall. Test guards only on
   folders the test creates (FILE-11 points `TemplateFolder` into one), so
   a broken guard cannot delete anything that matters.
