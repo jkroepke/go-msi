@@ -308,7 +308,7 @@ func TestConvertBuiltCodes(t *testing.T) {
 
 	for _, want := range []string{
 		"hello.msi has no matching component for this shortcut component",
-		`the WiX value HKCU\Software\Example\Hello\menu presumably stays behind`,
+		`the WiX value HKCU\Software\Example\Hello\menu stays behind`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("YAML lacks %q:\n%s", want, text)

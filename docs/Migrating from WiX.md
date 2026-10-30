@@ -863,7 +863,7 @@ instead of moving its shortcut onto the file (a shared GUID kept the
 shortcut in UPG-11; with WiX's own key path value this is inferred), and leaves a `# TODO` on any
 component it cannot find there. Such a kept shortcut component gets
 msi-builder's own HKCU key path, so the HKCU value WiX wrote for it
-probably stays behind after a late removal; convert names it in a
+stays behind after a late removal and the uninstall; convert names it in a
 `# TODO`, and a `removeRegistry` entry in another component removes it. Without `--msi`, convert leaves one `# TODO` at
 `upgrade.removeOld` that names the components without a WiX `Guid`.
 `msi-builder inspect --table Component old.msi` shows the GUIDs of the WiX

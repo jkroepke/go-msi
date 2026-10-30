@@ -148,8 +148,8 @@ func (c *converter) checkCodes() {
 // noteDroppedValues notes the HKCU key path values that a shortcut
 // component keeping its WiX code no longer writes: with a late removal the
 // old product's removal keeps them, since the code still has a client, and
-// presumably nothing removes them later (as INST-04 saw for HKCU values the
-// new version did not list).
+// nothing removes them later (seen in a real-world port, like INST-04 for
+// HKCU values the new version did not list).
 func (c *converter) noteDroppedValues() {
 	upgrade := c.out.mapAt("upgrade")
 	if upgrade == nil || !lateRemoval[upgrade.str("removeOld")] {
@@ -163,7 +163,7 @@ func (c *converter) noteDroppedValues() {
 
 		c.todof(comp.out, "", comp.e.line,
 			"msi-builder writes its own HKCU key path for this shortcut component; with the late removeOld the WiX value "+
-				"HKCU\\%s presumably stays behind, so remove it with removeRegistry in another component",
+				"HKCU\\%s stays behind after the upgrade and the uninstall, so remove it with removeRegistry in another component",
 			strings.Join(comp.droppedValues, ", HKCU\\"))
 	}
 }
