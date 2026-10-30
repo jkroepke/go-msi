@@ -135,7 +135,7 @@ func (c *converter) emitActions() {
 
 	for _, custom := range c.actionOrder {
 		actionID := custom.attr("Id")
-		if c.consumed[custom] || actionID == c.launchAction {
+		if c.consumed[custom] || c.onlyLaunch(actionID, byAction) {
 			continue
 		}
 
@@ -240,6 +240,13 @@ func (c *converter) setProgress(action *omap, actionID string, texts map[string]
 
 		c.todof(action, key, text.line, "the progress template of %s is not converted: msi-builder writes no ActionText templates", actionID)
 	}
+}
+
+// onlyLaunch reports whether the action is the finish page's launch action
+// and nothing else: ui.launch takes it. One that a sequence also schedules,
+// such as an auto-launch after a quiet update, stays an action as well.
+func (c *converter) onlyLaunch(actionID string, byAction map[string][]any) bool {
+	return actionID == c.launchAction && len(byAction[actionID]) == 0
 }
 
 // anchorKey names an action in one sequence.

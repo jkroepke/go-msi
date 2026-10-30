@@ -210,9 +210,7 @@ func (c *converter) launchFile(wizard, launch *omap, target *elem) {
 		// The finish button runs a file of the package.
 		launch.set("file", custom.attr("FileRef")+custom.attr("FileKey"))
 
-		if exe := c.value(custom, "ExeCommand"); exe != "" {
-			c.todof(wizard, "launch", custom.line, "the launch action passes %q, which ui.launch does not pass", exe)
-		}
+		launch.set("arguments", c.value(custom, "ExeCommand"))
 	default:
 		c.todof(wizard, "launch", 0, "the launch checkbox starts no file of the package that convert can tell; set launch.file")
 	}

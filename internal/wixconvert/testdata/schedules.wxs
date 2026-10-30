@@ -64,12 +64,14 @@
       <Custom Action="SetLateCmd" Sequence="6610" />
       <Custom Action="Late" Sequence="6620" />
       <Custom Action="Orphan" Before="InstallFinalize" />
+      <!-- Starts the program after a quiet update, too. -->
+      <Custom Action="LaunchHello" After="InstallFinalize" Condition="AUTOLAUNCH AND NOT Installed" />
     </InstallExecuteSequence>
 
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
     <WixVariable Id="WixUILicenseRtf" Value="assets\license.rtf" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Start Hello" />
-    <CustomAction Id="LaunchHello" FileRef="hello.exe" ExeCommand="" Return="asyncNoWait" />
+    <CustomAction Id="LaunchHello" FileRef="hello.exe" ExeCommand="[LAUNCHARGS]" Return="asyncNoWait" />
     <UI>
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchHello"
                Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed" />
