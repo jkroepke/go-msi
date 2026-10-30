@@ -37,6 +37,18 @@ const appComponent = `components:
       - source: app.exe
 `
 
+// progressAction is a customActions section with one immediate action
+// whose progress text is text; an empty text leaves the key out.
+func progressAction(text string) string {
+	progress := ""
+	if text != "" {
+		progress = "    progress: " + text + "\n"
+	}
+
+	return "customActions:\n  - id: Prepare\n    setProperty: {name: A, value: x}\n" + progress +
+		"    schedule: [{sequence: execute, after: CostFinalize}]\n"
+}
+
 // pkg returns base with its package section replaced.
 func pkg(flow string) string {
 	return strings.Replace(base, "package:\n  platform: x64\n", "package: "+flow+"\n", 1)
@@ -106,6 +118,16 @@ func TestValidateAccepted(t *testing.T) {
 		"dual scope": pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:",
 			"    registry: [{root: HKCR, key: .app, value: App.File}, {root: HKMU, key: Software\\X, name: N, value: v}]\n    files:", 1),
 		"dual scope machine first": pkg(`{platform: x64, scope: PerMachineOrUser}`) + appComponent,
+		// A variable follows the context; a perMachine component writes
+		// machine data only per machine.
+		"dual scope variables": strings.Replace(pkg(`{platform: x64, scope: perMachineOrUser}`), "[App]", "[App, Machine, User]", 1) + strings.Replace(appComponent, "    files:",
+			"    environment: [{name: PATH, value: '[INSTALLDIR]', action: append}, {name: FOO, value: a, scope: user}]\n    files:", 1) +
+			"  - id: Machine\n    directory: INSTALLDIR\n    scope: perMachine\n" +
+			"    registry: [{root: HKLM, key: Software\\X, name: N, value: v}]\n" +
+			"    removeRegistry: [{root: HKLM, key: Software\\Old}]\n" +
+			"    eventLog: [{source: X, messageFile: '[SystemFolder]EventCreate.exe'}]\n" +
+			"    environment: [{name: BAR, value: b, scope: machine}, {name: BAZ, value: c}]\n" +
+			"  - {id: User, directory: INSTALLDIR, scope: perUser, environment: [{name: BAZ, value: c}]}\n",
 		"language dialog texts": base + appComponent + "properties: {OPT: {}, NAME: {}}\nui:\n  enabled: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}, {property: NAME}]}\n" +
 			"  launch: {file: app.exe}\n" +
 			"  languages: {de: {launch: {text: '&Starten'}, dialogs: {ExtraDlg: {title: y, description: z, " +
@@ -189,6 +211,32 @@ func TestValidate(t *testing.T) {
     schedule: [{sequence: execute, after: InstallFiles}]
 `,
 			sevError, "customActions[0].return", "CA-02",
+		},
+		// CA-08: progress texts.
+		"blank progress": {
+			base + appComponent + progressAction("'  '"),
+			sevError, "customActions[0].progress", "blank",
+		},
+		"progress wider than its column": {
+			base + appComponent + progressAction(strings.Repeat("x", 65)),
+			sevWarning, "customActions[0].progress", "ICE03",
+		},
+		"progress for an unknown action": {
+			base + appComponent + progressAction("Preparing") + "ui: {enabled: true, languages: {de: {progress: {Other: Vorbereiten}}}}\n",
+			sevError, "ui.languages.de.progress.Other", "not the id of a custom action",
+		},
+		"progress translation without a base text": {
+			base + appComponent + progressAction("") + "ui: {enabled: true, languages: {de: {progress: {Prepare: Vorbereiten}}}}\n",
+			sevError, "ui.languages.de.progress.Prepare", "no progress text",
+		},
+		"progress for a generated action": {
+			base + appComponent + "    services: [{ name: svc, arguments: [{ value: -b, condition: B }] }]\n" +
+				"ui: {enabled: true, languages: {de: {progress: {SetArg_svc_1: Vorbereiten}}}}\n",
+			sevError, "ui.languages.de.progress.SetArg_svc_1", "not the id of a custom action",
+		},
+		"empty progress translation": {
+			base + appComponent + progressAction("Preparing") + "ui: {enabled: true, languages: {de: {progress: {Prepare: ''}}}}\n",
+			sevError, "ui.languages.de.progress.Prepare", "empty",
 		},
 		// CA-03: run actions carry the same return rule and a few of their own.
 		"run without return": {
@@ -960,8 +1008,56 @@ func TestValidate(t *testing.T) {
 			sevError, "package.installerVersion", "MSIINSTALLPERUSER",
 		},
 		"dual scope machine variable": {
-			pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:", "    environment: [{name: FOO, value: a}]\n    files:", 1),
-			sevError, "components[0].environment[0].scope", "machine variables",
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:", "    environment: [{name: FOO, value: a, scope: machine}]\n    files:", 1),
+			sevError, "components[0].environment[0].scope", "scope auto, or a component with scope perMachine",
+		},
+		"dual scope HKLM hint": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\X, name: N, value: v}]\n    files:", 1),
+			sevError, "components[0].registry[0].root", "HKMU, or a component with scope perMachine",
+		},
+		"dual scope perUser component HKLM": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent +
+				"  - {id: Reg, directory: INSTALLDIR, scope: perUser, registry: [{root: HKLM, key: Software\\X, name: N, value: v}]}\n",
+			sevError, "components[1].registry[0].root", "ICE105",
+		},
+		"dual scope perMachine component service": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) +
+				"components:\n  - {id: App, directory: INSTALLDIR, scope: perMachine, files: [{source: app.exe}], services: [{name: Svc}]}\n",
+			sevError, "components[0].services[0]", "cannot install services (ICE105)",
+		},
+		"component scope outside a dual package": {
+			base + appComponent + "  - {id: Reg, directory: INSTALLDIR, scope: perMachine, registry: [{root: HKLM, key: Software\\X, name: N, value: v}]}\n",
+			sevError, "components[1].scope", "only a perUserOrMachine or perMachineOrUser package",
+		},
+		"folder component scope outside a dual package": {
+			base + "components:\n  - {id: App, directory: INSTALLDIR, scope: perMachine, files: [{source: dist/}]}\n",
+			sevError, "components[0].scope", "only a perUserOrMachine or perMachineOrUser package",
+		},
+		"component scope condition too long": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent +
+				"  - {id: Reg, directory: INSTALLDIR, scope: perMachine, condition: " + strings.Repeat("A", 240) +
+				", registry: [{root: HKLM, key: Software\\X, name: N, value: v}]}\n",
+			sevError, "components[1].condition", "Component.Condition holds 255",
+		},
+		"context variable condition too long": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent +
+				"  - {id: Env, directory: INSTALLDIR, condition: " + strings.Repeat("A", 240) + ", environment: [{name: FOO, value: a}]}\n",
+			sevError, "components[1].condition", "Component.Condition holds 255",
+		},
+		"perMachine component in a per-user-first package": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent +
+				"  - {id: Reg, directory: INSTALLDIR, scope: perMachine, registry: [{root: HKLM, key: Software\\X, name: N, value: v}]}\n",
+			sevWarning, "components[1].scope", "ICE105 warns",
+		},
+		"perMachine component removal in a per-user-first package": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent +
+				"  - {id: Reg, directory: INSTALLDIR, scope: perMachine, removeRegistry: [{root: HKLM, key: Software\\Old}]}\n",
+			sevWarning, "components[1].scope", "ICE105 warns",
+		},
+		"component scope dual": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent +
+				"  - {id: Reg, directory: INSTALLDIR, scope: perUserOrMachine, registry: [{root: HKMU, key: Software\\X, name: N, value: v}]}\n",
+			sevError, "components[1].scope", "not one of",
 		},
 		"dual scope purge": {
 			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + "  - id: Data\n    directory: ProgramFiles64Folder/AcmeData\n    createFolder: true\n    purge: true\n",

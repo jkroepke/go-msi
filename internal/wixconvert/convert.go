@@ -105,15 +105,18 @@ type converter struct {
 	platform     string
 	launchAction string
 	properties   []*elem
-	actionOrder  []*elem
-	actionRefs   []*elem
-	binaries     []*elem
-	upgrades     []*elem
-	media        []*elem
-	launches     []*elem
-	uiNav        []*elem
-	errorRows    []*elem
-	usedErrors   map[*elem]bool
+	// progressTexts are the ProgressText elements, which become the
+	// progress key of the action they name.
+	progressTexts []*elem
+	actionOrder   []*elem
+	actionRefs    []*elem
+	binaries      []*elem
+	upgrades      []*elem
+	media         []*elem
+	launches      []*elem
+	uiNav         []*elem
+	errorRows     []*elem
+	usedErrors    map[*elem]bool
 	// newerClaimed is the property that detects newer versions.
 	newerClaimed string
 	icons        []*elem

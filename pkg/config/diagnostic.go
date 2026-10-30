@@ -83,6 +83,16 @@ func (v *validator) perUserPackage() string {
 	return "a per-user package"
 }
 
+// dualHint suggests use in a finding about per-machine data in a dual
+// package, which can install it in a perMachine component.
+func (v *validator) dualHint(use string) string {
+	if !v.scope.Dual() {
+		return ""
+	}
+
+	return "; use " + use
+}
+
 // forbiddenFolder reports whether a component under the standard folder top
 // fails ICE105 for this package's scope.
 func (v *validator) forbiddenFolder(top string) bool {

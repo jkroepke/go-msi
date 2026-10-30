@@ -102,6 +102,8 @@ customActions:
       command: '"[#tool.exe]" --setup'
     execute: commit
     return: asyncWait
+    # TODO(line 69): the progress template of RunTool is not converted: msi-builder writes no ActionText templates
+    progress: Setting up the tool
     schedule:
       - {sequence: execute, after: InstallFiles, condition: NOT Installed AND NOT REMOVE}
 ui:

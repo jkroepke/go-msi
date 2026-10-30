@@ -284,6 +284,48 @@ RegisterProduct (section 8.2). A major upgrade only finds a product installed in
 installed per user and then per machine is installed twice; offer one
 scope as the default and keep upgrades in it.
 
+Machine-wide data has two forms in a dual package (ENVVAR-03). An
+environment variable's `scope` defaults to `auto`: the builder writes it
+as a machine variable in a generated component with the condition
+`ALLUSERS=1` and as a user variable in one with `NOT ALLUSERS`, so a
+`PATH` entry goes to the machine `PATH` for all users and to the user's
+`PATH` per user. ALLUSERS is 1 per machine and unset per user when the
+install runs, also after a switch on the scope page (INST-02), and in a
+repair (ENVVAR-03). A component with `scope: perMachine` installs only per
+machine and may write HKLM and HKU values and removals, machine variables
+and event log sources; one with `scope: perUser` installs only per user.
+The builder adds `ALLUSERS=1` or `NOT ALLUSERS` to the component's
+`condition`, which must leave room for it in the 255 characters of
+`Component.Condition`. Services and `serviceControl` stay refused, and so
+do the folders ICE105 rejects.
+
+```yaml
+package:
+  platform: x64
+  scope: perMachineOrUser
+components:
+  - files:
+      - source: dist/tool.exe
+    environment:
+      - { name: PATH, value: '[INSTALLDIR]', action: append }   # scope auto
+  - id: MachineSettings
+    directory: INSTALLDIR
+    scope: perMachine                # left out of a per-user install
+    registry:
+      - { root: HKLM, key: Software\Acme\Tool, name: InstallDir, value: '[INSTALLDIR]' }
+```
+
+A `perMachine` component's resources are not installed per user at all,
+so a value that both contexts need belongs under HKMU, which follows the
+context. `scope` on a component of a package with a single context is an
+error. In a `perUserOrMachine` package ICE105 warns about the HKLM
+values, removals and event log sources of a `perMachine` component
+(`Registry` and `RemoveRegistry` rows) although the condition keeps them
+out of a per-user install, and the builder passes that warning on; it
+reported nothing for them in a `perMachineOrUser` package and nothing for
+the machine variable in either (ENVVAR-03). HKU values were not tested,
+and a standard user's install was tested with an HKLM value only.
+
 ### 4.3 `upgrade`
 
 ```yaml
@@ -565,6 +607,7 @@ components:
     environment: []
     createFolder: false
     condition: ""
+    # scope: perMachine              # dual packages only: perMachine | perUser, see "Install scope"
     permanent: false
     neverOverwrite: false
     preserve: false                  # neverOverwrite + a late removeOld, see below
@@ -781,8 +824,22 @@ component of their own: in the folder of the first shortcut, with the
 component's condition, 64-bit unless that folder is a 32-bit one (ICE80),
 an HKCU value under `Software\[Manufacturer]\[ProductName]` as its key path
 (ICE38, ICE43), `RemoveFile` rows for the folders it creates below a
-profile folder (ICE64), and in every feature of the file's component. In a
-per-user package that folder must not be a per-machine one (ICE105).
+profile folder (ICE64), and in every feature of the file's component. In
+a per-user package that folder must not be a per-machine one (ICE105).
+The generated component of a component that also installs something is
+never permanent, so the shortcuts of a file in a `permanent` component
+are removed on uninstall while the file stays
+(observed on a clean Windows machine: wazuh's "Edit conf" shortcut of its
+permanent `ossec.conf`). Builds before this rule made that component
+permanent, and Windows keeps a permanent ComponentId registered after
+uninstall: a later package with the same ComponentId kept the shortcut and
+its key path value after its own uninstall (observed). The generated
+component of a `permanent` component therefore gets a ComponentId that no
+older build used, and the ProductCode digest changes with it, so that a
+rebuild of the same version does not fail with 1638. The old registration
+stays for good, but no longer keeps the new package's shortcuts: the new
+package's uninstall removed the shortcut and the key path value of the
+same name (observed).
 SHORTCUT-01 installed and removed shortcuts from an own HKCU-keyed component and
 from the file's own component alike, and removed an empty Start menu folder
 without a `RemoveFile` row; the Windows tests run the ICE suite on the
@@ -965,8 +1022,9 @@ package, and without an `id` it is named after its first shortcut (or the
 product, when that shortcut has no `name`)
 (`Docs_Shortcuts`), so that its ComponentId does not depend on the order of
 the components. Its `guid`, `condition`, `permanent` and `transitive`
-apply to that component; its `directory` is not used. A component with a
-folder source cannot list them.
+apply to that component; its `directory` is not used. In a component that
+also installs something, `permanent` stays with that component, not with
+its shortcuts. A component with a folder source cannot list them.
 SHORTCUT-03 and SHORTCUT-04 installed every kind on Windows.
 
 **Permissions.** A file, registry value, service or the component's folder
@@ -1270,9 +1328,16 @@ environment:
   - name: PATH
     value: '[APPLICATIONFOLDER]'
     action: append               # set | setIfAbsent | append | prepend | remove
-    scope: machine               # machine | user
+    scope: machine               # machine | user | auto; see below for the default
     removeOnUninstall: true      # default true (false for remove); written as an explicit "-"
 ```
+
+`scope` defaults to `user` in a `perUser` package or component, to `auto`
+in a component of a dual package without a `scope` of its own, and to
+`machine` otherwise. `auto` writes the variable per machine or per user as
+the package is installed (section 4.2, "Install scope"; ENVVAR-03); in a
+package or component of one context it is the same as that context's
+scope.
 
 `append` and `prepend` build the `[~];` form, and a `PATH`-like value without
 them gets a warning, since `set` replaces the whole variable. A component may
@@ -1612,7 +1677,39 @@ temporary file of an `asyncNoWait` action is not tested.
 Options: `execute` (default `immediate`), `impersonate` (default `true`;
 `false` needs a deferred action), `return` (required for `exec`,
 `execProperty`, `exe` and `run`, default `check` otherwise), `hideTarget`, `once`
-(`firstSequence`, `oncePerProcess`, `clientRepeat`).
+(`firstSequence`, `oncePerProcess`, `clientRepeat`), `progress`.
+
+**Progress text.** `progress` names what the action does while it runs:
+
+```yaml
+customActions:
+  - id: ImportData
+    run: { command: '"[#hello.exe]" import' }
+    execute: deferred
+    impersonate: false
+    return: check
+    progress: Importing the existing data
+    schedule:
+      - { sequence: execute, after: InstallFiles, when: install }
+```
+
+The builder writes it to the `ActionText` table, without a template.
+The text is formatted, so `[ProductName]` and other properties work: the
+wizard's progress page shows a deferred action's text while it runs (an
+immediate action's was not watched there, and one in the `ui` sequence
+runs before the progress page; basic UI is documented to show it, not
+tested), and the verbose
+log writes it as `Action hh:mm:ss: <id>. <text>` with the full UI (basic
+UI not tested), and
+for a deferred action as the script's `ActionStart` line also under `/qn`
+(CA-08). A deferred action's text is formatted when the script is written,
+so it shows property values from that moment.
+A `ui.languages` entry translates it with `progress: {<id>: text}`. A
+blank text is an error, and one longer than 64 characters, the width of
+`ActionText.Description`, is a warning (ICE03). Standard actions keep the
+engine's own texts, and the actions msi-builder generates (firewall rules,
+grants, service arguments) get none; specification section 17.8 records
+why, and why there is no `Template`.
 
 **Schedule.** A list of placements, one per sequence table: `execute`, `ui`,
 `adminExecute`, `adminUI`. Each has exactly one of `before`, `after` or
@@ -2065,9 +2162,10 @@ configuration; a `languages` entry translates them with `dialogs` and
 `launch` (below), and the buttons of a `ui.dialogs` page follow the
 language on their own.
 
-Messages that the engine itself shows (error and progress action texts)
-come from the engine in the language of `ProductLanguage`, since
-msi-builder writes no `Error` or `ActionText` table (UI-06). Full-UI
+Messages that the engine itself shows (error texts and the progress texts
+of standard actions) come from the engine in the language of
+`ProductLanguage`, since msi-builder writes no `Error` table and
+`ActionText` rows only for `customActions[].progress` (UI-06). Full-UI
 installs of a German package (code page 1252, language 1031) and of a
 Russian and Japanese one (code page 65001) passed on Windows Server 2025
 (UI-06).
@@ -2143,9 +2241,11 @@ A `languages` key is a decimal LCID or a language tag: a full tag such as
 `de` (1031), `es` (3082) or `hi` (1081) the language's main locale. `pt`,
 `sr` and `zh` have no short tag, because their spellings or scripts differ
 (`pt-BR`/`pt-PT`, `zh-CN`/`zh-TW`); `product.language` stays a decimal
-LCID. An entry may set `strings`, `finishText`, `license`, `launch` and
-`dialogs`, which replace `ui.strings`, `ui.finishText`, `ui.license`,
-`ui.launch.text` and the texts of `ui.dialogs` in that language; a field it
+LCID. An entry may set `strings`, `finishText`, `license`, `launch`,
+`dialogs` and `progress`, which replace `ui.strings`, `ui.finishText`,
+`ui.license`, `ui.launch.text`, the texts of `ui.dialogs` and the
+`progress` texts of `customActions` (keyed by action ID; an ID without a
+base text is an error) in that language; a field it
 leaves out keeps the base language's value, and a text key it leaves out
 takes the built-in translation, and without one the base language's text.
 Two keys for one LCID, or an entry for `product.language`, are errors. A

@@ -65,6 +65,9 @@
       <Custom Action="RunTool" After="InstallFiles"><![CDATA[NOT Installed AND NOT REMOVE]]></Custom>
     </InstallExecuteSequence>
 
+    <UI>
+      <ProgressText Action="RunTool" Template="Tool: [1]">Setting up the tool</ProgressText>
+    </UI>
     <UIRef Id="WixUI_Minimal" />
     <UIRef Id="WixUI_ErrorProgressText" />
   </Product>
