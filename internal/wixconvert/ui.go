@@ -205,9 +205,11 @@ var errorArg = regexp.MustCompile(`\[[0-9]\]`)
 // errorText returns the text of an error action: the message of the Error
 // row it names by number, inlined because msi-builder writes no Error rows
 // of its own, or the text itself.
-func (c *converter) errorText(value string) string {
+func (c *converter) errorText(custom *elem) string {
+	value := c.value(custom, "Error")
+
 	for _, row := range c.errorRows {
-		if c.value(row, "Id") != strings.TrimSpace(value) {
+		if strings.TrimSpace(row.attr("Id")) != strings.TrimSpace(custom.attr("Error")) {
 			continue
 		}
 
@@ -219,7 +221,8 @@ func (c *converter) errorText(value string) string {
 		}
 
 		if errorArg.MatchString(message) {
-			c.todof(nil, "", row.line, "the Error row %s refers to error arguments such as [1], which are empty in an error action's text", value)
+			c.todof(nil, "", row.line, "the Error row %s refers to error arguments such as [1], which are empty in an error action's text",
+				strings.TrimSpace(value))
 		}
 
 		return message
@@ -241,7 +244,7 @@ func (c *converter) errorMessage(row *elem) string {
 func (c *converter) emitErrorRows() {
 	for _, row := range c.errorRows {
 		if !c.usedErrors[row] {
-			c.todof(nil, "", row.line, "the Error row %s has no counterpart; only error actions take in their message", row.attr("Id"))
+			c.todof(nil, "", row.line, "the Error row %s has no counterpart; only error actions take in their message", strings.TrimSpace(row.attr("Id")))
 		}
 	}
 }

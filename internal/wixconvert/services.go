@@ -431,7 +431,7 @@ func (c *converter) firewall(elm *elem, comp *comp, program string) { //nolint:c
 	var remote []string
 
 	switch scope := elm.attr("Scope"); scope {
-	case "", "any":
+	case "", valueAny:
 	case "localSubnet":
 		remote = append(remote, "LocalSubnet")
 	default:
@@ -479,7 +479,7 @@ func (c *converter) firewallProtocol(rule *omap, elm *elem) {
 	switch {
 	case protocol != "":
 	case port == "":
-		protocol = "any"
+		protocol = valueAny
 	default:
 		protocol = "tcp"
 

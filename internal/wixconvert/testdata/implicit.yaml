@@ -42,9 +42,12 @@ components:
   - id: StartMenu
     directory: ProgramMenuFolder/Hello Project
     shortcuts:
+      # TODO(line 24): the shell property {12345678-1234-1234-1234-123456789ABC}, 2 was left out: write it by its canonical name, such as System.AppUserModel.ID
       - name: Hello
         file: hello.exe
         directory: ProgramMenuFolder/Hello Project
+        properties:
+          System.AppUserModel.ID: Example.Hello
   - id: hello.exe
     files:
       - source: dist/hello.exe

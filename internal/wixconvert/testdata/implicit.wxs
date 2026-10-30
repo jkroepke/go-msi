@@ -19,7 +19,10 @@
 
     <!-- A shortcut to a file of another component stays here. -->
     <Component Id="StartMenu" Directory="ProgramMenuFolder" Subdirectory="Hello Project">
-      <Shortcut Id="HelloLink" Name="Hello" Target="[#hello.exe]" />
+      <Shortcut Id="HelloLink" Name="Hello" Target="[#hello.exe]">
+        <ShortcutProperty Key="{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}, 5" Value="Example.Hello" />
+        <ShortcutProperty Key="{12345678-1234-1234-1234-123456789ABC}, 2" Value="1" />
+      </Shortcut>
       <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="menu" Type="integer" Value="1" KeyPath="yes" />
     </Component>
 

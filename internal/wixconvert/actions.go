@@ -75,6 +75,11 @@ func (c *converter) standardAction(entry, seq *elem) {
 		c.scheduleReboot(entry)
 	case entry.is("RemoveExistingProducts") && c.major == nil && removeOldAfter[entry.attr("After")]:
 		c.out.child("upgrade").set("removeOld", "after"+entry.attr("After"))
+
+		if cond := c.condition(entry); cond != "" {
+			c.todof(c.out.child("upgrade"), "removeOld", entry.line,
+				"RemoveExistingProducts runs only when %s; msi-builder removes the old version whenever it finds one", cond)
+		}
 	case entry.is("Show"):
 		c.todof(nil, "", entry.line, "<Show Dialog=%q> schedules a dialog; use the ui keys", entry.attr("Dialog"))
 	default:
@@ -515,7 +520,7 @@ func (c *converter) asyncExec(action *omap, custom *elem) {
 func (c *converter) setterKind(action *omap, custom *elem) bool {
 	switch {
 	case custom.has("Error"):
-		action.set("error", c.errorText(c.value(custom, "Error")))
+		action.set("error", c.errorText(custom))
 	case custom.has(attrProperty) && custom.has("Value"):
 		action.set("setProperty", flowMap().set("name", custom.attr(attrProperty)).set("value", c.value(custom, "Value")))
 	case custom.has(attrDirectory) && custom.has("Value"):

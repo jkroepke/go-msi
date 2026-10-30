@@ -19,7 +19,7 @@ product:
   upgradeCode: 5d9b2f3a-7c1e-4b8d-9f0a-2e6c4a8b1d37
 package:
   platform: x64
-# TODO(line 38): an UpgradeVersion for the package's own UpgradeCode is a hand-made major upgrade; msi-builder writes its own, check the upgrade keys
+# TODO(line 38): an UpgradeVersion for the package's own UpgradeCode (versions 0.0.1 to 1.0.0) is a hand-made major upgrade; msi-builder writes its own, which removes every older version, check the upgrade keys
 installDir:
   id: INSTALLFOLDER
   name: Hello

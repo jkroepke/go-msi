@@ -670,7 +670,12 @@ func (cc *compConv) folderFiles(elm *elem) {
 	for _, kid := range elm.kids {
 		pattern := sourcePath(conv.expand(kid, kid.attr("Files")))
 
-		switch rel, below := strings.CutPrefix(pattern, src); {
+		rel, below := strings.CutPrefix(pattern, src)
+		if src == "./" {
+			rel, below = pattern, !strings.HasPrefix(pattern, "../") && !strings.HasPrefix(pattern, "/")
+		}
+
+		switch {
 		case !kid.is("Exclude"):
 			conv.todof(files, "", kid.line, "<%s> in <Files> has no counterpart", kid.qname())
 		case include == "" || !below:

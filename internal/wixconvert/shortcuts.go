@@ -60,7 +60,9 @@ func (c *converter) shortcut(elm *elem, dirID string, tree map[*dir]bool) *omap 
 	for _, kid := range elm.kids {
 		switch kid.qname() {
 		case "ShortcutProperty":
-			link.child("properties").set(kid.attr("Key"), c.value(kid, "Value"))
+			if key, ok := c.shellPropertyName(link, kid); ok {
+				link.child("properties").set(key, c.value(kid, "Value"))
+			}
 		case "Icon":
 			c.icons = append(c.icons, kid)
 			link.set("icon", kid.attr("Id"))
@@ -70,6 +72,39 @@ func (c *converter) shortcut(elm *elem, dirID string, tree map[*dir]bool) *omap 
 	}
 
 	return link
+}
+
+// propertyKey is a shell property key in the "{FMTID}, PID" form.
+var propertyKey = regexp.MustCompile(`^\{?([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})\}?\s*,\s*([0-9]+)$`)
+
+// appUserModelFMTID is the format ID of the System.AppUserModel properties.
+const appUserModelFMTID = "9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"
+
+// appUserModelPIDs are the canonical names of the System.AppUserModel
+// properties by property ID, from the Windows property system reference.
+var appUserModelPIDs = map[string]string{ //nolint:gochecknoglobals // lookup table
+	"2": "RelaunchCommand", "3": "RelaunchIconResource", "4": "RelaunchDisplayNameResource", "5": "ID",
+	"8": "ExcludeFromShowInNewInstall", "9": "PreventPinning", "11": "IsDualMode", "12": "StartPinOption",
+	"26": "ToastActivatorCLSID",
+}
+
+// shellPropertyName returns the canonical name msi-builder takes for a
+// ShortcutProperty Key, which WiX also takes as "{FMTID}, PID".
+func (c *converter) shellPropertyName(link *omap, kid *elem) (string, bool) {
+	key := kid.attr("Key")
+
+	m := propertyKey.FindStringSubmatch(key)
+	if m == nil {
+		return key, true
+	}
+
+	if name, ok := appUserModelPIDs[m[2]]; ok && strings.EqualFold(m[1], appUserModelFMTID) {
+		return "System.AppUserModel." + name, true
+	}
+
+	c.todof(link, "", kid.line, "the shell property %s was left out: write it by its canonical name, such as System.AppUserModel.ID", key)
+
+	return "", false
 }
 
 // fileShortcut converts a Shortcut nested in a File.
