@@ -2,8 +2,11 @@
 
 - Runner: GitHub `windows-latest` (Windows Server 2025, x64), elevated,
   interactive session with Explorer, 2026-10-30
-- CI runs 41039238183 (broadcast only) and 41049121338 (broadcast and
-  Explorer), PR #142
+- CI runs 41039238183 (commit 8233970, broadcast only) and 41049121338
+  (commit 0c5a51f, broadcast and Explorer), PR #142, with the probe
+  version of the test that logged instead of asserting; the asserting
+  test that merged (shell found with `GetShellWindow`, a fresh
+  unannounced value before each step) passed on the PR's last CI run
 - Test: `TestMsiexecEnvironmentBroadcast` in
   `internal/builder/nativetest/broadcast_windows_test.go`
 
