@@ -24,7 +24,10 @@ properties of the install with `ALLOW_ARM64=1`:
 
 Without `ALLOW_ARM64` the plain install exited 0 on x64 and 1603 on Arm64,
 and the Arm64 verbose `/qn` log contained the launch condition's message
-"This x64 package does not install on Arm64 Windows.".
+"This x64 package does not install on Arm64 Windows."
 
-`Msix64` and `Intel` hold processor values (the x64 runner of PROP-02 had 25),
-so they are no architecture signal. The registry search is.
+Inferred, not tested: `Msix64` and `Intel` vary between hosts (the x64
+runner of PROP-02 had 25 and 25), and no documented value ties 3401 or 15 to
+Arm64, so a package should not rely on them to detect Arm64. The registry
+search names the architecture directly. Neither runner's Windows build was
+logged; the Arm runner is Windows 11 (CA-03).
