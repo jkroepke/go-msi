@@ -49,7 +49,7 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     UpdateProcThreadAttribute:28 DeleteProcThreadAttributeList:4 CreateJobObjectW:8 \
     SetInformationJobObject:16 AssignProcessToJobObject:8 TerminateJobObject:8 ResumeThread:4 \
     ReadFile:20 GetOverlappedResult:16 CancelIoEx:8 WaitForSingleObject:8 WaitForMultipleObjects:16 \
-    GetTickCount64:0 GetExitCodeProcess:8 CloseHandle:4 GetCurrentThread:0 \
+    GetTickCount64:0 GetExitCodeProcess:8 CloseHandle:4 GetCurrentThread:0 GetCurrentProcess:0 \
     GetProcessHeap:0 HeapAlloc:12 HeapReAlloc:16 HeapFree:12 GetLastError:0 \
     MultiByteToWideChar:24 TerminateProcess:8 LocalFree:4 GetComputerNameW:8 \
     FindFirstFileW:8 FindNextFileW:8 FindClose:4 GetFileAttributesW:4 GetLongPathNameW:12 CompareStringOrdinal:20 \
@@ -58,7 +58,7 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     ConvertStringSidToSidW:8 LookupAccountNameW:28 GetNamedSecurityInfoW:32 SetNamedSecurityInfoW:28 \
     GetSecurityDescriptorControl:12 InitializeAcl:12 GetAce:12 AddAce:20 AddAccessAllowedAceEx:20 \
     EqualSid:8 GetLengthSid:4 RegCreateKeyExW:36 RegOpenKeyExW:20 RegSetValueExW:24 \
-    RegQueryValueExW:24 RegDeleteTreeW:8 RegCloseKey:4 RegEnumKeyExW:32 >"$tmp/$out/advapi32.def"
+    RegQueryValueExW:24 RegDeleteTreeW:8 RegCloseKey:4 RegEnumKeyExW:32 OpenProcessToken:12 GetTokenInformation:20 ConvertSidToStringSidW:8 >"$tmp/$out/advapi32.def"
   imports msi MsiGetPropertyW:16 MsiCreateRecord:4 MsiRecordSetStringW:12 MsiRecordSetInteger:12 MsiProcessMessage:12 \
     MsiCloseHandle:4 MsiSetPropertyW:12 MsiFormatRecordW:16 MsiEvaluateConditionW:8 \
     MsiGetActiveDatabase:4 MsiDatabaseOpenViewW:12 MsiViewExecute:8 MsiViewModify:12 MsiViewClose:4 >"$tmp/$out/msi.def"

@@ -25,9 +25,12 @@ import (
 // install. GUARD_WIN (inside the Windows folder) and GUARD_STD (a folder
 // that holds TemplateFolder, which StdInside points into it) must be
 // refused, and so must GUARD_LINK, a folder reached through a junction,
-// and GUARD_PROFILE, a folder in the Public profile. FailRemove fails a
+// and GUARD_PROFILE, a folder in the Public profile; OWN_DIR, a folder in
+// the installing account's own profile, must not be. FailRemove fails a
 // removal after RemoveFiles when FAIL_REMOVE is set, so the engine rolls
-// the removal back. Swap replaces the listed folder DATA_DIR\sub, whose
+// the removal back; it first writes MARKER when the read-only and the
+// hidden file are gone at that point, so the test knows that RemoveFiles
+// deleted them before the rollback put them back. Swap replaces the listed folder DATA_DIR\sub, whose
 // files RemoveFiles is about to delete, with a junction to BAIT_DIR, which
 // holds files of the same names, after the listing and before RemoveFiles,
 // the way a user who can write there could, to see whether the engine's
@@ -44,6 +47,8 @@ properties:
   GUARD_STD: {}
   GUARD_LINK: {}
   GUARD_PROFILE: {}
+  OWN_DIR: {}
+  MARKER: { secure: true }
   FAIL_REMOVE: { secure: true }
   SWAP: { secure: true }
   BAIT_DIR: { secure: true }
@@ -58,18 +63,19 @@ components:
       - property: GUARD_STD
       - property: GUARD_LINK
       - property: GUARD_PROFILE
+      - property: OWN_DIR
 customActions:
   - id: StdInside
     setProperty: { name: TemplateFolder, value: '[GUARD_STD]Inner\' }
     schedule: [{ sequence: execute, after: AppSearch, condition: GUARD_STD }]   # before BuilderRemoveFolders, which runs right before CostInitialize
   - id: FailRemove
-    run: { command: '"[System64Folder]cmd.exe" /c exit 1' }
+    run: { command: '"[System64Folder]cmd.exe" /c (if not exist "[DATA_DIR]a.txt" if not exist "[DATA_DIR]nested\deeper\d.txt" echo removed>"[MARKER]") & exit 1' }
     execute: deferred
     impersonate: false
     return: check
     schedule: [{ sequence: execute, after: RemoveFiles, condition: REMOVE~="ALL" AND FAIL_REMOVE="1" }]
   - id: Swap
-    run: { command: '"[System64Folder]cmd.exe" /c rmdir /s /q "[DATA_DIR]sub" && mklink /J "[DATA_DIR]sub" "[BAIT_DIR]"' }
+    run: { command: '"[System64Folder]cmd.exe" /c rmdir /s /q "[DATA_DIR]sub" && mklink /J "[DATA_DIR]sub" "[BAIT_DIR]"' }   # BAIT_DIR without a trailing backslash
     execute: deferred
     impersonate: false
     return: check
@@ -109,7 +115,7 @@ func buildRemoveFolders(t *testing.T, version string) (string, string) {
 
 // removeFoldersTree holds the folders the test fills and checks.
 type removeFoldersTree struct {
-	install, data, outside, bait, old, guardWin, guardStd, guardLink, guardProfile string
+	install, data, outside, bait, old, own, guardWin, guardStd, guardLink, guardProfile string
 }
 
 func newRemoveFoldersTree() removeFoldersTree {
@@ -120,6 +126,7 @@ func newRemoveFoldersTree() removeFoldersTree {
 		data:     filepath.Join(data, "Data"),
 		outside:  filepath.Join(data, "Outside"),
 		bait:     filepath.Join(data, "Bait"),
+		own:      filepath.Join(os.Getenv("LOCALAPPDATA"), "MsiBuilderRemoveFolders"),
 		old:      filepath.Join(data, "Old"),
 		guardWin: filepath.Join(os.Getenv("SystemRoot"), "MsiBuilderRemoveFolders"),
 		guardStd: filepath.Join(data, "Std"),
@@ -190,6 +197,7 @@ func (tree removeFoldersTree) fill(t *testing.T) {
 	writeFile(t, filepath.Join(tree.guardWin, "g.txt"))
 	writeFile(t, filepath.Join(tree.guardStd, `Inner\s.txt`))
 	writeFile(t, filepath.Join(tree.guardProfile, "p.txt"))
+	writeFile(t, filepath.Join(tree.own, `Own\o.txt`))
 }
 
 func (tree removeFoldersTree) cleanup(packages ...string) {
@@ -207,6 +215,7 @@ func (tree removeFoldersTree) cleanup(packages ...string) {
 	_ = os.RemoveAll(tree.install)
 	_ = os.RemoveAll(tree.guardWin)
 	_ = os.RemoveAll(tree.guardProfile)
+	_ = os.RemoveAll(tree.own)
 	_ = exec.CommandContext(ctx, "reg.exe", "delete", `HKLM\SOFTWARE\MsiBuilderRemoveFolders`, "/f", "/reg:64").Run()
 }
 
@@ -230,6 +239,10 @@ func (tree removeFoldersTree) requireData(t *testing.T, when string, rolledBack 
 
 	if !exists(filepath.Join(tree.install, `runtime\r.txt`)) {
 		t.Errorf("%s: the runtime file in the install dir is gone", when)
+	}
+
+	if !exists(filepath.Join(tree.own, `Own\o.txt`)) {
+		t.Errorf("%s: the file in OWN_DIR is gone", when)
 	}
 }
 
@@ -279,7 +292,7 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 
 	guards := []string{
 		"GUARD_WIN=" + tree.guardWin + `\`, "GUARD_STD=" + tree.guardStd + `\`, "GUARD_LINK=" + tree.guardLink + `\`,
-		"GUARD_PROFILE=" + tree.guardProfile + `\`,
+		"GUARD_PROFILE=" + tree.guardProfile + `\`, "OWN_DIR=" + tree.own + `\`,
 	}
 
 	log := filepath.Join(logs, "install.log")
@@ -306,7 +319,8 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 	tree.requireData(t, "after the major upgrade", false)
 
 	log = filepath.Join(logs, "rollback.log")
-	if code := msiexecCode(t, log, append([]string{"/x", newPkg, "FAIL_REMOVE=1"}, guards...)...); code != 1603 {
+	marker := filepath.Join(filepath.Dir(tree.data), "removed.txt")
+	if code := msiexecCode(t, log, append([]string{"/x", newPkg, "FAIL_REMOVE=1", "MARKER=" + marker}, guards...)...); code != 1603 {
 		t.Fatalf("msiexec /x FAIL_REMOVE=1 returned %d, want 1603\n%s", code, readLog(log))
 	}
 
@@ -317,8 +331,14 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 	text := readLog(log)
 	t.Logf("rolled-back removal:\n%s", grepLog(text, "BuilderRemoveFolders: "))
 
-	if !strings.Contains(text, "BuilderRemoveFolders: removing: "+tree.data+`\`) {
+	if !strings.Contains(text, "BuilderRemoveFolders: listing to remove: "+tree.data+`\`) {
 		t.Error("the log does not show the removal of DATA_DIR")
+	}
+
+	// Without the marker the files may never have been deleted, and the
+	// check below would not show a rollback.
+	if !exists(marker) {
+		t.Error("RemoveFiles had not deleted the read-only and the hidden file when FailRemove ran")
 	}
 
 	tree.requireData(t, "after the rolled-back removal", true)
@@ -330,7 +350,7 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 	}
 
 	log = filepath.Join(logs, "uninstall.log")
-	if code := msiexecCode(t, log, append([]string{"/x", newPkg, "SWAP=1", "BAIT_DIR=" + tree.bait + `\`}, guards...)...); code != 0 {
+	if code := msiexecCode(t, log, append([]string{"/x", newPkg, "SWAP=1", "BAIT_DIR=" + tree.bait}, guards...)...); code != 0 {
 		t.Fatalf("msiexec /x returned %d\n%s", code, readLog(log))
 	}
 
@@ -349,6 +369,10 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 
 	if exists(tree.install) {
 		t.Error("the install dir is still there after the removal")
+	}
+
+	if exists(tree.own) {
+		t.Error("OWN_DIR, in the installing account's profile, is still there after the removal")
 	}
 
 	// Swap made sub a junction after the listing; whatever the engine did

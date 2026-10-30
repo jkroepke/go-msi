@@ -149,6 +149,7 @@ unsigned long long WINAPI GetTickCount64(void);
 BOOL WINAPI GetExitCodeProcess(HANDLE, DWORD *);
 BOOL WINAPI CloseHandle(HANDLE);
 HANDLE WINAPI GetCurrentThread(void);
+HANDLE WINAPI GetCurrentProcess(void);
 HANDLE WINAPI GetProcessHeap(void);
 void *WINAPI HeapAlloc(HANDLE, DWORD, SIZE_T);
 void *WINAPI HeapReAlloc(HANDLE, DWORD, void *, SIZE_T);
@@ -168,6 +169,9 @@ DWORD WINAPI ExpandEnvironmentStringsW(const WCHAR *, WCHAR *, DWORD);
 
 // advapi32.dll
 BOOL WINAPI OpenThreadToken(HANDLE, DWORD, BOOL, HANDLE *);
+BOOL WINAPI OpenProcessToken(HANDLE, DWORD, HANDLE *);
+BOOL WINAPI GetTokenInformation(HANDLE, int, void *, DWORD, DWORD *);
+BOOL WINAPI ConvertSidToStringSidW(void *, WCHAR **);
 BOOL WINAPI DuplicateTokenEx(HANDLE, DWORD, SECURITY_ATTRIBUTES *, int, int, HANDLE *);
 BOOL WINAPI CreateProcessAsUserW(HANDLE, const WCHAR *, WCHAR *, SECURITY_ATTRIBUTES *, SECURITY_ATTRIBUTES *, BOOL, DWORD, void *, const WCHAR *, STARTUPINFOW *, PROCESS_INFORMATION *);
 // RtlGenRandom, exported by advapi32.dll under this name.
@@ -1737,15 +1741,15 @@ static const WCHAR msgRemoveReparse[] = u"refused, a junction or another reparse
 static const WCHAR msgRemoveRedirected[] = u"refused, reached through a junction, a symbolic link or a substituted drive, which leads to";
 static const WCHAR msgRemoveProfiles[] = u"refused, it is a user profile, the profiles folder or a folder that holds one";
 static const WCHAR msgRemoveOtherProfile[] = u"refused, inside another user's profile";
+static const WCHAR msgRemoveSharedProfile[] = u"refused, inside the Public or Default profile";
 static const WCHAR msgRemoveNoProfiles[] = u"refused, the user profiles cannot be read";
 static const WCHAR profileListKey[] = u"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList";
 static const WCHAR profilesDirectory[] = u"ProfilesDirectory";
 static const WCHAR profileImagePath[] = u"ProfileImagePath";
-static const WCHAR localAppDataFolder[] = u"LocalAppDataFolder";
 static const WCHAR msgRemoveSkipLink[] = u"left in place with the folders above it, a junction or another reparse point";
 static const WCHAR msgRemoveList[] = u"cannot list the folder";
 static const WCHAR msgRemoveTable[] = u"cannot add RemoveFile rows";
-static const WCHAR msgRemoving[] = u"removing";
+static const WCHAR msgRemoving[] = u"listing to remove";
 static const WCHAR msgRemoveCount[] = u"subfolders listed";
 static const WCHAR star[] = u"*";
 
@@ -1894,17 +1898,39 @@ static WCHAR *regFolder(HANDLE key, const WCHAR *name)
     return folder;
 }
 
+// userSid returns the SID of the account the action runs as, as a string:
+// the impersonated user's, else the process's. 0 when it cannot be read.
+static WCHAR *userSid(void)
+{
+    HANDLE token = 0;
+    if (!OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 1, &token) && !OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+        return 0;
+    }
+    WCHAR *sid = 0, *text = 0;
+    DWORD size = 0;
+    GetTokenInformation(token, 1 /* TokenUser */, 0, 0, &size);
+    // TOKEN_USER starts with the pointer to the user's SID.
+    void **user = size ? HeapAlloc(GetProcessHeap(), 0, size) : 0;
+    if (user && GetTokenInformation(token, 1, user, size, &size) && ConvertSidToStringSidW(user[0], &text)) {
+        sid = wstrdup(text, 0);
+        LocalFree(text);
+    }
+    HeapFree(GetProcessHeap(), 0, user);
+    CloseHandle(token);
+    return sid;
+}
+
 // profileCheck returns why folder must not be removed because of the
-// profile at profile (freed here), or 0. own is the installing account's
-// LocalAppDataFolder: inside its own profile only the standard folder
-// guards apply, which name that account's folders.
-static const WCHAR *profileCheck(const WCHAR *folder, WCHAR *profile, const WCHAR *own)
+// profile at profile (freed here), or 0: inside the installing account's
+// own profile (own) only the standard folder guards apply, which name that
+// account's folders; inside any other, other is the reason.
+static const WCHAR *profileCheck(const WCHAR *folder, WCHAR *profile, int own, const WCHAR *other)
 {
     const WCHAR *why = 0;
     if (profile && below(profile, folder)) {
         why = msgRemoveProfiles;
-    } else if (profile && below(folder, profile) && !(own && below(own, profile))) {
-        why = msgRemoveOtherProfile;
+    } else if (profile && below(folder, profile) && !own) {
+        why = other;
     }
     HeapFree(GetProcessHeap(), 0, profile);
     return why;
@@ -1914,10 +1940,11 @@ static const WCHAR *profileCheck(const WCHAR *folder, WCHAR *profile, const WCHA
 // profiles, or 0: the profiles folder (ProfilesDirectory, C:\Users by
 // default), a folder that holds it, a folder directly in it, a folder that
 // is or holds a profile of ProfileList, Public or Default, and any folder
-// inside a profile other than the installing account's. A per-machine
-// removal as LocalSystem has no user profile of its own, so every user's
-// data is refused. When the profiles cannot be read, everything is.
-static const WCHAR *profileRefusal(MSIHANDLE install, const WCHAR *folder)
+// inside a profile other than that of the account the action runs as,
+// found by its SID. A per-machine removal as LocalSystem has no user
+// profile of its own, so every user's data is refused. When the profiles
+// cannot be read, everything is.
+static const WCHAR *profileRefusal(const WCHAR *folder)
 {
     HANDLE key = 0;
     if (RegOpenKeyExW(HKLM_, profileListKey, 0, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS | KEY_WOW64_64KEY, &key)) {
@@ -1937,12 +1964,11 @@ static const WCHAR *profileRefusal(MSIHANDLE install, const WCHAR *folder)
         }
     }
     HeapFree(GetProcessHeap(), 0, root);
-    WCHAR *local = property(install, localAppDataFolder);
-    WCHAR *own = local && *local ? finalPath(local) : 0;
     static const WCHAR *const shared[] = {u"Public", u"Default"};
     for (SIZE_T i = 0; !why && i < sizeof(shared) / sizeof(shared[0]); i++) {
-        why = profileCheck(folder, regFolder(key, shared[i]), own);
+        why = profileCheck(folder, regFolder(key, shared[i]), 0, msgRemoveSharedProfile);
     }
+    WCHAR *own = userSid();
     WCHAR sid[256];
     for (DWORD i = 0; !why; i++) {
         DWORD n = sizeof(sid) / sizeof(sid[0]);
@@ -1950,17 +1976,21 @@ static const WCHAR *profileRefusal(MSIHANDLE install, const WCHAR *folder)
         if (err == ERROR_NO_MORE_ITEMS) {
             break;
         }
-        HANDLE sub = 0;
-        if (err || RegOpenKeyExW(key, sid, 0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &sub)) {
-            // A SID is far shorter than the buffer; skip what is not one.
+        if (err == ERROR_MORE_DATA) {
+            // A SID is far shorter than the buffer; this is no profile.
             continue;
         }
-        why = profileCheck(folder, regFolder(sub, profileImagePath), own);
+        HANDLE sub = 0;
+        if (err || RegOpenKeyExW(key, sid, 0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &sub)) {
+            why = msgRemoveNoProfiles;
+            break;
+        }
+        int mine = own && wlen(own) == n && CompareStringOrdinal(own, (int)n, sid, (int)n, 1) == CSTR_EQUAL;
+        why = profileCheck(folder, regFolder(sub, profileImagePath), mine, msgRemoveOtherProfile);
         RegCloseKey(sub);
     }
     RegCloseKey(key);
     HeapFree(GetProcessHeap(), 0, own);
-    HeapFree(GetProcessHeap(), 0, local);
     return why;
 }
 
@@ -1973,7 +2003,7 @@ static const WCHAR *refusal(MSIHANDLE install, const WCHAR *folder, const WCHAR 
     if (wlen(folder) <= 3) {
         return msgRemoveRoot;
     }
-    const WCHAR *why = profileRefusal(install, folder);
+    const WCHAR *why = profileRefusal(folder);
     for (SIZE_T i = 0; !why && i < sizeof(protectedFolders) / sizeof(protectedFolders[0]); i++) {
         WCHAR *value = property(install, protectedFolders[i]);
         WCHAR *full = value ? finalPath(value) : 0;

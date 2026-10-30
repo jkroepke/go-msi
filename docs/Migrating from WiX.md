@@ -787,8 +787,8 @@ components:
 ```
 
 Like `purge`, it keeps the folder when an upgrade replaces the product,
-and the engine's own file removal restores the files if the uninstall
-rolls back (an emptied subfolder stays removed). It refuses drive roots,
+and the engine's own file removal is expected to restore the files if the
+uninstall rolls back (an emptied subfolder stays removed). It refuses drive roots,
 standard folders such as Program Files and the folders that hold them,
 other users' profiles, folders in the Windows folder and folders behind
 junctions.

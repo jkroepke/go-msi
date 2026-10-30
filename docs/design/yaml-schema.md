@@ -730,8 +730,9 @@ components:
 An immediate action of the embedded DLL (specification section 17.8) runs
 before CostInitialize. It lists the subfolders and adds temporary
 `RemoveFile` rows for each, so the engine's RemoveFiles deletes the files
-and folders, and restores the files and the folders that hold them when
-the installation rolls back, but not a removed empty folder (FILE-11). `uninstall` removes when the component is removed, but not
+and folders, and is expected to restore the files and the folders that
+hold them when the installation rolls back, but not a removed empty folder
+(FILE-11). `uninstall` removes when the component is removed, but not
 on the uninstall half of a major upgrade (`UPGRADINGPRODUCTCODE`);
 `install` is expected to remove every time the component is installed,
 which includes a repair that reinstalls it and the new product of an
@@ -745,7 +746,7 @@ empty value, a path that is not a full local path (`C:\…`, no `.` or `..`,
 no name ending in a space or a dot), a drive root, a folder reached through
 a junction, a symbolic link or a `subst` drive, a junction itself, the
 profiles folder, every profile and every folder inside another user's
-profile (as LocalSystem, every user's), everything when the profiles
+profile and in Public and Default (as LocalSystem, every user's), everything when the profiles
 cannot be read, every standard folder of the
 engine (Program Files, ProgramData, the Windows and system folders, the
 profile folders such as AppData, Documents and the Desktop, Temp) and every
