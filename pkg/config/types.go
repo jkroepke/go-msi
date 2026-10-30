@@ -249,7 +249,11 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	// RemoveFiles deletes files or empty folders when the component is
 	// installed or removed (RemoveFile rows).
 	RemoveFiles []*RemoveFile `yaml:"removeFiles"`
-	Services    []*Service    `yaml:"services"`
+	// RemoveFolders deletes the folder a property names, with every file
+	// and subfolder in it, when the component is installed or removed, but
+	// not on the uninstall half of a major upgrade (custom action DLL).
+	RemoveFolders []*RemoveFolder `yaml:"removeFolders"`
+	Services      []*Service      `yaml:"services"`
 	// ServiceControl stops, starts or deletes services that the package
 	// does not install, when the component is installed or removed.
 	ServiceControl []*ControlledService `yaml:"serviceControl"`
@@ -549,7 +553,22 @@ type RemoveFile struct {
 	On string `yaml:"on"`
 }
 
-// Values of RemoveFile.On and RemoveRegistry.On.
+// RemoveFolder removes the folder that a property or directory holds at
+// install time, with everything in it: the custom action DLL moves it aside
+// and deletes it at commit without following junctions (specification
+// section 17.10).
+type RemoveFolder struct {
+	// Property holds the full path of the folder: a directory ID or a
+	// property, for example one a registry search fills.
+	Property string `yaml:"property"`
+	// On is install, uninstall (default) or both.
+	On string `yaml:"on"`
+	// Condition is ANDed with the condition that decides whether the folder is
+	// listed; the component's install or remove state still applies.
+	Condition string `yaml:"condition"`
+}
+
+// Values of RemoveFile.On, RemoveFolder.On and RemoveRegistry.On.
 const (
 	RemoveOnInstall   = "install"
 	RemoveOnUninstall = "uninstall"

@@ -20,6 +20,9 @@ directories:
     children:
       - id: DataRoot
         name: Hello
+        children:
+          - id: DataDir
+            name: data
 components:
   - id: HelloExe
     files:
@@ -33,10 +36,11 @@ components:
           grant:
             - account: WD
               rights: [start, "0x84"]
-  # TODO(line 31): util:RemoveFolderEx was not converted: purge refuses a folder below DataRoot, a directory that can point anywhere; keep the data in a folder with private (mixed-case) IDs below a fixed standard folder, such as CommonAppDataFolder/Vendor/Product, and purge that
   - id: Data
-    directory: DataRoot/data
+    directory: DataDir
     guid: 6a0f1c2e-7d3b-4e58-9a61-2b4c8d0e1f37
+    removeFolders:
+      - property: DataDir
     createFolder: true
 customActions:
   - id: StopHello

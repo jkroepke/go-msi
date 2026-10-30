@@ -168,7 +168,7 @@ msi-builder does the same by default:
 | Heat harvesting, `Files` (v5) | A folder `source` ending in `/` |
 | `CreateFolder` | `components[].createFolder` |
 | `RemoveFile`, `RemoveFolder` | `components[].removeFiles` |
-| `util:RemoveFolderEx` | `components[].purge` |
+| `util:RemoveFolderEx` | `components[].purge` (the component's own folder), `components[].removeFolders` (a folder from a property) |
 | `RegistryKey`, `RegistryValue` | `components[].registry` |
 | `RemoveRegistryKey`, `RemoveRegistryValue` | `components[].removeRegistry` |
 | `Environment` | `components[].environment` |
@@ -817,11 +817,50 @@ folder, written as a path below a standard folder like
 `DATADIR`, which the command line could point anywhere, is rejected. It
 takes a `condition`, such as `DELETE_DATA="1"`.
 
-`msi-builder convert` keeps a `util:RemoveFolderEx` whose property only
-reads back, by a `RegistrySearch`, the component's own folder from a
-registry value of that component: it becomes `purge` on the component.
-`On="install"`, which empties the folder before the install, has no
-counterpart and is left out with a note.
+When the folder comes from a property, as `Property="APPLICATIONFOLDER"`
+with a registry search does, or is a public directory, use
+`removeFolders` instead. The install folder needs `installDir.remember`,
+the counterpart of the RegistrySearch that `RemoveFolderEx` packages use
+to find it again at uninstall, and any other property a `properties`
+search:
+
+```yaml
+installDir:
+  id: INSTALLFOLDER
+  name: Hello
+  remember: true                      # the RegistrySearch that RemoveFolderEx needs
+
+components:
+  - files:
+      - source: hello.exe
+    removeFolders:
+      - property: INSTALLFOLDER       # util:RemoveFolderEx Property="INSTALLFOLDER"
+        on: uninstall                 # install, uninstall (the default) or both
+```
+
+Like `purge`, it keeps the folder when an upgrade replaces the product.
+Unlike `RemoveFolderEx`, which hands the subfolders to the engine's file
+removal, it moves the folder aside and deletes it at the end without
+following junctions, so a failed uninstall puts it back and a junction
+swapped in during the uninstall does not redirect the deletion (tested
+on Windows). It removes a folder the package
+installs to on uninstall only. It refuses folders in the Windows folder,
+folders that hold a standard folder, folders behind junctions and the
+Public profile (tested), and drive roots, standard folders such as
+Program Files and other users' profiles (expected, not tested). A folder that is or
+holds a folder of the package goes only when the whole product is removed,
+not with one feature, on install or on repair, whichever property names it,
+for example one a `SetDirectory` or `SetProperty` points at `INSTALLFOLDER`
+(tested for an upgrade, expected for a repair and a feature removal).
+
+`msi-builder convert` turns a `util:RemoveFolderEx` on the component's
+own folder into `purge` when that folder is a fixed one (no directory up
+to its root can point elsewhere): one without `Property`, one whose
+`Property` is that directory, and one whose property only reads the
+folder back, by a `RegistrySearch`, from a registry value of that
+component. Any other `util:RemoveFolderEx` becomes a `removeFolders`
+entry. On a directory of the package `On="install"` is left out with a
+note, and `On="both"` keeps only its uninstall half, also with a note.
 
 ## Signing
 

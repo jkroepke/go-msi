@@ -120,7 +120,7 @@ func (c *converter) component(comp *comp, tree map[*dir]bool) *omap {
 	elm := comp.e
 	out := newMap()
 	comp.out = out
-	out.order("id", keyDirectory, "guid", "files", "registry", "removeRegistry", "removeFiles", "services",
+	out.order("id", keyDirectory, "guid", "files", "registry", "removeRegistry", "removeFiles", "removeFolders", "services",
 		"serviceControl", "eventLog", "environment", "purge", "createFolder", "condition", "permanent",
 		"neverOverwrite", "sharedDllRefCount", "transitive", "keyPath", "bitness", "folderPermissions", "shortcuts")
 	out.head = comments(elm)

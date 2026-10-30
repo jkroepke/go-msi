@@ -75,11 +75,14 @@ func TestBinaries(t *testing.T) {
 
 			slices.Sort(libs)
 
-			if want := []string{"advapi32.dll", "kernel32.dll", "msi.dll", "user32.dll"}; !slices.Equal(libs, want) {
+			if want := []string{"advapi32.dll", "authz.dll", "kernel32.dll", "msi.dll", "ntdll.dll", "user32.dll"}; !slices.Equal(libs, want) {
 				t.Errorf("imports %v, want %v", libs, want)
 			}
 
-			for _, entry := range []string{cadll.Entry, cadll.GrantEntryPoint, cadll.CloseEntryPoint, cadll.CloseSchedule} {
+			for _, entry := range []string{
+				cadll.Entry, cadll.GrantEntryPoint, cadll.CloseEntryPoint, cadll.CloseSchedule,
+				cadll.RemoveFolders, cadll.RemoveFoldersExec,
+			} {
 				if !bytes.Contains(data, []byte(entry+"\x00")) {
 					t.Errorf("export %s not found", entry)
 				}
@@ -95,6 +98,7 @@ func TestBinaries(t *testing.T) {
 			// in the C source, which a rename of the Go constants misses.
 			for _, want := range []string{cadll.Entry + ": [1]", cadll.GrantEntryPoint + ": [1]", cadll.DataProperty,
 				cadll.CloseEntryPoint + ": [1]", cadll.CloseProperty,
+				cadll.RemoveFolders + ": [1]", cadll.RemoveFoldersExec, cadll.RemoveFoldersUndo, cadll.RemoveFoldersCommit,
 			} {
 				if !bytes.Contains(data, utf16z(want)) {
 					t.Errorf("UTF-16 string %q not found", want)
