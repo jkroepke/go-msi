@@ -1,10 +1,12 @@
 package builder
 
 import (
+	"slices"
 	"strconv"
 
 	"github.com/jkroepke/msi-builder/internal/cadll"
 	"github.com/jkroepke/msi-builder/internal/rights"
+	"github.com/jkroepke/msi-builder/internal/sequence"
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
@@ -21,9 +23,10 @@ const (
 const grantInherit = 0x3
 
 // maxGrants is the number of grants that fit between InstallFiles or
-// InstallServices and the next standard action: two type-51 actions each,
-// plus seven setters and the three deferred actions, in at most 99 numbers
-// (89 after InstallFiles when PatchFiles is at 4090).
+// InstallServices and the next standard action at best: two type-51
+// actions each, plus seven setters and the three deferred actions, in 99
+// numbers. checkGrantRoom reports a package whose other actions leave
+// fewer.
 const maxGrants = 39
 
 // grantInfo is one grant of a permissions block on an object the component
@@ -194,6 +197,44 @@ func (b *build) grantData() {
 	for _, s := range setters {
 		b.addAction(&actionInfo{name: s.name, typ: caSetProperty, source: s.property, target: s.target})
 		b.schedule(seqInstallExecute, s.name, s.cond, cadll.GrantRollback, "", 0)
+	}
+}
+
+// checkGrantRoom reports grants whose actions do not fit between their
+// anchor and the next standard action that has a number, such as
+// MsiConfigureServices (5850) after InstallServices, before numbering would
+// fail with a less helpful error. Other actions after the anchor take
+// numbers there too.
+func (b *build) checkGrantRoom() {
+	actions := b.schedules[seqInstallExecute]
+
+	idx := slices.IndexFunc(actions, func(a sequence.Action) bool { return a.Name == cadll.GrantRollback })
+	if idx < 0 {
+		return
+	}
+
+	anchor := actions[idx].After
+	anchorAt, next := 0, sequence.MaxSequence+1
+
+	for _, action := range actions {
+		if action.Name == anchor {
+			anchorAt = action.Sequence
+		}
+	}
+
+	for _, action := range actions {
+		if action.Sequence > anchorAt && action.Sequence < next {
+			next = action.Sequence
+		}
+	}
+
+	need := 2*len(b.grants) + 10
+	free := next - anchorAt - 1
+
+	if others := b.anchoredTo(seqInstallExecute, anchor) - need; anchorAt > 0 && need+others > free {
+		b.errorf("components", "%d permission grants need %d sequence numbers after %s (%d), two per grant and ten more, "+
+			"but only %d are free there before %d; use at most %d grants in this package",
+			len(b.grants), need, anchor, anchorAt, free-others, next, max(0, (free-others-10)/2))
 	}
 }
 

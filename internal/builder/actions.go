@@ -694,6 +694,8 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 		}
 	}
 
+	b.checkGrantRoom()
+
 	if err := b.diags.Err(); err != nil {
 		return err //nolint:wrapcheck // the diagnostics carry their own paths
 	}

@@ -248,6 +248,43 @@ func TestPermissionGrants(t *testing.T) {
 	}
 }
 
+// TestPermissionGrantRoom builds the most grants that fit after
+// InstallServices, which MsiConfigureServices at 5850 halves.
+func TestPermissionGrantRoom(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+
+	for _, tc := range []struct {
+		grants  int
+		delayed bool
+		want    string
+	}{
+		{39, false, ""},
+		{19, true, ""},
+		{20, true, "use at most 19 grants"},
+	} {
+		t.Run(fmt.Sprintf("%d grants delayed %v", tc.grants, tc.delayed), func(t *testing.T) {
+			t.Parallel()
+
+			cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
+			grants := make([]*config.Grant, tc.grants)
+
+			for i := range grants {
+				grants[i] = &config.Grant{Account: "NS", Rights: config.StringList{"read"}}
+			}
+
+			cfg.Components[0].Files[0].Permissions = &config.Permissions{Grant: grants}
+			cfg.Components[0].Services = []*config.Service{{Name: "HelloSvc", Start: "auto", DelayedAutoStart: tc.delayed}}
+
+			_, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+			if (tc.want == "" && err != nil) || (tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want))) {
+				t.Errorf("err %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestPermissionGrantErrors(t *testing.T) {
 	t.Parallel()
 

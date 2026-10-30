@@ -6,7 +6,7 @@ summary  4: prometheus-community
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install windows_exporter.
 summary  7: x64;1033
-summary  9: {BAA15333-37E6-5D0B-BDE6-B6A5610E398F}
+summary  9: {0FA2B9A9-B525-5573-B39E-C4B07CEBC0CB}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500

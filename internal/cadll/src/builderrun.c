@@ -1306,7 +1306,7 @@ static int parseEntry(WCHAR *entry, grantEntry *e)
     e->template = p;
     e->object = p ? field(p, '|') : 0;
     e->account = e->object ? field(e->object, '|') : 0;
-    return e->account && *e->template && *e->object && e->mask && !(e->flags & ~AUTHORED_INHERIT_FLAGS);
+    return e->account && *e->template && e->mask && !(e->flags & ~AUTHORED_INHERIT_FLAGS);
 }
 
 // grantAccount returns the account an entry grants to: the formatted
@@ -1652,6 +1652,12 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
     }
     WCHAR *product = op == 'x' ? data + 1 : head + 1;
     WCHAR *entries = field(product, '\n');
+    if (!*product) {
+        // An empty ProductCode would name every product's key below.
+        logft(install, tmplGrant, msgGrantData, 0, 0);
+        HeapFree(heap, 0, data);
+        return op == '+' ? ERROR_INSTALL_FAILURE : ERROR_SUCCESS;
+    }
     for (WCHAR *p = entries; p && *p; p++) {
         lines += *p == '\n';
     }
@@ -1701,7 +1707,7 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
         wappendnum(name, &pos, index);
         if (!parseEntry(entry, &e)) {
             logft(install, tmplGrant, msgGrantData, 0, 0);
-        } else if (hasControl(e.object, 0)) {
+        } else if (!*e.object || hasControl(e.object, 0)) {
             logft(install, tmplGrant, msgBadObject, e.object, 0);
         } else {
             account = grantAccount(install, product, again, &e, &kept, op == '+', &fail);

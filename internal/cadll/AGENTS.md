@@ -86,7 +86,9 @@ the root `AGENTS.md` first.
   the builder writes (`internal/builder/permissions.go`); never add an
   immediate action that computes data for a deferred LocalSystem action,
   because it runs as the installing user, who can change it, and keep the
-  setters right before the deferred actions. The deferred action fails when
+  setters right before the deferred actions. `removeFolders` (spec 17.10)
+  still hands its data over from the impersonated `BuilderRemoveFolders`
+  and is a known exception until it is moved to type-51 setters too. The deferred action fails when
   the number of lines differs from the count (a line break in a formatted
   value), and rejects `|` and control characters in a formatted account and
   control characters in an object; the account is the last field of a
