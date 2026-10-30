@@ -2,6 +2,7 @@ package wixconvert
 
 import (
 	"cmp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -131,9 +132,14 @@ func (c *converter) recovery(svc *omap, elm *elem) {
 
 	recovery.set("actions", actions)
 
-	if v := elm.attr("RestartServiceDelayInSeconds"); v != "" {
-		recovery.set("restartDelay", v+"s")
+	// Without the attribute WiX restarts at once, while msi-builder
+	// waits a minute by default.
+	delay := elm.attr("RestartServiceDelayInSeconds")
+	if delay == "" {
+		delay = "0"
 	}
+
+	recovery.set("restartDelay", delay+"s")
 
 	for _, a := range []string{"ProgramCommandLine", "RebootMessage"} {
 		if elm.has(a) {
@@ -293,18 +299,59 @@ func (cc *compConv) removeFile(elm *elem) {
 	cc.out.add("removeFiles", row)
 }
 
+// movableDir returns the first directory from dirID up to its root that can
+// point anywhere: one whose output ID is public, which the command line sets,
+// or one an action or property sets.
+func (c *converter) movableDir(dirID string) string {
+	set := c.setDirs()
+
+	for folder := c.dirs[dirID]; folder != nil; folder = folder.parent {
+		if id := c.dirRef(folder.id); set[folder.id] || config.IsPublicProperty(id) && !config.IsStandardFolder(id) {
+			return id
+		}
+	}
+
+	if c.dirs[dirID] == nil && (set[dirID] || config.IsPublicProperty(c.dirRef(dirID))) {
+		return c.dirRef(dirID)
+	}
+
+	return ""
+}
+
+// setDirs returns the WiX IDs that a SetDirectory, SetProperty, custom
+// action or property sets.
+func (c *converter) setDirs() map[string]bool {
+	set := make(map[string]bool)
+
+	for _, setter := range c.setters {
+		set[setter.attr("Id")] = true
+	}
+
+	for _, custom := range c.actionOrder {
+		if custom.has("Value") {
+			set[custom.attr(attrDirectory)+custom.attr(attrProperty)] = true
+		}
+	}
+
+	for _, prop := range c.properties {
+		set[prop.attr("Id")] = true
+	}
+
+	return set
+}
+
 // purge converts util:RemoveFolderEx. The removal of the component's own
-// folder on uninstall, when its directory ID is private, becomes purge,
-// whose deferred rmdir FILE-03 verified; any other folder, a public ID or
-// another On becomes a removeFolders entry, which reads the property at
-// install time.
+// folder on uninstall, when no directory up to its root can point
+// elsewhere, becomes purge, whose deferred rmdir FILE-03 verified; any
+// other folder or On becomes a removeFolders entry, which reads the folder
+// at install time.
 func (cc *compConv) purge(elm *elem) {
 	conv := cc.c
 	prop := elm.attr(attrProperty)
 	when := elm.attr("On")
 	cond := conv.value(elm, "Condition")
 
-	if (prop == "" || prop == cc.cp.dir) && (when == "" || when == "uninstall") && !config.IsPublicProperty(cc.cp.dir) &&
+	if (prop == "" || prop == cc.cp.dir) && (when == "" || when == "uninstall") && conv.movableDir(cc.cp.dir) == "" &&
 		cc.out.get("purge") == nil {
 		if cond != "" {
 			cc.out.set("purge", newMap().set("condition", cond))
@@ -395,8 +442,12 @@ func (c *converter) firewall(elm *elem, comp *comp, program string) { //nolint:c
 	}
 
 	rule.set("program", program)
-	rule.set("protocol", c.value(elm, "Protocol"))
-	rule.set("port", c.value(elm, "Port"))
+
+	if program == "" {
+		c.todof(rule, "program", elm.line, "the firewall exception names no program; msi-builder rules open ports for one program, set program")
+	}
+
+	c.firewallProtocol(rule, elm)
 
 	var remote []string
 
@@ -437,6 +488,28 @@ func (c *converter) firewall(elm *elem, comp *comp, program string) { //nolint:c
 	}
 
 	c.out.add("firewall", rule)
+}
+
+// firewallProtocol sets the protocol and port of a firewall rule. A WiX
+// exception without Protocol is not limited to TCP, msi-builder's default:
+// without a port it becomes any, and with one it needs a choice, because a
+// Windows firewall rule with a port must name TCP or UDP.
+func (c *converter) firewallProtocol(rule *omap, elm *elem) {
+	protocol, port := c.value(elm, "Protocol"), c.value(elm, "Port")
+
+	switch {
+	case protocol != "":
+	case port == "":
+		protocol = "any"
+	default:
+		protocol = "tcp"
+
+		c.todof(rule, "protocol", elm.line, "the firewall exception sets no Protocol; msi-builder opens port %s for tcp only, "+
+			"add a udp rule if the program needs it", port)
+	}
+
+	rule.set("protocol", protocol)
+	rule.set("port", port)
 }
 
 // compID returns the component's ID, giving it one when WiX generated it.
@@ -545,14 +618,18 @@ const (
 	rightsService = "service"
 )
 
-// fileRights maps util:PermissionEx attributes to file rights: names
-// where msi-builder has one, else the access mask bits from the Windows
-// file access rights.
-var fileRights = []struct { //nolint:gochecknoglobals // lookup table
+// namedRight is a util:PermissionEx attribute and the right it grants: a
+// msi-builder right name, or else access mask bits.
+type namedRight struct {
 	attr  string
 	right string
 	mask  int
-}{
+}
+
+// fileRights maps util:PermissionEx attributes to file rights: names
+// where msi-builder has one, else the access mask bits from the Windows
+// file access rights.
+var fileRights = []namedRight{ //nolint:gochecknoglobals // lookup table
 	{"GenericAll", rightsFull, 0},
 	{"FileAllRights", rightsFull, 0},
 	{"GenericRead", "read", 0},
@@ -578,12 +655,53 @@ var fileRights = []struct { //nolint:gochecknoglobals // lookup table
 	{"Synchronize", "", 0x100000},
 }
 
-var serviceRights = map[string]string{ //nolint:gochecknoglobals // lookup table
-	"GenericAll":           rightsFull,
-	"GenericRead":          "read",
-	"ServiceStart":         "start",
-	"ServiceStop":          "stop",
-	"ServicePauseContinue": "pauseContinue",
+// serviceRights maps util:PermissionEx attributes to service rights: names
+// where msi-builder has one, else the access mask bits from the Windows
+// service access rights.
+var serviceRights = []namedRight{ //nolint:gochecknoglobals // lookup table
+	{"GenericAll", rightsFull, 0},
+	{"GenericRead", "read", 0},
+	{"GenericWrite", "", 0x20002},   // READ_CONTROL | SERVICE_CHANGE_CONFIG
+	{"GenericExecute", "", 0x20170}, // READ_CONTROL | start, stop, pause, user-defined control
+	{"ServiceQueryConfig", "", 0x1},
+	{"ServiceChangeConfig", "", 0x2},
+	{"ServiceQueryStatus", "", 0x4},
+	{"ServiceEnumerateDependents", "", 0x8},
+	{"ServiceStart", "start", 0},
+	{"ServiceStop", "stop", 0},
+	{"ServicePauseContinue", "pauseContinue", 0},
+	{"ServiceInterrogate", "", 0x80},
+	{"ServiceUserDefinedControl", "", 0x100},
+	{"Delete", "", 0x10000},
+	{"ReadPermission", "", 0x20000},
+	{"ChangePermission", "", 0x40000},
+	{"TakeOwnership", "", 0x80000},
+}
+
+// wellKnownAccounts are the SDDL aliases of built-in accounts by their
+// English names, which other Windows languages translate.
+var wellKnownAccounts = map[string]string{ //nolint:gochecknoglobals // lookup table
+	"administrators": "BA", "users": "BU", "guests": "BG", "power users": "PU", "everyone": "WD",
+	"authenticated users": "AU", "system": "SY", "localsystem": "SY", "local service": "LS", "localservice": "LS",
+	"network service": "NS", "networkservice": "NS", "interactive": "IU", "remote desktop users": "RD",
+}
+
+// grantAccount names a util:PermissionEx account the way grants take it:
+// a built-in account by its SDDL alias, so the name resolves in every
+// Windows language.
+func grantAccount(domain, user string) string {
+	switch strings.ToLower(domain) {
+	case "", "builtin", "nt authority":
+		if alias, ok := wellKnownAccounts[strings.ToLower(user)]; ok {
+			return alias
+		}
+	}
+
+	if domain != "" {
+		return domain + `\` + user
+	}
+
+	return user
 }
 
 // permission converts a permission element into the permissions key of target.
@@ -607,10 +725,7 @@ func (c *converter) permission(target *omap, key string, elm *elem, kind string)
 	case elemPermission:
 		c.todof(target, key, elm.line, "<Permission> replaces the object's permissions; write them as an SDDL string in %s.sddl", key)
 	case "util:PermissionEx":
-		account := c.value(elm, "User")
-		if d := c.value(elm, "Domain"); d != "" {
-			account = d + `\` + account
-		}
+		account := grantAccount(c.value(elm, "Domain"), c.value(elm, "User"))
 
 		g := newMap().set("account", account).set("rights", c.rights(target, key, elm, kind))
 		perms.add("grant", g)
@@ -623,31 +738,26 @@ func (c *converter) rights(target *omap, key string, elm *elem, kind string) []s
 		mask  int
 	)
 
+	table := fileRights
+	if kind == rightsService {
+		table = serviceRights
+	}
+
 	for _, attrName := range elm.order {
 		if !elm.yes(attrName) {
 			continue
 		}
 
-		if kind == rightsService {
-			if r, ok := serviceRights[attrName]; ok {
-				names = append(names, r)
-			} else {
-				c.todof(target, key, elm.line, "the service right %s has no name in msi-builder; add its access mask", attrName)
-			}
+		idx := slices.IndexFunc(table, func(r namedRight) bool { return r.attr == attrName })
 
-			continue
-		}
-
-		for _, right := range fileRights {
-			if right.attr != attrName {
-				continue
-			}
-
-			if right.right != "" {
-				names = append(names, right.right)
-			} else {
-				mask |= right.mask
-			}
+		switch {
+		case idx < 0 && kind == rightsService:
+			c.todof(target, key, elm.line, "the service right %s has no counterpart; add its access mask", attrName)
+		case idx < 0:
+		case table[idx].right != "":
+			names = append(names, table[idx].right)
+		default:
+			mask |= table[idx].mask
 		}
 	}
 

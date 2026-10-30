@@ -1,0 +1,104 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
+# Converted from schedules.wxs by msi-builder convert.
+# Review it, resolve the TODO comments, then run msi-builder validate.
+# TODO(line 52): several actions set the command line property of Orphan and none is scheduled right before it; check its run.command
+schema: msi-builder/v1
+product:
+  name: Hello
+  manufacturer: Example
+  version: 1.0.0
+  upgradeCode: 0b7e8c41-2f6d-4a39-8c15-7d2e9f0a6b54
+package:
+  platform: x64
+upgrade:
+  downgradeMessage: A newer version is installed.
+installDir:
+  id: INSTALLFOLDER
+  name: Hello
+directories:
+  - id: CommonAppDataFolder
+    children:
+      - id: DataRoot
+        name: Hello
+        children:
+          - id: DataDir
+            name: data
+components:
+  - id: HelloExe
+    files:
+      - source: dist/hello.exe
+        id: hello.exe
+    services:
+      # TODO(line 25): the WiX package has no ServiceControl for HelloSvc; msi-builder starts it on install and stops and deletes it by default (services[].control)
+      - name: HelloSvc
+        start: auto
+        permissions:
+          grant:
+            - account: WD
+              rights: [start, "0x84"]
+  - id: Data
+    directory: DataDir
+    guid: 6a0f1c2e-7d3b-4e58-9a61-2b4c8d0e1f37
+    removeFolders:
+      - property: DataDir
+    createFolder: true
+customActions:
+  - id: StopHello
+    run:
+      command: '"[#hello.exe]" stop'
+    return: ignore
+    schedule:
+      - {sequence: execute, before: InstallValidate}
+  - id: Clean
+    run:
+      command: '"[#hello.exe]" clean'
+    return: ignore
+    schedule:
+      - {sequence: execute, after: InstallInitialize}
+  - id: Check
+    run:
+      command: '"[#hello.exe]" check'
+    return: ignore
+    schedule:
+      - {sequence: execute, after: InstallFinalize}
+  - id: UiProbe
+    run:
+      command: '"[#hello.exe]" ui'
+    return: ignore
+    schedule:
+      - {sequence: ui, at: 1401}
+  - id: Late
+    run:
+      command: '"[#hello.exe]" late'
+    return: ignore
+    schedule:
+      - {sequence: execute, at: 6620}
+  # No setter is scheduled right before this one.
+  - id: Orphan
+    run:
+      command: '"[#hello.exe]" check'
+    return: ignore
+    schedule:
+      - {sequence: execute, before: InstallFinalize}
+  - id: SetDataRoot
+    setDirectory: {directory: DataRoot, value: '[%ProgramData]\Hello'}
+    schedule:
+      - {sequence: ui, after: CostFinalize}
+      - {sequence: execute, after: CostFinalize}
+firewall:
+  # No Protocol: the rule is not limited to TCP.
+  - name: Hello
+    component: HelloExe
+    program: '[#hello.exe]'
+    protocol: any
+    profiles: all
+  - name: Hello port
+    component: HelloExe
+    program: '[#hello.exe]'
+    # TODO(line 23): the firewall exception sets no Protocol; msi-builder opens port 8080 for tcp only, add a udp rule if the program needs it
+    protocol: tcp
+    port: "8080"
+    profiles: all
+ui:
+  enabled: true
+  chooseDirectory: true
