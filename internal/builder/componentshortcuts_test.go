@@ -435,3 +435,49 @@ func TestShortcutsOnlyComponentDuplicateGUID(t *testing.T) {
 		t.Errorf("a shared guid: %v", err)
 	}
 }
+
+// The generated carrier of a permanent file's shortcuts is not permanent: the
+// file stays after uninstall, its shortcuts do not (wazuh's "Edit conf").
+// A component of shortcuts alone keeps its own permanent flag.
+func TestShortcutCarrierNotPermanent(t *testing.T) {
+	t.Parallel()
+
+	res := mustBuild(t, shortcutConfig(t, `
+  - id: Conf
+    permanent: true
+    files:
+      - source: app.exe
+        shortcuts: [{ name: Edit }]
+  - id: Menu
+    permanent: true
+    shortcuts: [{ name: Docs, url: "https://a" }]
+`))
+
+	generated := 0
+
+	for _, row := range rows(t, res.Database, "Component") {
+		attributes, ok := row[3].(int)
+		if !ok {
+			t.Fatalf("component %v attributes %v", row[0], row[3])
+		}
+
+		permanent := attributes&0x10 != 0 // msidbComponentAttributesPermanent
+
+		switch row[0] {
+		case "Conf", "Menu":
+			if !permanent {
+				t.Errorf("component %v lost its permanent flag", row[0])
+			}
+		default:
+			generated++
+
+			if permanent {
+				t.Errorf("generated shortcut component %v is permanent (attributes %v)", row[0], row[3])
+			}
+		}
+	}
+
+	if generated == 0 {
+		t.Error("no generated shortcut component")
+	}
+}

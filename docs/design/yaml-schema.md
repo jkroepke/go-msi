@@ -781,7 +781,9 @@ component of their own: in the folder of the first shortcut, with the
 component's condition, 64-bit unless that folder is a 32-bit one (ICE80),
 an HKCU value under `Software\[Manufacturer]\[ProductName]` as its key path
 (ICE38, ICE43), `RemoveFile` rows for the folders it creates below a
-profile folder (ICE64), and in every feature of the file's component. In a
+profile folder (ICE64), and in every feature of the file's component. It
+is never permanent: the shortcuts of a file in a `permanent` component are
+removed on uninstall, while the file stays. In a
 per-user package that folder must not be a per-machine one (ICE105).
 SHORTCUT-01 installed and removed shortcuts from an own HKCU-keyed component and
 from the file's own component alike, and removed an empty Start menu folder

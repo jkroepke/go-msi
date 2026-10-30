@@ -222,8 +222,16 @@ func (b *build) shortcutComponent(info *componentInfo, dirID string) string {
 	// 32-bit folder fails ICE80.
 	is64 := info.is64 && !config.Is32BitFolder(b.topFolder(dirID))
 
+	// A generated carrier keeps the component's transitive condition but not
+	// its permanence: a file that stays installed is no reason for its
+	// shortcuts to outlive the product. Only a component of shortcuts alone,
+	// which is the carrier itself, is permanent when it says so.
 	bitness := "32"
-	attributes := compRegistryKeyPath | info.attributes&(compPermanent|compTransitive)
+	attributes := compRegistryKeyPath | info.attributes&compTransitive
+
+	if shortcutsOnly(comp) {
+		attributes |= info.attributes & compPermanent
+	}
 
 	if is64 {
 		bitness = "64"
