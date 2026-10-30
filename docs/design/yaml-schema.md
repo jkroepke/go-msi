@@ -804,7 +804,9 @@ is not a full local path (`C:\…`, no `.` or `..`, no name ending in a space
 or a dot), a drive root, a folder reached through a junction, a symbolic
 link or a `subst` drive, a junction itself, the profiles folder, every
 profile and every folder inside another user's profile and in Public and
-Default (as LocalSystem, every user's), everything when the profiles
+Default (a session that runs as LocalSystem, such as a deployment
+tool's, has no profile of its own and refuses every user's data; the
+profile of the account that started a session is allowed), everything when the profiles
 cannot be read, every standard folder of the
 engine (Program Files, ProgramData, the Windows and system folders, the
 profile folders such as AppData, Documents and the Desktop, Temp) and every

@@ -2040,9 +2040,11 @@ static const WCHAR *profileCheck(const WCHAR *folder, WCHAR *profile, int own, c
 // default), a folder that holds it, a folder directly in it, a folder that
 // is or holds a profile of ProfileList, Public or Default, and any folder
 // inside a profile other than that of the account the action runs as,
-// found by its SID. A per-machine removal as LocalSystem has no user
-// profile of its own, so every user's data is refused. When the profiles
-// cannot be read, everything is.
+// found by its SID. The immediate action runs with the token of the
+// account that started the session, so a per-machine removal still keeps
+// that account's own profile open; only a session that itself runs as
+// LocalSystem (a deployment tool) has no profile of its own, and then every
+// user's data is refused. When the profiles cannot be read, everything is.
 static const WCHAR *profileRefusal(const WCHAR *folder)
 {
     HANDLE key = 0;

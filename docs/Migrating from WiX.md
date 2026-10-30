@@ -802,10 +802,10 @@ removal, it moves the folder aside and deletes it at the end without
 following junctions, so a failed uninstall puts it back and a junction
 swapped in during the uninstall does not redirect the deletion (tested
 on Windows). It removes a folder the package
-installs to on uninstall only. It refuses drive roots,
-standard folders such as Program Files and the folders that hold them,
-folders in the Windows folder and folders behind junctions (tested), and
-other users' profiles (expected, not tested). A folder of the package
+installs to on uninstall only. It refuses folders in the Windows folder,
+folders that hold a standard folder, folders behind junctions and the
+Public profile (tested), and drive roots, standard folders such as
+Program Files and other users' profiles (expected, not tested). A folder of the package
 goes only when the whole product is removed, not with one feature.
 
 ## Signing

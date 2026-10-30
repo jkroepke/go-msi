@@ -455,10 +455,11 @@ failed uninstall puts it back, and a junction inside it is deleted as
 a link, never followed (tested on Windows). `on:
 install` and `on: both` are for folders the package does not install to,
 and a folder of the package goes only when the whole product is removed,
-not with one feature. It refuses drive roots, standard folders such as
-Program Files, the folders that hold them and folders behind junctions
-(tested), and other users' profiles and anything in an elevated session
-a standard user started (expected, not tested), but a folder an
+not with one feature. It refuses folders in the Windows folder, folders
+that hold a standard folder, folders behind junctions and the Public
+profile (tested), and drive roots, standard folders such as Program
+Files, other users' profiles and anything in an elevated session a
+standard user started (expected, not tested), but a folder an
 administrator names, such as `INSTALLDIR=D:\Tools`, is emptied:
 
 ```yaml

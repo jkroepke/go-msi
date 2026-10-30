@@ -108,9 +108,9 @@ The custom action DLL of `run` actions and permission grants. Read the root
   `NtCreateFile`, deleting links as links. Rename into a directory handle
   with `NtSetInformationFile(FileRenameInformation)`:
   `SetFileInformationByHandle(FileRenameInfo)` with `RootDirectory` set
-  fails with error 87 (FILE-11, CI run 41064763472). The folder
-  properties are secure, so a standard user's command line reaches an
-  elevated session: the immediate side removes nothing when
+  fails with error 87 (FILE-11, CI run 41064763472). Public folder
+  properties are secure by default (or `configurable`), so a standard
+  user's command line can reach an elevated session: the immediate side removes nothing when
   `MsiRunningElevated` is set and its token holds no Administrators
   group. The backup folder's name (the token) is visible to anyone who
   lists the volume root; never rely on it being secret, only on
