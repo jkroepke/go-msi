@@ -7,7 +7,8 @@
 # TODO(line 159): rescheduling the standard action RemoveExistingProducts in InstallExecuteSequence has no counterpart
 # TODO(line 149): the custom action Greet is a script; script custom actions are never supported, use a run action
 # TODO(line 150): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
-# TODO(line 161): Wix4BroadcastEnvironmentChange_X64 has no counterpart: programs that are already running keep the old environment until they restart
+# TODO(line 161): drop Wix4BroadcastEnvironmentChange_X64: Windows Installer announces environment changes itself
+# TODO(line 162): Wix4BroadcastSettingChange_X64 has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action
 # TODO: WiX generated the GUIDs of Component2, Component1, and msi-builder generates other ones; with removeOld afterInstallExecute an upgrade from the WiX package then deletes their files. Copy WiX's GUIDs into components[].guid: msi-builder inspect --table Component wix.msi
 schema: msi-builder/v1
 vars:
