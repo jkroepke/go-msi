@@ -183,13 +183,23 @@ func (c *converter) uiLaunch(wizard *omap) {
 
 	launch := wizard.child("launch")
 
-	if target != nil {
+	switch custom := c.actions[c.launchAction]; {
+	case target != nil:
 		v := c.value(target, "Value")
 		if m := fileTarget.FindStringSubmatch(v); m != nil {
 			launch.set("file", m[1])
 		} else {
 			c.todof(wizard, "launch", target.line, "WixShellExecTarget=%q: launch.file names a file of the package", v)
 		}
+	case custom != nil && custom.attr("FileRef")+custom.attr("FileKey") != "":
+		// The finish button runs a file of the package.
+		launch.set("file", custom.attr("FileRef")+custom.attr("FileKey"))
+
+		if exe := c.value(custom, "ExeCommand"); exe != "" {
+			c.todof(wizard, "launch", custom.line, "the launch action passes %q, which ui.launch does not pass", exe)
+		}
+	default:
+		c.todof(wizard, "launch", 0, "the launch checkbox starts no file of the package that convert can tell; set launch.file")
 	}
 
 	if p := props["WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT"]; p != nil {

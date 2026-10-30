@@ -151,6 +151,13 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 	}
 
 	target := elm.attr("Target")
+	if file := c.advertisedFile(pending); target == "" && file != nil {
+		// shortcut() notes that the shortcut is no longer advertised.
+		c.fileTargetShortcut(pending, file)
+
+		return
+	}
+
 	if file := c.targetFile(target); file != nil && (file.comp == pending.comp || fileTarget.MatchString(target)) {
 		c.fileTargetShortcut(pending, file)
 
@@ -178,6 +185,22 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 
 	link.set("workingDirectory", c.dirRef(elm.attr("WorkingDirectory")))
 	pending.comp.out.add("shortcuts", link)
+}
+
+// advertisedFile returns the file an advertised shortcut starts: the first
+// file of its component, which WiX makes the key path.
+func (c *converter) advertisedFile(pending pendingShortcut) *fileRef {
+	if !pending.e.yes("Advertise") {
+		return nil
+	}
+
+	for _, f := range c.files {
+		if f.comp == pending.comp {
+			return f
+		}
+	}
+
+	return nil
 }
 
 // fileTargetShortcut places a shortcut to a packaged file: on the file when

@@ -2,7 +2,7 @@
 # Converted from actions.wxs by msi-builder convert.
 # Review it, resolve the TODO comments, then run msi-builder validate.
 # TODO(line 5): the WiX package has no MajorUpgrade; msi-builder adds the standard major upgrade (set upgrade: false to leave it out)
-# TODO(line 57): the Error row 1316 has no counterpart; only error actions take in their message
+# TODO(line 60): the Error row 1316 has no counterpart; only error actions take in their message
 schema: msi-builder/v1
 product:
   name: Hello
@@ -18,25 +18,35 @@ installDir:
   id: INSTALLFOLDER
   name: Hello
 components:
-  # TODO(line 20): util:RemoveFolderEx was not converted: purge refuses a folder below INSTALLFOLDER, a directory that can point anywhere; keep the data in a folder with private (mixed-case) IDs below a fixed standard folder, such as CommonAppDataFolder/Vendor/Product, and purge that
+  # TODO(line 22): util:RemoveFolderEx was not converted: purge refuses a folder below INSTALLFOLDER, a directory that can point anywhere; keep the data in a folder with private (mixed-case) IDs below a fixed standard folder, such as CommonAppDataFolder/Vendor/Product, and purge that
   - id: HelloExe
     directory: bin
     files:
       - source: dist/hello.exe
         id: hello.exe
+        shortcuts:
+          # Advertised: becomes a plain shortcut to the component's file.
+          # TODO(line 18): advertised shortcuts are never supported; this one is a plain shortcut
+          - name: Hello
+            directory: ProgramMenuFolder/Hello
     services:
-      # TODO(line 17): the WiX package has no ServiceControl for HelloSvc; msi-builder starts it on install and stops and deletes it by default (services[].control)
+      # TODO(line 19): the WiX package has no ServiceControl for HelloSvc; msi-builder starts it on install and stops and deletes it by default (services[].control)
       - name: HelloSvc
         start: auto
         recovery:
           actions: [restart, restart, none]
           restartDelay: 0s
-  # TODO(line 29): RemoveRegistryKey HKCR\*\shell\Hello was left out: msi-builder has no removal on uninstall only, and removeRegistry removes the key on install
-  # TODO(line 30): RemoveRegistryValue HKCU\Software\Example\Hello without Name removes the default value and was left out: removeRegistry without name removes the whole key
+  # TODO(line 31): RemoveRegistryKey HKCR\*\shell\Hello was left out: msi-builder has no removal on uninstall only, and removeRegistry removes the key on install
+  # TODO(line 32): RemoveRegistryValue HKCU\Software\Example\Hello without Name removes the default value and was left out: removeRegistry without name removes the whole key
   # The RemoveFolder and HKCU key path of this shortcut component were left out:
   # msi-builder writes both for every shortcut.
   - id: ConsoleLink
     directory: ProgramMenuFolder/Hello
+    registry:
+      - root: HKCU
+        key: Software\Example\Hello\Handlers
+        name: PlayMedia
+        value: ""
     shortcuts:
       # The target is a property that holds a URL, not a folder.
       - name: Hello Console
@@ -79,7 +89,7 @@ customActions:
     schedule:
       - {sequence: execute, after: InstallFinalize, condition: NOT REMOVE}
   - id: StartMonitor
-    # TODO(line 53): check [MONITOR]: quote it if it holds a bare path; leave it if it holds a quoted command line such as an UninstallString
+    # TODO(line 56): check [MONITOR]: quote it if it holds a bare path; leave it if it holds a quoted command line such as an UninstallString
     exec:
       command: '[MONITOR] --monitor'
       directory: INSTALLFOLDER

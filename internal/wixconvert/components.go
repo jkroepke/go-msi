@@ -536,7 +536,12 @@ func (cc *compConv) registryData(elm *elem, typ string) any {
 
 	if typ != typeMultiString {
 		if elm.has("Value") {
-			return conv.value(elm, "Value")
+			if v := conv.value(elm, "Value"); v != "" || typ != "" && typ != "expandString" {
+				return v
+			}
+
+			// An empty string value, which a registry entry must state.
+			return emptyText{}
 		}
 
 		return conv.expand(elm, strings.TrimSpace(elm.text))

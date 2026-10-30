@@ -98,3 +98,7 @@ firewall:
 ui:
   enabled: true
   chooseDirectory: true
+  launch:
+    file: hello.exe
+    text: Start Hello
+    checked: false

@@ -14,6 +14,8 @@
     <ComponentGroup Id="Main" Directory="INSTALLFOLDER">
       <Component Id="HelloExe" Subdirectory="bin">
         <File Id="hello.exe" Source="dist\hello.exe" />
+        <!-- Advertised: becomes a plain shortcut to the component's file. -->
+        <Shortcut Id="AdvLink" Name="Hello" Directory="AppMenu" Advertise="yes" />
         <ServiceInstall Name="HelloSvc" Start="auto" Type="ownProcess" ErrorControl="normal">
           <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart" ThirdFailureActionType="none" />
         </ServiceInstall>
@@ -28,6 +30,7 @@
       <!-- Removed on uninstall only, never created. -->
       <RemoveRegistryKey Root="HKCR" Key="*\shell\Hello" Action="removeOnUninstall" />
       <RemoveRegistryValue Root="HKCU" Key="Software\Example\Hello" />
+      <RegistryValue Root="HKCU" Key="Software\Example\Hello\Handlers" Name="PlayMedia" Type="string" Value="" />
       <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="console" Type="integer" Value="1" KeyPath="yes" />
     </Component>
 
