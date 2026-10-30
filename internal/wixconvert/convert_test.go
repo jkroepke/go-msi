@@ -716,3 +716,51 @@ func TestConvertBuiltCodesTiedGlobs(t *testing.T) {
 		}
 	}
 }
+
+// A glob into a WiX 6432 folder finds its folder under the name of the
+// platform WiX built for; a glob whose folder the package lacks says so.
+func TestConvertBuiltCodes6432Folder(t *testing.T) {
+	t.Parallel()
+
+	const src = `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade Schedule="afterInstallExecute" DowngradeErrorMessage="A newer version is installed." />
+    <Files Include="dist\**" Directory="ProgramFiles6432Folder" Subdirectory="Hello" />
+  </Package>
+</Wix>
+`
+
+	for _, platform := range []string{"ProgramFiles64Folder", "ProgramFilesFolder"} {
+		built := &wixconvert.BuiltPackage{
+			Name: "hello.msi",
+			Components: []wixconvert.BuiltComponent{
+				{ID: "fil1", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "dirH", KeyFile: "app.exe"},
+			},
+			Directories: []wixconvert.BuiltDirectory{
+				{ID: "TARGETDIR", Name: "SourceDir"},
+				{ID: platform, Parent: "TARGETDIR", Name: "PFiles"},
+				{ID: "dirH", Parent: platform, Name: "Hello"},
+			},
+		}
+
+		res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{Built: built})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !strings.Contains(string(res.YAML), "app.exe: '{00000000-0000-4000-8000-000000000001}'") {
+			t.Errorf("%s: app.exe has no guid:\n%s", platform, res.YAML)
+		}
+	}
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{Built: &wixconvert.BuiltPackage{Name: "hello.msi"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool {
+		return strings.HasPrefix(n.Message, "convert did not find the folder of this Files glob in hello.msi")
+	}) {
+		t.Errorf("no note on the missing folder: %v", res.Notes)
+	}
+}

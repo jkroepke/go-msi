@@ -308,3 +308,28 @@ func TestTargetName(t *testing.T) {
 		}
 	}
 }
+
+func TestExistsBeside(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "dist"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "dist", "app.exe"), []byte("MZ"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	exists := existsBeside(dir)
+
+	for rel, want := range map[string]bool{
+		"dist/app.exe": true,
+		"dist/no.exe":  false,
+		filepath.ToSlash(filepath.Join(dir, "dist", "app.exe")): true,
+	} {
+		if got := exists(rel); got != want {
+			t.Errorf("exists(%q) = %t, want %t", rel, got, want)
+		}
+	}
+}

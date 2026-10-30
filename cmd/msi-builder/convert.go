@@ -70,11 +70,7 @@ check it with msi-builder validate.`,
 
 func convert(cmd *cobra.Command, path, built, out string, force bool) error {
 	dir := filepath.Dir(path)
-	opts := wixconvert.Options{Source: filepath.Base(path), Exists: func(rel string) bool {
-		_, err := os.Stat(filepath.Join(dir, filepath.FromSlash(rel)))
-
-		return err == nil
-	}}
+	opts := wixconvert.Options{Source: filepath.Base(path), Exists: existsBeside(dir)}
 
 	if built != "" {
 		pkg, err := builtPackage(built)
@@ -229,6 +225,21 @@ func builtDirectories(database *msidb.Database) []wixconvert.BuiltDirectory {
 	}
 
 	return dirs
+}
+
+// existsBeside returns a function that reports whether a file exists at a
+// slash path, relative to dir unless it is absolute.
+func existsBeside(dir string) func(string) bool {
+	return func(rel string) bool {
+		file := filepath.FromSlash(rel)
+		if !filepath.IsAbs(file) {
+			file = filepath.Join(dir, file)
+		}
+
+		_, err := os.Stat(file)
+
+		return err == nil
+	}
 }
 
 // targetName returns the long target name of a DefaultDir value,
