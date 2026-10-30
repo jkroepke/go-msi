@@ -22,13 +22,6 @@ const (
 // ACE inheritance flags of a folder grant: subfolders and files (OICI).
 const grantInherit = 0x3
 
-// maxGrants is the number of grants that fit between InstallFiles or
-// InstallServices and the next standard action at best: two type-51
-// actions each, plus seven setters and the three deferred actions, in 99
-// numbers. checkGrantRoom reports a package whose other actions leave
-// fewer.
-const maxGrants = 39
-
 // grantInfo is one grant of a permissions block on an object the component
 // installs.
 type grantInfo struct {
@@ -120,13 +113,6 @@ func (b *build) grantActions() {
 		return
 	}
 
-	if len(b.grants) > maxGrants {
-		b.errorf("components", "%d permission grants; a package can have at most %d, because their actions share the sequence numbers "+
-			"before StartServices", len(b.grants), maxGrants)
-
-		return
-	}
-
 	for _, name := range []string{cadll.GrantData, cadll.GrantCount, cadll.GrantExec, cadll.GrantRollback, cadll.GrantCommit} {
 		if _, ok := b.cfg.Properties[name]; ok {
 			b.errorf("properties."+name, "the property %s is reserved for permission grants", name)
@@ -140,6 +126,7 @@ func (b *build) grantActions() {
 		anchor = actInstallServices
 	}
 
+	b.grantAnchor = anchor
 	b.standardAt(seqInstallExecute, anchor)
 	b.grantSchedule(anchor)
 	b.grantData()
@@ -181,6 +168,7 @@ func (b *build) grantData() {
 		account := grant.cfg.Account
 		entry := cadll.GrantEntry(grant.kind, mask, grant.flags, escapeFormatted(account), grant.object, account)
 		id := generatedID("", strconv.Itoa(i), grant.object, account)
+		b.grantSetters = append(b.grantSetters, "BuilderGrantSet"+id, "BuilderGrantCount"+id)
 		setters = append(setters,
 			setter{"BuilderGrantSet" + id, cadll.GrantData, cond, "[" + cadll.GrantData + "]\n" + entry},
 			setter{"BuilderGrantCount" + id, cadll.GrantCount, cond, "[" + cadll.GrantCount + "]#"},
@@ -201,40 +189,33 @@ func (b *build) grantData() {
 }
 
 // checkGrantRoom reports grants whose actions do not fit between their
-// anchor and the next standard action that has a number, such as
-// MsiConfigureServices (5850) after InstallServices, before numbering would
-// fail with a less helpful error. Other actions after the anchor take
-// numbers there too.
+// anchor and the next numbered action, such as MsiConfigureServices (5850)
+// after InstallServices, with the number that fits, before numbering fails
+// with a less helpful error. It numbers the sequence with fewer grants
+// until it fits; other actions around the anchor take numbers there too.
 func (b *build) checkGrantRoom() {
 	actions := b.schedules[seqInstallExecute]
-
-	idx := slices.IndexFunc(actions, func(a sequence.Action) bool { return a.Name == cadll.GrantRollback })
-	if idx < 0 {
+	if len(b.grantSetters) == 0 {
 		return
 	}
 
-	anchor := actions[idx].After
-	anchorAt, next := 0, sequence.MaxSequence+1
-
-	for _, action := range actions {
-		if action.Name == anchor {
-			anchorAt = action.Sequence
-		}
+	if _, err := sequence.Number(actions); err == nil {
+		return
 	}
 
-	for _, action := range actions {
-		if action.Sequence > anchorAt && action.Sequence < next {
-			next = action.Sequence
+	for fit := len(b.grantSetters)/2 - 1; fit >= 0; fit-- {
+		dropped := make(map[string]bool, len(b.grantSetters))
+		for _, name := range b.grantSetters[2*fit:] {
+			dropped[name] = true
 		}
-	}
 
-	need := 2*len(b.grants) + 10
-	free := next - anchorAt - 1
+		fewer := slices.DeleteFunc(slices.Clone(actions), func(a sequence.Action) bool { return dropped[a.Name] })
+		if _, err := sequence.Number(fewer); err == nil {
+			b.errorf("components", "%d permission grants do not fit: each takes two actions after %s, which the package's other "+
+				"actions there share; at most %d fit in this package", len(b.grants), b.grantAnchor, fit)
 
-	if others := b.anchoredTo(seqInstallExecute, anchor) - need; anchorAt > 0 && need+others > free {
-		b.errorf("components", "%d permission grants need %d sequence numbers after %s (%d), two per grant and ten more, "+
-			"but only %d are free there before %d; use at most %d grants in this package",
-			len(b.grants), need, anchor, anchorAt, free-others, next, max(0, (free-others-10)/2))
+			return
+		}
 	}
 }
 

@@ -1285,8 +1285,10 @@ The engine builds the list of grants itself, with one property-setting
 action per grant that runs when its component is installed or repaired
 (`$Component=3`) and the block's condition holds, so an action running as
 the installing user cannot change the list after the engine formatted it.
-A package has at most 39 grants, 19 when a service uses `delayedAutoStart`
-or failure actions; the builder says how many fit. The account and the
+A package with services has at most 44 grants, 19 when a service uses
+`delayedAutoStart` or `failureActionsOnNonCrashFailures`, fewer with other
+actions after `InstallServices` such as `recovery`; the builder says how
+many fit. The account and the
 folder still come from properties: a standard user who repairs a
 per-machine product can set a secure property on the command line, so
 keep the account and directory properties of a grant `secure: false`

@@ -121,14 +121,18 @@ type build struct { //nolint:govet // grouped by build step
 	runDLL bool
 	// grants are the permission grants that grantActions turns into
 	// custom actions.
-	grants     []*grantInfo
-	cfg        *config.Config
-	numbered   map[string][]sequence.Numbered
-	tables     map[string]*msidb.Table
-	dirs       map[string]*dirInfo
-	schedules  map[string][]sequence.Action
-	components map[string]*componentInfo
-	hidden     map[string]bool
+	grants []*grantInfo
+	// grantSetters are the type-51 actions of the grants, two each, and
+	// grantAnchor the action the grant actions follow.
+	grantSetters []string
+	grantAnchor  string
+	cfg          *config.Config
+	numbered     map[string][]sequence.Numbered
+	tables       map[string]*msidb.Table
+	dirs         map[string]*dirInfo
+	schedules    map[string][]sequence.Action
+	components   map[string]*componentInfo
+	hidden       map[string]bool
 	// carriers maps a component to the generated components that install
 	// with it: the one that holds the shortcuts to its files and those that
 	// start its services under a condition.

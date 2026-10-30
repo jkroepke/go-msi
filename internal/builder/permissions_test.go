@@ -249,22 +249,25 @@ func TestPermissionGrants(t *testing.T) {
 }
 
 // TestPermissionGrantRoom builds the most grants that fit after
-// InstallServices, which MsiConfigureServices at 5850 halves.
+// InstallServices, which MsiConfigureServices at 5850 halves, and after
+// InstallFiles without services, where DuplicateFiles (4210) leaves more.
 func TestPermissionGrantRoom(t *testing.T) {
 	t.Parallel()
 
 	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
 
 	for _, tc := range []struct {
-		grants  int
-		delayed bool
-		want    string
+		grants           int
+		service, delayed bool
+		want             string
 	}{
-		{39, false, ""},
-		{19, true, ""},
-		{20, true, "use at most 19 grants"},
+		{44, true, false, ""},
+		{45, true, false, "at most 44 fit"},
+		{19, true, true, ""},
+		{20, true, true, "at most 19 fit"},
+		{100, false, false, ""},
 	} {
-		t.Run(fmt.Sprintf("%d grants delayed %v", tc.grants, tc.delayed), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%d grants service %v delayed %v", tc.grants, tc.service, tc.delayed), func(t *testing.T) {
 			t.Parallel()
 
 			cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
@@ -275,7 +278,9 @@ func TestPermissionGrantRoom(t *testing.T) {
 			}
 
 			cfg.Components[0].Files[0].Permissions = &config.Permissions{Grant: grants}
-			cfg.Components[0].Services = []*config.Service{{Name: "HelloSvc", Start: "auto", DelayedAutoStart: tc.delayed}}
+			if tc.service {
+				cfg.Components[0].Services = []*config.Service{{Name: "HelloSvc", Start: "auto", DelayedAutoStart: tc.delayed}}
+			}
 
 			_, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
 			if (tc.want == "" && err != nil) || (tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want))) {
@@ -311,14 +316,6 @@ func TestPermissionGrantErrors(t *testing.T) {
 		"inherit on a file": {func(c *config.Component) {
 			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "NS", Rights: config.StringList{"read"}, Inherit: &yes}}}
 		}, "folders only"},
-		"too many grants": {func(comp *config.Component) {
-			grants := make([]*config.Grant, 40)
-			for i := range grants {
-				grants[i] = &config.Grant{Account: "NS", Rights: config.StringList{"read"}}
-			}
-
-			comp.Files[0].Permissions = &config.Permissions{Grant: grants}
-		}, "at most 39"},
 		"generic mask": {func(c *config.Component) {
 			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "NS", Rights: config.StringList{"0x10000000"}}}}
 		}, "generic"},
