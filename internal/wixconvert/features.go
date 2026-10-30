@@ -210,7 +210,7 @@ func (c *converter) featureLevel(out *omap, elm *elem) {
 		return
 	}
 
-	if _, ok := parseLevel(text); !ok {
+	if !validLevel(text) {
 		out.set("default", "off")
 		c.todof(out, "default", elm.line, "the feature level %q is not a number from 0 to %d; convert assumed default off", text, maxLevel)
 
@@ -222,11 +222,12 @@ func (c *converter) featureLevel(out *omap, elm *elem) {
 	}
 }
 
-// parseLevel reads a feature level, a number from 0 to maxLevel.
-func parseLevel(text string) (int, bool) {
+// validLevel reports whether text is a feature level, a number from 0 to
+// maxLevel.
+func validLevel(text string) bool {
 	level, err := strconv.Atoi(text)
 
-	return level, err == nil && level >= 0 && level <= maxLevel
+	return err == nil && level >= 0 && level <= maxLevel
 }
 
 func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat list of independent WiX attributes
@@ -344,7 +345,7 @@ func (c *converter) featureConditions(out *omap, elm *elem) {
 // conditions entry, or returns "". A condition with ${NAME} references is
 // only checked once the variables are substituted.
 func conditionalLevelProblem(level, cond string) string {
-	if _, ok := parseLevel(level); !ok {
+	if !validLevel(level) {
 		return fmt.Sprintf("the level is not a number from 0 to %d", maxLevel)
 	}
 
