@@ -14,7 +14,7 @@ import (
 )
 
 // grantUserConfig is a per-user package that grants rights on a folder in
-// the user's local AppData to an account from a property (SEC-03).
+// the user's local AppData to an account from a property (SEC-04).
 const grantUserConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderGrantUser, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 9d4a6e21-5b7c-4f38-8e1a-3c6b0d2f7a95 }
 package: { platform: x64, scope: perUser, compression: none }
@@ -35,7 +35,7 @@ components:
 const userAccountsKey = `Software\msi-builder\GrantAccounts\`
 
 // TestMsiexecGrantsPerUser installs grantUserConfig as the administrator
-// (SEC-03): the account from the property is remembered in the user's hive,
+// (SEC-04): the account from the property is remembered in the user's hive,
 // not in HKLM, a repair without the property grants to it, and the removal
 // forgets it.
 //
@@ -61,7 +61,7 @@ func TestMsiexecGrantsPerUser(t *testing.T) {
 	msiexecQuiet(t, filepath.Join(dir, "install.log"), "/i", path, `SVC_ACCOUNT=BUILTIN\Guests`)
 
 	sddl := objectSDDL(t, data)
-	t.Logf("SEC-03: per-user folder after the install: %s", sddl)
+	t.Logf("SEC-04: per-user folder after the install: %s", sddl)
 
 	if !strings.Contains(sddl, "(A;OICI;0x1301bf;;;BG)") {
 		t.Errorf("the folder has no modify ACE for Guests: %s", sddl)
@@ -90,7 +90,7 @@ func TestMsiexecGrantsPerUser(t *testing.T) {
 }
 
 // TestNonAdminGrantsPerUser installs grantUserConfig as a standard user
-// (SEC-03): the commit action, which runs as that user, remembers the
+// (SEC-04): the commit action, which runs as that user, remembers the
 // account in the user's hive, so a repair without the property grants to it,
 // and the removal forgets it.
 //
@@ -111,7 +111,7 @@ func TestNonAdminGrantsPerUser(t *testing.T) {
 	}
 
 	log := grepLog(readLog(install), "BuilderGrant")
-	t.Logf("SEC-03 as %s, install:\n%s", user.name, log)
+	t.Logf("SEC-04 as %s, install:\n%s", user.name, log)
 
 	if !strings.Contains(log, "BuilderGrant: granted") || strings.Contains(log, "cannot remember") {
 		t.Errorf("install: the grant or the remembered account failed\n%s", log)
