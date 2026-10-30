@@ -562,6 +562,7 @@ components:
         permissions: { grant: [{ account: '[SVC_ACCOUNT]', rights: read }] }
 customActions:
   - { id: SetAccount, setProperty: { name: SVC_ACCOUNT, value: '[[WHICH]]' }, schedule: [{ sequence: execute, after: CostFinalize }] }
+  - { id: SetFromEnv, setProperty: { name: SVC_ACCOUNT, value: '[[%ACCT]]' }, schedule: [{ sequence: execute, after: CostFinalize }] }
 `), config.Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -570,7 +571,9 @@ customActions:
 	cfg.BaseDir = dir
 
 	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
-	if err == nil || !strings.Contains(fmt.Sprint(res.Diagnostics), "customActions[0].setProperty.value") {
+	diags := fmt.Sprint(res.Diagnostics)
+
+	if err == nil || !strings.Contains(diags, "customActions[0].setProperty.value") || !strings.Contains(diags, "customActions[1].setProperty.value") {
 		t.Errorf("err %v, diagnostics %s", err, res.Diagnostics)
 	}
 }

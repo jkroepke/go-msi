@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/jkroepke/msi-builder/internal/cadll"
+	"github.com/jkroepke/msi-builder/internal/formatted"
 	"github.com/jkroepke/msi-builder/internal/rights"
 	"github.com/jkroepke/msi-builder/internal/sequence"
 	"github.com/jkroepke/msi-builder/pkg/config"
@@ -429,7 +430,7 @@ func (b *build) actionSources(sources map[string]bool) {
 
 			// The property a nested reference names is only known at
 			// install time, so it could not be kept out (section 17.7).
-			if len(innerRefs(value)) != len(propertyRefs(value)) && !reported[i] {
+			if formatted.Nested(value) && !reported[i] {
 				reported[i] = true
 				b.errorf(fmt.Sprintf("customActions[%d].%s.value", i, field), "%s sets %s, which a permission grant's account or "+
 					"folder comes from, so its value cannot name a property through another property ([[B]] or [A[B]])", action.ID, target)

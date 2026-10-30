@@ -64,9 +64,10 @@ versioning after 1.0.
   before touching it. [`internal/rights`](internal/rights) maps grant
   rights names to access masks for `pkg/config` and the builder.
 - [`internal/schema`](internal/schema), [`internal/pe`](internal/pe),
-  [`internal/condition`](internal/condition), [`internal/sequence`](internal/sequence),
+  [`internal/condition`](internal/condition), [`internal/formatted`](internal/formatted), [`internal/sequence`](internal/sequence),
   [`internal/codepage`](internal/codepage), [`internal/artwork`](internal/artwork):
   standard table definitions, PE version resources, the condition grammar,
+  checks of formatted strings,
   sequence numbering, code pages and the wizard bitmaps.
 - [`cmd/msi-builder`](cmd/msi-builder): CLI with `build`, `validate`, `inspect`, `convert`,
   `sign`, `verify`, `completion` and `version`, built on `spf13/cobra`.
