@@ -270,7 +270,7 @@ func TestMsiexecClosesApps(t *testing.T) {
 	installDir := filepath.Join(os.Getenv("ProgramFiles"), "MsiBuilderClose")
 
 	defer func() {
-		_, _ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn").CombinedOutput()
+		_, _ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn", "/norestart").CombinedOutput()
 		_ = os.RemoveAll(installDir)
 	}()
 
@@ -291,7 +291,10 @@ func TestMsiexecClosesApps(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"repair", []string{"/fa", path}},
+		// REINSTALLMODE o: every component is reinstalled (action state 3),
+		// but no file of the same version is copied, so keep.exe, which
+		// keeps running, leaves no replacement pending for a reboot.
+		{"repair", []string{"/fomus", path}},
 		{"uninstall", []string{"/x", path}},
 	} {
 		marker := filepath.Join(dir, step.name+".closed")
@@ -315,7 +318,7 @@ func TestMsiexecClosesApps(t *testing.T) {
 		code := msiexecCode(t, log, step.args...)
 		t.Logf("%s: msiexec exit code %d\n%s", step.name, code, closeLines(log))
 
-		if code != 0 && code != 3010 {
+		if code != 0 {
 			t.Fatalf("%s failed with %d\n%s", step.name, code, readLog(log))
 		}
 
