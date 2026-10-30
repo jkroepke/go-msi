@@ -284,6 +284,41 @@ RegisterProduct (section 8.2). A major upgrade only finds a product installed in
 installed per user and then per machine is installed twice; offer one
 scope as the default and keep upgrades in it.
 
+Machine-wide data has two forms in a dual package (ENVVAR-03). An
+environment variable's `scope` defaults to `auto`: the builder writes it
+as a machine variable in a generated component with the condition
+`ALLUSERS=1` and as a user variable in one with `NOT ALLUSERS`, so a
+`PATH` entry goes to the machine `PATH` for all users and to the user's
+`PATH` per user. ALLUSERS is 1 per machine and unset per user once the
+context is fixed, also after a switch on the scope page (INST-02). A
+component with `scope: perMachine` installs only per machine and may write
+HKLM and HKU values and removals, machine variables, event log sources and
+`serviceControl` rows; one with `scope: perUser` installs only per user.
+The builder adds `ALLUSERS=1` or `NOT ALLUSERS` to the component's
+`condition`. Services stay refused, since ICE105 rejects every
+`ServiceInstall` row, and so do the folders ICE105 rejects.
+
+```yaml
+package:
+  platform: x64
+  scope: perUserOrMachine
+components:
+  - files:
+      - source: dist/tool.exe
+    environment:
+      - { name: PATH, value: '[INSTALLDIR]', action: append }   # scope auto
+  - id: MachineSettings
+    directory: INSTALLDIR
+    scope: perMachine                # left out of a per-user install
+    registry:
+      - { root: HKLM, key: Software\Acme\Tool, name: InstallDir, value: '[INSTALLDIR]' }
+```
+
+A `perMachine` component's resources are not installed per user at all,
+so a value that both contexts need belongs under HKMU, which follows the
+context. `scope` on a component of a package with a single context is an
+error.
+
 ### 4.3 `upgrade`
 
 ```yaml
@@ -565,6 +600,7 @@ components:
     environment: []
     createFolder: false
     condition: ""
+    scope: ""                        # dual packages only: perMachine | perUser, see "Install scope"
     permanent: false
     neverOverwrite: false
     preserve: false                  # neverOverwrite + a late removeOld, see below
@@ -1267,9 +1303,16 @@ environment:
   - name: PATH
     value: '[APPLICATIONFOLDER]'
     action: append               # set | setIfAbsent | append | prepend | remove
-    scope: machine               # machine | user
+    scope: machine               # machine | user | auto; see below for the default
     removeOnUninstall: true      # default true (false for remove); written as an explicit "-"
 ```
+
+`scope` defaults to `user` in a `perUser` package or component, to `auto`
+in a component of a dual package without a `scope` of its own, and to
+`machine` otherwise. `auto` writes the variable per machine or per user as
+the package is installed (section 4.2, "Install scope"; ENVVAR-03); in a
+package or component of one context it is the same as that context's
+scope.
 
 `append` and `prepend` build the `[~];` form, and a `PATH`-like value without
 them gets a warning, since `set` replaces the whole variable. A component may
