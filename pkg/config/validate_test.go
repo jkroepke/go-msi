@@ -214,7 +214,7 @@ func TestValidate(t *testing.T) {
 		},
 		"feature condition on Installed": {
 			strings.Replace(base, "    components: [App]\n", "    components: [App]\n    conditions:\n      - { condition: Installed OR X, default: off }\n", 1) + appComponent,
-			sevError, "features[0].conditions[0].condition", "select maintenance runs",
+			sevError, "features[0].conditions[0].condition", "always false here",
 		},
 		"feature conditions share a level": {
 			strings.Replace(base, "    components: [App]\n", "    components: [App]\n    conditions:\n      - { condition: X = 1, default: off }\n      - { condition: Y = 1, level: 2 }\n", 1) + appComponent,
