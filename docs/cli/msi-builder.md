@@ -23,6 +23,7 @@ msi-builder [command]
 
 - [`msi-builder build`](msi-builder_build.md): Build a package from a YAML file
 - [`msi-builder completion`](msi-builder_completion.md): Print a shell completion script
+- [`msi-builder convert`](msi-builder_convert.md): Convert a WiX source file to a YAML file
 - [`msi-builder inspect`](msi-builder_inspect.md): Print the tables, streams and summary of a package
 - [`msi-builder sign`](msi-builder_sign.md): Add an Authenticode signature to a package
 - [`msi-builder validate`](msi-builder_validate.md): Check a YAML file without building a package

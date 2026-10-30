@@ -19,6 +19,7 @@
 - [build](cli/msi-builder_build.md)
 - [validate](cli/msi-builder_validate.md)
 - [inspect](cli/msi-builder_inspect.md)
+- [convert](cli/msi-builder_convert.md)
 - [sign](cli/msi-builder_sign.md)
 - [verify](cli/msi-builder_verify.md)
 - [completion](cli/msi-builder_completion.md)

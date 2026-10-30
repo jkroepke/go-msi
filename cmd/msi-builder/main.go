@@ -3,6 +3,7 @@
 //	msi-builder build [-o out.msi] [--var NAME=VALUE]... [--env] msi.yaml
 //	msi-builder validate [--var NAME=VALUE]... [--env] msi.yaml
 //	msi-builder inspect [--table NAME] package.msi
+//	msi-builder convert [-o msi.yaml] app.wxs
 //	msi-builder sign [signing options] [-o out.msi] package.msi
 //	msi-builder verify package.msi
 //	msi-builder completion bash|fish|powershell|zsh
@@ -121,6 +122,7 @@ and builds the same packages on Linux, macOS and Windows.`,
 		newBuildCmd(),
 		newValidateCmd(),
 		newInspectCmd(),
+		newConvertCmd(),
 		newSignCmd(),
 		newVerifyCmd(),
 		newCompletionCmd(),

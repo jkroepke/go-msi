@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A sample package in WiX v3 syntax. -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+  <Product Id="*" Name="Hello Tools" Language="1033" Version="$(var.ProductVersion)" Manufacturer="Example"
+           UpgradeCode="{6A3F1B2C-1D2E-4F50-9A8B-7C6D5E4F3A21}">
+    <Package InstallerVersion="200" Compressed="yes" InstallScope="perUser" Platform="x86" Description="Hello tools" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <Media Id="1" Cabinet="tools.cab" EmbedCab="no" />
+
+    <Condition Message="Hello Tools needs Windows 10.">
+      <![CDATA[Installed OR VersionNT >= 603]]>
+    </Condition>
+
+    <?if $(var.Edition) = "full" ?>
+    <Property Id="EDITION" Value="full" />
+    <?else?>
+    <Property Id="EDITION" Value="lite" />
+    <?endif?>
+    <Property Id="QtExecCmdLine" Value="&quot;[SystemFolder]cmd.exe&quot; /c echo hello" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="LocalAppDataFolder">
+        <Directory Id="ExampleDir" Name="Example">
+          <Directory Id="ToolsDir" Name="Hello Tools">
+            <Directory Id="BIN" Name="bin" />
+          </Directory>
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <DirectoryRef Id="ToolsDir">
+      <Component Id="Readme" Guid="{2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E61}" Win64="no">
+        <File Id="readme.txt" Source="SourceDir\docs\readme.txt" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\Example\Hello Tools" Name="Version" Value="$(var.ProductVersion)" Type="string" />
+        <Condition>EDITION = "full"</Condition>
+      </Component>
+    </DirectoryRef>
+
+    <ComponentGroup Id="Tools" Directory="BIN">
+      <Component Id="ToolExe" Guid="{2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E62}">
+        <File Id="tool.exe" Name="hello-tool.exe" Source="$(var.BinDir)\tool.exe" />
+        <RegistryValue Root="HKCU" Key="Software\Example\Hello Tools" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+        <RemoveFolder Id="RemoveBin" On="uninstall" />
+        <Environment Id="ToolsPath" Name="PATH" Value="[BIN]" Action="set" Part="first" Permanent="no" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Complete" Title="Hello Tools" Level="1" Absent="disallow">
+      <ComponentRef Id="Readme" />
+      <ComponentGroupRef Id="Tools" />
+    </Feature>
+
+    <CustomAction Id="Echo" BinaryKey="WixCA" DllEntry="CAQuietExec" Execute="immediate" Return="ignore" />
+    <CustomAction Id="RunTool" FileKey="tool.exe" ExeCommand="--setup" Execute="commit" Return="asyncWait" />
+    <InstallExecuteSequence>
+      <Custom Action="Echo" After="InstallFinalize">NOT Installed</Custom>
+      <Custom Action="RunTool" After="InstallFiles"><![CDATA[NOT Installed AND NOT REMOVE]]></Custom>
+    </InstallExecuteSequence>
+
+    <UIRef Id="WixUI_Minimal" />
+    <UIRef Id="WixUI_ErrorProgressText" />
+  </Product>
+</Wix>
