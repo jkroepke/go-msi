@@ -247,14 +247,11 @@ func (c *converter) noteHarvested() {
 // after the components took theirs, so a file that a component lists keeps
 // its code there. A file the folder source leaves out keeps none.
 func (c *converter) pinHarvested() int {
+	found := c.harvestedCodes()
 	pinned := 0
 
 	for _, comp := range c.comps {
-		if comp.out == nil || comp.folder == nil {
-			continue
-		}
-
-		guids := c.harvestedCodes(comp)
+		guids := found[comp]
 		if len(guids) == 0 {
 			continue
 		}
@@ -275,21 +272,43 @@ func (c *converter) pinHarvested() int {
 	return pinned
 }
 
-// harvestedCodes returns the components of the built package whose key file
-// the folder source of comp adds, by the path below the folder.
-func (c *converter) harvestedCodes(comp *comp) map[string]*BuiltComponent {
-	target := c.builtDir(c.dirs[comp.dir], comp.dir)
-	if target == "" {
-		return nil
+// harvest is a folder source with its folder in the built package.
+type harvest struct {
+	comp   *comp
+	filter *folderglob.Filter
+	target string
+}
+
+// harvests returns the folder sources whose folder the built package has.
+func (c *converter) harvests() []harvest {
+	var found []harvest
+
+	for _, comp := range c.comps {
+		if comp.out == nil || comp.folder == nil {
+			continue
+		}
+
+		target := c.builtDir(c.dirs[comp.dir], comp.dir)
+
+		filter, err := folderglob.New(comp.folder.list("include"), comp.folder.list("exclude"))
+		if target == "" || err != nil {
+			continue
+		}
+
+		found = append(found, harvest{comp: comp, filter: filter, target: target})
 	}
 
-	filter, err := folderglob.New(comp.folder.list("include"), comp.folder.list("exclude"))
-	if err != nil {
-		return nil
-	}
+	return found
+}
 
-	guids := make(map[string]*BuiltComponent)
-	seen := make(map[string]bool)
+// harvestedCodes returns, for each folder source, the components of the
+// built package whose key file it adds, by the path below its folder. A
+// file two folder sources add goes to the one whose folder is nearest
+// above it; when both folders are the same, it goes to neither.
+func (c *converter) harvestedCodes() map[*comp]map[string]*BuiltComponent {
+	sources := c.harvests()
+	found := make(map[*comp]map[string]*BuiltComponent)
+	seen := make(map[*comp]map[string]bool)
 	known := c.listedCodes()
 
 	for i := range c.built.Components {
@@ -298,19 +317,57 @@ func (c *converter) harvestedCodes(comp *comp) map[string]*BuiltComponent {
 			continue
 		}
 
-		folder, below := c.builtPath(row.Directory, target)
-		rel := path.Join(folder, row.KeyFile)
-
-		// Windows matches names ignoring case, and so does the build.
-		if !below || seen[strings.ToLower(rel)] || !filter.Included(rel) {
+		src, rel := c.nearestHarvest(sources, row)
+		if src == nil || seen[src.comp][strings.ToLower(rel)] {
+			// Windows matches names ignoring case, and so does the build.
 			continue
 		}
 
-		seen[strings.ToLower(rel)] = true
-		guids[rel] = row
+		if found[src.comp] == nil {
+			found[src.comp] = make(map[string]*BuiltComponent)
+			seen[src.comp] = make(map[string]bool)
+		}
+
+		seen[src.comp][strings.ToLower(rel)] = true
+		found[src.comp][rel] = row
 	}
 
-	return guids
+	return found
+}
+
+// nearestHarvest returns the folder source that adds the key file of row
+// and whose folder is nearest above it, with the file's path below that
+// folder, or nil when none adds it or two with the same folder do.
+func (c *converter) nearestHarvest(sources []harvest, row *BuiltComponent) (*harvest, string) {
+	var (
+		best    *harvest
+		bestRel string
+		tie     bool
+	)
+
+	depth := -1
+
+	for i := range sources {
+		folder, below := c.builtPath(row.Directory, sources[i].target)
+		rel := path.Join(folder, row.KeyFile)
+
+		if !below || !sources[i].filter.Included(rel) {
+			continue
+		}
+
+		switch steps := strings.Count(rel, "/"); {
+		case best == nil || steps < depth:
+			best, bestRel, depth, tie = &sources[i], rel, steps, false
+		case steps == depth:
+			tie = true
+		}
+	}
+
+	if tie {
+		return nil, ""
+	}
+
+	return best, bestRel
 }
 
 // listed are the built components that a component of the source stands

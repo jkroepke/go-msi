@@ -536,3 +536,72 @@ func TestConvertAdvertisedLateRemoval(t *testing.T) {
 		}
 	}
 }
+
+// A file two Files globs add goes to the glob whose folder is nearest above
+// it; with the same folder it goes to neither, and both keep their note.
+func TestConvertBuiltCodesNestedGlobs(t *testing.T) {
+	t.Parallel()
+
+	const src = `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade Schedule="afterInstallExecute" DowngradeErrorMessage="A newer version is installed." />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" />
+    </StandardDirectory>
+    <Files Include="bin\**" Directory="INSTALLFOLDER" />
+    <Files Include="assets\**" Directory="INSTALLFOLDER" Subdirectory="assets" />
+    %s
+  </Package>
+</Wix>
+`
+
+	built := &wixconvert.BuiltPackage{
+		Name: "hello.msi",
+		Components: []wixconvert.BuiltComponent{
+			{ID: "fil1", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "INSTALLFOLDER", KeyFile: "app.exe"},
+			{ID: "fil2", Code: "{00000000-0000-4000-8000-000000000002}", Directory: "dirA1", KeyFile: "logo.png"},
+		},
+		Directories: []wixconvert.BuiltDirectory{
+			{ID: "TARGETDIR", Name: "SourceDir"},
+			{ID: "ProgramFiles64Folder", Parent: "TARGETDIR", Name: "PFiles64"},
+			{ID: "INSTALLFOLDER", Parent: "ProgramFiles64Folder", Name: "Hello"},
+			{ID: "dirA1", Parent: "INSTALLFOLDER", Name: "assets"},
+		},
+	}
+
+	res, err := wixconvert.Convert(strings.NewReader(fmt.Sprintf(src, "")), wixconvert.Options{Built: built})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		" app.exe: '{00000000-0000-4000-8000-000000000001}'",
+		" logo.png: '{00000000-0000-4000-8000-000000000002}'",
+	} {
+		if !strings.Contains(string(res.YAML), want) {
+			t.Errorf("YAML lacks %q:\n%s", want, res.YAML)
+		}
+	}
+
+	if strings.Contains(string(res.YAML), "assets/logo.png") {
+		t.Errorf("bin/ took logo.png:\n%s", res.YAML)
+	}
+
+	if lines := globNotes(t, res.Notes, true); len(lines) > 0 {
+		t.Errorf("glob notes in lines %v, want none", lines)
+	}
+
+	// A second glob into the install folder adds app.exe too.
+	res, err = wixconvert.Convert(strings.NewReader(fmt.Sprintf(src, `<Files Include="lib\**" Directory="INSTALLFOLDER" />`)), wixconvert.Options{Built: built})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(string(res.YAML), "000000000001") {
+		t.Errorf("a glob took a file another glob adds to the same folder:\n%s", res.YAML)
+	}
+
+	if lines := globNotes(t, res.Notes, true); !slices.Equal(lines, []int{7, 9}) {
+		t.Errorf("glob notes in lines %v, want [7 9]", lines)
+	}
+}
