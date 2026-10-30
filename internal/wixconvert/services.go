@@ -543,6 +543,13 @@ func (c *converter) firewall(elm *elem, comp *comp, program string) { //nolint:c
 	rule.set("description", c.value(elm, "Description"))
 	rule.set("component", c.compID(comp))
 
+	if first, dup := c.firewallNames[rule.str("name")]; dup {
+		c.todof(rule, "name", elm.line, "the firewall exception on line %d has the same name; msi-builder needs a name "+
+			"per rule, rename one or merge them", first)
+	} else {
+		c.firewallNames[rule.str("name")] = elm.line
+	}
+
 	if p := c.value(elm, "Program"); p != "" {
 		program = p
 	}

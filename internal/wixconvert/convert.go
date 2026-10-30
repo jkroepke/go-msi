@@ -117,6 +117,8 @@ type converter struct {
 	uiNav         []*elem
 	errorRows     []*elem
 	usedErrors    map[*elem]bool
+	// firewallNames are the lines of the firewall exceptions by name.
+	firewallNames map[string]int
 	// newerClaimed is the property that detects newer versions.
 	newerClaimed string
 	icons        []*elem
@@ -200,20 +202,21 @@ type featureGroup struct {
 
 func newConverter(doc *document) *converter {
 	return &converter{
-		doc:         doc,
-		dirs:        make(map[string]*dir),
-		compByID:    make(map[string]*comp),
-		groups:      make(map[string]*group),
-		featureByID: make(map[string]*feature),
-		featureGrps: make(map[string]*featureGroup),
-		actions:     make(map[string]*elem),
-		wixVars:     make(map[string]string),
-		renames:     make(map[string]string),
-		needDirs:    make(map[string]bool),
-		usedVars:    make(map[string]bool),
-		usedErrors:  make(map[*elem]bool),
-		out:         newMap(),
-		structure:   structureHandlers(),
+		doc:           doc,
+		dirs:          make(map[string]*dir),
+		compByID:      make(map[string]*comp),
+		groups:        make(map[string]*group),
+		featureByID:   make(map[string]*feature),
+		featureGrps:   make(map[string]*featureGroup),
+		actions:       make(map[string]*elem),
+		wixVars:       make(map[string]string),
+		firewallNames: make(map[string]int),
+		renames:       make(map[string]string),
+		needDirs:      make(map[string]bool),
+		usedVars:      make(map[string]bool),
+		usedErrors:    make(map[*elem]bool),
+		out:           newMap(),
+		structure:     structureHandlers(),
 	}
 }
 
