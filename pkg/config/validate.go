@@ -731,6 +731,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 
 		v.componentID(p, comp, seen, known)
 		v.componentDirectory(cfg, p, comp, known)
+		v.componentScope(p, comp)
 
 		if folderComponent(comp) {
 			v.folderComponent(cfg, p, comp)
@@ -756,8 +757,11 @@ func (v *validator) components(cfg *Config, known *refs) {
 		// The builder replaces the key file of a profile component.
 		generated := profileKeyPath(cfg, known, comp)
 		files := v.componentFiles(cfg, p, comp, fileIDs, paths, generated)
-		v.componentRegistry(p, comp, regIDs, perUser)
-		v.componentRemoveRegistry(p, comp, removeIDs, perUser)
+		// A dual package's perMachine component installs only per
+		// machine, so its machine data needs no per-user context.
+		userData := perUser && comp.Scope != ScopePerMachine
+		v.componentRegistry(p, comp, regIDs, userData)
+		v.componentRemoveRegistry(p, comp, removeIDs, userData)
 		v.componentRemoveFiles(cfg, p, comp, known, removeFileIDs)
 		v.componentRemoveFolders(cfg, known, p, comp)
 		keyFile := v.componentKeyFile(p, comp, files, generated)
@@ -772,7 +776,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 		v.componentServiceControl(p, comp, services, perUser)
 		v.componentPermissions(p, comp)
 		v.movableGrants(cfg, known, p, comp)
-		v.componentEvents(p, comp, perUser)
+		v.componentEvents(p, comp, userData)
 	}
 }
 
@@ -854,6 +858,52 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 	}
 }
 
+// componentScope checks a component's scope: perMachine or perUser, and
+// only in a dual package, whose context it limits the component to. The
+// components of a folder source report it once, on the folder's.
+func (v *validator) componentScope(compPath string, comp *Component) {
+	if comp.Scope == "" || comp.folder != nil {
+		return
+	}
+
+	v.contextConditionLength(compPath+".condition", comp.Condition)
+
+	// In a package that starts per user, ICE105 warns about the HKLM
+	// Registry and RemoveRegistry rows of a perMachine component, whose
+	// condition keeps them out of a per-user install (ENVVAR-03); its
+	// message names HKU too.
+	machine := func(root string) bool { return root == rootHKLM || root == "HKU" }
+
+	machineRows := len(comp.EventLog) > 0 ||
+		slices.ContainsFunc(comp.Registry, func(reg *RegistryValue) bool { return machine(reg.Root) }) ||
+		slices.ContainsFunc(comp.RemoveRegistry, func(entry *RemoveRegistry) bool { return machine(entry.Root) })
+	if comp.Scope == ScopePerMachine && v.scope == ScopePerUserOrMachine && machineRows {
+		v.warnf(compPath+".scope", "ICE105 warns about the HKLM and HKU values and removals of this component, "+
+			"although it installs only per machine; use HKMU where the value may follow the context")
+	}
+
+	v.oneOf(compPath+".scope", string(comp.Scope), string(ScopePerMachine), string(ScopePerUser))
+
+	if !v.scope.Dual() {
+		v.errorf(compPath+".scope", "only a perUserOrMachine or perMachineOrUser package installs components "+
+			"in one context; a %s package installs everything %s", v.scope, v.scope)
+	}
+}
+
+// contextConditionLength checks that a component condition still fits
+// Component.Condition with the context condition the builder adds to it
+// for a scope or for the carriers of a variable that follows the context.
+func (v *validator) contextConditionLength(condPath, cond string) {
+	if cond == "" {
+		return
+	}
+
+	if full := "(" + cond + ") AND NOT ALLUSERS"; len(full) > maxComponentCondition {
+		v.errorf(condPath, "with the install context the builder adds, the condition is %d characters; "+
+			"Component.Condition holds %d", len(full), maxComponentCondition)
+	}
+}
+
 // componentGUID checks a component's GUID.
 func (v *validator) componentGUID(compPath string, comp *Component) {
 	switch comp.GUID {
@@ -931,6 +981,10 @@ func (v *validator) componentEvents(compPath string, comp *Component, perUser bo
 	// compared without case to be safe; how the engine treats FOO and foo
 	// in two Environment rows is not tested.
 	seen := make(map[[3]string]bool)
+
+	if slices.ContainsFunc(comp.Environment, func(env *Environment) bool { return env.Scope == envAuto }) {
+		v.contextConditionLength(compPath+".condition", comp.Condition)
+	}
 
 	for j, env := range comp.Environment {
 		envPath := fmt.Sprintf("%s.environment[%d]", compPath, j)
@@ -1268,7 +1322,8 @@ func (v *validator) registryLocation(entryPath, root, key string, perUser bool) 
 	// A dual package's HKCR rows follow the context like HKMU ones
 	// (Registry.Root 0, spec section 8.2); a per-user package has none.
 	if perUser && (root == rootHKLM || root == "HKCR" && !v.scope.Dual()) {
-		v.errorf(entryPath+".root", "%s cannot change %s (ICE105)", v.perUserPackage(), root)
+		v.errorf(entryPath+".root", "%s cannot change %s (ICE105)%s", v.perUserPackage(), root,
+			v.dualHint("HKMU, or a component with scope perMachine"))
 	}
 
 	v.required(entryPath+".key", key)
@@ -1601,10 +1656,11 @@ func (v *validator) environment(envPath string, env *Environment, perUser bool) 
 	}
 
 	v.oneOf(envPath+".action", env.Action, "set", "setIfAbsent", "append", "prepend", "remove")
-	v.oneOf(envPath+".scope", env.Scope, "machine", "user")
+	v.oneOf(envPath+".scope", env.Scope, envMachine, envUser, envAuto)
 
 	if env.Scope == envMachine && perUser {
-		v.errorf(envPath+".scope", "%s cannot change machine variables", v.perUserPackage())
+		v.errorf(envPath+".scope", "%s cannot change machine variables%s", v.perUserPackage(),
+			v.dualHint("scope auto, or a component with scope perMachine"))
 	}
 
 	if env.Action != "remove" && env.Value == "" {
@@ -2475,8 +2531,12 @@ func machineRegistry(cfg *Config, comp *Component) bool {
 const (
 	rootHKLM = "HKLM"
 	rootHKMU = "HKMU"
-	// envMachine is the scope of a system environment variable.
+	// envMachine is the scope of a system environment variable, envUser
+	// of a user one, and envAuto of one that follows a dual package's
+	// context.
 	envMachine = "machine"
+	envUser    = "user"
+	envAuto    = "auto"
 )
 
 // componentRoots lists the registry roots a component writes to or

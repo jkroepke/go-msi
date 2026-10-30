@@ -728,7 +728,7 @@ func (b *build) sequenceFiles() error { //nolint:cyclop // one pass over the for
 		info.createFolder = info.keyPath == nil || comp.CreateFolder
 
 		b.profileKeyPath(info)
-		b.table("Component").Add(comp.ID, info.guid, comp.Directory, info.attributes, nullable(comp.Condition), info.keyPath)
+		b.table("Component").Add(comp.ID, info.guid, comp.Directory, info.attributes, componentCondition(comp), info.keyPath)
 
 		if info.createFolder {
 			b.table("CreateFolder").Add(comp.Directory, comp.ID)
