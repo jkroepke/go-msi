@@ -776,12 +776,14 @@ by handle into a private folder at its volume's root, a rollback one moves
 it back, and a commit one deletes it, opening each entry relative to its
 folder without following junctions or links, which it deletes as links.
 `uninstall` removes when the component is removed, but not on the
-uninstall half of a major upgrade (`UPGRADINGPRODUCTCODE`); `install` is
+uninstall half of a major upgrade (`UPGRADINGPRODUCTCODE`), and a folder
+of the package only when the whole product goes (`REMOVE~="ALL"`), so
+that removing one feature keeps the files of the others; `install` is
 expected to remove every time the component is installed, which includes
 a repair that reinstalls it and the new product of an upgrade (only the
 first install is tested); `both` does both. The condition is ANDed and may
-not contain line breaks; the public properties in it and the property
-itself are made secure. Unlike `purge`, the folder may be the install dir
+not contain line breaks. The properties keep the security their own
+settings give them (`secure`, `configurable`). Unlike `purge`, the folder may be the install dir
 or any folder the property names. That is the point of the feature, and
 also its risk: `INSTALLDIR=D:\Tools` on the command line makes the
 uninstall empty `D:\Tools`. An elevated session that a standard user

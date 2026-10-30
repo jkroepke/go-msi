@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/jkroepke/msi-builder/internal/cadll"
-	"github.com/jkroepke/msi-builder/internal/condition"
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
@@ -17,17 +16,14 @@ import (
 func (b *build) removeFolders() error {
 	var lines []string
 
+	// The properties are not made secure: an administrator's values reach
+	// the server anyway (PROP-01), and a secure folder property would let
+	// a standard user's command line steer every other use of it in an
+	// elevated session, where the DLL removes nothing.
 	for _, comp := range b.cfg.Components {
 		for _, entry := range comp.RemoveFolders {
-			lines = append(lines, cadll.RemoveFoldersEntry(removeFolderCondition(comp.ID, entry), entry.Property))
-
-			// The action runs on the server, where only secure public
-			// properties from the client arrive.
-			for _, prop := range append(condition.Properties(entry.Condition), entry.Property) {
-				if config.IsPublicProperty(prop) {
-					b.secure[prop] = true
-				}
-			}
+			_, packageDir := b.dirs[entry.Property]
+			lines = append(lines, cadll.RemoveFoldersEntry(removeFolderCondition(comp.ID, entry, packageDir), entry.Property))
 		}
 	}
 
@@ -90,9 +86,16 @@ func (b *build) removeFoldersActions() {
 // removeFolderCondition is the condition under which the action removes an
 // entry's folder: when the component is removed ($comp=2) unless the major
 // upgrade of another product removes this one, which must keep the folder,
-// or when it is installed locally ($comp=3), ANDed with the entry's own.
-func removeFolderCondition(component string, entry *config.RemoveFolder) string {
+// or when it is installed locally ($comp=3), ANDed with the entry's own. A
+// folder of the package (packageDir) goes only with the whole product
+// (REMOVE="ALL"): removing one feature must not take away the files the
+// components of the others keep there.
+func removeFolderCondition(component string, entry *config.RemoveFolder, packageDir bool) string {
 	removed := "($" + component + "=2 AND NOT UPGRADINGPRODUCTCODE)"
+	if packageDir {
+		removed = "($" + component + `=2 AND REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE)`
+	}
+
 	installed := "$" + component + "=3"
 
 	var cond string

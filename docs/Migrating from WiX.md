@@ -804,8 +804,9 @@ swapped in during the uninstall does not redirect the deletion (tested
 on Windows). It removes a folder the package
 installs to on uninstall only. It refuses drive roots,
 standard folders such as Program Files and the folders that hold them,
-other users' profiles, folders in the Windows folder and folders behind
-junctions.
+folders in the Windows folder and folders behind junctions (tested), and
+other users' profiles (expected, not tested). A folder of the package
+goes only when the whole product is removed, not with one feature.
 
 ## Signing
 

@@ -9,7 +9,7 @@ import (
 // TestRemoveFolders lists the removeFolders entries with their conditions
 // in BuilderRemoveFolders, schedules the immediate action and its rollback,
 // deferred and commit actions right after RemoveFiles, embeds the DLL and
-// makes the public properties secure.
+// leaves the properties' security to their own settings.
 func TestRemoveFolders(t *testing.T) {
 	t.Parallel()
 
@@ -23,7 +23,7 @@ func TestRemoveFolders(t *testing.T) {
 installDir: { remember: true }
 properties:
   DATA_DIR: { value: 'C:\Data\' }
-  OLD_DIR: { value: 'C:\Old\' }
+  OLD_DIR: { value: 'C:\Old\', secure: false }
 `)
 	database := mustBuild(t, cfg).Database
 
@@ -38,7 +38,8 @@ properties:
 	removed := "($" + comp + "=2 AND NOT UPGRADINGPRODUCTCODE)"
 
 	for i, want := range []string{
-		removed + "\x1fINSTALLDIR",
+		// A folder of the package goes only with the whole product.
+		"($" + comp + `=2 AND REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE)` + "\x1fINSTALLDIR",
 		"(" + removed + " OR $" + comp + "=3) AND (DELETE_DATA=\"1\")\x1fDATA_DIR",
 		"$" + comp + "=3\x1fOLD_DIR",
 	} {
@@ -99,9 +100,11 @@ properties:
 	}
 
 	secure := fmt.Sprint(cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "SecureCustomProperties" }))
-	for _, want := range []string{"DATA_DIR", "DELETE_DATA", "OLD_DIR", "INSTALLDIR"} {
-		if !strings.Contains(";"+secure+";", ";"+want+";") {
-			t.Errorf("SecureCustomProperties %q lacks %s", secure, want)
+	// The entries leave security to the properties' own settings: DATA_DIR
+	// is secure by default, OLD_DIR opted out, DELETE_DATA is undeclared.
+	for name, want := range map[string]bool{"DATA_DIR": true, "OLD_DIR": false, "DELETE_DATA": false} {
+		if got := strings.Contains(";"+secure+";", ";"+name+";"); got != want {
+			t.Errorf("SecureCustomProperties %q: %s secure %t, want %t", secure, name, got, want)
 		}
 	}
 }
