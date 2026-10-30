@@ -258,6 +258,13 @@ upgrade:
   never removes a newer version. `downgrade: allow` and `downgrade: ignore`
   install the older version next to the newer one.
 - `IgnoreRemoveFailure="yes"` is `ignoreRemoveFailure: true`.
+- A WiX v3 `<Product>` whose `<Package>` has no `InstallScope` leaves
+  `ALLUSERS` unset, so Windows Installer registers it for the installing
+  user only, even when it installs into Program Files. A `perMachine`
+  package does not find a product registered per user, so the upgrade
+  installs next to it (seen in a real-world port). Remove the old version
+  first; as it is registered for one user, run `msiexec /x {old ProductCode}`
+  as the user who installed it.
 - WiX sets `WIX_UPGRADE_DETECTED` during an upgrade, msi-builder sets
   `OLDERVERSIONBEINGUPGRADED`. If your conditions use the WiX name, keep it
   with `upgrade.property: WIX_UPGRADE_DETECTED`, and
@@ -725,7 +732,7 @@ undo themselves on uninstall and roll back on a failed install.
 | `WixUI_Minimal` | `ui.enabled: true` with `ui.license` |
 | `WixUI_InstallDir` | `ui.enabled: true` with `chooseDirectory: true` |
 | `WixUI_FeatureTree`, `WixUI_Mondo` | `ui.enabled: true` with `chooseFeatures: true` |
-| `WixUI_Advanced` | `package.scope: perUserOrMachine` or `perMachineOrUser`, which adds a scope page |
+| `WixUI_Advanced` | `package.scope: perUserOrMachine` or `perMachineOrUser`, which adds a scope page, with `chooseDirectory: true` and `chooseFeatures: true` |
 | `WixUILicenseRtf` | `ui.license` (`.rtf` or text) |
 | `WixUIBannerBmp`, `WixUIDialogBmp` | `ui.theme.banner`, `ui.theme.dialog` (BMP, PNG or JPEG, same sizes) |
 | `WIXUI_EXITDIALOGOPTIONALCHECKBOX` with `WixShellExec` | `ui.launch.file` |
@@ -741,6 +748,11 @@ ui:
   launch:
     file: hello.exe
 ```
+
+`WixUI_Advanced` sets the per-user folder to `%LOCALAPPDATA%\Apps\<folder>`
+(seen in a real-world port, also with `/qn`). msi-builder installs per
+user to `%LOCALAPPDATA%\Programs\<folder>`. A per-user msi-builder upgrade of
+such an installation should therefore move the files there.
 
 The wizard pages are msi-builder's own, with its own bitmaps. It has no
 setup type page (Typical, Custom, Complete) like `WixUI_Mondo`, and dialogs

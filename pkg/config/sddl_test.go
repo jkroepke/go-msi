@@ -35,6 +35,10 @@ func TestCheckSDDL(t *testing.T) {
 		{sddl: "D:(A;OICIIO;FA;;;SY)(A;;FA;;;NS)", warn: true},
 		{sddl: "D:(A;;FA;;;<CONTOSO\\SYSTEM>)", warn: true},
 		{sddl: "D:(A;;FA;;;<BUILTIN\\Administrators>)"},
+		// Everyone includes SYSTEM (a ChocolateyGUI folder locked to WD).
+		{sddl: "D:P(A;OICI;FA;;;WD)"},
+		{sddl: "D:(A;;FA;;;S-1-1-0)"},
+		{sddl: "D:(A;;FA;;;<Everyone>)"},
 		{sddl: "", wantErr: "empty"},
 		{sddl: "D:(A;;FA;;;[PERMSID])", wantErr: "1943"},
 		{sddl: "D:(A;;FA;;;<[PERMSID]>)", wantErr: "<account>"},
