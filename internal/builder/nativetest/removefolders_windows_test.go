@@ -33,7 +33,9 @@ import (
 // removal after the folders were moved aside when FAIL_REMOVE is set, so
 // the installation rolls back; it first writes MARKER when the read-only
 // and the hidden file are gone from DATA_DIR at that point, so the test
-// knows that the rollback put them back. Swap replaces the folder
+// knows that the rollback put them back. ALIAS_DIR, set to the install dir
+// after costing, is removed on both and must be refused while the product
+// stays. Swap replaces the folder
 // DATA_DIR\sub with a junction to BAIT_DIR, which holds files of the same
 // names, after the immediate action checked DATA_DIR and before the
 // deferred one moves it, the way a user who can write there could; the
@@ -52,6 +54,7 @@ properties:
   GUARD_LINK: {}
   GUARD_PROFILE: {}
   OWN_DIR: {}
+  ALIAS_DIR: {}
   MARKER: { secure: true }
   FAIL_REMOVE: { secure: true }
   SWAP: { secure: true }
@@ -69,7 +72,11 @@ components:
       - property: GUARD_LINK
       - property: GUARD_PROFILE
       - property: OWN_DIR
+      - { property: ALIAS_DIR, on: both }
 customActions:
+  - id: Alias
+    setProperty: { name: ALIAS_DIR, value: '[INSTALLDIR]' }
+    schedule: [{ sequence: execute, after: CostFinalize }]
   - id: StdInside
     setProperty: { name: TemplateFolder, value: '[GUARD_STD]Inner\' }
     schedule: [{ sequence: execute, after: AppSearch, condition: GUARD_STD }]   # before BuilderRemoveFolders, which runs right after RemoveFiles
@@ -318,6 +325,13 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 	}
 
 	tree.requireData(t, "after the major upgrade")
+
+	// ALIAS_DIR holds the install dir under another name; on: both would
+	// move it away during the upgrade's install, which the path check
+	// refuses unless the whole product goes.
+	if text := readLog(log); !strings.Contains(text, "refused, it is or holds a folder of the package") {
+		t.Errorf("the upgrade did not refuse ALIAS_DIR, the install dir under another name:\n%s", grepLog(text, "BuilderRemoveFolders: "))
+	}
 
 	marker := filepath.Join(filepath.Dir(tree.data), "removed.txt")
 	log = filepath.Join(logs, "rollback.log")

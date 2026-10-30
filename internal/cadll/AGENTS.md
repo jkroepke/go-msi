@@ -114,7 +114,11 @@ the root `AGENTS.md` first.
 - Folder removal (spec 17.10) is the immediate export `BuilderRemoveFolders`
   (checks, after RemoveFiles) and `BuilderRemoveFoldersExec` for the
   rollback (`u`), deferred (`m`, or `d` with rollback disabled) and commit
-  (`c`) actions. Do not go back to temporary `RemoveFile` rows: RemoveFiles
+  (`c`) actions. Package folders are protected by path, not by property
+  name: `BuilderRemoveFoldersPackage` lists the package's directory IDs
+  and `packageRefusal` refuses a folder that is or holds one of them
+  unless `REMOVE~="ALL"`, because any property can alias the install dir.
+  Do not go back to temporary `RemoveFile` rows: RemoveFiles
   deletes by path and followed a junction swapped in after the listing
   (FILE-11, CI run 41058565605), an arbitrary delete as LocalSystem. The
   deferred side therefore works by handle: open without following

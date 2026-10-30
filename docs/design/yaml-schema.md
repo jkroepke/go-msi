@@ -789,7 +789,11 @@ folder without following junctions or links, which it deletes as links.
 `uninstall` removes when the component is removed, but not on the
 uninstall half of a major upgrade (`UPGRADINGPRODUCTCODE`), and a folder
 of the package only when the whole product goes (`REMOVE~="ALL"`), so
-that removing one feature keeps the files of the others; `install` is
+that removing one feature keeps the files of the others; the DLL also
+compares paths and refuses, unless `REMOVE~="ALL"`, any folder that is or
+holds one of the package's directories, so a property that holds the
+install dir under another name is refused as well (expected until FILE-11
+shows it); `install` is
 expected to remove every time the component is installed, which includes
 a repair that reinstalls it and the new product of an upgrade (only the
 first install is tested); `both` does both. The condition is ANDed and may

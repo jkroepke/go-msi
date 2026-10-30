@@ -823,8 +823,11 @@ on Windows). It removes a folder the package
 installs to on uninstall only. It refuses folders in the Windows folder,
 folders that hold a standard folder, folders behind junctions and the
 Public profile (tested), and drive roots, standard folders such as
-Program Files and other users' profiles (expected, not tested). A folder of the package
-goes only when the whole product is removed, not with one feature.
+Program Files and other users' profiles (expected, not tested). A folder that is or
+holds a folder of the package goes only when the whole product is removed,
+not with one feature, on install or on repair, whichever property names it,
+for example one a `SetDirectory` or `SetProperty` points at `INSTALLFOLDER`
+(expected, not tested).
 
 ## Signing
 

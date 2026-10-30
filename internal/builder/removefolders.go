@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/jkroepke/msi-builder/internal/cadll"
@@ -31,7 +32,7 @@ func (b *build) removeFolders() error {
 		return nil
 	}
 
-	for _, name := range []string{cadll.RemoveFolders, cadll.RemoveFoldersUndo, cadll.RemoveFoldersExec, cadll.RemoveFoldersCommit} {
+	for _, name := range []string{cadll.RemoveFolders, cadll.RemoveFoldersUndo, cadll.RemoveFoldersExec, cadll.RemoveFoldersCommit, cadll.RemoveFoldersPackage} {
 		if _, ok := b.cfg.Properties[name]; ok {
 			b.errorf("properties."+name, "the property %s is reserved for removeFolders", name)
 
@@ -40,6 +41,20 @@ func (b *build) removeFolders() error {
 	}
 
 	b.properties[cadll.RemoveFolders] = strings.Join(lines, "\n")
+
+	// The action checks the folder against the package's directories by
+	// path, so that a property holding the install dir is no way around
+	// the REMOVE~="ALL" rule for folders of the package.
+	var dirs []string
+
+	for id, dir := range b.dirs {
+		if !dir.standard && dir.long != "" {
+			dirs = append(dirs, id)
+		}
+	}
+
+	slices.Sort(dirs)
+	b.properties[cadll.RemoveFoldersPackage] = strings.Join(dirs, "\n")
 
 	b.removeFoldersActions()
 

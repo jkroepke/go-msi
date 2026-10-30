@@ -1792,6 +1792,8 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
 static const WCHAR tmplRemove[] = u"BuilderRemoveFolders: [1]";
 static const WCHAR propRemove[] = u"BuilderRemoveFolders";
 static const WCHAR propRemoveUndo[] = u"BuilderRemoveFoldersUndo";
+static const WCHAR propRemovePackage[] = u"BuilderRemoveFoldersPackage";
+static const WCHAR msgRemovePackage[] = u"refused, it is or holds a folder of the package, which goes only when the whole product is removed:";
 static const WCHAR propRemoveExec[] = u"BuilderRemoveFoldersExec";
 static const WCHAR propRemoveCommit[] = u"BuilderRemoveFoldersCommit";
 static const WCHAR backupPrefix[] = u"BuilderRemoveFolders.";
@@ -2221,6 +2223,8 @@ static const WCHAR *checkFolder(MSIHANDLE install, WCHAR *path, WCHAR **folder, 
 
 // checkEntry handles one line of BuilderRemoveFolders and appends the
 // folder to out when it may be removed.
+static const WCHAR *packageRefusal(MSIHANDLE install, const WCHAR *folder, WCHAR **owned);
+
 static void checkEntry(MSIHANDLE install, WCHAR *line, wbuf *out)
 {
     WCHAR *name = field(line, 0x1F);
@@ -2251,6 +2255,14 @@ static void checkEntry(MSIHANDLE install, WCHAR *line, wbuf *out)
             }
             why = checkFolder(install, path, &folder, &detail, &owned);
             HeapFree(GetProcessHeap(), 0, path);
+            WCHAR *pkg = 0;
+            if (!why && (why = packageRefusal(install, folder, &pkg)) != 0) {
+                HeapFree(GetProcessHeap(), 0, owned);
+                owned = pkg;
+                detail = pkg;
+                HeapFree(GetProcessHeap(), 0, folder);
+                folder = 0;
+            }
         } else {
             why = msgNoMemory;
         }
@@ -2273,6 +2285,48 @@ static void checkEntry(MSIHANDLE install, WCHAR *line, wbuf *out)
         HeapFree(GetProcessHeap(), 0, folder);
     }
     HeapFree(GetProcessHeap(), 0, value);
+}
+
+// packageRefusal returns why folder (a final path) must not be removed now
+// because it is or holds one of the package's own directories, whose path
+// it then hands back in *owned, or 0. Such a folder goes only when the
+// whole product is removed: on an install, a repair or the removal of one
+// feature the installer keeps files there that the move would take away.
+// The entry's property may hold the install dir under any name, so this
+// compares paths, not names; a directory that does not exist yet compares
+// by its path as the engine resolved it.
+static const WCHAR *packageRefusal(MSIHANDLE install, const WCHAR *folder, WCHAR **owned)
+{
+    if (MsiEvaluateConditionW(install, condRemoveAll) == MSICONDITION_TRUE) {
+        return 0;
+    }
+    WCHAR *list = property(install, propRemovePackage);
+    const WCHAR *why = 0;
+    for (WCHAR *id = list; id && *id && !why;) {
+        WCHAR *next = field(id, '\n');
+        WCHAR *value = property(install, id);
+        if (value && *trim(value)) {
+            WCHAR *path = finalPath(trim(value));
+            if (!path) {
+                path = wstrdup(trim(value), 1);
+                SIZE_T n = path ? wlen(path) : 0;
+                if (n && path[n - 1] != '\\') {
+                    path[n] = '\\';
+                    path[n + 1] = 0;
+                }
+            }
+            if (path && below(path, folder)) {
+                why = msgRemovePackage;
+                *owned = path;
+                path = 0;
+            }
+            HeapFree(GetProcessHeap(), 0, path);
+        }
+        HeapFree(GetProcessHeap(), 0, value);
+        id = next;
+    }
+    HeapFree(GetProcessHeap(), 0, list);
+    return why;
 }
 
 // setRemoveData sets the CustomActionData of one deferred action: op, the

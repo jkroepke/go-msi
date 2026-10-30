@@ -96,6 +96,9 @@ const (
 	RemoveFoldersExec   = "BuilderRemoveFoldersExec"
 	RemoveFoldersUndo   = "BuilderRemoveFoldersUndo"
 	RemoveFoldersCommit = "BuilderRemoveFoldersCommit"
+	// RemoveFoldersPackage lists the package's own directories, one per
+	// line, which a removal may reach only when the whole product goes.
+	RemoveFoldersPackage = "BuilderRemoveFoldersPackage"
 )
 
 // RemoveFoldersEntry encodes one line of the BuilderRemoveFolders property:

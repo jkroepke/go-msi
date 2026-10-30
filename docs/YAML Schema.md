@@ -474,8 +474,9 @@ in the registry. The folder is moved aside and deleted at the end, so a
 failed uninstall puts it back, and a junction inside it is deleted as
 a link, never followed (tested on Windows). `on:
 install` and `on: both` are for folders the package does not install to,
-and a folder of the package goes only when the whole product is removed,
-not with one feature. It refuses folders in the Windows folder, folders
+and a folder that is or holds a folder of the package goes only when the
+whole product is removed, not with one feature, on install or on repair,
+whichever property names it (expected until tested). It refuses folders in the Windows folder, folders
 that hold a standard folder, folders behind junctions and the Public
 profile (tested), and drive roots, standard folders such as Program
 Files, other users' profiles and anything in an elevated session a
