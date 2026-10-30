@@ -19,6 +19,8 @@ import (
 var (
 	pConvertStringSD = advapi32.NewProc("ConvertStringSecurityDescriptorToSecurityDescriptorW")
 	pSetFileSecurity = advapi32.NewProc("SetFileSecurityW")
+	pGetFileSecurity = advapi32.NewProc("GetFileSecurityW")
+	pConvertSDString = advapi32.NewProc("ConvertSecurityDescriptorToStringSecurityDescriptorW")
 	pLocalFree       = kernel32.NewProc("LocalFree")
 )
 
@@ -80,13 +82,45 @@ func setSecurity(t *testing.T, path, sddl string) {
 	}
 }
 
-// daclPart returns the D: part of an SDDL string.
-func daclPart(sddl string) string {
-	if i := strings.Index(sddl, "D:"); i >= 0 {
-		return sddl[i:]
+// fileDACL returns the DACL of a file or folder as SDDL, read with
+// GetFileSecurityW: "D:NO_ACCESS_CONTROL" for no DACL, "D:" (with control
+// flags such as AI) for an empty one. Get-Acl leaves a NULL DACL out of its
+// Sddl, so it cannot tell the two apart.
+func fileDACL(t *testing.T, path string) string {
+	t.Helper()
+
+	pathPtr, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	return sddl
+	const daclSecurityInformation = 4
+
+	var size uint32
+
+	_, _, _ = pGetFileSecurity.Call(uintptr(unsafe.Pointer(pathPtr)), daclSecurityInformation, 0, 0, uintptr(unsafe.Pointer(&size)))
+	if size == 0 {
+		return "error: GetFileSecurityW returned no size"
+	}
+
+	buf := make([]byte, size)
+	if r, _, callErr := pGetFileSecurity.Call(uintptr(unsafe.Pointer(pathPtr)), daclSecurityInformation, uintptr(unsafe.Pointer(&buf[0])), uintptr(size), uintptr(unsafe.Pointer(&size))); r == 0 {
+		return "error: GetFileSecurityW: " + callErr.Error()
+	}
+
+	var (
+		text   *uint16
+		length uint32
+	)
+
+	const sddlRevision1 = 1
+	if r, _, callErr := pConvertSDString.Call(uintptr(unsafe.Pointer(&buf[0])), sddlRevision1, daclSecurityInformation, uintptr(unsafe.Pointer(&text)), uintptr(unsafe.Pointer(&length))); r == 0 {
+		return "error: ConvertSecurityDescriptorToStringSecurityDescriptorW: " + callErr.Error()
+	}
+
+	defer pLocalFree.Call(uintptr(unsafe.Pointer(text))) //nolint:errcheck // frees a local allocation
+
+	return syscall.UTF16ToString(unsafe.Slice(text, length))
 }
 
 // TestMsiexecGrantNullDACLChild checks what an inheriting folder grant does
@@ -131,8 +165,8 @@ func TestMsiexecGrantNullDACLChild(t *testing.T) {
 		_ = os.RemoveAll(root)
 	})
 
-	before := daclPart(objectSDDL(t, open))
-	t.Logf("SEC-03: NULL-DACL child before: %s, parent: %s", before, objectSDDL(t, existing))
+	before := fileDACL(t, open)
+	t.Logf("SEC-03: NULL-DACL child before: %s, parent: %s", before, fileDACL(t, existing))
 
 	if before != "D:NO_ACCESS_CONTROL" {
 		t.Fatalf("child before the install: %s, want D:NO_ACCESS_CONTROL", before)
@@ -152,13 +186,13 @@ func TestMsiexecGrantNullDACLChild(t *testing.T) {
 		}
 	}
 
-	afterRollback := objectSDDL(t, open)
+	afterRollback := fileDACL(t, open)
 	t.Logf("SEC-03: NULL-DACL child after rollback: %s", afterRollback)
 
 	writeErr := os.WriteFile(filepath.Join(open, "probe.txt"), []byte("x"), 0o600)
 	t.Logf("SEC-03: writing a file into the child after rollback: %v", writeErr)
 
-	if got := daclPart(afterRollback); !strings.Contains(got, "NO_ACCESS_CONTROL") {
+	if !strings.Contains(afterRollback, "NO_ACCESS_CONTROL") {
 		t.Errorf("child after rollback: %s, want no DACL (NO_ACCESS_CONTROL) as before", afterRollback)
 	}
 
@@ -167,15 +201,15 @@ func TestMsiexecGrantNullDACLChild(t *testing.T) {
 	setSecurity(t, open, "D:NO_ACCESS_CONTROL")
 	msiexecQuiet(t, filepath.Join(dir, "install.log"), "/i", path)
 
-	t.Logf("SEC-03: parent after install: %s", objectSDDL(t, existing))
+	t.Logf("SEC-03: parent after install: %s", fileDACL(t, existing))
 
-	afterInstall := objectSDDL(t, open)
+	afterInstall := fileDACL(t, open)
 	t.Logf("SEC-03: NULL-DACL child after install: %s", afterInstall)
 
-	if got := daclPart(afterInstall); !strings.Contains(got, "NO_ACCESS_CONTROL") {
+	if !strings.Contains(afterInstall, "NO_ACCESS_CONTROL") {
 		t.Errorf("child after install: %s, want no DACL (NO_ACCESS_CONTROL) as before", afterInstall)
 	}
 
 	msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
-	t.Logf("SEC-03: NULL-DACL child after uninstall: %s", objectSDDL(t, open))
+	t.Logf("SEC-03: NULL-DACL child after uninstall: %s", fileDACL(t, open))
 }
