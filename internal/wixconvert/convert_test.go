@@ -538,7 +538,7 @@ func TestConvertAdvertisedLateRemoval(t *testing.T) {
 }
 
 // A file two Files globs add goes to the glob whose folder is nearest above
-// it; with the same folder it goes to neither, and both keep their note.
+// it; with the same folder it goes to neither, and both name it.
 func TestConvertBuiltCodesNestedGlobs(t *testing.T) {
 	t.Parallel()
 
@@ -601,8 +601,20 @@ func TestConvertBuiltCodesNestedGlobs(t *testing.T) {
 		t.Errorf("a glob took a file another glob adds to the same folder:\n%s", res.YAML)
 	}
 
-	if lines := globNotes(t, res.Notes, true); !slices.Equal(lines, []int{7, 9}) {
-		t.Errorf("glob notes in lines %v, want [7 9]", lines)
+	if lines := globNotes(t, res.Notes, true); len(lines) > 0 {
+		t.Errorf("glob notes in lines %v, want only the tie notes", lines)
+	}
+
+	var tied []int
+
+	for _, note := range res.Notes {
+		if strings.HasPrefix(note.Message, "another Files glob into the same folder adds app.exe too") {
+			tied = append(tied, note.Line)
+		}
+	}
+
+	if !slices.Equal(tied, []int{7, 9}) {
+		t.Errorf("tie notes in lines %v, want [7 9]", tied)
 	}
 }
 

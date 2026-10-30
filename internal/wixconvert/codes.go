@@ -233,7 +233,8 @@ func (c *converter) noteHarvested() {
 				strings.Join(comp.tied, ", "))
 		}
 
-		if comp.pinned {
+		// A tied file has a component, so the notes below would be wrong.
+		if comp.pinned || len(comp.tied) > 0 {
 			continue
 		}
 
