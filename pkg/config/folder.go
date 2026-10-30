@@ -473,17 +473,17 @@ func (v *validator) folderFile(filePath string, file *File) {
 // filePatterns rejects include, exclude and guids on a file that is not a
 // folder source.
 func (v *validator) filePatterns(compPath string, comp *Component) {
-	for j, file := range comp.Files {
+	for fileIdx, file := range comp.Files {
 		if file == nil {
 			continue
 		}
 
 		if len(file.Include) > 0 || len(file.Exclude) > 0 {
-			v.errorf(fmt.Sprintf("%s.files[%d]", compPath, j), "include and exclude need a folder source, a source that ends in /")
+			v.errorf(fmt.Sprintf("%s.files[%d]", compPath, fileIdx), "include and exclude need a folder source, a source that ends in /")
 		}
 
 		if len(file.GUIDs) > 0 {
-			v.errorf(fmt.Sprintf("%s.files[%d].guids", compPath, j), "guids needs a folder source, a source that ends in /; "+
+			v.errorf(fmt.Sprintf("%s.files[%d].guids", compPath, fileIdx), "guids needs a folder source, a source that ends in /; "+
 				"set guid on the component instead")
 		}
 	}

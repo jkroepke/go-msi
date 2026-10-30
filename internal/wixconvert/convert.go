@@ -176,8 +176,11 @@ type dir struct {
 type comp struct {
 	e   *elem
 	out *omap
-	id  string
-	dir string
+	// folder is the folder source a Files glob became, whose files keep
+	// the codes WiX gave them in its guids.
+	folder *omap
+	id     string
+	dir    string
 	// droppedValues are the HKCU key path values of a shortcut component
 	// that msi-builder replaces with its own.
 	droppedValues []string
@@ -187,9 +190,6 @@ type comp struct {
 	// when the built package gave it one.
 	generated bool
 	pinned    bool
-	// folder is the folder source a Files glob became, whose files keep
-	// the codes WiX gave them in its guids.
-	folder *omap
 }
 
 type group struct {
