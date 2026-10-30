@@ -172,13 +172,14 @@ func (c *converter) emitActions() {
 // became part of another action or were not converted.
 func (c *converter) leftoverProgress(progress map[string]*elem) {
 	for _, actionID := range slices.Sorted(maps.Keys(progress)) {
+		line := progress[actionID].line
 		if c.actions[actionID] == nil && !c.isSetter(actionID) {
-			c.todof(nil, "", progress[actionID].line, "the progress text of %s cannot be converted: msi-builder writes progress texts only for its customActions", actionID)
+			c.todof(nil, "", line, "the progress text of %s cannot be converted: msi-builder writes progress texts only for its customActions", actionID)
 
 			continue
 		}
 
-		c.todof(nil, "", progress[actionID].line, "the progress text of %s is dropped: the action was not converted to a customActions entry of its own", actionID)
+		c.todof(nil, "", line, "the progress text of %s is dropped: the action was not converted to a customActions entry of its own", actionID)
 	}
 }
 
