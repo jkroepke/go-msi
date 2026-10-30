@@ -804,17 +804,21 @@ is not a full local path (`C:\…`, no `.` or `..`, no name ending in a space
 or a dot), a drive root, a folder reached through a junction, a symbolic
 link or a `subst` drive, a junction itself, the profiles folder, every
 profile and every folder inside another user's profile and in Public and
-Default (a session that runs as LocalSystem, such as a deployment
-tool's, has no profile of its own and refuses every user's data; the
-profile of the account that started a session is allowed), everything when the profiles
-cannot be read, every standard folder of the
-engine (Program Files, ProgramData, the Windows and system folders, the
-profile folders such as AppData, Documents and the Desktop, Temp) and every
-folder that holds one, and any folder inside the Windows folder; it logs
-the reason as `BuilderRemoveFolders: …` and removes nothing for that entry.
-A junction below the folder is deleted as a link; what it points to stays.
-A folder that cannot be moved, typically because a file in it is open,
-stays whole. The actions never fail the installation.
+Default (the profile of the account that started the session is allowed;
+a session that runs as LocalSystem, such as a deployment tool's, has none
+and refuses every user's data), everything when the profiles cannot be
+read, every standard folder of the engine (Program Files, ProgramData,
+the Windows and system folders, the profile folders such as AppData,
+Documents and the Desktop, Temp) and every folder that holds one, and any
+folder inside the Windows folder; it logs the reason as
+`BuilderRemoveFolders: …` and removes nothing for that entry. FILE-11
+tested the junction path, the Public profile, a folder that holds
+`TemplateFolder`, a folder inside the Windows folder and the installing
+account's own profile; the other refusals are expected, not tested.
+A junction below the folder is deleted as a link; what it points to stays
+(tested). A folder that cannot be moved, typically because a file in it
+is open, is expected to stay whole (not tested). The actions never fail
+the installation.
 
 **Key path.** Default: the first file, else the first registry value, else
 the directory, which gets a `CreateFolder` row (ICE18). A component below a

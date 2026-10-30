@@ -2229,6 +2229,12 @@ static int setRemoveData(MSIHANDLE install, const WCHAR *prop, WCHAR op, const W
 
 __declspec(dllexport) UINT WINAPI BuilderRemoveFolders(MSIHANDLE install)
 {
+    // The rollback, deferred and commit actions run when their property
+    // holds data, so none may keep a value this action did not set.
+    static const WCHAR empty[] = {0};
+    MsiSetPropertyW(install, propRemoveUndo, empty);
+    MsiSetPropertyW(install, propRemoveExec, empty);
+    MsiSetPropertyW(install, propRemoveCommit, empty);
     WCHAR *list = property(install, propRemove);
     if (!list) {
         return ERROR_SUCCESS;

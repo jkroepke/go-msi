@@ -799,6 +799,18 @@ func TestValidate(t *testing.T) {
 			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: INSTALLDIR}]\n    files:", 1),
 			sevWarning, "components[0].removeFolders[0].property", "installDir.remember",
 		},
+		"removeFolders below the install dir without remember": {
+			strings.Replace(base, "        configurable: true\n", "        configurable: true\n        children: [{id: DATADIR, name: data}]\n", 1) +
+				strings.Replace(appComponent, "    files:", "    removeFolders: [{property: DATADIR}]\n    files:", 1),
+			sevWarning, "components[0].removeFolders[0].property", "chosen at install time for INSTALLDIR",
+		},
+		"removeFolders configurable folder": {
+			strings.Replace(base, "        configurable: true\n", "        configurable: true\n  - id: CommonAppDataFolder\n"+
+				"    children: [{id: DATADIR, name: data, configurable: true}]\n", 1) +
+				"installDir: {id: INSTALLDIR, remember: true}\n" +
+				strings.Replace(appComponent, "    files:", "    removeFolders: [{property: DATADIR}]\n    files:", 1),
+			sevWarning, "components[0].removeFolders[0].property", "remember it in the registry",
+		},
 		"removeFolders install on a package folder": {
 			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: INSTALLDIR, on: both}]\n    files:", 1),
 			sevError, "components[0].removeFolders[0].on", "a folder of the package",

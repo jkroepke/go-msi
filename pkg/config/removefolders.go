@@ -78,14 +78,46 @@ func (v *validator) removeFolderProperty(field, name string) bool {
 // that sets it.
 func (v *validator) removeFolderSource(cfg *Config, known *refs, field, name string, set map[string]bool) {
 	switch {
-	case name == cfg.InstallDir.ID && !cfg.InstallDir.Remember:
-		v.warnf(field, "at uninstall %s holds its default path, not one chosen at install time; set installDir.remember: true "+
-			"to remove the folder the product was installed to", name)
 	case name == cfg.InstallDir.ID || known.dirs[name] != nil:
+		if moved := movableFolder(cfg, known, name); moved != "" {
+			v.warnf(field, "at uninstall %s holds its default path, not one chosen at install time for %s; %s", name, moved,
+				rememberHint(cfg, moved))
+		}
 	case !set[name]:
 		v.warnf(field, "nothing in the package sets %s, so only the command line can name the folder; "+
 			"use a property with a search that finds the folder again at uninstall", name)
 	}
+}
+
+// movableFolder returns the directory, dirID itself or one above it, whose
+// path the command line can change at install time without the uninstall
+// knowing it again: the install dir without installDir.remember, or a
+// configurable directory, which nothing remembers; "" when there is none.
+func movableFolder(cfg *Config, known *refs, dirID string) string {
+	for cur, depth := dirID, 0; cur != "" && depth < 64; cur, depth = known.dirParent[cur], depth+1 {
+		if cur == cfg.InstallDir.ID {
+			if cfg.InstallDir.Remember {
+				return ""
+			}
+
+			return cur
+		}
+
+		if dir := known.dirs[cur]; dir != nil && dir.Configurable {
+			return cur
+		}
+	}
+
+	return ""
+}
+
+// rememberHint says how to keep the folder chosen for dirID.
+func rememberHint(cfg *Config, dirID string) string {
+	if dirID == cfg.InstallDir.ID {
+		return "set installDir.remember: true to remove the folder the product was installed to"
+	}
+
+	return "remember it in the registry and name a property with a search that finds it again"
 }
 
 // removeFolderCondition checks the condition of a removeFolders entry, which
