@@ -171,7 +171,7 @@ msi-builder does the same by default:
 | `Environment` | `components[].environment` |
 | `Shortcut`, `util:InternetShortcut` | `files[].shortcuts`, `components[].shortcuts` |
 | `ProgId`, `Extension`, `Verb` | `files[].fileTypes` |
-| `util:CloseApplication` | `files[].close` on the program's file; it matches the installed path, not the file name |
+| `util:CloseApplication` | `files[].close` on the program's file; it matches the installed path, not the filename |
 | `ServiceInstall`, `ServiceConfig`, `util:ServiceConfig` | `components[].services` |
 | `ServiceControl` for another service | `components[].serviceControl` |
 | `util:EventSource` | `components[].eventLog` |

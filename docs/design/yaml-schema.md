@@ -903,7 +903,7 @@ per-machine install, the copies still running from that path are ended
 with exit code 1602, in every session. A process matches by its full path,
 compared without case, so a copy of the program in another folder (a
 portable copy, a Kubernetes HostProcess container) keeps running; WiX's
-`util:CloseApplication` matches the file name only (reported), which the
+`util:CloseApplication` matches the filename only (reported), which the
 2026-10-25 evaluation of the `windows_exporter` example found a problem.
 An install folder given as an 8.3 path, a `subst` drive or a junction does
 not match the image path the process reports, so nothing is closed then
