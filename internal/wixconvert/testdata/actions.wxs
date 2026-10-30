@@ -32,6 +32,12 @@
         <File Id="hello.ini" Source="dist\hello.ini" />
         <ServiceControl Id="HelloSvcRestart" Name="HelloSvc" Stop="install" Start="install" />
       </Component>
+      <!-- Installs the same service for another edition, with its own control. -->
+      <Component Id="HelloSvcLite" Condition="EDITION=&quot;lite&quot;">
+        <File Id="hello_lite.exe" Source="dist\hello-lite.exe" />
+        <ServiceInstall Name="HelloSvc" Start="demand" Type="ownProcess" ErrorControl="normal" />
+        <ServiceControl Id="HelloSvcLite" Name="HelloSvc" Stop="both" Remove="uninstall" />
+      </Component>
       <!-- The key file has no Id; the advertised shortcut starts it. -->
       <Component Id="Tray">
         <File Source="dist\helper.dll" />

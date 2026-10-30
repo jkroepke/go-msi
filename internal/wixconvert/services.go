@@ -150,6 +150,7 @@ func (c *converter) recovery(svc *omap, elm *elem) {
 }
 
 // resolveControls converts the ServiceControls of the component. One of a
+// service that the component installs becomes its control; one of a
 // service that another component of the package installs goes to that
 // service's control, which msi-builder requires.
 func (cc *compConv) resolveControls() {
@@ -167,8 +168,13 @@ func (cc *compConv) resolveControls() {
 		chosen, installed := cc.c.serviceControl(name)
 
 		switch {
-		case own != nil && elm == chosen:
+		case own != nil && !cc.controlled[own]:
+			// A component that installs the service keeps its own
+			// control, also when another component installs it too.
 			cc.ownControl(own, elm)
+		case own != nil:
+			cc.c.todof(cc.out, "", elm.line, "the ServiceControl for %s was left out: msi-builder takes one control per "+
+				"service of a component; merge the events into the first one", name)
 		case !installed:
 			cc.foreignControl(elm)
 		case elm == chosen:

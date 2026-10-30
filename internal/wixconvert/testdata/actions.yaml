@@ -2,7 +2,7 @@
 # Converted from actions.wxs by msi-builder convert.
 # Review it, resolve the TODO comments, then run msi-builder validate.
 # TODO(line 5): the WiX package has no MajorUpgrade; msi-builder adds the standard major upgrade (set upgrade: false to leave it out)
-# TODO(line 85): the Error row 1316 has no counterpart; only error actions take in their message
+# TODO(line 91): the Error row 1316 has no counterpart; only error actions take in their message
 schema: msi-builder/v1
 product:
   name: Hello
@@ -51,13 +51,24 @@ components:
     files:
       - source: dist/hello.ini
         id: hello.ini
+  # Installs the same service for another edition, with its own control.
+  - id: HelloSvcLite
+    files:
+      - source: dist/hello-lite.exe
+        id: hello_lite.exe
+    services:
+      - name: HelloSvc
+        start: demand
+        control:
+          startOnInstall: false
+    condition: EDITION="lite"
   # The key file has no Id; the advertised shortcut starts it.
   - id: Tray
     files:
       - source: dist/helper.dll
       - source: dist/tray.exe
         shortcuts:
-          # TODO(line 39): advertised shortcuts are never supported; this one is a plain shortcut
+          # TODO(line 45): advertised shortcuts are never supported; this one is a plain shortcut
           - name: Hello Tray
             directory: ProgramMenuFolder/Hello
     keyPath: tray.exe
@@ -67,8 +78,8 @@ components:
       - source: dist/rnd.txt
         id: rnd.txt
     condition: EDITION="R&D"
-  # TODO(line 52): RemoveRegistryKey HKCR\*\shell\Hello was left out: msi-builder has no removal on uninstall only, and removeRegistry removes the key on install
-  # TODO(line 53): RemoveRegistryValue HKCU\Software\Example\Hello without Name removes the default value and was left out: removeRegistry without name removes the whole key
+  # TODO(line 58): RemoveRegistryKey HKCR\*\shell\Hello was left out: msi-builder has no removal on uninstall only, and removeRegistry removes the key on install
+  # TODO(line 59): RemoveRegistryValue HKCU\Software\Example\Hello without Name removes the default value and was left out: removeRegistry without name removes the whole key
   # The RemoveFolder and HKCU key path of this shortcut component were left out:
   # msi-builder writes both for every shortcut.
   - id: ConsoleLink
@@ -90,7 +101,7 @@ customActions:
     run:
       command: '"[System64Folder]taskkill.exe" /im hello.exe /f'
     return: ignore
-    # TODO(line 65): Wix4CloseApplications_X64 is an action of a WiX extension, which the msi-builder package does not have; convert placed this action after CostFinalize, check that place
+    # TODO(line 71): Wix4CloseApplications_X64 is an action of a WiX extension, which the msi-builder package does not have; convert placed this action after CostFinalize, check that place
     schedule:
       - {sequence: execute, after: CostFinalize}
   - id: Greet
@@ -121,7 +132,7 @@ customActions:
     schedule:
       - {sequence: execute, after: InstallFinalize, condition: NOT REMOVE}
   - id: StartMonitor
-    # TODO(line 77): check [MONITOR]: quote it if it holds a bare path; leave it if it holds a quoted command line such as an UninstallString
+    # TODO(line 83): check [MONITOR]: quote it if it holds a bare path; leave it if it holds a quoted command line such as an UninstallString
     exec:
       command: '[MONITOR] --monitor'
       directory: INSTALLFOLDER
@@ -139,7 +150,7 @@ customActions:
     execute: deferred
     impersonate: false
     return: check
-    # TODO(line 80): Wix4ExecFirewallExceptionsInstall_X64 is an action of a WiX extension, which the msi-builder package does not have; convert placed this action after InstallFiles, check that place
+    # TODO(line 86): Wix4ExecFirewallExceptionsInstall_X64 is an action of a WiX extension, which the msi-builder package does not have; convert placed this action after InstallFiles, check that place
     schedule:
       - {sequence: execute, after: InstallFiles, condition: NOT Installed}
   - id: UndoConfigure
@@ -148,11 +159,11 @@ customActions:
     execute: rollback
     impersonate: false
     return: check
-    # TODO(line 81): Wix4ExecFirewallExceptionsInstall_X64 is an action of a WiX extension, which the msi-builder package does not have; convert placed this action before InstallFiles, check that place
+    # TODO(line 87): Wix4ExecFirewallExceptionsInstall_X64 is an action of a WiX extension, which the msi-builder package does not have; convert placed this action before InstallFiles, check that place
     schedule:
       - {sequence: execute, before: InstallFiles, condition: NOT Installed}
   - id: SetCLOSING
     setProperty: {name: CLOSING, value: "1"}
-    # TODO(line 82): Wix4CloseApplications_X64 is an action of a WiX extension, which the msi-builder package does not have; convert placed this action before CostFinalize, check that place
+    # TODO(line 88): Wix4CloseApplications_X64 is an action of a WiX extension, which the msi-builder package does not have; convert placed this action before CostFinalize, check that place
     schedule:
       - {sequence: execute, before: CostFinalize}
