@@ -335,10 +335,8 @@ func conditionalLevelProblem(level, cond string) string {
 		return "a feature condition cannot ask for feature or component states (" + strings.Join(states, ", ") + ")"
 	}
 
-	for _, name := range condition.Properties(cond) {
-		if name == "Installed" || name == "REMOVE" || name == "REINSTALL" {
-			return name + " is not set at a first install, and msi-builder applies feature conditions to first installs only"
-		}
+	if i := slices.IndexFunc(condition.Properties(cond), isMaintenanceProperty); i >= 0 {
+		return condition.Properties(cond)[i] + " is not set at a first install, and msi-builder applies feature conditions to first installs only"
 	}
 
 	if strings.Contains(cond, "${") {
@@ -350,4 +348,10 @@ func conditionalLevelProblem(level, cond string) string {
 	}
 
 	return ""
+}
+
+// isMaintenanceProperty reports whether a property is only set when the
+// product is already installed.
+func isMaintenanceProperty(name string) bool {
+	return name == "Installed" || name == "REMOVE" || name == "REINSTALL"
 }
