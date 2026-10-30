@@ -141,6 +141,19 @@ jobs:
           'MSI_BUILDER_ICE_CUB=C:\ice\darice.cub' >> $env:GITHUB_ENV
           'MSI_BUILDER_ICE_REQUIRED=1' >> $env:GITHUB_ENV
 
+      # TestMsiexecHarvestedComponentCodes (UPG-12) upgrades a package that
+      # WiX built from a Files glob by the package msi-builder builds from the
+      # converted source. WiX runs as a black box; Files needs WiX 5.
+      - name: Install WiX
+        if: matrix.suite == 'native'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet tool install --global wix --version 5.0.2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Join-Path $env:USERPROFILE '.dotnet\tools' >> $env:GITHUB_PATH
+          'MSI_BUILDER_WIX_REQUIRED=1' >> $env:GITHUB_ENV
+
       # Install packages as a standard user too (MSISPEC-RESULTS INST-02,
       # PROP-01). The runner is thrown away after the job, so the step
       # creates a local user with a random password and allows non-admin

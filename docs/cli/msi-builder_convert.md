@@ -11,8 +11,10 @@ becomes a "# TODO" comment in the YAML file and a line on stderr.
 
 With --msi and the package WiX built from the source file, every component
 whose Guid WiX generated (Guid="*" or none) keeps the ComponentId it has in
-that package, when convert finds it there by its ID or its key file; the
-others get a "# TODO" comment. Without them, msi-builder generates other component codes, and
+that package, when convert finds it there by its ID or its key file, and
+each file a WiX Files glob harvested keeps its code in the guids of the
+folder source the glob became; the others get a "# TODO" comment. Without
+them, msi-builder generates other component codes, and
 an upgrade that removes the old version after installing the new one
 (MajorUpgrade Schedule="afterInstallExecute", and presumably
 "afterInstallFinalize") deletes the files of every component whose code

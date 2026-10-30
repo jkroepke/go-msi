@@ -4,10 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
+
+	"github.com/jkroepke/msi-builder/internal/folderglob"
 )
 
 // folderSource is a component with a folder source that ExpandFolders
@@ -108,7 +112,7 @@ func (c *Config) ExpandFolders() Diagnostics {
 
 		compPath := comp.Path(i)
 
-		added, err := c.expandFolder(comp, compPath)
+		added, unused, err := c.expandFolder(comp, compPath)
 		if err != nil {
 			diags = append(diags, Diagnostic{Severity: SeverityError, Path: compPath + ".files[0].source", Message: err.Error()})
 			components = append(components, comp)
@@ -120,6 +124,13 @@ func (c *Config) ExpandFolders() Diagnostics {
 			diags = append(diags, Diagnostic{
 				Severity: SeverityWarning, Path: compPath + ".files[0].source",
 				Message: "the folder holds the YAML file, so a package built next to it is added by the next build; use a separate output folder",
+			})
+		}
+
+		for _, rel := range unused {
+			diags = append(diags, Diagnostic{
+				Severity: SeverityWarning, Path: compPath + ".files[0].guids",
+				Message: fmt.Sprintf("the folder source adds no file %s, so its guid is not used", rel),
 			})
 		}
 
@@ -173,23 +184,24 @@ func (c *Config) replaceFeatureRefs(expanded map[string][]*Component) {
 	})
 }
 
-// expandFolder returns the components of one folder source.
-func (c *Config) expandFolder(comp *Component, compPath string) ([]*Component, error) {
+// expandFolder returns the components of one folder source and the paths
+// of its guids that it adds no file for.
+func (c *Config) expandFolder(comp *Component, compPath string) ([]*Component, []string, error) {
 	if len(comp.Files) != 1 {
-		return nil, errors.New("a folder source must be the only file of its component")
+		return nil, nil, errors.New("a folder source must be the only file of its component")
 	}
 
 	file := comp.Files[0]
 
-	filter, err := newFolderFilter(file.Include, file.Exclude)
+	filter, err := folderglob.New(file.Include, file.Exclude)
 	if err != nil {
-		return nil, err
+		return nil, nil, fmt.Errorf("%w", err)
 	}
 
 	// The check of Validate, worded for YAML, for a caller that did not
 	// run it.
 	if findDirectory(c.Directories, comp.Directory) == nil {
-		return nil, fmt.Errorf("directory %q is not defined", comp.Directory)
+		return nil, nil, fmt.Errorf("directory %q is not defined", comp.Directory)
 	}
 
 	prefix := comp.ID
@@ -199,15 +211,17 @@ func (c *Config) expandFolder(comp *Component, compPath string) ([]*Component, e
 
 	fsys, root, err := c.folderFS(file)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	idRoot := folderIDRoot(file.Source)
 
 	added, err := c.walkTree(fsys, root, idRoot, comp.Directory, prefix, filter)
 	if err != nil {
-		return nil, errors.New(strings.TrimPrefix(err.Error(), "add tree: "))
+		return nil, nil, errors.New(strings.TrimPrefix(err.Error(), "add tree: "))
 	}
+
+	rels := make([]string, 0, len(added))
 
 	for _, generated := range added {
 		rel := generated.Files[0].Source
@@ -220,9 +234,48 @@ func (c *Config) expandFolder(comp *Component, compPath string) ([]*Component, e
 		generated.origin = fmt.Sprintf("%s{%s}", compPath, rel)
 		generated.folder = comp
 		copyFolderSettings(generated, comp)
+
+		rels = append(rels, rel)
 	}
 
-	return added, nil
+	return added, pinFolderGUIDs(file, added, rels), nil
+}
+
+// pinFolderGUIDs gives the components generated from a folder source, whose
+// paths below the folder are rels, the GUIDs that its guids list for them,
+// and returns the paths of guids the folder did not add, as written and
+// sorted.
+func pinFolderGUIDs(file *File, added []*Component, rels []string) []string {
+	if len(file.GUIDs) == 0 {
+		return nil
+	}
+
+	// Validate rejects two paths that differ in case only.
+	pending := make(map[string]string, len(file.GUIDs))
+	for rel, guid := range file.GUIDs {
+		pending[strings.ToLower(rel)] = guid
+	}
+
+	for i, generated := range added {
+		key := strings.ToLower(rels[i])
+		if guid, ok := pending[key]; ok {
+			generated.GUID = guid
+
+			delete(pending, key)
+		}
+	}
+
+	unused := make([]string, 0, len(pending))
+
+	for rel := range file.GUIDs {
+		if _, ok := pending[strings.ToLower(rel)]; ok {
+			unused = append(unused, rel)
+		}
+	}
+
+	slices.Sort(unused)
+
+	return unused
 }
 
 // copyFolderSettings copies the settings of a folder's component and file
@@ -358,11 +411,15 @@ func (v *validator) folderComponent(cfg *Config, compPath string, comp *Componen
 // folderComponentFields rejects the settings of a component with a folder
 // source that cannot be copied to every generated component.
 func (v *validator) folderComponentFields(compPath string, comp *Component) {
+	if comp.GUID != "" && comp.GUID != Auto {
+		v.errorf(compPath+".guid", "not allowed on a component with a folder source, which becomes one component per file; "+
+			"give a file its GUID with guids on the folder source")
+	}
+
 	for _, field := range []struct {
 		name string
 		set  bool
 	}{
-		{"guid", comp.GUID != "" && comp.GUID != Auto},
 		{"keyPath", comp.KeyPath != ""},
 		{"registry", len(comp.Registry) > 0},
 		{"removeRegistry", len(comp.RemoveRegistry) > 0},
@@ -409,23 +466,87 @@ func (v *validator) folderFile(filePath string, file *File) {
 
 	v.folderPatterns(filePath+".include", file.Include)
 	v.folderPatterns(filePath+".exclude", file.Exclude)
+	v.folderGUIDs(filePath+".guids", file.GUIDs)
 	v.permissions(filePath+".permissions", file.Permissions, permFile)
 }
 
-// filePatterns rejects include and exclude on a file that is not a folder
-// source.
+// filePatterns rejects include, exclude and guids on a file that is not a
+// folder source.
 func (v *validator) filePatterns(compPath string, comp *Component) {
-	for j, file := range comp.Files {
-		if file != nil && (len(file.Include) > 0 || len(file.Exclude) > 0) {
-			v.errorf(fmt.Sprintf("%s.files[%d]", compPath, j), "include and exclude need a folder source, a source that ends in /")
+	for fileIdx, file := range comp.Files {
+		if file == nil {
+			continue
+		}
+
+		if len(file.Include) > 0 || len(file.Exclude) > 0 {
+			v.errorf(fmt.Sprintf("%s.files[%d]", compPath, fileIdx), "include and exclude need a folder source, a source that ends in /")
+		}
+
+		if len(file.GUIDs) > 0 {
+			v.errorf(fmt.Sprintf("%s.files[%d].guids", compPath, fileIdx), "guids needs a folder source, a source that ends in /; "+
+				"set guid on the component instead")
 		}
 	}
+}
+
+// folderGUIDs checks the guids of a folder source: each key is a slash path
+// below the folder, no two keys differ in case only, and each value is a
+// GUID of its own.
+func (v *validator) folderGUIDs(mapPath string, guids map[string]string) {
+	paths := make(map[string]string, len(guids))
+	codes := make(map[string]string, len(guids))
+
+	for _, rel := range slices.Sorted(maps.Keys(guids)) {
+		key := fmt.Sprintf("%s[%q]", mapPath, rel)
+
+		if err := checkFolderPath(rel); err != nil {
+			v.errorf(key, "%v", err)
+		}
+
+		if other, ok := paths[strings.ToLower(rel)]; ok {
+			v.errorf(key, "%s names the same file as %s; paths are matched ignoring case", rel, other)
+		}
+
+		paths[strings.ToLower(rel)] = rel
+
+		guid, err := NormalizeGUID(guids[rel])
+		if err != nil {
+			v.errorf(key, "%v", err)
+
+			continue
+		}
+
+		if other, ok := codes[guid]; ok {
+			v.errorf(key, "%s has the same guid as %s; every file needs a code of its own", rel, other)
+		}
+
+		codes[guid] = rel
+	}
+}
+
+// checkFolderPath checks a path of guids: a file below the folder source in
+// slash form.
+func checkFolderPath(rel string) error {
+	switch {
+	case strings.Contains(rel, `\`):
+		return errors.New(`use "/" to separate folders; "\" is not allowed`)
+	case strings.HasPrefix(rel, "/"):
+		return errors.New("the path is relative to source; remove the leading /")
+	}
+
+	for seg := range strings.SplitSeq(rel, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return errors.New(`the path of a file below the folder cannot contain an empty, "." or ".." folder`)
+		}
+	}
+
+	return nil
 }
 
 // folderPatterns checks the glob patterns of an include or exclude list.
 func (v *validator) folderPatterns(listPath string, patterns StringList) {
 	for i, pattern := range patterns {
-		if _, err := parseGlob(pattern); err != nil {
+		if err := folderglob.Check(pattern); err != nil {
 			v.errorf(fmt.Sprintf("%s[%d]", listPath, i), "%q: %v", pattern, err)
 		}
 	}

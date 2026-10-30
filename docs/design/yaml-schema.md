@@ -383,8 +383,8 @@ harvested components replaced by a folder source. With
 `afterInstallExecute`, the new product skips the files that are already
 there ("hash matches"), and removing the old product then deletes them
 (observed on Windows Server 2025). A component that kept WiX's GUID through
-`guid` survived. Early removal keeps all of them; for a folder source,
-which cannot take a `guid`, it is the only way.
+`guid` survived, and so does a file of a folder source that keeps it
+through `guids` (UPG-12). Early removal keeps all of them.
 
 `ignoreRemoveFailure: true` sets the IgnoreRemoveFailure bit (4) on every
 Upgrade row that removes products, `related` rows included. When the
@@ -1511,6 +1511,8 @@ components:
         exclude: ['*.pdb', logs/, 'docs/**/*.tmp']
         allowUnversionedExecutable: false   # copied to every file (FILE-01), as are vital,
                                             # checksum, readOnly, hidden, system, permissions
+        guids:                   # the component GUID of a file, by its path below the folder
+          bin/app.exe: 6d1c0a42-93b8-4e57-a2f1-0c7e5d9b3a61
 ```
 
 The folder must be the component's only file. Settings that name one file
@@ -1519,8 +1521,8 @@ or one component cannot be copied to many: `guid` (other than `auto`),
 `environment`, `purge`, `createFolder` and `folderPermissions` on the
 component, and `name`, `id`, `version`, `language` and `shortcuts` on the
 file, are errors. Put them on a component of their own and exclude its file
-from the folder. `include` and `exclude` on a file that is not a folder are
-errors too, and so is a `firewall` rule whose `component` is a folder
+from the folder, or, for a GUID, list the file in `guids`. `include`,
+`exclude` and `guids` on a file that is not a folder are errors too, and so is a `firewall` rule whose `component` is a folder
 component. The generated components take the component's place in
 `components` and in the features that hold it.
 
@@ -1544,6 +1546,19 @@ the folder is the YAML file's folder or one above it.
   major upgrade, with an early as well as a late `removeOld`, while a file
   that is new gets a new component; FILE-08 confirmed this on a Windows
   CI runner, including a name whose case changed.
+- **Kept GUIDs.** `guids` maps the slash path of a file below `source`,
+  matched ignoring case, to the GUID its component takes instead of the
+  `auto` one. It is for a port from a tool that gave each harvested file a
+  component code of its own: with a late `removeOld`, the first upgrade from
+  that tool's package deletes every file whose code changed (UPG-11), and a
+  kept code keeps the file (UPG-12, a WiX `Files` glob upgraded by the
+  converted package). `msi-builder convert --msi` fills it from the old
+  package. The other files keep their `auto` GUID, so files added later
+  need no entry. A path the folder does not add, because the file is gone
+  or a pattern leaves it out, is a warning, since a file may well leave in
+  a later version; a path with `\`, a leading `/` or a `.` or `..` folder,
+  two paths that differ in case only, a value that is not a GUID and two
+  paths with one GUID are errors.
 - **IDs.** Component, file and directory IDs are the component's ID (cut to
   50 characters), `_`, a kind letter and 20 hex digits, derived from the
   directory, `source` as written and the path below it, exactly as

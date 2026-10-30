@@ -151,8 +151,8 @@ func (c *converter) component(comp *comp, tree map[*dir]bool) *omap {
 		content.child(kid)
 	}
 
-	// A folder source takes no guid.
-	if comp.generated && !comp.harvests && c.built != nil {
+	// A folder source takes no guid; pinHarvested gives its files theirs.
+	if comp.generated && comp.folder == nil && c.built != nil {
 		c.pinCode(comp, builtKeyFile(elm, content.keyFile))
 	}
 
@@ -803,15 +803,15 @@ func (cc *compConv) folderFiles(elm *elem) {
 
 	files.set("exclude", exclude)
 	cc.out.add("files", files)
-	cc.countFiles(src, include != "")
+	cc.countFiles(files, src, include != "")
 }
 
-// countFiles counts a Files element: a glob harvests, and one file is the
-// key file when it comes first.
-func (cc *compConv) countFiles(src string, glob bool) {
+// countFiles counts a Files element: a glob harvests into a folder source,
+// and one file is the key file when it comes first.
+func (cc *compConv) countFiles(files *omap, src string, glob bool) {
 	switch {
 	case glob:
-		cc.cp.harvests = true
+		cc.cp.folder = files
 	case cc.files == 0:
 		cc.keyFile = path.Base(src)
 	}

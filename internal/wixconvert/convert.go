@@ -55,6 +55,11 @@ type Options struct {
 	// whose Guid WiX generated keeps the code it has there, so that a major
 	// upgrade from that package that removes it late keeps the files.
 	Built *BuiltPackage
+	// Exists reports whether a file exists at a slash path relative to
+	// the source file, or is nil. With a built package, a file that two
+	// Files globs into one folder match keeps its code in the glob whose
+	// source folder holds it.
+	Exists func(rel string) bool
 	// Source names the input in the header comment, such as app.wxs.
 	Source string
 }
@@ -73,6 +78,7 @@ func Convert(r io.Reader, opts Options) (*Result, error) {
 
 	conv := newConverter(doc)
 	conv.built = opts.Built
+	conv.exists = opts.Exists
 
 	if err := conv.index(); err != nil {
 		return nil, err
@@ -93,26 +99,29 @@ func Convert(r io.Reader, opts Options) (*Result, error) {
 
 // converter holds the indexed source file and the output.
 type converter struct {
-	compByID   map[string]*comp
-	built      *BuiltPackage
-	claimed    map[string]bool // the built components a component took
-	advertised []int           // the lines of advertised shortcuts
-	doc        *document
-	wixVars    map[string]string
-	dirs       map[string]*dir
-	wixUI      *elem
-	out        *omap
-	pkg        *elem
-	major      *elem
-	summary    *elem
-	usedVars   map[string]bool
-	groups     map[string]*group
-	actions    map[string]*elem
-	needDirs   map[string]bool
-	renames    map[string]string
-	installDir *dir
-	uiSet      string
-	platform   string
+	compByID map[string]*comp
+	built    *BuiltPackage
+	claimed  map[string]bool // the built components a component took
+	exists   func(rel string) bool
+	// builtDirIndex holds the folders of the built package by ID.
+	builtDirIndex map[string]*BuiltDirectory
+	advertised    []int // the lines of advertised shortcuts
+	doc           *document
+	wixVars       map[string]string
+	dirs          map[string]*dir
+	wixUI         *elem
+	out           *omap
+	pkg           *elem
+	major         *elem
+	summary       *elem
+	usedVars      map[string]bool
+	groups        map[string]*group
+	actions       map[string]*elem
+	needDirs      map[string]bool
+	renames       map[string]string
+	installDir    *dir
+	uiSet         string
+	platform      string
 	// scope is the package's install scope, as package.scope names it.
 	scope        string
 	launchAction string
@@ -181,8 +190,14 @@ type dir struct {
 type comp struct {
 	e   *elem
 	out *omap
-	id  string
-	dir string
+	// folder is the folder source a Files glob became, whose files keep
+	// the codes WiX gave them in its guids.
+	folder *omap
+	id     string
+	dir    string
+	// tied are the files of a folder source that another one with the same
+	// folder adds too, so that neither keeps their code.
+	tied []string
 	// droppedValues are the HKCU key path values of a shortcut component
 	// that msi-builder replaces with its own.
 	droppedValues []string
@@ -192,9 +207,6 @@ type comp struct {
 	// when the built package gave it one.
 	generated bool
 	pinned    bool
-	// harvests is set when a Files glob became a folder source, which
-	// takes no guid.
-	harvests bool
 }
 
 type group struct {

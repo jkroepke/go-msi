@@ -179,6 +179,18 @@ func TestFolderErrors(t *testing.T) {
 		{"empty folder", "components: [{ files: [{ source: / }] }]", "components[0].files[0].source", "empty"},
 		{"second file", "components: [{ files: [{ source: dist/conf/ }, { source: dist/app.exe }] }]", "components[0].files", "only file"},
 		{"pinned guid", "components: [{ guid: 3f2504e0-4f89-41d3-9a0c-0305e82c3302, files: [{ source: dist/conf/ }] }]", "components[0].guid", "not allowed"},
+		{"guids on a file", "components: [{ files: [{ source: dist/app.exe, guids: { app.exe: 3f2504e0-4f89-41d3-9a0c-0305e82c3302 } }] }]", "components[0].files[0].guids", "needs a folder source"},
+		{"guids not a guid", "components: [{ files: [{ source: dist/, guids: { app.exe: nope } }] }]", `components[0].files[0].guids["app.exe"]`, "not a GUID"},
+		{"guids backslash", `components: [{ files: [{ source: dist/, guids: { 'conf\app.yaml': 3f2504e0-4f89-41d3-9a0c-0305e82c3302 } }] }]`, `components[0].files[0].guids["conf\\app.yaml"]`, `use "/"`},
+		{"guids dot dot", "components: [{ files: [{ source: dist/, guids: { ../app.exe: 3f2504e0-4f89-41d3-9a0c-0305e82c3302 } }] }]", `components[0].files[0].guids["../app.exe"]`, `".."`},
+		{
+			"guids case", "components: [{ files: [{ source: dist/, guids: { app.exe: 3f2504e0-4f89-41d3-9a0c-0305e82c3302, APP.exe: 3f2504e0-4f89-41d3-9a0c-0305e82c3303 } }] }]",
+			`components[0].files[0].guids["app.exe"]`, "same file as APP.exe",
+		},
+		{
+			"guids shared", "components: [{ files: [{ source: dist/, guids: { app.exe: 3f2504e0-4f89-41d3-9a0c-0305e82c3302, readme.txt: '{3F2504E0-4F89-41D3-9A0C-0305E82C3302}' } }] }]",
+			`components[0].files[0].guids["readme.txt"]`, "same guid as app.exe",
+		},
 		{"registry", "components: [{ registry: [{ root: HKLM, key: Software/X }], files: [{ source: dist/conf/ }] }]", "components[0].registry", "not allowed"},
 		{"remove files", "components: [{ removeFiles: [{ name: '*.log', on: uninstall }], files: [{ source: dist/conf/ }] }]", "components[0].removeFiles", "not allowed"},
 		{"file name", "components: [{ files: [{ source: dist/conf/, name: x }] }]", "components[0].files[0].name", "not allowed"},
@@ -695,4 +707,62 @@ func TestFolderChecksMovedComponents(t *testing.T) {
 	}
 
 	t.Error("no ICE80 warning for a generated component moved to ProgramFilesFolder")
+}
+
+func TestFolderGUIDs(t *testing.T) {
+	t.Parallel()
+
+	const (
+		appCode  = "3f2504e0-4f89-41d3-9a0c-0305e82c3302"
+		confCode = "3f2504e0-4f89-41d3-9a0c-0305e82c3303"
+	)
+
+	cfg, diags, _ := expand(t, sampleFS(), `components:
+  - id: Dist
+    files:
+      - source: dist/
+        guids:
+          app.exe: `+appCode+`
+          CONF/App.yaml: `+confCode+`
+          debug/app.pdb: 3f2504e0-4f89-41d3-9a0c-0305e82c3304
+          gone.txt: 3f2504e0-4f89-41d3-9a0c-0305e82c3305
+        exclude: [logs, cache, debug]
+`)
+	if diags.Err() != nil {
+		t.Fatal(diags)
+	}
+
+	// An excluded or missing file keeps nothing and is reported.
+	var warned []string
+
+	for _, d := range diags {
+		if d.Path == "components[0].files[0].guids" {
+			warned = append(warned, d.Message)
+		}
+	}
+
+	want := []string{
+		"the folder source adds no file debug/app.pdb, so its guid is not used",
+		"the folder source adds no file gone.txt, so its guid is not used",
+	}
+	if !slices.Equal(warned, want) {
+		t.Errorf("warnings %q, want %q", warned, want)
+	}
+
+	codes := make(map[string]string)
+	for _, comp := range cfg.Components {
+		codes[comp.Files[0].Name] = comp.GUID
+	}
+
+	if codes["app.exe"] != appCode || codes["app.yaml"] != confCode {
+		t.Errorf("app.exe has %q and app.yaml %q, want the pinned codes", codes["app.exe"], codes["app.yaml"])
+	}
+
+	if guid := codes["readme.txt"]; guid != config.Auto {
+		t.Errorf("readme.txt has guid %q, want a generated one", guid)
+	}
+
+	if diags := config.Validate(cfg); diags.Err() != nil {
+		t.Errorf("the expanded config does not validate:\n%s", diags)
+	}
 }

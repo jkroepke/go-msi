@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"path"
 	"strings"
+
+	"github.com/jkroepke/msi-builder/internal/folderglob"
 )
 
 // TreeOptions controls AddTree.
@@ -85,7 +87,7 @@ func (c *Config) AddTree(fsys fs.FS, root, dirID string, opts TreeOptions) ([]*C
 // derived from prefix, dirID, idRoot and the path below root; a folder
 // source takes idRoot from its source as written instead of the fs.FS root.
 // The components are not added to the config.
-func (c *Config) walkTree(fsys fs.FS, root, idRoot, dirID, prefix string, filter *folderFilter) ([]*Component, error) {
+func (c *Config) walkTree(fsys fs.FS, root, idRoot, dirID, prefix string, filter *folderglob.Filter) ([]*Component, error) {
 	parent, err := c.treeTarget(fsys, root, dirID, prefix)
 	if err != nil {
 		return nil, err
@@ -216,7 +218,7 @@ func checkTreeName(rel string) error {
 // tree collects the files of one AddTree call and creates their directories.
 type tree struct {
 	dirs   map[string]*Directory
-	filter *folderFilter
+	filter *folderglob.Filter
 	root   string
 	prefix string
 	base   string
@@ -269,14 +271,14 @@ func (t *tree) skip(filePath, rel string, entry fs.DirEntry) error {
 	}
 
 	if entry.IsDir() {
-		if t.filter.excluded(rel, true) {
+		if t.filter.Excluded(rel, true) {
 			return fs.SkipDir
 		}
 
 		return nil
 	}
 
-	if !t.filter.included(rel) {
+	if !t.filter.Included(rel) {
 		return errLeaveOut
 	}
 
