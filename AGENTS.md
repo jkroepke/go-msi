@@ -75,7 +75,7 @@ versioning after 1.0.
   `# TODO` comment next to the key it belongs to and a `Note` for stderr.
   Snapshots in `testdata/` (regenerate with `MSI_BUILDER_UPDATE_SNAPSHOTS=1`)
   must stay valid configs. With `--msi` (`Options.Built`) it pins the
-  component codes WiX generated, matched by Id or by key file (`codes.go`),
+  component codes WiX generated, matched by `Id` or by key file (`codes.go`),
   because a late `removeOld` deletes the files of every changed code
   (UPG-11); a shortcut component with a code keeps its shortcut. The fixtures are our own sample app: never copy
   third-party `.wxs` files in, and never read WiX source code (clean room).
