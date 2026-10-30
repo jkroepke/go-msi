@@ -587,7 +587,17 @@ features:
   cannot set the same level (the row key is feature and level); join their
   conditions with `OR`. A condition cannot ask for a feature or component
   state (`!`, `?`, `&`, `$`): the engine evaluates the table before it has
-  them. INST-05_PLACEHOLDER
+  them. The
+  builder writes each row as `NOT Installed AND (<condition>)`: the engine
+  evaluates the rows at every run, also with `ADDLOCAL` and at the
+  uninstall, and a feature that a row disables when the product is removed
+  keeps its files and registry values (INST-05). The conditions therefore
+  decide first installs and major upgrades only; a feature disabled at the
+  first install can be added later with `ADDLOCAL`. A major upgrade that
+  does not get the property again disables the feature, and the old
+  version's copy is removed; prefer `off` to `disabled` when the
+  feature should survive such an upgrade. When several conditions are
+  true, the higher level won (INST-05).
 - Every component is in at least one feature (ICE21). A component used by
   two features is defined once in `components` and named by ID in both.
 - `allowAdvertise` defaults to `false`; advertised installs are not supported (section 6).

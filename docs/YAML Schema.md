@@ -289,8 +289,8 @@ From the command line, `ADDLOCAL=ALL` installs every feature and
 `ADDLOCAL=Main,Docs` the ones named.
 
 `conditions` change whether a feature is installed from a property, the
-Windows version or anything else a condition can test. The first entry
-whose condition is true sets the feature's default:
+Windows version or anything else a condition can test. An entry whose
+condition is true sets the feature's default:
 
 ```yaml
 properties:
@@ -311,8 +311,9 @@ features:
 ```
 
 `msiexec /i hello.msi ASSOCIATE=0` leaves the associations out. The
-conditions only decide the default of a first install: a feature chosen
-in the wizard or with `ADDLOCAL`, a repair and an uninstall ignore them.
+conditions only apply to a first install (and to the new version of an
+upgrade). `default: disabled` keeps a feature out even of `ADDLOCAL=ALL`;
+`off` lets the user still pick it.
 
 ### Show a setup wizard
 
