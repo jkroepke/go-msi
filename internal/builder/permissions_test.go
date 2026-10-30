@@ -144,17 +144,6 @@ func TestPermissionGrants(t *testing.T) {
 
 	installed := "$" + comp.ID + "=3"
 	dir := "[" + comp.Directory + "]"
-	want := strings.Join([]string{
-		installed + " AND (DATA=1)\x1ff|1301bf|3\x1fNS\x1f" + dir,
-		installed + " AND (DATA=1)\x1ff|120089|0\x1f.\\svc\x1f" + dir,
-		installed + "\x1fs|30|0\x1fBU\x1fHelloSvc",
-		installed + "\x1ff|1300a9|0\x1f[SVC_ACCOUNT]\x1f[#hello.exe]",
-	}, "\n")
-
-	if got := cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "BuilderGrants" }); got != want {
-		t.Errorf("BuilderGrants\n%q\nwant\n%q", got, want)
-	}
-
 	seq := make(map[string]int)
 
 	conds := map[string]any{}
@@ -167,18 +156,69 @@ func TestPermissionGrants(t *testing.T) {
 		conds[fmt.Sprint(row[0])] = row[1]
 	}
 
-	// The schedule action runs on removal too; each deferred action runs
-	// when the schedule action gave it data.
+	// The engine builds the data right before the deferred actions: two
+	// complementary resets and a reset of the count, then two type-51
+	// actions per grant with its condition, in authoring order, then the
+	// data of each deferred action, set in every install, so that none
+	// comes from the command line.
+	data, count := "[BuilderGrantData]\n", "[BuilderGrantCount]#"
+	want := []struct{ property, cond, target string }{
+		{"BuilderGrantData", "NOT Installed", "i[ProductCode]"},
+		{"BuilderGrantData", "Installed", "m[ProductCode]"},
+		{"BuilderGrantCount", "", ":"},
+		{"BuilderGrantData", installed + " AND (DATA=1)", data + "f|1301bf|3|NS|" + dir + "|NS"},
+		{"BuilderGrantCount", installed + " AND (DATA=1)", count},
+		{"BuilderGrantData", installed + " AND (DATA=1)", data + "f|120089|0|.\\svc|" + dir + "|.\\svc"},
+		{"BuilderGrantCount", installed + " AND (DATA=1)", count},
+		{"BuilderGrantData", installed, data + "s|30|0|BU|HelloSvc|BU"},
+		{"BuilderGrantCount", installed, count},
+		{"BuilderGrantData", installed, data + "f|1300a9|0|[\\[]SVC_ACCOUNT[\\]]|[#hello.exe]|[SVC_ACCOUNT]"},
+		{"BuilderGrantCount", installed, count},
+		{"BuilderGrantExec", "", "+[BuilderGrantCount][BuilderGrantData]"},
+		{"BuilderGrantRollback", "", "-[BuilderGrantCount][BuilderGrantData]"},
+		{"BuilderGrantCommit", "", "c[BuilderGrantCount][BuilderGrantData]"},
+		{"BuilderGrantCommit", `REMOVE~="ALL"`, "x[ProductCode]"},
+		{"BuilderRun", `NOT REMOVE~="ALL"`, "BuilderGrant"}, // BuilderGrantRollback
+		{"BuilderRun", `NOT REMOVE~="ALL"`, "BuilderGrant"}, // BuilderGrantExec
+		{"BuilderRun", "", "BuilderGrant"},                  // BuilderGrantCommit
+	}
+
+	// Nothing, above all no action that runs as the user, comes between
+	// the first reset and the deferred actions.
+	first := seq["BuilderGrantReset"]
+	byNumber := map[int]string{}
+
+	for name, number := range seq {
+		byNumber[number] = name
+	}
+
+	for i, action := range want {
+		name := byNumber[first+i]
+		r := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == name })
+
+		if (action.property != "BuilderRun" && fmt.Sprint(r[1]) != "51") || r[2] != action.property || r[3] != action.target || strings.TrimSuffix(fmt.Sprint(conds[name]), "<nil>") != action.cond {
+			t.Errorf("action %d at %d: %v condition %v, want %s=%q if %q", i, first+i, r, conds[name], action.property, action.target, action.cond)
+		}
+	}
+
+	if first <= seq["InstallServices"] || first+len(want) > seq["StartServices"] {
+		t.Errorf("grant actions %d..%d not between InstallServices and StartServices: %v", first, first+len(want)-1, seq)
+	}
+
+	if _, ok := seq["BuilderGrantSchedule"]; ok {
+		t.Error("BuilderGrantSchedule is scheduled; the engine builds the data")
+	}
+
 	for name, want := range map[string]string{
-		"BuilderGrantRollback": "BuilderGrantRollback", "BuilderGrantExec": "BuilderGrantExec", "BuilderGrantCommit": "BuilderGrantCommit",
+		"BuilderGrantRollback": `NOT REMOVE~="ALL"`, "BuilderGrantExec": `NOT REMOVE~="ALL"`,
 	} {
 		if conds[name] != want {
 			t.Errorf("%s condition %v, want %q", name, conds[name], want)
 		}
 	}
 
-	if cond := conds["BuilderGrantSchedule"]; cond != nil && cond != "" {
-		t.Errorf("BuilderGrantSchedule condition %v, want none", cond)
+	if cond := conds["BuilderGrantCommit"]; cond != nil && cond != "" {
+		t.Errorf("BuilderGrantCommit condition %v, want none", cond)
 	}
 
 	prev := "InstallServices"
@@ -187,7 +227,6 @@ func TestPermissionGrants(t *testing.T) {
 		name, entry string
 		typ         int
 	}{
-		{"BuilderGrantSchedule", "BuilderGrantSchedule", 1},
 		{"BuilderGrantRollback", "BuilderGrant", 1 | 0x500 | 0x800}, // DLL, rollback, no impersonation
 		{"BuilderGrantExec", "BuilderGrant", 1 | 0x400 | 0x800},     // deferred
 		{"BuilderGrantCommit", "BuilderGrant", 1 | 0x600 | 0x800},   // commit
@@ -206,6 +245,62 @@ func TestPermissionGrants(t *testing.T) {
 
 	if seq[prev] >= seq["StartServices"] {
 		t.Errorf("%s at %d is not before StartServices at %d", prev, seq[prev], seq["StartServices"])
+	}
+}
+
+// TestPermissionGrantRoom builds the most grants that fit after
+// InstallServices, which MsiConfigureServices at 5850 halves, and 100
+// after InstallFiles without services, where the minimal package has no
+// numbered action before RegisterUser (6000).
+func TestPermissionGrantRoom(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+
+	for _, tc := range []struct {
+		grants           int
+		service, delayed bool
+		want             string
+	}{
+		{44, true, false, ""},
+		{45, true, false, "at most 44 fit"},
+		{19, true, true, ""},
+		{20, true, true, "at most 19 fit"},
+		{100, false, false, ""},
+		{1, false, false, "overlap"}, // the other actions overflow, not the grants
+	} {
+		t.Run(fmt.Sprintf("%d grants service %v delayed %v", tc.grants, tc.service, tc.delayed), func(t *testing.T) {
+			t.Parallel()
+
+			cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
+			grants := make([]*config.Grant, tc.grants)
+
+			for i := range grants {
+				grants[i] = &config.Grant{Account: "NS", Rights: config.StringList{"read"}}
+			}
+
+			cfg.Components[0].Files[0].Permissions = &config.Permissions{Grant: grants}
+			if tc.service {
+				cfg.Components[0].Services = []*config.Service{{Name: "HelloSvc", Start: "auto", DelayedAutoStart: tc.delayed}}
+			}
+
+			if tc.want == "overlap" {
+				// 100 actions after InstallInitialize (1500) run into
+				// ProcessComponents (1600).
+				for i := range 100 {
+					cfg.CustomActions = append(cfg.CustomActions, &config.CustomAction{
+						ID: fmt.Sprintf("Fill%d", i), SetProperty: &config.SetProperty{Name: fmt.Sprintf("FILL%d", i), Value: "1"},
+						Schedule: []config.Placement{{Sequence: "execute", After: "InstallInitialize"}},
+					})
+				}
+			}
+
+			_, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+			if (tc.want == "" && err != nil) || (tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want))) ||
+				(err != nil && tc.want == "overlap" && strings.Contains(err.Error(), "permission grants")) {
+				t.Errorf("err %v, want %q", err, tc.want)
+			}
+		})
 	}
 }
 

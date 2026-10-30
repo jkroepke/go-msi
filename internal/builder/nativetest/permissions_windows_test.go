@@ -333,8 +333,11 @@ func TestMsiexecGrants(t *testing.T) {
 		}
 	}
 
-	if got := rememberedAccounts(t); !strings.Contains(got, `BUILTIN\Guests`) {
-		t.Errorf("after the install, the account is not remembered:\n%s", got)
+	// The value is named after the template as authored: the engine's
+	// type-51 actions carry it escaped and do not format it again when
+	// they append to the data (spec 17.7).
+	if got := rememberedAccounts(t); !strings.Contains(got, `BUILTIN\Guests`) || !strings.Contains(got, "[SVC_ACCOUNT]") {
+		t.Errorf("after the install, the account is not remembered under [SVC_ACCOUNT]:\n%s", got)
 	}
 
 	if strings.Contains(installed["locked folder"], "ID;") {

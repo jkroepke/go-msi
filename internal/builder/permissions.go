@@ -1,10 +1,13 @@
 package builder
 
 import (
-	"strings"
+	"slices"
+	"sort"
+	"strconv"
 
 	"github.com/jkroepke/msi-builder/internal/cadll"
 	"github.com/jkroepke/msi-builder/internal/rights"
+	"github.com/jkroepke/msi-builder/internal/sequence"
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
@@ -97,22 +100,21 @@ func (b *build) grant(component, object string, kind byte, flags uint32, perm *c
 	}
 }
 
-// grantActions writes the grants into the BuilderGrants property, one line
-// per grant with its condition (the component is installed or repaired, and
-// the block's condition), and adds the actions on the embedded DLL that
-// apply them (specification section 17.7): BuilderGrantSchedule evaluates the
-// conditions and formats accounts and objects, then the deferred
-// BuilderGrantExec grants without impersonation (as LocalSystem in a per-machine install), its rollback
-// takes away what it added and the commit action drops the record of that.
-// They run after the objects exist and before StartServices. An account
-// from a property is remembered for maintenance installs, and the removal
-// of the product forgets it; the objects the package created go with it.
+// grantActions adds the actions on the embedded DLL that apply the grants
+// (specification section 17.7): the deferred BuilderGrantExec grants
+// without impersonation (as LocalSystem in a per-machine install), its
+// rollback takes away what it added and the commit action drops the record
+// of that. They run after the objects exist and before StartServices. An
+// account from a property is remembered for maintenance installs, and the
+// removal of the product forgets it; the objects the package created go
+// with it. Their data comes from type-51 actions the engine runs, never
+// from an action that runs as the installing user, who could change it.
 func (b *build) grantActions() {
 	if len(b.grants) == 0 || !b.useRunDLL() {
 		return
 	}
 
-	for _, name := range []string{cadll.GrantProperty, cadll.GrantExec, cadll.GrantRollback, cadll.GrantCommit} {
+	for _, name := range []string{cadll.GrantData, cadll.GrantCount, cadll.GrantExec, cadll.GrantRollback, cadll.GrantCommit} {
 		if _, ok := b.cfg.Properties[name]; ok {
 			b.errorf("properties."+name, "the property %s is reserved for permission grants", name)
 
@@ -120,9 +122,40 @@ func (b *build) grantActions() {
 		}
 	}
 
-	lines := make([]string, 0, len(b.grants))
+	anchor := actInstallFiles
+	if b.hasRows("ServiceInstall") {
+		anchor = actInstallServices
+	}
 
-	for _, grant := range b.grants {
+	b.grantAnchor = anchor
+	b.standardAt(seqInstallExecute, anchor)
+	b.grantSchedule(anchor)
+	b.grantData()
+}
+
+// grantData builds the data of the deferred grant actions in BuilderGrantData
+// with type-51 actions right before them, so that no action that runs as
+// the user comes between: two resets, one of which runs, and a reset of
+// BuilderGrantCount, so that nothing set before (on the command line or by
+// an action) survives into the data, then two actions per grant,
+// conditioned on its component being installed or repaired and the block's
+// condition, one that appends the grant with its account and object
+// formatted by the engine and one that counts it, then the data of each
+// deferred action. The count lets the DLL find a line break that a
+// formatted value added. A removal only hands the commit action the
+// forgetting of the remembered accounts, so a failed removal keeps them.
+func (b *build) grantData() {
+	data := "[" + cadll.GrantCount + "][" + cadll.GrantData + "]"
+
+	type setter struct{ name, property, cond, target string }
+
+	setters := []setter{
+		{"BuilderGrantReset", cadll.GrantData, condNotInstalled, string(cadll.GrantInstall) + "[ProductCode]"},
+		{"BuilderGrantResetMaintenance", cadll.GrantData, "Installed", string(cadll.GrantMaintenance) + "[ProductCode]"},
+		{"BuilderGrantResetCount", cadll.GrantCount, "", ":"},
+	}
+
+	for i, grant := range b.grants {
 		mask, err := rights.Mask(grant.cfg.Rights, grant.kind == cadll.GrantService)
 		if err != nil {
 			continue // reported by validation
@@ -133,38 +166,82 @@ func (b *build) grantActions() {
 			cond += " AND (" + grant.condition + ")"
 		}
 
-		lines = append(lines, cadll.GrantEntry(cond, grant.kind, mask, grant.flags, grant.cfg.Account, grant.object))
+		account := grant.cfg.Account
+		entry := cadll.GrantEntry(grant.kind, mask, grant.flags, escapeFormatted(account), grant.object, account)
+		id := generatedID("", strconv.Itoa(i), grant.object, account)
+		b.grantSetters = append(b.grantSetters, "BuilderGrantSet"+id, "BuilderGrantCount"+id)
+		setters = append(setters,
+			setter{"BuilderGrantSet" + id, cadll.GrantData, cond, "[" + cadll.GrantData + "]\n" + entry},
+			setter{"BuilderGrantCount" + id, cadll.GrantCount, cond, "[" + cadll.GrantCount + "]#"},
+		)
 	}
 
-	b.properties[cadll.GrantProperty] = strings.Join(lines, "\n")
+	setters = append(setters,
+		setter{"BuilderGrantSetExec", cadll.GrantExec, "", "+" + data},
+		setter{"BuilderGrantSetRollback", cadll.GrantRollback, "", "-" + data},
+		setter{"BuilderGrantSetCommit", cadll.GrantCommit, "", "c" + data},
+		setter{"BuilderGrantForget", cadll.GrantCommit, condRemoveAll, string(cadll.GrantForget) + "[ProductCode]"},
+	)
 
-	anchor := actInstallFiles
-	if b.hasRows("ServiceInstall") {
-		anchor = actInstallServices
+	for _, s := range setters {
+		b.addAction(&actionInfo{name: s.name, typ: caSetProperty, source: s.property, target: s.target})
+		b.schedule(seqInstallExecute, s.name, s.cond, cadll.GrantRollback, "", 0)
 	}
-
-	b.standardAt(seqInstallExecute, anchor)
-	b.grantSchedule(anchor)
 }
 
-// grantSchedule adds the grant actions after anchor.
+// checkGrantRoom reports grants whose actions do not fit between their
+// anchor and the next numbered action, such as MsiConfigureServices (5850)
+// after InstallServices, with the number that fits, before numbering fails
+// with a less helpful error. It numbers the sequence with fewer grants
+// to find how many fit; other actions around the anchor take numbers there too.
+func (b *build) checkGrantRoom() {
+	actions := b.schedules[seqInstallExecute]
+	if len(b.grantSetters) == 0 {
+		return
+	}
+
+	if _, err := sequence.Number(actions); err == nil {
+		return
+	}
+
+	// Fewer grants never need more numbers, so the most that fit is found
+	// by bisection.
+	fits := func(count int) bool {
+		dropped := make(map[string]bool, len(b.grantSetters))
+		for _, name := range b.grantSetters[2*count:] {
+			dropped[name] = true
+		}
+
+		_, err := sequence.Number(slices.DeleteFunc(slices.Clone(actions), func(a sequence.Action) bool { return dropped[a.Name] }))
+
+		return err == nil
+	}
+
+	if !fits(0) {
+		return // the numbering error is not the grants'
+	}
+
+	most := sort.Search(len(b.grantSetters)/2, func(count int) bool { return !fits(count + 1) })
+	b.errorf("components", "%d permission grants do not fit: each takes two actions after %s, which the package's other "+
+		"actions there share; at most %d fit in this package", len(b.grants), b.grantAnchor, most)
+}
+
+// grantSchedule adds the deferred grant actions after anchor. They do not
+// run on removal; their data is set in every install, so none can come from
+// elsewhere.
 func (b *build) grantSchedule(anchor string) {
 	actions := []*actionInfo{
-		{name: cadll.GrantSchedule, typ: caDLL, source: cadll.Key, target: cadll.GrantSchedule},
 		{name: cadll.GrantRollback, typ: caDLL | caRollback | caNoImpersonate, source: cadll.Key, target: cadll.GrantEntryPoint},
 		{name: cadll.GrantExec, typ: caDLL | caDeferred | caNoImpersonate, source: cadll.Key, target: cadll.GrantEntryPoint},
 		{name: cadll.GrantCommit, typ: caDLL | caCommit | caNoImpersonate, source: cadll.Key, target: cadll.GrantEntryPoint},
 	}
 
-	// The schedule action runs on removal too, where it only hands the
-	// commit action the forgetting of the remembered accounts, so a failed
-	// removal keeps them; each deferred action runs when it has data.
 	for _, action := range actions {
 		b.addAction(action)
 
-		cond := action.name
-		if action.name == cadll.GrantSchedule {
-			cond = ""
+		cond := "NOT " + condRemoveAll
+		if action.name == cadll.GrantCommit {
+			cond = "" // forgets the remembered accounts on removal
 		}
 
 		b.schedule(seqInstallExecute, action.name, cond, "", anchor, 0)

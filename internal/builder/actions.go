@@ -76,6 +76,7 @@ const (
 	actDuplicateFiles       = "DuplicateFiles"
 
 	condNotInstalled = "NOT Installed"
+	condRemoveAll    = `REMOVE~="ALL"`
 	condVersionNT    = "VersionNT"
 	fwAny            = "any"
 	targetDir        = "TARGETDIR"
@@ -692,6 +693,8 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 			b.errorf("customActions", "%s: action %s is scheduled but not defined", table, action.Name)
 		}
 	}
+
+	b.checkGrantRoom()
 
 	if err := b.diags.Err(); err != nil {
 		return err //nolint:wrapcheck // the diagnostics carry their own paths

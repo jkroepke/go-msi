@@ -1281,16 +1281,26 @@ folderPermissions:
 - `sddl` and `grant` can be combined: the engine applies the SDDL when it
   creates the object, then the grants are added to it.
 
-The builder lists the grants, each with the condition that its component
-is installed or repaired (`$Component=3`) and the block's condition, in the
-property `BuilderGrants`. Four actions on the embedded custom action DLL
-apply them, after `InstallFiles` (after `InstallServices` when the package
-has services) and before `StartServices`, so a service can use its folder
-when it starts: `BuilderGrantSchedule` evaluates the conditions and formats
-accounts and objects, the deferred `BuilderGrantExec` grants without
-impersonation (as LocalSystem in a per-machine install) and records the rights it added, `BuilderGrantRollback` takes exactly those
-away again, so rights an object had before a failed install or repair stay,
-and `BuilderGrantCommit` drops the record and remembers the accounts that
+The engine builds the list of grants itself, with one property-setting
+action per grant that runs when its component is installed or repaired
+(`$Component=3`) and the block's condition holds, so an action running as
+the installing user cannot change the list after the engine formatted it.
+A package with services has at most 44 grants, 19 when a service uses
+`delayedAutoStart` or `failureActionsOnNonCrashFailures`, fewer with other
+actions after `InstallServices` such as `recovery`; the builder says how
+many fit. The account and the
+folder still come from properties: a standard user who repairs a
+per-machine product can presumably set a secure property on the command
+line (not tested), so
+keep the account and directory properties of a grant `secure: false`
+unless the wizard sets them. Three actions on the embedded custom action
+DLL apply them, after `InstallFiles` (after `InstallServices` when the
+package has services) and before `StartServices`, so a service can use its
+folder when it starts: the deferred `BuilderGrantExec` grants without
+impersonation (as LocalSystem in a per-machine install) and records the
+rights it added, `BuilderGrantRollback` takes exactly those away again, so
+rights an object had before a failed install or repair stay, and
+`BuilderGrantCommit` drops the record and remembers the accounts that
 came from properties. A repair grants again; an object that kept its ACE is
 left as it is (a file a `/fa` repair overwrote kept its ACE, SEC-02). Uninstalling does not take them away: the objects the
 package created are removed, and a folder that existed before keeps the
