@@ -108,7 +108,7 @@ func TestValidateAccepted(t *testing.T) {
 		"dual scope machine first": pkg(`{platform: x64, scope: PerMachineOrUser}`) + appComponent,
 		// A variable follows the context; a perMachine component writes
 		// machine data only per machine.
-		"dual scope variables": strings.Replace(pkg(`{platform: x64, scope: perUserOrMachine}`), "[App]", "[App, Machine, User]", 1) + strings.Replace(appComponent, "    files:",
+		"dual scope variables": strings.Replace(pkg(`{platform: x64, scope: perMachineOrUser}`), "[App]", "[App, Machine, User]", 1) + strings.Replace(appComponent, "    files:",
 			"    environment: [{name: PATH, value: '[INSTALLDIR]', action: append}, {name: FOO, value: a, scope: user}]\n    files:", 1) +
 			"  - id: Machine\n    directory: INSTALLDIR\n    scope: perMachine\n" +
 			"    registry: [{root: HKLM, key: Software\\X, name: N, value: v}]\n" +
@@ -1005,6 +1005,11 @@ func TestValidate(t *testing.T) {
 			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent +
 				"  - {id: Env, directory: INSTALLDIR, condition: " + strings.Repeat("A", 240) + ", environment: [{name: FOO, value: a}]}\n",
 			sevError, "components[1].condition", "Component.Condition holds 255",
+		},
+		"perMachine component in a per-user-first package": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent +
+				"  - {id: Reg, directory: INSTALLDIR, scope: perMachine, registry: [{root: HKLM, key: Software\\X, name: N, value: v}]}\n",
+			sevWarning, "components[1].scope", "ICE105 warns",
 		},
 		"component scope dual": {
 			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent +

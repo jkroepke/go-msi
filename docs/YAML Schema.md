@@ -536,7 +536,7 @@ HKLM values:
 ```yaml
 package:
   platform: x64
-  scope: perUserOrMachine
+  scope: perMachineOrUser
 
 components:
   - files:

@@ -302,7 +302,7 @@ do the folders ICE105 rejects.
 ```yaml
 package:
   platform: x64
-  scope: perUserOrMachine
+  scope: perMachineOrUser
 components:
   - files:
       - source: dist/tool.exe
@@ -318,7 +318,11 @@ components:
 A `perMachine` component's resources are not installed per user at all,
 so a value that both contexts need belongs under HKMU, which follows the
 context. `scope` on a component of a package with a single context is an
-error.
+error. ICE105 does not read component conditions: in a `perUserOrMachine`
+package it warns about the HKLM and HKU `Registry` rows of a `perMachine`
+component (and the builder passes that warning on), while it reported
+nothing for them in a `perMachineOrUser` package and nothing for machine
+variables in either (ENVVAR-03).
 
 ### 4.3 `upgrade`
 

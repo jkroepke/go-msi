@@ -867,6 +867,16 @@ func (v *validator) componentScope(compPath string, comp *Component) {
 
 	v.contextConditionLength(compPath+".condition", comp.Condition)
 
+	// ICE105 does not read component conditions: in a package that starts
+	// per user it warns about every HKLM and HKU Registry row (ENVVAR-03).
+	machineRows := len(comp.EventLog) > 0 || slices.ContainsFunc(comp.Registry, func(reg *RegistryValue) bool {
+		return reg.Root == rootHKLM || reg.Root == "HKU"
+	})
+	if comp.Scope == ScopePerMachine && v.scope == ScopePerUserOrMachine && machineRows {
+		v.warnf(compPath+".scope", "ICE105 warns about the HKLM and HKU values of this component, although it "+
+			"installs only per machine; use HKMU where the value may follow the context")
+	}
+
 	v.oneOf(compPath+".scope", string(comp.Scope), string(ScopePerMachine), string(ScopePerUser))
 
 	if !v.scope.Dual() {
