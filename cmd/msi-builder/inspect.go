@@ -193,15 +193,15 @@ func formatValue(v any) string {
 // U+001F separator in the private properties of the embedded custom
 // action DLL keeps one row on one line and the output text.
 func showControls(value string) string {
-	return strings.Map(func(r rune) rune {
-		if r < 0x20 {
-			return 0x2400 + r
+	return strings.Map(func(char rune) rune {
+		if char < 0x20 {
+			return 0x2400 + char
 		}
 
-		if r == 0x7f {
+		if char == 0x7f {
 			return 0x2421
 		}
 
-		return r
+		return char
 	}, value)
 }
