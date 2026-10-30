@@ -229,7 +229,7 @@ func (v *validator) languageProgress(cfg *Config, path string, texts map[string]
 	for _, actionID := range slices.Sorted(maps.Keys(texts)) {
 		textPath := path + "." + actionID
 
-		index := slices.IndexFunc(cfg.CustomActions, func(a *CustomAction) bool { return a != nil && a.ID == actionID })
+		index := slices.IndexFunc(cfg.CustomActions, func(a *CustomAction) bool { return a != nil && a.origin == "" && a.ID == actionID })
 
 		switch {
 		case index < 0:

@@ -622,7 +622,7 @@
           },
           "progress": {
             "type": "string",
-            "description": "Description shown on the progress page and in basic UI while the action runs, and written to the log (ActionText table). Plain text: the engine does not format it."
+            "description": "Description shown on the progress page and in basic UI while the action runs, and written to the log (ActionText table). Formatted: [Property] references are resolved."
           },
           "schedule": {
             "type": "array",

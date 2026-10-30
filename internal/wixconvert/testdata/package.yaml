@@ -234,7 +234,7 @@ customActions:
     execute: deferred
     impersonate: false
     return: ignore
-    progress: Stopping the hello clients
+    progress: Stopping the hello ${Version} clients
     schedule:
       - {sequence: execute, before: StopServices, when: uninstall}
   - id: ImportData

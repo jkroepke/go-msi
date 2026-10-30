@@ -1979,7 +1979,7 @@ Windows runs: SEC-02 (Appendix C, [results](MSISPEC-RESULTS.md)), Confirmed on t
 
 ### 17.8 Progress texts for custom actions (`ActionText`)
 
-An `ActionText` row (`Action`, `Description` L64, `Template` L128, section 05) names what an action does while it runs. The engine brings its own rows for the standard actions, in the language of `ProductLanguage` (UI-06), and none for custom actions, so without a row the progress page shows no text while a long custom action runs. msi-builder writes one row, without a template, for each `customActions` entry with `progress` (design section 4.9); a `ui.languages` entry replaces it in its transform.
+An `ActionText` row (`Action`, `Description` L64, `Template` L128, chapter 05) names what an action does while it runs. The engine brings its own rows for the standard actions, in the language of `ProductLanguage` (UI-06), and none for custom actions, so without a row the progress page shows no text while a long custom action runs. msi-builder writes one row, without a template, for each `customActions` entry with `progress` (design section 4.9); a `ui.languages` entry replaces it in its transform.
 
 What the engine does with the row (CA-08, CI runner, observed):
 
@@ -1992,7 +1992,7 @@ Not adopted:
 
 - **A `Template`.** The template formats the `ActionData` messages an action sends while it runs. None of the action kinds msi-builder writes sends one: types 2, 34 and 50 have no channel to the engine, and `BuilderRun` (17.6) logs its output through `INSTALLMESSAGE_INFO`, not `ActionData`. Only a user's own `dll` action could send `ActionData`, and no package in the real-world comparison did; a template key can be added when one needs it.
 - **Texts for standard actions.** The engine's own texts are translated into every language it ships (UI-06); a package row would replace them with one language per transform and gain nothing.
-- **Texts for the actions msi-builder generates** (firewall rules, permission grants, service arguments). They finish in well under a second, so a text would only flash, and adding rows would change every existing package with them and need a translation for each of the 39 built-in languages.
+- **Texts for the actions msi-builder generates** (firewall rules, permission grants, service arguments). They finish in well under a second, so a text would only flash, and adding rows would change every existing package with them and need a translation in every built-in language.
 
 ## 18. Reference chapters
 

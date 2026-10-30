@@ -1,7 +1,6 @@
 package wixconvert
 
 import (
-	"cmp"
 	"maps"
 	"slices"
 	"strconv"
@@ -160,8 +159,12 @@ func (c *converter) emitActions() {
 		}
 	}
 
+	// The actions that were converted took their texts; a custom action
+	// left here was not converted and has a note of its own.
 	for _, id := range slices.Sorted(maps.Keys(progress)) {
-		c.todof(nil, "", progress[id].line, "the progress text of %s cannot be converted: msi-builder writes progress texts only for its customActions", id)
+		if c.actions[id] == nil {
+			c.todof(nil, "", progress[id].line, "the progress text of %s cannot be converted: msi-builder writes progress texts only for its customActions", id)
+		}
 	}
 }
 
@@ -169,8 +172,16 @@ func (c *converter) emitActions() {
 // removes the ones it uses, so the rest can be reported.
 func (c *converter) progress() map[string]*elem {
 	texts := make(map[string]*elem, len(c.progressTexts))
-	for _, e := range c.progressTexts {
-		texts[e.attr("Action")] = e
+
+	for _, text := range c.progressTexts {
+		actionID := text.attr("Action")
+		if _, dup := texts[actionID]; dup {
+			c.todof(nil, "", text.line, "a second progress text for %s is ignored", actionID)
+
+			continue
+		}
+
+		texts[actionID] = text
 	}
 
 	return texts
@@ -187,15 +198,22 @@ func (c *converter) setProgress(action *omap, actionID string, texts map[string]
 
 	delete(texts, actionID)
 
-	message := cmp.Or(text.attr("Message"), strings.TrimSpace(text.text))
-	if message == "" {
-		return
+	message := strings.TrimSpace(c.expand(text, strings.TrimSpace(text.text)))
+	if text.has("Message") {
+		message = strings.TrimSpace(c.value(text, "Message"))
 	}
 
-	action.set("progress", message)
+	if message != "" {
+		action.set("progress", message)
+	}
 
 	if text.has("Template") {
-		c.todof(action, "progress", text.line, "the progress template of %s is not converted: msi-builder writes no ActionText templates", actionID)
+		key := ""
+		if message != "" {
+			key = "progress"
+		}
+
+		c.todof(action, key, text.line, "the progress template of %s is not converted: msi-builder writes no ActionText templates", actionID)
 	}
 }
 

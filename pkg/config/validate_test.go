@@ -219,6 +219,11 @@ func TestValidate(t *testing.T) {
 			base + appComponent + progressAction("") + "ui: {enabled: true, languages: {de: {progress: {Prepare: Vorbereiten}}}}\n",
 			sevError, "ui.languages.de.progress.Prepare", "no progress text",
 		},
+		"progress for a generated action": {
+			base + appComponent + "    services: [{ name: svc, arguments: [{ value: -b, condition: B }] }]\n" +
+				"ui: {enabled: true, languages: {de: {progress: {SetArg_svc_1: Vorbereiten}}}}\n",
+			sevError, "ui.languages.de.progress.SetArg_svc_1", "not the id of a custom action",
+		},
 		"empty progress translation": {
 			base + appComponent + progressAction("Preparing") + "ui: {enabled: true, languages: {de: {progress: {Prepare: ''}}}}\n",
 			sevError, "ui.languages.de.progress.Prepare", "empty",

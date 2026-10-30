@@ -97,7 +97,7 @@ func TestMsiexecProgressText(t *testing.T) { //nolint:paralleltest // one msiexe
 			t.Errorf("CA-08: the log of the install %s has no %q", language, want)
 		}
 
-		if strings.Contains(text, "Preparing "+fullUIName) {
+		if strings.Contains(text, "Preparing ") {
 			t.Errorf("CA-08: the /qn log of the install %s shows the immediate action's description", language)
 		}
 	}

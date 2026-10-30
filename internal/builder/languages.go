@@ -81,8 +81,8 @@ var entryPaths = []struct{ from, to string }{ //nolint:gochecknoglobals // looku
 }
 
 // languageBuild builds the tables of the package in language lcid: the
-// configuration with the entry's finish text, license, launch and dialog
-// texts, the base build's
+// configuration with the entry's finish text, license, launch, dialog and
+// progress texts, the base build's
 // product code and its payload files. It adds the diagnostics that the
 // base build did not report, under the entry's path, and reports whether
 // the build succeeded.
