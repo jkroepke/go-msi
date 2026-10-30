@@ -150,33 +150,151 @@ func (c *converter) recovery(svc *omap, elm *elem) {
 	svc.set("recovery", recovery)
 }
 
-// control is a ServiceControl of a service the component installs.
+// resolveControls converts the ServiceControls of the component. One of a
+// service that the component installs becomes its control. One of a
+// service that other components of the package install becomes the
+// control of those without a ServiceControl of their own, which msi-builder
+// requires, or is left out with a note.
 func (cc *compConv) resolveControls() {
+	conv := cc.c
+
 	for _, elm := range cc.controls {
-		name := cc.c.value(elm, "Name")
+		name := conv.value(elm, "Name")
 
 		var own *omap
 
 		for _, s := range cc.services {
-			if s.get("name") == name {
+			if strings.EqualFold(s.str("name"), name) {
 				own = s
 			}
 		}
 
-		if own != nil {
+		switch {
+		case own != nil && !cc.controlled[own]:
+			// A component that installs the service keeps its own
+			// control, also when another component installs it too.
 			cc.ownControl(own, elm)
-		} else {
-			cc.foreignControl(elm)
+		case own != nil:
+			conv.todof(cc.out, "", elm.line, "the ServiceControl for %s was left out: msi-builder takes one control per "+
+				"service of a component; merge the events into the first one", name)
+		default:
+			cc.otherComponentControl(elm, name)
 		}
 	}
 
-	for i, s := range cc.services {
-		if !cc.controlled[s] {
-			cc.c.todof(s, "", cc.serviceLines[i],
-				"the WiX package has no ServiceControl for %v; msi-builder starts it on install and stops and deletes it by default (services[].control)",
-				s.get("name"))
+	cc.otherControls()
+}
+
+// otherComponentControl converts a ServiceControl of a service that the
+// component does not install.
+func (cc *compConv) otherComponentControl(elm *elem, name string) {
+	conv := cc.c
+	withOwn, without := conv.serviceInstallers(name)
+
+	switch {
+	case len(withOwn)+len(without) == 0:
+		cc.foreignControl(elm)
+	case elm == conv.borrowedControl(name) && len(without) > 0:
+		msg := "the ServiceControl for %s became services[].control of %s, which keeps that component's condition " +
+			"and feature instead of this one's"
+		if len(withOwn) > 0 {
+			msg += "; merge its events into the control of " + conv.compNames(withOwn) + " too"
+		}
+
+		conv.todof(cc.out, "", elm.line, msg, name, conv.compNames(without))
+	default:
+		conv.todof(cc.out, "", elm.line, "the ServiceControl for %s was left out: msi-builder takes one control per "+
+			"service; merge the events into services[].control of %s", name, conv.compNames(append(withOwn, without...)))
+	}
+}
+
+// otherControls gives the services without a ServiceControl in their own
+// component the one of another component, or notes msi-builder's default.
+func (cc *compConv) otherControls() {
+	for i, svc := range cc.services {
+		if cc.controlled[svc] {
+			continue
+		}
+
+		name := svc.str("name")
+		if elm := cc.c.borrowedControl(name); elm != nil {
+			cc.ownControl(svc, elm)
+
+			withOwn, _ := cc.c.serviceInstallers(name)
+			if slices.ContainsFunc(withOwn, func(comp *comp) bool { return slices.Contains(comp.e.kids, elm) }) {
+				cc.c.todof(svc, "", cc.serviceLines[i], "services[].control of %s comes from the ServiceControl on line %d, "+
+					"which belongs to another component that installs it; WiX runs that one only when its own component "+
+					"is installed, so check that this component needs it", name, elm.line)
+			}
+
+			continue
+		}
+
+		cc.c.todof(svc, "", cc.serviceLines[i],
+			"the WiX package has no ServiceControl for %v; msi-builder starts it on install and stops and deletes it by default (services[].control)",
+			name)
+	}
+}
+
+// namedKid returns a matcher of the elements of a kind that name a service;
+// service names do not depend on case.
+func (c *converter) namedKid(kind, name string) func(e *elem) bool {
+	return func(e *elem) bool { return e.is(kind) && strings.EqualFold(c.value(e, "Name"), name) }
+}
+
+// serviceInstallers returns the components that install a service, those
+// with a ServiceControl of it and those without.
+func (c *converter) serviceInstallers(name string) ([]*comp, []*comp) {
+	var withOwn, without []*comp
+
+	for _, comp := range c.comps {
+		if !slices.ContainsFunc(comp.e.kids, c.namedKid("ServiceInstall", name)) {
+			continue
+		}
+
+		if slices.ContainsFunc(comp.e.kids, c.namedKid("ServiceControl", name)) {
+			withOwn = append(withOwn, comp)
+		} else {
+			without = append(without, comp)
 		}
 	}
+
+	return withOwn, without
+}
+
+// borrowedControl returns the ServiceControl that becomes the control of a
+// service in the components that install it without one of their own: the
+// first in a component that does not install the service, else the first
+// in one that does.
+func (c *converter) borrowedControl(name string) *elem {
+	var installer *elem
+
+	for _, comp := range c.comps {
+		i := slices.IndexFunc(comp.e.kids, c.namedKid("ServiceControl", name))
+		if i < 0 {
+			continue
+		}
+
+		if !slices.ContainsFunc(comp.e.kids, c.namedKid("ServiceInstall", name)) {
+			return comp.e.kids[i]
+		}
+
+		if installer == nil {
+			installer = comp.e.kids[i]
+		}
+	}
+
+	return installer
+}
+
+// compNames lists components by ID.
+func (c *converter) compNames(comps []*comp) string {
+	names := make([]string, 0, len(comps))
+	for _, comp := range comps {
+		names = append(names, c.compID(comp))
+	}
+
+	return strings.Join(names, ", ")
 }
 
 // events reports whether a ServiceControl event value includes install and
@@ -351,6 +469,12 @@ func (cc *compConv) purge(elm *elem) {
 	when := elm.attr("On")
 	cond := conv.value(elm, "Condition")
 
+	// A property that only reads the component's own folder back, by a
+	// RegistrySearch of a value the component writes, names that folder.
+	if prop != "" && cc.remembers(prop) {
+		prop = cc.cp.dir
+	}
+
 	if (prop == "" || prop == cc.cp.dir) && (when == "" || when == "uninstall") && conv.movableDir(cc.cp.dir) == "" &&
 		cc.out.get("purge") == nil {
 		if cond != "" {
@@ -402,6 +526,86 @@ func (cc *compConv) removeFolders(elm *elem, prop, when, cond string) {
 	cc.out.add("removeFolders", entry)
 }
 
+// remembers reports whether prop is the folder of this component as the
+// component remembers it: the property only reads, by a RegistrySearch, a
+// registry value of the component that holds [folder]. A RemoveFolderEx on
+// such a property removes the component's folder, which purge does.
+func (cc *compConv) remembers(prop string) bool {
+	conv := cc.c
+
+	if !conv.onlyProperty(prop) {
+		return false
+	}
+
+	for _, p := range conv.properties {
+		if p.attr("Id") != prop || p.has("Value") {
+			continue
+		}
+
+		for _, search := range p.kids {
+			if search.is("RegistrySearch") && cc.writesFolder(search) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// onlyProperty reports whether a Property element is all that sets prop.
+func (c *converter) onlyProperty(prop string) bool {
+	for _, setter := range c.setters {
+		if setter.attr("Id") == prop {
+			return false
+		}
+	}
+
+	for _, custom := range c.actionOrder {
+		if custom.has("Value") && custom.attr(attrDirectory)+custom.attr(attrProperty) == prop {
+			return false
+		}
+	}
+
+	return true
+}
+
+// writesFolder reports whether the component writes its folder, as
+// [folder], to the registry value that search reads.
+func (cc *compConv) writesFolder(search *elem) bool {
+	want := []string{
+		strings.ToUpper(search.attr("Root")), strings.ToLower(strings.Trim(search.attr("Key"), `\`)),
+		strings.ToLower(search.attr("Name")),
+	}
+	folder := "[" + cc.cp.dir + "]"
+
+	var walk func(e *elem, root, key string) bool
+
+	walk = func(e *elem, root, key string) bool {
+		for _, kid := range e.kids {
+			regRoot, regKey := root, key
+			if kid.has("Root") {
+				regRoot = kid.attr("Root")
+			}
+
+			if kid.has("Key") {
+				regKey = joinKey(regKey, kid.attr("Key"))
+			}
+
+			switch {
+			case kid.is("RegistryKey") && walk(kid, regRoot, regKey):
+				return true
+			case kid.is("RegistryValue") && strings.TrimSuffix(kid.attr("Value"), `\`) == folder &&
+				slices.Equal(want, []string{strings.ToUpper(regRoot), strings.ToLower(strings.Trim(regKey, `\`)), strings.ToLower(kid.attr("Name"))}):
+				return true
+			}
+		}
+
+		return false
+	}
+
+	return walk(cc.cp.e, "", "")
+}
+
 func (cc *compConv) eventSource(elm *elem) {
 	conv := cc.c
 	source := newMap()
@@ -439,6 +643,13 @@ func (c *converter) firewall(elm *elem, comp *comp, program string) { //nolint:c
 	rule.set("name", c.value(elm, "Name"))
 	rule.set("description", c.value(elm, "Description"))
 	rule.set("component", c.compID(comp))
+
+	if first, dup := c.firewallNames[rule.str("name")]; dup {
+		c.todof(rule, "name", elm.line, "the firewall exception on line %d has the same name; msi-builder needs a name "+
+			"per rule, rename one or merge them", first)
+	} else {
+		c.firewallNames[rule.str("name")] = elm.line
+	}
 
 	if p := c.value(elm, "Program"); p != "" {
 		program = p
@@ -522,8 +733,11 @@ func (c *converter) firewallProtocol(rule *omap, elm *elem) {
 // compID returns the component's ID, giving it one when WiX generated it.
 func (c *converter) compID(comp *comp) string {
 	if comp.id == "" {
-		c.anonymous++
-		comp.id = "Component" + strconv.Itoa(c.anonymous)
+		// Skip the IDs that components took from the source.
+		for comp.id == "" || c.compByID[comp.id] != nil {
+			c.anonymous++
+			comp.id = "Component" + strconv.Itoa(c.anonymous)
+		}
 
 		if comp.out != nil {
 			comp.out.set("id", comp.id)
@@ -584,6 +798,11 @@ func (cc *compConv) progID(elm *elem) { //nolint:cyclop // a flat list of indepe
 				target = f
 			}
 		}
+	}
+
+	if fileType.get("verbs") == nil {
+		// Without verbs msi-builder writes an open verb; WiX writes none.
+		fileType.set("verbs", emptyList{})
 	}
 
 	conv.pendingTypes = append(conv.pendingTypes, pendingType{e: elm, comp: cc.cp, target: target, out: fileType, parent: cc.out})
@@ -771,7 +990,8 @@ func (c *converter) permission(target *omap, key string, elm *elem, kind string)
 
 		c.todof(target, key, elm.line, "a PermissionEx without Sddl has no counterpart")
 	case elemPermission:
-		c.todof(target, key, elm.line, "<Permission> replaces the object's permissions; write them as an SDDL string in %s.sddl", key)
+		c.todof(target, key, elm.line, "<Permission> replaces the object's permissions; write them as an SDDL string in %s.sddl "+
+			"and add (A;OICI;FA;;;SY): Windows Installer also gives SYSTEM full access to an object it locks", key)
 	case "util:PermissionEx":
 		account := grantAccount(c.value(elm, "Domain"), c.value(elm, "User"))
 

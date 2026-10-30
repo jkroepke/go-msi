@@ -80,6 +80,12 @@ customActions:
     return: ignore
     schedule:
       - {sequence: execute, before: InstallFinalize}
+  - id: LaunchHello
+    exec:
+      command: '"[#hello.exe]" [LAUNCHARGS]'
+    return: asyncNoWait
+    schedule:
+      - {sequence: execute, after: InstallFinalize, condition: AUTOLAUNCH AND NOT Installed}
   - id: SetDataRoot
     setDirectory: {directory: DataRoot, value: '[%ProgramData]\Hello'}
     schedule:
@@ -102,3 +108,8 @@ firewall:
 ui:
   enabled: true
   chooseDirectory: true
+  launch:
+    file: hello.exe
+    arguments: '[LAUNCHARGS]'
+    text: Start Hello
+    checked: false

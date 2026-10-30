@@ -615,6 +615,10 @@ firewall:
   permissions.
 - The core `PermissionEx` with an `Sddl` attribute, and `Permission`,
   replace the permissions; write an SDDL string in `sddl` for those.
+  For a `Permission`, add `(A;OICI;FA;;;SY)`: Windows Installer also
+  gives SYSTEM full access to every object it locks through
+  `Permission`, which a WiX package reads back as
+  `D:P(A;OICI;FA;;;WD)(A;OICI;FA;;;SY)` for `User="Everyone"`.
   Registry values take only `sddl`, so a `util:PermissionEx` on a registry
   key becomes an SDDL string too.
 - `Scope="any"` is the default; `remoteAddresses` limits the rule and
@@ -828,6 +832,13 @@ holds a folder of the package goes only when the whole product is removed,
 not with one feature, on install or on repair, whichever property names it,
 for example one a `SetDirectory` or `SetProperty` points at `INSTALLFOLDER`
 (expected, not tested).
+
+`msi-builder convert` keeps a `util:RemoveFolderEx` whose property only
+reads back, by a `RegistrySearch`, the component's own folder from a
+registry value of that component: it becomes `purge` on the component.
+Any other `util:RemoveFolderEx`, and one with `On="install"` or
+`On="both"`, becomes a `removeFolders` entry; on a directory of the
+package `On="install"` and `On="both"` are left out with a note.
 
 ## Signing
 

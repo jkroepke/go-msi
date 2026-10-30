@@ -22,7 +22,7 @@ features:
     components: [Spy, Links, hello.exe, Component1, Component2, StartMenu]
   - id: Docs
     title: Documentation
-    components: [TxtAssoc, Component3]
+    components: [TxtAssoc, readme.txt]
 components:
   # A Subdirectory is not the install folder.
   - id: Spy
@@ -72,6 +72,6 @@ components:
   - id: Component2
     files:
       - source: dist/LICENSE.txt
-  - id: Component3
+  - id: readme.txt
     files:
       - source: dist/readme.txt

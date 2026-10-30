@@ -6,8 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"slices"
 	"strings"
+
+	"golang.org/x/text/encoding/htmlindex"
 )
 
 // Namespaces of the WiX schemas, by the short name the converter uses.
@@ -135,7 +138,14 @@ func parse(r io.Reader) (*document, error) {
 		return nil, fmt.Errorf("read: %w", err)
 	}
 
+	data, err = toUTF8(data)
+	if err != nil {
+		return nil, err
+	}
+
 	dec := xml.NewDecoder(bytes.NewReader(data))
+	// toUTF8 has decoded the file already.
+	dec.CharsetReader = func(_ string, input io.Reader) (io.Reader, error) { return input, nil }
 	tree := &treeBuilder{doc: &document{}}
 
 	// line counts the newlines up to the token, without rescanning the
@@ -166,6 +176,31 @@ func parse(r io.Reader) (*document, error) {
 	}
 
 	return tree.doc, nil
+}
+
+// xmlEncoding matches the encoding of an XML declaration.
+var xmlEncoding = regexp.MustCompile(`^\s*<\?xml[^>]*\sencoding\s*=\s*["']([^"']+)["']`)
+
+// toUTF8 decodes a file whose XML declaration names another encoding, such
+// as windows-1252, which WiX sources often declare. The whole file is
+// decoded up front so that line numbers count the decoded text.
+func toUTF8(data []byte) ([]byte, error) {
+	match := xmlEncoding.FindSubmatch(data)
+	if match == nil || strings.EqualFold(string(match[1]), "utf-8") {
+		return data, nil
+	}
+
+	enc, err := htmlindex.Get(string(match[1]))
+	if err != nil {
+		return nil, fmt.Errorf("parse: encoding %q: %w", match[1], err)
+	}
+
+	decoded, err := enc.NewDecoder().Bytes(data)
+	if err != nil {
+		return nil, fmt.Errorf("parse: encoding %q: %w", match[1], err)
+	}
+
+	return decoded, nil
 }
 
 // treeBuilder builds the element tree from the tokens of a file.

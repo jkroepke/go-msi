@@ -4,6 +4,7 @@
 # WiX variables became ${NAME} references; pass them with --var NAME=value: BinDir, ProductVersion.
 # TODO(line 19): <?if $(var.Edition) = "full"?> is not evaluated: only its first branch was converted
 # TODO(line 21): the <?else?> branch was left out; convert it by hand if your build takes it
+# TODO(line 87): the standard action InstallServices runs only when NOT (NO_SERVICE = 1); msi-builder has no conditions on standard actions, so put the condition on the components whose resources it handles (components[].condition)
 schema: msi-builder/v1
 product:
   name: Hello Tools
@@ -50,9 +51,18 @@ features:
     components: [ToolExe]
   - id: Docs
     title: Documentation
-    # TODO(line 57): conditional feature levels have no counterpart; the condition was "NOT INSTALLDOCS"
-    components: [Readme]
+    # TODO(line 76): conditional feature levels have no counterpart; the condition was "NOT INSTALLDOCS"
+    components: [Readme, ToolCfgKey, ToolsMenuLinks]
 components:
+  # The RemoveFolder and HKCU key path of this shortcut component were left out:
+  # msi-builder writes both for every shortcut.
+  - id: ToolsMenuLinks
+    directory: ProgramMenuFolder/Hello Tools
+    guid: '{2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E64}'
+    shortcuts:
+      - name: Read me
+        file: readme.txt
+        directory: ProgramMenuFolder/Hello Tools
   - id: Readme
     guid: '{2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E61}'
     files:
@@ -85,6 +95,21 @@ components:
         action: prepend
         scope: user
     keyPath: ToolExe_KeyPath
+  # Without an Id the component takes the Id of its key path.
+  - id: ToolCfgKey
+    directory: BIN
+    guid: '{2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E63}'
+    files:
+      - source: ${BinDir}/tool.cfg
+        id: tool.cfg
+    registry:
+      - id: ToolCfgKey
+        root: HKCU
+        key: Software\Example\Hello Tools
+        name: config
+        type: dword
+        value: "1"
+    keyPath: ToolCfgKey
 properties:
   EDITION: full
 launchConditions:
@@ -102,7 +127,7 @@ customActions:
       command: '"[#tool.exe]" --setup'
     execute: commit
     return: asyncWait
-    # TODO(line 69): the progress template of RunTool is not converted: msi-builder writes no ActionText templates
+    # TODO(line 91): the progress template of RunTool is not converted: msi-builder writes no ActionText templates
     progress: Setting up the tool
     schedule:
       - {sequence: execute, after: InstallFiles, condition: NOT Installed AND NOT REMOVE}
