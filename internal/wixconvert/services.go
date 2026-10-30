@@ -256,19 +256,27 @@ func (c *converter) serviceInstallers(name string) ([]*comp, []*comp) {
 
 // borrowedControl returns the ServiceControl that becomes the control of a
 // service in the components that install it without one of their own: the
-// first in a component that does not install the service.
+// first in a component that does not install the service, else the first
+// in one that does.
 func (c *converter) borrowedControl(name string) *elem {
+	var installer *elem
+
 	for _, comp := range c.comps {
-		if slices.ContainsFunc(comp.e.kids, c.namedKid("ServiceInstall", name)) {
+		i := slices.IndexFunc(comp.e.kids, c.namedKid("ServiceControl", name))
+		if i < 0 {
 			continue
 		}
 
-		if i := slices.IndexFunc(comp.e.kids, c.namedKid("ServiceControl", name)); i >= 0 {
+		if !slices.ContainsFunc(comp.e.kids, c.namedKid("ServiceInstall", name)) {
 			return comp.e.kids[i]
+		}
+
+		if installer == nil {
+			installer = comp.e.kids[i]
 		}
 	}
 
-	return nil
+	return installer
 }
 
 // compNames lists components by ID.

@@ -545,3 +545,34 @@ func TestConvertWindows1252(t *testing.T) {
 		t.Errorf("the description was not decoded:\n%s", res.YAML)
 	}
 }
+
+// TestConvertBuiltCodeOfKeyPathID checks that a component without an Id
+// finds its built row by the Id of its key file, which WiX gives it.
+func TestConvertBuiltCodeOfKeyPathID(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component>
+          <File Id="main.exe" Source="main.exe" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+  </Package>
+</Wix>`
+
+	built := &wixconvert.BuiltPackage{Name: "hello.msi", Components: []wixconvert.BuiltComponent{
+		{ID: "main.exe", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "INSTALLFOLDER", KeyFile: "main.exe"},
+	}}
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{Built: built})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if want := "guid: '{00000000-0000-4000-8000-000000000001}'"; !strings.Contains(string(res.YAML), want) {
+		t.Errorf("YAML lacks %q:\n%s", want, res.YAML)
+	}
+}

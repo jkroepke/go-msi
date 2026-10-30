@@ -57,12 +57,27 @@ func (c *converter) pinCode(comp *comp, keyFile string) bool {
 }
 
 // builtComponent finds a component in the built package: by its Id, or,
-// when the source gave it none, by the name and folder of its key file.
+// when the source gave it none, by the Id of its key path or the name and
+// folder of its key file.
 func (c *converter) builtComponent(comp *comp, keyFile string) *BuiltComponent {
 	if id := comp.e.attr("Id"); id != "" {
 		return c.builtByID(id)
 	}
 
+	// WiX gives a component without an Id the Id of its key path, which
+	// convert takes too.
+	if comp.id != "" {
+		if row := c.builtByID(comp.id); row != nil && !c.claimed[row.ID] {
+			return row
+		}
+	}
+
+	return c.builtByKeyFile(comp, keyFile)
+}
+
+// builtByKeyFile returns the one free component of the built package with
+// the key file in the component's folder, or nil.
+func (c *converter) builtByKeyFile(comp *comp, keyFile string) *BuiltComponent {
 	if keyFile == "" {
 		return nil
 	}
