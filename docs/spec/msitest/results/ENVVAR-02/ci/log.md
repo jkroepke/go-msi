@@ -2,7 +2,7 @@
 
 - Runner: GitHub `windows-latest` (Windows Server 2025, x64), elevated,
   interactive session with Explorer, 2026-10-30
-- CI runs 41039238183 (commit 8233970, broadcast only) and 41049121338
+- CI runs 41039238183 (commit 8233970, with a parser bug) and 41049121338
   (commit 0c5a51f, broadcast and Explorer), PR #142, with the probe
   version of the test that logged instead of asserting. The asserting
   test passed in CI run 41051717271 (commit 9db6b3a), and its final
@@ -14,10 +14,11 @@
 A hidden top-level window on a thread of the test process logs every
 `WM_SETTINGCHANGE`. Explorer's environment block is read through its PEB
 (`ProcessParameters` at PEB+0x20, `Environment` at +0x80), which is what a
-program started from the Start menu or Run inherits (inferred). Before
-each step, `reg add HKCU\Environment` writes a fresh value to a variable
+program started from the Start menu or Run inherits (inferred). Once
+before the first package and before each step of the three variable
+packages, `reg add HKCU\Environment` writes a fresh value to a variable
 named `MSIBUILDER_UNANNOUNCED_<time>` without a broadcast (the probe runs
-wrote one value once, before the first install). Each package installs `app.txt` and sets its
+and the first asserting run wrote one value once). Each package installs `app.txt` and sets its
 variable to `[INSTALLDIR]`; every step runs `msiexec /qn` and waits 5 s.
 
 | Package | Step | Messages | Registry | Explorer sees the variable |
