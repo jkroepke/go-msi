@@ -1735,7 +1735,7 @@ enum {
     TERMINATE_WAIT_MS = 10000,
     // Processes of one file handled in one pass. The schedule action asks
     // the first CLOSE_MAX copies only; the deferred action takes further
-    // passes, up to CLOSE_PASSES, until it finds fewer.
+    // passes, up to CLOSE_PASSES, until it finds fewer or a pass ends none.
     CLOSE_MAX = 64,
     CLOSE_PASSES = 16,
 };

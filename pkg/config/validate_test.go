@@ -101,6 +101,8 @@ func TestValidateAccepted(t *testing.T) {
 		"close upper-case extension": base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: App.EXE, close: {timeout: 5m}}\n", 1),
 		"close false on a non-program": base + strings.Replace(appComponent, "      - source: app.exe\n",
 			"      - source: app.exe\n      - {source: readme.txt, close: false}\n", 1),
+		"close false on a folder source": base + strings.Replace(appComponent, "      - source: app.exe\n",
+			"      - {source: dist/, close: false}\n", 1),
 		"remote any":          firewall("ANY"),
 		"remote star":         firewall("*"),
 		"remote keyword list": firewall("localsubnet,10.0.0.1"),
