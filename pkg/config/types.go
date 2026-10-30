@@ -463,9 +463,10 @@ type RemoveFile struct {
 	On string `yaml:"on"`
 }
 
-// RemoveFolder removes the folder that a property holds at install time,
-// with everything in it: temporary RemoveFile rows that the custom action
-// DLL adds for every subfolder (specification section 17.8).
+// RemoveFolder removes the folder that a property or directory holds at
+// install time, with everything in it: the custom action DLL moves it aside
+// and deletes it at commit without following junctions (specification
+// section 17.8).
 type RemoveFolder struct {
 	// Property holds the full path of the folder: a directory ID or a
 	// property, for example one a registry search fills.

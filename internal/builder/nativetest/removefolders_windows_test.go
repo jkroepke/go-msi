@@ -27,14 +27,14 @@ import (
 // refused, and so must GUARD_LINK, a folder reached through a junction,
 // and GUARD_PROFILE, a folder in the Public profile; OWN_DIR, a folder in
 // the installing account's own profile, must not be. FailRemove fails a
-// removal after RemoveFiles when FAIL_REMOVE is set, so the engine rolls
-// the removal back; it first writes MARKER when the read-only and the
-// hidden file are gone at that point, so the test knows that RemoveFiles
-// deleted them before the rollback put them back. Swap replaces the listed folder DATA_DIR\sub, whose
-// files RemoveFiles is about to delete, with a junction to BAIT_DIR, which
-// holds files of the same names, after the listing and before RemoveFiles,
-// the way a user who can write there could, to see whether the engine's
-// RemoveFiles follows it.
+// removal after the folders were moved aside when FAIL_REMOVE is set, so
+// the installation rolls back; it first writes MARKER when the read-only
+// and the hidden file are gone from DATA_DIR at that point, so the test
+// knows that the rollback put them back. Swap replaces the folder
+// DATA_DIR\sub with a junction to BAIT_DIR, which holds files of the same
+// names, after the immediate action checked DATA_DIR and before the
+// deferred one moves it, the way a user who can write there could; the
+// deletion must remove the junction, not what it points to.
 const removeFoldersConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderRemoveFolders, manufacturer: msi-builder tests, version: %s, upgradeCode: 953f4393-d6f8-4869-9f33-427757ebacb1 }
 package: { platform: x64 }
@@ -73,7 +73,7 @@ customActions:
     execute: deferred
     impersonate: false
     return: check
-    schedule: [{ sequence: execute, after: RemoveFiles, condition: REMOVE~="ALL" AND FAIL_REMOVE="1" }]
+    schedule: [{ sequence: execute, before: InstallFinalize, condition: REMOVE~="ALL" AND FAIL_REMOVE="1" }]
   - id: Swap
     run: { command: '"[System64Folder]cmd.exe" /c rmdir /s /q "[DATA_DIR]sub" && mklink /J "[DATA_DIR]sub" "[BAIT_DIR]"' }   # BAIT_DIR without a trailing backslash
     execute: deferred
@@ -219,20 +219,12 @@ func (tree removeFoldersTree) cleanup(packages ...string) {
 	_ = exec.CommandContext(ctx, "reg.exe", "delete", `HKLM\SOFTWARE\MsiBuilderRemoveFolders`, "/f", "/reg:64").Run()
 }
 
-// requireData fails unless every data file is in place. A rollback
-// restores the removed files with the folders that hold them, but not an
-// empty folder (FILE-11), so after one only "empty" may be gone.
-func (tree removeFoldersTree) requireData(t *testing.T, when string, rolledBack bool) {
+// requireData fails unless every data file is in place.
+func (tree removeFoldersTree) requireData(t *testing.T, when string) {
 	t.Helper()
 
 	for _, name := range append([]string{`link`}, dataFiles...) {
 		if _, err := os.Lstat(filepath.Join(tree.data, name)); err != nil {
-			if rolledBack && name == "empty" {
-				t.Logf("%s: the empty folder was not restored: %v", when, err)
-
-				continue
-			}
-
 			t.Errorf("%s: %s is gone: %v", when, name, err)
 		}
 	}
@@ -251,11 +243,12 @@ func (tree removeFoldersTree) requireData(t *testing.T, when string, rolledBack 
 func (tree removeFoldersTree) requireGuarded(t *testing.T, when string) {
 	t.Helper()
 
-	paths := []string{
+	paths := make([]string, 0, 5+len(baitFiles))
+	paths = append(paths,
 		filepath.Join(tree.outside, "keep.txt"), filepath.Join(tree.outside, `inner\k.txt`),
 		filepath.Join(tree.guardWin, "g.txt"), filepath.Join(tree.guardStd, `Inner\s.txt`),
 		filepath.Join(tree.guardProfile, "p.txt"),
-	}
+	)
 
 	for _, name := range baitFiles {
 		paths = append(paths, filepath.Join(tree.bait, name))
@@ -270,7 +263,7 @@ func (tree removeFoldersTree) requireGuarded(t *testing.T, when string) {
 
 // TestMsiexecRemoveFolders checks removeFolders (FILE-11): the install
 // removes OLD_DIR's tree, a major upgrade keeps the data, a removal that
-// fails after RemoveFiles restores every file, and the real removal
+// fails after the folders were moved aside restores every file, and the real removal
 // deletes the install dir and DATA_DIR with their subfolders, read-only and
 // hidden files, but not what a junction points to, nor the refused folders,
 // nor the files behind a junction swapped in after the listing.
@@ -305,7 +298,7 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 	}
 
 	writeFile(t, filepath.Join(tree.install, `runtime\r.txt`))
-	tree.requireData(t, "after the install", false)
+	tree.requireData(t, "after the install")
 
 	log = filepath.Join(logs, "upgrade.log")
 	if code := msiexecCode(t, log, "/i", newPkg); code != 0 {
@@ -316,10 +309,11 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 		t.Fatalf("after the upgrade: v1 installed %t, v2 installed %t", productInstalled(t, code1), productInstalled(t, code2))
 	}
 
-	tree.requireData(t, "after the major upgrade", false)
+	tree.requireData(t, "after the major upgrade")
 
-	log = filepath.Join(logs, "rollback.log")
 	marker := filepath.Join(filepath.Dir(tree.data), "removed.txt")
+	log = filepath.Join(logs, "rollback.log")
+
 	if code := msiexecCode(t, log, append([]string{"/x", newPkg, "FAIL_REMOVE=1", "MARKER=" + marker}, guards...)...); code != 1603 {
 		t.Fatalf("msiexec /x FAIL_REMOVE=1 returned %d, want 1603\n%s", code, readLog(log))
 	}
@@ -331,23 +325,18 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 	text := readLog(log)
 	t.Logf("rolled-back removal:\n%s", grepLog(text, "BuilderRemoveFolders: "))
 
-	if !strings.Contains(text, "BuilderRemoveFolders: listing to remove: "+tree.data+`\`) {
+	if !strings.Contains(text, "BuilderRemoveFolders: to remove: "+tree.data+`\`) {
 		t.Error("the log does not show the removal of DATA_DIR")
 	}
 
 	// Without the marker the files may never have been deleted, and the
 	// check below would not show a rollback.
 	if !exists(marker) {
-		t.Error("RemoveFiles had not deleted the read-only and the hidden file when FailRemove ran")
+		t.Error("DATA_DIR still held the read-only and the hidden file when FailRemove ran")
 	}
 
-	tree.requireData(t, "after the rolled-back removal", true)
+	tree.requireData(t, "after the rolled-back removal")
 	tree.requireGuarded(t, "after the rolled-back removal")
-
-	// Put the empty folder back, so that the removal below has one.
-	if err := os.MkdirAll(filepath.Join(tree.data, "empty"), 0o755); err != nil {
-		t.Fatal(err)
-	}
 
 	log = filepath.Join(logs, "uninstall.log")
 	if code := msiexecCode(t, log, append([]string{"/x", newPkg, "SWAP=1", "BAIT_DIR=" + tree.bait}, guards...)...); code != 0 {
@@ -359,8 +348,7 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 
 	for _, want := range []string{
 		"refused, inside the Windows folder", "refused, it is or holds the standard folder TemplateFolder",
-		"refused, reached through a junction", "refused, inside another user's profile",
-		"left in place with the folders above it",
+		"refused, reached through a junction", "refused, inside the Public or Default profile",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the removal log lacks %q", want)
@@ -375,23 +363,21 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 		t.Error("OWN_DIR, in the installing account's profile, is still there after the removal")
 	}
 
-	// Swap made sub a junction after the listing; whatever the engine did
-	// with it, the bait files behind it must stay (requireGuarded).
-	for _, name := range append([]string{`nested`, `nested\deeper`}, dataFiles...) {
-		if !strings.HasPrefix(name, `sub\`) && exists(filepath.Join(tree.data, name)) {
-			t.Errorf("%s is still there after the removal", name)
+	// Swap made sub a junction after the check; the bait files behind it
+	// must stay (requireGuarded), and so must the target of the junction
+	// link, which goes as a link with DATA_DIR.
+	if _, err := os.Lstat(tree.data); err == nil {
+		t.Error("DATA_DIR is still there after the removal")
+	}
+
+	for _, name := range []string{"BuilderRemoveFolders: to remove: " + tree.data + `\`, "BuilderRemoveFolders: deleted: " + tree.data + `\`} {
+		if !strings.Contains(text, name) {
+			t.Errorf("the removal log lacks %q", name)
 		}
 	}
 
-	if _, err := os.Lstat(filepath.Join(tree.data, "sub")); err == nil {
-		t.Log("the junction that Swap put in place of the listed folder sub is still there")
-	} else {
-		t.Log("the engine removed the junction that Swap put in place of the listed folder sub")
-	}
-
-	// The junction stays, and with it DATA_DIR.
-	if _, err := os.Lstat(filepath.Join(tree.data, "link")); err != nil {
-		t.Errorf("the junction is gone: %v", err)
+	if matches, _ := filepath.Glob(filepath.Join(filepath.VolumeName(tree.data)+`\`, "BuilderRemoveFolders.*")); len(matches) != 0 {
+		t.Errorf("backup folders left behind: %v", matches)
 	}
 
 	tree.requireGuarded(t, "after the removal")

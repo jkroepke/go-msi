@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-// TestRemoveFolders writes one anchor RemoveFile row per removeFolders
-// entry, lists the entries with their conditions in BuilderRemoveFolders,
-// schedules the action before CostInitialize, embeds the DLL and makes the
-// public properties secure.
+// TestRemoveFolders lists the removeFolders entries with their conditions
+// in BuilderRemoveFolders, schedules the immediate action and its rollback,
+// deferred and commit actions right after RemoveFiles, embeds the DLL and
+// makes the public properties secure.
 func TestRemoveFolders(t *testing.T) {
 	t.Parallel()
 
@@ -27,25 +27,6 @@ properties:
 `)
 	database := mustBuild(t, cfg).Database
 
-	modes := make(map[string]string)
-
-	for _, row := range rows(t, database, "RemoveFile") {
-		key, ok := row[0].(string)
-		if !ok || !strings.HasPrefix(key, "BuilderTree") {
-			continue
-		}
-
-		if row[2] != "*" || row[3] != row[0] {
-			t.Errorf("anchor row %v: want FileName * and DirProperty = FileKey", row)
-		}
-
-		modes[fmt.Sprint(row[4])] = key
-	}
-
-	if len(modes) != 3 || modes["1"] == "" || modes["2"] == "" || modes["3"] == "" {
-		t.Errorf("anchor rows by mode %v, want 1, 2 and 3", modes)
-	}
-
 	list := fmt.Sprint(cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "BuilderRemoveFolders" }))
 	lines := strings.Split(list, "\n")
 
@@ -54,20 +35,16 @@ properties:
 	}
 
 	comp := fmt.Sprint(cell(t, database, "Component", "Component", func(r []any) bool { return r[2] == "INSTALLDIR" }))
+	removed := "($" + comp + "=2 AND NOT UPGRADINGPRODUCTCODE)"
 
 	for i, want := range []string{
-		"Installed AND NOT UPGRADINGPRODUCTCODE\x1f" + comp + "\x1f2\x1f" + modes["2"] + "\x1fINSTALLDIR",
-		"NOT UPGRADINGPRODUCTCODE AND (DELETE_DATA=\"1\")\x1f" + comp + "\x1f3\x1f" + modes["3"] + "\x1fDATA_DIR",
-		"\x1f" + comp + "\x1f1\x1f" + modes["1"] + "\x1fOLD_DIR",
+		removed + "\x1fINSTALLDIR",
+		"(" + removed + " OR $" + comp + "=3) AND (DELETE_DATA=\"1\")\x1fDATA_DIR",
+		"$" + comp + "=3\x1fOLD_DIR",
 	} {
 		if lines[i] != want {
 			t.Errorf("line %d = %q, want %q", i, lines[i], want)
 		}
-	}
-
-	action := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == "BuilderRemoveFolders" })
-	if fmt.Sprint(action[1]) != "1" || action[2] != "BuilderRun" || action[3] != "BuilderRemoveFolders" {
-		t.Errorf("CustomAction row %v", action)
 	}
 
 	seq := func(name string) int {
@@ -79,8 +56,37 @@ properties:
 		return n
 	}
 
-	if at := seq("BuilderRemoveFolders"); at <= seq("AppSearch") || at >= seq("CostInitialize") {
-		t.Errorf("BuilderRemoveFolders at %d, want between AppSearch %d and CostInitialize %d", at, seq("AppSearch"), seq("CostInitialize"))
+	last := seq("RemoveFiles")
+
+	for _, action := range []struct {
+		name, typ, cond string
+	}{
+		{"BuilderRemoveFolders", "1", ""},
+		{"BuilderRemoveFoldersUndo", "3329", "BuilderRemoveFoldersUndo"},
+		{"BuilderRemoveFoldersExec", "3073", "BuilderRemoveFoldersExec"},
+		{"BuilderRemoveFoldersCommit", "3585", "BuilderRemoveFoldersCommit"},
+	} {
+		row := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == action.name })
+
+		target := "BuilderRemoveFoldersExec"
+		if action.name == "BuilderRemoveFolders" {
+			target = action.name
+		}
+
+		if fmt.Sprint(row[1]) != action.typ || row[2] != "BuilderRun" || row[3] != target {
+			t.Errorf("CustomAction row %v, want type %s and target %s", row, action.typ, target)
+		}
+
+		if next := seq(action.name); next <= last || next >= seq("RemoveFolders") {
+			t.Errorf("%s at %d, want after %d and before RemoveFolders %d", action.name, next, last, seq("RemoveFolders"))
+		} else {
+			last = next
+		}
+
+		cond := cell(t, database, "InstallExecuteSequence", "Condition", func(r []any) bool { return r[0] == action.name })
+		if c, ok := cond.(string); (ok && c != action.cond) || (!ok && action.cond != "") {
+			t.Errorf("%s condition %v, want %q", action.name, cond, action.cond)
+		}
 	}
 
 	rowWhere(t, database, "Binary", func(r []any) bool { return r[0] == "BuilderRun" })

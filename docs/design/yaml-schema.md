@@ -705,13 +705,13 @@ components:
 ```
 
 **Folder trees from a property.** `removeFolders` deletes the folder that
-a property holds, with every file and subfolder in it, including what the
-application wrote there. The removal reads the property before costing, as
-WiX's `RemoveFolderEx` does, so the property needs a value there: the
-install dir with `installDir.remember`, any other folder through a
-property with a search, typically one that the first install wrote to the
-registry. Another directory ID is an error, since it gets its path only at
-CostFinalize.
+a property or directory ID holds, with every file and subfolder in it,
+including what the application wrote there. The removal reads the folder
+after costing, so a directory ID has its path; an install dir chosen at
+install time is only known again at uninstall with `installDir.remember`
+(a warning otherwise), and any other property needs something that sets
+it, typically a search for a path the first install wrote to the
+registry.
 
 ```yaml
 installDir:
@@ -727,33 +727,34 @@ components:
       - { property: DATA_DIR, condition: DELETE_DATA="1" }
 ```
 
-An immediate action of the embedded DLL (specification section 17.8) runs
-before CostInitialize. It lists the subfolders and adds temporary
-`RemoveFile` rows for each, so the engine's RemoveFiles deletes the files
-and folders, and is expected to restore the files and the folders that
-hold them when the installation rolls back, but not a removed empty folder
-(FILE-11). `uninstall` removes when the component is removed, but not
-on the uninstall half of a major upgrade (`UPGRADINGPRODUCTCODE`);
-`install` is expected to remove every time the component is installed,
-which includes a repair that reinstalls it and the new product of an
-upgrade (only the first install is tested); `both` does
-both. The condition is ANDed and may not contain line breaks; the public
-properties in it and the property itself are made secure. Unlike `purge`,
-the folder may be the install dir or any folder the property names. That is
-the point of the feature, and also its risk: `INSTALLDIR=D:\Tools` on the
-command line makes the uninstall empty `D:\Tools`. The action refuses an
-empty value, a path that is not a full local path (`C:\…`, no `.` or `..`,
-no name ending in a space or a dot), a drive root, a folder reached through
-a junction, a symbolic link or a `subst` drive, a junction itself, the
-profiles folder, every profile and every folder inside another user's
-profile and in Public and Default (as LocalSystem, every user's), everything when the profiles
+Actions of the embedded DLL (specification section 17.8) run right after
+RemoveFiles: an immediate one checks each folder, a deferred one moves it
+by handle into a private folder at its volume's root, a rollback one moves
+it back, and a commit one deletes it, opening each entry relative to its
+folder without following junctions or links, which it deletes as links.
+`uninstall` removes when the component is removed, but not on the
+uninstall half of a major upgrade (`UPGRADINGPRODUCTCODE`); `install` is
+expected to remove every time the component is installed, which includes
+a repair that reinstalls it and the new product of an upgrade (only the
+first install is tested); `both` does both. The condition is ANDed and may
+not contain line breaks; the public properties in it and the property
+itself are made secure. Unlike `purge`, the folder may be the install dir
+or any folder the property names. That is the point of the feature, and
+also its risk: `INSTALLDIR=D:\Tools` on the command line makes the
+uninstall empty `D:\Tools`. The action refuses an empty value, a path that
+is not a full local path (`C:\…`, no `.` or `..`, no name ending in a space
+or a dot), a drive root, a folder reached through a junction, a symbolic
+link or a `subst` drive, a junction itself, the profiles folder, every
+profile and every folder inside another user's profile and in Public and
+Default (as LocalSystem, every user's), everything when the profiles
 cannot be read, every standard folder of the
 engine (Program Files, ProgramData, the Windows and system folders, the
 profile folders such as AppData, Documents and the Desktop, Temp) and every
 folder that holds one, and any folder inside the Windows folder; it logs
 the reason as `BuilderRemoveFolders: …` and removes nothing for that entry.
-A junction below the folder is not entered, so it stays, and so do the
-folders above it. The action never fails the installation.
+A junction below the folder is deleted as a link; what it points to stays.
+A folder that cannot be moved, typically because a file in it is open,
+stays whole. The actions never fail the installation.
 
 **Key path.** Default: the first file, else the first registry value, else
 the directory, which gets a `CreateFolder` row (ICE18). A component below a

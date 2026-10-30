@@ -7,12 +7,9 @@ import (
 	"github.com/jkroepke/msi-builder/internal/condition"
 )
 
-// removeFoldersReserved are the names the folder removal uses itself: the
-// property that lists the entries and the prefix of the generated ones.
-const (
-	removeFoldersProperty = "BuilderRemoveFolders"
-	removeFoldersPrefix   = "BuilderTree"
-)
+// removeFoldersPrefix starts the names the folder removal uses itself: the
+// property that lists the entries and those of its deferred actions.
+const removeFoldersPrefix = "BuilderRemoveFolders"
 
 // componentRemoveFolders checks the folders a component removes with
 // everything in them.
@@ -56,7 +53,7 @@ func (v *validator) removeFolderProperty(field, name string) bool {
 		v.errorf(field, "required: the directory ID or property that holds the folder")
 	case !IsIdentifier(name):
 		v.errorf(field, "%q is not a property name", name)
-	case name == removeFoldersProperty || strings.HasPrefix(name, removeFoldersPrefix):
+	case strings.HasPrefix(name, removeFoldersPrefix):
 		v.errorf(field, "%s is reserved for the folder removal itself", name)
 	case IsStandardFolder(name) || name == targetDir:
 		v.errorf(field, "%s is a standard folder, which is never removed; name a folder of the product", name)
@@ -67,30 +64,21 @@ func (v *validator) removeFolderProperty(field, name string) bool {
 	return false
 }
 
-// removeFolderSource checks that something sets the property before
-// costing, where the removal reads it: a directory gets its path only at
-// CostFinalize, after that, except the install dir that installDir.remember
-// searches for.
+// removeFolderSource checks where the folder comes from at removal, when
+// the action reads it after costing: a directory has its path, but an
+// install dir chosen at install time is only known again when
+// installDir.remember searches for it; any other property needs something
+// that sets it.
 func (v *validator) removeFolderSource(cfg *Config, known *refs, field, name string, set map[string]bool) {
 	switch {
-	case name == cfg.InstallDir.ID && cfg.InstallDir.Remember:
-	case name == cfg.InstallDir.ID:
-		v.errorf(field, "%s gets its path at CostFinalize, after the removal reads it; set installDir.remember: true, "+
-			"whose search sets %s before", name, name)
-	case known.dirs[name] != nil && !hasSearch(cfg, name):
-		v.errorf(field, "the directory %s gets its path at CostFinalize, after the removal reads it; remember the path in "+
-			"the registry and name a property with a search", name)
+	case name == cfg.InstallDir.ID && !cfg.InstallDir.Remember:
+		v.warnf(field, "at uninstall %s holds its default path, not one chosen at install time; set installDir.remember: true "+
+			"to remove the folder the product was installed to", name)
+	case name == cfg.InstallDir.ID || known.dirs[name] != nil:
 	case !set[name]:
 		v.warnf(field, "nothing in the package sets %s, so only the command line can name the folder; "+
 			"use a property with a search that finds the folder again at uninstall", name)
 	}
-}
-
-// hasSearch reports whether a properties entry fills name with a search.
-func hasSearch(cfg *Config, name string) bool {
-	prop := cfg.Properties[name]
-
-	return prop != nil && len(prop.Search) > 0
 }
 
 // removeFolderCondition checks the condition of a removeFolders entry, which

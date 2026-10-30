@@ -8,29 +8,18 @@ import (
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
-// removeFolderAnchor prefixes the private property that the package's own
-// RemoveFile rows of a removeFolders entry name; the DLL sets it, and the
-// properties of the subfolders get it with _<n> appended.
-const removeFolderAnchor = "BuilderTree"
-
 // removeFolders lists the removeFolders entries in the BuilderRemoveFolders
-// property for the immediate action of the same name, which adds temporary
-// RemoveFile rows for every subfolder of the folder an entry's property
-// holds (specification section 17.8). Each entry also gets a `*` row of
-// its own on an anchor property that only the action sets, so it removes
-// nothing when the action skips the entry; it removes the files of the
-// folder itself, and keeps a RemoveFile table in the package for the
-// action to add rows to.
+// property for the immediate action of the same name, which checks each
+// folder and hands the accepted ones to the deferred, rollback and commit
+// actions after it (specification section 17.8): the deferred one moves
+// each folder by handle into a private backup folder, the rollback one
+// moves it back, the commit one deletes it without following junctions.
 func (b *build) removeFolders() error {
 	var lines []string
 
 	for _, comp := range b.cfg.Components {
 		for _, entry := range comp.RemoveFolders {
-			mode := removeModes[entry.On]
-			anchor := generatedID(removeFolderAnchor, comp.ID, entry.Property, entry.On)
-
-			b.table("RemoveFile").Add(anchor, comp.ID, "*", anchor, mode)
-			lines = append(lines, cadll.RemoveFoldersEntry(removeFolderCondition(entry), comp.ID, mode, anchor, entry.Property))
+			lines = append(lines, cadll.RemoveFoldersEntry(removeFolderCondition(comp.ID, entry), entry.Property))
 
 			// The action runs on the server, where only secure public
 			// properties from the client arrive.
@@ -46,48 +35,71 @@ func (b *build) removeFolders() error {
 		return nil
 	}
 
-	if _, ok := b.cfg.Properties[cadll.RemoveFolders]; ok {
-		b.errorf("properties."+cadll.RemoveFolders, "the property %s is reserved for removeFolders", cadll.RemoveFolders)
+	for _, name := range []string{cadll.RemoveFolders, cadll.RemoveFoldersUndo, cadll.RemoveFoldersExec, cadll.RemoveFoldersCommit} {
+		if _, ok := b.cfg.Properties[name]; ok {
+			b.errorf("properties."+name, "the property %s is reserved for removeFolders", name)
 
-		return nil
+			return nil
+		}
 	}
 
 	b.properties[cadll.RemoveFolders] = strings.Join(lines, "\n")
 
-	// Before CostInitialize, after the searches: costing collects the
-	// folders that RemoveFile.DirProperty names, and a property it has not
-	// seen there fails InstallValidate with error 2727 (FILE-11).
-	b.addAction(&actionInfo{name: cadll.RemoveFolders, typ: caDLL, source: cadll.Key, target: cadll.RemoveFolders})
-	b.schedule(seqInstallExecute, cadll.RemoveFolders, "", actCostInitialize, "", 0)
+	b.removeFoldersActions()
 
 	return nil
 }
 
-// removeFolderCondition is the condition under which the action lists an
-// entry's folder. Component states are not known before costing, so the
-// rows carry the component and the engine applies them only when it
-// installs (mode 1) or removes (mode 2) the component; the condition only
-// skips the listing where no row could apply: an uninstall entry on a
-// first install, where nothing can be removed, or when the major upgrade
-// of another product removes this one, which must keep the folder. It does
-// not test REMOVE, which a session may only derive after this action; the
-// rows' mode leaves a component that stays alone.
-func removeFolderCondition(entry *config.RemoveFolder) string {
+// removeFoldersActions schedules the immediate action right after
+// RemoveFiles, when the component states and the directories' paths are
+// known and the engine's own files are gone, and the rollback, deferred and
+// commit actions after it; each of those runs when the immediate one gave
+// it data.
+func (b *build) removeFoldersActions() {
+	actions := []*actionInfo{
+		{name: cadll.RemoveFolders, typ: caDLL, source: cadll.Key, target: cadll.RemoveFolders},
+		{name: cadll.RemoveFoldersUndo, typ: caDLL | caRollback | caNoImpersonate, source: cadll.Key, target: cadll.RemoveFoldersExec},
+		{name: cadll.RemoveFoldersExec, typ: caDLL | caDeferred | caNoImpersonate, source: cadll.Key, target: cadll.RemoveFoldersExec},
+		{name: cadll.RemoveFoldersCommit, typ: caDLL | caCommit | caNoImpersonate, source: cadll.Key, target: cadll.RemoveFoldersExec},
+	}
+
+	b.standardAt(seqInstallExecute, actRemoveFiles)
+
+	after := actRemoveFiles
+
+	for _, action := range actions {
+		b.addAction(action)
+
+		cond := action.name
+		if action.name == cadll.RemoveFolders {
+			cond = ""
+		}
+
+		b.schedule(seqInstallExecute, action.name, cond, "", after, 0)
+		after = action.name
+	}
+}
+
+// removeFolderCondition is the condition under which the action removes an
+// entry's folder: when the component is removed ($comp=2) unless the major
+// upgrade of another product removes this one, which must keep the folder,
+// or when it is installed locally ($comp=3), ANDed with the entry's own.
+func removeFolderCondition(component string, entry *config.RemoveFolder) string {
+	removed := "($" + component + "=2 AND NOT UPGRADINGPRODUCTCODE)"
+	installed := "$" + component + "=3"
+
 	var cond string
 
 	switch entry.On {
 	case config.RemoveOnInstall:
+		cond = installed
 	case config.RemoveOnBoth:
-		cond = "NOT UPGRADINGPRODUCTCODE"
+		cond = "(" + removed + " OR " + installed + ")"
 	default:
-		cond = "Installed AND NOT UPGRADINGPRODUCTCODE"
+		cond = removed
 	}
 
-	switch {
-	case entry.Condition == "":
-	case cond == "":
-		cond = entry.Condition
-	default:
+	if entry.Condition != "" {
 		cond += " AND (" + entry.Condition + ")"
 	}
 

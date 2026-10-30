@@ -767,10 +767,11 @@ folder, written as a path below a standard folder like
 takes a `condition`, such as `DELETE_DATA="1"`.
 
 When the folder comes from a property, as `Property="APPLICATIONFOLDER"`
-with a registry search does, use `removeFolders` instead. It reads the
-property before costing, as `RemoveFolderEx` does, so the property needs a
-search: `installDir.remember` for the install folder, `properties` with a
-`search` for any other folder:
+with a registry search does, or is a public directory, use
+`removeFolders` instead. The install folder needs `installDir.remember`,
+the counterpart of the RegistrySearch that `RemoveFolderEx` packages use
+to find it again at uninstall, and any other property a `properties`
+search:
 
 ```yaml
 installDir:
@@ -786,9 +787,11 @@ components:
         on: uninstall                 # install, uninstall (the default) or both
 ```
 
-Like `purge`, it keeps the folder when an upgrade replaces the product,
-and the engine's own file removal is expected to restore the files if the
-uninstall rolls back (an emptied subfolder stays removed). It refuses drive roots,
+Like `purge`, it keeps the folder when an upgrade replaces the product.
+Unlike `RemoveFolderEx`, which hands the subfolders to the engine's file
+removal, it moves the folder aside and deletes it at the end without
+following junctions, so a failed uninstall puts it back and a junction
+swapped in during the uninstall cannot redirect the deletion. It refuses drive roots,
 standard folders such as Program Files and the folders that hold them,
 other users' profiles, folders in the Windows folder and folders behind
 junctions.

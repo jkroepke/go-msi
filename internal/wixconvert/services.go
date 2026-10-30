@@ -315,33 +315,24 @@ func (cc *compConv) purge(elm *elem) {
 		return
 	}
 
-	cc.removeFolders(elm, cmp.Or(prop, cc.cp.dir), when, cond)
+	cc.removeFolders(cmp.Or(prop, cc.cp.dir), when, cond)
 }
 
 // removeFolders writes the removeFolders entry of a util:RemoveFolderEx.
-func (cc *compConv) removeFolders(elm *elem, prop, when, cond string) {
+func (cc *compConv) removeFolders(prop, when, cond string) {
 	conv := cc.c
 	entry := newMap().set("property", conv.dirRef(prop))
 
-	// The removal reads the property before costing, where the install
-	// dir only has a path when installDir.remember searched for it; WiX
-	// packages restore it with a RegistrySearch of their own.
+	// The removal reads the folder after costing, so a directory works
+	// (markNeededDirs keeps its ID), but the install dir has the path chosen at install time only when
+	// installDir.remember searches for it, as WiX packages do with a
+	// RegistrySearch of their own.
 	inst := conv.installDir
-	if _, isDir := conv.dirs[prop]; isDir && (inst == nil || inst.id != prop) {
-		// The converted package may not even keep the directory's id, so
-		// an entry would build and silently remove nothing.
-		conv.todof(cc.out, "", elm.line,
-			"util:RemoveFolderEx reads %s before costing, where a directory has no path yet; remember the path in the registry "+
-				"and add a removeFolders entry that names a property with a search instead", prop)
-
-		return
-	}
-
 	if inst != nil && conv.dirRef(inst.id) == conv.dirRef(prop) {
 		install := conv.out.child("installDir")
 		if install.get("remember") == nil {
 			install.set("remember", true)
-			install.comment("remember", "util:RemoveFolderEx reads the install dir before costing; remember searches for it there.")
+			install.comment("remember", "util:RemoveFolderEx needs the install dir chosen at install time; remember searches for it.")
 		}
 	}
 

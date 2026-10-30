@@ -211,7 +211,9 @@ func (c *converter) markNeededDirs() {
 		c.noteDirRefs(elm.text)
 
 		for _, a := range idAttrs[elm.name] {
-			if v := elm.attr(a); v != "" && v != own[elm] {
+			// A RemoveFolderEx on its own public folder becomes a
+			// removeFolders entry that names it, not a purge.
+			if v := elm.attr(a); v != "" && (v != own[elm] || elm.name == "RemoveFolderEx" && config.IsPublicProperty(v)) {
 				c.needDirs[v] = true
 			}
 		}

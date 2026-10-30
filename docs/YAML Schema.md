@@ -446,13 +446,15 @@ components:
 
 `removeFolders` deletes the folder in a property, with everything in it,
 when the product, or the feature that holds the component, is removed,
-but not when an upgrade replaces the product. It works for the install folder and for a
-folder the first install remembered in the registry. The uninstall reads the property before the
-folders are resolved, so the install folder needs `installDir.remember`
-and any other folder a property with a search. It refuses drive roots, standard folders such as
+but not when an upgrade replaces the product. It works for any directory,
+the install folder (with `installDir.remember`, so the uninstall finds a
+folder chosen at install time) and a folder the first install remembered
+in the registry. The folder is moved aside and deleted at the end, so a
+failed uninstall puts it back, and a junction inside it is deleted as a
+link, never followed. It refuses drive roots, standard folders such as
 Program Files, the folders that hold them, other users' profiles and
-folders behind junctions, but a folder of the user's own, such as `INSTALLDIR=D:\Tools`, is
-emptied:
+folders behind junctions, but a folder of the user's own, such as
+`INSTALLDIR=D:\Tools`, is emptied:
 
 ```yaml
 installDir:

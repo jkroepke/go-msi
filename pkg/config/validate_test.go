@@ -102,8 +102,9 @@ func TestValidateAccepted(t *testing.T) {
 			"{component: {guid: '{6a0d3c2e-5b1f-4e7a-9c3d-2f8e1b4a7c60}'}}]}}\n",
 		"remove registry": base + strings.Replace(appComponent, "    files:",
 			"    removeRegistry: [{root: HKCU, key: Software\\Classes\\old}, {root: HKMU, key: Software\\X, name: Legacy}]\n    files:", 1),
-		"remove folders": base + "installDir: {id: INSTALLDIR, remember: true}\n" + strings.Replace(appComponent, "    files:",
-			"    removeFolders: [{property: INSTALLDIR}, {property: DATA_DIR, on: both, condition: DELETE_DATA=\"1\"}]\n    files:", 1) +
+		"remove folders": strings.Replace(base, "        configurable: true\n", "        configurable: true\n        children: [{id: DATADIR, name: data}]\n", 1) +
+			"installDir: {id: INSTALLDIR, remember: true}\n" + strings.Replace(appComponent, "    files:",
+			"    removeFolders: [{property: INSTALLDIR}, {property: DATA_DIR, on: both, condition: DELETE_DATA=\"1\"}, {property: DATADIR}]\n    files:", 1) +
 			"properties: {DATA_DIR: {search: {registry: {root: HKLM, key: Software\\X, name: Data, type: directory}}}}\n",
 		// Program Files and HKCR follow the context of a dual package.
 		"dual scope": pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:",
@@ -719,7 +720,7 @@ func TestValidate(t *testing.T) {
 			sevError, "components[0].removeFolders[0].property", "standard folder",
 		},
 		"removeFolders reserved property": {
-			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: BuilderTree1}]\n    files:", 1),
+			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: BuilderRemoveFoldersExec}]\n    files:", 1),
 			sevError, "components[0].removeFolders[0].property", "reserved",
 		},
 		"removeFolders bad on": {
@@ -740,12 +741,7 @@ func TestValidate(t *testing.T) {
 		},
 		"removeFolders install dir without remember": {
 			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: INSTALLDIR}]\n    files:", 1),
-			sevError, "components[0].removeFolders[0].property", "installDir.remember",
-		},
-		"removeFolders directory": {
-			strings.Replace(base, "        configurable: true\n", "        configurable: true\n        children: [{id: DATADIR, name: data}]\n", 1) +
-				strings.Replace(appComponent, "    files:", "    removeFolders: [{property: DATADIR}]\n    files:", 1),
-			sevError, "components[0].removeFolders[0].property", "gets its path at CostFinalize",
+			sevWarning, "components[0].removeFolders[0].property", "installDir.remember",
 		},
 		"removeFolders unset property": {
 			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: NVS_HOME}]\n    files:", 1),

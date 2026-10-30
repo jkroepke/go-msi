@@ -13,7 +13,6 @@ package cadll
 import (
 	"embed"
 	"fmt"
-	"strconv"
 	"strings"
 )
 
@@ -88,16 +87,22 @@ func GrantEntry(condition string, kind byte, mask, flags uint32, account, object
 }
 
 // RemoveFolders names the immediate action of folder removal, its entry
-// point and the property that lists the folders.
-const RemoveFolders = "BuilderRemoveFolders"
+// point and the property that lists the folders. RemoveFoldersExec is the
+// entry point of the deferred, rollback and commit actions, which are named
+// RemoveFoldersExec, RemoveFoldersUndo and RemoveFoldersCommit and take the
+// properties of the same names as CustomActionData.
+const (
+	RemoveFolders       = "BuilderRemoveFolders"
+	RemoveFoldersExec   = "BuilderRemoveFoldersExec"
+	RemoveFoldersUndo   = "BuilderRemoveFoldersUndo"
+	RemoveFoldersCommit = "BuilderRemoveFoldersCommit"
+)
 
 // RemoveFoldersEntry encodes one line of the BuilderRemoveFolders property:
-// the condition under which the folder is removed, the component and
-// RemoveFile install mode of the rows, the private anchor property that the
-// package's own rows name, and the property that holds the folder. None of
-// the texts may contain a line break or U+001F.
-func RemoveFoldersEntry(condition, component string, mode int, anchor, property string) string {
-	return strings.Join([]string{condition, component, strconv.Itoa(mode), anchor, property}, grantSeparator)
+// the condition under which the folder is removed and the property that
+// holds it. Neither may contain a line break or U+001F.
+func RemoveFoldersEntry(condition, property string) string {
+	return condition + grantSeparator + property
 }
 
 // Data encodes the working directory and command line the DLL expects.

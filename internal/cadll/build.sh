@@ -52,17 +52,20 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     GetTickCount64:0 GetExitCodeProcess:8 CloseHandle:4 GetCurrentThread:0 GetCurrentProcess:0 \
     GetProcessHeap:0 HeapAlloc:12 HeapReAlloc:16 HeapFree:12 GetLastError:0 \
     MultiByteToWideChar:24 TerminateProcess:8 LocalFree:4 GetComputerNameW:8 \
-    FindFirstFileW:8 FindNextFileW:8 FindClose:4 GetFileAttributesW:4 GetLongPathNameW:12 CompareStringOrdinal:20 \
-    GetFinalPathNameByHandleW:16 ExpandEnvironmentStringsW:12 >"$tmp/$out/kernel32.def"
+    GetFileAttributesW:4 GetLongPathNameW:12 CompareStringOrdinal:20 \
+    GetFinalPathNameByHandleW:16 ExpandEnvironmentStringsW:12 SetFileInformationByHandle:16 GetFileInformationByHandleEx:16 \
+    CreateDirectoryW:8 RemoveDirectoryW:4 MoveFileExW:12 >"$tmp/$out/kernel32.def"
   imports advapi32 OpenThreadToken:16 DuplicateTokenEx:24 CreateProcessAsUserW:44 SystemFunction036:8 \
     ConvertStringSidToSidW:8 LookupAccountNameW:28 GetNamedSecurityInfoW:32 SetNamedSecurityInfoW:28 \
     GetSecurityDescriptorControl:12 InitializeAcl:12 GetAce:12 AddAce:20 AddAccessAllowedAceEx:20 \
     EqualSid:8 GetLengthSid:4 RegCreateKeyExW:36 RegOpenKeyExW:20 RegSetValueExW:24 \
-    RegQueryValueExW:24 RegDeleteTreeW:8 RegCloseKey:4 RegEnumKeyExW:32 OpenProcessToken:12 GetTokenInformation:20 ConvertSidToStringSidW:8 >"$tmp/$out/advapi32.def"
+    RegQueryValueExW:24 RegDeleteTreeW:8 RegCloseKey:4 RegEnumKeyExW:32 OpenProcessToken:12 GetTokenInformation:20 ConvertSidToStringSidW:8 \
+    ConvertStringSecurityDescriptorToSecurityDescriptorW:16 >"$tmp/$out/advapi32.def"
   imports msi MsiGetPropertyW:16 MsiCreateRecord:4 MsiRecordSetStringW:12 MsiRecordSetInteger:12 MsiProcessMessage:12 \
     MsiCloseHandle:4 MsiSetPropertyW:12 MsiFormatRecordW:16 MsiEvaluateConditionW:8 \
-    MsiGetActiveDatabase:4 MsiDatabaseOpenViewW:12 MsiViewExecute:8 MsiViewModify:12 MsiViewClose:4 >"$tmp/$out/msi.def"
-  for lib in kernel32 advapi32 msi; do
+    MsiGetMode:8 >"$tmp/$out/msi.def"
+  imports ntdll NtCreateFile:44 >"$tmp/$out/ntdll.def"
+  for lib in kernel32 advapi32 msi ntdll; do
     "$DLLTOOL" -m "$arch" -k -d "$tmp/$out/$lib.def" -l "$tmp/$out/$lib.lib"
   done
   "$CLANG" --target="$triple-pc-windows-msvc" -std=c11 -O2 -Wall -Wextra -Werror \
@@ -71,8 +74,8 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     -c src/builderrun.c -o "$tmp/$out/builderrun.obj"
   "$CLANG" --target="$triple-pc-windows-msvc" -fuse-ld=lld -nostdlib -shared \
     -o "builderrun-$out.dll" "$tmp/$out/builderrun.obj" \
-    "$tmp/$out/kernel32.lib" "$tmp/$out/advapi32.lib" "$tmp/$out/msi.lib" \
-    -Wl,/Brepro -Wl,/nodefaultlib -Wl,/entry:_DllMainCRTStartup -Wl,/export:BuilderRun -Wl,/export:BuilderGrant -Wl,/export:BuilderGrantSchedule -Wl,/export:BuilderRemoveFolders \
+    "$tmp/$out/kernel32.lib" "$tmp/$out/advapi32.lib" "$tmp/$out/msi.lib" "$tmp/$out/ntdll.lib" \
+    -Wl,/Brepro -Wl,/nodefaultlib -Wl,/entry:_DllMainCRTStartup -Wl,/export:BuilderRun -Wl,/export:BuilderGrant -Wl,/export:BuilderGrantSchedule -Wl,/export:BuilderRemoveFolders -Wl,/export:BuilderRemoveFoldersExec \
     -Wl,/release -Wl,/opt:ref -Wl,/opt:icf -Wl,/subsystem:windows
 done
 sha256sum builderrun-x86.dll builderrun-x64.dll builderrun-arm64.dll >SHA256SUMS

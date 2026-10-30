@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -122,8 +121,8 @@ func TestConvertNotes(t *testing.T) {
 }
 
 // TestConvertRemoveFolderExDirectory checks that a util:RemoveFolderEx on a
-// directory other than the install dir becomes a TODO and no entry: the
-// directory has no path before costing, so the entry would remove nothing.
+// directory other than the install dir becomes a removeFolders entry that
+// names the directory, whose ID the output keeps.
 func TestConvertRemoveFolderExDirectory(t *testing.T) {
 	t.Parallel()
 
@@ -148,14 +147,10 @@ func TestConvertRemoveFolderExDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if strings.Contains(string(res.YAML), "removeFolders:") {
-		t.Errorf("the YAML has a removeFolders entry:\n%s", res.YAML)
-	}
-
-	if !slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool {
-		return n.Line == 11 && strings.HasPrefix(n.Message, "util:RemoveFolderEx reads DATADIR before costing")
-	}) {
-		t.Errorf("notes %q lack the RemoveFolderEx TODO", res.Notes)
+	for _, want := range []string{"- id: DATADIR", "directory: DATADIR", "- property: DATADIR"} {
+		if !strings.Contains(string(res.YAML), want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, res.YAML)
+		}
 	}
 }
 
