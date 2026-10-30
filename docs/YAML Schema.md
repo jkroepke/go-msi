@@ -260,6 +260,26 @@ The package registers `hello.exe` as the default program for `.hello`
 files, with the file as its argument. A program the user picked under Open
 with still wins.
 
+### Close the running program before an upgrade
+
+```yaml
+properties:
+  MSIRESTARTMANAGERCONTROL: Disable   # let close handle running programs
+components:
+  - files:
+      - source: hello.exe
+        close: true
+```
+
+When the package installs, repairs or removes `hello.exe` while it runs,
+its windows are asked to close and get up to five seconds to do so. Then,
+when the files are about to be replaced or removed, every `hello.exe` still
+running from the installed folder is ended, also a copy without a window
+(which gets no grace time) and copies other users run on the same machine.
+This also happens on a repair that does not replace the file. A copy of `hello.exe` in another folder keeps running.
+`close: { timeout: 30s, terminate: false }` waits longer and never ends
+the program; Windows Installer then treats the file as in use.
+
 ### Let the user pick optional parts
 
 Features are the parts a user can choose. A feature with `default: off` is
@@ -610,6 +630,7 @@ The keys used most inside them:
 | `components[].files[].source` | required | A file, or a folder ending in `/` |
 | `components[].files[].name` | the source's name | The installed name |
 | `components[].files[].shortcuts` | none | Start menu and desktop shortcuts |
+| `components[].files[].close` | `false` | Close the running program before it is replaced or removed |
 | `components[].services` | none | A Windows service for the component's program |
 | `components[].registry` | none | Registry values |
 | `components[].environment` | none | Environment variables such as `PATH` |

@@ -95,6 +95,14 @@ func TestValidateAccepted(t *testing.T) {
 	}
 
 	for name, doc := range map[string]string{
+		"close true": base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: app.exe, close: true}\n", 1),
+		"close mapping": base + strings.Replace(appComponent, "      - source: app.exe\n",
+			"      - {source: app.exe, close: {timeout: 0s, terminate: false}}\n", 1),
+		"close upper-case extension": base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: App.EXE, close: {timeout: 5m}}\n", 1),
+		"close false on a non-program": base + strings.Replace(appComponent, "      - source: app.exe\n",
+			"      - source: app.exe\n      - {source: readme.txt, close: false}\n", 1),
+		"close false on a folder source": base + strings.Replace(appComponent, "      - source: app.exe\n",
+			"      - {source: dist/, close: false}\n", 1),
 		"remote any":          firewall("ANY"),
 		"remote star":         firewall("*"),
 		"remote keyword list": firewall("localsubnet,10.0.0.1"),
@@ -762,6 +770,23 @@ func TestValidate(t *testing.T) {
 			base + "installDir: {id: INSTALLDIR, remember: true}\n" + appComponent +
 				"customActions:\n  - id: RestoreInstallDir\n    setProperty: {name: A, value: b}\n    schedule: [{sequence: execute, after: CostFinalize}]\n",
 			sevError, "customActions[0].id", "installDir.remember adds",
+		},
+		// CLOSE-01.
+		"close on a non-program": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n      - {source: readme.txt, close: true}\n", 1),
+			sevError, "components[0].files[1].close", "ends in .exe",
+		},
+		"close timeout too long": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: app.exe, close: {timeout: 6m}}\n", 1),
+			sevError, "components[0].files[0].close.timeout", "between 0s and 5m0s",
+		},
+		"close timeout below a millisecond": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: app.exe, close: {timeout: 1500us}}\n", 1),
+			sevError, "components[0].files[0].close.timeout", "whole number of milliseconds",
+		},
+		"close on a folder source": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: dist/, close: true}\n", 1),
+			sevError, "components[0].files[0].close", "not allowed on a folder source",
 		},
 		// FILE-03.
 		"purge configurable folder": {

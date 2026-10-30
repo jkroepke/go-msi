@@ -1180,6 +1180,7 @@ func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component
 		v.uniqueTarget(filePath, comp, fileName(file), paths)
 
 		v.fileVersion(filePath, file, comp)
+		v.fileClose(filePath, file)
 
 		if versionedFile(file) {
 			versioned++
@@ -1208,6 +1209,29 @@ func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component
 	}
 
 	return nil
+}
+
+// fileClose checks a close block: only a program has running copies, and
+// the timeout delays the install before InstallValidate.
+func (v *validator) fileClose(filePath string, file *File) {
+	if !file.Close.Enabled() {
+		return
+	}
+
+	if !strings.EqualFold(path.Ext(fileName(file)), ".exe") {
+		v.errorf(filePath+".close", "%s is not a program; close needs a file that ends in .exe", fileName(file))
+	}
+
+	if file.Close.Timeout == nil {
+		return
+	}
+
+	switch d := time.Duration(*file.Close.Timeout); {
+	case d < 0 || d > MaxCloseTimeout:
+		v.errorf(filePath+".close.timeout", "must be between 0s and %s", MaxCloseTimeout)
+	case d%time.Millisecond != 0:
+		v.errorf(filePath+".close.timeout", "must be a whole number of milliseconds")
+	}
 }
 
 // versionedFile reports whether the File row gets a Version: an explicit

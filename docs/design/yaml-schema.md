@@ -946,6 +946,78 @@ entries (REG-04). Any number of ProgIDs may list an extension with
 `openWithOnly`; the default may be registered once. Explorer's "Open with"
 choice of the user (`UserChoice`) still wins over the package's default.
 
+**Closing running programs.** `close` on a program stops its running
+copies when its component is installed, repaired or removed, so that an
+upgrade does not leave the old version running from a pending-delete copy
+and an uninstall does not wait for a reboot:
+
+```yaml
+files:
+  - source: tray.exe
+    close: true                    # WM_CLOSE, 5 s, then terminate
+  - source: agent.exe
+    close:
+      timeout: 10s                 # how long it gets to quit; 0s to 5m, default 5s
+      terminate: false             # default true: end what is still running
+```
+
+Two actions on the embedded DLL do it (specification section 17.9).
+Before `InstallValidate`, as the installing user, every process whose
+image is the installed file gets `WM_CLOSE` on its visible top-level
+windows (on its hidden ones when it has no visible window, as a program in
+the notification area), and the install waits up to `timeout` for those
+to exit, per file: two files with `30s` can wait a minute. After `StopServices` and before `RemoveFiles`, as LocalSystem in a
+per-machine install, the copies still running from that path are ended
+with exit code 1602, in every session. A process matches by its full path,
+compared without case, so a copy of the program in another folder (a
+portable copy, a Kubernetes HostProcess container) keeps running; WiX's
+`util:CloseApplication` matches the filename only (reported), which the
+2026-10-25 evaluation of the `windows_exporter` example found a problem.
+An install folder given as an 8.3 path, a `subst` drive or a junction does
+not match the image path the process reports, so nothing is closed then
+(fails safe; not tested).
+
+What gets ended, and when:
+
+- Every repair of the component counts, also one that does not replace
+  the file (`$Component=3`), and so does every removal.
+- Copies that other users run on the same machine, a terminal server
+  included, are ended without a `WM_CLOSE`, because the first action only
+  reaches the installing user's desktop (CLOSE-01 confirmed that side on
+  the CI runner; other sessions are not tested). Ending a program loses what it has not saved, so
+  `terminate: false` suits editors and tools where the user should decide;
+  the engine's files-in-use handling then deals with what still runs.
+  A program without a visible window also gets `WM_CLOSE` on its hidden
+  helper windows; one that only hides itself then may keep running in a
+  broken state, so `terminate: false` suits programs with a main window.
+- That files-in-use check runs before the programs without a window are
+  ended, so it still lists them, and also a program of the same name in
+  another folder (observed, CLOSE-01). A silent install only logs this; a
+  full UI may show its files-in-use dialog (not tested).
+- A console program has no window of its own (its console window is
+  left alone), so it is ended, or left alone with `terminate: false`.
+- A service the package installs is stopped by its `control` events
+  first when `stopOnInstall` and `stopOnUninstall` are on (the defaults);
+  without them its process is ended like any other, and the service's
+  recovery actions may start it again.
+- In the first major upgrade from a version without `close`, the old
+  version is removed before the deferred action runs when `removeOld` is
+  early (the default), so a windowless program of the old version keeps
+  running while its file goes to a pending-delete copy; whether the
+  deferred action still finds it by path afterwards is not tested. From
+  then on both versions carry `close`.
+
+Only files that end in `.exe` take `close`, and a folder source does not.
+
+Set `MSIRESTARTMANAGERCONTROL: Disable` with `close`. Restart Manager
+otherwise asks every process that holds a package file to shut down in a
+silent install, also an unrelated one that only has the file open, and
+waits for the user in a basic UI (reported by the close-apps evaluation, 2026-10-25);
+`close` covers the programs the package knows about. Not adopted from WiX:
+closing a program by name wherever it runs, end-session messages
+(`WM_QUERYENDSESSION`), registering programs for a restart after the
+install, and a reboot prompt for programs that refuse to exit.
+
 **Component shortcuts.** A component can list `shortcuts` of its own, for
 shortcuts that do not point at a file listed with them. Each names exactly
 one target:

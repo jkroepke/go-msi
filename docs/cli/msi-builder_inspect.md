@@ -5,7 +5,9 @@ Print the tables, streams and summary of a package
 Inspect prints the code page, the summary information, the streams and
 every table of a package, or a single table with --table. Columns are
 separated by tabs; the second line of a table holds the column types, with
-"!" marking key columns. Cabinets stay in the file and are listed by size.
+"!" marking key columns. Control characters in a value are shown as their
+control pictures (U+2400 to U+2421), so a newline appears as "␊". Cabinets
+stay in the file and are listed by size.
 
 ## Usage
 
