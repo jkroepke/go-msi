@@ -1180,7 +1180,7 @@ so is a per-user package that removes from HKLM or HKCR.
 component is removed, for keys the program creates while it runs (shell
 verbs, settings) that the package does not write. It is a `Registry` row
 with name `-` and a Null value: the install neither creates nor deletes
-the key (one that existed before keeps its subkey),
+the key (one that existed before keeps its subkey and its value),
 a repair leaves a key that exists, and uninstall deletes it with its
 subkeys in the component's registry view (REG-08, observed on Windows per
 machine; per-user and dual-scope installs not tested; whether a repair

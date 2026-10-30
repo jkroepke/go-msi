@@ -19,3 +19,5 @@ registry_uninstall_windows_test.go:186: ICE33 warning: Reg key regCF5621F4E47C4D
 registry_uninstall_windows_test.go:186: ICE61 warning: This product should remove only older versions of itself. The Maximum version is not less than the current product. (1.0.0 1.0.0) [Upgrade.Attributes {0B7E3A95-6C2D-4F18-A4E9-71D5C3B80F26}//1.0.0//513]
 --- PASS: TestICERemoveOnUninstall (1.42s)
 ```
+
+Rerun at commit 4ef2584, run 41069826896 (PR #157), same runner image: the test now uses its own root `HKLM\SOFTWARE\MsiBuilderUninstallKeyTest` and also asserts that `Existing\Sub\Value` is still `old` after the install. `go test (native)` passed, `TestMsiexecRemovesKeysOnUninstall` included.
