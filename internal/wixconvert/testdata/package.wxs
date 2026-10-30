@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A sample package in WiX v4 syntax with most of what msi-builder convert maps. -->
+<?define Port = 8080 ?>
+<?include common.wxi ?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="Hello" Manufacturer="Example" Version="$(var.Version)" Language="1031" Codepage="1252"
+           UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301" InstallerVersion="405" Compressed="yes">
+    <SummaryInformation Description="Hello service" Keywords="hello,service" />
+    <MajorUpgrade Schedule="afterInstallExecute" AllowDowngrades="yes" IgnoreRemoveFailure="yes"
+                  DowngradeErrorMessage="A newer version of !(bind.Property.ProductName) is already installed." />
+    <Upgrade Id="513044d7-fae5-4715-984a-14f911d06fcc">
+      <UpgradeVersion Minimum="1.0.0" Maximum="$(var.Version)" IncludeMinimum="no" Property="OLDX86FOUND" />
+    </Upgrade>
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="hello.ico" SourceFile="assets\hello.ico" />
+    <Binary Id="HelperDll" SourceFile="bin\helper.dll" />
+    <Binary Id="SetupTool" SourceFile="bin\setup-tool.exe" />
+    <Property Id="ARPPRODUCTICON" Value="hello.ico" />
+    <Property Id="ARPHELPLINK" Value="https://example.com/help" />
+    <Property Id="ARPNOMODIFY" Value="yes" />
+    <Property Id="PORT" Value="$(var.Port)" />
+    <Property Id="API_TOKEN" Hidden="yes" />
+    <!-- The folder of the last version. -->
+    <Property Id="OLD_INSTALLDIR">
+      <RegistrySearch Id="OldDir" Root="HKLM" Key="SOFTWARE\Example\Hello" Name="InstallDir" Type="directory" Bitness="always64" />
+    </Property>
+    <Property Id="TOOL_PATH">
+      <DirectorySearch Id="ToolDir" Path="[ProgramFiles64Folder]Example\Tools" Depth="2">
+        <FileSearch Id="ToolExe" Name="tool.exe" MinVersion="2.0" />
+      </DirectorySearch>
+    </Property>
+    <Launch Condition="Installed OR VersionNT64" Message="Hello needs 64-bit Windows." />
+    <WixVariable Id="WixUILicenseRtf" Value="assets\license.rtf" />
+    <WixVariable Id="WixUIBannerBmp" Value="assets\banner.bmp" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Start Hello" />
+    <Property Id="WixShellExecTarget" Value="[#hello.exe]" />
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchHello"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed" />
+      <Dialog Id="PortDlg" Width="370" Height="270" Title="Port" />
+    </UI>
+    <CustomAction Id="LaunchHello" BinaryRef="Wix4UtilCA_X64" DllEntry="WixShellExec" Impersonate="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Directory Id="CONFIGDIR" Name="config" />
+        <Directory Id="LogsDir" Name="logs" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DataDir" Name="Hello" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ProgramMenuDir" Name="Example" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="Hello" ConfigurableDirectory="INSTALLFOLDER" AllowAbsent="no">
+      <ComponentGroupRef Id="Core" />
+      <ComponentRef Id="StartMenu" />
+      <Feature Id="Docs" Title="Documentation" Level="2" Display="expand">
+        <Component Directory="INSTALLFOLDER">
+          <File Source="docs\manual.pdf" />
+        </Component>
+      </Feature>
+    </Feature>
+    <Feature Id="Firewall" Title="Firewall rule" Level="0">
+      <ComponentRef Id="FirewallRule" />
+    </Feature>
+
+    <ComponentGroup Id="Core" Directory="INSTALLFOLDER">
+      <Component Id="HelloExe" Guid="0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a10">
+        <File Id="hello.exe" Source="bin\hello.exe" KeyPath="yes" Checksum="yes">
+          <Shortcut Id="DesktopShortcut" Directory="DesktopFolder" Name="Hello" Arguments="--gui" />
+        </File>
+        <ServiceInstall Name="Hello" DisplayName="Hello Service" Description="Answers hello requests."
+                        Type="ownProcess" Start="auto" ErrorControl="normal" Vital="yes"
+                        Account="NT AUTHORITY\NetworkService" Arguments="--port [PORT]">
+          <ServiceDependency Id="Tcpip" />
+          <ServiceConfig DelayedAutoStart="yes" OnInstall="yes" OnReinstall="yes" />
+          <util:ServiceConfig ResetPeriodInDays="1" RestartServiceDelayInSeconds="120"
+                              FirstFailureActionType="restart" SecondFailureActionType="restart"
+                              ThirdFailureActionType="reboot" />
+          <util:PermissionEx User="Users" ServiceStart="yes" ServiceStop="yes" />
+        </ServiceInstall>
+        <ProgId Id="Example.HelloDoc" Description="Hello document" Icon="hello.exe" IconIndex="1">
+          <Extension Id="hello" ContentType="application/x-hello">
+            <Verb Id="open" Command="Open with Hello" Argument="&quot;%1&quot;" />
+          </Extension>
+        </ProgId>
+        <ServiceControl Id="HelloControl" Name="Hello" Start="install" Stop="both" Remove="uninstall" Wait="no" />
+        <ServiceControl Id="LegacyControl" Name="HelloLegacy" Stop="install" Remove="install" />
+        <util:EventSource Name="Hello" Log="Application" EventMessageFile="[#hello.exe]" SupportsErrors="yes" SupportsInformationals="yes" />
+        <Environment Id="PathEnv" Name="PATH" Value="[INSTALLFOLDER]" Action="set" Part="last" System="yes" />
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Example\Hello" ForceDeleteOnUninstall="yes">
+          <RegistryValue Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" />
+          <RegistryValue Name="Port" Type="integer" Value="$(var.Port)" />
+          <RegistryValue Name="Hosts" Type="multiString">
+            <MultiString Value="localhost" />
+            <MultiString Value="example.com" />
+          </RegistryValue>
+          <RegistryKey Key="Plugins" ForceCreateOnInstall="yes" />
+        </RegistryKey>
+        <RemoveRegistryKey Root="HKLM" Key="SOFTWARE\Example\HelloOld" Action="removeOnInstall" />
+        <RemoveRegistryValue Root="HKCU" Key="Software\Example\Hello" Name="Window" />
+        <util:XmlFile Id="SetPort" File="[#hello.yaml]" ElementPath="/config" Name="port" Value="[PORT]" Action="setValue" />
+      </Component>
+      <Component Directory="CONFIGDIR" NeverOverwrite="yes" Permanent="yes">
+        <File Id="hello.yaml" Source="config\hello.yaml" />
+      </Component>
+      <Component Id="Logs" Directory="LogsDir" Guid="0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a12">
+        <CreateFolder />
+        <RemoveFile Id="RemoveLogs" Name="*.log" On="uninstall" />
+      </Component>
+      <Component Id="Data" Directory="DataDir" Guid="0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a13">
+        <CreateFolder>
+          <util:PermissionEx User="NetworkService" Domain="NT AUTHORITY" GenericAll="yes" />
+        </CreateFolder>
+        <util:RemoveFolderEx On="uninstall" Property="DataDir" />
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Example\Hello" Name="DataDir" Value="[DataDir]" />
+      </Component>
+    </ComponentGroup>
+
+    <Component Id="StartMenu" Directory="ProgramMenuDir" Guid="0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a14">
+      <Shortcut Id="StartMenuShortcut" Name="Hello" Description="Say hello" Target="[INSTALLFOLDER]hello.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <util:InternetShortcut Id="Website" Name="Hello website" Target="https://example.com" />
+      <RemoveFolder Id="RemoveProgramMenuDir" On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Component Id="FirewallRule" Directory="INSTALLFOLDER" Guid="0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a15">
+      <fw:FirewallException Id="HelloRule" Name="Hello" Program="[#hello.exe]" Protocol="tcp" Port="[PORT]" Scope="localSubnet" />
+    </Component>
+
+    <SetProperty Id="HELLO_ARGS" Value="--config &quot;[#hello.yaml]&quot;" Before="InstallFiles" Sequence="execute" Condition="NOT HELLO_ARGS" />
+    <SetDirectory Id="LogsDir" Value="[%SYSTEMROOT]\Temp\Hello" Sequence="execute" />
+    <CustomAction Id="StopClients" FileRef="hello.exe" ExeCommand="detach --all" Execute="deferred" Impersonate="no" Return="ignore" />
+    <CustomAction Id="ImportData.Command" Property="ImportData" Value="&quot;[#hello.exe]&quot; import" />
+    <CustomAction Id="ImportData" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec64" Execute="deferred" Impersonate="no" Return="check" />
+    <CustomAction Id="CheckLicense" BinaryRef="HelperDll" DllEntry="CheckLicense" />
+    <CustomAction Id="RunSetupTool" BinaryRef="SetupTool" ExeCommand="/quiet" Execute="deferred" Impersonate="no" />
+    <CustomAction Id="NoX86" Error="Hello does not install on 32-bit Windows." />
+    <CustomAction Id="Greet" Script="vbscript">MsgBox "Hello"</CustomAction>
+    <CustomAction Id="ConfigureIIS" BinaryRef="Wix4IIsCA_X64" DllEntry="ConfigureIIs" />
+    <InstallExecuteSequence>
+      <Custom Action="StopClients" Before="StopServices" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="ImportData.Command" Before="ImportData" />
+      <Custom Action="ImportData" After="InstallFiles" Condition="NOT Installed AND NOT WIX_UPGRADE_DETECTED" />
+      <Custom Action="CheckLicense" After="CostFinalize" />
+      <Custom Action="RunSetupTool" After="InstallFiles" Condition="WIX_UPGRADE_DETECTED" />
+      <Custom Action="NoX86" Before="LaunchConditions" Condition="NOT VersionNT64" />
+      <ScheduleReboot After="InstallFinalize" Condition="NOT Installed" />
+      <RemoveExistingProducts After="InstallFinalize" />
+    </InstallExecuteSequence>
+    <CustomActionRef Id="Wix4BroadcastEnvironmentChange_X64" />
+  </Package>
+</Wix>

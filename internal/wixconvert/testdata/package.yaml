@@ -1,0 +1,296 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
+# Converted from package.wxs by msi-builder convert.
+# Review it, resolve the TODO comments, then run msi-builder validate.
+# WiX variables became ${NAME} references; pass them with --var NAME=value: Version.
+# TODO(line 4): <?include common.wxi?>: convert the included file and merge it in by hand
+# TODO(line 45): the hand-built dialog PortDlg cannot be converted; ui.dialogs lays out text, password, checkbox and choice fields
+# TODO(line 158): rescheduling the standard action RemoveExistingProducts in InstallExecuteSequence has no counterpart
+# TODO(line 148): the custom action Greet is a script; script custom actions are never supported, use a run action
+# TODO(line 149): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
+# TODO(line 160): Wix4BroadcastEnvironmentChange_X64 has no counterpart: programs that are already running keep the old environment until they restart
+schema: msi-builder/v1
+vars:
+  Port: "8080"
+product:
+  name: Hello
+  manufacturer: Example
+  version: ${Version}
+  language: 1031
+  upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301
+  description: Hello service
+  arp:
+    icon: hello.ico
+    helpLink: https://example.com/help
+    noModify: true
+package:
+  platform: x64
+  installerVersion: "4.5"
+  codepage: 1252
+  summary:
+    keywords: hello,service
+upgrade:
+  removeOld: afterInstallExecute
+  downgrade: allow
+  downgradeMessage: A newer version of Hello is already installed.
+  ignoreRemoveFailure: true
+  related:
+    - upgradeCode: 513044d7-fae5-4715-984a-14f911d06fcc
+      minVersion: 1.0.0
+      maxVersion: ${Version}
+      includeMin: false
+      property: OLDX86FOUND
+  property: WIX_UPGRADE_DETECTED
+installDir:
+  id: INSTALLFOLDER
+directories:
+  - id: ProgramFiles64Folder
+    children:
+      - id: INSTALLFOLDER
+        name: Hello
+        configurable: true
+        children:
+          - id: LogsDir
+            name: logs
+  - id: CommonAppDataFolder
+    children:
+      - id: DataDir
+        name: Hello
+features:
+  - id: Main
+    title: Hello
+    directory: INSTALLFOLDER
+    allowAbsent: false
+    components: [HelloExe, Component1, Logs, Data, StartMenu]
+    features:
+      - id: Docs
+        title: Documentation
+        default: off
+        display: expanded
+        components: [Component2]
+  - id: Firewall
+    title: Firewall rule
+    default: disabled
+    components: [FirewallRule]
+components:
+  - id: Component2
+    files:
+      - source: docs/manual.pdf
+  # TODO(line 110): <util:XmlFile> is not supported: ship the complete file, or edit it with a run action (no rollback)
+  - id: HelloExe
+    guid: 0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a10
+    files:
+      - source: bin/hello.exe
+        id: hello.exe
+        checksum: true
+        shortcuts:
+          - name: Hello
+            directory: DesktopFolder
+            arguments: --gui
+          - name: Hello
+            directory: ProgramMenuFolder/Example
+            description: Say hello
+        fileTypes:
+          - progId: Example.HelloDoc
+            description: Hello document
+            iconIndex: 1
+            extensions:
+              - extension: hello
+                contentType: application/x-hello
+            verbs:
+              - id: open
+                text: Open with Hello
+                arguments: '"%1"'
+    registry:
+      - root: HKLM
+        key: SOFTWARE\Example\Hello
+        type: key
+        removeOnUninstall: true
+      - root: HKLM
+        key: SOFTWARE\Example\Hello
+        name: InstallDir
+        value: '[INSTALLFOLDER]'
+      - root: HKLM
+        key: SOFTWARE\Example\Hello
+        name: Port
+        type: dword
+        value: ${Port}
+      - root: HKLM
+        key: SOFTWARE\Example\Hello
+        name: Hosts
+        type: multiString
+        value: [localhost, example.com]
+      - root: HKLM
+        key: SOFTWARE\Example\Hello\Plugins
+        type: key
+    removeRegistry:
+      - root: HKLM
+        key: SOFTWARE\Example\HelloOld
+      - root: HKCU
+        key: Software\Example\Hello
+        name: Window
+    services:
+      - name: Hello
+        displayName: Hello Service
+        description: Answers hello requests.
+        start: auto
+        delayedAutoStart: true
+        vital: true
+        account: NT AUTHORITY\NetworkService
+        arguments: --port [PORT]
+        dependencies: [Tcpip]
+        control:
+          wait: false
+        # TODO(line 85): the recovery action "reboot" has no counterpart; restart and none are supported
+        recovery:
+          resetAfterDays: 1
+          actions: [restart, restart, none]
+          restartDelay: 120s
+        permissions:
+          grant:
+            - account: Users
+              rights: [start, stop]
+    serviceControl:
+      - name: HelloLegacy
+        stopOnInstall: true
+        deleteOnInstall: true
+    eventLog:
+      - source: Hello
+        log: Application
+        messageFile: '[#hello.exe]'
+        typesSupported: 5
+    environment:
+      - name: PATH
+        value: '[INSTALLFOLDER]'
+        action: append
+        scope: machine
+  - id: Component1
+    directory: config
+    files:
+      - source: config/hello.yaml
+        id: hello.yaml
+    permanent: true
+    neverOverwrite: true
+  - id: Logs
+    directory: LogsDir
+    guid: 0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a12
+    removeFiles:
+      - name: '*.log'
+    createFolder: true
+  - id: Data
+    directory: DataDir
+    guid: 0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a13
+    registry:
+      - root: HKLM
+        key: SOFTWARE\Example\Hello
+        name: DataDir
+        value: '[DataDir]'
+    purge: true
+    createFolder: true
+    folderPermissions:
+      grant:
+        - account: NT AUTHORITY\NetworkService
+          rights: [full]
+  # The RemoveFolder and HKCU key path of this shortcut component were left out:
+  # msi-builder writes both for every shortcut.
+  - id: StartMenu
+    directory: ProgramMenuFolder/Example
+    guid: 0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a14
+    shortcuts:
+      - name: Hello website
+        url: https://example.com
+        directory: ProgramMenuFolder/Example
+  - id: FirewallRule
+    guid: 0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a15
+properties:
+  PORT: ${Port}
+  API_TOKEN:
+    hidden: true
+  # The folder of the last version.
+  OLD_INSTALLDIR:
+    search:
+      registry:
+        root: HKLM
+        key: SOFTWARE\Example\Hello
+        name: InstallDir
+        bitness: "64"
+        type: directory
+  TOOL_PATH:
+    search:
+      file:
+        name: tool.exe
+        minVersion: "2.0"
+        under:
+          directory:
+            path: '[ProgramFiles64Folder]Example\Tools'
+            depth: 2
+launchConditions:
+  - condition: Installed OR VersionNT64
+    message: Hello needs 64-bit Windows.
+customActions:
+  - id: StopClients
+    run:
+      command: '"[#hello.exe]" detach --all'
+    execute: deferred
+    impersonate: false
+    return: ignore
+    schedule:
+      - {sequence: execute, before: StopServices, when: uninstall}
+  - id: ImportData
+    run:
+      command: '"[#hello.exe]" import'
+    execute: deferred
+    impersonate: false
+    return: check
+    schedule:
+      - {sequence: execute, after: InstallFiles, when: install}
+  - id: CheckLicense
+    dll: {binary: HelperDll, entry: CheckLicense}
+    return: check
+    schedule:
+      - {sequence: execute, after: CostFinalize}
+  - id: RunSetupTool
+    exe:
+      binary: SetupTool
+      arguments: /quiet
+    execute: deferred
+    impersonate: false
+    return: check
+    schedule:
+      - {sequence: execute, after: InstallFiles, when: upgrade}
+  - id: NoX86
+    error: Hello does not install on 32-bit Windows.
+    schedule:
+      - {sequence: execute, before: LaunchConditions, condition: NOT VersionNT64}
+  - id: SetHELLO_ARGS
+    setProperty: {name: HELLO_ARGS, value: '--config "[#hello.yaml]"'}
+    schedule:
+      - {sequence: execute, before: InstallFiles, condition: NOT HELLO_ARGS}
+  - id: SetLogsDir
+    setDirectory: {directory: LogsDir, value: '[%SYSTEMROOT]\Temp\Hello'}
+    schedule:
+      - {sequence: execute, after: CostFinalize}
+icons:
+  hello.ico: assets/hello.ico
+binaries:
+  HelperDll: bin/helper.dll
+  SetupTool: bin/setup-tool.exe
+firewall:
+  - name: Hello
+    component: FirewallRule
+    program: '[#hello.exe]'
+    protocol: tcp
+    port: '[PORT]'
+    remoteAddresses: LocalSubnet
+    profiles: all
+scheduleReboot:
+  condition: NOT Installed
+ui:
+  enabled: true
+  license: assets/license.rtf
+  chooseDirectory: true
+  launch:
+    file: hello.exe
+    text: Start Hello
+    checked: false
+  theme:
+    banner: assets/banner.bmp

@@ -1,0 +1,100 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
+# Converted from v3.wxs by msi-builder convert.
+# Review it, resolve the TODO comments, then run msi-builder validate.
+# WiX variables became ${NAME} references; pass them with --var NAME=value: BinDir, ProductVersion.
+# TODO(line 14): <?if $(var.Edition) = "full"?> is not evaluated: only its first branch was converted
+# TODO(line 16): the <?else?> branch was left out; convert it by hand if your build takes it
+schema: msi-builder/v1
+product:
+  name: Hello Tools
+  manufacturer: Example
+  version: ${ProductVersion}
+  upgradeCode: '{6A3F1B2C-1D2E-4F50-9A8B-7C6D5E4F3A21}'
+  description: Hello tools
+package:
+  platform: x86
+  scope: perUser
+  installerVersion: "2.0"
+  embedCabinets: false
+  cabinet: tools.cab
+upgrade:
+  downgradeMessage: A newer version of [ProductName] is already installed.
+installDir:
+  # WiX ID ToolsDir; the install folder must be an upper-case public property,
+  # so every [ToolsDir] reference became [TOOLSDIR].
+  id: TOOLSDIR
+directories:
+  - id: LocalAppDataFolder
+    children:
+      - id: ExampleDir
+        name: Example
+        children:
+          - id: TOOLSDIR
+            name: Hello Tools
+            configurable: true
+            children:
+              - id: BIN
+                name: bin
+features:
+  - id: Complete
+    title: Hello Tools
+    allowAbsent: false
+    components: [ToolExe]
+  - id: Docs
+    title: Documentation
+    # TODO(line 52): conditional feature levels have no counterpart; the condition was "NOT INSTALLDOCS"
+    components: [Readme]
+components:
+  - id: Readme
+    guid: '{2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E61}'
+    files:
+      - source: docs/readme.txt
+        id: readme.txt
+    registry:
+      - root: HKCU
+        key: Software\Example\Hello Tools
+        name: Version
+        value: ${ProductVersion}
+    condition: EDITION = "full"
+  # The RemoveFolder of this component was left out: msi-builder writes one for every folder in the user profile.
+  - id: ToolExe
+    directory: BIN
+    guid: '{2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E62}'
+    files:
+      - source: ${BinDir}/tool.exe
+        name: hello-tool.exe
+        id: tool.exe
+    registry:
+      - id: ToolExe_KeyPath
+        root: HKCU
+        key: Software\Example\Hello Tools
+        name: installed
+        type: dword
+        value: "1"
+    environment:
+      - name: PATH
+        value: '[BIN]'
+        action: prepend
+        scope: user
+    keyPath: ToolExe_KeyPath
+properties:
+  EDITION: full
+launchConditions:
+  - condition: Installed OR VersionNT >= 603
+    message: Hello Tools needs Windows 10.
+customActions:
+  - id: Echo
+    run:
+      command: '"[SystemFolder]cmd.exe" /c echo hello'
+    return: ignore
+    schedule:
+      - {sequence: execute, after: InstallFinalize, condition: NOT Installed}
+  - id: RunTool
+    run:
+      command: '"[#tool.exe]" --setup'
+    execute: commit
+    return: asyncWait
+    schedule:
+      - {sequence: execute, after: InstallFiles, condition: NOT Installed AND NOT REMOVE}
+ui:
+  enabled: true

@@ -66,8 +66,16 @@ versioning after 1.0.
   [`internal/codepage`](internal/codepage), [`internal/artwork`](internal/artwork):
   standard table definitions, PE version resources, the condition grammar,
   sequence numbering, code pages and the wizard bitmaps.
-- [`cmd/msi-builder`](cmd/msi-builder): CLI with `build`, `validate`, `inspect`, `sign`,
-  `verify`, `completion` and `version`, built on `spf13/cobra`.
+- [`cmd/msi-builder`](cmd/msi-builder): CLI with `build`, `validate`, `inspect`, `convert`,
+  `sign`, `verify`, `completion` and `version`, built on `spf13/cobra`.
+- [`internal/wixconvert`](internal/wixconvert): the best-effort WiX `.wxs` to
+  YAML converter behind `msi-builder convert`, on `encoding/xml` only. It
+  reads the source in one pass and emits an ordered `omap`, so the YAML keeps
+  the schema's key order; everything without a counterpart becomes a
+  `# TODO` comment next to the key it belongs to and a `Note` for stderr.
+  Snapshots in `testdata/` (regenerate with `MSI_BUILDER_UPDATE_SNAPSHOTS=1`)
+  must stay valid configs. The fixtures are our own sample app: never copy
+  third-party `.wxs` files in, and never read WiX source code (clean room).
 - [`internal/spool`](internal/spool), [`internal/memtest`](internal/memtest),
   [`internal/testpe`](internal/testpe): the spool target shared by file and
   in-memory builds, the peak-heap sampler for bounded-memory tests, and a

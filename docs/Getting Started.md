@@ -80,6 +80,9 @@ msiexec /x hello.msi /qn
   wizard: see the recipes of the [YAML Schema](YAML%20Schema.md). The
   [windows_exporter example](../examples/windows_exporter/msi.yaml) uses most
   of them.
+- Coming from WiX: [`msi-builder convert`](cli/msi-builder_convert.md) turns
+  a `.wxs` file into a first `msi.yaml` and marks what it could not convert
+  with `# TODO` comments.
 - Inspect a package: [`msi-builder inspect`](cli/msi-builder_inspect.md) prints its
   summary, streams and tables.
 - Build packages from Go code: [Go API](go-api.md).

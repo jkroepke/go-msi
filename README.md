@@ -125,7 +125,8 @@ agent with a service. These are not supported:
   most 2 GiB − 32 KiB. Cabinets are LZX (the default), MSZIP or stored.
 - **Script custom actions** (VBScript, JScript).
 - **Editing existing packages and XML input.** `msi-builder inspect` only
-  reads packages to help debugging.
+  reads packages to help debugging. `msi-builder convert` turns a WiX
+  source file into a YAML starting point once; builds never read XML.
 - **Advertised installs and advertised shortcuts.**
 - **Hand-built dialogs.** The UI is a built-in wizard plus optional form
   pages that ask for properties; there is no free control layout.
