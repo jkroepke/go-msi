@@ -118,8 +118,8 @@ func (c *converter) checkCodes() {
 			// generated code.
 			c.todof(nil, "", comp.e.line,
 				"%s has no matching component for this shortcut component, so its shortcut went onto the file and a late "+
-					"removeOld deletes it; give the component an Id, or keep it with its shortcuts and the guid from "+
-					"msi-builder inspect --table Component", c.built.Name)
+					"removeOld deletes it; set its Id to the Component key WiX generated for it (msi-builder inspect "+
+					"--table Component) and convert again", c.built.Name)
 
 			continue
 		}
