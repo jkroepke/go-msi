@@ -206,6 +206,13 @@ jobs:
         shell: bash
         run: go test -v -count=1 -run 'TestLanguagesInstallLANG03|TestFullUILanguages' ./internal/builder/nativetest/
 
+      # Print the WM_SETTINGCHANGE messages msiexec sends for Environment
+      # rows and what Explorer sees afterwards (MSISPEC-RESULTS ENVVAR-02).
+      - name: go test (environment broadcast results)
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        shell: bash
+        run: go test -v -count=1 -run 'TestMsiexecEnvironmentBroadcast' ./internal/builder/nativetest/
+
       # Print what a major upgrade does when removing the old product fails,
       # with and without IgnoreRemoveFailure (MSISPEC-RESULTS UPG-10).
       - name: go test (upgrade remove failure results)
