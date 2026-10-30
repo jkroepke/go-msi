@@ -1192,9 +1192,10 @@ the engine resolves (including `[%ENV]` inside it), is replaced by a
 placeholder SID. `[Property]` references are not expanded by the engine and
 are rejected. A deny ACE gets a warning, because SEC-01 saw a deny for
 `BUILTIN\Users` lock the installer out of its own file on uninstall. A
-DACL with no allow ACE for SYSTEM or Administrators on the object itself
-(`SY`, `BA`, their SIDs, `<SYSTEM>`, `<NT AUTHORITY\SYSTEM>`,
-`<Administrators>` or `<BUILTIN\Administrators>`; localized or
+DACL with no allow ACE for SYSTEM, Administrators or Everyone (which
+SYSTEM is part of) on the object itself (`SY`, `BA`, `WD`, their SIDs,
+`<SYSTEM>`, `<NT AUTHORITY\SYSTEM>`, `<Administrators>`,
+`<BUILTIN\Administrators>` or `<Everyone>`; localized or
 machine-qualified names are not recognized) gets a
 warning too: the engine runs as SYSTEM, and a folder locked to
 `NetworkService` alone failed its install and the rollback of an upgrade. A
