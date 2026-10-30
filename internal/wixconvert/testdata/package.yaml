@@ -193,6 +193,7 @@ components:
           rights: ["0x120116"]
   # The RemoveFolder and HKCU key path of this shortcut component were left out:
   # msi-builder writes both for every shortcut.
+  # TODO(line 129): msi-builder writes its own HKCU key path for this shortcut component; with the late removeOld the WiX value HKCU\Software\Example\Hello\installed presumably stays behind, so remove it with removeRegistry in another component
   - id: StartMenu
     directory: ProgramMenuFolder/Example
     guid: 0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a14

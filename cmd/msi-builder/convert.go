@@ -35,7 +35,7 @@ With --msi and the package WiX built from the source file, every component
 whose Guid WiX generated (Guid="*" or none) keeps the ComponentId it has in
 that package. Without them, msi-builder generates other component codes, and
 an upgrade that removes the old version after installing the new one
-(MajorUpgrade Schedule="afterInstallExecute") deletes the files of every
+(MajorUpgrade Schedule="afterInstallExecute" or "afterInstallFinalize") deletes the files of every
 component whose code changed.
 
 The YAML file goes to stdout, or to the file --output names. Review it, then

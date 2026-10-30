@@ -158,12 +158,15 @@ type dir struct {
 }
 
 type comp struct {
-	e           *elem
-	out         *omap
-	id          string
-	dir         string
-	inFeature   bool
-	dropIfEmpty bool
+	e   *elem
+	out *omap
+	id  string
+	dir string
+	// droppedValues are the HKCU key path values of a shortcut component
+	// that msi-builder replaces with its own.
+	droppedValues []string
+	inFeature     bool
+	dropIfEmpty   bool
 	// generated is set when WiX generates the component's Guid, pinned
 	// when the built package gave it one.
 	generated bool

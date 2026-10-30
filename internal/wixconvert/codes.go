@@ -93,6 +93,8 @@ func (c *converter) builtComponent(comp *comp, keyFile string) *BuiltComponent {
 func (c *converter) checkCodes() {
 	open, pinned := c.openCodes()
 
+	c.noteDroppedValues()
+
 	if c.built == nil {
 		c.noteLateRemoval(open)
 
@@ -105,12 +107,42 @@ func (c *converter) checkCodes() {
 
 	for _, comp := range open {
 		if comp.out == nil {
-			continue // a shortcut component without a match left nothing behind
+			// The shortcut moved onto its file, into a component with a
+			// generated code.
+			c.todof(nil, "", comp.e.line,
+				"%s has no matching component for this shortcut component, so its shortcut went onto the file and a late "+
+					"removeOld deletes it; give the component an Id, or keep it with its shortcuts and the guid from "+
+					"msi-builder inspect --table Component", c.built.Name)
+
+			continue
 		}
 
 		c.todof(comp.out, "", comp.e.line,
 			"%s has no matching component; set guid to the ComponentId WiX gave this one (msi-builder inspect --table Component)",
 			c.built.Name)
+	}
+}
+
+// noteDroppedValues notes the HKCU key path values that a shortcut
+// component keeping its WiX code no longer writes: with a late removal the
+// old product's removal keeps them, since the code still has a client, and
+// presumably nothing removes them later (as INST-04 saw for HKCU values the
+// new version did not list).
+func (c *converter) noteDroppedValues() {
+	upgrade := c.out.mapAt("upgrade")
+	if upgrade == nil || !lateRemoval[upgrade.str("removeOld")] {
+		return
+	}
+
+	for _, comp := range c.comps {
+		if comp.out == nil || comp.out.get("guid") == nil || len(comp.droppedValues) == 0 {
+			continue
+		}
+
+		c.todof(comp.out, "", comp.e.line,
+			"msi-builder writes its own HKCU key path for this shortcut component; with the late removeOld the WiX value "+
+				"HKCU\\%s presumably stays behind, so remove it with removeRegistry in another component",
+			strings.Join(comp.droppedValues, ", HKCU\\"))
 	}
 }
 
@@ -150,18 +182,23 @@ func (c *converter) noteLateRemoval(open []*comp) {
 
 	const listed = 5
 
-	ids := make([]string, 0, listed+1)
+	ids := make([]string, 0, listed)
 	for _, comp := range open[:min(len(open), listed)] {
 		ids = append(ids, cmp.Or(comp.e.attr("Id"), comp.id, "the component in line "+strconv.Itoa(comp.e.line)))
 	}
 
-	if len(open) > listed {
-		ids = append(ids, fmt.Sprintf("%d more components", len(open)-listed))
+	list := strings.Join(ids, ", ")
+
+	switch more := len(open) - listed; {
+	case more == 1:
+		list += " and one more component"
+	case more > 1:
+		list += fmt.Sprintf(" and %d more components", more)
 	}
 
 	c.todof(upgrade, "removeOld", line,
 		"WiX generated the Guid of %s; msi-builder generates other codes, and removing the old version after installing "+
 			"this one deletes their files on the first upgrade from the WiX package. Run msi-builder convert again with "+
 			"--msi and the package WiX built, or set each guid from msi-builder inspect --table Component",
-		strings.Join(ids, ", "))
+		list)
 }

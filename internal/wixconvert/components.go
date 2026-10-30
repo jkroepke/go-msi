@@ -148,11 +148,11 @@ func (c *converter) component(comp *comp, tree map[*dir]bool) *omap {
 		content.child(kid)
 	}
 
-	content.finish()
-
 	if comp.generated && c.built != nil {
 		c.pinCode(comp, content.keyFile)
 	}
+
+	content.finish()
 
 	return out
 }
@@ -314,6 +314,10 @@ func (cc *compConv) dropShortcutRows() {
 	}
 
 	cc.cp.dropIfEmpty = true
+
+	for _, value := range cc.hkcuKeyPaths {
+		cc.cp.droppedValues = append(cc.cp.droppedValues, value.str("key")+`\`+value.str("name"))
+	}
 
 	if cc.keyPath != "" && cc.out.get("registry") == nil {
 		cc.out.del("keyPath")

@@ -860,7 +860,10 @@ GUIDs with `guid` on those components, or keep the early removal.
 of each component from the WiX package, by its `Id` or, for a component
 without one, by its key file, keeps a shortcut component that has a GUID
 instead of moving its shortcut onto the file, and leaves a `# TODO` on any
-component it cannot find there. Without `--msi`, convert leaves one `# TODO` at
+component it cannot find there. Such a kept shortcut component gets
+msi-builder's own HKCU key path, so the HKCU value WiX wrote for it
+probably stays behind after a late removal; convert names it in a
+`# TODO`, and a `removeRegistry` entry in another component removes it. Without `--msi`, convert leaves one `# TODO` at
 `upgrade.removeOld` that names the components without a WiX `Guid`.
 `msi-builder inspect --table Component old.msi` shows the GUIDs of the WiX
 package, also the ones WiX generated. A folder source cannot take a `guid`,

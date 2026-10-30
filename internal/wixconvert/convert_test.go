@@ -233,6 +233,10 @@ const codesSource = `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
       <Shortcut Name="Hello" Target="[#main.exe]" />
       <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="menu" Value="1" KeyPath="yes" />
     </Component>
+    <Component Directory="ProgramMenuFolder">
+      <Shortcut Name="Hello notes" Target="[#main.exe]" Arguments="notes" />
+      <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="notes" Value="1" KeyPath="yes" />
+    </Component>
     <InstallExecuteSequence>
       <RemoveExistingProducts After="InstallExecute" />
     </InstallExecuteSequence>
@@ -281,8 +285,17 @@ func TestConvertBuiltCodes(t *testing.T) {
 		}
 	}
 
-	if !slices.Equal(lines, []int{17, 20}) {
-		t.Errorf("unmatched components in lines %v, want [17 20]", lines)
+	for _, want := range []string{
+		"hello.msi has no matching component for this shortcut component",
+		`the WiX value HKCU\Software\Example\Hello\menu presumably stays behind`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("YAML lacks %q:\n%s", want, text)
+		}
+	}
+
+	if !slices.Equal(lines, []int{17, 20, 27}) {
+		t.Errorf("unmatched components in lines %v, want [17 20 27]", lines)
 	}
 
 	// Without the package, the late removal names every component, also
@@ -292,8 +305,8 @@ func TestConvertBuiltCodes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := wixconvert.Note{Line: 28, Message: "WiX generated the Guid of the component in line 7, Main, the component in line 17, " +
-		"the component in line 20, Menu; msi-builder generates other codes"}
+	want := wixconvert.Note{Line: 32, Message: "WiX generated the Guid of the component in line 7, Main, the component in line 17, " +
+		"the component in line 20, Menu and one more component; msi-builder generates other codes"}
 
 	if !slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool {
 		return n.Line == want.Line && strings.HasPrefix(n.Message, want.Message)
