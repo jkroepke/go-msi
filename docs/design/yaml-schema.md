@@ -784,7 +784,9 @@ not contain line breaks; the public properties in it and the property
 itself are made secure. Unlike `purge`, the folder may be the install dir
 or any folder the property names. That is the point of the feature, and
 also its risk: `INSTALLDIR=D:\Tools` on the command line makes the
-uninstall empty `D:\Tools`. The action refuses an empty value, a path that
+uninstall empty `D:\Tools`. An elevated session that a standard user
+started (a repair of a per-machine product, for one) removes nothing, so
+the user cannot point LocalSystem at a folder of their choice (expected). The action refuses an empty value, a path that
 is not a full local path (`C:\…`, no `.` or `..`, no name ending in a space
 or a dot), a drive root, a folder reached through a junction, a symbolic
 link or a `subst` drive, a junction itself, the profiles folder, every

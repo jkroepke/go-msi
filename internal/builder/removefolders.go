@@ -63,8 +63,9 @@ func (b *build) removeFoldersActions() {
 		{name: cadll.RemoveFoldersCommit, typ: caDLL | caCommit | caNoImpersonate | caHideTarget, source: cadll.Key, target: cadll.RemoveFoldersExec},
 	}
 
-	// The data names the private backup folder; keep it out of the log,
-	// where the account that started a repair could read it.
+	// The data names the backup folder; keep it out of the log. Its
+	// safety does not rest on that: the DLL checks the folder's owner and
+	// access list before it uses it.
 	for _, name := range []string{cadll.RemoveFoldersUndo, cadll.RemoveFoldersExec, cadll.RemoveFoldersCommit} {
 		b.hidden[name] = true
 	}

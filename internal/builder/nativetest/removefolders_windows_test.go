@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"testing"
@@ -392,6 +393,22 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 	}
 
 	tree.requireGuarded(t, "after the removal")
+	requireNoBackupPath(t, logs)
+}
+
+// backupPath matches the name of a backup folder, which holds the token.
+var backupPath = regexp.MustCompile(`BuilderRemoveFolders\.[0-9a-f]{32}`)
+
+// requireNoBackupPath fails when a verbose log names a backup folder, which
+// MsiHiddenProperties and the hidden target keep out of it.
+func requireNoBackupPath(t *testing.T, logs string) {
+	t.Helper()
+
+	for _, name := range []string{"install.log", "upgrade.log", "rollback.log", "uninstall.log"} {
+		if match := backupPath.FindString(readLog(filepath.Join(logs, name))); match != "" {
+			t.Errorf("%s names the backup folder %s", name, match)
+		}
+	}
 }
 
 // TestICERemoveFolders runs the full ICE suite against the FILE-11 package.

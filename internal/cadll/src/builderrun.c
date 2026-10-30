@@ -1761,8 +1761,10 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
 // three actions, each a line of folders after a header line
 // <op><token>: u (rollback) moves each folder back from its backup, m
 // (deferred) moves each folder by handle into X:\BuilderRemoveFolders.<token>\<n>,
-// a new folder that only LocalSystem, Administrators and its owner can
-// open, and c (commit) deletes the backups; with rollback disabled, which
+// a new folder with a protected access list for LocalSystem,
+// Administrators and its owner (its name is no secret: anyone can list the
+// volume root; what makes it safe is that the deferred, rollback and commit
+// sides only use it after checking that owner and access list), and c (commit) deletes the backups; with rollback disabled, which
 // skips commit actions, the deferred action gets d and deletes right away.
 // Deleting opens every entry relative to the handle of its folder without
 // following a junction or a symbolic link, which it removes as a link, so
@@ -1793,11 +1795,15 @@ static const WCHAR profileListKey[] = u"SOFTWARE\\Microsoft\\Windows NT\\Current
 static const WCHAR profilesDirectory[] = u"ProfilesDirectory";
 static const WCHAR profileImagePath[] = u"ProfileImagePath";
 static const WCHAR msgRemoving[] = u"to remove";
+static const WCHAR msgRemoveNotAdmin[] =
+    u"nothing removed: the session runs elevated, but the account that started it is no administrator, and the folders could come from its command line";
+static const WCHAR propRunningElevated[] = u"MsiRunningElevated";
+static const WCHAR adminsSid[] = u"S-1-5-32-544";
 static const WCHAR msgRemoveSchedule[] = u"cannot hand the folders to the deferred actions";
 static const WCHAR msgRemoveMoved[] = u"moved aside";
 static const WCHAR msgRemoveChanged[] = u"left in place, it is no longer the folder that was checked";
 static const WCHAR msgRemoveBusy[] = u"left in place, it cannot be moved (a file in it may be in use)";
-static const WCHAR msgRemoveBackup[] = u"left in place, the backup folder at the root of its volume cannot be created";
+static const WCHAR msgRemoveBackup[] = u"left in place, the backup folder at the root of its volume cannot be created or has no access list of its own (a FAT volume)";
 static const WCHAR msgRemoveVolume[] = u"left in place, it is on a volume mounted in a folder";
 static const WCHAR msgRemoveRestored[] = u"restored";
 static const WCHAR msgRemoveRestore[] = u"cannot be restored, it stays in the backup folder at the root of its volume";
@@ -1976,6 +1982,41 @@ static WCHAR *userSid(void)
     HeapFree(GetProcessHeap(), 0, user);
     CloseHandle(token);
     return sid;
+}
+
+// userIsAdmin reports whether the account the action runs as is in the
+// Administrators group, enabled or, for an administrator under UAC whose
+// token is filtered, deny-only; LocalSystem's token holds it as well.
+static int userIsAdmin(void)
+{
+    HANDLE token = 0;
+    if (!OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 1, &token) && !OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+        return 0;
+    }
+    void *admins = 0;
+    DWORD size = 0;
+    int found = 0;
+    GetTokenInformation(token, 2 /* TokenGroups */, 0, 0, &size);
+    // TOKEN_GROUPS: a count, then SID_AND_ATTRIBUTES {PSID; DWORD} pairs.
+    struct group {
+        void *sid;
+        DWORD attributes;
+    };
+    struct groups {
+        DWORD count;
+        struct group group[1];
+    } *groups = size ? HeapAlloc(GetProcessHeap(), 0, size) : 0;
+    if (groups && GetTokenInformation(token, 2, groups, size, &size) && ConvertStringSidToSidW(adminsSid, &admins)) {
+        for (DWORD i = 0; i < groups->count && !found; i++) {
+            found = EqualSid(groups->group[i].sid, admins) != 0;
+        }
+    }
+    if (admins) {
+        LocalFree(admins);
+    }
+    HeapFree(GetProcessHeap(), 0, groups);
+    CloseHandle(token);
+    return found;
 }
 
 // profileCheck returns why folder must not be removed because of the
@@ -2188,6 +2229,20 @@ __declspec(dllexport) UINT WINAPI BuilderRemoveFolders(MSIHANDLE install)
 {
     WCHAR *list = property(install, propRemove);
     if (!list) {
+        return ERROR_SUCCESS;
+    }
+    // An elevated session that a standard user started (a repair of a
+    // per-machine product, an assigned one, AlwaysInstallElevated) would
+    // remove as LocalSystem a folder from that user's command line, since
+    // the folder properties are secure. Without elevation the deferred
+    // actions run as the user (documented), who could delete the folder
+    // anyway.
+    WCHAR *elevated = property(install, propRunningElevated);
+    int refuse = elevated && *elevated && !userIsAdmin();
+    HeapFree(GetProcessHeap(), 0, elevated);
+    if (refuse) {
+        logft(install, tmplRemove, msgRemoveNotAdmin, 0, 0);
+        HeapFree(GetProcessHeap(), 0, list);
         return ERROR_SUCCESS;
     }
     wbuf folders = {0, 0, 0};
@@ -2483,6 +2538,7 @@ static int moveAside(MSIHANDLE install, const WCHAR *folder, const WCHAR *token,
         logft(install, tmplRemove, msgNoMemory, 0, 0);
         return 0;
     }
+    int fresh = 0;
     if (!(*created & volume)) {
         // A new folder of the token's own: only LocalSystem, the
         // administrators and its owner may open it.
@@ -2491,11 +2547,20 @@ static int moveAside(MSIHANDLE install, const WCHAR *folder, const WCHAR *token,
             SECURITY_ATTRIBUTES sa = {sizeof sa, sd, 0};
             if (CreateDirectoryW(root, &sa)) {
                 *created |= volume;
+                fresh = 1;
             }
             LocalFree(sd);
         }
     }
     dir = *created & volume ? openBackup(root, FILE_ADD_SUBDIRECTORY) : 0;
+    if (!dir && fresh) {
+        // A volume without access lists (FAT, exFAT) keeps no protected
+        // DACL, so openBackup refuses the folder just made; take it away
+        // again (a junction put there instead goes as a link) and leave
+        // the folders of this volume in place.
+        RemoveDirectoryW(root);
+        *created &= ~volume;
+    }
     h = dir ? openNoFollow(folder, DELETE_) : 0;
     final = h ? finalPathOf(h) : 0;
     if (!dir) {
