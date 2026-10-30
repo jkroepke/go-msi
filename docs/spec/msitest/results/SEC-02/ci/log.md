@@ -54,20 +54,27 @@ and `stop` on the service to `BU`. `SVC_ACCOUNT=BUILTIN\Guests`.
   and no remembered account were left.
 - An install without `SVC_ACCOUNT` returned 1603 with `no account to grant
   rights to`.
-- After the install, `HKLM\SOFTWARE\msi-builder\GrantAccounts\<ProductCode>`
-  held `BUILTIN\Guests` under `[SVC_ACCOUNT]`.
+- After the install, `reg query HKLM\SOFTWARE\msi-builder\GrantAccounts /s`
+  listed `BUILTIN\Guests`.
 - `msiexec /fa` without the property logged `granting to the remembered
-  account` and `already granted` for the `data` folder, and every DACL had
-  the ACEs of the install afterwards. The log showed no `BuilderGrant` line
-  of the deferred action for `app.exe`, so whether the replaced file kept
-  its ACE or was granted again is not recorded; its DACL matched either way.
+  account` and `already granted` for the `data` folder, and every file and
+  folder DACL had the ACEs of the install afterwards. `app.exe` was
+  overwritten (`REINSTALLMODE specifies all files to be overwritten`) and
+  then logged `BuilderGrant: C:\Program Files\MsiBuilderGrant\app.exe:
+  already granted, left as it is`: the replaced file kept its explicit ACE
+  (job 123799612563).
 - In run 40968697181 (commit 8db502a), `msiexec /fa <package>
   SVC_ACCOUNT=BUILTIN\Guests FAILNOW=1` set neither property: the log's
   property dump had no `FAILNOW`, `FailNow` was skipped (condition false)
   and the grants with `[SVC_ACCOUNT]` were skipped as empty. The failing
   repair therefore uses `/i <package> REINSTALL=ALL REINSTALLMODE=amus`,
   which returned 1603 and left every DACL (the file, all three folders, the
-  file in the existing folder) and the service with the ACEs of the install;
-  the AI flag can drop (`D:PAI(` became `D:P(` on the `locked` folder).
+  file in the existing folder) and the service with the ACEs of the install.
+- The DACL's AI flag can drop while the ACEs stay: the rollback of the
+  failed install turned the `existing` folder's `D:AI(` into `D:(` (run
+  40964477950), a `/fa` repair did the same on `app.exe` (run
+  40966318115), and the failed `REINSTALL=ALL` repair turned the `locked`
+  folder's `D:PAI(` into `D:P(` (run 40971961598). The test compares the
+  ACEs without that flag since.
 - Uninstalling left the `existing` folder with its granted ACEs and removed
   the remembered account.

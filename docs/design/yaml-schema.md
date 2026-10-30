@@ -1022,7 +1022,7 @@ impersonation (as LocalSystem in a per-machine install) and records the rights i
 away again, so rights an object had before a failed install or repair stay,
 and `BuilderGrantCommit` drops the record and remembers the accounts that
 came from properties. A repair grants again; an object that kept its ACE is
-left as it is (whether a replaced file keeps it is not recorded, SEC-02). Uninstalling does not take them away: the objects the
+left as it is (a file a `/fa` repair overwrote kept its ACE, SEC-02). Uninstalling does not take them away: the objects the
 package created are removed, and a folder that existed before keeps the
 ACE.
 
