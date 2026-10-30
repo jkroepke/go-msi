@@ -8,13 +8,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
+	"unicode/utf16"
 	"unsafe"
 )
 
@@ -259,7 +259,12 @@ func processEnvironment(pid int) (map[string]string, error) {
 	units := unsafe.Slice((*uint16)(unsafe.Pointer(unsafe.SliceData(data))), len(data)/2)
 	env := map[string]string{}
 
-	for entry := range strings.SplitSeq(syscall.UTF16ToString(slices.Clone(units)), "\x00") {
+	// UTF16ToString would stop at the first NUL, which ends each entry.
+	for entry := range strings.SplitSeq(string(utf16.Decode(units)), "\x00") {
+		if len(entry) < 2 {
+			continue
+		}
+
 		if i := strings.Index(entry[1:], "="); i >= 0 {
 			env[strings.ToUpper(entry[:i+1])] = entry[i+2:]
 		}
