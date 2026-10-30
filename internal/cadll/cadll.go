@@ -64,6 +64,7 @@ func Binary(platform string) ([]byte, error) {
 // their own) and the kinds of object.
 const (
 	GrantData       = "BuilderGrantData"
+	GrantCount      = "BuilderGrantCount"
 	GrantEntryPoint = "BuilderGrant"
 	GrantExec       = "BuilderGrantExec"
 	GrantRollback   = "BuilderGrantRollback"
@@ -72,9 +73,10 @@ const (
 	GrantFile    = 'f'
 	GrantService = 's'
 
-	// GrantInstall and GrantMaintenance follow the operation in the head
-	// line of the data: a first install or a maintenance install, which
-	// falls back to the remembered accounts.
+	// GrantInstall and GrantMaintenance follow the operation and the count
+	// (`:` and one `#` per entry, from GrantCount) in the head line of the
+	// data: a first install or a maintenance install, which falls back to
+	// the remembered accounts.
 	GrantInstall     = 'i'
 	GrantMaintenance = 'm'
 

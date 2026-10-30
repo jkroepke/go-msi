@@ -82,11 +82,13 @@ the root `AGENTS.md` first.
   deferred `BuilderGrantExec`, its rollback and the commit action, told
   apart by the first character of `CustomActionData`: `+`, `-`, `c`, and
   `x` for the commit of a removal; then `i` or `m` for a first or a
-  maintenance install). The engine builds that data with type-51 actions
+  maintenance install, after `:` and one `#` per entry line). The engine builds that data with type-51 actions
   the builder writes (`internal/builder/permissions.go`); never add an
   immediate action that computes data for a deferred LocalSystem action,
-  because it runs as the installing user, who can change it. The deferred
-  action rejects `|` and control characters in a formatted account and
+  because it runs as the installing user, who can change it, and keep the
+  setters right before the deferred actions. The deferred action fails when
+  the number of lines differs from the count (a line break in a formatted
+  value), and rejects `|` and control characters in a formatted account and
   control characters in an object; the account is the last field of a
   line. The deferred action records the rights it adds in
   `HKCU\Software\msi-builder\GrantRollback\<ProductCode>` (the LocalSystem
@@ -112,8 +114,7 @@ the root `AGENTS.md` first.
   (`[BuilderCloseExec][DIR]file|`), never from the schedule action: the
   impersonated custom action server runs with the user's token, so data it
   sets for a LocalSystem action is under the user's control. Grants
-  (above) predate this and still hand their data over from the schedule
-  action. Neither close action fails the install; the schedule action
+  (above) work the same way since 2026-10-30. Neither close action fails the install; the schedule action
   returns `ERROR_INSTALL_USEREXIT` only after a cancel.
 - Never take code from another installer toolkit's custom action library;
   the Windows Installer custom action contract is documented by Microsoft

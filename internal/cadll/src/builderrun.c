@@ -920,19 +920,24 @@ done:
 // BuilderGrantRollback and the commit action BuilderGrantCommit, all on the
 // entry point BuilderGrant, get this CustomActionData:
 //
-//     <op><mode><ProductCode>
+//     <op>:<count><mode><ProductCode>
 //     <kind>|<mask>|<flags>|<account template>|<object>|<account>
 //     ...
 //
 // The engine builds it, never an action that runs as the user (spec 17.7):
 // the builder writes one type-51 action per grant, conditioned on its
 // component being installed or repaired, that appends the entry to the
-// property BuilderGrantData, which an unconditioned type-51 action reset to
-// the head line before, and the engine formats account and object in it.
-// The template is escaped in the action, so it arrives as authored.
+// property BuilderGrantData, which a type-51 action reset to the head line
+// before, and the engine formats account and object in it. The template is
+// escaped in the action, so it arrives as authored. A second type-51 action
+// under the same condition appends `#` to BuilderGrantCount, which gives
+// count: one `#` per entry. A line break in a formatted account or object
+// would add lines, so the deferred action fails a grant whose number of
+// lines differs.
 //
 // op is `+` (grant), `-` (rollback), `c` (commit) or `x` (the commit of the
-// removal of the product, `x<ProductCode>` without a mode or entries). mode
+// removal of the product, `x<ProductCode>` without a count, a mode or
+// entries). mode
 // is `i` on a first install and `m` in a maintenance install. kind is `f`
 // (file or folder) or `s` (service), mask and flags are hexadecimal access
 // rights and ACE flags, the account is a SID string, an SDDL alias such as
@@ -967,6 +972,7 @@ static const WCHAR accountsKey[] = u"SOFTWARE\\msi-builder\\GrantAccounts\\";
 static const WCHAR msgRemembered[] = u"the account is empty in a maintenance install; granting to the remembered account";
 static const WCHAR msgRemember[] = u"cannot remember the account of";
 static const WCHAR msgGrantData[] = u"malformed grant data";
+static const WCHAR msgGrantLines[] = u"the grant data has more lines than grants: a formatted account or object contains a line break";
 static const WCHAR msgNoAccount[] = u"no account to grant rights to";
 static const WCHAR msgSkipEmpty[] = u"the account is empty in a maintenance install and none is remembered; skipped";
 static const WCHAR msgAccountType[] = u"the account names a domain, a deleted account or nothing";
@@ -1161,15 +1167,39 @@ static int hasBracket(const WCHAR *s)
     return 0;
 }
 
+static WCHAR *hexfield(WCHAR *p, DWORD *value);
+
+// grantEntry is one parsed entry of the grant data.
+typedef struct {
+    DWORD mask, flags;
+    int type;
+    WCHAR *template, *object, *account;
+} grantEntry;
+
+// parseEntry splits an entry in place. It returns 0 when it is malformed. A
+// `|` in the object, which only an authored service name can have, moves
+// the rest into the account, which then fails as an account with `|`.
+static int parseEntry(WCHAR *entry, grantEntry *e)
+{
+    WCHAR *p = (entry[0] == 'f' || entry[0] == 's') && entry[1] == '|' ? hexfield(entry + 2, &e->mask) : 0;
+    p = p ? hexfield(p, &e->flags) : 0;
+    e->type = entry[0] == 's' ? SE_SERVICE : SE_FILE_OBJECT;
+    e->template = p;
+    e->object = p ? field(p, '|') : 0;
+    e->account = e->object ? field(e->object, '|') : 0;
+    return e->account && *e->template && *e->object && e->mask && !(e->flags & ~AUTHORED_INHERIT_FLAGS);
+}
+
 // grantAccount returns the account an entry grants to: the formatted
 // account, or, in a maintenance install (again) where the template formatted
 // to its text without the [...] references, the account remembered for the
 // template, which *kept holds for the caller to free. It returns 0, after a
 // log line when log is set, when there is none: *fail tells whether that
 // fails the install (a first install) or skips the entry.
-static WCHAR *grantAccount(MSIHANDLE install, const WCHAR *product, int again, const WCHAR *template, WCHAR *account, WCHAR **kept, int log, int *fail)
+static WCHAR *grantAccount(MSIHANDLE install, const WCHAR *product, int again, const grantEntry *e, WCHAR **kept, int log, int *fail)
 {
-    WCHAR *name = trim(account), *lit = hasBracket(template) ? literal(template) : 0;
+    const WCHAR *template = e->template;
+    WCHAR *name = trim(e->account), *lit = hasBracket(template) ? literal(template) : 0;
     *kept = 0;
     *fail = 1;
     // `.\[SVC_USER]` with an empty property is as unset as `[SVC_USER]`.
@@ -1183,13 +1213,13 @@ static WCHAR *grantAccount(MSIHANDLE install, const WCHAR *product, int again, c
         // a patch, which replace files and add components.
         name = trim(*kept);
         if (log) {
-            logft(install, tmplGrant, msgRemembered, template, 0);
+            logft(install, tmplGrant, msgRemembered, e->object, 0);
         }
     }
     if (!*name) {
         *fail = !again;
         if (log) {
-            logft(install, tmplGrant, again ? msgSkipEmpty : msgNoAccount, template, 0);
+            logft(install, tmplGrant, again ? msgSkipEmpty : msgNoAccount, e->object, 0);
         }
         return 0;
     }
@@ -1372,27 +1402,6 @@ static int rebuild(ACL *dacl, void *sid, DWORD mask, DWORD flags, int grant, ACL
     return 1;
 }
 
-// grantEntry is one parsed entry of the grant data.
-typedef struct {
-    DWORD mask, flags;
-    int type;
-    WCHAR *template, *object, *account;
-} grantEntry;
-
-// parseEntry splits an entry in place. It returns 0 when it is malformed. A
-// `|` in the object, which only an authored service name can have, moves
-// the rest into the account, which then fails as an account with `|`.
-static int parseEntry(WCHAR *entry, grantEntry *e)
-{
-    WCHAR *p = (entry[0] == 'f' || entry[0] == 's') && entry[1] == '|' ? hexfield(entry + 2, &e->mask) : 0;
-    p = p ? hexfield(p, &e->flags) : 0;
-    e->type = entry[0] == 's' ? SE_SERVICE : SE_FILE_OBJECT;
-    e->template = p;
-    e->object = p ? field(p, '|') : 0;
-    e->account = e->object ? field(e->object, '|') : 0;
-    return e->account && *e->template && *e->object && e->mask && !(e->flags & ~AUTHORED_INHERIT_FLAGS);
-}
-
 // applyEntry grants (or, on rollback, revokes) the rights of one entry to
 // account. On a grant, the rights it is about to add are recorded under
 // valueName in key (keyErr is why key is 0) before the object changes. It
@@ -1511,14 +1520,31 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
     HANDLE heap = GetProcessHeap();
     WCHAR *data = property(install, propData);
     WCHAR op = data ? data[0] : 0;
-    int again = op && data[1] == 'm';
-    if (!data || (op != '+' && op != '-' && op != 'c' && op != 'x') || (op != 'x' && data[1] != 'i' && !again)) {
+    WCHAR *head = op && op != 'x' && data[1] == ':' ? data + 2 : 0;
+    DWORD count = 0, lines = 0;
+    for (; head && *head == '#'; head++) {
+        count++;
+    }
+    int again = head && *head == 'm';
+    if (!data || (op != '+' && op != '-' && op != 'c' && op != 'x') || (op != 'x' && (!head || (*head != 'i' && !again)))) {
         logft(install, tmplGrant, msgGrantData, 0, 0);
         HeapFree(heap, 0, data);
         return data ? ERROR_INSTALL_FAILURE : ERROR_SUCCESS;
     }
-    WCHAR *product = op == 'x' ? data + 1 : data + 2;
+    WCHAR *product = op == 'x' ? data + 1 : head + 1;
     WCHAR *entries = field(product, '\n');
+    for (WCHAR *p = entries; p && *p; p++) {
+        lines += *p == '\n';
+    }
+    if (entries && *entries) {
+        lines++;
+    }
+    if (op != 'x' && lines != count) {
+        // A line break in a formatted account or object added lines.
+        logft(install, tmplGrant, msgGrantLines, 0, 0);
+        HeapFree(heap, 0, data);
+        return op == '+' ? ERROR_INSTALL_FAILURE : ERROR_SUCCESS;
+    }
     wbuf path = {0, 0, 0};
     if (op == 'x') {
         if (accountsPath(&path, product)) {
@@ -1559,7 +1585,7 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
         } else if (hasControl(e.object, 0)) {
             logft(install, tmplGrant, msgBadObject, e.object, 0);
         } else {
-            account = grantAccount(install, product, again, e.template, e.account, &kept, op == '+', &fail);
+            account = grantAccount(install, product, again, &e, &kept, op == '+', &fail);
         }
         // The commit remembers the accounts that came from properties; a
         // rollback undoes every grant it can and never fails.

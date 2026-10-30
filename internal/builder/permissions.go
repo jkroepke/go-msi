@@ -20,6 +20,12 @@ const (
 // ACE inheritance flags of a folder grant: subfolders and files (OICI).
 const grantInherit = 0x3
 
+// maxGrants is the number of grants that fit between InstallFiles or
+// InstallServices and the next standard action: two type-51 actions each,
+// plus seven setters and the three deferred actions, in at most 99 numbers
+// (89 after InstallFiles when PatchFiles is at 4090).
+const maxGrants = 39
+
 // grantInfo is one grant of a permissions block on an object the component
 // installs.
 type grantInfo struct {
@@ -111,7 +117,14 @@ func (b *build) grantActions() {
 		return
 	}
 
-	for _, name := range []string{cadll.GrantData, cadll.GrantExec, cadll.GrantRollback, cadll.GrantCommit} {
+	if len(b.grants) > maxGrants {
+		b.errorf("components", "%d permission grants; a package can have at most %d, because their actions share the sequence numbers "+
+			"before StartServices", len(b.grants), maxGrants)
+
+		return
+	}
+
+	for _, name := range []string{cadll.GrantData, cadll.GrantCount, cadll.GrantExec, cadll.GrantRollback, cadll.GrantCommit} {
 		if _, ok := b.cfg.Properties[name]; ok {
 			b.errorf("properties."+name, "the property %s is reserved for permission grants", name)
 
@@ -130,22 +143,25 @@ func (b *build) grantActions() {
 }
 
 // grantData builds the data of the deferred grant actions in BuilderGrantData
-// with type-51 actions before InstallValidate, where the component states
-// are known: two resets, one of which runs, so that nothing set before (on
-// the command line or by an action) survives into the data, then one action
-// per grant, conditioned on its component being installed or repaired and
-// the block's condition, that appends the grant with its account and object
-// formatted by the engine, then the data of each deferred action. A removal
-// only hands the commit action the forgetting of the remembered accounts,
-// so a failed removal keeps them.
+// with type-51 actions right before them, so that no action that runs as
+// the user comes between: two resets, one of which runs, and a reset of
+// BuilderGrantCount, so that nothing set before (on the command line or by
+// an action) survives into the data, then two actions per grant,
+// conditioned on its component being installed or repaired and the block's
+// condition, one that appends the grant with its account and object
+// formatted by the engine and one that counts it, then the data of each
+// deferred action. The count lets the DLL find a line break that a
+// formatted value added. A removal only hands the commit action the
+// forgetting of the remembered accounts, so a failed removal keeps them.
 func (b *build) grantData() {
-	b.standardAt(seqInstallExecute, actInstallValidate)
+	data := "[" + cadll.GrantCount + "][" + cadll.GrantData + "]"
 
-	data := "[" + cadll.GrantData + "]"
+	type setter struct{ name, property, cond, target string }
 
-	setters := []struct{ name, cond, target string }{
-		{"BuilderGrantReset", condNotInstalled, string(cadll.GrantInstall) + "[ProductCode]"},
-		{"BuilderGrantResetMaintenance", "Installed", string(cadll.GrantMaintenance) + "[ProductCode]"},
+	setters := []setter{
+		{"BuilderGrantReset", cadll.GrantData, condNotInstalled, string(cadll.GrantInstall) + "[ProductCode]"},
+		{"BuilderGrantResetMaintenance", cadll.GrantData, "Installed", string(cadll.GrantMaintenance) + "[ProductCode]"},
+		{"BuilderGrantResetCount", cadll.GrantCount, "", ":"},
 	}
 
 	for i, grant := range b.grants {
@@ -161,26 +177,23 @@ func (b *build) grantData() {
 
 		account := grant.cfg.Account
 		entry := cadll.GrantEntry(grant.kind, mask, grant.flags, escapeFormatted(account), grant.object, account)
-		setters = append(setters, struct{ name, cond, target string }{
-			generatedID("BuilderGrantSet", strconv.Itoa(i), grant.object, account), cond, data + "\n" + entry,
-		})
+		id := generatedID("", strconv.Itoa(i), grant.object, account)
+		setters = append(setters,
+			setter{"BuilderGrantSet" + id, cadll.GrantData, cond, "[" + cadll.GrantData + "]\n" + entry},
+			setter{"BuilderGrantCount" + id, cadll.GrantCount, cond, "[" + cadll.GrantCount + "]#"},
+		)
 	}
 
-	for _, setter := range setters {
-		b.addAction(&actionInfo{name: setter.name, typ: caSetProperty, source: cadll.GrantData, target: setter.target})
-		b.schedule(seqInstallExecute, setter.name, setter.cond, actInstallValidate, "", 0)
-	}
+	setters = append(setters,
+		setter{"BuilderGrantSetExec", cadll.GrantExec, "", "+" + data},
+		setter{"BuilderGrantSetRollback", cadll.GrantRollback, "", "-" + data},
+		setter{"BuilderGrantSetCommit", cadll.GrantCommit, "", "c" + data},
+		setter{"BuilderGrantForget", cadll.GrantCommit, condRemoveAll, string(cadll.GrantForget) + "[ProductCode]"},
+	)
 
-	final := []struct{ name, property, target, cond string }{
-		{"BuilderGrantSetExec", cadll.GrantExec, "+" + data, ""},
-		{"BuilderGrantSetRollback", cadll.GrantRollback, "-" + data, ""},
-		{"BuilderGrantSetCommit", cadll.GrantCommit, "c" + data, ""},
-		{"BuilderGrantForget", cadll.GrantCommit, string(cadll.GrantForget) + "[ProductCode]", condRemoveAll},
-	}
-
-	for _, setter := range final {
-		b.addAction(&actionInfo{name: setter.name, typ: caSetProperty, source: setter.property, target: setter.target})
-		b.schedule(seqInstallExecute, setter.name, setter.cond, actInstallValidate, "", 0)
+	for _, s := range setters {
+		b.addAction(&actionInfo{name: s.name, typ: caSetProperty, source: s.property, target: s.target})
+		b.schedule(seqInstallExecute, s.name, s.cond, cadll.GrantRollback, "", 0)
 	}
 }
 

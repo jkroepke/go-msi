@@ -2,7 +2,6 @@ package builder_test
 
 import (
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -157,68 +156,53 @@ func TestPermissionGrants(t *testing.T) {
 		conds[fmt.Sprint(row[0])] = row[1]
 	}
 
-	// The engine builds the data: two complementary resets, then one
-	// type-51 action per grant with its condition, in authoring order.
-	data := "[BuilderGrantData]\n"
-	want := []struct{ cond, target string }{
-		{"NOT Installed", "i[ProductCode]"},
-		{"Installed", "m[ProductCode]"},
-		{installed + " AND (DATA=1)", data + "f|1301bf|3|NS|" + dir + "|NS"},
-		{installed + " AND (DATA=1)", data + "f|120089|0|.\\svc|" + dir + "|.\\svc"},
-		{installed, data + "s|30|0|BU|HelloSvc|BU"},
-		{installed, data + "f|1300a9|0|[\\[]SVC_ACCOUNT[\\]]|[#hello.exe]|[SVC_ACCOUNT]"},
+	// The engine builds the data right before the deferred actions: two
+	// complementary resets and a reset of the count, then two type-51
+	// actions per grant with its condition, in authoring order, then the
+	// data of each deferred action, set in every install, so that none
+	// comes from the command line.
+	data, count := "[BuilderGrantData]\n", "[BuilderGrantCount]#"
+	want := []struct{ property, cond, target string }{
+		{"BuilderGrantData", "NOT Installed", "i[ProductCode]"},
+		{"BuilderGrantData", "Installed", "m[ProductCode]"},
+		{"BuilderGrantCount", "", ":"},
+		{"BuilderGrantData", installed + " AND (DATA=1)", data + "f|1301bf|3|NS|" + dir + "|NS"},
+		{"BuilderGrantCount", installed + " AND (DATA=1)", count},
+		{"BuilderGrantData", installed + " AND (DATA=1)", data + "f|120089|0|.\\svc|" + dir + "|.\\svc"},
+		{"BuilderGrantCount", installed + " AND (DATA=1)", count},
+		{"BuilderGrantData", installed, data + "s|30|0|BU|HelloSvc|BU"},
+		{"BuilderGrantCount", installed, count},
+		{"BuilderGrantData", installed, data + "f|1300a9|0|[\\[]SVC_ACCOUNT[\\]]|[#hello.exe]|[SVC_ACCOUNT]"},
+		{"BuilderGrantCount", installed, count},
+		{"BuilderGrantExec", "", "+[BuilderGrantCount][BuilderGrantData]"},
+		{"BuilderGrantRollback", "", "-[BuilderGrantCount][BuilderGrantData]"},
+		{"BuilderGrantCommit", "", "c[BuilderGrantCount][BuilderGrantData]"},
+		{"BuilderGrantCommit", `REMOVE~="ALL"`, "x[ProductCode]"},
+		{"BuilderRun", `NOT REMOVE~="ALL"`, "BuilderGrant"}, // BuilderGrantRollback
+		{"BuilderRun", `NOT REMOVE~="ALL"`, "BuilderGrant"}, // BuilderGrantExec
+		{"BuilderRun", "", "BuilderGrant"},                  // BuilderGrantCommit
 	}
 
-	var setters []string
+	// Nothing, above all no action that runs as the user, comes between
+	// the first reset and the deferred actions.
+	first := seq["BuilderGrantReset"]
+	byNumber := map[int]string{}
 
-	for _, r := range rows(t, database, "CustomAction") {
-		if r[2] == "BuilderGrantData" {
-			setters = append(setters, fmt.Sprint(r[0]))
-		}
+	for name, number := range seq {
+		byNumber[number] = name
 	}
 
-	slices.SortFunc(setters, func(x, y string) int { return seq[x] - seq[y] })
-
-	if len(setters) != len(want) {
-		t.Fatalf("BuilderGrantData setters %v, want %d", setters, len(want))
-	}
-
-	for i, name := range setters {
+	for i, action := range want {
+		name := byNumber[first+i]
 		r := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == name })
-		if fmt.Sprint(r[1]) != "51" || r[3] != want[i].target || fmt.Sprint(conds[name]) != want[i].cond {
-			t.Errorf("setter %d: %v condition %v, want %q if %q", i, r, conds[name], want[i].target, want[i].cond)
+
+		if r[2] != action.property || r[3] != action.target || strings.TrimSuffix(fmt.Sprint(conds[name]), "<nil>") != action.cond {
+			t.Errorf("action %d at %d: %v condition %v, want %s=%q if %q", i, first+i, r, conds[name], action.property, action.target, action.cond)
 		}
 	}
 
-	// Then the data of the deferred actions, set in every install, so that
-	// none comes from the command line, all before InstallValidate.
-	prevSetter := setters[len(setters)-1]
-
-	for _, final := range []struct{ name, property, target, cond string }{
-		{"BuilderGrantSetExec", "BuilderGrantExec", "+[BuilderGrantData]", ""},
-		{"BuilderGrantSetRollback", "BuilderGrantRollback", "-[BuilderGrantData]", ""},
-		{"BuilderGrantSetCommit", "BuilderGrantCommit", "c[BuilderGrantData]", ""},
-		{"BuilderGrantForget", "BuilderGrantCommit", "x[ProductCode]", `REMOVE~="ALL"`},
-	} {
-		r := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == final.name })
-		if fmt.Sprint(r[1]) != "51" || r[2] != final.property || r[3] != final.target {
-			t.Errorf("%s row %v", final.name, r)
-		}
-
-		if cond := conds[final.name]; (cond == nil && final.cond != "") || (cond != nil && fmt.Sprint(cond) != final.cond) {
-			t.Errorf("%s condition %v, want %q", final.name, cond, final.cond)
-		}
-
-		if seq[final.name] <= seq[prevSetter] {
-			t.Errorf("%s at %d is not after %s at %d", final.name, seq[final.name], prevSetter, seq[prevSetter])
-		}
-
-		prevSetter = final.name
-	}
-
-	if seq[prevSetter] >= seq["InstallValidate"] || seq[setters[0]] <= seq["CostFinalize"] {
-		t.Errorf("grant data setters %d..%d not between CostFinalize %d and InstallValidate %d",
-			seq[setters[0]], seq[prevSetter], seq["CostFinalize"], seq["InstallValidate"])
+	if first <= seq["InstallServices"] || first+len(want) > seq["StartServices"] {
+		t.Errorf("grant actions %d..%d not between InstallServices and StartServices: %v", first, first+len(want)-1, seq)
 	}
 
 	if _, ok := seq["BuilderGrantSchedule"]; ok {
@@ -290,6 +274,14 @@ func TestPermissionGrantErrors(t *testing.T) {
 		"inherit on a file": {func(c *config.Component) {
 			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "NS", Rights: config.StringList{"read"}, Inherit: &yes}}}
 		}, "folders only"},
+		"too many grants": {func(comp *config.Component) {
+			grants := make([]*config.Grant, 40)
+			for i := range grants {
+				grants[i] = &config.Grant{Account: "NS", Rights: config.StringList{"read"}}
+			}
+
+			comp.Files[0].Permissions = &config.Permissions{Grant: grants}
+		}, "at most 39"},
 		"generic mask": {func(c *config.Component) {
 			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "NS", Rights: config.StringList{"0x10000000"}}}}
 		}, "generic"},

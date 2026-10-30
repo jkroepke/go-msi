@@ -1217,8 +1217,12 @@ folderPermissions:
 
 The engine builds the list of grants itself, with one property-setting
 action per grant that runs when its component is installed or repaired
-(`$Component=3`) and the block's condition holds, so the installing user
-cannot change what is granted. Three actions on the embedded custom action
+(`$Component=3`) and the block's condition holds, so an action running as
+the installing user cannot change what is granted; a package has at most
+39 grants. The account and the folder still come from properties: a
+standard user who repairs a per-machine product can set a secure property
+on the command line, so keep the account and directory properties of a
+grant `secure: false` unless the wizard sets them. Three actions on the embedded custom action
 DLL apply them, after `InstallFiles` (after `InstallServices` when the
 package has services) and before `StartServices`, so a service can use its
 folder when it starts: the deferred `BuilderGrantExec` grants without
