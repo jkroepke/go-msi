@@ -14,9 +14,12 @@ syntax; v3 names are mentioned where they differ.
 
 ## How a port goes
 
-1. Start a new `msi.yaml` and copy the product name, the manufacturer and the
-   `UpgradeCode` from the WiX file.
-2. Port the rest with the table and the sections below.
+1. Let msi-builder write a first `msi.yaml`:
+   `msi-builder convert -o msi.yaml app.wxs`. It converts what it can and
+   leaves a `# TODO` comment for everything else; see
+   [convert](cli/msi-builder_convert.md).
+2. Work through the TODO comments with the table and the sections below,
+   and check the result with `msi-builder validate msi.yaml`.
 3. Build it, and compare the tables of both packages with
    `msi-builder inspect`, which reads any `.msi`, also one built by WiX:
    `msi-builder inspect --table Registry old.msi`.
