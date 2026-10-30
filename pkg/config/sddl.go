@@ -226,9 +226,9 @@ func validSID(sid string) bool {
 	return true
 }
 
-// installerAccount reports whether an <account> form names LocalSystem or
-// BUILTIN\Administrators by its English name. Localized names count as
-// other accounts, so they only cause a needless warning.
+// installerAccount reports whether an <account> form names LocalSystem,
+// BUILTIN\Administrators or Everyone by its English name. Localized names
+// count as other accounts, so they only cause a needless warning.
 func installerAccount(account string) bool {
 	domain, name, found := strings.Cut(account, `\`)
 	if !found {
@@ -240,13 +240,18 @@ func installerAccount(account string) bool {
 		return domain == "" || strings.EqualFold(domain, "NT AUTHORITY")
 	case strings.EqualFold(name, "Administrators"):
 		return domain == "" || strings.EqualFold(domain, "BUILTIN")
+	case strings.EqualFold(name, "Everyone"):
+		return domain == ""
 	default:
 		return false
 	}
 }
 
-// installerSIDs are LocalSystem and BUILTIN\Administrators.
-var installerSIDs = map[string]bool{"SY": true, "BA": true, "S-1-5-18": true, "S-1-5-32-544": true} //nolint:gochecknoglobals // lookup table
+// installerSIDs are LocalSystem, BUILTIN\Administrators and Everyone, which
+// every token holds, SYSTEM's included.
+var installerSIDs = map[string]bool{ //nolint:gochecknoglobals // lookup table
+	"SY": true, "BA": true, "WD": true, "S-1-5-18": true, "S-1-5-32-544": true, "S-1-1-0": true,
+}
 
 // grantsInstaller reports whether a DACL lets the engine in: it has no
 // access control at all, or an allow ACE for SYSTEM or Administrators that
