@@ -197,8 +197,9 @@ components:
         action: append       # set, setIfAbsent, append, prepend or remove
 ```
 
-The entry is removed again on uninstall. A command prompt that is already
-open keeps the old `PATH`; open a new one.
+The entry is removed again on uninstall. Windows announces the change, so
+programs started afterwards see it; a command prompt that is already open
+keeps the old `PATH`, so open a new one.
 
 ### Write registry values
 

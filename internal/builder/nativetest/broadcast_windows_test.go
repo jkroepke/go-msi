@@ -4,9 +4,7 @@ package nativetest_test
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -27,7 +25,6 @@ var (
 	pDispatchMessageW          = user32.NewProc("DispatchMessageW")
 	pPostMessageW              = user32.NewProc("PostMessageW")
 	pPostQuitMessage           = user32.NewProc("PostQuitMessage")
-	pSendMessageTimeoutW       = user32.NewProc("SendMessageTimeoutW")
 	pOpenProcess               = kernel32.NewProc("OpenProcess")
 	pReadProcessMemory         = kernel32.NewProc("ReadProcessMemory")
 	pNtQueryInformationProcess = syscall.NewLazyDLL("ntdll.dll").NewProc("NtQueryInformationProcess")
@@ -293,14 +290,17 @@ components:
   - files: [{ source: app.txt }]
 %[3]s`
 
-// TestMsiexecEnvironmentBroadcast probes whether msiexec announces
-// Environment changes with WM_SETTINGCHANGE (W16, ENVVAR-02): a hidden
-// top-level window logs every WM_SETTINGCHANGE while packages that set a
-// machine variable, a user variable from a per-machine package, a user
-// variable from a per-user package, and no variable at all are installed
-// and removed. Where the session has a shell, the test also reads
-// Explorer's environment block, which is what a program started from the
-// Start menu or Run inherits.
+// TestMsiexecEnvironmentBroadcast checks that msiexec announces Environment
+// changes itself (W16, ENVVAR-02), so packages need no broadcast action of
+// their own: a hidden top-level window must receive WM_SETTINGCHANGE with
+// "Environment" after every install, repair and uninstall of packages that
+// set a machine variable, a user variable from a per-machine package and a
+// user variable from a per-user package, and none for a package without
+// variables. Where the session has a shell, Explorer's environment block,
+// which programs started from the Start menu or Run inherit, must follow:
+// it must show the variable after install and repair and lose it after the
+// uninstall, and it must also pick up a variable written to the registry
+// without any broadcast, which shows that the broadcast made it reload.
 func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
 	if testing.Short() {
 		t.Skip("installing needs msiexec time and elevation")
@@ -317,34 +317,27 @@ func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // ms
 	waitForMsiexec(t)
 
 	changes := listenSettingChanges(t)
-	shell := explorerPID(t)
-	t.Logf("explorer PID in this session: %d", shell)
 
-	if shell != 0 {
-		env, err := processEnvironment(shell)
-		t.Logf("shell environment: %d variables, Path set %t, SystemRoot=%q, error %v", len(env), env["PATH"] != "", env["SYSTEMROOT"], err)
+	shell := explorerPID(t)
+	if shell == 0 {
+		t.Log("no Explorer in this session: only the broadcast is checked")
 	}
 
-	shellSees := func(name string) string {
-		if shell == 0 {
-			return "no shell"
-		}
+	// shellSees returns the shell's value of name, and whether it has one.
+	shellSees := func(t *testing.T, name string) (string, bool) {
+		t.Helper()
 
 		env, err := processEnvironment(shell)
 		if err != nil {
-			return err.Error()
+			t.Fatalf("Explorer's environment: %v", err)
 		}
 
 		value, ok := env[strings.ToUpper(name)]
-		if !ok {
-			return "<absent>"
-		}
 
-		return strconv.Quote(value)
+		return value, ok
 	}
 
-	// A user variable written to the registry without any broadcast: the
-	// shell must not see it until something broadcasts.
+	// A user variable written to the registry without any broadcast.
 	const raw = "MSIBUILDER_UNANNOUNCED"
 	if out, err := exec.CommandContext(t.Context(), "reg.exe", "add", `HKCU\Environment`, "/v", raw, "/d", "1", "/f").CombinedOutput(); err != nil {
 		t.Fatalf("reg add: %v\n%s", err, out)
@@ -355,7 +348,11 @@ func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // ms
 	})
 
 	time.Sleep(broadcastSettle)
-	t.Logf("after a plain reg add: messages %q, shell sees %s=%s", changes.take(), raw, shellSees(raw))
+
+	if shell != 0 {
+		_, ok := shellSees(t, raw)
+		t.Logf("after a plain reg add: messages %q, Explorer sees %s: %t", changes.take(), raw, ok)
+	}
 
 	for _, tc := range []struct { //nolint:paralleltest // msiexec runs one installation at a time
 		name, scope, env, variable, key, upgradeCode string
@@ -378,54 +375,60 @@ func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // ms
 				_ = exec.Command("msiexec", "/x", path, "/qn").Run() //nolint:noctx // cleanup after the test context ends
 			})
 
-			step := func(verb string, args ...string) {
-				log := filepath.Join(dir, verb+".log")
-
+			step := func(verb string, installed bool, args ...string) {
 				changes.take()
 
-				start := time.Now()
-
-				if code := msiexec(t, append(args, "/qn", "/l*v", log)...); code != 0 {
+				if code := msiexec(t, append(args, "/qn")...); code != 0 {
 					t.Fatalf("msiexec %s: exit %d", verb, code)
 				}
 
-				took := time.Since(start)
-
 				time.Sleep(broadcastSettle)
 
-				registry := "-"
-				if tc.key != "" {
-					registry = strconv.FormatBool(regHas(t, "64", tc.key, tc.variable))
+				seen := changes.take()
+				announced := 0
+
+				for _, change := range seen {
+					if strings.HasSuffix(change, `lParam="Environment"`) {
+						announced++
+					}
 				}
 
-				t.Logf("%s (%s, %s): msiexec %s; messages %q; registry has it: %s; shell sees %s=%s, %s=%s",
-					verb, tc.scope, tc.env, took.Round(time.Millisecond), changes.take(), registry,
-					tc.variable, shellSees(tc.variable), raw, shellSees(raw))
+				t.Logf("%s: messages %q", verb, seen)
 
-				if data, err := os.ReadFile(log); err == nil {
-					for line := range strings.SplitSeq(string(data), "\n") {
-						if strings.Contains(line, "Environment") && !strings.Contains(line, "Property(") {
-							t.Logf("%s log: %s", verb, strings.TrimSpace(strings.ReplaceAll(line, "\x00", "")))
-						}
-					}
+				switch {
+				case tc.env == "" && announced != 0:
+					t.Errorf("%s without Environment rows: %d Environment broadcasts, want none", verb, announced)
+				case tc.env != "" && announced == 0:
+					t.Errorf("%s: no WM_SETTINGCHANGE for Environment", verb)
+				}
+
+				if tc.env == "" {
+					return
+				}
+
+				if got := regHas(t, "64", tc.key, tc.variable); got != installed {
+					t.Errorf("%s: %s in %s is %t, want %t", verb, tc.variable, tc.key, got, installed)
+				}
+
+				if shell == 0 {
+					return
+				}
+
+				value, ok := shellSees(t, tc.variable)
+				t.Logf("%s: Explorer sees %s=%q (%t)", verb, tc.variable, value, ok)
+
+				if ok != installed || (installed && !strings.Contains(value, "MsiBuilderBroadcast"+tc.name)) {
+					t.Errorf("%s: Explorer has %s=%q (%t), want it set to the install folder: %t", verb, tc.variable, value, ok, installed)
+				}
+
+				if _, ok := shellSees(t, raw); !ok {
+					t.Errorf("%s: Explorer did not reload its environment: %s is missing", verb, raw)
 				}
 			}
 
-			step("install", "/i", path)
-			step("repair", "/fvamus", path)
-			step("uninstall", "/x", path)
+			step("install", true, "/i", path)
+			step("repair", true, "/fvamus", path)
+			step("uninstall", false, "/x", path)
 		})
 	}
-
-	// The broadcast setx and WiX's custom action send, from this process.
-	area, _ := syscall.UTF16PtrFromString("Environment")
-
-	var result uintptr
-
-	const hwndBroadcast, smtoAbortIfHung = 0xffff, 0x0002
-
-	r, _, err := pSendMessageTimeoutW.Call(hwndBroadcast, wmSettingChange, 0, uintptr(unsafe.Pointer(area)), smtoAbortIfHung, 5000, uintptr(unsafe.Pointer(&result)))
-
-	time.Sleep(broadcastSettle)
-	t.Logf("own broadcast: SendMessageTimeoutW %d (%v); messages %q; shell sees %s=%s", r, err, changes.take(), raw, shellSees(raw))
 }

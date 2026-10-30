@@ -411,10 +411,14 @@ func (c *converter) emitActionRefs() {
 	for _, ref := range c.actionRefs {
 		refID := ref.attr("Id")
 
-		if strings.Contains(refID, "BroadcastEnvironmentChange") || strings.Contains(refID, "BroadcastSettingChange") {
+		switch {
+		case strings.Contains(refID, "BroadcastEnvironmentChange"):
 			c.todof(nil, "", ref.line,
-				"%s has no counterpart: programs that are already running keep the old environment until they restart", refID)
-		} else {
+				"%s is not needed: Windows Installer announces environment changes itself", refID)
+		case strings.Contains(refID, "BroadcastSettingChange"):
+			c.todof(nil, "", ref.line,
+				"%s has no counterpart, and nothing msi-builder writes needs it", refID)
+		default:
 			c.todof(nil, "", ref.line, "the custom action %s comes from a WiX extension and has no counterpart", refID)
 		}
 	}

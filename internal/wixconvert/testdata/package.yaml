@@ -7,7 +7,7 @@
 # TODO(line 158): rescheduling the standard action RemoveExistingProducts in InstallExecuteSequence has no counterpart
 # TODO(line 148): the custom action Greet is a script; script custom actions are never supported, use a run action
 # TODO(line 149): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
-# TODO(line 160): Wix4BroadcastEnvironmentChange_X64 has no counterpart: programs that are already running keep the old environment until they restart
+# TODO(line 160): Wix4BroadcastEnvironmentChange_X64 is not needed: Windows Installer announces environment changes itself
 schema: msi-builder/v1
 vars:
   Port: "8080"
