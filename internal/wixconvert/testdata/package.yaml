@@ -12,7 +12,7 @@
 # TODO(line 52): the progress text of LaunchHello is dropped: the action was not converted to a customActions entry of its own
 # TODO(line 174): drop Wix4BroadcastEnvironmentChange_X64: Windows Installer announces environment changes itself
 # TODO(line 175): Wix4BroadcastSettingChange_X64 has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action
-# TODO: WiX generated the GUIDs of Component2, Component1, and msi-builder generates other ones; with removeOld afterInstallExecute an upgrade from the WiX package then deletes their files. Copy WiX's GUIDs into components[].guid: msi-builder inspect --table Component wix.msi
+# TODO: WiX generated the GUIDs of Component1, hello.yaml, and msi-builder generates other ones; with removeOld afterInstallExecute an upgrade from the WiX package then deletes their files. Copy WiX's GUIDs into components[].guid: msi-builder inspect --table Component wix.msi
 schema: msi-builder/v1
 vars:
   Port: "8080"
@@ -67,19 +67,19 @@ features:
     title: Hello
     directory: INSTALLFOLDER
     allowAbsent: false
-    components: [HelloExe, Component1, Logs, Data, StartMenu]
+    components: [HelloExe, hello.yaml, Logs, Data, StartMenu]
     features:
       - id: Docs
         title: Documentation
         default: off
         display: expanded
-        components: [Component2]
+        components: [Component1]
   - id: Firewall
     title: Firewall rule
     default: disabled
     components: [FirewallRule]
 components:
-  - id: Component2
+  - id: Component1
     files:
       - source: docs/manual.pdf
   # TODO(line 123): <util:XmlFile> is not supported: ship the complete file, or edit it with a run action (no rollback)
@@ -175,7 +175,7 @@ components:
         value: '[INSTALLFOLDER]'
         action: append
         scope: machine
-  - id: Component1
+  - id: hello.yaml
     directory: config
     files:
       - source: config/hello.yaml

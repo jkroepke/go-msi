@@ -478,6 +478,27 @@ func (c *converter) addDir(elm *elem, parentID string, standard bool) *dir {
 	return folder
 }
 
+// keyFileID returns the Id of a component's key path, which WiX gives a
+// component without an Id: the element marked KeyPath, else the first File.
+func keyFileID(elm *elem) string {
+	var first *elem
+
+	for _, kid := range elm.kids {
+		switch {
+		case kid.yes("KeyPath"):
+			return kid.attr("Id")
+		case kid.is("File") && first == nil:
+			first = kid
+		}
+	}
+
+	if first == nil {
+		return ""
+	}
+
+	return first.attr("Id")
+}
+
 // subdir adds the folders of a Subdirectory path, such as bin\\x64, below a
 // directory and returns the ID of the last one.
 func (c *converter) subdir(parentID, path string, line int) string {
@@ -550,6 +571,10 @@ func implicitComponent(file *elem) *elem {
 
 func (c *converter) addComp(elm *elem, within scope) {
 	comp := &comp{e: elm, id: elm.attr("Id"), dir: elm.attr(attrDirectory)}
+	if comp.id == "" {
+		comp.id = keyFileID(elm)
+	}
+
 	if comp.dir == "" {
 		comp.dir = within.dir
 	}

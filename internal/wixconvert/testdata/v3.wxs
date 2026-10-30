@@ -49,6 +49,13 @@
         <Environment Id="ToolsPath" Name="PATH" Value="[BIN]" Action="set" Part="first" Permanent="no" />
       </Component>
     </ComponentGroup>
+    <DirectoryRef Id="BIN">
+      <!-- Without an Id the component takes the Id of its key path. -->
+      <Component Guid="{2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E63}">
+        <File Id="tool.cfg" Source="$(var.BinDir)\tool.cfg" />
+        <RegistryValue Id="ToolCfgKey" Root="HKCU" Key="Software\Example\Hello Tools" Name="config" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
 
     <Feature Id="Complete" Title="Hello Tools" Level="1" Absent="disallow">
       <ComponentGroupRef Id="Tools" />
@@ -56,6 +63,7 @@
     <Feature Id="Docs" Title="Documentation" Level="1">
       <Condition Level="0">NOT INSTALLDOCS</Condition>
       <ComponentRef Id="Readme" />
+      <ComponentRef Id="ToolCfgKey" />
     </Feature>
 
     <CustomAction Id="Echo" BinaryKey="WixCA" DllEntry="CAQuietExec" Execute="immediate" Return="ignore" />
