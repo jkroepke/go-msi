@@ -4,11 +4,14 @@ package nativetest_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/jkroepke/msi-builder/internal/testpe"
 )
@@ -137,6 +140,44 @@ func TestNonAdminGrantsPerUser(t *testing.T) {
 
 	if code := user.run(t, query); code == 0 {
 		t.Errorf("after the uninstall, %s still finds the account", query)
+	}
+}
+
+// repairWithPlantedAccount plants BUILTIN\Users as the remembered account
+// of a per-machine product in the administrator's own hive, where a
+// per-user install would keep it, and repairs the product with ALLUSERS=""
+// and no account (SEC-04): the DLL follows the context the product is
+// registered in, so the folder must not get a grant for Users.
+func repairWithPlantedAccount(t *testing.T, dir, path, productCode, folder string) {
+	t.Helper()
+
+	planted := `HKCU\` + userAccountsKey + productCode
+	if out, err := exec.CommandContext(t.Context(), "reg", "add", planted, "/v", "[SVC_ACCOUNT]", "/d", `BUILTIN\Users`, "/f").CombinedOutput(); err != nil {
+		t.Fatalf("reg add %s: %v\n%s", planted, err, out)
+	}
+
+	defer func() { _ = exec.CommandContext(context.Background(), "reg", "delete", planted, "/f").Run() }()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	defer cancel()
+
+	log := filepath.Join(dir, "repair-allusers.log")
+	cmd := exec.CommandContext(ctx, "msiexec")
+	// ALLUSERS="" needs the quotes as msiexec reads them, which the
+	// argument escaping of os/exec would change.
+	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: fmt.Sprintf(`msiexec /i %s REINSTALL=ALL REINSTALLMODE=amus ALLUSERS="" /qn /norestart /l*v %s`,
+		syscall.EscapeArg(path), syscall.EscapeArg(log))}
+	err := cmd.Run()
+
+	text := readLog(log)
+	t.Logf("SEC-04: repair with ALLUSERS=\"\" of a per-machine product: %v\n%s", err, grepLog(text, "BuilderGrant:", "ALLUSERS"))
+
+	if sddl := objectSDDL(t, folder); strings.Contains(sddl, "(A;OICI;0x1301bf;;;BU)") {
+		t.Errorf("the repair granted to the account planted in the user's hive: %s", sddl)
+	}
+
+	if strings.Contains(text, `to: BUILTIN\Users`) {
+		t.Errorf("the repair log grants to the planted account\n%s", grepLog(text, "BuilderGrant:"))
 	}
 }
 

@@ -202,6 +202,7 @@ UINT WINAPI MsiSetPropertyW(MSIHANDLE, const WCHAR *, const WCHAR *);
 UINT WINAPI MsiFormatRecordW(MSIHANDLE, MSIHANDLE, WCHAR *, DWORD *);
 int WINAPI MsiEvaluateConditionW(MSIHANDLE, const WCHAR *);
 BOOL WINAPI MsiGetMode(MSIHANDLE, int);
+UINT WINAPI MsiGetProductInfoExW(const WCHAR *, const WCHAR *, int, const WCHAR *, WCHAR *, DWORD *);
 
 // authz.dll: the groups of the account that started the session, from its
 // SID, for the deferred side of the folder removal, which runs as
@@ -1124,6 +1125,7 @@ static const WCHAR msgAlready[] = u"already granted, left as it is";
 static const WCHAR msgGranted[] = u"granted";
 static const WCHAR msgRevoked[] = u"revoked";
 static const WCHAR msgTo[] = u"to";
+static const WCHAR msgFrom[] = u"from";
 static const WCHAR msgAcl[] = u"cannot build the new DACL of";
 static const WCHAR msgRecord[] = u"cannot record the grant for the rollback";
 static const WCHAR msgNoMemory[] = u"out of memory";
@@ -1251,6 +1253,38 @@ typedef struct {
     WCHAR *sid;
     int bad;
 } grantScope;
+
+// MSIINSTALLCONTEXT values of MsiGetProductInfoExW.
+enum {
+    CONTEXT_USERMANAGED = 1,
+    CONTEXT_USERUNMANAGED = 2,
+    CONTEXT_MACHINE = 4,
+};
+
+// registeredContext tells where the engine has a product registered: in the
+// machine context (CONTEXT_MACHINE), for the user with the SID
+// (CONTEXT_USERUNMANAGED, also for a managed per-user install), or not
+// known (0).
+static int registeredContext(const WCHAR *product, const WCHAR *sid)
+{
+    static const WCHAR stateProp[] = u"State";
+    WCHAR state[16];
+    DWORD n = 16;
+    if (!MsiGetProductInfoExW(product, 0, CONTEXT_MACHINE, stateProp, state, &n)) {
+        return CONTEXT_MACHINE;
+    }
+    if (sid) {
+        n = 16;
+        if (!MsiGetProductInfoExW(product, sid, CONTEXT_USERUNMANAGED, stateProp, state, &n)) {
+            return CONTEXT_USERUNMANAGED;
+        }
+        n = 16;
+        if (!MsiGetProductInfoExW(product, sid, CONTEXT_USERMANAGED, stateProp, state, &n)) {
+            return CONTEXT_USERUNMANAGED;
+        }
+    }
+    return 0;
+}
 
 // validSid tells whether s looks like a SID string (S-1-...), so that it
 // cannot name another key below HKEY_USERS.
@@ -1677,8 +1711,12 @@ static int applyEntry(MSIHANDLE install, grantEntry *e, const WCHAR *account, in
         goto done;
     }
     logft(install, tmplGrant, grant ? msgGranted : msgRevoked, object, 0);
+    WCHAR *sidText = 0;
     if (account) {
         logft(install, tmplGrant, msgTo, account, 0);
+    } else if (ConvertSidToStringSidW(sid, &sidText)) {
+        logft(install, tmplGrant, msgFrom, sidText, 0);
+        LocalFree(sidText);
     }
     ok = 1;
 done:
@@ -1739,7 +1777,20 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
     WCHAR *product = head ? head + 1 : data + 1;
     WCHAR *entries = field(product, '\n');
     grantScope scope = {product, 0, 0};
-    if (field(product, '|')) {
+    int perUser = field(product, '|') != 0;
+    if (again || op == 'x') {
+        // A maintenance install follows where the engine registered the
+        // product, not ALLUSERS, which a user may set on the command line
+        // of an elevated repair: a per-machine product must never read
+        // accounts from the user's hive.
+        WCHAR *user = property(install, propUserSid);
+        int context = registeredContext(product, user && validSid(user) ? user : 0);
+        HeapFree(heap, 0, user);
+        if (context) {
+            perUser = context == CONTEXT_USERUNMANAGED;
+        }
+    }
+    if (perUser && op != '-') {
         // Per user: the engine's UserSID names the hive.
         scope.sid = property(install, propUserSid);
         scope.bad = !scope.sid;
