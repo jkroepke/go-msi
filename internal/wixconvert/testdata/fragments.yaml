@@ -4,11 +4,11 @@
 # WiX variables became ${NAME} references; pass them with --var NAME=value: ProductName.
 # TODO(line 5): <?if $(var.Edition) = "full"?> is not evaluated: only its first branch was converted
 # TODO(line 7): the <?else?> branch was left out; convert it by hand if your build takes it
-# TODO(line 50): <?if $(var.Arch) = "arm64"?> is not evaluated: only its first branch was converted
-# TODO(line 52): the <?else?> branch was left out; convert it by hand if your build takes it
-# TODO(line 49): the extension attributes util:Extra on <Component> have no counterpart
-# TODO(line 63): advertised shortcuts are never supported; this one is a plain shortcut
-# TODO(line 63): the shortcut "Hello Help" has no Target: advertised shortcuts are never supported; point it at a file
+# TODO(line 52): <?if $(var.Arch) = "arm64"?> is not evaluated: only its first branch was converted
+# TODO(line 54): the <?else?> branch was left out; convert it by hand if your build takes it
+# TODO(line 51): the extension attributes util:Extra on <Component> have no counterpart
+# TODO(line 65): advertised shortcuts are never supported; this one is a plain shortcut
+# TODO(line 65): the shortcut "Hello Help" has no Target: advertised shortcuts are never supported; point it at a file
 schema: msi-builder/v1
 vars:
   Greeting: Hello
@@ -19,7 +19,7 @@ product:
   upgradeCode: 5d9b2f3a-7c1e-4b8d-9f0a-2e6c4a8b1d37
 package:
   platform: x64
-# TODO(line 38): an UpgradeVersion for the package's own UpgradeCode (versions 0.0.1 to 1.0.0) is a hand-made major upgrade; msi-builder writes its own, which removes every older version, check the upgrade keys
+# TODO(line 38): an UpgradeVersion for the package's own UpgradeCode (versions 0.0.1 to 1.0.0) is a hand-made major upgrade; msi-builder writes its own, which removes every older version and never a newer one (downgrade: allow installs next to a newer version), check the upgrade keys
 installDir:
   id: INSTALLFOLDER
   name: Hello
@@ -51,4 +51,6 @@ components:
       - source: dist/sample.txt
         id: sample.txt
 properties:
+  # Installs the level 2 features by default.
+  INSTALLLEVEL: "2"
   GREETING: ${Greeting}, welcome to ${ProductName}

@@ -13,11 +13,40 @@
 
     <ComponentGroup Id="Main" Directory="INSTALLFOLDER">
       <Component Id="HelloExe" Subdirectory="bin">
-        <File Id="hello.exe" Source="dist\hello.exe" />
+        <File Id="readme.txt" Source="dist\readme.txt" />
+        <File Id="hello.exe" Source="dist\hello.exe" KeyPath="yes" />
+        <!-- Advertised: becomes a plain shortcut to the component's key file. -->
+        <Shortcut Id="AdvLink" Name="Hello" Directory="AppMenu" Advertise="yes" />
         <ServiceInstall Name="HelloSvc" Start="auto" Type="ownProcess" ErrorControl="normal">
           <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart" ThirdFailureActionType="none" />
         </ServiceInstall>
         <util:RemoveFolderEx Property="INSTALLFOLDER" On="uninstall" />
+      </Component>
+      <!-- Controls the service of another component. -->
+      <Component Id="HelloSvcControl" Condition="&amp;Complete = 3">
+        <File Id="hello.yaml" Source="dist\hello.yaml" />
+        <ServiceControl Id="HelloSvcStart" Name="HelloSvc" Start="install" Stop="both" Remove="uninstall" />
+      </Component>
+      <!-- A second control of the same service, which is left out. -->
+      <Component Id="HelloSvcRestart">
+        <File Id="hello.ini" Source="dist\hello.ini" />
+        <ServiceControl Id="HelloSvcRestart" Name="HelloSvc" Stop="install" Start="install" />
+      </Component>
+      <!-- Installs the same service for another edition, with its own control. -->
+      <Component Id="HelloSvcLite" Condition="EDITION=&quot;lite&quot;">
+        <File Id="hello_lite.exe" Source="dist\hello-lite.exe" />
+        <ServiceInstall Name="HelloSvc" Start="demand" Type="ownProcess" ErrorControl="normal" />
+        <ServiceControl Id="HelloSvcLite" Name="HelloSvc" Stop="both" Remove="uninstall" />
+      </Component>
+      <!-- The key file has no Id; the advertised shortcut starts it. -->
+      <Component Id="Tray">
+        <File Source="dist\helper.dll" />
+        <File Source="dist\tray.exe" KeyPath="yes" />
+        <Shortcut Id="TrayLink" Name="Hello Tray" Directory="AppMenu" Advertise="yes" />
+      </Component>
+      <!-- An & in a string is no action state. -->
+      <Component Id="RnD" Condition="EDITION=&quot;R&amp;D&quot;">
+        <File Id="rnd.txt" Source="dist\rnd.txt" />
       </Component>
     </ComponentGroup>
 
@@ -28,6 +57,7 @@
       <!-- Removed on uninstall only, never created. -->
       <RemoveRegistryKey Root="HKCR" Key="*\shell\Hello" Action="removeOnUninstall" />
       <RemoveRegistryValue Root="HKCU" Key="Software\Example\Hello" />
+      <RegistryValue Root="HKCU" Key="Software\Example\Hello\Handlers" Name="PlayMedia" Type="string" Value="" />
       <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="console" Type="integer" Value="1" KeyPath="yes" />
     </Component>
 
@@ -52,6 +82,10 @@
     <CustomAction Id="StartTray" FileRef="hello.exe" ExeCommand="--tray" Execute="immediate" Return="asyncNoWait" />
     <CustomAction Id="StartMonitor" Directory="INSTALLFOLDER" ExeCommand="[MONITOR] --monitor" Return="asyncNoWait" />
     <CustomAction Id="NeedsAdmin" Error="25000" />
+    <!-- Placed on actions of a WiX extension. -->
+    <CustomAction Id="Configure" FileRef="hello.exe" ExeCommand="--configure" Execute="deferred" Impersonate="no" />
+    <CustomAction Id="UndoConfigure" FileRef="hello.exe" ExeCommand="--unconfigure" Execute="rollback" Impersonate="no" />
+    <SetProperty Id="CLOSING" Value="1" Before="Wix4CloseApplications_X64" Sequence="execute" />
     <UI>
       <Error Id="25000">Hello needs administrator rights.</Error>
       <Error Id="1316">A file is missing.</Error>
@@ -62,11 +96,13 @@
       <Custom Action="StartTray" After="InstallFinalize" Condition="NOT REMOVE" />
       <Custom Action="StartMonitor" After="StartTray" Condition="NOT REMOVE" />
       <Custom Action="SetStopCmd" Before="StopHello" />
-      <Custom Action="StopHello" Before="InstallValidate" />
+      <Custom Action="StopHello" After="Wix4CloseApplications_X64" />
       <Custom Action="SetGreetCmd" After="InstallFinalize" />
       <Custom Action="Greet" After="SetGreetCmd" Condition="NOT Installed AND NOT WIX_UPGRADE_DETECTED" />
       <Custom Action="Cleanup" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
       <Custom Action="Register" After="InstallFiles" Condition="NOT Installed" />
+      <Custom Action="UndoConfigure" Before="Wix4ExecFirewallExceptionsInstall_X64" Condition="NOT Installed" />
+      <Custom Action="Configure" After="Wix4ExecFirewallExceptionsInstall_X64" Condition="NOT Installed" />
     </InstallExecuteSequence>
   </Package>
 </Wix>

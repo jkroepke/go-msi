@@ -3,6 +3,7 @@ package wixconvert
 import (
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -199,22 +200,36 @@ func (c *converter) emitFeatures() {
 	}
 }
 
+// featureLevel converts the Level of a feature, with its defines filled in.
+func (c *converter) featureLevel(out *omap, elm *elem) {
+	text := strings.TrimSpace(c.literal(elm.attr("Level")))
+
+	switch level, err := strconv.Atoi(text); {
+	case text == "" || err == nil && level == 1:
+	case err == nil && level == 0:
+		out.set("default", "disabled")
+	case err == nil && level != 2:
+		out.set("level", level)
+	case err == nil:
+		out.set("default", "off")
+	default:
+		out.set("default", "off")
+		c.todof(out, "default", elm.line, "the feature level %q is no number; convert assumed default off", text)
+	}
+}
+
 func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat list of independent WiX attributes
 	elm := feat.e
 	out := newMap()
-	out.order("id", "title", "description", "default", "display", "directory", "allowAbsent", "components", "features")
+	out.order("id", "title", "description", "default", "level", "display", "directory", "allowAbsent", "components", "features")
 	out.head = comments(elm)
 	out.set("id", elm.attr("Id"))
 	out.set("title", c.value(elm, "Title"))
 	out.set("description", c.value(elm, "Description"))
 
-	switch l := elm.attr("Level"); l {
-	case "", "1":
-	case "0":
-		out.set("default", "disabled")
-	default:
-		out.set("default", "off")
-	}
+	// default: off is level 2; other levels keep their number, which the
+	// package's INSTALLLEVEL property, if any, still compares.
+	c.featureLevel(out, elm)
 
 	switch display := elm.attr("Display"); display {
 	case "":

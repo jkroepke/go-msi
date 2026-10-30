@@ -180,7 +180,7 @@ components:
 		t.Fatalf("convert: exit %d: %s", code, stderr.String())
 	}
 
-	if want := wxs + ":3: TODO: WiX generated the Guid of Main, the component in line 10, Readme;"; !strings.Contains(stderr.String(), want) {
+	if want := wxs + ":3: TODO: WiX generated the Guid of Main, notes.txt, Readme;"; !strings.Contains(stderr.String(), want) {
 		t.Errorf("stderr %q, want %q", stderr.String(), want)
 	}
 

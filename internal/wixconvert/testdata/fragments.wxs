@@ -37,6 +37,8 @@
     <Upgrade Id="5d9b2f3a-7c1e-4b8d-9f0a-2e6c4a8b1d37">
       <UpgradeVersion Minimum="0.0.1" Maximum="1.0.0" Property="OLDERFOUND" />
     </Upgrade>
+    <!-- Installs the level 2 features by default. -->
+    <Property Id="INSTALLLEVEL" Value="2" />
     <Property Id="GREETING" Value="$(var.Greeting), welcome to !(bind.Property.ProductName)" />
 
     <StandardDirectory Id="ProgramFiles64Folder">

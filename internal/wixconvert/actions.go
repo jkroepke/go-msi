@@ -2,6 +2,7 @@ package wixconvert
 
 import (
 	"maps"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -68,6 +69,20 @@ func (c *converter) placements() map[string][]any {
 	return byAction
 }
 
+// resourceActions are the standard actions that install or remove the
+// resources of components, so that a component condition can stand in for
+// a condition on them.
+var resourceActions = map[string]bool{ //nolint:gochecknoglobals // lookup table
+	actInstallFiles: true, "RemoveFiles": true, "DuplicateFiles": true, "RemoveDuplicateFiles": true, "MoveFiles": true,
+	"CreateFolders": true, "RemoveFolders": true, "CreateShortcuts": true, "RemoveShortcuts": true,
+	"WriteRegistryValues": true, "RemoveRegistryValues": true, "WriteIniValues": true, "RemoveIniValues": true,
+	"WriteEnvironmentStrings": true, "RemoveEnvironmentStrings": true, "InstallServices": true, "DeleteServices": true,
+	"StartServices": true, "StopServices": true, "RegisterTypeLibraries": true, "UnregisterTypeLibraries": true,
+	"SelfRegModules": true, "SelfUnregModules": true, "RegisterClassInfo": true, "UnregisterClassInfo": true,
+	"RegisterExtensionInfo": true, "UnregisterExtensionInfo": true, "RegisterProgIdInfo": true, "UnregisterProgIdInfo": true,
+	"RegisterMIMEInfo": true, "UnregisterMIMEInfo": true, "InstallODBC": true, "RemoveODBC": true,
+}
+
 // standardAction converts a standard action in a sequence.
 func (c *converter) standardAction(entry, seq *elem) {
 	switch {
@@ -83,6 +98,22 @@ func (c *converter) standardAction(entry, seq *elem) {
 		}
 	case entry.is("Show"):
 		c.todof(nil, "", entry.line, "<Show Dialog=%q> schedules a dialog; use the ui keys", entry.attr("Dialog"))
+	default:
+		c.standardActionNote(entry, seq)
+	}
+}
+
+// standardActionNote notes a standard action that a sequence reschedules or
+// conditions, neither of which msi-builder takes.
+func (c *converter) standardActionNote(entry, seq *elem) {
+	switch cond := c.condition(entry); {
+	case cond != "" && resourceActions[entry.name]:
+		c.todof(nil, "", entry.line, "the standard action %s runs only when %s; msi-builder has no conditions on standard "+
+			"actions, so put the condition on the components whose resources it handles (components[].condition)",
+			entry.name, cond)
+	case cond != "":
+		c.todof(nil, "", entry.line, "the standard action %s in %s runs only when %s; msi-builder schedules the standard "+
+			"actions itself, without conditions", entry.name, seq.name, cond)
 	default:
 		c.todof(nil, "", entry.line, "rescheduling the standard action %s in %s has no counterpart", entry.name, seq.name)
 	}
@@ -131,12 +162,12 @@ func (c *converter) scheduleReboot(entry *elem) {
 func (c *converter) emitActions() {
 	byAction := c.placements()
 	c.quietExecCommands()
-	c.reanchor(byAction)
+	reanchor := c.reanchor(byAction)
 	progress := c.progress()
 
 	for _, custom := range c.actionOrder {
 		actionID := custom.attr("Id")
-		if c.consumed[custom] || actionID == c.launchAction {
+		if c.skipAction(custom, byAction) {
 			continue
 		}
 
@@ -146,21 +177,26 @@ func (c *converter) emitActions() {
 		}
 
 		c.setProgress(action, actionID, progress)
+		reanchor(actionID, byAction[actionID])
 		action.set("schedule", byAction[actionID])
 		delete(byAction, actionID)
+		c.extensionAnchors(action, custom)
 		c.out.add("customActions", action)
 	}
 
 	for _, setter := range c.setters {
-		if c.consumed[setter] {
+		if c.skipSetter(setter, byAction) {
 			continue
 		}
 
 		action, schedule := c.setter(setter)
 		id := action.str("id")
+		reanchor(id, schedule)
+
 		c.setProgress(action, id, progress)
 		action.set("schedule", append(schedule, byAction[id]...))
 		delete(byAction, id)
+		c.extensionAnchors(action, setter)
 		c.out.add("customActions", action)
 	}
 
@@ -243,49 +279,171 @@ func (c *converter) setProgress(action *omap, actionID string, texts map[string]
 	}
 }
 
-// anchorKey names an action in one sequence.
-type anchorKey struct{ action, sequence string }
+// extensionAction matches the ID of a WiX extension's custom action, such
+// as Wix4CloseApplications_X64.
+var extensionAction = regexp.MustCompile(`^Wix[0-9]*[A-Z]`)
 
-// reanchor moves the placements anchored on a command line setter, which
-// becomes part of its run action, to the setter's own anchor in the same
-// sequence.
-func (c *converter) reanchor(byAction map[string][]any) {
-	anchors, sourceIDs := c.sourceAnchors(byAction)
+// extensionAnchors notes placements anchored on a WiX extension's action,
+// which the msi-builder package does not have.
+func (c *converter) extensionAnchors(action *omap, custom *elem) {
+	schedule, ok := action.get("schedule").([]any)
+	if !ok {
+		return
+	}
 
-	for _, entries := range byAction {
-		for i, entry := range entries {
-			placement, ok := entry.(*omap)
-			if !ok {
+	for _, entry := range schedule {
+		placement, ok := entry.(*omap)
+		if !ok {
+			continue
+		}
+
+		for _, key := range []string{"before", "after"} {
+			anchor := placement.str(key)
+			if !extensionAction.MatchString(anchor) || c.actions[anchor] != nil {
 				continue
 			}
 
-			name := placement.str("after")
-			if name == "" {
-				name = placement.str("before")
-			}
-
-			if !sourceIDs[name] {
-				continue
-			}
-
-			if anchor := anchors[anchorKey{name, placement.str("sequence")}]; anchor != nil {
-				entries[i] = moveAnchor(placement, anchor)
-			} else {
-				c.todof(placement, "", 0, "this action was scheduled next to %s, which is not in the %s sequence; schedule it yourself",
-					name, placement.str("sequence"))
-			}
+			// Keeping before or after keeps the order of the actions
+			// around the anchor, such as a rollback action before its
+			// deferred one.
+			target := fallbackAnchor(action.str("execute") != "")
+			placement.set(key, target)
+			c.todof(action, "schedule", custom.line, "%s is an action of a WiX extension, which the msi-builder package "+
+				"does not have; convert placed this action %s %s, check that place", anchor, key, target)
 		}
 	}
 }
 
-// sourceAnchors returns the placement of each consumed command line source
-// in each sequence, and the names of the sources.
-func (c *converter) sourceAnchors(byAction map[string][]any) (map[anchorKey]*omap, map[string]bool) {
-	anchors := make(map[anchorKey]*omap)
-	sourceIDs := make(map[string]bool)
+// skipAction reports whether a custom action is left out of
+// customActions: taken in by another action or key, or not needed.
+func (c *converter) skipAction(custom *elem, byAction map[string][]any) bool {
+	return c.consumed[custom] || c.onlyLaunch(custom.attr("Id"), byAction) ||
+		c.perMachineFolder(custom, custom.attr(attrProperty), byAction)
+}
 
-	for _, src := range c.consumedSources() {
-		sourceIDs[src.id] = true
+// skipSetter reports whether a SetProperty or SetDirectory is left out.
+func (c *converter) skipSetter(setter *elem, byAction map[string][]any) bool {
+	return c.consumed[setter] || setter.is("SetProperty") && c.perMachineFolder(setter, setter.attr("Id"), byAction)
+}
+
+// perMachineFolder reports whether an action sets WixPerMachineFolder, the
+// per-machine folder of WixUI_Advanced, and leaves it out: msi-builder's
+// dual-scope packages pick the folder for each scope themselves.
+func (c *converter) perMachineFolder(action *elem, property string, byAction map[string][]any) bool {
+	if property != propPerMachineFolder || !action.has("Value") {
+		return false
+	}
+
+	if action.is("SetProperty") {
+		delete(byAction, setterName(action))
+	} else {
+		delete(byAction, action.attr("Id"))
+	}
+
+	c.todof(nil, "", action.line, "the action %s, which sets WixPerMachineFolder for WixUI_Advanced, was left out: "+
+		"msi-builder sets the install folder of each scope itself", action.attr("Id"))
+
+	return true
+}
+
+// onlyLaunch reports whether the action is the finish page's launch action
+// and nothing else: ui.launch takes it. One that a sequence also schedules,
+// such as an auto-launch after a quiet update, stays an action as well.
+func (c *converter) onlyLaunch(actionID string, byAction map[string][]any) bool {
+	return actionID == c.launchAction && len(byAction[actionID]) == 0
+}
+
+// anchorKey names an action in one sequence.
+type anchorKey struct{ action, sequence string }
+
+// reanchor returns the function that moves the placements anchored on an
+// action that convert leaves out, a command line setter that becomes part
+// of its run action or a WixPerMachineFolder setter, to that action's own
+// anchor in the same sequence. emitActions calls it for the actions it
+// writes only, so that no note names a placement left out of the output.
+func (c *converter) reanchor(byAction map[string][]any) func(string, []any) {
+	anchors, sources := c.sourceAnchors(byAction)
+
+	move := func(id string, entries []any) {
+		for i, entry := range entries {
+			if placement, ok := entry.(*omap); ok {
+				entries[i] = c.followAnchors(id, placement, anchors, sources)
+			}
+		}
+	}
+
+	return move
+}
+
+// The standard actions that convert places actions on.
+const (
+	actCostFinalize = "CostFinalize"
+	actInstallFiles = "InstallFiles"
+)
+
+// fallbackAnchor is the standard action an action whose anchor is gone
+// moves next to: CostFinalize, in every sequence that takes custom actions,
+// before the installation changes anything, or InstallFiles for a deferred
+// action, which must run inside the install script.
+func fallbackAnchor(deferred bool) string {
+	if deferred {
+		return actInstallFiles
+	}
+
+	return actCostFinalize
+}
+
+// The keys of a placement that name its anchor.
+const (
+	keyBefore = "before"
+	keyAfter  = "after"
+)
+
+// followAnchors moves a placement on a left-out setter to that setter's
+// anchor, and on through setters that are left out too. A setter that is
+// not in the placement's sequence leaves the placement at CostFinalize,
+// which both sequences have, or at InstallFiles for an action that runs in
+// the install script, with a note.
+func (c *converter) followAnchors(actionID string, placement *omap, anchors map[anchorKey]*omap, sources map[string]*elem) *omap {
+	for range len(sources) + 1 {
+		key := keyAfter
+		if placement.str(keyBefore) != "" {
+			key = keyBefore
+		}
+
+		name := placement.str(key)
+
+		src := sources[name]
+		if src == nil {
+			return placement
+		}
+
+		anchor := anchors[anchorKey{name, placement.str("sequence")}]
+		if anchor == nil {
+			custom := c.actions[actionID]
+			target := fallbackAnchor(custom != nil && inScript(custom))
+
+			moved := moveAnchor(placement, flowMap().set(key, target))
+			c.todof(moved, "", src.line, "%s was scheduled next to %s, which is not in the %s sequence; convert "+
+				"placed it %s %s, check that place", actionID, name, placement.str("sequence"), key, target)
+
+			return moved
+		}
+
+		placement = moveAnchor(placement, anchor)
+	}
+
+	return placement
+}
+
+// sourceAnchors returns the placement of each left-out setter in each
+// sequence, and the setters by name.
+func (c *converter) sourceAnchors(byAction map[string][]any) (map[anchorKey]*omap, map[string]*elem) {
+	anchors := make(map[anchorKey]*omap)
+	sources := make(map[string]*elem)
+
+	for _, src := range append(c.consumedSources(), c.perMachineSources()...) {
+		sources[src.id] = src.e
 
 		schedule := byAction[src.id]
 		if src.e.is("SetProperty") {
@@ -302,7 +460,21 @@ func (c *converter) sourceAnchors(byAction map[string][]any) (map[anchorKey]*oma
 		}
 	}
 
-	return anchors, sourceIDs
+	return anchors, sources
+}
+
+// perMachineSources returns the setters of WixPerMachineFolder, which
+// perMachineFolder leaves out.
+func (c *converter) perMachineSources() []commandSource {
+	var sources []commandSource
+
+	for _, src := range c.commandSources() {
+		if src.property == propPerMachineFolder {
+			sources = append(sources, src)
+		}
+	}
+
+	return sources
 }
 
 // consumedSources returns each command line source that became part of a
@@ -336,6 +508,17 @@ func moveAnchor(placement, anchor *omap) *omap {
 	}
 
 	return moved
+}
+
+// inScript reports whether a custom action runs in the install script:
+// deferred, rollback or commit.
+func inScript(ca *elem) bool {
+	switch ca.attr("Execute") {
+	case "deferred", "rollback", "commit":
+		return true
+	default:
+		return false
+	}
 }
 
 func immediate(ca *elem) bool {
@@ -693,10 +876,17 @@ func (c *converter) actionFlags(action *omap, custom *elem, program bool) { //no
 	}
 }
 
+// seqFirst is the Sequence of a setter that runs in the first sequence only.
+const seqFirst = "first"
+
 // setterSequences are the sequences a SetProperty or SetDirectory runs in.
 func (c *converter) setterSequences(action *omap, setter *elem) []string {
 	switch seq := setter.attr("Sequence"); seq {
 	case "", onBoth, seqExecute, seqUI:
+	case seqFirst:
+		// Runs in the first sequence that reaches it: the UI sequence
+		// when there is one, else the execute sequence.
+		action.set("once", "firstSequence")
 	default:
 		c.todof(action, "", setter.line, "Sequence=%q has no counterpart", seq)
 	}
@@ -708,7 +898,7 @@ func (c *converter) setterSequences(action *omap, setter *elem) []string {
 // runs in.
 func setterSequenceNames(setter *elem) []string {
 	switch seq := setter.attr("Sequence"); seq {
-	case "", onBoth:
+	case "", onBoth, seqFirst:
 		return []string{seqUI, seqExecute}
 	case seqUI:
 		return []string{seqUI}
@@ -740,7 +930,7 @@ func (c *converter) setter(setter *elem) (*omap, []any) {
 		action.set("setDirectory", flowMap().set("directory", c.dirRef(setterID)).set("value", c.value(setter, "Value")))
 
 		if before == "" && after == "" {
-			after = "CostFinalize"
+			after = actCostFinalize
 		}
 	} else {
 		action.set("setProperty", flowMap().set("name", setterID).set("value", c.value(setter, "Value")))

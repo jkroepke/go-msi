@@ -1,6 +1,7 @@
 package wixconvert
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/jkroepke/msi-builder/pkg/config"
@@ -67,7 +68,8 @@ func (c *converter) programFilesDir() *dir {
 
 // firstDirBelow returns the first folder below a standard folder whose ID
 // starts with prefix, going down through folders that hold only one
-// folder and no components.
+// folder and no files: a component without files, such as one that
+// remembers a data folder, does not make its folder the program's.
 func (c *converter) firstDirBelow(prefix string) *dir {
 	for _, folder := range c.dirOrder {
 		if folder.std || folder.parent == nil || !strings.HasPrefix(folder.parent.id, prefix) {
@@ -76,7 +78,7 @@ func (c *converter) firstDirBelow(prefix string) *dir {
 
 		for {
 			kids := c.childDirs(folder)
-			if len(kids) != 1 || c.hasComponents(folder) || kids[0].sub {
+			if len(kids) != 1 || c.hasFiles(folder) || kids[0].sub {
 				return folder
 			}
 
@@ -99,9 +101,13 @@ func (c *converter) childDirs(d *dir) []*dir {
 	return kids
 }
 
-func (c *converter) hasComponents(d *dir) bool {
+func (c *converter) hasFiles(d *dir) bool {
 	for _, cp := range c.comps {
-		if cp.dir == d.id {
+		if cp.dir != d.id {
+			continue
+		}
+
+		if isFile(cp.e) || slices.ContainsFunc(cp.e.kids, isFile) {
 			return true
 		}
 	}
@@ -341,6 +347,11 @@ func (c *converter) emitDirs(tree map[*dir]bool) { //nolint:cyclop,gocognit // o
 		entry.set("id", c.dirRef(folder.id))
 		entry.set("name", folder.name)
 
+		if folder.name == "" && !folder.std {
+			c.todof(entry, "", folder.line, "the Directory %s has no Name, so it is its parent folder unless an action "+
+				"sets it; msi-builder has no such folder, give it a name or use a standard folder", folder.id)
+		}
+
 		if folder == c.installDir {
 			entry.set("configurable", true)
 		}
@@ -449,3 +460,5 @@ func (c *converter) looksLikeID(word string) bool {
 func joinPath(start string, names []string) string {
 	return strings.Join(append([]string{start}, names...), "/")
 }
+
+func isFile(e *elem) bool { return e.is("File") || e.is("Files") }

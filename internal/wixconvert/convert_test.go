@@ -325,8 +325,8 @@ func TestConvertBuiltCodes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := wixconvert.Note{Line: 38, Message: "WiX generated the Guid of the component in line 7, Main, the component in line 17, " +
-		"the component in line 20, Menu and 2 more components; msi-builder generates other codes"}
+	want := wixconvert.Note{Line: 38, Message: "WiX generated the Guid of a.txt, Main, notes.txt, readme.txt, Menu and 2 more components; " +
+		"msi-builder generates other codes"}
 
 	if !slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool {
 		return n.Line == want.Line && strings.HasPrefix(n.Message, want.Message)
@@ -484,7 +484,7 @@ func globNotes(t *testing.T, notes []wixconvert.Note, built bool) []int {
 			strings.HasPrefix(note.Message, "hello.msi has no component for a file of this Files glob"):
 			lines = append(lines, note.Line)
 		case strings.Contains(note.Message, "no matching component"), strings.HasPrefix(note.Message, "WiX generated the Guid"):
-			if built || !strings.Contains(note.Message, "the component in line 8, the component in line 10;") {
+			if built || !strings.Contains(note.Message, "the component in line 8, helper.exe;") {
 				t.Errorf("unexpected note %v", note)
 			}
 		}
@@ -539,6 +539,169 @@ func TestConvertAdvertisedLateRemoval(t *testing.T) {
 		if got != want {
 			t.Errorf("%s: note %t, want %t: %v", upgrade, got, want, res.Notes)
 		}
+	}
+}
+
+// TestConvertUnmappedNotes checks the TODOs of WiX constructs whose output
+// cannot validate or would be lost silently.
+func TestConvertUnmappedNotes(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <Directory Id="VOLUME">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component><File Source="hello.exe"><fw:FirewallException Name="Hello" Port="4985" /></File></Component>
+        <Component><File Source="hellod.exe"><fw:FirewallException Name="Hello" Port="4985" /></File></Component>
+      </Directory>
+    </Directory>
+    <SetDirectory Id="VOLUME" Value="[WindowsVolume]" />
+    <CustomAction Id="Notes" Directory="INSTALLFOLDER" ExeCommand="explorer.exe https://example.com/notes" Return="asyncNoWait" />
+    <ui:WixUI Id="WixUI_Minimal" />
+    <UI><Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="Notes" Condition="NOT Installed" /></UI>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{"the Directory VOLUME has no Name", "the Finish button runs the action Notes",
+		"the firewall exception on line 7 has the same name",
+	} {
+		if !slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool { return strings.HasPrefix(n.Message, want) }) {
+			t.Errorf("no note %q in %q", want, res.Notes)
+		}
+	}
+}
+
+// TestConvertWindows1252 checks that a source declared windows-1252 is
+// decoded: 0xE9 is é there and invalid UTF-8.
+func TestConvertWindows1252(t *testing.T) {
+	t.Parallel()
+
+	src := "<?xml version=\"1.0\" encoding=\"windows-1252\"?>\n" +
+		`<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <SummaryInformation Description="Hello ` + "\xe9" + `dition" />
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(res.YAML), "Hello édition") {
+		t.Errorf("the description was not decoded:\n%s", res.YAML)
+	}
+}
+
+// TestConvertBuiltCodeOfKeyPathID checks that a component without an Id
+// finds its built row by the Id of its key file, which WiX gives it.
+func TestConvertBuiltCodeOfKeyPathID(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component>
+          <File Id="main.exe" Source="main.exe" />
+        </Component>
+        <!-- WiX names it after the registry value, not the file. -->
+        <Component>
+          <RegistryKey Root="HKLM" Key="Software\Example\Hello">
+            <RegistryValue Id="installed" Name="installed" Value="1" Type="string" KeyPath="yes" />
+          </RegistryKey>
+          <File Id="notes.txt" Source="notes.txt" />
+        </Component>
+        <!-- Its key path is no file, so no built row matches its file. -->
+        <Component>
+          <RegistryValue Root="HKLM" Key="Software\Example\Hello" Name="extra" Value="1" Type="string" KeyPath="yes" />
+          <File Source="extra.txt" />
+        </Component>
+        <!-- An HKCU key path before a file stays the key path. -->
+        <Component Id="Prefs">
+          <RegistryValue Id="prefs" Root="HKCU" Key="Software\Example\Hello" Name="prefs" Value="1" Type="integer" KeyPath="yes" />
+          <File Id="prefs.ini" Source="prefs.ini" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+  </Package>
+</Wix>`
+
+	built := &wixconvert.BuiltPackage{Name: "hello.msi", Components: []wixconvert.BuiltComponent{
+		{ID: "main.exe", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "INSTALLFOLDER", KeyFile: "main.exe"},
+		{ID: "installed", Code: "{00000000-0000-4000-8000-000000000002}", Directory: "INSTALLFOLDER"},
+		{ID: "other", Code: "{00000000-0000-4000-8000-000000000003}", Directory: "INSTALLFOLDER", KeyFile: "extra.txt"},
+	}}
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{Built: built})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{"guid: '{00000000-0000-4000-8000-000000000001}'", "- id: installed\n",
+		"guid: '{00000000-0000-4000-8000-000000000002}'", "keyPath: installed\n",
+		"keyPath: prefs\n",
+	} {
+		if !strings.Contains(string(res.YAML), want) {
+			t.Errorf("YAML lacks %q:\n%s", want, res.YAML)
+		}
+	}
+
+	if strings.Contains(string(res.YAML), "000000000003") {
+		t.Errorf("a component with a registry key path took the code of a file component:\n%s", res.YAML)
+	}
+}
+
+// TestConvertKeyFileIDs checks the Ids that components without one take
+// from their key file: a define is filled in, a name over 72 characters is
+// no Id, and a generated Id skips the names files took.
+func TestConvertKeyFileIDs(t *testing.T) {
+	t.Parallel()
+
+	long := strings.Repeat("A", 76) + ".dll"
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <?define Exe = "hello.exe" ?>
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component><RegistryValue Root="HKLM" Key="Software\Example\Hello" Name="a" Value="1" Type="string" KeyPath="yes" /></Component>
+        <Component><File Source="Component1" /></Component>
+        <Component><File Source="dist\$(var.Exe)" /></Component>
+        <Component><File Source="` + long + `" /></Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main"><ComponentRef Id="hello.exe" /></Feature>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(string(res.YAML), "id: "+long) {
+		t.Errorf("a name over 72 characters became an Id:\n%s", res.YAML)
+	}
+
+	if !strings.Contains(string(res.YAML), "- id: hello.exe\n") {
+		t.Errorf("the component of $(var.Exe) is not hello.exe:\n%s", res.YAML)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, res.YAML)
 	}
 }
 

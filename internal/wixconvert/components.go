@@ -2,6 +2,7 @@ package wixconvert
 
 import (
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 // fileRef is a converted file, for shortcuts and firewall rules that point
 // at it.
 type fileRef struct {
+	e    *elem
 	comp *comp
 	out  *omap
 	key  string
@@ -134,7 +136,7 @@ func (c *converter) component(comp *comp, tree map[*dir]bool) *omap {
 		out.set("guid", guid)
 	}
 
-	out.set("condition", c.value(elm, "Condition"))
+	c.componentCondition(out, elm.line, c.value(elm, "Condition"))
 
 	for _, flag := range componentFlags {
 		if elm.yes(flag[0]) {
@@ -151,12 +153,22 @@ func (c *converter) component(comp *comp, tree map[*dir]bool) *omap {
 
 	// A folder source takes no guid; pinHarvested gives its files theirs.
 	if comp.generated && comp.folder == nil && c.built != nil {
-		c.pinCode(comp, content.keyFile)
+		c.pinCode(comp, builtKeyFile(elm, content.keyFile))
 	}
 
 	content.finish()
 
 	return out
+}
+
+// builtKeyFile returns the key file a component has in the built package:
+// none when its key path is no file.
+func builtKeyFile(elm *elem, keyFile string) string {
+	if key := keyElem(elm); key != nil && !key.is("File") && !key.is("Files") {
+		return ""
+	}
+
+	return keyFile
 }
 
 // Bitness values.
@@ -179,6 +191,7 @@ const (
 // WiX standard wizards and their variables.
 const (
 	uiMondo            = "WixUI_Mondo"
+	uiAdvanced         = "WixUI_Advanced"
 	uiFeatureTree      = "WixUI_FeatureTree"
 	varWixUILicenseRtf = "WixUILicenseRtf"
 	varWixUIBannerBmp  = "WixUIBannerBmp"
@@ -202,13 +215,17 @@ func (c *converter) bitness(out *omap, elm *elem) {
 
 // compConv converts the content of one component.
 type compConv struct {
-	c            *converter
-	cp           *comp
-	out          *omap
-	tree         map[*dir]bool
-	controlled   map[*omap]bool
+	c          *converter
+	cp         *comp
+	out        *omap
+	tree       map[*dir]bool
+	controlled map[*omap]bool
+	// firstKey is a key path RegistryValue that came before any other
+	// resource, and firstKeyID its ID.
+	firstKey     *omap
 	keyPath      string // the key path a File or RegistryValue asks for
 	keyFile      string // the name of the key path file WiX picks
+	firstKeyID   string
 	hkcuKeyPaths []*omap
 	removeFolder []*omap
 	services     []*omap
@@ -217,6 +234,7 @@ type compConv struct {
 	shortcuts    int
 	files        int
 	keyIsDir     bool
+	keyIsFile    bool // keyPath is a File
 }
 
 // componentChildren convert the elements a Component holds.
@@ -240,10 +258,69 @@ var componentChildren = map[string]func(cc *compConv, e *elem){ //nolint:gocheck
 	"fw:FirewallException":  func(cc *compConv, e *elem) { cc.c.firewall(e, cc.cp, "") },
 	"ProgId":                (*compConv).progID,
 	// WiX v3: the condition is the text.
-	elemCondition: func(cc *compConv, e *elem) { cc.out.set("condition", cc.c.expand(e, strings.TrimSpace(e.text))) },
+	elemCondition: func(cc *compConv, e *elem) {
+		cc.c.componentCondition(cc.out, e.line, cc.c.expand(e, strings.TrimSpace(e.text)))
+	},
 }
 
 const elemShortcut = "Shortcut"
+
+// actionState matches a feature or component action state, &Feature or
+// $Component, in a condition.
+var actionState = regexp.MustCompile(`[&$][A-Za-z_][A-Za-z0-9_.]*`)
+
+// quotedText matches a string literal in a condition.
+var quotedText = regexp.MustCompile(`"[^"]*"`)
+
+// scopeConditions are the conditions that install a component of a dual
+// package in one scope only: ALLUSERS is 1 per machine and unset per user.
+var scopeConditions = map[string]string{ //nolint:gochecknoglobals // lookup table
+	propAllUsers:     scopeMachine,
+	"ALLUSERS=1":     scopeMachine,
+	`ALLUSERS="1"`:   scopeMachine,
+	"NOT ALLUSERS":   scopeUser,
+	"NOT ALLUSERS=1": scopeUser,
+	`ALLUSERS=""`:    scopeUser,
+}
+
+// dualScope reports whether the package lets the user pick the scope.
+func (c *converter) dualScope() bool {
+	return c.scope == scopeUserOrMachine || c.scope == scopeMachineOrUser
+}
+
+// scopeCondition returns the components[].scope a condition stands for in
+// a dual package, or "".
+func (c *converter) scopeCondition(cond string) string {
+	if !c.dualScope() {
+		return ""
+	}
+
+	normalized := strings.Join(strings.Fields(strings.ReplaceAll(cond, "=", " = ")), " ")
+	normalized = strings.ReplaceAll(normalized, " = ", "=")
+
+	return scopeConditions[normalized]
+}
+
+// componentCondition sets a component's condition. The installer evaluates
+// it before features and components have action states, so msi-builder
+// rejects one that tests them and convert leaves it out.
+func (c *converter) componentCondition(out *omap, line int, cond string) {
+	if scope := c.scopeCondition(cond); scope != "" {
+		// The condition the builder writes for components[].scope.
+		out.set("scope", scope)
+
+		return
+	}
+
+	if state := actionState.FindString(quotedText.ReplaceAllString(cond, `""`)); state != "" {
+		c.todof(out, "", line, "the condition %q was left out: it tests the action state %s, which is not set yet when "+
+			"the installer evaluates component conditions; test a property instead", cond, state)
+
+		return
+	}
+
+	out.set("condition", cond)
+}
 
 func (cc *compConv) child(elm *elem) {
 	if hint, ok := unsupported[elm.qname()]; ok {
@@ -269,10 +346,15 @@ func (cc *compConv) shortcut(e *elem) {
 func (cc *compConv) finish() { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
 	cc.resolveControls()
 
-	if cc.keyIsDir && (cc.files > 0 || cc.out.get("registry") != nil) {
+	switch {
+	case cc.keyIsDir && (cc.files > 0 || cc.out.get("registry") != nil):
 		cc.out.set("keyPath", keyDirectory)
-	} else if cc.keyPath != "" {
+	case cc.keyPath != "":
 		cc.out.set("keyPath", cc.keyPath)
+	case cc.firstKey != nil && cc.files > 0:
+		// A File after it would be msi-builder's default key path.
+		cc.firstKey.set("id", cc.firstKeyID)
+		cc.out.set("keyPath", cc.firstKeyID)
 	}
 
 	if cc.shortcuts > 0 {
@@ -295,8 +377,8 @@ func (cc *compConv) finish() { //nolint:cyclop // one pass in a fixed order; spl
 	}
 
 	for _, value := range cc.hkcuKeyPaths {
-		// Not the first registry value: name it as the key path.
-		if cc.out.get("registry") != nil && cc.files == 0 && cc.keyPath == "" {
+		// Not the first resource: name it as the key path.
+		if (cc.out.get("registry") != nil || cc.files > 0) && cc.keyPath == "" {
 			cc.out.set("keyPath", value.get("id"))
 		} else {
 			value.del("id")
@@ -322,7 +404,7 @@ func (cc *compConv) dropShortcutRows() {
 		cc.cp.droppedValues = append(cc.cp.droppedValues, value.str("key")+`\`+value.str("name"))
 	}
 
-	if cc.keyPath != "" && cc.out.get("registry") == nil {
+	if cc.keyPath != "" && !cc.keyIsFile && cc.out.get("registry") == nil {
 		cc.out.del("keyPath")
 	}
 }
@@ -358,11 +440,11 @@ func (cc *compConv) file(elm *elem) { //nolint:cyclop // a flat list of independ
 	}
 
 	key := config.FileKey(&config.File{Source: src, Name: name, ID: elm.attr("Id")})
-	ref := &fileRef{key: key, dir: cc.cp.dir, name: name, comp: cc.cp, out: file}
+	ref := &fileRef{e: elm, key: key, dir: cc.cp.dir, name: name, comp: cc.cp, out: file}
 	conv.files = append(conv.files, ref)
 
 	if elm.yes("KeyPath") && cc.files > 0 {
-		cc.keyPath = name
+		cc.keyPath, cc.keyIsFile = name, true
 	}
 
 	if cc.files == 0 || elm.yes("KeyPath") {
@@ -529,8 +611,13 @@ func (cc *compConv) registryValue(elm *elem, root, key string) { //nolint:cyclop
 
 	if cc.files > 0 || cc.out.get("registry") != nil {
 		cc.keyPath = entry.str("id")
-	} else if elm.attr("Id") == "" {
-		entry.del("id")
+	} else {
+		// The first resource is the default key path, unless a File
+		// follows; finish decides.
+		cc.firstKey, cc.firstKeyID = entry, entry.str("id")
+		if elm.attr("Id") == "" {
+			entry.del("id")
+		}
 	}
 
 	cc.out.add("registry", entry)
@@ -551,11 +638,7 @@ func (cc *compConv) registryData(elm *elem, typ string) any {
 	conv := cc.c
 
 	if typ != typeMultiString {
-		if elm.has("Value") {
-			return conv.value(elm, "Value")
-		}
-
-		return conv.expand(elm, strings.TrimSpace(elm.text))
+		return cc.scalarData(elm, typ)
 	}
 
 	var values []string
@@ -576,6 +659,22 @@ func (cc *compConv) registryData(elm *elem, typ string) any {
 	}
 
 	return values
+}
+
+// scalarData is the value of a RegistryValue that is not a multi-string.
+func (cc *compConv) scalarData(elm *elem, typ string) any {
+	conv := cc.c
+
+	if !elm.has("Value") {
+		return conv.expand(elm, strings.TrimSpace(elm.text))
+	}
+
+	if v := conv.value(elm, "Value"); v != "" || typ != "" && typ != "expandString" {
+		return v
+	}
+
+	// An empty string value, which a registry entry must state.
+	return emptyText{}
 }
 
 func joinKey(parent, key string) string {
@@ -607,12 +706,7 @@ func (cc *compConv) removeRegistry(elm *elem) {
 	}
 
 	if elm.attr("Action") == "removeOnUninstall" {
-		// A registry entry with removeOnUninstall would also create the
-		// key on install, which WiX never does.
-		conv.todof(cc.out, "", elm.line, "RemoveRegistryKey %s\\%s was left out: msi-builder has no removal on uninstall only, "+
-			"and removeRegistry removes the key on install", elm.attr("Root"), conv.value(elm, "Key"))
-
-		return
+		entry.set("on", "uninstall")
 	}
 
 	cc.out.add("removeRegistry", entry)
