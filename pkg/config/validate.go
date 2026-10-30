@@ -586,6 +586,7 @@ func (v *validator) features(cfg *Config, known *refs) {
 
 			v.oneOf(featurePath+".display", feature.Display, "expanded", "collapsed", "hidden")
 			v.featureDefault(featurePath, feature)
+			v.featureConditions(featurePath, feature)
 
 			v.featureRefs(featurePath, feature, known)
 
@@ -610,6 +611,90 @@ func (v *validator) featureDefault(featurePath string, feature *Feature) {
 
 	if !feature.levelIsDefault() {
 		v.errorf(featurePath+".default", "set default or level, not both")
+	}
+}
+
+// featureConditions checks the conditional levels of a feature. Each
+// becomes a Condition row keyed by feature and level, so two entries
+// cannot share a level.
+func (v *validator) featureConditions(featurePath string, feature *Feature) {
+	levels := make(map[int]bool)
+
+	for i, cond := range feature.Conditions {
+		condPath := fmt.Sprintf("%s.conditions[%d]", featurePath, i)
+
+		v.featureCondition(condPath, cond)
+
+		if !v.featureConditionLevel(condPath, cond) {
+			continue
+		}
+
+		level := cond.Value()
+		if levels[level] {
+			v.errorf(condPath, "another condition of feature %s sets level %d; join the conditions with OR", feature.ID, level)
+		}
+
+		levels[level] = true
+	}
+}
+
+// featureConditionLevel checks the default or level of a conditional
+// level and reports whether it names a valid level.
+func (v *validator) featureConditionLevel(condPath string, cond *FeatureCondition) bool {
+	switch {
+	case cond.Default != "" && cond.Level != nil:
+		v.errorf(condPath+".default", "set default or level, not both")
+
+		return false
+	case cond.Default != "" && !slices.Contains([]string{FeatureOn, FeatureOff, FeatureDisabled}, cond.Default):
+		v.oneOf(condPath+".default", cond.Default, FeatureOn, FeatureOff, FeatureDisabled)
+
+		return false
+	case cond.Default != "":
+	case cond.Level == nil:
+		v.errorf(condPath, "set default or level")
+
+		return false
+	case *cond.Level < 0 || *cond.Level > maxSequenceNumber:
+		v.errorf(condPath+".level", "must be between 0 and %d", maxSequenceNumber)
+
+		return false
+	}
+
+	return true
+}
+
+// featureCondition checks the condition of a Condition row: its syntax,
+// its length, and that it asks for no feature or component state. The
+// engine evaluates the Condition table before it reads installed states
+// and sets action states, so such a term is always false (documented, not
+// tested).
+func (v *validator) featureCondition(field string, cond *FeatureCondition) {
+	field += ".condition"
+
+	if !v.required(field, strings.TrimSpace(cond.Condition)) {
+		return
+	}
+
+	if err := condition.Check(cond.Condition); err != nil {
+		v.errorf(field, "%v", err)
+
+		return
+	}
+
+	if states := condition.States(cond.Condition); len(states) > 0 {
+		v.errorf(field, "refers to the state of %s, but the engine evaluates feature conditions before "+
+			"features and components have one (documented); use a property instead", strings.Join(states, ", "))
+	}
+
+	if slices.Contains(condition.Properties(cond.Condition), "Installed") {
+		v.errorf(field, "uses Installed, which is always false here: the builder applies feature conditions "+
+			"to first installs only (NOT Installed, INST-05)")
+	}
+
+	if full := cond.FullCondition(); len(full) > maxComponentCondition {
+		v.errorf(field, "with the first-install check the builder adds, the condition is %d characters; "+
+			"Condition.Condition holds %d", len(full), maxComponentCondition)
 	}
 }
 

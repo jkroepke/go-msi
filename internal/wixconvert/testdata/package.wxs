@@ -70,12 +70,14 @@
       <ComponentGroupRef Id="Core" />
       <ComponentRef Id="StartMenu" />
       <Feature Id="Docs" Title="Documentation" Level="2" Display="expand">
+        <Level Value="1" Condition="INSTALLDOCS = 1" />
+        <Level Value="5" Condition="&amp;Main = 3" />
         <Component Directory="INSTALLFOLDER">
           <File Source="docs\manual.pdf" />
         </Component>
       </Feature>
     </Feature>
-    <Feature Id="Firewall" Title="Firewall rule" Level="0">
+    <Feature Id="Firewall" Title="Firewall rule" Level="3">
       <ComponentRef Id="FirewallRule" />
     </Feature>
 

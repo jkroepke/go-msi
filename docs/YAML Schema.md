@@ -309,6 +309,34 @@ ui:
 From the command line, `ADDLOCAL=ALL` installs every feature and
 `ADDLOCAL=Main,Docs` the ones named.
 
+`conditions` change whether a feature is installed from a property, the
+Windows version or anything else a condition can test. An entry whose
+condition is true sets the feature's default:
+
+```yaml
+properties:
+  ASSOCIATE: { value: "1", secure: true }
+
+features:
+  - id: Main
+    components:
+      - files:
+          - source: hello.exe
+  - id: Associations
+    title: File associations
+    conditions:
+      - { condition: ASSOCIATE <> 1, default: off }
+    components:
+      - registry:
+          - { root: HKLM, key: Software\Classes\.hello, value: Hello.File }
+```
+
+`msiexec /i hello.msi ASSOCIATE=0` leaves the associations out. The
+conditions only apply to a first install. At an upgrade, a feature keeps
+the state the old version gave it, except that a condition can still
+disable it, and one the old version had disabled follows its conditions. `default: disabled` keeps a feature out even of `ADDLOCAL=ALL`;
+`off` lets the user still pick it.
+
 ### Show a setup wizard
 
 Without `ui`, the installer shows only a progress window. `ui.enabled`

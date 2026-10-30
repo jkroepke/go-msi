@@ -176,12 +176,15 @@ type Feature struct { //nolint:govet // field order is the YAML key order
 	Description string `yaml:"description"`
 	// Default is on, off or disabled: whether the feature is installed by
 	// default. ApplyDefaults turns it into Level 1, 2 or 0.
-	Default        string `yaml:"default"`
-	Level          *int   `yaml:"level"`
-	Display        string `yaml:"display"`
-	Directory      string `yaml:"directory"`
-	AllowAbsent    *bool  `yaml:"allowAbsent"`
-	AllowAdvertise bool   `yaml:"allowAdvertise"`
+	Default string `yaml:"default"`
+	Level   *int   `yaml:"level"`
+	// Conditions replace Level when their condition is true at a first
+	// install (Condition table rows).
+	Conditions     []*FeatureCondition `yaml:"conditions"`
+	Display        string              `yaml:"display"`
+	Directory      string              `yaml:"directory"`
+	AllowAbsent    *bool               `yaml:"allowAbsent"`
+	AllowAdvertise bool                `yaml:"allowAdvertise"`
 	// Components are the feature's components: an id of an entry in
 	// components, or a component defined in place. ApplyDefaults moves
 	// components defined in place to Config.Components, so afterwards every
@@ -203,6 +206,34 @@ type Feature struct { //nolint:govet // field order is the YAML key order
 // in.
 func (f *Feature) levelIsDefault() bool {
 	return f.Level != nil && f.Level == f.defaultedLevel && *f.Level == f.defaultedValue
+}
+
+// FeatureCondition is a level that replaces the feature's level at a first
+// install when the condition is true. The engine evaluates it in
+// CostFinalize, also when ADDLOCAL is set (INST-05).
+type FeatureCondition struct { //nolint:govet // field order is the YAML key order
+	Condition string `yaml:"condition"`
+	// Default is on, off or disabled, like Feature.Default; set it or
+	// Level.
+	Default string `yaml:"default"`
+	Level   *int   `yaml:"level"`
+}
+
+// FullCondition returns the Condition row's condition: the condition
+// applies to first installs only, because a feature that is disabled
+// (level 0) when the product is removed keeps its files (INST-05).
+func (c *FeatureCondition) FullCondition() string {
+	return "NOT Installed AND (" + c.Condition + ")"
+}
+
+// Value returns the level the condition sets: Level, or the level of
+// Default.
+func (c *FeatureCondition) Value() int {
+	if c.Level != nil {
+		return *c.Level
+	}
+
+	return defaultLevel(c.Default)
 }
 
 // Component is a unit that is installed, repaired and removed together.

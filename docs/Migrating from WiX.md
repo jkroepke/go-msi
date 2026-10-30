@@ -391,6 +391,26 @@ features:
     components: [Manual]
 ```
 
+A conditional level, `<Level Value="0" Condition="…"/>` (WiX v3:
+`<Condition Level="0">…</Condition>`), is an entry of the feature's
+`conditions`:
+
+```yaml
+features:
+  - id: Docs
+    title: Documentation
+    default: off
+    conditions:
+      - { condition: INSTALLDOCS = 1, default: on }
+    components:
+      - files:
+          - source: docs/manual.pdf
+```
+
+msi-builder adds `NOT Installed` to each condition, because a feature
+that its condition disables when the product is removed keeps its files.
+A condition cannot test feature or component states, nor `Installed`; `convert` leaves such levels as a `# TODO`.
+
 `AllowAbsent` and `ConfigurableDirectory` are `allowAbsent` and
 `directory` on the feature, and `Display` is `display` with the values
 `expanded`, `collapsed` and `hidden`.

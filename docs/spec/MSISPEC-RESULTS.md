@@ -222,6 +222,7 @@ Silent-failure cases a producer has to guard against itself:
 | INST-01 | Confirmed | Labelled substitute (published `minimal.msi` not in the repository), [x64](msitest/results/INST-01/x64-substitute/log.md) and [Intel](msitest/results/INST-01/intel-substitute/log.md) |
 | INST-02 | Confirmed | [admin](msitest/results/INST-02/admin/log.md), [non-admin](msitest/results/INST-02/nonadmin/log.md), [non-admin on CI](msitest/results/INST-02/nonadmin-ci/log.md); SERVER2025, 2026-10-29, `msitest/inst02/run.ps1`: `MSIINSTALLPERUSER` selects the context of an `ALLUSERS=2` package for admins and standard users, files, HKMU, HKCR, shortcuts and registration follow it, a standard user's per-user install needs no Word Count bit 3, a per-machine one fails with 1925; a context switch in the UI sequence leaves the client-resolved `INSTALLDIR` in the old context; a major upgrade does not cross contexts; on CI, `TestNonAdminInstallScopes` repeats the four scopes as a standard user on every run since CI run 40942811121 (exit codes, error 1925, install folder) |
 | INST-04 | Confirmed | CI runs 40966711286, 40967057615, 40969857298, 40974297757, 40976031652 and 40976459274, `TestMsiexecProfileKeyPath`, `TestICEProfileKeyPath`, `TestICEProfileHKMUKeyPath`, `TestNonAdminInstallScopes`; [details](#hkcu-key-paths-for-profile-components-inst-04) |
+| INST-05 | Confirmed | CI runs 41076138963, 41079437345, 41083409657 and 41085596960, `TestMsiexecFeatureConditions`; [details](#feature-conditions-inst-05) |
 | FILE-01 | Confirmed | [empty version, REP 1401](msitest/results/FILE-01/empty-version-rep1401/log.md) deletes the file |
 | FILE-02 | Confirmed | [log](msitest/results/FILE-02/file-hash/log.md) |
 | FILE-03 | Confirmed | [removefile-upgrade](msitest/results/FILE-03/removefile-upgrade/log.md), [purge-upgrade](msitest/results/FILE-03/purge-upgrade/log.md); `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
@@ -1100,3 +1101,35 @@ with `MSIRESTARTMANAGERCONTROL=Disable`. The test starts the helpers itself
 - Not covered: a full-UI install (the files-in-use dialog), a standard user's
   install, another user's session, a 32-bit or Arm64 package, a major
   upgrade, Windows Server 2016.
+
+## Feature conditions (INST-05)
+
+Run on 2026-10-30 on the `Build & Test (windows-latest, native)` job
+(Windows Server 2025 x64, elevated) of PR #162: two probes
+([without the guard](msitest/results/INST-05/unguarded/log.md),
+[with it](msitest/results/INST-05/guarded/log.md)) and
+`TestMsiexecFeatureConditions`
+(`internal/builder/nativetest/featureconditions_windows_test.go`,
+[log](msitest/results/INST-05/ci/log.md), passed in run 41085596960). The package has a base feature
+and `Assoc` at level 3 with the rows `ASSOC = 1` (level 1) and
+`ASSOC <> 1` (level 0), the pattern of a real installer's optional file
+associations.
+
+| Step | Rows as authored | Rows with `NOT Installed AND (…)` |
+| --- | --- | --- |
+| install without `ASSOC` | Assoc not installed | the same |
+| install `ASSOC=1`, `msiexec /x` without `ASSOC` (or `ASSOC=0`) | Assoc logged `Installed: Absent`; **assoc.txt left after the product was unregistered** (both) | without `ASSOC`: Assoc removed |
+| install `ASSOC=1`, `msiexec /fa` | Assoc logged `Installed: Absent`, file kept, not repaired | Assoc reinstalled, file kept |
+| install `ASSOC=0` with `ADDLOCAL=ALL` / `ADDLOCAL=Assoc` | `ADDLOCAL=ALL`: Assoc not installed (rows applied despite `ADDLOCAL`) | `ADDLOCAL=Assoc`: nothing installed, product not registered, exit 0 |
+| install without `ASSOC`, then `ADDLOCAL=Assoc` | not run | Assoc installed |
+| v1 with `ASSOC=1`, major upgrade to v2 without it | v2 leaves Assoc out; v1's removal leaves assoc.txt behind for good | v2 leaves Assoc out; v1's copy removed |
+| upgrade with `ASSOC=1` | v1 without Assoc: Assoc installed | v1 with and without Assoc: Assoc installed |
+
+- Two true rows of one feature (levels 0 and 2): level 2 won, seen through
+  `ADDLOCAL=ALL`, which installed the feature.
+- `Soft` (level 3, row `SOFT = 1` level 1, no level-0 row): installed by v1
+  with `SOFT=1`, kept by an upgrade without the property; left out by v1,
+  it stayed out of an upgrade with `SOFT=1`, logged `Request: Absent`
+  (presumably `MigrateFeatureStates`; the log does not show which action).
+- Not covered: rows with installed-state terms (msi-builder rejects them),
+  `REMOVE=<feature>` in maintenance, Windows Server 2016.
