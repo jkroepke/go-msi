@@ -21,6 +21,8 @@ type Language struct {
 	Dialogs map[string]*LanguageDialog `yaml:"dialogs"`
 	// Launch replaces the texts of ui.launch.
 	Launch *LanguageLaunch `yaml:"launch"`
+	// Progress replaces the progress texts of customActions, by action ID.
+	Progress map[string]string `yaml:"progress"`
 	// FinishText replaces ui.finishText.
 	FinishText string `yaml:"finishText"`
 	// License replaces ui.license.
@@ -217,6 +219,28 @@ func (v *validator) uiLanguages(cfg *Config) {
 		v.checkFinishText(path+".finishText", entry.FinishText)
 		v.languageLaunch(cfg, path+".launch", entry.Launch)
 		v.languageDialogs(cfg, path+".dialogs", entry.Dialogs)
+		v.languageProgress(cfg, path+".progress", entry.Progress)
+	}
+}
+
+// languageProgress checks the progress texts of a ui.languages entry: each
+// key names a custom action that has a progress text in the base language.
+func (v *validator) languageProgress(cfg *Config, path string, texts map[string]string) {
+	for _, actionID := range slices.Sorted(maps.Keys(texts)) {
+		textPath := path + "." + actionID
+
+		index := slices.IndexFunc(cfg.CustomActions, func(a *CustomAction) bool { return a != nil && a.origin == "" && a.ID == actionID })
+
+		switch {
+		case index < 0:
+			v.errorf(textPath, "%s is not the id of a custom action", actionID)
+		case cfg.CustomActions[index].Progress == "":
+			v.errorf(textPath, "custom action %s has no progress text to translate", actionID)
+		case texts[actionID] == "":
+			v.errorf(textPath, "the text is empty; leave the key out to keep the base language's")
+		default:
+			v.checkProgress(textPath, texts[actionID])
+		}
 	}
 }
 

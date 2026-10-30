@@ -486,6 +486,7 @@ customActions:
     execute: deferred         # runs while the files are installed
     impersonate: false        # as LocalSystem, like the installation
     return: check             # check fails the install on a non-zero exit, ignore does not
+    progress: Creating the configuration   # shown on the progress page while it runs
     schedule:
       - sequence: execute
         after: InstallFiles
@@ -508,7 +509,9 @@ on `PATH`. Pass a folder as `"[INSTALLDIR]."`, not `"[INSTALLDIR]"`, whose
 trailing backslash would escape the closing quote. Everything the
 command starts ends with it: a background process it leaves behind is
 ended when the action finishes, so start a service through `services`,
-not from a command. Prefer the
+not from a command. `progress` is optional: it names the step on
+the progress page while the command runs. A `ui.languages` entry
+translates it with `progress: {InitConfig: ...}`. Prefer the
 recipes above where one fits: they also undo themselves on uninstall.
 
 ### Install for the current user only
@@ -528,7 +531,28 @@ the user's part of the registry, so it cannot install services or write to
 HKLM. Windows Installer wants each component in the user's profile to
 mark itself with an HKCU value; msi-builder writes one under
 `HKCU\Software\<manufacturer>\<product name>` for you.
-`perUserOrMachine` and `perMachineOrUser` let the user choose.
+`perUserOrMachine` and `perMachineOrUser` let the user choose. In such a
+package a `PATH` entry goes to the machine `PATH` when the user installs
+for all users and to their own `PATH` otherwise, and a component with
+`scope: perMachine` holds what only an all-users install writes, such as
+HKLM values:
+
+```yaml
+package:
+  platform: x64
+  scope: perMachineOrUser
+
+components:
+  - files:
+      - source: hello.exe
+    environment:
+      - { name: PATH, value: '[INSTALLDIR]', action: append }
+  - id: MachineSettings
+    directory: INSTALLDIR
+    scope: perMachine
+    registry:
+      - { root: HKLM, key: Software\Example Corp\Hello, name: Path, value: '[INSTALLDIR]' }
+```
 
 ### Ask for a restart
 

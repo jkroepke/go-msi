@@ -241,6 +241,7 @@ Silent-failure cases a producer has to guard against itself:
 | REG-07 | Confirmed | SERVER2025, 2026-10-29, real-world survey (`local\wxs-realworld\out\<case>\preowned\`, black box): of 52 WiX MSIs (rounds 2 to 5) plus the shipped Zabbix agent2 7.0.21 and Datadog 7.85 MSIs, 10 have file associations; 9 use only HKCR `Registry` rows, jpegview (advertised) uses `ProgId`/`Extension`/`Verb`/`MIME`; none calls `SHChangeNotify`. Pre-owned test on the WiX builds of xca, openhashtab and py-launcher and on msi-builder ports of them and of jpegview (msi-builder binary commit not recorded; `TestMsiexecFileTypes` covers msi-builder's own rows: GitHub `windows-latest` runner, CI run 40940473938, PR #127, passed): the `.ext` key stays, its default (also another program's later one) and `Content Type` go, the foreign `PerceivedType`, `OpenWithProgids` entry and `ShellNew` subkey stay, the package's ProgID and `OpenWithProgids` entry go. jpegview's WiX build (native tables) deletes the whole `.ext` key with the foreign values and subkeys |
 | ENVVAR-01 | Contradicted | [log](msitest/results/ENVVAR-01/environment/log.md); finding 4; segment removal on uninstall confirmed |
 | ENVVAR-02 | Confirmed | [ci](msitest/results/ENVVAR-02/ci/log.md); GitHub `windows-latest` runner, 2026-10-30, CI runs 41049121338 and 41052974347 (PR #142): one `WM_SETTINGCHANGE` with `"Environment"` after each install, repair and uninstall of the machine, user (per-machine package) and user (per-user package) variants, none without `Environment` rows; Explorer's environment block gained and lost each variable and picked up a value written by `reg add` without a broadcast before each step |
+| ENVVAR-03 | Confirmed | [ci](msitest/results/ENVVAR-03/ci/log.md); GitHub `windows-latest` runner, 2026-10-30, CI runs 41054581404, 41055965846 and 41058183558 (PR #149): in `ALLUSERS=2` packages a variable split into components conditioned `ALLUSERS=1` (`*` name) and `NOT ALLUSERS`, and HKLM/HKCU values in such components, install only in their context, silently and through the scope page; a standard user's per-user install writes neither the machine variable nor the HKLM value; a repair of transitive components keeps them (server `ALLUSERS` `1` or empty); ICE105 warns about the conditioned HKLM `Registry` and `RemoveRegistry` rows in `perUserOrMachine` only and never about the `*` row |
 | PROP-01 | Confirmed | [ci](msitest/results/PROP-01/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40945525570: a standard user's install elevated by `AlwaysInstallElevated` passes a command-line value to a deferred action only for the property listed in `SecureCustomProperties` (`SECURE=cmd PLAIN=default`); an administrator's install passes both |
 | PROP-02 | Contradicted | [ci](msitest/results/PROP-02/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40944028040: on build 26100 `VersionNT` is 603 (confirmed) and `WindowsBuild` 9600 (contradicts section 19.2); a registry search of `CurrentBuildNumber` gives 26100 and `OS_BUILD >= 22000` is true; Windows 11 not run |
 | SEARCH-01 | Not run | Interactive full UI |
@@ -275,6 +276,7 @@ Silent-failure cases a producer has to guard against itself:
 | CA-05 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40893135210 (PR #106): the engine copies the `Binary` program to `C:\Windows\Installer\MSIxxxx.tmp`, runs it in `C:\Windows\system32` and deletes it; deferred no-impersonate runs as LocalSystem, the rest as the user; exit 7 and exit 3010 are both error 1722 and msiexec 1603; [details](#exe-actions-ca-05) |
 | CA-06 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40925575633 (PR #117): `add rule name=all` fails in any case and quoted; `delete rule name=all` deletes every rule the other filters select, `"all"` and `\"all\"` included; unscoped with `dir=in` it deleted every inbound rule (208, two of them probe rules); names with spaces around `all` are ordinary names; [details](#reserved-firewall-rule-name-ca-06) |
 | CA-07 | Confirmed | [ci](msitest/results/CA-07/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40940932552: `localport=80,443,8000-8010` from the package and from a property is stored as written; uninstall removes the rule |
+| CA-08 | Confirmed | GitHub `windows-latest` runner, 2026-10-30, CI runs 41053365815 and 41058632106 (`TestMsiexecProgressText`, `TestFullUIProgressText`): the full-UI progress page shows a deferred action's `ActionText` description with `[ProductName]` resolved; the verbose log writes descriptions formatted; the German transform replaces the row; a `/qn` log has no description for an immediate action; [details](#progress-texts-ca-08) |
 | SHORTCUT-01 | Confirmed | [hkcu-folder](msitest/results/SHORTCUT-01/hkcu-folder/log.md), [file-component](msitest/results/SHORTCUT-01/file-component/log.md), [file-component-folder](msitest/results/SHORTCUT-01/file-component-folder/log.md), [advertised](msitest/results/SHORTCUT-01/advertised/log.md), [per-user](msitest/results/SHORTCUT-01/per-user/log.md); every layout installs and removes both shortcuts, the Start menu subfolder goes without a `RemoveFile` row; [details](#shortcuts-shortcut-01) |
 | SHORTCUT-02 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40882369236 (PR #98): the engine converts `PropVariantValue` to the property's type and formats it; a CLSID needs braces; an unknown name or a bad value is warning 1946 and the install goes on; [details](#shortcut-properties-shortcut-02) |
 | SHORTCUT-03 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI runs 40900720903 and 40908162979 (PR #105): WriteIniValues writes the `.url` as ANSI with CRLF, the shell reads the address, the `RemoveFile` row deletes it at uninstall after the shell added a section; [details](#shortcut-targets-shortcut-03-shortcut-04) |
@@ -1040,3 +1042,29 @@ as key path.
   kept), a `CompLocator` search for such a ComponentId, a second
   administrator's uninstall of a per-machine install, Windows Server 2016.
 
+## Progress texts (CA-08)
+
+Run on 2026-10-30 in CI runs 41053365815 and 41058632106 on the
+`Build & Test (windows-latest, native)` job (Windows Server 2025 x64,
+elevated, interactive session for the full UI) by the tests in
+`internal/builder/nativetest/progress_windows_test.go`. The package is the
+full-UI test package with two more actions: `SetMarker`, an immediate
+`setProperty` after `CostFinalize` with the description
+`Preparing [ProductName]`, and `WaitStep`, a deferred `run` action running
+`PING.EXE -n 6 127.0.0.1` (about 5 seconds) before `InstallFinalize` with
+`Waiting for [ProductName] to settle`. The `de` language entry translates
+`WaitStep` to `Warte auf [ProductName]`.
+
+| Run | Observed |
+| --- | --- |
+| full UI, driver reading every window each 500 ms | progress page: `Waiting for MsiBuilderFullUI to settle` in the `ActionText` control, above `Status:` and the page's own text |
+| full UI, verbose log | `Action 12:56:00: SetMarker. Preparing MsiBuilderFullUI`; `Action 12:56:00: WaitStep.Data. ` (no row); `Action 12:56:00: WaitStep. Waiting for MsiBuilderFullUI to settle` when it is scheduled and again when the script runs it; `Executing op: ActionStart(Name=WaitStep,Description=Waiting for MsiBuilderFullUI to settle,)` |
+| `/qn`, base language | `Action start 13:02:19: SetMarker.` with no description; `Executing op: ActionStart(Name=WaitStep,Description=Waiting for MsiBuilderFullUI to settle,)` |
+| `/qn`, `ProductLanguage=1031` | `Aktion gestartet um 13:02:24: SetMarker.`; `Executing op: ActionStart(Name=WaitStep,Description=Warte auf MsiBuilderFullUI,)` |
+
+- The `Description` column is declared `Text`, yet the engine formats it:
+  `[ProductName]` was resolved in every place it appeared.
+- The deferred action's text is already resolved in the script's
+  `ActionStart` operation, so it holds the property values of the moment the
+  script was written.
+- Not covered: basic UI (`/qb`).

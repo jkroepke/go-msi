@@ -127,6 +127,7 @@ func (c *converter) emitActions() {
 	byAction := c.placements()
 	c.quietExecCommands()
 	c.reanchor(byAction)
+	progress := c.progress()
 
 	for _, custom := range c.actionOrder {
 		actionID := custom.attr("Id")
@@ -139,6 +140,7 @@ func (c *converter) emitActions() {
 			continue
 		}
 
+		c.setProgress(action, actionID, progress)
 		action.set("schedule", byAction[actionID])
 		delete(byAction, actionID)
 		c.out.add("customActions", action)
@@ -151,6 +153,7 @@ func (c *converter) emitActions() {
 
 		action, schedule := c.setter(setter)
 		id := action.str("id")
+		c.setProgress(action, id, progress)
 		action.set("schedule", append(schedule, byAction[id]...))
 		delete(byAction, id)
 		c.out.add("customActions", action)
@@ -160,6 +163,78 @@ func (c *converter) emitActions() {
 		if c.actions[id] == nil && id != c.launchAction {
 			c.todof(nil, "", 0, "the sequences schedule %s, which this file does not define (an extension's action?)", id)
 		}
+	}
+
+	c.leftoverProgress(progress)
+}
+
+// leftoverProgress notes the progress texts that no converted action took:
+// those of standard or extension actions, and those of custom actions that
+// became part of another action or were not converted.
+func (c *converter) leftoverProgress(progress map[string]*elem) {
+	for _, actionID := range slices.Sorted(maps.Keys(progress)) {
+		line := progress[actionID].line
+		if c.actions[actionID] == nil && !c.isSetter(actionID) {
+			c.todof(nil, "", line, "the progress text of %s cannot be converted: msi-builder writes progress texts only for its customActions", actionID)
+
+			continue
+		}
+
+		c.todof(nil, "", line, "the progress text of %s is dropped: the action was not converted to a customActions entry of its own", actionID)
+	}
+}
+
+// isSetter reports whether id names a SetProperty or SetDirectory element.
+func (c *converter) isSetter(id string) bool {
+	return slices.ContainsFunc(c.setters, func(setter *elem) bool { return setterName(setter) == id })
+}
+
+// progress indexes the ProgressText elements by action. setProgress
+// removes the ones it uses, so the rest can be reported.
+func (c *converter) progress() map[string]*elem {
+	texts := make(map[string]*elem, len(c.progressTexts))
+
+	for _, text := range c.progressTexts {
+		actionID := text.attr("Action")
+		if _, dup := texts[actionID]; dup {
+			c.todof(nil, "", text.line, "a second progress text for %s is ignored", actionID)
+
+			continue
+		}
+
+		texts[actionID] = text
+	}
+
+	return texts
+}
+
+// setProgress sets the progress key of the action actionID from its
+// ProgressText: the Message attribute of WiX v4 or later, or the element
+// text of WiX v3.
+func (c *converter) setProgress(action *omap, actionID string, texts map[string]*elem) {
+	text := texts[actionID]
+	if text == nil {
+		return
+	}
+
+	delete(texts, actionID)
+
+	message := strings.TrimSpace(c.expand(text, strings.TrimSpace(text.text)))
+	if text.has("Message") {
+		message = strings.TrimSpace(c.value(text, "Message"))
+	}
+
+	if message != "" {
+		action.set("progress", message)
+	}
+
+	if text.has("Template") {
+		key := ""
+		if message != "" {
+			key = "progress"
+		}
+
+		c.todof(action, key, text.line, "the progress template of %s is not converted: msi-builder writes no ActionText templates", actionID)
 	}
 }
 
@@ -458,7 +533,7 @@ func (c *converter) command(quiet *elem) (string, bool) {
 func newAction(e *elem) *omap {
 	action := newMap()
 	action.order("id", "setProperty", "setDirectory", "error", "exec", "execProperty", "dll", "exe", "run",
-		"execute", "impersonate", "return", "hideTarget", "once", "schedule")
+		"execute", "impersonate", "return", "hideTarget", "once", "progress", "schedule")
 	action.head = comments(e)
 
 	return action

@@ -225,11 +225,14 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	Environment    []*Environment       `yaml:"environment"`
 	// Purge deletes the component's directory with everything in it when
 	// the product is uninstalled, but not on a major upgrade (FILE-03).
-	Purge          *Purge `yaml:"purge"`
-	CreateFolder   bool   `yaml:"createFolder"`
-	Condition      string `yaml:"condition"`
-	Permanent      bool   `yaml:"permanent"`
-	NeverOverwrite bool   `yaml:"neverOverwrite"`
+	Purge        *Purge `yaml:"purge"`
+	CreateFolder bool   `yaml:"createFolder"`
+	Condition    string `yaml:"condition"`
+	// Scope, in a dual package only, installs the component only in that
+	// context, perMachine or perUser; empty installs it in both.
+	Scope          Scope `yaml:"scope"`
+	Permanent      bool  `yaml:"permanent"`
+	NeverOverwrite bool  `yaml:"neverOverwrite"`
 	// Preserve keeps the component's key file or registry value as the user
 	// left it across major upgrades: it sets NeverOverwrite, and removeOld
 	// defaults to afterInstallExecute (UPG-05).
@@ -607,7 +610,11 @@ type CustomAction struct { //nolint:govet // field order is the YAML key order
 	Return       string        `yaml:"return"`
 	HideTarget   bool          `yaml:"hideTarget"`
 	Once         string        `yaml:"once"`
-	Schedule     []Placement   `yaml:"schedule"`
+	// Progress is the action's description in the ActionText table, shown
+	// by the wizard's progress page while a deferred action runs and
+	// written to the verbose log (under /qn only for deferred actions).
+	Progress string      `yaml:"progress"`
+	Schedule []Placement `yaml:"schedule"`
 
 	// origin is the YAML path of the service argument an action was
 	// generated from.

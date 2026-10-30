@@ -186,6 +186,7 @@ msi-builder does the same by default:
 | `CustomAction`, `SetProperty`, `Custom` | `customActions` |
 | `InstallExecuteSequence`, `InstallUISequence` | `customActions[].schedule` |
 | `ScheduleReboot` | `scheduleReboot` |
+| `ProgressText` for a custom action | `customActions[].progress` |
 | `WixUI`, `WixVariable` `WixUILicenseRtf`, `WixUIBannerBmp`, `WixUIDialogBmp` | `ui` |
 | `.wxl` localization files | `ui.strings`, `ui.languages` |
 | Custom tables (`CustomTable`) | `tables` |
@@ -654,6 +655,7 @@ element in a sequence becomes a `schedule` placement of that entry:
 | `BinaryRef` + `ExeCommand` | `exe` with a `binaries` entry |
 | `Error` | `error` |
 | `Execute`, `Impersonate`, `Return`, `HideTarget` | `execute`, `impersonate`, `return`, `hideTarget` |
+| `ProgressText` for the action (in `UI`) | `progress`; a `Template` has no counterpart |
 
 | WiX `Custom` | `schedule` entry |
 |---|---|

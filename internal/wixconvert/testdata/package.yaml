@@ -4,11 +4,14 @@
 # WiX variables became ${NAME} references; pass them with --var NAME=value: Version.
 # TODO(line 4): <?include common.wxi?>: convert the included file and merge it in by hand
 # TODO(line 45): the hand-built dialog PortDlg cannot be converted; ui.dialogs lays out text, password, checkbox and choice fields
-# TODO(line 159): rescheduling the standard action RemoveExistingProducts in InstallExecuteSequence has no counterpart
-# TODO(line 149): the custom action Greet is a script; script custom actions are never supported, use a run action
-# TODO(line 150): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
-# TODO(line 161): drop Wix4BroadcastEnvironmentChange_X64: Windows Installer announces environment changes itself
-# TODO(line 162): Wix4BroadcastSettingChange_X64 has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action
+# TODO(line 163): rescheduling the standard action RemoveExistingProducts in InstallExecuteSequence has no counterpart
+# TODO(line 48): a second progress text for InstallFiles is ignored
+# TODO(line 153): the custom action Greet is a script; script custom actions are never supported, use a run action
+# TODO(line 154): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
+# TODO(line 47): the progress text of InstallFiles cannot be converted: msi-builder writes progress texts only for its customActions
+# TODO(line 49): the progress text of LaunchHello is dropped: the action was not converted to a customActions entry of its own
+# TODO(line 165): drop Wix4BroadcastEnvironmentChange_X64: Windows Installer announces environment changes itself
+# TODO(line 166): Wix4BroadcastSettingChange_X64 has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action
 schema: msi-builder/v1
 vars:
   Port: "8080"
@@ -77,7 +80,7 @@ components:
   - id: Component2
     files:
       - source: docs/manual.pdf
-  # TODO(line 110): <util:XmlFile> is not supported: ship the complete file, or edit it with a run action (no rollback)
+  # TODO(line 114): <util:XmlFile> is not supported: ship the complete file, or edit it with a run action (no rollback)
   - id: HelloExe
     guid: 0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a10
     files:
@@ -139,7 +142,7 @@ components:
         dependencies: [Tcpip]
         control:
           wait: false
-        # TODO(line 85): the recovery action "reboot" has no counterpart; restart and none are supported
+        # TODO(line 89): the recovery action "reboot" has no counterpart; restart and none are supported
         recovery:
           resetAfterDays: 1
           actions: [restart, restart, none]
@@ -193,7 +196,7 @@ components:
           rights: ["0x120116"]
   # The RemoveFolder and HKCU key path of this shortcut component were left out:
   # msi-builder writes both for every shortcut.
-  # TODO(line 129): msi-builder writes its own HKCU key path for this shortcut component; with the late removeOld the WiX value HKCU\Software\Example\Hello\installed stays behind after the upgrade and the uninstall, so remove it with removeRegistry in another component
+  # TODO(line 133): msi-builder writes its own HKCU key path for this shortcut component; with the late removeOld the WiX value HKCU\Software\Example\Hello\installed stays behind after the upgrade and the uninstall, so remove it with removeRegistry in another component
   - id: StartMenu
     directory: ProgramMenuFolder/Example
     guid: 0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a14
@@ -239,6 +242,7 @@ customActions:
     execute: deferred
     impersonate: false
     return: ignore
+    progress: Stopping the hello ${Version} clients
     schedule:
       - {sequence: execute, before: StopServices, when: uninstall}
   - id: ImportData
