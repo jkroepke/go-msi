@@ -1290,7 +1290,8 @@ A package with services has at most 44 grants, 19 when a service uses
 actions after `InstallServices` such as `recovery`; the builder says how
 many fit. The account and the
 folder still come from properties: a standard user who repairs a
-per-machine product can set a secure property on the command line, so
+per-machine product can presumably set a secure property on the command
+line (not tested), so
 keep the account and directory properties of a grant `secure: false`
 unless the wizard sets them. Three actions on the embedded custom action
 DLL apply them, after `InstallFiles` (after `InstallServices` when the
