@@ -85,15 +85,20 @@ func TestMsiexecProgressText(t *testing.T) { //nolint:paralleltest // one msiexe
 			t.Errorf("uninstall %s: exit %d", language, code)
 		}
 
-		want := []string{"SetMarker. Preparing ", "WaitStep. Waiting for "}
+		// The deferred action's description goes into the script,
+		// formatted when the script is written. The immediate action's
+		// is not in a /qn log at all.
+		want := "ActionStart(Name=WaitStep,Description=Waiting for " + fullUIName + " to settle,)"
 		if language == "1031" {
-			want = []string{"SetMarker. Preparing ", "WaitStep. Warte auf "}
+			want = "ActionStart(Name=WaitStep,Description=Warte auf " + fullUIName + ",)"
 		}
 
-		for _, w := range want {
-			if !strings.Contains(text, w) {
-				t.Errorf("CA-08: the log of the install %s has no %q", language, w)
-			}
+		if !strings.Contains(text, want) {
+			t.Errorf("CA-08: the log of the install %s has no %q", language, want)
+		}
+
+		if strings.Contains(text, "Preparing") {
+			t.Errorf("CA-08: the /qn log of the install %s shows the immediate action's description", language)
 		}
 	}
 
@@ -112,14 +117,17 @@ func TestFullUIProgressText(t *testing.T) { //nolint:paralleltest // msiexec run
 
 	cleanupFullUI(t, pkg)
 
-	code, seen := fullUI(t, dir, "/i", pkg)
+	log := filepath.Join(dir, "install.log")
+
+	code, seen := fullUI(t, dir, "/i", pkg, "/l*v", log)
 	if code != 0 {
 		t.Fatalf("full UI install: exit %d, want 0\nUI:\n%s", code, seen)
 	}
 
-	if !strings.Contains(seen, "Waiting for ") {
-		t.Error("CA-08: no window showed the progress text of WaitStep")
+	// The progress page formats the text: [ProductName] is resolved.
+	if !strings.Contains(seen, "Waiting for "+fullUIName+" to settle") {
+		t.Error("CA-08: no window showed the formatted progress text of WaitStep")
 	}
 
-	t.Logf("CA-08 UI:\n%s", excerpt(seen, "Waiting", "Preparing", "Installing"))
+	t.Logf("CA-08 UI:\n%s\nlog:\n%s", excerpt(seen, "Waiting", "Preparing"), excerpt(readLog(log), "SetMarker", "WaitStep", "Preparing"))
 }
