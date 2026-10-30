@@ -105,11 +105,9 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 	}
 
 	target := elm.attr("Target")
-	if target != "" {
-		c.markAdvertised(elm)
-	}
-
 	if file := c.targetFile(target); file != nil {
+		c.markAdvertised(elm)
+
 		link := c.shortcut(elm, pending.comp.dir, pending.tree)
 		c.workingDirectory(link, elm, file.dir)
 
@@ -150,6 +148,7 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 
 	link.set("workingDirectory", c.dirRef(elm.attr("WorkingDirectory")))
 	pending.comp.out.add("shortcuts", link)
+	c.markAdvertised(elm)
 }
 
 // isDir reports whether an ID names a directory of the file or a standard
