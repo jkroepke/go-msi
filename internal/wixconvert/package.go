@@ -124,7 +124,7 @@ func (c *converter) emitPackage() { //nolint:cyclop // a flat list of independen
 		ver = c.value(c.summary, "InstallerVersion")
 	}
 
-	if n, err := strconv.Atoi(ver); err == nil && n != 500 {
+	if n, err := strconv.Atoi(ver); err == nil {
 		pkgOut.set("installerVersion", strconv.Itoa(n/100)+"."+strconv.Itoa(n%100))
 	}
 

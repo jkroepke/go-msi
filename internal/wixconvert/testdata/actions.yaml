@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
+# Converted from actions.wxs by msi-builder convert.
+# Review it, resolve the TODO comments, then run msi-builder validate.
+# TODO(line 5): the WiX package has no MajorUpgrade; msi-builder adds the standard major upgrade (set upgrade: false to leave it out)
+schema: msi-builder/v1
+product:
+  name: Hello
+  manufacturer: Example
+  version: 1.0.0
+  upgradeCode: 0b7e8c41-2f6d-4a39-8c15-7d2e9f0a6b54
+package:
+  platform: x64
+  installerVersion: "5.0"
+upgrade:
+  property: WIX_UPGRADE_DETECTED
+installDir:
+  id: INSTALLFOLDER
+  name: Hello
+components:
+  # TODO(line 16): util:RemoveFolderEx was not converted: purge refuses a folder below INSTALLFOLDER, a public directory ID that can point anywhere; keep the data in a folder with private (mixed-case) IDs below a fixed standard folder, such as CommonAppDataFolder/Vendor/Product, and purge that
+  - id: HelloExe
+    directory: bin
+    files:
+      - source: dist/hello.exe
+        id: hello.exe
+    services:
+      # TODO(line 13): the WiX package has no ServiceControl for HelloSvc; msi-builder starts it on install and stops and deletes it by default (services[].control)
+      - name: HelloSvc
+        start: auto
+        recovery:
+          actions: [restart, restart, none]
+          restartDelay: 0s
+customActions:
+  - id: StopHello
+    run:
+      command: '"[System64Folder]taskkill.exe" /im hello.exe /f'
+    return: ignore
+    schedule:
+      - {sequence: execute, before: InstallValidate}
+  - id: Greet
+    run:
+      command: '"[System64Folder]cmd.exe" /c echo hello'
+    return: ignore
+    schedule:
+      - {sequence: execute, after: InstallFinalize, when: install}
+  - id: Cleanup
+    run:
+      command: '"[#hello.exe]" cleanup'
+    return: ignore
+    schedule:
+      - {sequence: execute, before: RemoveFiles, when: uninstall}
+  - id: Register
+    run:
+      command: '"[#hello.exe]" register'
+    execute: deferred
+    impersonate: false
+    return: check
+    schedule:
+      - {sequence: execute, after: InstallFiles, condition: NOT Installed}

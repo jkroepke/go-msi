@@ -130,9 +130,14 @@ func (c *converter) recovery(svc *omap, elm *elem) {
 
 	recovery.set("actions", actions)
 
-	if v := elm.attr("RestartServiceDelayInSeconds"); v != "" {
-		recovery.set("restartDelay", v+"s")
+	// Without the attribute WiX restarts at once, while msi-builder
+	// waits a minute by default.
+	delay := elm.attr("RestartServiceDelayInSeconds")
+	if delay == "" {
+		delay = "0"
 	}
+
+	recovery.set("restartDelay", delay+"s")
 
 	for _, a := range []string{"ProgramCommandLine", "RebootMessage"} {
 		if elm.has(a) {
@@ -292,8 +297,38 @@ func (cc *compConv) removeFile(elm *elem) {
 	cc.out.add("removeFiles", row)
 }
 
+// movableDir returns the first directory from dirID up to its root whose
+// output ID is public, which the command line can point anywhere.
+func (c *converter) movableDir(dirID string) string {
+	for folder := c.dirs[dirID]; folder != nil; folder = folder.parent {
+		if id := c.dirRef(folder.id); config.IsPublicProperty(id) && !config.IsStandardFolder(id) {
+			return id
+		}
+	}
+
+	if c.dirs[dirID] == nil && config.IsPublicProperty(c.dirRef(dirID)) {
+		return c.dirRef(dirID)
+	}
+
+	return ""
+}
+
 func (cc *compConv) purge(elm *elem) {
 	conv := cc.c
+
+	target := elm.attr(attrProperty)
+	if target == "" {
+		target = cc.cp.dir
+	}
+
+	if movable := conv.movableDir(target); movable != "" {
+		conv.todof(cc.out, "", elm.line,
+			"util:RemoveFolderEx was not converted: purge refuses a folder below %s, a public directory ID that can point anywhere; "+
+				"keep the data in a folder with private (mixed-case) IDs below a fixed standard folder, such as "+
+				"CommonAppDataFolder/Vendor/Product, and purge that", movable)
+
+		return
+	}
 
 	if p := elm.attr(attrProperty); p != "" && p != cc.cp.dir {
 		conv.todof(cc.out, "purge", elm.line,
@@ -302,11 +337,6 @@ func (cc *compConv) purge(elm *elem) {
 
 	if on := elm.attr("On"); on != "" && on != "uninstall" {
 		conv.todof(cc.out, "purge", elm.line, "purge runs on uninstall only, not On=%q", on)
-	}
-
-	if config.IsPublicProperty(cc.cp.dir) {
-		conv.todof(cc.out, "purge", elm.line,
-			"purge refuses %s, a public directory ID that can point anywhere; give the folder a private (mixed-case) ID", cc.cp.dir)
 	}
 
 	if cond := conv.value(elm, "Condition"); cond != "" {

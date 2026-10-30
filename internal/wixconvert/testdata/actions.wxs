@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A sample package whose quiet exec actions share one command line
+     property, set right before each of them. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="0b7e8c41-2f6d-4a39-8c15-7d2e9f0a6b54" InstallerVersion="500">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="Main" Directory="INSTALLFOLDER">
+      <Component Id="HelloExe" Subdirectory="bin">
+        <File Id="hello.exe" Source="dist\hello.exe" />
+        <ServiceInstall Name="HelloSvc" Start="auto" Type="ownProcess" ErrorControl="normal">
+          <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart" ThirdFailureActionType="none" />
+        </ServiceInstall>
+        <util:RemoveFolderEx Property="INSTALLFOLDER" On="uninstall" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Complete">
+      <ComponentGroupRef Id="Main" />
+    </Feature>
+
+    <!-- Three immediate quiet exec actions, each with its own command. -->
+    <CustomAction Id="SetStopCmd" Property="WixQuietExecCmdLine" Value="&quot;[System64Folder]taskkill.exe&quot; /im hello.exe /f" />
+    <CustomAction Id="StopHello" DllEntry="WixQuietExec" BinaryRef="Wix4UtilCA_X64" Execute="immediate" Return="ignore" />
+    <CustomAction Id="SetGreetCmd" Property="WixQuietExecCmdLine" Value="&quot;[System64Folder]cmd.exe&quot; /c echo hello" />
+    <CustomAction Id="Greet" DllEntry="WixQuietExec" BinaryRef="Wix4UtilCA_X64" Execute="immediate" Return="ignore" />
+    <SetProperty Id="WixQuietExecCmdLine" Value="&quot;[#hello.exe]&quot; cleanup" Before="Cleanup" Sequence="execute" />
+    <CustomAction Id="Cleanup" DllEntry="WixQuietExec" BinaryRef="Wix4UtilCA_X64" Execute="immediate" Return="ignore" />
+
+    <!-- A deferred one gets its command through CustomActionData. -->
+    <SetProperty Id="Register" Value="&quot;[#hello.exe]&quot; register" Before="Register" Sequence="execute" />
+    <CustomAction Id="Register" DllEntry="WixQuietExec" BinaryRef="Wix4UtilCA_X64" Execute="deferred" Impersonate="no" Return="check" />
+
+    <InstallExecuteSequence>
+      <Custom Action="SetStopCmd" Before="StopHello" />
+      <Custom Action="StopHello" Before="InstallValidate" />
+      <Custom Action="SetGreetCmd" After="InstallFinalize" />
+      <Custom Action="Greet" After="SetGreetCmd" Condition="NOT Installed AND NOT WIX_UPGRADE_DETECTED" />
+      <Custom Action="Cleanup" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="Register" After="InstallFiles" Condition="NOT Installed" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>
