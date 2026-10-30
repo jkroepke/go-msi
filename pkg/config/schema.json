@@ -1865,7 +1865,7 @@
                   "both"
                 ],
                 "default": "install",
-                "description": "When to delete: install (also on a repair), uninstall (whole keys only; the key is never created) or both."
+                "description": "When to delete: install (also on a repair), uninstall (whole keys only; the install does not create the key) or both."
               }
             },
             "required": [

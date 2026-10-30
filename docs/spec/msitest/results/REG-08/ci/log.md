@@ -15,7 +15,7 @@ REG-08 uninstall /x:  Tree(64) false (with Tree\Sub), Tree(32) true, Existing fa
 ```
 `TestICERemoveOnUninstall` passed in the same run with two warnings (ICE61 is the usual warning for `Upgrade` rows that include the package's own version):
 ```
-... Reg key regCF5621F4E47C4D5869C6723AA10CC9A1 is used in an unsupported way. Shell extension verbs info should be registered via the Verb table. This entry may overwrite a value created through that table. [Registry.Registry regCF5621F4E47C4D5869C6723AA10CC9A1]
+registry_uninstall_windows_test.go:186: ICE33 warning: Reg key regCF5621F4E47C4D5869C6723AA10CC9A1 is used in an unsupported way. Shell extension verbs info should be registered via the Verb table. This entry may overwrite a value created through that table. [Registry.Registry regCF5621F4E47C4D5869C6723AA10CC9A1]
 registry_uninstall_windows_test.go:186: ICE61 warning: This product should remove only older versions of itself. The Maximum version is not less than the current product. (1.0.0 1.0.0) [Upgrade.Attributes {0B7E3A95-6C2D-4F18-A4E9-71D5C3B80F26}//1.0.0//513]
 --- PASS: TestICERemoveOnUninstall (1.42s)
 ```
