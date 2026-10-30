@@ -69,7 +69,12 @@ check it with msi-builder validate.`,
 }
 
 func convert(cmd *cobra.Command, path, built, out string, force bool) error {
-	opts := wixconvert.Options{Source: filepath.Base(path)}
+	dir := filepath.Dir(path)
+	opts := wixconvert.Options{Source: filepath.Base(path), Exists: func(rel string) bool {
+		_, err := os.Stat(filepath.Join(dir, filepath.FromSlash(rel)))
+
+		return err == nil
+	}}
 
 	if built != "" {
 		pkg, err := builtPackage(built)

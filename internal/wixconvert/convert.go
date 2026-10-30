@@ -54,6 +54,11 @@ type Options struct {
 	// whose Guid WiX generated keeps the code it has there, so that a major
 	// upgrade from that package that removes it late keeps the files.
 	Built *BuiltPackage
+	// Exists reports whether a file exists at a slash path relative to
+	// the source file, or is nil. With a built package, a file that two
+	// Files globs into one folder match keeps its code in the glob whose
+	// source folder holds it.
+	Exists func(rel string) bool
 	// Source names the input in the header comment, such as app.wxs.
 	Source string
 }
@@ -72,6 +77,7 @@ func Convert(r io.Reader, opts Options) (*Result, error) {
 
 	conv := newConverter(doc)
 	conv.built = opts.Built
+	conv.exists = opts.Exists
 
 	if err := conv.index(); err != nil {
 		return nil, err
@@ -95,6 +101,7 @@ type converter struct {
 	compByID map[string]*comp
 	built    *BuiltPackage
 	claimed  map[string]bool // the built components a component took
+	exists   func(rel string) bool
 	// builtDirIndex holds the folders of the built package by ID.
 	builtDirIndex map[string]*BuiltDirectory
 	advertised    []int // the lines of advertised shortcuts
@@ -181,8 +188,6 @@ type comp struct {
 	folder *omap
 	id     string
 	dir    string
-	// keyFile is the name of the key path file WiX picks, if any.
-	keyFile string
 	// tied are the files of a folder source that another one with the same
 	// folder adds too, so that neither keeps their code.
 	tied []string

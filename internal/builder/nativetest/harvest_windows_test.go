@@ -152,6 +152,7 @@ func writeHarvestDist(t *testing.T, dir string) {
 	}
 }
 
+// writeText writes data to the file path.
 func writeText(t *testing.T, path, data string) {
 	t.Helper()
 

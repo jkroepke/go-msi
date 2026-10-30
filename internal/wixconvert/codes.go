@@ -77,15 +77,13 @@ func (c *converter) builtComponent(comp *comp, keyFile string) *BuiltComponent {
 		return nil
 	}
 
-	// A folder without an Id got a generated one in the package.
-	folder := c.dirs[comp.dir]
-	anyDir := folder != nil && folder.generated
+	want, anyDir := c.keyFileDir(comp)
 
 	var found *BuiltComponent
 
 	for i := range c.built.Components {
 		row := &c.built.Components[i]
-		if !c.free(row) || !strings.EqualFold(row.KeyFile, keyFile) || !anyDir && row.Directory != comp.dir {
+		if !c.free(row) || !strings.EqualFold(row.KeyFile, keyFile) || !anyDir && row.Directory != want {
 			continue
 		}
 
@@ -97,6 +95,23 @@ func (c *converter) builtComponent(comp *comp, keyFile string) *BuiltComponent {
 	}
 
 	return found
+}
+
+// keyFileDir returns the folder of the built package that holds the key
+// file of comp, or true when it may be any folder: a folder without an Id
+// got a generated one in the package, and only its name below its parent
+// can find it.
+func (c *converter) keyFileDir(comp *comp) (string, bool) {
+	folder := c.dirs[comp.dir]
+	if folder == nil || !folder.generated {
+		return comp.dir, false
+	}
+
+	if found := c.builtDir(folder, comp.dir); c.built.Directories != nil && found != "" {
+		return found, false
+	}
+
+	return comp.dir, true
 }
 
 // free reports whether a built component may match by key file: it has a
@@ -227,9 +242,10 @@ func (c *converter) noteHarvested() {
 		if len(comp.tied) > 0 {
 			slices.Sort(comp.tied)
 			c.todof(comp.folder, "", comp.e.line,
-				"another Files glob into the same folder adds %s too, so convert kept no code for them and the late removeOld "+
-					"deletes them on the first upgrade from the WiX package; add the ComponentId WiX gave each one to the guids "+
-					"of one glob and exclude it from the other",
+				"another Files glob into the same folder may add %s too, and convert did not find the files in exactly one "+
+					"of their source folders, so it kept no code for them and the late removeOld deletes them on the first "+
+					"upgrade from the WiX package; add the ComponentId WiX gave each one to the guids of the glob whose source "+
+					"folder holds it",
 				strings.Join(comp.tied, ", "))
 		}
 
@@ -332,8 +348,8 @@ func (c *converter) harvestedCodes() map[*comp]map[string]*BuiltComponent {
 		}
 
 		src, rel, tied := c.nearestHarvest(sources, row)
-		for _, other := range tied {
-			other.comp.tied = append(other.comp.tied, rel)
+		if len(tied) > 0 {
+			src = c.breakTie(tied, rel)
 		}
 
 		if src == nil || seen[src.comp][strings.ToLower(rel)] {
@@ -387,26 +403,61 @@ func (c *converter) nearestHarvest(sources []harvest, row *BuiltComponent) (*har
 	return nil, bestRel, nearest
 }
 
-// listed are the built components that a component of the source stands
-// for without having claimed them: its guid is their code, which WiX took
-// from the source, or its key file is theirs, in the same folder, which
-// pinCode could not tell apart from another one.
-type listed struct {
-	codes    map[string]bool
-	keyFiles map[string]bool
+// breakTie returns the folder source of the tied ones whose source folder
+// holds the file rel, or records the file as tied on each and returns nil.
+func (c *converter) breakTie(tied []*harvest, rel string) *harvest {
+	if src := c.onDisk(tied, rel); src != nil {
+		return src
+	}
+
+	for _, other := range tied {
+		other.comp.tied = append(other.comp.tied, rel)
+	}
+
+	return nil
 }
 
-// has reports whether a component of the source stands for row.
+// onDisk returns the only one of the tied folder sources whose source
+// folder holds the file rel, or nil.
+func (c *converter) onDisk(tied []*harvest, rel string) *harvest {
+	if c.exists == nil {
+		return nil
+	}
+
+	var found *harvest
+
+	for _, src := range tied {
+		folder := strings.TrimSuffix(src.comp.folder.str("source"), "/")
+		if strings.Contains(folder, "${") || !c.exists(path.Join(folder, rel)) {
+			continue
+		}
+
+		if found != nil {
+			return nil
+		}
+
+		found = src
+	}
+
+	return found
+}
+
+// listed are the codes the source's components give themselves: WiX took
+// them from the source, so no folder source may claim those built
+// components.
+type listed map[string]bool
+
+// has reports whether a component of the source has the code of row.
 func (l listed) has(row *BuiltComponent) bool {
 	guid, err := config.NormalizeGUID(row.Code)
 
-	return err == nil && l.codes[guid] || l.keyFiles[strings.ToLower(row.Directory+"/"+row.KeyFile)]
+	return err == nil && l[guid]
 }
 
-// listedCodes collects the codes and key files of the source's components
-// that are no folder source.
+// listedCodes collects the codes of the source's components that are no
+// folder source.
 func (c *converter) listedCodes() listed {
-	known := listed{codes: make(map[string]bool), keyFiles: make(map[string]bool)}
+	known := make(listed)
 
 	for _, comp := range c.comps {
 		if comp.out == nil || comp.folder != nil {
@@ -414,11 +465,7 @@ func (c *converter) listedCodes() listed {
 		}
 
 		if guid, err := config.NormalizeGUID(comp.out.str("guid")); err == nil {
-			known.codes[guid] = true
-		}
-
-		if dirID := c.builtDir(c.dirs[comp.dir], comp.dir); comp.keyFile != "" && dirID != "" {
-			known.keyFiles[strings.ToLower(dirID+"/"+comp.keyFile)] = true
+			known[guid] = true
 		}
 	}
 

@@ -375,8 +375,10 @@ func TestConvertBuiltCodesOnce(t *testing.T) {
 
 // A Files element: one file outside a component matches by its name, and a
 // glob, which became a folder source, keeps the codes of the files it adds
-// in guids, found by their path below its folder; a file it excludes, or
-// one another component took or names by its Guid, keeps none there. A glob without a file in
+// in guids, found by their path below its folder, also through a "."
+// folder; a file it excludes, or one another component took or names by
+// its Guid, keeps none there. A component in a folder WiX named matches its
+// key file in that folder only, not a harvested file of the same name. A glob without a file in
 // the package gets the note instead, also in a component with an Id.
 func TestConvertBuiltCodesFiles(t *testing.T) {
 	t.Parallel()
@@ -405,13 +407,15 @@ func TestConvertBuiltCodesFiles(t *testing.T) {
 			{ID: "Tools", Code: "{00000000-0000-4000-8000-000000000003}", Directory: "INSTALLFOLDER", KeyFile: "a.dll"},
 			{ID: "cmp6", Code: "{00000000-0000-4000-8000-000000000006}", Directory: "dirA1", KeyFile: "config.xml"},
 			{ID: "cmp7", Code: "{00000000-0000-4000-8000-000000000007}", Directory: "dirA1", KeyFile: "helper.exe"},
+			{ID: "fil8", Code: "{00000000-0000-4000-8000-000000000008}", Directory: "dirA2", KeyFile: "helper.exe"},
 		},
 		Directories: []wixconvert.BuiltDirectory{
 			{ID: "TARGETDIR", Name: "SourceDir"},
 			{ID: "ProgramFiles64Folder", Parent: "TARGETDIR", Name: "PFiles64"},
 			{ID: "INSTALLFOLDER", Parent: "ProgramFiles64Folder", Name: "Hello"},
 			{ID: "dirA1", Parent: "INSTALLFOLDER", Name: "tools"},
-			{ID: "dirA2", Parent: "dirA1", Name: "docs"},
+			{ID: "dirDot", Parent: "dirA1", Name: "."},
+			{ID: "dirA2", Parent: "dirDot", Name: "docs"},
 		},
 	}
 
@@ -429,7 +433,8 @@ func TestConvertBuiltCodesFiles(t *testing.T) {
 		"guids:\n",
 		"docs/Help.md: '{00000000-0000-4000-8000-000000000004}'",
 		"tool.exe: '{00000000-0000-4000-8000-000000000002}'",
-		"The guids of 2 files that WiX harvested with Files come from hello.msi.",
+		"docs/helper.exe: '{00000000-0000-4000-8000-000000000008}'",
+		"The guids of 3 files that WiX harvested with Files come from hello.msi.",
 	} {
 		if !strings.Contains(string(res.YAML), want) {
 			t.Errorf("YAML lacks %q:\n%s", want, res.YAML)
@@ -445,7 +450,7 @@ func TestConvertBuiltCodesFiles(t *testing.T) {
 	// The components below the glob's folder keep their own codes: one
 	// that WiX generated, which pinCode took first, and one from the
 	// source; the folder source lists neither.
-	for _, file := range []string{"helper.exe:", "config.xml:"} {
+	for _, file := range []string{" helper.exe:", "config.xml:"} {
 		if strings.Contains(string(res.YAML), file) {
 			t.Errorf("guids lists %s\n%s", file, res.YAML)
 		}
@@ -608,7 +613,7 @@ func TestConvertBuiltCodesNestedGlobs(t *testing.T) {
 	var tied []int
 
 	for _, note := range res.Notes {
-		if strings.HasPrefix(note.Message, "another Files glob into the same folder adds app.exe too") {
+		if strings.HasPrefix(note.Message, "another Files glob into the same folder may add app.exe too") {
 			tied = append(tied, note.Line)
 		}
 	}
@@ -619,7 +624,8 @@ func TestConvertBuiltCodesNestedGlobs(t *testing.T) {
 }
 
 // A file that two globs into the same folder add keeps no code, and both
-// globs name it, also when each pinned other files.
+// globs name it, also when each pinned other files, unless only one of
+// their source folders holds it.
 func TestConvertBuiltCodesTiedGlobs(t *testing.T) {
 	t.Parallel()
 
@@ -667,12 +673,32 @@ func TestConvertBuiltCodesTiedGlobs(t *testing.T) {
 	var lines []int
 
 	for _, note := range res.Notes {
-		if strings.HasPrefix(note.Message, "another Files glob into the same folder adds app.exe too") {
+		if strings.HasPrefix(note.Message, "another Files glob into the same folder may add app.exe too") {
 			lines = append(lines, note.Line)
 		}
 	}
 
 	if !slices.Equal(lines, []int{7, 8}) {
 		t.Errorf("tie notes in lines %v, want [7 8]: %v", lines, res.Notes)
+	}
+
+	// With the source folders at hand, app.exe goes to the glob whose
+	// folder holds it.
+	res, err = wixconvert.Convert(strings.NewReader(src), wixconvert.Options{
+		Built: built, Exists: func(rel string) bool { return rel == "lib/app.exe" },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if want := "app.exe: '{00000000-0000-4000-8000-000000000001}'\n"; !strings.Contains(string(res.YAML), want) ||
+		strings.Index(string(res.YAML), want) < strings.Index(string(res.YAML), "source: lib/") {
+		t.Errorf("lib/ lacks app.exe:\n%s", res.YAML)
+	}
+
+	for _, note := range res.Notes {
+		if strings.HasPrefix(note.Message, "another Files glob") {
+			t.Errorf("unexpected tie note %v", note)
+		}
 	}
 }

@@ -84,7 +84,9 @@ versioning after 1.0.
   glob keeps the code of each harvested file in the folder source's `guids`
   (`pinHarvested`, after the components took theirs): the key file's path
   comes from the built `Directory` table below the glob's folder, filtered by
-  the same include/exclude matcher as the build (UPG-12, which installs a real
+  the same include/exclude matcher as the build; a file goes to the glob whose
+  folder is nearest, a tie to the one whose source folder holds it on disk
+  (`Options.Exists`) (UPG-12, which installs a real
   WiX 5 package on CI). The fixtures are our own sample app: never copy
   third-party `.wxs` files in, and never read WiX source code (clean room).
 - [`internal/spool`](internal/spool), [`internal/memtest`](internal/memtest),

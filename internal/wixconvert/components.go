@@ -149,8 +149,6 @@ func (c *converter) component(comp *comp, tree map[*dir]bool) *omap {
 		content.child(kid)
 	}
 
-	comp.keyFile = content.keyFile
-
 	// A folder source takes no guid; pinHarvested gives its files theirs.
 	if comp.generated && comp.folder == nil && c.built != nil {
 		c.pinCode(comp, content.keyFile)
