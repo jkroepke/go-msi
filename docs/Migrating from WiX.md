@@ -242,8 +242,8 @@ upgrade:
   `afterInstallValidate`; msi-builder's is `afterInstallInitialize`, which
   also removes the old version first, but inside the installation, so a
   failed upgrade puts the old version back.
-- `AllowDowngrades="yes"` has no direct counterpart: msi-builder never
-  removes a newer version. `downgrade: allow` and `downgrade: ignore`
+- `AllowDowngrades="yes"` has no direct counterpart: msi-builder's upgrade
+  never removes a newer version. `downgrade: allow` and `downgrade: ignore`
   install the older version next to the newer one.
 - `IgnoreRemoveFailure="yes"` is `ignoreRemoveFailure: true`.
 - WiX sets `WIX_UPGRADE_DETECTED` during an upgrade, msi-builder sets
@@ -320,7 +320,8 @@ components:
   in `registry`, and turn the search into a `search` of the install folder
   property, such as `properties.INSTALLFOLDER.search` (see
   [Properties and searches](#properties-and-searches)). Use one of the two,
-  not both.
+  not both. With `remember`, drop an `InstallDir` value that your WiX
+  package wrote under that same key from `registry`.
 
 ## Components, files and features
 
@@ -375,7 +376,7 @@ features:
 `directory` on the feature, and `Display` is `display` with the values
 `expanded`, `collapsed` and `hidden`.
 
-Files that Heat harvested, or a v4 `Files` element, become a folder
+Files that Heat harvested, or a WiX v5 `Files` element, become a folder
 source. Every file below the folder is installed in the same structure:
 
 ```yaml
