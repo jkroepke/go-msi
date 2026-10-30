@@ -1511,7 +1511,8 @@ func (v *validator) serviceControl(ctlPath string, ctl *ServiceControl, start st
 // CostFinalize (reported, Component table), and action states are set by
 // CostFinalize (reported, Conditional Statement Syntax), so such a term sees
 // no action state: a service whose start condition asked for &Feature=3
-// never started (observed, SVC-09; $Component was not tested). Installed
+// did not start at a first install (observed, SVC-09; $Component was not
+// tested). Installed
 // states (!Feature, ?Component) stay allowed, as the Component table
 // documents them for this column.
 func (v *validator) componentCondition(field, cond string) {

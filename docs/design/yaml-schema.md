@@ -1257,9 +1257,10 @@ component (for example, whether a repair starts the service again) is not
 tested. It needs `startOnInstall`. Like a component's `condition`, it
 cannot ask for the action state of a feature (`&Feature`) or a component
 (`$Component`), and the validator rejects either: component conditions are
-evaluated before those states exist (reported), and a start condition on
-`&StartService=3` never started the service (observed, SVC-09; `$Component`
-not tested). A property does the job instead, for example one that a
+evaluated before those states exist (inferred from Microsoft's Component
+table and Conditional Statement Syntax pages), and a start condition on
+`&StartService=3` did not start the service at a first install (observed,
+SVC-09; `$Component` not tested). A property does the job instead, for example one that a
 wizard `checkbox` field sets. Installed states (`!Feature`, `?Component`)
 stay allowed.
 
