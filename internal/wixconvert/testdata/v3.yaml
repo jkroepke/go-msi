@@ -2,8 +2,8 @@
 # Converted from v3.wxs by msi-builder convert.
 # Review it, resolve the TODO comments, then run msi-builder validate.
 # WiX variables became ${NAME} references; pass them with --var NAME=value: BinDir, ProductVersion.
-# TODO(line 18): <?if $(var.Edition) = "full"?> is not evaluated: only its first branch was converted
-# TODO(line 20): the <?else?> branch was left out; convert it by hand if your build takes it
+# TODO(line 19): <?if $(var.Edition) = "full"?> is not evaluated: only its first branch was converted
+# TODO(line 21): the <?else?> branch was left out; convert it by hand if your build takes it
 schema: msi-builder/v1
 product:
   name: Hello Tools
@@ -26,6 +26,7 @@ upgrade:
       includeMax: true
       onlyDetect: true
       property: SAMEMAJORFOUND
+  newerProperty: NEWERFOUND
 installDir:
   # WiX ID ToolsDir; the install folder must be an upper-case public property,
   # so every [ToolsDir] reference became [TOOLSDIR].
@@ -49,7 +50,7 @@ features:
     components: [ToolExe]
   - id: Docs
     title: Documentation
-    # TODO(line 56): conditional feature levels have no counterpart; the condition was "NOT INSTALLDOCS"
+    # TODO(line 57): conditional feature levels have no counterpart; the condition was "NOT INSTALLDOCS"
     components: [Readme]
 components:
   - id: Readme

@@ -3,6 +3,8 @@ package wixconvert
 import (
 	"strconv"
 	"strings"
+
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // emit writes the output in msi-builder's key order.
@@ -320,6 +322,36 @@ func (c *converter) emitMajor(upgrade *omap, major *elem) {
 	}
 }
 
+// majorUpgradeProperty are the properties of the major upgrade msi-builder
+// writes, which a related row cannot take.
+var majorUpgradeProperty = map[string]bool{ //nolint:gochecknoglobals // lookup table
+	config.DefaultUpgradeProperty: true, config.DefaultNewerProperty: true, "WIX_UPGRADE_DETECTED": true, "WIX_DOWNGRADE_DETECTED": true,
+}
+
+// ownUpgradeRow handles an UpgradeVersion row of the package's own
+// UpgradeCode that does not carry over to upgrade.related and reports
+// whether it did.
+func (c *converter) ownUpgradeRow(upgrade *omap, kid *elem) bool {
+	switch {
+	case kid.yes("OnlyDetect") && kid.has("Minimum") && !kid.has("Maximum"):
+		// The detection of newer versions, which msi-builder writes
+		// itself; keep the property conditions test.
+		if prop := kid.attr("Property"); prop != "" && prop != config.DefaultNewerProperty {
+			upgrade.set("newerProperty", prop)
+		}
+	case majorUpgradeProperty[kid.attr("Property")]:
+		c.todof(upgrade, "", kid.line, "the UpgradeVersion property %s is one msi-builder sets for its own major upgrade; "+
+			"check the conditions that test it", kid.attr("Property"))
+	case !kid.yes("OnlyDetect"):
+		c.todof(upgrade, "", kid.line,
+			"an UpgradeVersion for the package's own UpgradeCode is a hand-made major upgrade; msi-builder writes its own, check the upgrade keys")
+	default:
+		return false
+	}
+
+	return true
+}
+
 // emitRelated converts the UpgradeVersion rows of an Upgrade element. For
 // the package's own UpgradeCode only the detect-only rows carry over: the
 // rows that remove older versions are the major upgrade msi-builder writes
@@ -331,10 +363,7 @@ func (c *converter) emitRelated(upgrade *omap, upgradeElem *elem, own bool) {
 			c.todof(upgrade, "", kid.line, "<%s> in <Upgrade> has no counterpart", kid.qname())
 
 			continue
-		case own && !kid.yes("OnlyDetect"):
-			c.todof(upgrade, "", kid.line,
-				"an UpgradeVersion for the package's own UpgradeCode is a hand-made major upgrade; msi-builder writes its own, check the upgrade keys")
-
+		case own && c.ownUpgradeRow(upgrade, kid):
 			continue
 		}
 

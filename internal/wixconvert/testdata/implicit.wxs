@@ -17,13 +17,22 @@
       <util:InternetShortcut Id="Web" Name="Hello website" Target="https://example.com" />
     </Component>
 
+    <!-- A shortcut to a file of another component stays here. -->
+    <Component Id="StartMenu" Directory="ProgramMenuFolder" Subdirectory="Hello Project">
+      <Shortcut Id="HelloLink" Name="Hello" Target="[#hello.exe]" />
+      <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="menu" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
     <Feature Id="Main" Title="Hello">
       <ComponentRef Id="Spy" />
       <ComponentRef Id="Links" />
-      <File Source="dist\hello.exe" Directory="Hello_Dir" />
+      <File Id="hello.exe" Source="dist\hello.exe" Directory="Hello_Dir" />
       <Files Include="dist\tools\**" Directory="Hello_Dir" Subdirectory="tools">
         <Exclude Files="dist\tools\**\*.pdb" />
+        <Exclude Files="dist\tools\debug\*" />
       </Files>
+      <Files Include="dist\LICENSE.txt" Directory="Hello_Dir" />
+      <ComponentRef Id="StartMenu" />
     </Feature>
     <Feature Id="Docs" Title="Documentation">
       <File Source="dist\readme.txt" Directory="Hello_Dir" />

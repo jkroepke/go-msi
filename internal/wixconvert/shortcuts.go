@@ -86,10 +86,10 @@ func (c *converter) workingDirectory(s *omap, e *elem, fileDir string) {
 }
 
 // placeShortcut puts a Shortcut outside a File onto the file it starts when
-// that file is in the shortcut's component, or makes it a shortcut of its
-// component. A shortcut moved onto a file in another component would take
-// that component's lifetime, such as permanence, and its target formats empty
-// when an upgrade leaves that component alone.
+// that file is in the shortcut's component. On a file of another component
+// it would take that component's lifetime, such as permanence, so it stays
+// in its own component: a [#file] target as file, which the builder writes
+// as WiX does, and a [DIRECTORY]name target as the same program path.
 func (c *converter) placeShortcut(pending pendingShortcut) {
 	elm := pending.e
 
@@ -100,10 +100,8 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 	}
 
 	target := elm.attr("Target")
-	if file := c.targetFile(target); file != nil && file.comp == pending.comp {
-		s := c.shortcut(elm, pending.comp.dir, pending.tree)
-		c.workingDirectory(s, elm, file.dir)
-		file.out.add("shortcuts", s)
+	if file := c.targetFile(target); file != nil && (file.comp == pending.comp || fileTarget.MatchString(target)) {
+		c.fileTargetShortcut(pending, file)
 
 		return
 	}
@@ -128,6 +126,27 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 	}
 
 	link.set("workingDirectory", c.dirRef(elm.attr("WorkingDirectory")))
+	pending.comp.out.add("shortcuts", link)
+}
+
+// fileTargetShortcut places a shortcut to a packaged file: on the file when
+// it is in the shortcut's component, else in its own component with file.
+func (c *converter) fileTargetShortcut(pending pendingShortcut, file *fileRef) {
+	link := c.shortcut(pending.e, pending.comp.dir, pending.tree)
+	c.workingDirectory(link, pending.e, file.dir)
+
+	if file.comp == pending.comp {
+		file.out.add("shortcuts", link)
+
+		return
+	}
+
+	name := file.out.str("id")
+	if name == "" {
+		name = file.name
+	}
+
+	link.set("file", name)
 	pending.comp.out.add("shortcuts", link)
 }
 

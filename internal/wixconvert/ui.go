@@ -2,6 +2,7 @@ package wixconvert
 
 import (
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -198,16 +199,30 @@ func (c *converter) uiLaunch(wizard *omap) {
 	}
 }
 
+// errorArg is a reference to an error argument, [1] to [9].
+var errorArg = regexp.MustCompile(`\[[0-9]\]`)
+
 // errorText returns the text of an error action: the message of the Error
 // row it names by number, inlined because msi-builder writes no Error rows
 // of its own, or the text itself.
 func (c *converter) errorText(value string) string {
 	for _, row := range c.errorRows {
-		if row.attr("Id") == value {
-			c.usedErrors[row] = true
-
-			return c.errorMessage(row)
+		if c.value(row, "Id") != strings.TrimSpace(value) {
+			continue
 		}
+
+		c.usedErrors[row] = true
+
+		message := c.errorMessage(row)
+		if message == "" {
+			return value
+		}
+
+		if errorArg.MatchString(message) {
+			c.todof(nil, "", row.line, "the Error row %s refers to error arguments such as [1], which are empty in an error action's text", value)
+		}
+
+		return message
 	}
 
 	return value

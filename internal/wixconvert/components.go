@@ -646,28 +646,37 @@ func (cc *compConv) inProfile() bool {
 }
 
 // folderFiles converts a WiX 4 Files element, which harvests a glob, to a
-// folder source with include and exclude patterns.
+// folder source with include and exclude patterns, or a plain file source
+// when the Include names one file.
 func (cc *compConv) folderFiles(elm *elem) {
 	conv := cc.c
-	src, include := splitGlob(sourcePath(conv.expand(elm, elm.attr("Include"))))
+	full := sourcePath(conv.expand(elm, elm.attr("Include")))
+	src, include := splitGlob(full)
 
 	files := newMap()
 	files.order("source", "include", "exclude")
 	files.head = comments(elm)
-	files.set("source", src)
 
-	if include != "**" {
+	if include == "" {
+		src = full
+	} else if include != "**" {
 		files.set("include", []string{include})
 	}
+
+	files.set("source", src)
 
 	var exclude []string
 
 	for _, kid := range elm.kids {
-		if kid.is("Exclude") {
-			_, pattern := splitGlob(sourcePath(conv.expand(kid, kid.attr("Files"))))
-			exclude = append(exclude, strings.TrimPrefix(pattern, src))
-		} else {
+		pattern := sourcePath(conv.expand(kid, kid.attr("Files")))
+
+		switch rel, below := strings.CutPrefix(pattern, src); {
+		case !kid.is("Exclude"):
 			conv.todof(files, "", kid.line, "<%s> in <Files> has no counterpart", kid.qname())
+		case include == "" || !below:
+			conv.todof(files, "", kid.line, "the Exclude %s is not below the folder %s; leave the file out by hand", pattern, src)
+		default:
+			exclude = append(exclude, rel)
 		}
 	}
 

@@ -524,11 +524,13 @@ func (c *converter) group(id string) *group {
 }
 
 // implicitComponent wraps a File or Files outside a Component in the
-// component WiX makes for it, which takes its Directory and Subdirectory.
+// component WiX makes for it, which takes its Id, Directory and
+// Subdirectory.
 func implicitComponent(file *elem) *elem {
 	component := &elem{attrs: make(map[string]string), ns: file.ns, space: file.space, name: "Component", kids: []*elem{file}, line: file.line}
 
-	for _, name := range []string{attrDirectory, "Subdirectory"} {
+	// WiX names the component after the file.
+	for _, name := range []string{"Id", attrDirectory, "Subdirectory"} {
 		if v, ok := file.attrs[name]; ok {
 			component.attrs[name] = v
 			component.order = append(component.order, name)

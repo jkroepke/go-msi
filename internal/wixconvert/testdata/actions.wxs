@@ -47,6 +47,7 @@
 
     <!-- Started without waiting for it, and an error with its own message. -->
     <CustomAction Id="StartTray" FileRef="hello.exe" ExeCommand="--tray" Execute="immediate" Return="asyncNoWait" />
+    <CustomAction Id="StartMonitor" Directory="INSTALLFOLDER" ExeCommand="[MONITOR] --monitor" Return="asyncNoWait" />
     <CustomAction Id="NeedsAdmin" Error="25000" />
     <UI>
       <Error Id="25000">Hello needs administrator rights.</Error>
@@ -56,6 +57,7 @@
     <InstallExecuteSequence>
       <Custom Action="NeedsAdmin" After="LaunchConditions" Condition="NOT Privileged" />
       <Custom Action="StartTray" After="InstallFinalize" Condition="NOT REMOVE" />
+      <Custom Action="StartMonitor" After="StartTray" Condition="NOT REMOVE" />
       <Custom Action="SetStopCmd" Before="StopHello" />
       <Custom Action="StopHello" Before="InstallValidate" />
       <Custom Action="SetGreetCmd" After="InstallFinalize" />

@@ -8,6 +8,7 @@
     <!-- Detects this product's own versions without removing them. -->
     <Upgrade Id="{6A3F1B2C-1D2E-4F50-9A8B-7C6D5E4F3A21}">
       <UpgradeVersion Minimum="1.0.0" Maximum="2.0.0" IncludeMaximum="yes" OnlyDetect="yes" Property="SAMEMAJORFOUND" />
+      <UpgradeVersion Minimum="$(var.ProductVersion)" IncludeMinimum="no" OnlyDetect="yes" Property="NEWERFOUND" />
     </Upgrade>
     <Media Id="1" Cabinet="tools.cab" EmbedCab="no" />
 
