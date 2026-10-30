@@ -37,8 +37,8 @@ import (
 // after costing, is removed on both and must be refused while the product
 // stays. Swap replaces the folder
 // DATA_DIR\sub with a junction to BAIT_DIR, which holds files of the same
-// names, after the immediate action checked DATA_DIR and before the
-// deferred one moves it, the way a user who can write there could; the
+// names, before RemoveFiles, the way a user who can write there could; the
+// deferred action accepts DATA_DIR, which holds the junction, and the
 // deletion must remove the junction, not what it points to.
 const removeFoldersConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderRemoveFolders, manufacturer: msi-builder tests, version: %s, upgradeCode: 953f4393-d6f8-4869-9f33-427757ebacb1 }
@@ -79,7 +79,7 @@ customActions:
     schedule: [{ sequence: execute, after: CostFinalize }]
   - id: StdInside
     setProperty: { name: TemplateFolder, value: '[GUARD_STD]Inner\' }
-    schedule: [{ sequence: execute, after: AppSearch, condition: GUARD_STD }]   # before BuilderRemoveFolders, which runs right after RemoveFiles
+    schedule: [{ sequence: execute, after: AppSearch, condition: GUARD_STD }]   # before the removal data is built right after RemoveFiles
   - id: FailRemove
     run: { command: '"[System64Folder]cmd.exe" /c (if not exist "[DATA_DIR]a.txt" if not exist "[DATA_DIR]nested\deeper\d.txt" echo removed>"[MARKER]") & exit 1' }
     execute: deferred

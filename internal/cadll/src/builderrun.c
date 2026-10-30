@@ -1089,7 +1089,6 @@ static const WCHAR rollbackKey[] = u"Software\\msi-builder\\GrantRollback\\";
 static const WCHAR accountsKey[] = u"SOFTWARE\\msi-builder\\GrantAccounts\\";
 static const WCHAR msgRemembered[] = u"the account is empty in a maintenance install; granting to the remembered account";
 static const WCHAR msgRemember[] = u"cannot remember the account of";
-static const WCHAR condRemoveAll[] = u"REMOVE~=\"ALL\"";
 static const WCHAR msgGrantData[] = u"malformed grant data";
 static const WCHAR msgGrantLines[] = u"the grant data has more lines than grants: a formatted account or object contains a line break";
 static const WCHAR msgNoAccount[] = u"no account to grant rights to";
@@ -1740,42 +1739,60 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
     return result;
 }
 
-// Folder removal. The immediate action BuilderRemoveFolders runs after
-// RemoveFiles, when component states and directory paths are known, and
-// reads the private property BuilderRemoveFolders, one line per
-// removeFolders entry:
+// Folder removal. The rollback, deferred and commit actions
+// BuilderRemoveFoldersUndo, BuilderRemoveFoldersExec and
+// BuilderRemoveFoldersCommit, all on the entry point BuilderRemoveFoldersExec,
+// run after RemoveFiles, when component states and directory paths are
+// known, and get this CustomActionData:
 //
-//     <condition> US <property>
+//     <op><scope><ProductCode>:<count>
+//     s<standard folder property>|<its value>
+//     ...
+//     p<a directory of the package>
+//     ...
+//     f<property>|<the folder it names>
+//     ...
 //
-// (US is U+001F). For an entry whose condition holds it reads the folder
-// from the property and refuses a folder that is not one an application
+// The engine builds it, never an action that runs as the user (spec 17.10):
+// type-51 actions right before the three actions reset the property
+// BuilderRemoveFoldersData to the s and p lines, which the engine formats,
+// and append an f line for each entry whose condition holds; a second
+// type-51 action under the same condition appends `#` to
+// BuilderRemoveFoldersCount, and the data carries one more `#` per s and p
+// line, so a line break in a formatted value, which would add lines, makes
+// the data malformed. op is u (rollback), m (deferred), d (deferred with
+// rollback disabled, which skips commit actions: it deletes right away) or
+// c (commit); scope is a when the whole product is removed, else k.
+//
+// The deferred action refuses a folder that is not one an application
 // could own (a drive root, a folder that is or holds a standard folder or
 // the profiles folder, a profile, a folder in the Windows folder, a reparse
-// point, a folder reached through one). It hands the accepted folders to
-// the deferred export BuilderRemoveFoldersExec as the CustomActionData of
-// three actions, each a line of folders after a header line
-// <op><token>: u (rollback) moves each folder back from its backup, m
-// (deferred) moves each folder by handle into X:\BuilderRemoveFolders.<token>\<n>,
-// a new folder with a protected access list for LocalSystem,
+// point, a folder reached through one, and unless scope is a, a folder that
+// is or holds a directory of the package). It moves each accepted folder by
+// handle into X:\BuilderRemoveFolders.<token>\<n>, n being the number of
+// its f line, a new folder with a protected access list for LocalSystem,
 // Administrators and its owner (its name is no secret: anyone can list the
-// volume root; what makes it safe is that the deferred, rollback and commit
-// sides only use it after checking that owner and access list), and c (commit) deletes the backups; with rollback disabled, which
-// skips commit actions, the deferred action gets d and deletes right away.
-// Deleting opens every entry relative to the handle of its folder without
-// following a junction or a symbolic link, which it removes as a link, so
-// a folder swapped for a junction after the listing cannot redirect it.
-// What it cannot do is logged as `BuilderRemoveFolders: ...` and left in
-// place; the actions never fail the installation.
+// volume root; what makes it safe is that the rollback and commit sides
+// only use it after checking that owner and access list). The random token
+// and the final path of each moved folder are recorded in
+// HKCU\Software\msi-builder\RemoveFolders\<ProductCode> (LocalSystem's hive
+// in a per-machine install) before the move, so the rollback moves the
+// folders recorded there back and the commit deletes them; both delete the
+// record. Deleting opens every entry relative to the handle of its folder
+// without following a junction or a symbolic link, which it removes as a
+// link, so a folder swapped for a junction after the check cannot
+// redirect it. What it cannot do is logged as `BuilderRemoveFolders: ...`
+// and left in place; the actions never fail the installation.
 
 static const WCHAR tmplRemove[] = u"BuilderRemoveFolders: [1]";
-static const WCHAR propRemove[] = u"BuilderRemoveFolders";
-static const WCHAR propRemoveUndo[] = u"BuilderRemoveFoldersUndo";
-static const WCHAR propRemovePackage[] = u"BuilderRemoveFoldersPackage";
 static const WCHAR msgRemovePackage[] = u"refused, it is or holds a folder of the package, which goes only when the whole product is removed:";
-static const WCHAR propRemoveExec[] = u"BuilderRemoveFoldersExec";
-static const WCHAR propRemoveCommit[] = u"BuilderRemoveFoldersCommit";
 static const WCHAR backupPrefix[] = u"BuilderRemoveFolders.";
 static const WCHAR msgRemoveData[] = u"malformed folder removal data";
+static const WCHAR msgRemoveLines[] = u"the folder removal data has more lines than entries: a formatted folder contains a line break; nothing removed";
+static const WCHAR msgRemoveRecord[] = u"cannot record the folders for the rollback; nothing removed";
+static const WCHAR removeRecordKey[] = u"Software\\msi-builder\\RemoveFolders\\";
+static const WCHAR removeRecordToken[] = u"Token";
+static const WCHAR windowsFolder[] = u"WindowsFolder";
 static const WCHAR msgRemoveNotAdminExec[] =
     u"nothing removed: the account that started the session is no administrator, or its groups cannot be read";
 static const WCHAR msgRemoveEmpty[] = u"the property is empty; nothing removed";
@@ -1794,11 +1811,7 @@ static const WCHAR profileListKey[] = u"SOFTWARE\\Microsoft\\Windows NT\\Current
 static const WCHAR profilesDirectory[] = u"ProfilesDirectory";
 static const WCHAR profileImagePath[] = u"ProfileImagePath";
 static const WCHAR msgRemoving[] = u"to remove";
-static const WCHAR msgRemoveNotAdmin[] =
-    u"nothing removed: the session runs elevated, but the account that started it is no administrator, and the folders could come from its command line";
-static const WCHAR propRunningElevated[] = u"MsiRunningElevated";
 static const WCHAR adminsSid[] = u"S-1-5-32-544";
-static const WCHAR msgRemoveSchedule[] = u"cannot hand the folders to the deferred actions";
 static const WCHAR msgRemoveMoved[] = u"moved aside";
 static const WCHAR msgRemoveChanged[] = u"left in place, it is no longer the folder that was checked";
 static const WCHAR msgRemoveBusy[] = u"left in place, it cannot be moved (a file in it may be in use)";
@@ -1810,16 +1823,14 @@ static const WCHAR msgRemoveDeleted[] = u"deleted";
 static const WCHAR msgRemoveLeft[] = u"not everything could be deleted, the rest stays in the backup folder at the root of its volume";
 static const WCHAR backupSddl[] = u"D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;OW)";
 
-// The standard folder properties a removal must not reach: neither the
-// folder itself nor a folder that holds it may be removed.
-static const WCHAR *const protectedFolders[] = {
-    u"WindowsVolume", u"WindowsFolder", u"SystemFolder", u"System64Folder", u"System16Folder",
-    u"ProgramFilesFolder", u"ProgramFiles64Folder", u"CommonFilesFolder", u"CommonFiles64Folder",
-    u"CommonAppDataFolder", u"AppDataFolder", u"LocalAppDataFolder", u"TempFolder",
-    u"PersonalFolder", u"DesktopFolder", u"FavoritesFolder", u"MyPicturesFolder", u"TemplateFolder",
-    u"ProgramMenuFolder", u"StartMenuFolder", u"StartupFolder", u"SendToFolder", u"RecentFolder",
-    u"NetHoodFolder", u"PrintHoodFolder", u"AdminToolsFolder", u"FontsFolder",
-};
+// removeData is the parsed CustomActionData: the s, p and f lines, cut at
+// their ends, and what the head says.
+typedef struct {
+    WCHAR **standard, **package, **folders;
+    DWORD standards, packages, count;
+    int all;
+    WCHAR *own; // the engine's UserSID
+} removeData;
 
 // wstrdup copies a string into a heap buffer with room for extra more
 // characters.
@@ -2078,13 +2089,14 @@ static const WCHAR *profileCheck(const WCHAR *folder, WCHAR *profile, int own, c
 // profiles, or 0: the profiles folder (ProfilesDirectory, C:\Users by
 // default), a folder that holds it, a folder directly in it, a folder that
 // is or holds a profile of ProfileList, Public or Default, and any folder
-// inside a profile other than that of the account the action runs as,
-// found by its SID. The immediate action runs with the token of the
-// account that started the session, so a per-machine removal still keeps
-// that account's own profile open; only a session that itself runs as
-// LocalSystem (a deployment tool) has no profile of its own, and then every
-// user's data is refused. When the profiles cannot be read, everything is.
-static const WCHAR *profileRefusal(const WCHAR *folder)
+// inside a profile other than that of own, the SID of the account that
+// started the session (the engine's UserSID, which no earlier action can
+// change for the deferred side, FILE-12). A per-machine removal therefore
+// keeps that account's own profile open; only a session that itself runs
+// as LocalSystem (a deployment tool) has no profile of its own outside the
+// Windows folder, and then every user's data is refused. When the profiles
+// cannot be read, everything is.
+static const WCHAR *profileRefusal(const WCHAR *folder, const WCHAR *own)
 {
     HANDLE key = 0;
     if (RegOpenKeyExW(HKLM_, profileListKey, 0, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS | KEY_WOW64_64KEY, &key)) {
@@ -2108,7 +2120,6 @@ static const WCHAR *profileRefusal(const WCHAR *folder)
     for (SIZE_T i = 0; !why && i < sizeof(shared) / sizeof(shared[0]); i++) {
         why = profileCheck(folder, regFolder(key, shared[i]), 0, msgRemoveSharedProfile);
     }
-    WCHAR *own = userSid();
     WCHAR sid[256];
     for (DWORD i = 0; !why; i++) {
         DWORD n = sizeof(sid) / sizeof(sid[0]);
@@ -2135,7 +2146,6 @@ static const WCHAR *profileRefusal(const WCHAR *folder)
         RegCloseKey(sub);
     }
     RegCloseKey(key);
-    HeapFree(GetProcessHeap(), 0, own);
     return why;
 }
 
@@ -2143,26 +2153,26 @@ static const WCHAR *profileRefusal(const WCHAR *folder)
 // final path with a trailing backslash; protectedName receives the
 // property name of a standard folder it reaches. Standard folders are
 // compared by their final paths too, so a link to one is caught.
-static const WCHAR *refusal(MSIHANDLE install, const WCHAR *folder, const WCHAR **protectedName)
+static const WCHAR *refusal(const removeData *rd, const WCHAR *folder, const WCHAR **protectedName)
 {
     if (wlen(folder) <= 3) {
         return msgRemoveRoot;
     }
-    const WCHAR *why = profileRefusal(folder);
-    for (SIZE_T i = 0; !why && i < sizeof(protectedFolders) / sizeof(protectedFolders[0]); i++) {
-        WCHAR *value = property(install, protectedFolders[i]);
-        WCHAR *full = value ? finalPath(value) : 0;
+    const WCHAR *why = profileRefusal(folder, rd->own);
+    for (DWORD i = 0; !why && i < rd->standards; i++) {
+        // The line is cut after the name; the value follows.
+        const WCHAR *name = rd->standard[i], *value = name + wlen(name) + 1;
+        WCHAR *full = *value ? finalPath(value) : 0;
         const WCHAR *std = full ? full : value;
-        if (std && wlen(std) && std[wlen(std) - 1] == '\\') {
+        if (wlen(std) && std[wlen(std) - 1] == '\\') {
             if (below(std, folder)) {
                 why = msgRemoveStandard;
-                *protectedName = protectedFolders[i];
-            } else if (i == 1 && below(folder, std)) {
+                *protectedName = name;
+            } else if (wieq(name, windowsFolder) && below(folder, std)) {
                 why = msgRemoveWindows;
             }
         }
         HeapFree(GetProcessHeap(), 0, full);
-        HeapFree(GetProcessHeap(), 0, value);
     }
     return why;
 }
@@ -2170,7 +2180,7 @@ static const WCHAR *refusal(MSIHANDLE install, const WCHAR *folder, const WCHAR 
 // checkFolder resolves the folder a property names and returns why it must
 // not be removed, or 0 with *folder set to its path. *detail receives a
 // text to log after the reason, owned by the caller when *owned is set.
-static const WCHAR *checkFolder(MSIHANDLE install, WCHAR *path, WCHAR **folder, const WCHAR **detail, WCHAR **owned)
+static const WCHAR *checkFolder(const removeData *rd, WCHAR *path, WCHAR **folder, const WCHAR **detail, WCHAR **owned)
 {
     if (!plainPath(path)) {
         return msgRemovePath;
@@ -2193,7 +2203,7 @@ static const WCHAR *checkFolder(MSIHANDLE install, WCHAR *path, WCHAR **folder, 
         *detail = *owned = final;
         final = 0;
     } else {
-        why = refusal(install, final, detail);
+        why = refusal(rd, final, detail);
     }
     HeapFree(GetProcessHeap(), 0, full);
     if (why) {
@@ -2204,42 +2214,62 @@ static const WCHAR *checkFolder(MSIHANDLE install, WCHAR *path, WCHAR **folder, 
     return why;
 }
 
-// checkEntry handles one line of BuilderRemoveFolders and appends the
-// folder to out when it may be removed.
-static const WCHAR *packageRefusal(MSIHANDLE install, const WCHAR *folder, WCHAR **owned);
-
-static void checkEntry(MSIHANDLE install, WCHAR *line, wbuf *out)
+// packageRefusal returns why folder (a final path) must not be removed now
+// because it is or holds one of the package's own directories, whose path
+// it then hands back in *owned, or 0. Such a folder goes only when the
+// whole product is removed: on an install, a repair or the removal of one
+// feature the installer keeps files there that the move would take away.
+// The entry's property may hold the install dir under any name, so this
+// compares paths, not names; a directory that does not exist yet compares
+// by its path as the engine resolved it.
+static const WCHAR *packageRefusal(const removeData *rd, const WCHAR *folder, WCHAR **owned)
 {
-    WCHAR *name = field(line, 0x1F);
-    if (!name || !*name) {
-        logft(install, tmplRemove, msgRemoveData, 0, 0);
-        return;
-    }
-    if (*line) {
-        int cond = MsiEvaluateConditionW(install, line);
-        if (cond != MSICONDITION_TRUE && cond != MSICONDITION_NONE) {
-            if (cond != 0) {
-                logft(install, tmplRemove, msgCondition, line, 0);
-            }
-            return;
+    const WCHAR *why = 0;
+    for (DWORD i = 0; !rd->all && !why && i < rd->packages; i++) {
+        WCHAR *value = trim(rd->package[i]);
+        if (!*value) {
+            continue;
         }
+        WCHAR *path = finalPath(value);
+        if (!path) {
+            path = wstrdup(value, 1);
+            SIZE_T n = path ? wlen(path) : 0;
+            if (n && path[n - 1] != '\\') {
+                path[n] = '\\';
+                path[n + 1] = 0;
+            }
+        }
+        if (path && below(path, folder)) {
+            why = msgRemovePackage;
+            *owned = path;
+            path = 0;
+        }
+        HeapFree(GetProcessHeap(), 0, path);
     }
-    WCHAR *value = property(install, name), *folder = 0, *owned = 0;
+    return why;
+}
+
+// checkEntry checks the f line of one entry, cut after the property's
+// name, and returns the final path of its folder when it may be removed,
+// or 0 after logging why not.
+static WCHAR *checkEntry(MSIHANDLE install, const removeData *rd, WCHAR *line)
+{
+    WCHAR *name = line, *value = trim(line + wlen(line) + 1), *folder = 0, *owned = 0;
     const WCHAR *why = 0, *detail = 0;
-    if (!value || !*trim(value)) {
+    if (!*value) {
         why = msgRemoveEmpty;
     } else {
-        WCHAR *path = wstrdup(trim(value), 1);
+        WCHAR *path = wstrdup(value, 1);
         if (path) {
             SIZE_T n = wlen(path);
             if (n && path[n - 1] != '\\') {
                 path[n] = '\\';
                 path[n + 1] = 0;
             }
-            why = checkFolder(install, path, &folder, &detail, &owned);
+            why = checkFolder(rd, path, &folder, &detail, &owned);
             HeapFree(GetProcessHeap(), 0, path);
             WCHAR *pkg = 0;
-            if (!why && (why = packageRefusal(install, folder, &pkg)) != 0) {
+            if (!why && (why = packageRefusal(rd, folder, &pkg)) != 0) {
                 HeapFree(GetProcessHeap(), 0, owned);
                 owned = pkg;
                 detail = pkg;
@@ -2253,132 +2283,93 @@ static void checkEntry(MSIHANDLE install, WCHAR *line, wbuf *out)
     if (why) {
         static const WCHAR space[] = u" ";
         wbuf text = {0, 0, 0};
-        const WCHAR *shown = value && *trim(value) ? trim(value) : name;
+        const WCHAR *shown = *value ? value : name;
         if (wbufAdd(&text, why, wlen(why)) && (!detail || (wbufAdd(&text, space, 1) && wbufAdd(&text, detail, wlen(detail))))) {
             logft(install, tmplRemove, shown, text.s, 0);
         }
         HeapFree(GetProcessHeap(), 0, text.s);
         HeapFree(GetProcessHeap(), 0, owned);
-    } else {
-        static const WCHAR nl[] = u"\n";
-        logft(install, tmplRemove, msgRemoving, folder, 0);
-        if (!wbufAdd(out, nl, 1) || !wbufAdd(out, folder, wlen(folder))) {
-            logft(install, tmplRemove, msgNoMemory, 0, 0);
-        }
-        HeapFree(GetProcessHeap(), 0, folder);
-    }
-    HeapFree(GetProcessHeap(), 0, value);
-}
-
-// packageRefusal returns why folder (a final path) must not be removed now
-// because it is or holds one of the package's own directories, whose path
-// it then hands back in *owned, or 0. Such a folder goes only when the
-// whole product is removed: on an install, a repair or the removal of one
-// feature the installer keeps files there that the move would take away.
-// The entry's property may hold the install dir under any name, so this
-// compares paths, not names; a directory that does not exist yet compares
-// by its path as the engine resolved it.
-static const WCHAR *packageRefusal(MSIHANDLE install, const WCHAR *folder, WCHAR **owned)
-{
-    if (MsiEvaluateConditionW(install, condRemoveAll) == MSICONDITION_TRUE) {
         return 0;
     }
-    WCHAR *list = property(install, propRemovePackage);
-    const WCHAR *why = 0;
-    for (WCHAR *id = list; id && *id && !why;) {
-        WCHAR *next = field(id, '\n');
-        WCHAR *value = property(install, id);
-        if (value && *trim(value)) {
-            WCHAR *path = finalPath(trim(value));
-            if (!path) {
-                path = wstrdup(trim(value), 1);
-                SIZE_T n = path ? wlen(path) : 0;
-                if (n && path[n - 1] != '\\') {
-                    path[n] = '\\';
-                    path[n + 1] = 0;
-                }
-            }
-            if (path && below(path, folder)) {
-                why = msgRemovePackage;
-                *owned = path;
-                path = 0;
-            }
-            HeapFree(GetProcessHeap(), 0, path);
+    logft(install, tmplRemove, msgRemoving, folder, 0);
+    return folder;
+}
+
+// parseRemoveData splits the CustomActionData (see the comment above
+// tmplRemove) into rd and returns the op, or 0 when it is malformed, after
+// logging why. product receives the ProductCode, cut at its end.
+static WCHAR parseRemoveData(MSIHANDLE install, WCHAR *data, removeData *rd, WCHAR **product)
+{
+    WCHAR op = data[0];
+    if ((op != 'u' && op != 'm' && op != 'd' && op != 'c') || (data[1] != 'a' && data[1] != 'k') || wlen(data) < 41 || data[2] != '{' ||
+        data[39] != '}' || data[40] != ':') {
+        logft(install, tmplRemove, msgRemoveData, 0, 0);
+        return 0;
+    }
+    for (int i = 3; i < 39; i++) {
+        WCHAR c = wlower(data[i]);
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || c == '-')) {
+            logft(install, tmplRemove, msgRemoveData, 0, 0);
+            return 0;
         }
-        HeapFree(GetProcessHeap(), 0, value);
-        id = next;
     }
-    HeapFree(GetProcessHeap(), 0, list);
-    return why;
-}
-
-// setRemoveData sets the CustomActionData of one deferred action: op, the
-// token, and the folders.
-static int setRemoveData(MSIHANDLE install, const WCHAR *prop, WCHAR op, const WCHAR *token, const wbuf *folders)
-{
-    wbuf data = {0, 0, 0};
-    int ok = wbufAdd(&data, &op, 1) && wbufAdd(&data, token, wlen(token)) && wbufAdd(&data, folders->s, folders->len) &&
-             MsiSetPropertyW(install, prop, data.s) == ERROR_SUCCESS;
-    HeapFree(GetProcessHeap(), 0, data.s);
-    return ok;
-}
-
-__declspec(dllexport) UINT WINAPI BuilderRemoveFolders(MSIHANDLE install)
-{
-    // The rollback, deferred and commit actions run when their property
-    // holds data, so none may keep a value this action did not set.
-    static const WCHAR empty[] = {0};
-    MsiSetPropertyW(install, propRemoveUndo, empty);
-    MsiSetPropertyW(install, propRemoveExec, empty);
-    MsiSetPropertyW(install, propRemoveCommit, empty);
-    WCHAR *list = property(install, propRemove);
-    if (!list) {
-        return ERROR_SUCCESS;
+    rd->all = data[1] == 'a';
+    data[40] = 0;
+    *product = data + 2;
+    WCHAR *p = data + 41;
+    DWORD count = 0, lines = 0;
+    for (; *p == '#'; p++) {
+        count++;
     }
-    // An elevated session that a standard user started (a repair of a
-    // per-machine product, an assigned one, AlwaysInstallElevated) would
-    // remove as LocalSystem a folder from that user's command line, since
-    // the folder properties are secure. Without elevation the deferred
-    // actions run as the user (documented), who could delete the folder
-    // anyway.
-    WCHAR *elevated = property(install, propRunningElevated);
-    int refuse = elevated && *elevated && !userIsAdmin();
-    HeapFree(GetProcessHeap(), 0, elevated);
-    if (refuse) {
-        logft(install, tmplRemove, msgRemoveNotAdmin, 0, 0);
-        HeapFree(GetProcessHeap(), 0, list);
-        return ERROR_SUCCESS;
+    if (*p && *p != '\n') {
+        logft(install, tmplRemove, msgRemoveData, 0, 0);
+        return 0;
     }
-    wbuf folders = {0, 0, 0};
-    for (WCHAR *line = list; line && *line;) {
+    for (WCHAR *q = p; *q; q++) {
+        lines += *q == '\n';
+    }
+    if (lines != count) {
+        // A line break in a formatted folder added lines.
+        logft(install, tmplRemove, msgRemoveLines, 0, 0);
+        return 0;
+    }
+    WCHAR **all = HeapAlloc(GetProcessHeap(), 0, (count ? count : 1) * sizeof(WCHAR *));
+    if (!all) {
+        logft(install, tmplRemove, msgNoMemory, 0, 0);
+        return 0;
+    }
+    // The lines start after each line break; they are sorted s, p, f by
+    // the builder, and each kind keeps its order.
+    DWORD n = 0;
+    for (WCHAR *line = *p ? p + 1 : 0; line; n++) {
         WCHAR *next = field(line, '\n');
-        checkEntry(install, line, &folders);
+        all[n] = line;
         line = next;
     }
-    BYTE random[16];
-    if (folders.len) {
-        WCHAR token[33];
-        SIZE_T pos = 0;
-        token[0] = 0;
-        int ok = SystemFunction036(random, sizeof random) != 0;
-        for (SIZE_T i = 0; ok && i < sizeof random; i++) {
-            wappendhex(token, &pos, random[i]);
+    rd->standard = all;
+    for (DWORD i = 0; i < n; i++) {
+        WCHAR kind = all[i][0];
+        int ordered = (kind == 's' && !rd->packages && !rd->count) || (kind == 'p' && !rd->count) || kind == 'f';
+        WCHAR *rest = all[i] + 1;
+        // s and f lines carry a name before `|`, which field cuts.
+        if (!ordered || ((kind == 's' || kind == 'f') && (!field(rest, '|') || !*rest))) {
+            logft(install, tmplRemove, msgRemoveData, 0, 0);
+            HeapFree(GetProcessHeap(), 0, all);
+            rd->standard = 0;
+            return 0;
         }
-        // With rollback disabled the installer runs no commit action, so
-        // the deferred action deletes at once.
-        if (ok && MsiGetMode(install, MSIRUNMODE_ROLLBACKENABLED)) {
-            ok = setRemoveData(install, propRemoveUndo, 'u', token, &folders) && setRemoveData(install, propRemoveExec, 'm', token, &folders) &&
-                 setRemoveData(install, propRemoveCommit, 'c', token, &folders);
-        } else if (ok) {
-            ok = setRemoveData(install, propRemoveExec, 'd', token, &folders);
-        }
-        if (!ok) {
-            logft(install, tmplRemove, msgRemoveSchedule, 0, GetLastError());
+        all[i] = rest;
+        if (kind == 's') {
+            rd->standards++;
+        } else if (kind == 'p') {
+            rd->packages++;
+        } else {
+            rd->count++;
         }
     }
-    HeapFree(GetProcessHeap(), 0, folders.s);
-    HeapFree(GetProcessHeap(), 0, list);
-    return ERROR_SUCCESS;
+    rd->package = all + rd->standards;
+    rd->folders = rd->package + rd->packages;
+    return op;
 }
 
 // backupPath writes X:\BuilderRemoveFolders.<token> and, with index
@@ -2746,68 +2737,85 @@ static int restore(HANDLE root, DWORD index, WCHAR *folder)
     return ok;
 }
 
-// The deferred, rollback and commit side; see the comment above
-// BuilderRemoveFolders.
-__declspec(dllexport) UINT WINAPI BuilderRemoveFoldersExec(MSIHANDLE install)
+// regText returns a REG_SZ value of key as a heap string, or 0.
+static WCHAR *regText(HANDLE key, const WCHAR *name)
 {
-    static const WCHAR customActionData[] = u"CustomActionData";
-    WCHAR *data = property(install, customActionData);
-    WCHAR *folders = data ? field(data, '\n') : 0;
-    WCHAR op = data ? data[0] : 0;
-    const WCHAR *token = data && op ? data + 1 : 0;
-    if (!folders || (op != 'u' && op != 'm' && op != 'd' && op != 'c') || wlen(token) != 32) {
-        logft(install, tmplRemove, msgRemoveData, 0, 0);
-        HeapFree(GetProcessHeap(), 0, data);
-        return ERROR_SUCCESS;
+    DWORD kind = 0, size = 0;
+    WCHAR *out = 0;
+    if (!RegQueryValueExW(key, name, 0, &kind, 0, &size) && kind == REG_SZ && size) {
+        out = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (SIZE_T)size + 2 * sizeof(WCHAR));
+        if (out && (RegQueryValueExW(key, name, 0, &kind, (BYTE *)out, &size) || kind != REG_SZ)) {
+            HeapFree(GetProcessHeap(), 0, out);
+            out = 0;
+        }
     }
-    // Every op checks: the rollback and the commit name their folders and
-    // token from the same data, and a backup folder an earlier removal left
-    // behind would pass openBackup. A deferred action that runs with the
-    // user's own rights (a per-user install without elevation) can do
-    // nothing the user could not, so it skips the check.
-    if (userIsAdmin() && !sessionIsAdmin(install)) {
-        logft(install, tmplRemove, msgRemoveNotAdminExec, 0, 0);
-        HeapFree(GetProcessHeap(), 0, data);
-        return ERROR_SUCCESS;
+    return out;
+}
+
+// regSetText writes a REG_SZ value; 0 on failure.
+static int regSetText(HANDLE key, const WCHAR *name, const WCHAR *text)
+{
+    return !RegSetValueExW(key, name, 0, REG_SZ, (const BYTE *)text, (DWORD)((wlen(text) + 1) * sizeof(WCHAR)));
+}
+
+// newToken writes 32 random hexadecimal digits into token; 0 on failure.
+static int newToken(WCHAR token[33])
+{
+    BYTE random[16];
+    SIZE_T pos = 0;
+    token[0] = 0;
+    if (!SystemFunction036(random, sizeof random)) {
+        return 0;
     }
-    // The lines in order; the rollback runs backwards, so that a folder
-    // moved after one inside it is back before that one returns into it.
-    DWORD count = 0, created = 0, volumes = 0;
-    for (WCHAR *line = folders; line && *line; line = field(line, '\n')) {
-        count++;
+    for (SIZE_T i = 0; i < sizeof random; i++) {
+        wappendhex(token, &pos, random[i]);
     }
-    WCHAR **list = HeapAlloc(GetProcessHeap(), 0, (count ? count : 1) * sizeof(WCHAR *));
-    if (!list) {
-        logft(install, tmplRemove, msgNoMemory, 0, 0);
-        HeapFree(GetProcessHeap(), 0, data);
-        return ERROR_SUCCESS;
+    return 1;
+}
+
+// moveFolders is the deferred side: it checks each f line's folder and
+// moves the accepted ones aside as <n>, n the number of the line, then with
+// op d deletes them at once. With op m it first records the token and,
+// before each move, the folder's final path under the record key, so that
+// the rollback and the commit find what moved; without a record nothing
+// moves. It returns the drive letters it used as bits.
+static DWORD moveFolders(MSIHANDLE install, const removeData *rd, WCHAR op, const WCHAR *recordPath, WCHAR token[33])
+{
+    HANDLE key = 0;
+    DWORD created = 0, volumes = 0;
+    if (op == 'm') {
+        // A record left by a removal that reached neither its rollback nor
+        // its commit is stale; its backup folder stays where it is.
+        RegDeleteTreeW(HKCU_, recordPath);
+        if (RegCreateKeyExW(HKCU_, recordPath, 0, 0, 0, KEY_SET_VALUE, 0, &key, 0)) {
+            key = 0;
+        }
     }
-    // field cut each line at its end.
-    WCHAR *line = folders;
-    for (DWORD i = 0; i < count; i++) {
-        list[i] = line;
-        line += wlen(line) + 1;
+    if (!newToken(token) || (op == 'm' && (!key || !regSetText(key, removeRecordToken, token)))) {
+        logft(install, tmplRemove, op == 'm' ? msgRemoveRecord : msgRemoveData, 0, GetLastError());
+        if (key) {
+            RegCloseKey(key);
+        }
+        return 0;
     }
-    for (DWORD i = 0; i < count; i++) {
-        DWORD index = op == 'u' ? count - i : i + 1;
-        WCHAR *folder = list[index - 1];
-        WCHAR *rootPath = backupPath(folder, token, 0);
+    for (DWORD i = 0; i < rd->count; i++) {
+        WCHAR *folder = checkEntry(install, rd, rd->folders[i]);
+        WCHAR name[12];
+        SIZE_T pos = 0;
+        wappendnum(name, &pos, i + 1);
+        if (!folder) {
+            continue;
+        }
         volumes |= 1u << (wlower(folder[0]) - 'a');
-        if (!rootPath) {
-            logft(install, tmplRemove, msgNoMemory, 0, 0);
-        } else if ((op == 'm' || op == 'd') && !moveAside(install, folder, token, index, &created)) {
-            // Left in place and logged.
-        } else if (op != 'm') {
-            HANDLE root = openBackup(rootPath, DELETE_ | FILE_LIST_DIRECTORY | FILE_WRITE_ATTRIBUTES);
-            HANDLE moved = root && op != 'u' ? openMoved(root, index, DELETE_ | FILE_LIST_DIRECTORY | FILE_WRITE_ATTRIBUTES) : 0;
-            int restored = op == 'u' && root ? restore(root, index, folder) : 0;
-            if (restored > 0) {
-                logft(install, tmplRemove, folder, msgRemoveRestored, 0);
-            } else if (restored < 0) {
-                logft(install, tmplRemove, folder, msgRemoveRestore, GetLastError());
-            } else if (moved && deleteFolder(moved)) {
+        if (op == 'm' && !regSetText(key, name, folder)) {
+            logft(install, tmplRemove, folder, msgRemoveRecord, GetLastError());
+        } else if (moveAside(install, folder, token, i + 1, &created) && op == 'd') {
+            WCHAR *rootPath = backupPath(folder, token, 0);
+            HANDLE root = rootPath ? openBackup(rootPath, DELETE_ | FILE_LIST_DIRECTORY | FILE_WRITE_ATTRIBUTES) : 0;
+            HANDLE moved = root ? openMoved(root, i + 1, DELETE_ | FILE_LIST_DIRECTORY | FILE_WRITE_ATTRIBUTES) : 0;
+            if (moved && deleteFolder(moved)) {
                 logft(install, tmplRemove, msgRemoveDeleted, folder, 0);
-            } else if (moved) {
+            } else {
                 logft(install, tmplRemove, folder, msgRemoveLeft, 0);
             }
             if (moved) {
@@ -2816,10 +2824,111 @@ __declspec(dllexport) UINT WINAPI BuilderRemoveFoldersExec(MSIHANDLE install)
             if (root) {
                 CloseHandle(root);
             }
+            HeapFree(GetProcessHeap(), 0, rootPath);
+        }
+        HeapFree(GetProcessHeap(), 0, folder);
+    }
+    if (key) {
+        RegCloseKey(key);
+    }
+    return volumes;
+}
+
+// finishFolders is the rollback (u) and the commit (c) side: for every
+// folder the deferred action recorded, the rollback, in reverse order so
+// that a folder moved after one inside it is back before that one returns
+// into it, moves it back, and the commit deletes it. It returns the drive
+// letters it used as bits and the token in token.
+static DWORD finishFolders(MSIHANDLE install, const removeData *rd, WCHAR op, const WCHAR *recordPath, WCHAR token[33])
+{
+    HANDLE key = 0;
+    DWORD volumes = 0;
+    if (RegOpenKeyExW(HKCU_, recordPath, 0, KEY_QUERY_VALUE, &key)) {
+        return 0; // nothing was moved
+    }
+    WCHAR *recorded = regText(key, removeRecordToken);
+    int ok = recorded && wlen(recorded) == 32;
+    for (int i = 0; ok && i < 32; i++) {
+        WCHAR c = recorded[i];
+        ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+    }
+    if (ok) {
+        memcpy(token, recorded, 33 * sizeof(WCHAR));
+    }
+    HeapFree(GetProcessHeap(), 0, recorded);
+    for (DWORD i = 0; ok && i < rd->count; i++) {
+        DWORD index = op == 'u' ? rd->count - i : i + 1;
+        WCHAR name[12];
+        SIZE_T pos = 0;
+        wappendnum(name, &pos, index);
+        WCHAR *folder = regText(key, name);
+        SIZE_T n = folder ? wlen(folder) : 0;
+        if (!n || folder[n - 1] != '\\' || !plainPath(folder)) {
+            HeapFree(GetProcessHeap(), 0, folder);
+            continue;
+        }
+        volumes |= 1u << (wlower(folder[0]) - 'a');
+        WCHAR *rootPath = backupPath(folder, token, 0);
+        HANDLE root = rootPath ? openBackup(rootPath, DELETE_ | FILE_LIST_DIRECTORY | FILE_WRITE_ATTRIBUTES) : 0;
+        HANDLE moved = root && op == 'c' ? openMoved(root, index, DELETE_ | FILE_LIST_DIRECTORY | FILE_WRITE_ATTRIBUTES) : 0;
+        int restored = op == 'u' && root ? restore(root, index, folder) : 0;
+        if (restored > 0) {
+            logft(install, tmplRemove, folder, msgRemoveRestored, 0);
+        } else if (restored < 0) {
+            logft(install, tmplRemove, folder, msgRemoveRestore, GetLastError());
+        } else if (moved && deleteFolder(moved)) {
+            logft(install, tmplRemove, msgRemoveDeleted, folder, 0);
+        } else if (moved) {
+            logft(install, tmplRemove, folder, msgRemoveLeft, 0);
+        }
+        if (moved) {
+            CloseHandle(moved);
+        }
+        if (root) {
+            CloseHandle(root);
         }
         HeapFree(GetProcessHeap(), 0, rootPath);
+        HeapFree(GetProcessHeap(), 0, folder);
     }
-    HeapFree(GetProcessHeap(), 0, list);
+    RegCloseKey(key);
+    RegDeleteTreeW(HKCU_, recordPath);
+    return volumes;
+}
+
+// The deferred, rollback and commit side; see the comment above
+// tmplRemove.
+__declspec(dllexport) UINT WINAPI BuilderRemoveFoldersExec(MSIHANDLE install)
+{
+    static const WCHAR customActionData[] = u"CustomActionData";
+    static const WCHAR userSidProp[] = u"UserSID";
+    WCHAR *data = property(install, customActionData), *product = 0;
+    removeData rd = {0, 0, 0, 0, 0, 0, 0, 0};
+    WCHAR op = data ? parseRemoveData(install, data, &rd, &product) : 0;
+    if (!data) {
+        logft(install, tmplRemove, msgRemoveData, 0, 0);
+    }
+    // Every op checks: an account that is no administrator must not steer
+    // LocalSystem with the folder properties, which are secure, so its
+    // command line sets them. A deferred action that runs with the user's
+    // own rights (a per-user install without elevation) can do nothing the
+    // user could not, so it skips the check.
+    if (op && userIsAdmin() && !sessionIsAdmin(install)) {
+        logft(install, tmplRemove, msgRemoveNotAdminExec, 0, 0);
+        op = 0;
+    }
+    wbuf recordPath = {0, 0, 0};
+    if (op && (!wbufAdd(&recordPath, removeRecordKey, wlen(removeRecordKey)) || !wbufAdd(&recordPath, product, wlen(product)))) {
+        logft(install, tmplRemove, msgNoMemory, 0, 0);
+        op = 0;
+    }
+    rd.own = op ? property(install, userSidProp) : 0;
+    WCHAR token[33] = {0};
+    DWORD volumes = 0;
+    if (op == 'm' || op == 'd') {
+        volumes = moveFolders(install, &rd, op, recordPath.s, token);
+    } else if (op) {
+        volumes = finishFolders(install, &rd, op, recordPath.s, token);
+    }
     // Each backup folder goes once it is empty.
     for (WCHAR drive = 'a'; op != 'm' && drive <= 'z'; drive++) {
         WCHAR *rootPath = volumes & (1u << (drive - 'a')) ? backupPath(&drive, token, 0) : 0;
@@ -2830,6 +2939,9 @@ __declspec(dllexport) UINT WINAPI BuilderRemoveFoldersExec(MSIHANDLE install)
         }
         HeapFree(GetProcessHeap(), 0, rootPath);
     }
+    HeapFree(GetProcessHeap(), 0, rd.own);
+    HeapFree(GetProcessHeap(), 0, rd.standard);
+    HeapFree(GetProcessHeap(), 0, recordPath.s);
     HeapFree(GetProcessHeap(), 0, data);
     return ERROR_SUCCESS;
 }

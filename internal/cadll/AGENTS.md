@@ -86,9 +86,8 @@ the root `AGENTS.md` first.
   the builder writes (`internal/builder/permissions.go`); never add an
   immediate action that computes data for a deferred LocalSystem action,
   because it runs as the installing user, who can change it, and keep the
-  setters right before the deferred actions. `removeFolders` (spec 17.10)
-  still hands its data over from the impersonated `BuilderRemoveFolders`
-  and is a known exception until it is moved to type-51 setters too. The deferred action fails when
+  setters right before the deferred actions; `removeFolders` (spec 17.10)
+  works the same way since 2026-10-30. The deferred action fails when
   the number of lines differs from the count (a line break in a formatted
   value), and rejects `|` and control characters in a formatted account and
   control characters in an object; the account is the last field of a
@@ -118,13 +117,27 @@ the root `AGENTS.md` first.
   sets for a LocalSystem action is under the user's control. Grants
   (above) work the same way since 2026-10-30. Neither close action fails the install; the schedule action
   returns `ERROR_INSTALL_USEREXIT` only after a cancel.
-- Folder removal (spec 17.10) is the immediate export `BuilderRemoveFolders`
-  (checks, after RemoveFiles) and `BuilderRemoveFoldersExec` for the
-  rollback (`u`), deferred (`m`, or `d` with rollback disabled) and commit
-  (`c`) actions. Package folders are protected by path, not by property
-  name: `BuilderRemoveFoldersPackage` lists the package's directory IDs
-  and `packageRefusal` refuses a folder that is or holds one of them
-  unless `REMOVE~="ALL"`, because any property can alias the install dir.
+- Folder removal (spec 17.10) is the export `BuilderRemoveFoldersExec` for
+  the rollback (`u`), deferred (`m`, or `d` with `RollbackDisabled`) and
+  commit (`c`) actions. Type-51 actions of the engine right after
+  RemoveFiles build its data (`internal/builder/removefolders.go`): the
+  head `<op><scope><ProductCode>:` plus one `#` per line, then `s<name>|value`
+  lines for the standard folders (`cadll.RemoveFoldersStandard`), `p<path>`
+  lines for the package's directories and one `f<property>|value` line per
+  entry whose condition held; `parseRemoveData` fails on a line count that
+  differs from the `#`s (FILE-13) and on lines out of that order. There is
+  no immediate action any more: every check (`checkEntry`) runs in the
+  deferred action as LocalSystem, the own profile is matched by the
+  engine's `UserSID`, never by the token, which is LocalSystem's there.
+  Package folders are protected by path, not by property name: unless the
+  scope is `a` (`REMOVE~="ALL"`), `packageRefusal` refuses a folder that is
+  or holds one of the `p` paths, because any property can alias the
+  install dir. The deferred action draws the token and records it, and
+  each folder's final path under the number of its `f` line before the
+  move, in `HKCU\Software\msi-builder\RemoveFolders\<ProductCode>`
+  (LocalSystem's hive); the rollback and the commit take the folders and
+  the token from that record, never from their data, and delete it. Commit
+  actions cannot read `ProductCode`, so it comes in the data.
   Read-only files go with `FileDispositionInfoEx` and
   `FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE` (the handle needs
   `FILE_WRITE_ATTRIBUTES`); before Windows 10 1809, Server 2016 included,
@@ -142,16 +155,12 @@ the root `AGENTS.md` first.
   `SetFileInformationByHandle(FileRenameInfo)` with `RootDirectory` set
   fails with error 87 (FILE-11, CI run 41064763472). Public folder
   properties are secure by default (or `configurable`), so a standard
-  user's command line can reach an elevated session: the immediate side removes nothing when
-  `MsiRunningElevated` is set and its token holds no Administrators
-  group. That check runs in the user's own custom action server, so the
-  deferred side repeats it: it reads the engine's `UserSID` and asks Authz
+  user's command line can reach an elevated session: the deferred side
+  reads the engine's `UserSID` and asks Authz
   (`AuthzInitializeContextFromSid`) for that account's groups, and does
-  nothing unless it is LocalSystem or holds Administrators; its
-  CustomActionData is never trusted on its own. Every op checks, but only
-  when the deferred action holds Administrators itself (a per-user install
-  without elevation runs it as the user): a forged rollback could
-  otherwise move a backup folder an earlier removal left behind. FILE-12
+  nothing unless it is LocalSystem or holds Administrators. Every op
+  checks, but only when the deferred action holds Administrators itself (a
+  per-user install without elevation runs it as the user). FILE-12
   checks that a `UserSID` set by an earlier action does not reach the
   deferred side. The backup folder's name (the token) is visible to anyone who
   lists the volume root; never rely on it being secret, only on

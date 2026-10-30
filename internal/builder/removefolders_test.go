@@ -2,13 +2,16 @@ package builder_test
 
 import (
 	"fmt"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
 
-// TestRemoveFolders lists the removeFolders entries with their conditions
-// in BuilderRemoveFolders, schedules the immediate action and its rollback,
-// deferred and commit actions right after RemoveFiles, embeds the DLL and
+// TestRemoveFolders builds the data of the rollback, deferred and commit
+// actions with type-51 actions right after RemoveFiles, one pair per entry
+// under its condition, schedules no immediate action, embeds the DLL and
 // leaves the properties' security to their own settings.
 func TestRemoveFolders(t *testing.T) {
 	t.Parallel()
@@ -27,75 +30,155 @@ properties:
 `)
 	database := mustBuild(t, cfg).Database
 
-	list := fmt.Sprint(cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "BuilderRemoveFolders" }))
-	lines := strings.Split(list, "\n")
+	seq := make(map[string]int)
+	conds := make(map[string]string)
+	byNumber := make(map[int]string)
 
-	if len(lines) != 3 {
-		t.Fatalf("BuilderRemoveFolders %q, want 3 lines", list)
+	for _, row := range rows(t, database, "InstallExecuteSequence") {
+		if number, ok := row[2].(int); ok {
+			seq[fmt.Sprint(row[0])] = number
+			byNumber[number] = fmt.Sprint(row[0])
+		}
+
+		conds[fmt.Sprint(row[0])] = strings.TrimSuffix(fmt.Sprint(row[1]), "<nil>")
 	}
 
+	if _, ok := seq["BuilderRemoveFolders"]; ok {
+		t.Error("the immediate BuilderRemoveFolders is scheduled; the engine builds the data")
+	}
+
+	// Run the type-51 actions the way the engine would, from the first
+	// reset to the commit action, with every entry's condition true and
+	// REMOVE~="ALL" and RollbackDisabled false. Nothing, above all no
+	// action that runs as the user, comes between them.
+	values := map[string]string{"ProductCode": "{00000000-0000-0000-0000-000000000001}"}
+	format := regexp.MustCompile(`\[([A-Za-z_][A-Za-z0-9_.]*)\]`)
+	first := seq["BuilderRemoveFoldersResetCount"]
+
+	if first <= seq["RemoveFiles"] {
+		t.Fatalf("the setters start at %d, not after RemoveFiles at %d", first, seq["RemoveFiles"])
+	}
+
+	number := first
+	for ; byNumber[number] != "BuilderRemoveFoldersUndo"; number++ {
+		name := byNumber[number]
+		row := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == name })
+
+		if fmt.Sprint(row[1]) != "51" || !strings.HasPrefix(name, "BuilderRemoveFolders") {
+			t.Fatalf("action %s at %d between the setters: %v", name, number, row)
+		}
+
+		if c := conds[name]; c == `REMOVE~="ALL"` || c == "RollbackDisabled" {
+			continue
+		}
+
+		values[fmt.Sprint(row[2])] = format.ReplaceAllStringFunc(fmt.Sprint(row[3]), func(ref string) string {
+			name := ref[1 : len(ref)-1]
+			if v, ok := values[name]; ok {
+				return v
+			}
+
+			return `C:\` + name + `\`
+		})
+	}
+
+	for i, action := range []struct {
+		name string
+		typ  int
+	}{
+		{"BuilderRemoveFoldersUndo", 1 | 0x500 | 0x800}, // DLL, rollback, no impersonation
+		{"BuilderRemoveFoldersExec", 1 | 0x400 | 0x800}, // deferred
+		{"BuilderRemoveFoldersCommit", 1 | 0x600 | 0x800},
+	} {
+		if byNumber[number+i] != action.name {
+			t.Errorf("%s at %d, want %s", byNumber[number+i], number+i, action.name)
+		}
+
+		row := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == action.name })
+		if fmt.Sprint(row[1]) != strconv.Itoa(action.typ) || row[2] != "BuilderRun" || row[3] != "BuilderRemoveFoldersExec" {
+			t.Errorf("CustomAction row %v, want type %d", row, action.typ)
+		}
+
+		if conds[action.name] != `BuilderRemoveFoldersCount<>":"` {
+			t.Errorf("%s condition %q", action.name, conds[action.name])
+		}
+	}
+
+	if seq["BuilderRemoveFoldersCommit"] >= seq["RemoveFolders"] {
+		t.Errorf("the actions end at %d, after RemoveFolders %d", seq["BuilderRemoveFoldersCommit"], seq["RemoveFolders"])
+	}
+
+	// The data: op, scope, ProductCode, `:` and one `#` per line, then the
+	// standard folders, the package's directories and the entries.
+	product := values["ProductCode"]
+	for op, property := range map[string]string{"u": "BuilderRemoveFoldersUndo", "m": "BuilderRemoveFoldersExec", "c": "BuilderRemoveFoldersCommit"} {
+		data := values[property]
+		head, body, _ := strings.Cut(data, "\n")
+		lines := strings.Split(body, "\n")
+
+		if want := op + "k" + product + ":" + strings.Repeat("#", len(lines)); head != want {
+			t.Errorf("%s head %q, want %q", property, head, want)
+		}
+
+		var kinds string
+
+		for _, line := range lines {
+			if !strings.HasSuffix(kinds, line[:1]) {
+				kinds += line[:1]
+			}
+		}
+
+		if kinds != "spf" {
+			t.Errorf("%s line kinds %q, want s, p, f in that order", property, kinds)
+		}
+
+		for _, want := range []string{"sWindowsFolder|C:\\WindowsFolder\\", "pC:\\INSTALLDIR\\", "fINSTALLDIR|C:\\INSTALLDIR\\", "fDATA_DIR|C:\\DATA_DIR\\", "fOLD_DIR|C:\\OLD_DIR\\"} {
+			if !slices.Contains(lines, want) {
+				t.Errorf("%s lacks the line %q", property, want)
+			}
+		}
+	}
+
+	// The entries' conditions: a folder of the package goes only with the
+	// whole product.
 	comp := fmt.Sprint(cell(t, database, "Component", "Component", func(r []any) bool { return r[2] == "INSTALLDIR" }))
 	removed := "($" + comp + "=2 AND NOT UPGRADINGPRODUCTCODE)"
+	entryConds := map[string]string{}
 
-	for i, want := range []string{
-		// A folder of the package goes only with the whole product.
-		"($" + comp + `=2 AND REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE)` + "\x1fINSTALLDIR",
-		"(" + removed + " OR $" + comp + "=3) AND (DELETE_DATA=\"1\")\x1fDATA_DIR",
-		"$" + comp + "=3\x1fOLD_DIR",
-	} {
-		if lines[i] != want {
-			t.Errorf("line %d = %q, want %q", i, lines[i], want)
+	for name, cond := range conds {
+		if strings.HasPrefix(name, "BuilderRemoveFoldersEntry") {
+			row := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == name })
+			entryConds[strings.TrimPrefix(fmt.Sprint(row[3]), "[BuilderRemoveFoldersData]\n")] = cond
 		}
 	}
 
-	seq := func(name string) int {
-		n, ok := cell(t, database, "InstallExecuteSequence", "Sequence", func(r []any) bool { return r[0] == name }).(int)
-		if !ok {
-			t.Fatalf("%s has no sequence number", name)
+	for line, want := range map[string]string{
+		"fINSTALLDIR|[INSTALLDIR]": "($" + comp + `=2 AND REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE)`,
+		"fDATA_DIR|[DATA_DIR]":     "(" + removed + " OR $" + comp + "=3) AND (DELETE_DATA=\"1\")",
+		"fOLD_DIR|[OLD_DIR]":       "$" + comp + "=3",
+	} {
+		if entryConds[line] != want {
+			t.Errorf("condition of %q = %q, want %q", line, entryConds[line], want)
 		}
-
-		return n
 	}
 
-	last := seq("RemoveFiles")
-
-	for _, action := range []struct {
-		name, typ, cond string
-	}{
-		{"BuilderRemoveFolders", "1", ""},
-		{"BuilderRemoveFoldersUndo", "11521", "BuilderRemoveFoldersUndo"},
-		{"BuilderRemoveFoldersExec", "11265", "BuilderRemoveFoldersExec"},
-		{"BuilderRemoveFoldersCommit", "11777", "BuilderRemoveFoldersCommit"},
+	// With rollback disabled, which skips commit actions, the deferred
+	// action deletes at once; with the whole product removed the scope is a.
+	for name, want := range map[string][2]string{
+		"BuilderRemoveFoldersSetDelete": {"RollbackDisabled", "d[BuilderRemoveFoldersScope][ProductCode]"},
+		"BuilderRemoveFoldersAll":       {`REMOVE~="ALL"`, "a"},
 	} {
-		row := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == action.name })
-
-		target := "BuilderRemoveFoldersExec"
-		if action.name == "BuilderRemoveFolders" {
-			target = action.name
-		}
-
-		if fmt.Sprint(row[1]) != action.typ || row[2] != "BuilderRun" || row[3] != target {
-			t.Errorf("CustomAction row %v, want type %s and target %s", row, action.typ, target)
-		}
-
-		if next := seq(action.name); next <= last || next >= seq("RemoveFolders") {
-			t.Errorf("%s at %d, want after %d and before RemoveFolders %d", action.name, next, last, seq("RemoveFolders"))
-		} else {
-			last = next
-		}
-
-		cond := cell(t, database, "InstallExecuteSequence", "Condition", func(r []any) bool { return r[0] == action.name })
-		if c, ok := cond.(string); (ok && c != action.cond) || (!ok && action.cond != "") {
-			t.Errorf("%s condition %v, want %q", action.name, cond, action.cond)
+		row := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == name })
+		if conds[name] != want[0] || !strings.HasPrefix(fmt.Sprint(row[3]), want[1]) {
+			t.Errorf("%s: condition %q target %v, want %q and %q", name, conds[name], row[3], want[0], want[1])
 		}
 	}
 
 	rowWhere(t, database, "Binary", func(r []any) bool { return r[0] == "BuilderRun" })
 
-	hidden := fmt.Sprint(cell(t, database, "Property", "Value", func(r []any) bool { return r[0] == "MsiHiddenProperties" }))
-	for _, want := range []string{"BuilderRemoveFoldersUndo", "BuilderRemoveFoldersExec", "BuilderRemoveFoldersCommit"} {
-		if !strings.Contains(";"+hidden+";", ";"+want+";") {
-			t.Errorf("MsiHiddenProperties %q lacks %s", hidden, want)
+	for _, row := range rows(t, database, "CustomAction") {
+		if target := fmt.Sprint(row[3]); len(target) > 255 {
+			t.Errorf("%s target is %d characters (ICE03)", row[0], len(target))
 		}
 	}
 
