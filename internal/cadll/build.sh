@@ -45,16 +45,19 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
   arch=${rest%:*}
   out=${rest##*:}
   mkdir -p "$tmp/$out"
-  imports kernel32 CreatePipe:16 SetHandleInformation:12 CreateProcessW:40 ReadFile:20 \
-    WaitForSingleObject:8 GetExitCodeProcess:8 CloseHandle:4 GetCurrentThread:0 \
+  imports kernel32 CreateNamedPipeW:32 CreateFileW:28 CreateEventW:16 CreateProcessW:40 InitializeProcThreadAttributeList:16 \
+    UpdateProcThreadAttribute:28 DeleteProcThreadAttributeList:4 CreateJobObjectW:8 \
+    SetInformationJobObject:16 AssignProcessToJobObject:8 TerminateJobObject:8 ResumeThread:4 \
+    ReadFile:20 GetOverlappedResult:16 CancelIoEx:8 WaitForSingleObject:8 WaitForMultipleObjects:16 \
+    GetTickCount64:0 GetExitCodeProcess:8 CloseHandle:4 GetCurrentThread:0 \
     GetProcessHeap:0 HeapAlloc:12 HeapReAlloc:16 HeapFree:12 GetLastError:0 \
     MultiByteToWideChar:24 TerminateProcess:8 LocalFree:4 GetComputerNameW:8 >"$tmp/$out/kernel32.def"
-  imports advapi32 OpenThreadToken:16 DuplicateTokenEx:24 CreateProcessAsUserW:44 \
+  imports advapi32 OpenThreadToken:16 DuplicateTokenEx:24 CreateProcessAsUserW:44 SystemFunction036:8 \
     ConvertStringSidToSidW:8 LookupAccountNameW:28 GetNamedSecurityInfoW:32 SetNamedSecurityInfoW:28 \
     GetSecurityDescriptorControl:12 InitializeAcl:12 GetAce:12 AddAce:20 AddAccessAllowedAceEx:20 \
     EqualSid:8 GetLengthSid:4 RegCreateKeyExW:36 RegOpenKeyExW:20 RegSetValueExW:24 \
     RegQueryValueExW:24 RegDeleteTreeW:8 RegCloseKey:4 >"$tmp/$out/advapi32.def"
-  imports msi MsiGetPropertyW:16 MsiCreateRecord:4 MsiRecordSetStringW:12 MsiProcessMessage:12 \
+  imports msi MsiGetPropertyW:16 MsiCreateRecord:4 MsiRecordSetStringW:12 MsiRecordSetInteger:12 MsiProcessMessage:12 \
     MsiCloseHandle:4 MsiSetPropertyW:12 MsiFormatRecordW:16 MsiEvaluateConditionW:8 >"$tmp/$out/msi.def"
   for lib in kernel32 advapi32 msi; do
     "$DLLTOOL" -m "$arch" -k -d "$tmp/$out/$lib.def" -l "$tmp/$out/$lib.lib"

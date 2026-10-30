@@ -29,21 +29,45 @@ The custom action DLL of `run` actions and permission grants. Read the root
   first one ends the directory.
 - The DLL starts the child with `CreateProcessAsUserW` and the thread's
   impersonation token when there is one, else `CreateProcessW`:
-  `CreateProcessW` ignores an impersonation token. CA-03 showed no thread
-  token in practice: impersonated deferred and immediate actions run in a
-  custom action server whose process token is the user's (the log says
-  `token: the process`, `whoami` prints the user), so the
+  `CreateProcessW` ignores an impersonation token. Only `ERROR_NO_TOKEN`
+  from `OpenThreadToken` takes the `CreateProcessW` path; any other error
+  fails the action rather than start the command as the process. CA-03
+  showed no thread token in practice: impersonated deferred and immediate
+  actions run in a custom action server whose process token is the user's
+  (the log says `token: the process`, `whoami` prints the user), so the
   `CreateProcessAsUserW` path is unexercised. The child inherits the custom
   action server's environment block.
-- Output is read from one pipe for stdout and stderr, split at `\n`, logged
-  per line through `MsiProcessMessage(INSTALLMESSAGE_INFO)` with the fixed
-  template `BuilderRun: [1]`, so brackets in the output are not formatted.
-  An `IDCANCEL` return from that call terminates the child; it is the only
-  cancel signal, so a silent child runs to its end. A
-  line is decoded as UTF-8 when valid, else in the OEM code page. `chcp
-  65001` inside a `cmd /c` line does not make cmd.exe's `echo` write UTF-8
-  on the pipe (CA-03 on the x64 and Arm64 runners: the line stayed OEM and
-  `€` came out as `?`); PowerShell with `[Console]::OutputEncoding` does.
+- The child is created suspended with a `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`
+  that holds only the pipe's write end, so no other inheritable handle of
+  the custom action server (another run action's pipe, for one) goes along,
+  put into a job with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, then resumed. A
+  cancel ends the job, and closing the job at the end of the action ends
+  whatever the command left running. When the job cannot be created or
+  assigned (a server in a job that forbids nesting), the action logs it and
+  goes on with the child alone.
+- Output is read from one named pipe for stdout and stderr (a random
+  `\\.\pipe\BuilderRun-<32 hex>` name from `RtlGenRandom`, one instance,
+  inbound: only a named pipe can be read overlapped, and the default pipe
+  security lets no other process write into it). A line ends at `\n`, `\r`
+  or `\r\n`; each is logged through `MsiProcessMessage(INSTALLMESSAGE_INFO)`
+  with the fixed template `BuilderRun: [1]`, so brackets in the output are
+  not formatted. The buffer is 64 KiB (`LINE_BUFFER`); a longer line is
+  logged in pieces. The overlapped read waits on the child too: once it has
+  exited, another process that keeps the pipe open gets `EXIT_GRACE_MS`
+  (5 s), then the job is ended and the rest is not read; while nothing
+  arrives, a zero progress message every `CANCEL_POLL_MS` (1 s) asks the
+  installer about a cancel, which `IDCANCEL` from a logged line also
+  signals. A line is decoded as UTF-8 when valid, else in the OEM code
+  page. `chcp 65001` inside a `cmd /c` line does not make cmd.exe's `echo`
+  write UTF-8 on the pipe (CA-03 on the x64 and Arm64 runners: the line
+  stayed OEM and `€` came out as `?`); PowerShell with
+  `[Console]::OutputEncoding` does.
+- The build has no stack probes (`-mno-stack-arg-probe`) and no stack
+  protector, so keep locals well under a page (4 KB): the line buffer and
+  every string of unknown length live on the heap. Constants that do not
+  fit an `int` are macros, not enumerators (C11 6.7.2.2). The struct
+  layouts the DLL declares itself are pinned by `_Static_assert`s on their
+  documented sizes for 32- and 64-bit builds.
 - `cadll_test.go` checks the checksums, the PE machine, the export and that
   the imports are only kernel32, advapi32 and msi. `testdata/probe` is the
   CA-03 package that `internal/builder/nativetest` installs on Windows

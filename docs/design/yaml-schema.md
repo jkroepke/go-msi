@@ -1576,7 +1576,9 @@ warning. The command line is formatted when the action is scheduled, like
 `exec`; a type-51 action named `<id>.Data` passes `<directory>|<command>`
 through `CustomActionData` to deferred, rollback and commit actions and
 through the `BuilderRun` property to immediate ones. `hideTarget` hides the
-command in both places. `return` is required (`check` or `ignore`;
+command in both places. The command runs in a job object: a cancel ends it
+with everything it started, and so does the end of the action, so a
+command cannot leave a background process behind. `return` is required (`check` or `ignore`;
 `asyncWait` is allowed, `asyncNoWait` is not). The executable must be
 quoted when it comes from a property or folder reference, as for `exec`;
 `directory` is the working directory only, not where a bare program name

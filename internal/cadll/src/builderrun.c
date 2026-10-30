@@ -30,9 +30,11 @@ typedef unsigned long long SIZE_T_;
 #if defined(__i386__)
 #define WINAPI __attribute__((stdcall))
 typedef unsigned int SIZE_T;
+typedef int INTPTR;
 #else
 #define WINAPI
 typedef SIZE_T_ SIZE_T;
+typedef long long INTPTR;
 #endif
 
 typedef struct {
@@ -78,12 +80,60 @@ typedef struct {
     DWORD SidStart;
 } ACCESS_ALLOWED_ACE;
 
+// OVERLAPPED, STARTUPINFOEXW and the job limit structures as the SDK
+// headers lay them out; the 64-bit members keep the 8-byte alignment that
+// gives JOBOBJECT_EXTENDED_LIMIT_INFORMATION its documented size (112 bytes
+// on x86, 144 on x64 and arm64).
+typedef struct {
+    SIZE_T Internal, InternalHigh;
+    DWORD Offset, OffsetHigh;
+    HANDLE hEvent;
+} OVERLAPPED;
+
+typedef struct {
+    STARTUPINFOW StartupInfo;
+    void *lpAttributeList;
+} STARTUPINFOEXW;
+
+typedef struct {
+    long long PerProcessUserTimeLimit, PerJobUserTimeLimit;
+    DWORD LimitFlags;
+    SIZE_T MinimumWorkingSetSize, MaximumWorkingSetSize;
+    DWORD ActiveProcessLimit;
+    SIZE_T Affinity;
+    DWORD PriorityClass, SchedulingClass;
+} JOBOBJECT_BASIC_LIMIT_INFORMATION;
+
+typedef struct {
+    JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+    unsigned long long IoInfo[6];
+    SIZE_T ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemoryUsed, PeakJobMemoryUsed;
+} JOBOBJECT_EXTENDED_LIMIT_INFORMATION;
+
+_Static_assert(sizeof(OVERLAPPED) == (sizeof(void *) == 4 ? 20 : 32), "OVERLAPPED layout");
+_Static_assert(sizeof(STARTUPINFOEXW) == (sizeof(void *) == 4 ? 72 : 112), "STARTUPINFOEXW layout");
+_Static_assert(sizeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION) == (sizeof(void *) == 4 ? 112 : 144), "JOBOBJECT_EXTENDED_LIMIT_INFORMATION layout");
+
 // kernel32.dll
-BOOL WINAPI CreatePipe(HANDLE *, HANDLE *, SECURITY_ATTRIBUTES *, DWORD);
-BOOL WINAPI SetHandleInformation(HANDLE, DWORD, DWORD);
+HANDLE WINAPI CreateNamedPipeW(const WCHAR *, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, SECURITY_ATTRIBUTES *);
+HANDLE WINAPI CreateFileW(const WCHAR *, DWORD, DWORD, SECURITY_ATTRIBUTES *, DWORD, DWORD, HANDLE);
+HANDLE WINAPI CreateEventW(SECURITY_ATTRIBUTES *, BOOL, BOOL, const WCHAR *);
 BOOL WINAPI CreateProcessW(const WCHAR *, WCHAR *, SECURITY_ATTRIBUTES *, SECURITY_ATTRIBUTES *, BOOL, DWORD, void *, const WCHAR *, STARTUPINFOW *, PROCESS_INFORMATION *);
-BOOL WINAPI ReadFile(HANDLE, void *, DWORD, DWORD *, void *);
+BOOL WINAPI InitializeProcThreadAttributeList(void *, DWORD, DWORD, SIZE_T *);
+BOOL WINAPI UpdateProcThreadAttribute(void *, DWORD, SIZE_T, void *, SIZE_T, void *, SIZE_T *);
+void WINAPI DeleteProcThreadAttributeList(void *);
+HANDLE WINAPI CreateJobObjectW(SECURITY_ATTRIBUTES *, const WCHAR *);
+BOOL WINAPI SetInformationJobObject(HANDLE, int, void *, DWORD);
+BOOL WINAPI AssignProcessToJobObject(HANDLE, HANDLE);
+BOOL WINAPI TerminateJobObject(HANDLE, UINT);
+DWORD WINAPI ResumeThread(HANDLE);
+BOOL WINAPI TerminateProcess(HANDLE, UINT);
+BOOL WINAPI ReadFile(HANDLE, void *, DWORD, DWORD *, OVERLAPPED *);
+BOOL WINAPI GetOverlappedResult(HANDLE, OVERLAPPED *, DWORD *, BOOL);
+BOOL WINAPI CancelIoEx(HANDLE, OVERLAPPED *);
 DWORD WINAPI WaitForSingleObject(HANDLE, DWORD);
+DWORD WINAPI WaitForMultipleObjects(DWORD, const HANDLE *, BOOL, DWORD);
+unsigned long long WINAPI GetTickCount64(void);
 BOOL WINAPI GetExitCodeProcess(HANDLE, DWORD *);
 BOOL WINAPI CloseHandle(HANDLE);
 HANDLE WINAPI GetCurrentThread(void);
@@ -93,7 +143,6 @@ void *WINAPI HeapReAlloc(HANDLE, DWORD, void *, SIZE_T);
 BOOL WINAPI HeapFree(HANDLE, DWORD, void *);
 DWORD WINAPI GetLastError(void);
 int WINAPI MultiByteToWideChar(UINT, DWORD, const char *, int, WCHAR *, int);
-BOOL WINAPI TerminateProcess(HANDLE, UINT);
 void *WINAPI LocalFree(void *);
 BOOL WINAPI GetComputerNameW(WCHAR *, DWORD *);
 
@@ -101,6 +150,8 @@ BOOL WINAPI GetComputerNameW(WCHAR *, DWORD *);
 BOOL WINAPI OpenThreadToken(HANDLE, DWORD, BOOL, HANDLE *);
 BOOL WINAPI DuplicateTokenEx(HANDLE, DWORD, SECURITY_ATTRIBUTES *, int, int, HANDLE *);
 BOOL WINAPI CreateProcessAsUserW(HANDLE, const WCHAR *, WCHAR *, SECURITY_ATTRIBUTES *, SECURITY_ATTRIBUTES *, BOOL, DWORD, void *, const WCHAR *, STARTUPINFOW *, PROCESS_INFORMATION *);
+// RtlGenRandom, exported by advapi32.dll under this name.
+BOOL WINAPI SystemFunction036(void *, DWORD);
 
 BOOL WINAPI ConvertStringSidToSidW(const WCHAR *, void **);
 BOOL WINAPI LookupAccountNameW(const WCHAR *, const WCHAR *, void *, DWORD *, WCHAR *, DWORD *, int *);
@@ -124,25 +175,47 @@ long WINAPI RegCloseKey(HANDLE);
 UINT WINAPI MsiGetPropertyW(MSIHANDLE, const WCHAR *, WCHAR *, DWORD *);
 MSIHANDLE WINAPI MsiCreateRecord(UINT);
 UINT WINAPI MsiRecordSetStringW(MSIHANDLE, UINT, const WCHAR *);
+UINT WINAPI MsiRecordSetInteger(MSIHANDLE, UINT, int);
 int WINAPI MsiProcessMessage(MSIHANDLE, int, MSIHANDLE);
 UINT WINAPI MsiCloseHandle(MSIHANDLE);
 UINT WINAPI MsiSetPropertyW(MSIHANDLE, const WCHAR *, const WCHAR *);
 UINT WINAPI MsiFormatRecordW(MSIHANDLE, MSIHANDLE, WCHAR *, DWORD *);
 int WINAPI MsiEvaluateConditionW(MSIHANDLE, const WCHAR *);
 
+// Values that do not fit an int are macros: C11 allows only int-sized
+// enumerators (6.7.2.2), and clang accepts larger ones silently.
+#define INFINITE 0xFFFFFFFFu
+#define PROTECTED_DACL_SECURITY_INFORMATION 0x80000000u
+#define MAXDWORD_ 0xFFFFFFFFu
+#define INVALID_HANDLE_VALUE ((HANDLE)(INTPTR)-1)
+
 enum {
     ERROR_SUCCESS = 0,
+    ERROR_IO_PENDING = 997,
+    ERROR_BROKEN_PIPE = 109,
     ERROR_MORE_DATA = 234,
     ERROR_NO_TOKEN = 1008,
     ERROR_INSTALL_USEREXIT = 1602,
     ERROR_INSTALL_FAILURE = 1603,
     ERROR_INSUFFICIENT_BUFFER = 122,
 
-    HANDLE_FLAG_INHERIT = 1,
     STARTF_USESTDHANDLES = 0x100,
+    CREATE_SUSPENDED = 4,
     CREATE_NO_WINDOW = 0x08000000,
-    INFINITE = 0xFFFFFFFF,
+    EXTENDED_STARTUPINFO_PRESENT = 0x00080000,
+    PROC_THREAD_ATTRIBUTE_HANDLE_LIST = 0x20002,
     WAIT_OBJECT_0 = 0,
+    WAIT_TIMEOUT = 258,
+
+    PIPE_ACCESS_INBOUND = 1,
+    FILE_FLAG_OVERLAPPED = 0x40000000,
+    FILE_FLAG_FIRST_PIPE_INSTANCE = 0x00080000,
+    PIPE_REJECT_REMOTE_CLIENTS = 8,
+    GENERIC_WRITE = 0x40000000,
+    OPEN_EXISTING = 3,
+
+    JobObjectExtendedLimitInformation = 9,
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000,
 
     TOKEN_DUPLICATE = 2,
     TOKEN_QUERY = 8,
@@ -157,19 +230,22 @@ enum {
 
     INSTALLMESSAGE_ERROR = 0x01000000,
     INSTALLMESSAGE_INFO = 0x04000000,
+    INSTALLMESSAGE_PROGRESS = 0x0A000000,
     IDCANCEL = 2,
 
     SE_FILE_OBJECT = 1,
     SE_SERVICE = 2,
     DACL_SECURITY_INFORMATION = 4,
-    PROTECTED_DACL_SECURITY_INFORMATION = 0x80000000,
     UNPROTECTED_DACL_SECURITY_INFORMATION = 0x20000000,
     SE_DACL_PROTECTED = 0x1000,
     ACL_REVISION = 2,
     ACCESS_ALLOWED_ACE_TYPE = 0,
     INHERITED_ACE = 0x10,
     VALID_INHERIT_FLAGS = 0x1F,
-    MAXDWORD_ = 0xFFFFFFFF,
+    // The inheritance flags a grant may author: INHERITED_ACE is the
+    // system's mark, and an ACE that claims it is dropped at the next
+    // propagation.
+    AUTHORED_INHERIT_FLAGS = VALID_INHERIT_FLAGS & ~INHERITED_ACE,
 
     KEY_QUERY_VALUE = 0x1,
     KEY_SET_VALUE = 0x2,
@@ -183,6 +259,14 @@ enum {
     SidTypeDeletedAccount = 6,
     SidTypeInvalid = 7,
     SidTypeUnknown = 8,
+
+    // Output handling: the line buffer, which is also the longest line
+    // logged in one piece; how long the pipe is read after the child
+    // exited while another process keeps it open; and how often a silent
+    // child is interrupted to ask the installer about a cancel.
+    LINE_BUFFER = 65536,
+    EXIT_GRACE_MS = 5000,
+    CANCEL_POLL_MS = 1000,
 };
 
 // The compiler may lower struct copies and zeroing to these.
@@ -233,6 +317,14 @@ static void wappendnum(WCHAR *dst, SIZE_T *pos, DWORD value)
     while (n) {
         dst[(*pos)++] = digits[--n];
     }
+    dst[*pos] = 0;
+}
+
+static void wappendhex(WCHAR *dst, SIZE_T *pos, BYTE value)
+{
+    static const char digits[] = "0123456789abcdef";
+    dst[(*pos)++] = (WCHAR)digits[value >> 4];
+    dst[(*pos)++] = (WCHAR)digits[value & 15];
     dst[*pos] = 0;
 }
 
@@ -292,6 +384,23 @@ static void logf(MSIHANDLE install, const WCHAR *what, const WCHAR *detail, DWOR
     logft(install, tmplRun, what, detail, code);
 }
 
+// cancelled asks the installer whether the user cancelled: a progress
+// message that adds nothing to the bar is not logged and returns IDCANCEL
+// after a cancel, like any message from a custom action.
+static int cancelled(MSIHANDLE install)
+{
+    MSIHANDLE rec = MsiCreateRecord(3);
+    if (!rec) {
+        return 0;
+    }
+    MsiRecordSetInteger(rec, 1, 2);
+    MsiRecordSetInteger(rec, 2, 0);
+    MsiRecordSetInteger(rec, 3, 0);
+    int ret = MsiProcessMessage(install, INSTALLMESSAGE_PROGRESS, rec);
+    MsiCloseHandle(rec);
+    return ret == IDCANCEL;
+}
+
 // property reads a property into a heap buffer, or returns 0 when it is
 // empty or unreadable.
 static WCHAR *property(MSIHANDLE install, const WCHAR *name)
@@ -347,75 +456,151 @@ static int emitLine(MSIHANDLE install, const char *line, int len)
     return ret;
 }
 
-// pump reads the pipe until the child closes it and logs every line. When
-// the installer asks to cancel, the child is terminated and the pipe is
-// drained until it closes (a grandchild may still hold the write end); the
-// result is then IDCANCEL.
-static int pump(MSIHANDLE install, HANDLE pipe, HANDLE process)
-{
-    HANDLE heap = GetProcessHeap();
-    SIZE_T cap = 4096, len = 0;
-    char *buf = HeapAlloc(heap, 0, cap);
-    int cancelled = 0;
-    if (!buf) {
-        return 0;
-    }
-    for (;;) {
-        if (cap - len < 1024) {
-            cap *= 2;
-            char *grown = HeapReAlloc(heap, 0, buf, cap);
-            if (!grown) {
-                break;
-            }
-            buf = grown;
-        }
-        DWORD got = 0;
-        if (!ReadFile(pipe, buf + len, (DWORD)(cap - len), &got, 0) || got == 0) {
-            break;
-        }
-        SIZE_T scanFrom = len;
-        len += got;
-        SIZE_T start = 0;
-        for (SIZE_T i = scanFrom; i < len; i++) {
-            if (buf[i] == '\n') {
-                SIZE_T end = i;
-                if (end > start && buf[end - 1] == '\r') {
-                    end--;
-                }
-                if (emitLine(install, buf + start, (int)(end - start)) == IDCANCEL && !cancelled) {
-                    cancelled = 1;
-                    TerminateProcess(process, 1);
-                }
-                start = i + 1;
-            }
-        }
-        if (start) {
-            memcpy(buf, buf + start, len - start);
-            len -= start;
-        }
-    }
-    if (len && emitLine(install, buf, (int)len) == IDCANCEL && !cancelled) {
-        cancelled = 1;
-        TerminateProcess(process, 1);
-    }
-    HeapFree(heap, 0, buf);
-    return cancelled ? IDCANCEL : 0;
-}
-
 static const WCHAR msgNoData[] = {'n', 'o', ' ', 'c', 'o', 'm', 'm', 'a', 'n', 'd', ' ', 'd', 'a', 't', 'a', 0};
 static const WCHAR msgBadData[] = {'m', 'a', 'l', 'f', 'o', 'r', 'm', 'e', 'd', ' ', 'c', 'o', 'm', 'm', 'a', 'n', 'd', ' ', 'd', 'a', 't', 'a', 0};
-static const WCHAR msgPipe[] = {'C', 'r', 'e', 'a', 't', 'e', 'P', 'i', 'p', 'e', ' ', 'f', 'a', 'i', 'l', 'e', 'd', 0};
+static const WCHAR msgPipe[] = u"cannot create the output pipe";
+static const WCHAR msgEvent[] = u"CreateEvent failed";
+static const WCHAR msgAttributes[] = u"cannot build the handle list";
+static const WCHAR msgJob[] = u"CreateJobObject failed; a process the command leaves behind is not ended";
+static const WCHAR msgAssign[] = u"AssignProcessToJobObject failed; a process the command leaves behind is not ended";
+static const WCHAR msgMemory[] = u"out of memory";
 static const WCHAR msgStart[] = {'s', 't', 'a', 'r', 't', 'i', 'n', 'g', ' ', 'i', 'n', 0};
 static const WCHAR msgDefaultDir[] = {'(', 'c', 'u', 'r', 'r', 'e', 'n', 't', ' ', 'd', 'i', 'r', 'e', 'c', 't', 'o', 'r', 'y', ')', 0};
 static const WCHAR msgToken[] = {'t', 'o', 'k', 'e', 'n', 0};
 static const WCHAR msgAsUser[] = {'t', 'h', 'e', ' ', 'i', 'm', 'p', 'e', 'r', 's', 'o', 'n', 'a', 't', 'e', 'd', ' ', 'u', 's', 'e', 'r', 0};
 static const WCHAR msgAsProcess[] = {'t', 'h', 'e', ' ', 'p', 'r', 'o', 'c', 'e', 's', 's', 0};
+static const WCHAR msgOpenToken[] = u"OpenThreadToken failed; not starting the command with the process token instead";
 static const WCHAR msgCreate[] = {'C', 'r', 'e', 'a', 't', 'e', 'P', 'r', 'o', 'c', 'e', 's', 's', ' ', 'f', 'a', 'i', 'l', 'e', 'd', 0};
 static const WCHAR msgDupToken[] = {'D', 'u', 'p', 'l', 'i', 'c', 'a', 't', 'e', 'T', 'o', 'k', 'e', 'n', 'E', 'x', ' ', 'f', 'a', 'i', 'l', 'e', 'd', 0};
 static const WCHAR msgExit[] = {'e', 'x', 'i', 't', ' ', 'c', 'o', 'd', 'e', 0};
 static const WCHAR msgCancel[] = {'c', 'a', 'n', 'c', 'e', 'l', 'l', 'e', 'd', ' ', 'b', 'y', ' ', 't', 'h', 'e', ' ', 'u', 's', 'e', 'r', 0};
+static const WCHAR msgAbandon[] = u"a process the command started keeps the output open after the command exited; its further output is not logged and it is ended";
+static const WCHAR msgReadFail[] = u"ReadFile failed; further output is not logged";
 static const WCHAR propData[] = {'C', 'u', 's', 't', 'o', 'm', 'A', 'c', 't', 'i', 'o', 'n', 'D', 'a', 't', 'a', 0};
 static const WCHAR propRun[] = {'B', 'u', 'i', 'l', 'd', 'e', 'r', 'R', 'u', 'n', 0};
+
+// output is the state of the child's output: the pipe, its read event, the
+// job that holds the child and what it starts, and the line buffer.
+typedef struct {
+    HANDLE pipe, event, process, job;
+    char *buf;
+    SIZE_T len;
+    int skipLF; // the last byte was \r: a following \n ends no line
+    int cancelled;
+} output;
+
+// stop ends the command: the job takes every process it started with it,
+// the process alone when there is no job.
+static void stop(output *o)
+{
+    if (o->job) {
+        TerminateJobObject(o->job, 1);
+    } else {
+        TerminateProcess(o->process, 1);
+    }
+}
+
+// emitLines logs the complete lines in the buffer, which the first n bytes
+// of the last read extended, and keeps the rest. A line ends at \n, \r or
+// \r\n, so progress written with \r alone is logged line by line; a line
+// longer than the buffer is logged in pieces.
+static void emitLines(MSIHANDLE install, output *o, SIZE_T scanFrom)
+{
+    SIZE_T start = 0;
+    for (SIZE_T i = scanFrom; i < o->len; i++) {
+        char c = o->buf[i];
+        if (c == '\n' && o->skipLF && i == start) {
+            o->skipLF = 0;
+            start = i + 1;
+            continue;
+        }
+        o->skipLF = 0;
+        if (c != '\n' && c != '\r') {
+            continue;
+        }
+        if (emitLine(install, o->buf + start, (int)(i - start)) == IDCANCEL && !o->cancelled) {
+            o->cancelled = 1;
+            stop(o);
+        }
+        o->skipLF = c == '\r';
+        start = i + 1;
+    }
+    if (start) {
+        memcpy(o->buf, o->buf + start, o->len - start);
+        o->len -= start;
+    }
+    if (o->len == LINE_BUFFER) {
+        if (emitLine(install, o->buf, LINE_BUFFER) == IDCANCEL && !o->cancelled) {
+            o->cancelled = 1;
+            stop(o);
+        }
+        o->len = 0;
+    }
+}
+
+// pump reads the pipe until every writer has closed it and logs the lines.
+// The read is overlapped, so the wait also watches the child and the
+// installer: when the child has exited and another process keeps the pipe
+// open past EXIT_GRACE_MS, that process is ended and the rest is not read;
+// while the child is silent, the installer is asked every CANCEL_POLL_MS
+// whether the user cancelled. A cancel, also one returned for a logged
+// line, ends the job; the pipe then closes by itself.
+static void pump(MSIHANDLE install, output *o)
+{
+    int exited = 0;
+    unsigned long long deadline = 0;
+    for (;;) {
+        OVERLAPPED ov;
+        memset(&ov, 0, sizeof ov);
+        ov.hEvent = o->event;
+        DWORD got = 0;
+        SIZE_T scanFrom = o->len;
+        if (!ReadFile(o->pipe, o->buf + o->len, (DWORD)(LINE_BUFFER - o->len), &got, &ov)) {
+            DWORD err = GetLastError();
+            if (err != ERROR_IO_PENDING) {
+                if (err != ERROR_BROKEN_PIPE) {
+                    logf(install, msgReadFail, 0, err);
+                }
+                break;
+            }
+            int done = 0;
+            while (!done) {
+                HANDLE handles[2] = {o->event, o->process};
+                DWORD r = WaitForMultipleObjects(exited ? 1 : 2, handles, 0, CANCEL_POLL_MS);
+                if (r == WAIT_OBJECT_0) {
+                    if (!GetOverlappedResult(o->pipe, &ov, &got, 0)) {
+                        got = 0;
+                    }
+                    done = 1;
+                } else if (r == WAIT_OBJECT_0 + 1) {
+                    exited = 1;
+                    deadline = GetTickCount64() + EXIT_GRACE_MS;
+                } else if (r != WAIT_TIMEOUT || (exited && GetTickCount64() >= deadline)) {
+                    if (r == WAIT_TIMEOUT) {
+                        logf(install, msgAbandon, 0, 0);
+                        stop(o);
+                    }
+                    CancelIoEx(o->pipe, &ov);
+                    GetOverlappedResult(o->pipe, &ov, &got, 1);
+                    got = 0;
+                    done = 1;
+                } else if (!exited && !o->cancelled && cancelled(install)) {
+                    o->cancelled = 1;
+                    stop(o);
+                }
+            }
+        }
+        if (got == 0) {
+            break;
+        }
+        o->len += got;
+        emitLines(install, o, scanFrom);
+    }
+    if (o->len && emitLine(install, o->buf, (int)o->len) == IDCANCEL && !o->cancelled) {
+        o->cancelled = 1;
+        stop(o);
+    }
+}
 
 // parse splits "<dir>|<command>" into dir (0 when empty) and command. `|`
 // cannot occur in a Windows path, so the first one ends the directory, which
@@ -442,11 +627,54 @@ static int parse(WCHAR *data, WCHAR **dir, WCHAR **cmd)
     return 1;
 }
 
-// start creates the child with the impersonated user's token when the thread
-// impersonates one (an impersonated deferred action), and with the process
-// token otherwise. CreateProcessW alone would ignore the impersonation token.
-static BOOL start(MSIHANDLE install, WCHAR *cmd, const WCHAR *dir, STARTUPINFOW *si, PROCESS_INFORMATION *pi)
+// makePipe creates the pipe the child writes to: a named pipe with a random
+// name, because only a named pipe can be read overlapped. The server end is
+// ours and not inheritable; the client end is the only inheritable handle
+// the child gets. The default security of a named pipe lets others read
+// but not write it, and the single instance is taken, so no other process
+// can write into the log.
+static int makePipe(MSIHANDLE install, HANDLE *server, HANDLE *client)
 {
+    static const WCHAR prefix[] = u"\\\\.\\pipe\\BuilderRun-";
+    BYTE random[16];
+    if (!SystemFunction036(random, sizeof random)) {
+        logf(install, msgPipe, 0, GetLastError());
+        return 0;
+    }
+    WCHAR name[64];
+    SIZE_T pos = 0;
+    name[0] = 0;
+    wappend(name, &pos, prefix);
+    for (SIZE_T i = 0; i < sizeof random; i++) {
+        wappendhex(name, &pos, random[i]);
+    }
+    SECURITY_ATTRIBUTES own = {sizeof own, 0, 0}, inherit = {sizeof inherit, 0, 1};
+    *server = CreateNamedPipeW(name, PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_REJECT_REMOTE_CLIENTS, 1,
+                               LINE_BUFFER, LINE_BUFFER, 0, &own);
+    if (*server == INVALID_HANDLE_VALUE) {
+        logf(install, msgPipe, 0, GetLastError());
+        *server = 0;
+        return 0;
+    }
+    *client = CreateFileW(name, GENERIC_WRITE, 0, &inherit, OPEN_EXISTING, 0, 0);
+    if (*client == INVALID_HANDLE_VALUE) {
+        logf(install, msgPipe, 0, GetLastError());
+        CloseHandle(*server);
+        *server = 0;
+        *client = 0;
+        return 0;
+    }
+    return 1;
+}
+
+// start creates the child, suspended, with the impersonated user's token
+// when the thread impersonates one (an impersonated deferred action) and
+// with the process token when it has none. CreateProcessW alone would
+// ignore the impersonation token. Any other failure to read the thread's
+// token fails the action rather than start the command as the process.
+static BOOL start(MSIHANDLE install, WCHAR *cmd, const WCHAR *dir, STARTUPINFOEXW *si, PROCESS_INFORMATION *pi)
+{
+    const DWORD flags = CREATE_NO_WINDOW | CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT;
     HANDLE thread = 0, primary = 0;
     BOOL ok;
     if (OpenThreadToken(GetCurrentThread(), TOKEN_QUERY | TOKEN_DUPLICATE, 1, &thread)) {
@@ -456,7 +684,7 @@ static BOOL start(MSIHANDLE install, WCHAR *cmd, const WCHAR *dir, STARTUPINFOW 
             return 0;
         }
         logf(install, msgToken, msgAsUser, 0);
-        ok = CreateProcessAsUserW(primary, 0, cmd, 0, 0, 1, CREATE_NO_WINDOW, 0, dir, si, pi);
+        ok = CreateProcessAsUserW(primary, 0, cmd, 0, 0, 1, flags, 0, dir, &si->StartupInfo, pi);
         DWORD err = GetLastError();
         CloseHandle(primary);
         CloseHandle(thread);
@@ -465,16 +693,43 @@ static BOOL start(MSIHANDLE install, WCHAR *cmd, const WCHAR *dir, STARTUPINFOW 
         }
         return ok;
     }
-    logf(install, msgToken, msgAsProcess, GetLastError() == ERROR_NO_TOKEN ? 0 : GetLastError());
-    ok = CreateProcessW(0, cmd, 0, 0, 1, CREATE_NO_WINDOW, 0, dir, si, pi);
+    DWORD err = GetLastError();
+    if (err != ERROR_NO_TOKEN) {
+        logf(install, msgOpenToken, 0, err);
+        return 0;
+    }
+    logf(install, msgToken, msgAsProcess, 0);
+    ok = CreateProcessW(0, cmd, 0, 0, 1, flags, 0, dir, &si->StartupInfo, pi);
     if (!ok) {
         logf(install, msgCreate, 0, GetLastError());
     }
     return ok;
 }
 
+// makeJob creates the job that holds the child and every process it
+// starts, so that a cancel and the end of the action end them all; without
+// it the action goes on with the child alone.
+static HANDLE makeJob(MSIHANDLE install)
+{
+    HANDLE job = CreateJobObjectW(0, 0);
+    if (!job) {
+        logf(install, msgJob, 0, GetLastError());
+        return 0;
+    }
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits;
+    memset(&limits, 0, sizeof limits);
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof limits)) {
+        logf(install, msgJob, 0, GetLastError());
+        CloseHandle(job);
+        return 0;
+    }
+    return job;
+}
+
 __declspec(dllexport) UINT WINAPI BuilderRun(MSIHANDLE install)
 {
+    HANDLE heap = GetProcessHeap();
     WCHAR *data = property(install, propData);
     if (!data) {
         data = property(install, propRun);
@@ -486,42 +741,76 @@ __declspec(dllexport) UINT WINAPI BuilderRun(MSIHANDLE install)
     WCHAR *dir = 0, *cmd = 0;
     if (!parse(data, &dir, &cmd)) {
         logf(install, msgBadData, 0, 0);
-        HeapFree(GetProcessHeap(), 0, data);
+        HeapFree(heap, 0, data);
         return ERROR_INSTALL_FAILURE;
     }
     logf(install, msgStart, dir ? dir : msgDefaultDir, 0);
 
-    SECURITY_ATTRIBUTES sa = {sizeof sa, 0, 1};
-    HANDLE readEnd = 0, writeEnd = 0;
     UINT result = ERROR_INSTALL_FAILURE;
-    if (!CreatePipe(&readEnd, &writeEnd, &sa, 0)) {
-        logf(install, msgPipe, 0, GetLastError());
-        goto done;
-    }
-    SetHandleInformation(readEnd, HANDLE_FLAG_INHERIT, 0);
-
-    STARTUPINFOW si;
+    output o;
+    memset(&o, 0, sizeof o);
+    HANDLE writeEnd = 0;
+    void *attributes = 0;
+    STARTUPINFOEXW si;
     PROCESS_INFORMATION pi;
     memset(&si, 0, sizeof si);
     memset(&pi, 0, sizeof pi);
-    si.cb = sizeof si;
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdOutput = writeEnd;
-    si.hStdError = writeEnd;
-    si.hStdInput = 0;
+
+    o.buf = HeapAlloc(heap, 0, LINE_BUFFER);
+    if (!o.buf) {
+        logf(install, msgMemory, 0, 0);
+        goto done;
+    }
+    if (!makePipe(install, &o.pipe, &writeEnd)) {
+        goto done;
+    }
+    o.event = CreateEventW(0, 1, 0, 0);
+    if (!o.event) {
+        logf(install, msgEvent, 0, GetLastError());
+        goto done;
+    }
+    {
+        // The handle list limits what the child inherits to the pipe:
+        // without it, every inheritable handle of the custom action server
+        // goes along, including the pipe of another run action in flight.
+        SIZE_T size = 0;
+        InitializeProcThreadAttributeList(0, 1, 0, &size);
+        attributes = HeapAlloc(heap, 0, size);
+        if (!attributes || !InitializeProcThreadAttributeList(attributes, 1, 0, &size)) {
+            logf(install, msgAttributes, 0, GetLastError());
+            HeapFree(heap, 0, attributes);
+            attributes = 0;
+            goto done;
+        }
+        if (!UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, &writeEnd, sizeof writeEnd, 0, 0)) {
+            logf(install, msgAttributes, 0, GetLastError());
+            goto done;
+        }
+    }
+    si.StartupInfo.cb = sizeof si;
+    si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    si.StartupInfo.hStdOutput = writeEnd;
+    si.StartupInfo.hStdError = writeEnd;
+    si.StartupInfo.hStdInput = 0;
+    si.lpAttributeList = attributes;
+    o.job = makeJob(install);
     if (!start(install, cmd, dir, &si, &pi)) {
-        CloseHandle(writeEnd);
-        CloseHandle(readEnd);
         goto done;
     }
     CloseHandle(writeEnd);
+    writeEnd = 0;
+    o.process = pi.hProcess;
+    if (o.job && !AssignProcessToJobObject(o.job, pi.hProcess)) {
+        logf(install, msgAssign, 0, GetLastError());
+        CloseHandle(o.job);
+        o.job = 0;
+    }
+    ResumeThread(pi.hThread);
     CloseHandle(pi.hThread);
-    int cancelled = pump(install, readEnd, pi.hProcess);
-    CloseHandle(readEnd);
-    WaitForSingleObject(pi.hProcess, INFINITE);
+    pump(install, &o);
+    WaitForSingleObject(o.process, INFINITE);
     DWORD exitCode = 1;
-    GetExitCodeProcess(pi.hProcess, &exitCode);
-    CloseHandle(pi.hProcess);
+    GetExitCodeProcess(o.process, &exitCode);
     {
         WCHAR line[32];
         SIZE_T pos = 0;
@@ -531,15 +820,36 @@ __declspec(dllexport) UINT WINAPI BuilderRun(MSIHANDLE install)
         wappendnum(line, &pos, exitCode);
         logw(install, line);
     }
-    if (cancelled == IDCANCEL) {
+    if (o.cancelled) {
         logf(install, msgCancel, 0, 0);
         result = ERROR_INSTALL_USEREXIT;
     } else {
         result = exitCode == 0 ? ERROR_SUCCESS : ERROR_INSTALL_FAILURE;
     }
 done:
-    HeapFree(GetProcessHeap(), 0, cmd);
-    HeapFree(GetProcessHeap(), 0, data);
+    if (o.process) {
+        CloseHandle(o.process);
+    }
+    if (o.job) {
+        // Closing the last handle of the job ends what is left in it.
+        CloseHandle(o.job);
+    }
+    if (writeEnd) {
+        CloseHandle(writeEnd);
+    }
+    if (o.pipe) {
+        CloseHandle(o.pipe);
+    }
+    if (o.event) {
+        CloseHandle(o.event);
+    }
+    if (attributes) {
+        DeleteProcThreadAttributeList(attributes);
+        HeapFree(heap, 0, attributes);
+    }
+    HeapFree(heap, 0, o.buf);
+    HeapFree(heap, 0, cmd);
+    HeapFree(heap, 0, data);
     return result;
 }
 
@@ -626,12 +936,6 @@ static const WCHAR *const serviceAccounts[][2] = {
     {u"NT AUTHORITY\\LocalService", u"S-1-5-19"},
     {u"NT AUTHORITY\\NetworkService", u"S-1-5-20"},
 };
-
-#if defined(__i386__)
-typedef int INTPTR;
-#else
-typedef long long INTPTR;
-#endif
 
 // HKEY_CURRENT_USER and HKEY_LOCAL_MACHINE, which winreg.h defines as the
 // sign-extended 0x80000001 and 0x80000002.
@@ -1098,7 +1402,7 @@ static int applyEntry(MSIHANDLE install, WCHAR *entry, int grant, HANDLE key, lo
     WCHAR *p = (entry[0] == 'f' || entry[0] == 's') && entry[1] == '|' ? hexfield(entry + 2, &mask) : 0;
     p = p ? hexfield(p, &flags) : 0;
     WCHAR *account = p, *object = p ? field(p, '|') : 0;
-    if (!object || !*object || !*account || !mask || (flags & ~VALID_INHERIT_FLAGS)) {
+    if (!object || !*object || !*account || !mask || (flags & ~AUTHORED_INHERIT_FLAGS)) {
         logft(install, tmplGrant, msgGrantData, 0, 0);
         return 0;
     }

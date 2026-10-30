@@ -85,6 +85,29 @@ customActions:
     schedule:
       - { sequence: execute, after: InstallFiles }
 
+  # A line ends at \n, \r or \r\n, so progress written with \r alone is
+  # logged line by line.
+  - id: ProbeCarriageReturn
+    run:
+      command: '"[System64Folder]WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "[\[]Console]::Out.Write(\"cr-one`rcr-two`r`ncr-three`n\")"'
+    execute: deferred
+    impersonate: false
+    return: check
+    schedule:
+      - { sequence: execute, after: InstallFiles }
+
+  # A process the command leaves behind with the output open: the DLL
+  # reads on for five seconds after the command exited, then ends it with
+  # the job and goes on with the command's exit code.
+  - id: ProbeBackground
+    run:
+      command: '"[System64Folder]cmd.exe" /c start /b "" "[System64Folder]cmd.exe" /c "ping -n 60 127.0.0.1 >nul & echo background-late" & echo background-spawned'
+    execute: deferred
+    impersonate: false
+    return: check
+    schedule:
+      - { sequence: execute, after: InstallFiles }
+
   - id: ProbeFails
     run:
       command: '"[System64Folder]cmd.exe" /c echo about-to-fail & exit 7'
