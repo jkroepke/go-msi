@@ -444,8 +444,9 @@ components:
 Values the package writes are removed on uninstall, as in WiX.
 `removeRegistry` removes keys and values that exist before the install,
 when the component is installed. `RemoveRegistryKey` with
-`Action="removeOnUninstall"` is a `type: key` entry with
-`removeOnUninstall: true`.
+`Action="removeOnUninstall"` has no counterpart: it removes a key on
+uninstall without ever creating it, and a `type: key` entry with
+`removeOnUninstall: true` also creates the key on install.
 
 ## Environment variables
 

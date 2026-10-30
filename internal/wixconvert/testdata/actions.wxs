@@ -25,6 +25,8 @@
       <!-- The target is a property that holds a URL, not a folder. -->
       <Shortcut Id="ConsoleShortcut" Name="Hello Console" Target="[CONSOLEURL]" />
       <RemoveFolder Id="RemoveAppMenu" On="uninstall" />
+      <!-- Removed on uninstall only, never created. -->
+      <RemoveRegistryKey Root="HKCR" Key="*\shell\Hello" Action="removeOnUninstall" />
       <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="console" Type="integer" Value="1" KeyPath="yes" />
     </Component>
 

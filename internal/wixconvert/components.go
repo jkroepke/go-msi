@@ -588,7 +588,10 @@ func (cc *compConv) removeRegistry(elm *elem) {
 	}
 
 	if elm.attr("Action") == "removeOnUninstall" {
-		cc.out.add("registry", entry.set("type", "key").set("removeOnUninstall", true))
+		// A registry entry with removeOnUninstall would also create the
+		// key on install, which WiX never does.
+		conv.todof(cc.out, "", elm.line, "RemoveRegistryKey %s\\%s was left out: msi-builder has no removal on uninstall only, "+
+			"and removeRegistry removes the key on install", elm.attr("Root"), conv.value(elm, "Key"))
 
 		return
 	}
