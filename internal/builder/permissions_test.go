@@ -267,6 +267,7 @@ func TestPermissionGrantRoom(t *testing.T) {
 		{19, true, true, ""},
 		{20, true, true, "at most 19 fit"},
 		{100, false, false, ""},
+		{1, false, false, "overlap"}, // the other actions overflow, not the grants
 	} {
 		t.Run(fmt.Sprintf("%d grants service %v delayed %v", tc.grants, tc.service, tc.delayed), func(t *testing.T) {
 			t.Parallel()
@@ -283,8 +284,20 @@ func TestPermissionGrantRoom(t *testing.T) {
 				cfg.Components[0].Services = []*config.Service{{Name: "HelloSvc", Start: "auto", DelayedAutoStart: tc.delayed}}
 			}
 
+			if tc.want == "overlap" {
+				// 100 actions after InstallInitialize (1500) run into
+				// ProcessComponents (1600).
+				for i := range 100 {
+					cfg.CustomActions = append(cfg.CustomActions, &config.CustomAction{
+						ID: fmt.Sprintf("Fill%d", i), SetProperty: &config.SetProperty{Name: fmt.Sprintf("FILL%d", i), Value: "1"},
+						Schedule: []config.Placement{{Sequence: "execute", After: "InstallInitialize"}},
+					})
+				}
+			}
+
 			_, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
-			if (tc.want == "" && err != nil) || (tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want))) {
+			if (tc.want == "" && err != nil) || (tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want))) ||
+				(err != nil && tc.want == "overlap" && strings.Contains(err.Error(), "permission grants")) {
 				t.Errorf("err %v, want %q", err, tc.want)
 			}
 		})

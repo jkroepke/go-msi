@@ -1296,8 +1296,9 @@ typedef struct {
 } grantEntry;
 
 // parseEntry splits an entry in place. It returns 0 when it is malformed. A
-// `|` in the object, which only an authored service name can have, moves
-// the rest into the account, which then fails as an account with `|`.
+// `|` in the object (an authored service name or a formatted directory
+// property) moves the rest into the account, which then fails as an
+// account with `|`.
 static int parseEntry(WCHAR *entry, grantEntry *e)
 {
     WCHAR *p = (entry[0] == 'f' || entry[0] == 's') && entry[1] == '|' ? hexfield(entry + 2, &e->mask) : 0;
