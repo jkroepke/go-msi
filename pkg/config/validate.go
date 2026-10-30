@@ -739,6 +739,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 		}
 
 		v.componentGUID(p, comp)
+		v.componentScope(p, comp)
 		v.filePatterns(p, comp)
 
 		v.oneOf(p+".bitness", comp.Bitness, Auto, "32", "64")
@@ -756,8 +757,11 @@ func (v *validator) components(cfg *Config, known *refs) {
 		// The builder replaces the key file of a profile component.
 		generated := profileKeyPath(cfg, known, comp)
 		files := v.componentFiles(cfg, p, comp, fileIDs, paths, generated)
-		v.componentRegistry(p, comp, regIDs, perUser)
-		v.componentRemoveRegistry(p, comp, removeIDs, perUser)
+		// A dual package's perMachine component installs only per
+		// machine, so its machine data needs no per-user context.
+		userData := perUser && comp.Scope != ScopePerMachine
+		v.componentRegistry(p, comp, regIDs, userData)
+		v.componentRemoveRegistry(p, comp, removeIDs, userData)
 		v.componentRemoveFiles(cfg, p, comp, known, removeFileIDs)
 		keyFile := v.componentKeyFile(p, comp, files, generated)
 
@@ -768,10 +772,10 @@ func (v *validator) components(cfg *Config, known *refs) {
 			v.permissions(svcPath+".permissions", svc.Permissions, permService)
 		}
 
-		v.componentServiceControl(p, comp, services, perUser)
+		v.componentServiceControl(p, comp, services, userData)
 		v.componentPermissions(p, comp)
 		v.movableGrants(cfg, known, p, comp)
-		v.componentEvents(p, comp, perUser)
+		v.componentEvents(p, comp, userData)
 	}
 }
 
@@ -850,6 +854,21 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 	case comp.KeyPath != "" && comp.FirewallFeature() == "":
 		v.warnf(compPath+".keyPath", "a component in the user profile (%s) needs an HKCU registry value "+
 			"as key path (ICE38); without keyPath the builder writes one", top)
+	}
+}
+
+// componentScope checks a component's scope: perMachine or perUser, and
+// only in a dual package, whose context it limits the component to.
+func (v *validator) componentScope(compPath string, comp *Component) {
+	if comp.Scope == "" {
+		return
+	}
+
+	v.oneOf(compPath+".scope", string(comp.Scope), string(ScopePerMachine), string(ScopePerUser))
+
+	if !v.scope.Dual() {
+		v.errorf(compPath+".scope", "only a perUserOrMachine or perMachineOrUser package installs components "+
+			"in one context; a %s package installs everything %s", v.scope, v.scope)
 	}
 }
 
@@ -1267,7 +1286,8 @@ func (v *validator) registryLocation(entryPath, root, key string, perUser bool) 
 	// A dual package's HKCR rows follow the context like HKMU ones
 	// (Registry.Root 0, spec section 8.2); a per-user package has none.
 	if perUser && (root == rootHKLM || root == "HKCR" && !v.scope.Dual()) {
-		v.errorf(entryPath+".root", "%s cannot change %s (ICE105)", v.perUserPackage(), root)
+		v.errorf(entryPath+".root", "%s cannot change %s (ICE105)%s", v.perUserPackage(), root,
+			v.dualHint("HKMU, or a component with scope perMachine"))
 	}
 
 	v.required(entryPath+".key", key)
@@ -1600,10 +1620,11 @@ func (v *validator) environment(envPath string, env *Environment, perUser bool) 
 	}
 
 	v.oneOf(envPath+".action", env.Action, "set", "setIfAbsent", "append", "prepend", "remove")
-	v.oneOf(envPath+".scope", env.Scope, "machine", "user")
+	v.oneOf(envPath+".scope", env.Scope, envMachine, envUser, envAuto)
 
 	if env.Scope == envMachine && perUser {
-		v.errorf(envPath+".scope", "%s cannot change machine variables", v.perUserPackage())
+		v.errorf(envPath+".scope", "%s cannot change machine variables%s", v.perUserPackage(),
+			v.dualHint("scope auto, or a component with scope perMachine"))
 	}
 
 	if env.Action != "remove" && env.Value == "" {
@@ -2474,8 +2495,12 @@ func machineRegistry(cfg *Config, comp *Component) bool {
 const (
 	rootHKLM = "HKLM"
 	rootHKMU = "HKMU"
-	// envMachine is the scope of a system environment variable.
+	// envMachine is the scope of a system environment variable, envUser
+	// of a user one, and envAuto of one that follows a dual package's
+	// context.
 	envMachine = "machine"
+	envUser    = "user"
+	envAuto    = "auto"
 )
 
 // componentRoots lists the registry roots a component writes to or

@@ -1,0 +1,112 @@
+package builder_test
+
+import (
+	"fmt"
+	"maps"
+	"slices"
+	"strconv"
+	"testing"
+
+	"github.com/jkroepke/msi-builder/internal/builder"
+)
+
+// contextComponents is a PATH entry with the default scope and a component
+// that writes an HKLM value only per machine.
+const contextComponents = `  - { id: Path, directory: INSTALLDIR, environment: [{ name: PATH, value: '[INSTALLDIR]', action: append }] }
+  - { id: Machine, directory: INSTALLDIR, scope: perMachine, condition: OPT, registry: [{ root: HKLM, key: Software\Acme, name: N, value: v }] }
+`
+
+// environmentRows maps each Environment name of res to the condition of
+// the component that installs it.
+func environmentRows(t *testing.T, res *builder.Result) map[string]string {
+	t.Helper()
+
+	conditions := map[string]string{}
+	for _, row := range rows(t, res.Database, "Component") {
+		conditions[fmt.Sprint(row[0])] = fmt.Sprint(row[4])
+	}
+
+	got := map[string]string{}
+	for _, row := range rows(t, res.Database, "Environment") {
+		got[fmt.Sprint(row[1])] = conditions[fmt.Sprint(row[3])]
+	}
+
+	return got
+}
+
+// TestContextEnvironment checks where a variable with the default scope
+// goes: the machine environment per machine, the user's per user, and in
+// a dual package both, each in a component of its own that installs only
+// in its context (ENVVAR-03).
+func TestContextEnvironment(t *testing.T) {
+	t.Parallel()
+
+	const noCondition = "<nil>"
+
+	for scope, want := range map[string]map[string]string{
+		"perMachine":       {"=-*PATH": noCondition},
+		"perUser":          {"=-PATH": noCondition},
+		"perUserOrMachine": {"=-*PATH": "ALLUSERS=1", "=-PATH": "NOT ALLUSERS"},
+		"perMachineOrUser": {"=-*PATH": "ALLUSERS=1", "=-PATH": "NOT ALLUSERS"},
+	} {
+		extra := `  - { id: Path, directory: INSTALLDIR, environment: [{ name: PATH, value: '[INSTALLDIR]', action: append }] }
+ui: { enabled: false }
+`
+
+		res := buildScope(t, scope, "x64", extra)
+		if got := environmentRows(t, res); !maps.Equal(got, want) {
+			t.Errorf("%s: variables and their component conditions %v, want %v", scope, got, want)
+		}
+	}
+}
+
+// TestContextComponents checks the components of a dual package that
+// install in one context: the scope's condition joins the component's,
+// and the carriers of context variables are in the variable's features
+// with a key path in the root of their context.
+func TestContextComponents(t *testing.T) {
+	t.Parallel()
+
+	res := buildScope(t, "perUserOrMachine", "x64", contextComponents+"ui: { enabled: false }\n")
+	database := res.Database
+
+	cond := cell(t, database, "Component", "Condition", func(row []any) bool { return row[0] == "Machine" })
+	if cond != "(OPT) AND ALLUSERS=1" {
+		t.Errorf("Machine condition %v, want (OPT) AND ALLUSERS=1", cond)
+	}
+
+	roots := map[string]any{}
+	for _, row := range rows(t, database, "Registry") {
+		roots[fmt.Sprint(row[0])] = row[1]
+	}
+
+	features := map[string]bool{}
+	for _, row := range rows(t, database, "FeatureComponents") {
+		features[fmt.Sprint(row[1])] = true
+	}
+
+	variables := rows(t, database, "Environment")
+	carriers := make([]string, 0, len(variables))
+
+	for _, row := range variables {
+		carrier := fmt.Sprint(row[3])
+		carriers = append(carriers, carrier)
+
+		keyPath := cell(t, database, "Component", "KeyPath", func(r []any) bool { return r[0] == carrier })
+		dir := cell(t, database, "Component", "Directory_", func(r []any) bool { return r[0] == carrier })
+		wantRoot := 1 // HKCU for the user variable
+
+		if row[1] == "=-*PATH" {
+			wantRoot = -1 // HKMU, which is HKLM per machine
+		}
+
+		if !features[carrier] || dir != "TARGETDIR" || fmt.Sprint(roots[fmt.Sprint(keyPath)]) != strconv.Itoa(wantRoot) {
+			t.Errorf("carrier %s of %v: in a feature %v, directory %v, key path root %v; want true, TARGETDIR, %d",
+				carrier, row[1], features[carrier], dir, roots[fmt.Sprint(keyPath)], wantRoot)
+		}
+	}
+
+	if slices.Contains(carriers, "Path") || len(slices.Compact(slices.Sorted(slices.Values(carriers)))) != 2 {
+		t.Errorf("variables in components %v, want two carriers", carriers)
+	}
+}

@@ -250,7 +250,7 @@ func (b *build) shortcutComponent(info *componentInfo, dirID string) string {
 		b.uniqueGUID(info.cfg.Path(info.index), comp.ID, guid)
 	}
 
-	b.table("Component").Add(carrier, guid, dirID, attributes, nullable(comp.Condition), registry)
+	b.table("Component").Add(carrier, guid, dirID, attributes, componentCondition(comp), registry)
 	b.table("Registry").Add(registry, registryRoots["HKCU"], `Software\[Manufacturer]\[ProductName]`, valueName, "#1", carrier)
 	b.dirs[dirID].used = true
 	b.carriers[comp.ID] = append(b.carriers[comp.ID], carrier)

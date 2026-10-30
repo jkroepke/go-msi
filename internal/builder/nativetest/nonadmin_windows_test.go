@@ -206,6 +206,17 @@ product: { name: MsiBuilderNonAdmin, manufacturer: msi-builder tests, version: 1
 package: { platform: x64, scope: %s }
 components:
   - files: [{ source: app.exe }]
+%s`
+
+// nonAdminContextComponents gives a dual package's component a variable
+// that follows the context and adds a component with an HKLM value that
+// installs only per machine: neither may need elevation per user
+// (ENVVAR-03).
+const nonAdminContextComponents = `    environment: [{ name: MSIBUILDER_NONADMIN_TEST, value: x }]
+  - id: MachineOnly
+    directory: INSTALLDIR
+    scope: perMachine
+    registry: [{ root: HKLM, key: Software\MsiBuilderNonAdmin, name: Only, value: machine }]
 `
 
 // TestNonAdminInstallScopes installs packages of each scope silently as a
@@ -213,7 +224,9 @@ components:
 // install into the user's profile without elevation, and perMachine and
 // perMachineOrUser fail with 1603 after error 1925, as on SERVER2025. The
 // perUser package's component has the HKCU key path the builder adds
-// (INST-04); a repair as the user restores its deleted file.
+// (INST-04); a repair as the user restores its deleted file. The dual
+// packages have a variable that follows the context and an HKLM value in a
+// perMachine component, which the per-user install leaves out (ENVVAR-03).
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestNonAdminInstallScopes(t *testing.T) {
@@ -231,7 +244,13 @@ func TestNonAdminInstallScopes(t *testing.T) {
 	} {
 		t.Run(tc.scope, func(t *testing.T) {
 			dir := nonAdminDir(t, "scope-"+tc.scope)
-			path := buildConfig(t, dir, "scope", fmt.Sprintf(nonAdminScopeConfig, tc.scope), map[string][]byte{"app.exe": app})
+
+			extra := ""
+			if strings.Contains(tc.scope, "Or") {
+				extra = nonAdminContextComponents
+			}
+
+			path := buildConfig(t, dir, "scope", fmt.Sprintf(nonAdminScopeConfig, tc.scope, extra), map[string][]byte{"app.exe": app})
 			log := filepath.Join(dir, "install.log")
 
 			t.Cleanup(func() { _ = user.msiexec(t, filepath.Join(dir, "cleanup.log"), "/x", path) })
@@ -261,6 +280,10 @@ func TestNonAdminInstallScopes(t *testing.T) {
 
 			if _, err := os.Stat(installed); err != nil {
 				t.Errorf("app.exe after the install: %v", err)
+			}
+
+			if regHas(t, "64", `HKLM\Software\MsiBuilderNonAdmin`, "Only") {
+				t.Error("the per-user install wrote the HKLM value of the perMachine component")
 			}
 
 			if tc.scope == "perUser" {

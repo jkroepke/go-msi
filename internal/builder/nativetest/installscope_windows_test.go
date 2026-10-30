@@ -11,8 +11,10 @@ import (
 
 // installScopeConfig is a dual-scope package with the wizard's scope and
 // install folder pages, a remembered install folder, a Start menu shortcut,
-// an HKMU value and an HKCR value. ${SCOPE} and ${PLATFORM} choose the
-// variant.
+// an HKMU value, an HKCR value, a variable that follows the context
+// (ENVVAR-03) and two components that install in one context only, one
+// with an HKLM value and one with an HKCU value. ${SCOPE} and ${PLATFORM}
+// choose the variant.
 const installScopeConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderScope, manufacturer: msi-builder tests, version: "${VERSION}", upgradeCode: 7d2c41e8-93a5-4f1b-8e60-2b9d5c7a4f13 }
 package: { platform: ${PLATFORM}, scope: ${SCOPE} }
@@ -27,12 +29,22 @@ components:
     registry:
       - { root: HKMU, key: Software\MsiBuilderTest\Scope, name: Dir, value: "[INSTALLDIR]" }
       - { root: HKCR, key: MsiBuilderTest.Scope, name: Probe, value: x }
+    environment:
+      - { name: MSIBUILDER_SCOPE_TEST, value: "[INSTALLDIR]", action: append }
+  - id: MachineOnly
+    directory: INSTALLDIR
+    scope: perMachine
+    registry: [{ root: HKLM, key: Software\MsiBuilderTest\ScopeMachine, name: Only, value: machine }]
+  - id: UserOnly
+    directory: INSTALLDIR
+    scope: perUser
+    registry: [{ root: HKCU, key: Software\MsiBuilderTest\ScopeUser, name: Only, value: user }]
 `
 
 // scopeState is where an installation of the scope package left its
 // resources: "user", "machine", "both" or "none" for each.
 type scopeState struct {
-	files, hkmu, hkcr, shortcut, registration string
+	files, hkmu, hkcr, shortcut, registration, environment, scoped string
 }
 
 func where(user, machine bool) string {
@@ -97,11 +109,20 @@ func installScopeState(t *testing.T, productCode string, x86 bool) scopeState {
 		shortcut: where(exists(filepath.Join(os.Getenv("APPDATA"), menu)), exists(filepath.Join(os.Getenv("ProgramData"), menu))),
 		registration: where(regHas(t, "64", `HKCU\Software\Microsoft\Installer\Products\`+squash(productCode), ""),
 			regHas(t, "64", `HKLM\SOFTWARE\Classes\Installer\Products\`+squash(productCode), "")),
+		environment: where(regHas(t, "64", `HKCU\Environment`, "MSIBUILDER_SCOPE_TEST"),
+			regHas(t, "64", `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment`, "MSIBUILDER_SCOPE_TEST")),
+		// The HKCU value of the perUser component and the HKLM value of
+		// the perMachine one: one of them, in its own context.
+		scoped: where(regHas(t, view, `HKCU\Software\MsiBuilderTest\ScopeUser`, "Only"),
+			regHas(t, view, `HKLM\Software\MsiBuilderTest\ScopeMachine`, "Only")),
 	}
 }
 
 func scopeEverywhere(context string) scopeState {
-	return scopeState{files: context, hkmu: context, hkcr: context, shortcut: context, registration: context}
+	return scopeState{
+		files: context, hkmu: context, hkcr: context, shortcut: context, registration: context,
+		environment: context, scoped: context,
+	}
 }
 
 // buildInstallScope builds the scope package for a scope and platform.
@@ -123,9 +144,9 @@ func buildInstallScope(t *testing.T, dir, scope, platform string) (string, strin
 // TestMsiexecInstallScopes installs the dual-scope packages silently in
 // both contexts (INST-02): the context the scope names first, and the
 // other one through MSIINSTALLPERUSER on the command line. Files under
-// Program Files, HKMU and HKCR values, the Start menu shortcut and the
-// product registration all follow the context, and the uninstall removes
-// them.
+// Program Files, HKMU and HKCR values, the Start menu shortcut, the
+// product registration, the variable and the components of one context
+// all follow the context, and the uninstall removes them (ENVVAR-03).
 func TestMsiexecInstallScopes(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
 	if testing.Short() {
 		t.Skip("installing needs msiexec time and elevation")
@@ -205,7 +226,8 @@ func TestFullUIInstallScope(t *testing.T) { //nolint:paralleltest // msiexec run
 }
 
 // TestICEInstallScope runs the full ICE suite, ICE105 included, against
-// both dual-scope packages.
+// both dual-scope packages, with their machine variable and HKLM value in
+// components that install only per machine (ENVVAR-03).
 //
 //nolint:paralleltest // msi.dll's external UI handler is process-wide
 func TestICEInstallScope(t *testing.T) {

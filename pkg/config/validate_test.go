@@ -106,6 +106,16 @@ func TestValidateAccepted(t *testing.T) {
 		"dual scope": pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:",
 			"    registry: [{root: HKCR, key: .app, value: App.File}, {root: HKMU, key: Software\\X, name: N, value: v}]\n    files:", 1),
 		"dual scope machine first": pkg(`{platform: x64, scope: PerMachineOrUser}`) + appComponent,
+		// A variable follows the context; a perMachine component writes
+		// machine data only per machine.
+		"dual scope variables": strings.Replace(pkg(`{platform: x64, scope: perUserOrMachine}`), "[App]", "[App, Machine, User]", 1) + strings.Replace(appComponent, "    files:",
+			"    environment: [{name: PATH, value: '[INSTALLDIR]', action: append}, {name: FOO, value: a, scope: user}]\n    files:", 1) +
+			"  - id: Machine\n    directory: INSTALLDIR\n    scope: perMachine\n" +
+			"    registry: [{root: HKLM, key: Software\\X, name: N, value: v}]\n" +
+			"    removeRegistry: [{root: HKLM, key: Software\\Old}]\n" +
+			"    eventLog: [{source: X, messageFile: '[SystemFolder]EventCreate.exe'}]\n" +
+			"    environment: [{name: BAR, value: b, scope: machine}, {name: BAZ, value: c}]\n" +
+			"  - {id: User, directory: INSTALLDIR, scope: perUser, environment: [{name: BAZ, value: c}]}\n",
 		"language dialog texts": base + appComponent + "properties: {OPT: {}, NAME: {}}\nui:\n  enabled: true\n  dialogs:\n    - {id: ExtraDlg, title: x, after: WelcomeDlg, fields: [{property: OPT, type: choice, options: [a, b]}, {property: NAME}]}\n" +
 			"  launch: {file: app.exe}\n" +
 			"  languages: {de: {launch: {text: '&Starten'}, dialogs: {ExtraDlg: {title: y, description: z, " +
@@ -960,8 +970,31 @@ func TestValidate(t *testing.T) {
 			sevError, "package.installerVersion", "MSIINSTALLPERUSER",
 		},
 		"dual scope machine variable": {
-			pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:", "    environment: [{name: FOO, value: a}]\n    files:", 1),
-			sevError, "components[0].environment[0].scope", "machine variables",
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:", "    environment: [{name: FOO, value: a, scope: machine}]\n    files:", 1),
+			sevError, "components[0].environment[0].scope", "scope auto, or a component with scope perMachine",
+		},
+		"dual scope HKLM hint": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\X, name: N, value: v}]\n    files:", 1),
+			sevError, "components[0].registry[0].root", "HKMU, or a component with scope perMachine",
+		},
+		"dual scope perUser component HKLM": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent +
+				"  - {id: Reg, directory: INSTALLDIR, scope: perUser, registry: [{root: HKLM, key: Software\\X, name: N, value: v}]}\n",
+			sevError, "components[1].registry[0].root", "ICE105",
+		},
+		"dual scope perMachine component service": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) +
+				"components:\n  - {id: App, directory: INSTALLDIR, scope: perMachine, files: [{source: app.exe}], services: [{name: Svc}]}\n",
+			sevError, "components[0].services[0]", "cannot install services (ICE105)",
+		},
+		"component scope outside a dual package": {
+			base + appComponent + "  - {id: Reg, directory: INSTALLDIR, scope: perMachine, registry: [{root: HKLM, key: Software\\X, name: N, value: v}]}\n",
+			sevError, "components[1].scope", "only a perUserOrMachine or perMachineOrUser package",
+		},
+		"component scope dual": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent +
+				"  - {id: Reg, directory: INSTALLDIR, scope: perUserOrMachine, registry: [{root: HKMU, key: Software\\X, name: N, value: v}]}\n",
+			sevError, "components[1].scope", "not one of",
 		},
 		"dual scope purge": {
 			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + "  - id: Data\n    directory: ProgramFiles64Folder/AcmeData\n    createFolder: true\n    purge: true\n",
