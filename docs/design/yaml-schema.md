@@ -1567,8 +1567,8 @@ Kinds, exactly one per action:
 **`run`.** The engine runs `exec` and `execProperty` commands with a visible
 console window and keeps none of their output (specification section
 17.1). `run` instead calls the custom action DLL that msi-builder embeds
-(`internal/cadll`, written into the `Binary` table once as `BuilderRun`, 7 to
-8 KB for the package's platform): it starts the command with no window,
+(`internal/cadll`, written into the `Binary` table once as `BuilderRun`, 25 to
+31 KB for the package's platform): it starts the command with no window,
 copies every line it writes to stdout or stderr into the verbose log as
 `BuilderRun: <line>`, logs the exit code and returns success for 0 and
 `ERROR_INSTALL_FAILURE` otherwise, which `return: ignore` turns into a

@@ -596,6 +596,7 @@ static void pump(MSIHANDLE install, output *o)
                         err = GetLastError();
                         if (err != ERROR_BROKEN_PIPE) {
                             logf(install, msgReadFail, 0, err);
+                            abandon(o);
                         }
                         eof = 1;
                     }
