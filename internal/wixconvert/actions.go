@@ -75,6 +75,7 @@ func (c *converter) standardAction(entry, seq *elem) {
 		c.scheduleReboot(entry)
 	case entry.is("RemoveExistingProducts") && c.major == nil && removeOldAfter[entry.attr("After")]:
 		c.out.child("upgrade").set("removeOld", "after"+entry.attr("After"))
+		c.removeLine = entry.line
 
 		if cond := c.condition(entry); cond != "" {
 			c.todof(c.out.child("upgrade"), "removeOld", entry.line,

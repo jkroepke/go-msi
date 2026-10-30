@@ -95,6 +95,14 @@ func TestValidateAccepted(t *testing.T) {
 	}
 
 	for name, doc := range map[string]string{
+		"close true": base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: app.exe, close: true}\n", 1),
+		"close mapping": base + strings.Replace(appComponent, "      - source: app.exe\n",
+			"      - {source: app.exe, close: {timeout: 0s, terminate: false}}\n", 1),
+		"close upper-case extension": base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: App.EXE, close: {timeout: 5m}}\n", 1),
+		"close false on a non-program": base + strings.Replace(appComponent, "      - source: app.exe\n",
+			"      - source: app.exe\n      - {source: readme.txt, close: false}\n", 1),
+		"close false on a folder source": base + strings.Replace(appComponent, "      - source: app.exe\n",
+			"      - {source: dist/, close: false}\n", 1),
 		"remote any":          firewall("ANY"),
 		"remote star":         firewall("*"),
 		"remote keyword list": firewall("localsubnet,10.0.0.1"),
@@ -114,6 +122,11 @@ func TestValidateAccepted(t *testing.T) {
 			"{component: {guid: '{6a0d3c2e-5b1f-4e7a-9c3d-2f8e1b4a7c60}'}}]}}\n",
 		"remove registry": base + strings.Replace(appComponent, "    files:",
 			"    removeRegistry: [{root: HKCU, key: Software\\Classes\\old}, {root: HKMU, key: Software\\X, name: Legacy}]\n    files:", 1),
+		// The same key at install and at uninstall, and an uninstall id
+		// that a RemoveRegistry row of another entry uses too.
+		"remove registry on uninstall": base + strings.Replace(appComponent, "    files:",
+			"    removeRegistry: [{id: A, root: HKCR, key: '*\\shell\\app'}, {id: B, root: HKCR, key: '*\\shell\\app', on: uninstall}, "+
+				"{id: C, root: HKLM, key: Software\\X, on: both}, {id: A, root: HKLM, key: Software\\Y, on: uninstall}]\n    files:", 1),
 		// Program Files and HKCR follow the context of a dual package.
 		"dual scope": pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:",
 			"    registry: [{root: HKCR, key: .app, value: App.File}, {root: HKMU, key: Software\\X, name: N, value: v}]\n    files:", 1),
@@ -795,6 +808,23 @@ func TestValidate(t *testing.T) {
 				"customActions:\n  - id: RestoreInstallDir\n    setProperty: {name: A, value: b}\n    schedule: [{sequence: execute, after: CostFinalize}]\n",
 			sevError, "customActions[0].id", "installDir.remember adds",
 		},
+		// CLOSE-01.
+		"close on a non-program": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - source: app.exe\n      - {source: readme.txt, close: true}\n", 1),
+			sevError, "components[0].files[1].close", "ends in .exe",
+		},
+		"close timeout too long": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: app.exe, close: {timeout: 6m}}\n", 1),
+			sevError, "components[0].files[0].close.timeout", "between 0s and 5m0s",
+		},
+		"close timeout below a millisecond": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: app.exe, close: {timeout: 1500us}}\n", 1),
+			sevError, "components[0].files[0].close.timeout", "whole number of milliseconds",
+		},
+		"close on a folder source": {
+			base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: dist/, close: true}\n", 1),
+			sevError, "components[0].files[0].close", "not allowed on a folder source",
+		},
 		// FILE-03.
 		"purge configurable folder": {
 			base + strings.Replace(appComponent, "    files:", "    purge: true\n    files:", 1),
@@ -1037,6 +1067,36 @@ func TestValidate(t *testing.T) {
 		"remove registry bad id": {
 			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{id: 'a b', root: HKLM, key: Software\\X}]\n    files:", 1),
 			sevError, "components[0].removeRegistry[0].id", "not an identifier",
+		},
+		"remove registry bad on": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X, on: never}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[0].on", "not one of",
+		},
+		"remove registry value on uninstall": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X, name: V, on: uninstall}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[0].name", "whole keys only",
+		},
+		"remove registry uninstall twice": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X, on: uninstall}, {root: HKLM, key: software\\x, on: uninstall}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[1]", "already removed",
+		},
+		"remove registry install and both": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X}, {root: HKLM, key: Software\\X, on: both}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[1]", "already removed",
+		},
+		"remove registry uninstall and both": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X, on: uninstall}, {root: HKLM, key: Software\\X, on: both}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[1]", "already removed",
+		},
+		"remove registry uninstall over a value named dash": {
+			base + strings.Replace(appComponent, "    files:", "    registry: [{root: HKLM, key: Software\\X, name: '-', value: v}]\n"+
+				"    removeRegistry: [{root: HKLM, key: software\\x, on: uninstall}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[0].id", "same generated id",
+		},
+		"remove registry uninstall id of a registry entry": {
+			base + strings.Replace(appComponent, "    files:", "    registry: [{id: A, root: HKLM, key: Software\\X, name: N, value: v}]\n"+
+				"    removeRegistry: [{id: A, root: HKLM, key: Software\\Y, on: both}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[0].id", "registry id A is defined twice",
 		},
 		"remove registry id twice": {
 			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{id: A, root: HKLM, key: Software\\X}]\n    files:", 1) +

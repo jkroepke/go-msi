@@ -6,7 +6,7 @@
 // ERROR_INSTALL_FAILURE for anything else.
 //
 // The DLL is freestanding: it includes no SDK header and links no C runtime,
-// only kernel32.dll, advapi32.dll and msi.dll, whose prototypes are written
+// only kernel32.dll, advapi32.dll, msi.dll and user32.dll, whose prototypes are written
 // out below from Microsoft's documentation of each function. It is built by
 // build.sh with clang and lld for x86, x64 and arm64.
 //
@@ -1643,6 +1643,386 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
     HeapFree(heap, 0, path.s);
     HeapFree(heap, 0, data);
     return result;
+}
+
+// Closing running copies of package files (spec 17.9). BuilderCloseSchedule,
+// an immediate action before InstallValidate, reads the property
+// BuilderCloseApps that the builder writes, one entry per line:
+//
+//     <condition> US <timeout>| US <path>
+//
+// (US is U+001F; timeout is milliseconds in hexadecimal). For every entry
+// whose condition is true it formats the path, finds the processes whose
+// image is that file, posts WM_CLOSE to their windows and waits up to the
+// timeout for them to exit. It runs as the installing user, so it can reach
+// only the windows on the desktop of its custom action server and only
+// processes the user may open. The deferred action BuilderCloseExec (entry
+// point BuilderClose) runs as LocalSystem after StopServices and before
+// RemoveFiles and ends every process still running from one of the paths in
+// its CustomActionData, `|`-separated, in any session. That list is built by
+// type-51 actions of the engine, a reset to `|` and then one per file that
+// terminates, not by the schedule action: the impersonated custom action server runs with the
+// user's token, so what it hands to LocalSystem must not decide which
+// processes are ended. A process matches by its full image path, compared
+// without regard to case, so a copy of the program in another folder is
+// left alone. Neither action fails the install: a file that is still in use
+// goes through the engine's files-in-use handling as before. Log lines read
+// `BuilderClose: ...`.
+
+static const WCHAR tmplClose[] = u"BuilderClose: [1]";
+static const WCHAR propCloseApps[] = u"BuilderCloseApps";
+static const WCHAR msgCloseData[] = u"malformed close data";
+static const WCHAR msgSnapshot[] = u"cannot list the running processes";
+static const WCHAR msgAsked[] = u"asked to close";
+static const WCHAR msgNoWindow[] = u"has no window to close on this desktop";
+static const WCHAR msgExited[] = u"exited";
+static const WCHAR msgStillRunning[] = u"still running after the timeout";
+static const WCHAR msgEnded[] = u"ended";
+static const WCHAR msgGone[] = u"exited before it was ended";
+static const WCHAR msgNotGone[] = u"was ended but has not exited yet";
+static const WCHAR msgEndFailed[] = u"cannot end";
+static const WCHAR msgCannotOpen[] = u"cannot open the process of";
+static const WCHAR msgNoneRunning[] = u"not running";
+static const WCHAR msgClosePid[] = u"process ";
+
+// PROCESSENTRY32W as tlhelp32.h lays it out: 556 bytes on x86, 568 on x64
+// and arm64.
+typedef struct {
+    DWORD dwSize;
+    DWORD cntUsage;
+    DWORD th32ProcessID;
+    SIZE_T th32DefaultHeapID;
+    DWORD th32ModuleID;
+    DWORD cntThreads;
+    DWORD th32ParentProcessID;
+    long pcPriClassBase;
+    DWORD dwFlags;
+    WCHAR szExeFile[260];
+} PROCESSENTRY32W;
+
+_Static_assert(sizeof(PROCESSENTRY32W) == (sizeof(void *) == 4 ? 556 : 568), "PROCESSENTRY32W layout");
+
+typedef void *HWND;
+typedef BOOL(WINAPI *WNDENUMPROC)(HWND, INTPTR);
+
+// kernel32.dll
+HANDLE WINAPI CreateToolhelp32Snapshot(DWORD, DWORD);
+BOOL WINAPI Process32FirstW(HANDLE, PROCESSENTRY32W *);
+BOOL WINAPI Process32NextW(HANDLE, PROCESSENTRY32W *);
+HANDLE WINAPI OpenProcess(DWORD, BOOL, DWORD);
+BOOL WINAPI QueryFullProcessImageNameW(HANDLE, DWORD, WCHAR *, DWORD *);
+int WINAPI CompareStringOrdinal(const WCHAR *, int, const WCHAR *, int, BOOL);
+
+// user32.dll
+BOOL WINAPI EnumWindows(WNDENUMPROC, INTPTR);
+DWORD WINAPI GetWindowThreadProcessId(HWND, DWORD *);
+BOOL WINAPI PostMessageW(HWND, UINT, INTPTR, INTPTR);
+int WINAPI GetClassNameW(HWND, WCHAR *, int);
+BOOL WINAPI IsWindowVisible(HWND);
+HWND WINAPI GetWindow(HWND, UINT);
+
+enum {
+    TH32CS_SNAPPROCESS = 2,
+    PROCESS_TERMINATE = 0x1,
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000,
+    SYNCHRONIZE = 0x100000,
+    CSTR_EQUAL = 2,
+    WM_CLOSE = 0x10,
+    GW_OWNER = 4,
+    // The longest path QueryFullProcessImageNameW returns, in characters.
+    IMAGE_PATH = 32768,
+    // How long the deferred action waits for an ended process to go away.
+    TERMINATE_WAIT_MS = 10000,
+    // Processes of one file handled in one pass. The schedule action asks
+    // the first CLOSE_MAX copies only; the deferred action takes further
+    // passes, up to CLOSE_PASSES, until it finds fewer or a pass ends none.
+    CLOSE_MAX = 64,
+    CLOSE_PASSES = 16,
+};
+
+// closeTarget is one running copy of a file.
+typedef struct {
+    HANDLE process;
+    DWORD pid;
+    DWORD windows; // windows asked to close
+    DWORD visible; // of them, visible ones without an owner
+} closeTarget;
+
+static int wieqi(const WCHAR *a, const WCHAR *b)
+{
+    return CompareStringOrdinal(a, -1, b, -1, 1) == CSTR_EQUAL;
+}
+
+// baseName returns the text after the last backslash.
+static const WCHAR *baseName(const WCHAR *path)
+{
+    const WCHAR *name = path;
+    for (; *path; path++) {
+        if (*path == '\\') {
+            name = path + 1;
+        }
+    }
+    return name;
+}
+
+// findRunning opens every process whose image is path with the given access
+// and returns how many it put into targets. image is a scratch buffer of
+// IMAGE_PATH characters.
+static DWORD findRunning(MSIHANDLE install, const WCHAR *path, DWORD access, closeTarget *targets, WCHAR *image)
+{
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) {
+        logft(install, tmplClose, msgSnapshot, 0, GetLastError());
+        return 0;
+    }
+    const WCHAR *name = baseName(path);
+    DWORD n = 0;
+    PROCESSENTRY32W entry;
+    memset(&entry, 0, sizeof entry);
+    entry.dwSize = sizeof entry;
+    for (BOOL more = Process32FirstW(snap, &entry); more && n < CLOSE_MAX; more = Process32NextW(snap, &entry)) {
+        entry.szExeFile[259] = 0;
+        if (!wieqi(entry.szExeFile, name)) {
+            continue;
+        }
+        HANDLE process = OpenProcess(access | PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, 0, entry.th32ProcessID);
+        if (!process) {
+            // Another user's program, from the immediate action, or one
+            // that exited in between: the deferred action ends the first.
+            logft(install, tmplClose, msgCannotOpen, entry.szExeFile, GetLastError());
+            continue;
+        }
+        DWORD size = IMAGE_PATH;
+        if (QueryFullProcessImageNameW(process, 0, image, &size) && wieqi(image, path)) {
+            targets[n].process = process;
+            targets[n].pid = entry.th32ProcessID;
+            targets[n].windows = 0;
+            targets[n].visible = 0;
+            n++;
+        } else {
+            CloseHandle(process);
+        }
+    }
+    CloseHandle(snap);
+    return n;
+}
+
+static void logPid(MSIHANDLE install, const WCHAR *what, DWORD pid, const WCHAR *path, DWORD code)
+{
+    static const WCHAR open[] = u" (", close[] = u")";
+    WCHAR *s = HeapAlloc(GetProcessHeap(), 0, (wlen(path) + 32) * sizeof(WCHAR));
+    if (s) {
+        SIZE_T pos = 0;
+        wappend(s, &pos, msgClosePid);
+        wappendnum(s, &pos, pid);
+        wappend(s, &pos, open);
+        wappend(s, &pos, path);
+        wappend(s, &pos, close);
+        logft(install, tmplClose, s, what, code);
+        HeapFree(GetProcessHeap(), 0, s);
+    }
+}
+
+typedef struct {
+    closeTarget *targets;
+    DWORD n;
+    // hidden is 0 in the first pass, which posts to visible windows that no
+    // other window owns, and 1 in the second, which posts to the hidden
+    // unowned windows of targets that have no such window, as a program that only
+    // sits in the notification area has.
+    int hidden;
+} closeWindows;
+
+// postClose is the EnumWindows callback: it posts WM_CLOSE to a top-level
+// window of a target process. The input method windows that the system
+// gives every GUI thread are left alone, and so is a console window or the
+// hidden window of a pseudo console, which the console host may report as
+// the program's: closing it ends every process attached to the console, not
+// only this one.
+static BOOL WINAPI postClose(HWND window, INTPTR param)
+{
+    static const WCHAR ime[] = u"IME", msctf[] = u"MSCTFIME UI", console[] = u"ConsoleWindowClass",
+                       pseudo[] = u"PseudoConsoleWindow";
+    closeWindows *w = (closeWindows *)param;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(window, &pid);
+    for (DWORD i = 0; i < w->n; i++) {
+        if (w->targets[i].pid != pid) {
+            continue;
+        }
+        if ((w->hidden ? w->targets[i].visible != 0 || IsWindowVisible(window) : !IsWindowVisible(window)) || GetWindow(window, GW_OWNER)) {
+            break;
+        }
+        WCHAR cls[24];
+        int len = GetClassNameW(window, cls, 24);
+        if (len > 0 && (wieqi(cls, ime) || wieqi(cls, msctf) || wieqi(cls, console) || wieqi(cls, pseudo))) {
+            break;
+        }
+        if (PostMessageW(window, WM_CLOSE, 0, 0)) {
+            w->targets[i].windows++;
+            w->targets[i].visible += !w->hidden;
+        }
+        break;
+    }
+    return 1;
+}
+
+// closeEntry asks the running copies of path to close and waits for them.
+// It returns 0 after a cancel.
+static int closeEntry(MSIHANDLE install, const WCHAR *path, DWORD timeout, closeTarget *targets, WCHAR *image)
+{
+    DWORD n = findRunning(install, path, 0, targets, image);
+    if (!n) {
+        logft(install, tmplClose, path, msgNoneRunning, 0);
+        return 1;
+    }
+    closeWindows w = {targets, n, 0};
+    EnumWindows(postClose, (INTPTR)&w);
+    w.hidden = 1;
+    EnumWindows(postClose, (INTPTR)&w);
+    unsigned long long deadline = GetTickCount64() + timeout;
+    int ok = 1;
+    for (DWORD i = 0; i < n && ok; i++) {
+        if (!targets[i].windows) {
+            logPid(install, msgNoWindow, targets[i].pid, path, 0);
+            continue;
+        }
+        logPid(install, msgAsked, targets[i].pid, path, 0);
+        DWORD wait = WAIT_TIMEOUT;
+        for (;;) {
+            unsigned long long now = GetTickCount64();
+            DWORD slice = now >= deadline ? 0 : deadline - now > CANCEL_POLL_MS ? CANCEL_POLL_MS : (DWORD)(deadline - now);
+            wait = WaitForSingleObject(targets[i].process, slice);
+            if (wait != WAIT_TIMEOUT || slice == 0) {
+                break;
+            }
+            if (cancelled(install)) {
+                ok = 0;
+                break;
+            }
+        }
+        if (ok) {
+            logPid(install, wait == WAIT_OBJECT_0 ? msgExited : msgStillRunning, targets[i].pid, path, 0);
+        }
+    }
+    for (DWORD i = 0; i < n; i++) {
+        CloseHandle(targets[i].process);
+    }
+    return ok;
+}
+
+// closeLine handles one line of BuilderCloseApps. It returns -1 for
+// malformed data, 0 after a cancel and 1 otherwise.
+static int closeLine(MSIHANDLE install, WCHAR *line, closeTarget *targets, WCHAR *image)
+{
+    WCHAR *spec = field(line, 0x1F);
+    WCHAR *tmpl = spec ? field(spec, 0x1F) : 0;
+    DWORD timeout = 0;
+    if (!tmpl || !hexfield(spec, &timeout)) {
+        logft(install, tmplClose, msgCloseData, 0, 0);
+        return -1;
+    }
+    if (*line) {
+        int cond = MsiEvaluateConditionW(install, line);
+        if (cond == 0) {
+            return 1;
+        }
+        if (cond != MSICONDITION_TRUE && cond != MSICONDITION_NONE) {
+            logft(install, tmplClose, msgCondition, line, 0);
+            return 1;
+        }
+    }
+    WCHAR *path = format(install, tmpl);
+    int ok = 1;
+    if (!path || !*path || hasControl(path, 1)) {
+        logft(install, tmplClose, msgFormat, tmpl, 0);
+    } else {
+        ok = closeEntry(install, path, timeout, targets, image);
+    }
+    HeapFree(GetProcessHeap(), 0, path);
+    return ok;
+}
+
+__declspec(dllexport) UINT WINAPI BuilderCloseSchedule(MSIHANDLE install)
+{
+    HANDLE heap = GetProcessHeap();
+    WCHAR *list = property(install, propCloseApps);
+    WCHAR *image = HeapAlloc(heap, 0, IMAGE_PATH * sizeof(WCHAR));
+    closeTarget *targets = HeapAlloc(heap, 0, CLOSE_MAX * sizeof(closeTarget));
+    UINT result = ERROR_SUCCESS;
+    if (!image || !targets) {
+        logft(install, tmplClose, msgNoMemory, 0, 0);
+    }
+    for (WCHAR *line = list; image && targets && line && *line;) {
+        WCHAR *next = field(line, '\n');
+        int ok = closeLine(install, line, targets, image);
+        if (ok < 0) {
+            break;
+        }
+        if (ok == 0) {
+            result = ERROR_INSTALL_USEREXIT;
+            break;
+        }
+        line = next;
+    }
+    HeapFree(heap, 0, targets);
+    HeapFree(heap, 0, image);
+    HeapFree(heap, 0, list);
+    return result;
+}
+
+// endRunning ends the processes of one path and returns how many it found;
+// *ended counts those it ended or found gone.
+static DWORD endRunning(MSIHANDLE install, const WCHAR *path, closeTarget *targets, WCHAR *image, DWORD *ended)
+{
+    DWORD n = findRunning(install, path, PROCESS_TERMINATE, targets, image);
+    *ended = 0;
+    for (DWORD i = 0; i < n; i++) {
+        HANDLE process = targets[i].process;
+        if (WaitForSingleObject(process, 0) == WAIT_OBJECT_0) {
+            logPid(install, msgGone, targets[i].pid, path, 0);
+            (*ended)++;
+        } else if (!TerminateProcess(process, ERROR_INSTALL_USEREXIT)) {
+            logPid(install, msgEndFailed, targets[i].pid, path, GetLastError());
+        } else {
+            DWORD wait = WaitForSingleObject(process, TERMINATE_WAIT_MS);
+            logPid(install, wait == WAIT_OBJECT_0 ? msgEnded : msgNotGone, targets[i].pid, path, 0);
+            *ended += wait == WAIT_OBJECT_0;
+        }
+        CloseHandle(process);
+    }
+    return n;
+}
+
+__declspec(dllexport) UINT WINAPI BuilderClose(MSIHANDLE install)
+{
+    HANDLE heap = GetProcessHeap();
+    WCHAR *data = property(install, propData);
+    WCHAR *image = HeapAlloc(heap, 0, IMAGE_PATH * sizeof(WCHAR));
+    closeTarget *targets = HeapAlloc(heap, 0, CLOSE_MAX * sizeof(closeTarget));
+    if (!image || !targets) {
+        logft(install, tmplClose, msgNoMemory, 0, 0);
+    }
+    // The data starts with the builder's empty seed and ends with `|`.
+    for (WCHAR *path = data; image && targets && path;) {
+        WCHAR *next = field(path, '|');
+        if (*path) {
+            // Another pass only finds more when this one was full and
+            // freed a slot by ending a process.
+            DWORD ended, n = endRunning(install, path, targets, image, &ended);
+            if (!n) {
+                logft(install, tmplClose, path, msgNoneRunning, 0);
+            }
+            for (int pass = 1; n == CLOSE_MAX && ended && pass < CLOSE_PASSES; pass++) {
+                n = endRunning(install, path, targets, image, &ended);
+            }
+        }
+        path = next;
+    }
+    HeapFree(heap, 0, targets);
+    HeapFree(heap, 0, image);
+    HeapFree(heap, 0, data);
+    return ERROR_SUCCESS;
 }
 
 BOOL WINAPI _DllMainCRTStartup(HANDLE instance, DWORD reason, void *reserved)

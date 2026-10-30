@@ -128,6 +128,14 @@ func (c *converter) fileShortcut(f *omap, e *elem, ref *fileRef, tree map[*dir]b
 	s := c.shortcut(e, ref.comp.dir, tree)
 	c.workingDirectory(s, e, ref.dir)
 	f.add("shortcuts", s)
+	c.markAdvertised(e)
+}
+
+// markAdvertised records an advertised shortcut that became a plain one.
+func (c *converter) markAdvertised(e *elem) {
+	if e.yes("Advertise") {
+		c.advertised = append(c.advertised, e.line)
+	}
 }
 
 func (c *converter) workingDirectory(s *omap, e *elem, fileDir string) {
@@ -178,11 +186,14 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 
 	link.set("workingDirectory", c.dirRef(elm.attr("WorkingDirectory")))
 	pending.comp.out.add("shortcuts", link)
+	c.markAdvertised(elm)
 }
 
 // fileTargetShortcut places a shortcut to a packaged file: on the file when
 // it is in the shortcut's component, else in its own component with file.
 func (c *converter) fileTargetShortcut(pending pendingShortcut, file *fileRef) {
+	c.markAdvertised(pending.e)
+
 	link := c.shortcut(pending.e, pending.comp.dir, pending.tree)
 	c.workingDirectory(link, pending.e, file.dir)
 

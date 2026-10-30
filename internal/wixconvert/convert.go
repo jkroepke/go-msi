@@ -50,6 +50,10 @@ type Result struct {
 
 // Options tune the conversion.
 type Options struct {
+	// Built is the package WiX built from the source, or nil. A component
+	// whose Guid WiX generated keeps the code it has there, so that a major
+	// upgrade from that package that removes it late keeps the files.
+	Built *BuiltPackage
 	// Source names the input in the header comment, such as app.wxs.
 	Source string
 }
@@ -67,6 +71,8 @@ func Convert(r io.Reader, opts Options) (*Result, error) {
 	}
 
 	conv := newConverter(doc)
+	conv.built = opts.Built
+
 	if err := conv.index(); err != nil {
 		return nil, err
 	}
@@ -87,6 +93,9 @@ func Convert(r io.Reader, opts Options) (*Result, error) {
 // converter holds the indexed source file and the output.
 type converter struct {
 	compByID     map[string]*comp
+	built        *BuiltPackage
+	claimed      map[string]bool // the built components a component took
+	advertised   []int           // the lines of advertised shortcuts
 	doc          *document
 	wixVars      map[string]string
 	dirs         map[string]*dir
@@ -140,6 +149,7 @@ type converter struct {
 	pending       []pendingShortcut
 	pendingTypes  []pendingType
 	anonymous     int
+	removeLine    int
 	uiLine        int
 	v3            bool
 }
@@ -156,15 +166,28 @@ type dir struct {
 	std      bool
 	// sub marks a folder that a component's Subdirectory made.
 	sub bool
+	// generated is set when WiX gives the folder an ID of its own: one
+	// without an Id, or one a Subdirectory path makes.
+	generated bool
 }
 
 type comp struct {
-	e           *elem
-	out         *omap
-	id          string
-	dir         string
-	inFeature   bool
-	dropIfEmpty bool
+	e   *elem
+	out *omap
+	id  string
+	dir string
+	// droppedValues are the HKCU key path values of a shortcut component
+	// that msi-builder replaces with its own.
+	droppedValues []string
+	inFeature     bool
+	dropIfEmpty   bool
+	// generated is set when WiX generates the component's Guid, pinned
+	// when the built package gave it one.
+	generated bool
+	pinned    bool
+	// harvests is set when a Files glob became a folder source, which
+	// takes no guid.
+	harvests bool
 }
 
 type group struct {
@@ -453,17 +476,20 @@ func (c *converter) walkExtension(e *elem) {
 	}
 }
 
+// anonymousDir starts the ID of a Directory without one.
+const anonymousDir = "dir_line"
+
 func (c *converter) addDir(elm *elem, parentID string, standard bool) *dir {
 	dirID := elm.attr("Id")
 	if dirID == "" {
-		dirID = fmt.Sprintf("dir_line%d", elm.line)
+		dirID = fmt.Sprintf("%s%d", anonymousDir, elm.line)
 	}
 
 	if d, ok := c.dirs[dirID]; ok {
 		return d
 	}
 
-	folder := &dir{id: dirID, name: elm.attr("Name"), parentID: parentID, line: elm.line}
+	folder := &dir{id: dirID, name: elm.attr("Name"), parentID: parentID, line: elm.line, generated: elm.attr("Id") == ""}
 
 	if dirID == "TARGETDIR" || standard || isStandardFolder(dirID) {
 		folder.std, folder.name, folder.parentID = true, "", ""
@@ -487,7 +513,7 @@ func (c *converter) subdir(parentID, path string, line int) string {
 	for _, name := range strings.FieldsFunc(path, func(r rune) bool { return r == '\\' || r == '/' }) {
 		dirID := parentID + "_" + idPart(name)
 		if _, ok := c.dirs[dirID]; !ok {
-			folder := &dir{id: dirID, name: name, parentID: parentID, line: line, sub: true}
+			folder := &dir{id: dirID, name: name, parentID: parentID, line: line, sub: true, generated: true}
 			c.dirs[dirID] = folder
 			c.dirOrder = append(c.dirOrder, folder)
 		}
