@@ -991,6 +991,21 @@ func TestValidate(t *testing.T) {
 			base + appComponent + "  - {id: Reg, directory: INSTALLDIR, scope: perMachine, registry: [{root: HKLM, key: Software\\X, name: N, value: v}]}\n",
 			sevError, "components[1].scope", "only a perUserOrMachine or perMachineOrUser package",
 		},
+		"folder component scope outside a dual package": {
+			base + "components:\n  - {id: App, directory: INSTALLDIR, scope: perMachine, files: [{source: dist/}]}\n",
+			sevError, "components[0].scope", "only a perUserOrMachine or perMachineOrUser package",
+		},
+		"component scope condition too long": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent +
+				"  - {id: Reg, directory: INSTALLDIR, scope: perMachine, condition: " + strings.Repeat("A", 240) +
+				", registry: [{root: HKLM, key: Software\\X, name: N, value: v}]}\n",
+			sevError, "components[1].condition", "Component.Condition holds 255",
+		},
+		"context variable condition too long": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent +
+				"  - {id: Env, directory: INSTALLDIR, condition: " + strings.Repeat("A", 240) + ", environment: [{name: FOO, value: a}]}\n",
+			sevError, "components[1].condition", "Component.Condition holds 255",
+		},
 		"component scope dual": {
 			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent +
 				"  - {id: Reg, directory: INSTALLDIR, scope: perUserOrMachine, registry: [{root: HKMU, key: Software\\X, name: N, value: v}]}\n",

@@ -459,8 +459,8 @@ func (b *build) startCarrier(info *componentInfo, svc *config.Service) string {
 	guid := uuid5(namespaceComponent, b.upgradeCode+"|"+bitness+"|start|"+carrier)
 
 	cond := "(" + svc.Control.StartCondition + ")"
-	if comp.Condition != "" {
-		cond = "(" + comp.Condition + ") AND " + cond
+	if compCond, ok := componentCondition(comp).(string); ok {
+		cond = "(" + compCond + ") AND " + cond
 	}
 
 	// A public property set in the wizard must reach the server, unless

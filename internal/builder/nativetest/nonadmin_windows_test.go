@@ -286,6 +286,10 @@ func TestNonAdminInstallScopes(t *testing.T) {
 				t.Error("the per-user install wrote the HKLM value of the perMachine component")
 			}
 
+			if regHas(t, "64", `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment`, "MSIBUILDER_NONADMIN_TEST") {
+				t.Error("the per-user install wrote the variable to the machine environment")
+			}
+
 			if tc.scope == "perUser" {
 				if err := os.Remove(installed); err != nil {
 					t.Fatal(err)

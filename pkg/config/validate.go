@@ -731,6 +731,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 
 		v.componentID(p, comp, seen, known)
 		v.componentDirectory(cfg, p, comp, known)
+		v.componentScope(p, comp)
 
 		if folderComponent(comp) {
 			v.folderComponent(cfg, p, comp)
@@ -739,7 +740,6 @@ func (v *validator) components(cfg *Config, known *refs) {
 		}
 
 		v.componentGUID(p, comp)
-		v.componentScope(p, comp)
 		v.filePatterns(p, comp)
 
 		v.oneOf(p+".bitness", comp.Bitness, Auto, "32", "64")
@@ -772,7 +772,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 			v.permissions(svcPath+".permissions", svc.Permissions, permService)
 		}
 
-		v.componentServiceControl(p, comp, services, userData)
+		v.componentServiceControl(p, comp, services, perUser)
 		v.componentPermissions(p, comp)
 		v.movableGrants(cfg, known, p, comp)
 		v.componentEvents(p, comp, userData)
@@ -858,17 +858,34 @@ func (v *validator) componentDirectory(cfg *Config, compPath string, comp *Compo
 }
 
 // componentScope checks a component's scope: perMachine or perUser, and
-// only in a dual package, whose context it limits the component to.
+// only in a dual package, whose context it limits the component to. The
+// components of a folder source report it once, on the folder's.
 func (v *validator) componentScope(compPath string, comp *Component) {
-	if comp.Scope == "" {
+	if comp.Scope == "" || comp.folder != nil {
 		return
 	}
+
+	v.contextConditionLength(compPath+".condition", comp.Condition)
 
 	v.oneOf(compPath+".scope", string(comp.Scope), string(ScopePerMachine), string(ScopePerUser))
 
 	if !v.scope.Dual() {
 		v.errorf(compPath+".scope", "only a perUserOrMachine or perMachineOrUser package installs components "+
 			"in one context; a %s package installs everything %s", v.scope, v.scope)
+	}
+}
+
+// contextConditionLength checks that a component condition still fits
+// Component.Condition with the context condition the builder adds to it
+// for a scope or for the carriers of a variable that follows the context.
+func (v *validator) contextConditionLength(condPath, cond string) {
+	if cond == "" {
+		return
+	}
+
+	if full := "(" + cond + ") AND NOT ALLUSERS"; len(full) > maxComponentCondition {
+		v.errorf(condPath, "with the install context the builder adds, the condition is %d characters; "+
+			"Component.Condition holds %d", len(full), maxComponentCondition)
 	}
 }
 
@@ -949,6 +966,10 @@ func (v *validator) componentEvents(compPath string, comp *Component, perUser bo
 	// compared without case to be safe; how the engine treats FOO and foo
 	// in two Environment rows is not tested.
 	seen := make(map[[3]string]bool)
+
+	if slices.ContainsFunc(comp.Environment, func(env *Environment) bool { return env.Scope == envAuto }) {
+		v.contextConditionLength(compPath+".condition", comp.Condition)
+	}
 
 	for j, env := range comp.Environment {
 		envPath := fmt.Sprintf("%s.environment[%d]", compPath, j)

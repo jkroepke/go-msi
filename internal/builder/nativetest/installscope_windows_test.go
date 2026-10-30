@@ -13,15 +13,17 @@ import (
 // install folder pages, a remembered install folder, a Start menu shortcut,
 // an HKMU value, an HKCR value, a variable that follows the context
 // (ENVVAR-03) and two components that install in one context only, one
-// with an HKLM value and one with an HKCU value. ${SCOPE} and ${PLATFORM}
-// choose the variant.
+// with an HKLM value and one with an HKCU value. The components are
+// transitive, so a repair evaluates their conditions again. ${SCOPE} and
+// ${PLATFORM} choose the variant.
 const installScopeConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderScope, manufacturer: msi-builder tests, version: "${VERSION}", upgradeCode: 7d2c41e8-93a5-4f1b-8e60-2b9d5c7a4f13 }
 package: { platform: ${PLATFORM}, scope: ${SCOPE} }
 installDir: { remember: true }
 ui: { enabled: true, chooseDirectory: true }
 components:
-  - files:
+  - transitive: true
+    files:
       - source: ${SOURCE}
         name: tool.exe
         version: ${FILEVERSION}
@@ -34,10 +36,12 @@ components:
   - id: MachineOnly
     directory: INSTALLDIR
     scope: perMachine
+    transitive: true
     registry: [{ root: HKLM, key: Software\MsiBuilderTest\ScopeMachine, name: Only, value: machine }]
   - id: UserOnly
     directory: INSTALLDIR
     scope: perUser
+    transitive: true
     registry: [{ root: HKCU, key: Software\MsiBuilderTest\ScopeUser, name: Only, value: user }]
 `
 
@@ -146,7 +150,8 @@ func buildInstallScope(t *testing.T, dir, scope, platform string) (string, strin
 // other one through MSIINSTALLPERUSER on the command line. Files under
 // Program Files, HKMU and HKCR values, the Start menu shortcut, the
 // product registration, the variable and the components of one context
-// all follow the context, and the uninstall removes them (ENVVAR-03).
+// all follow the context, a repair keeps them there, and the uninstall
+// removes them (ENVVAR-03).
 func TestMsiexecInstallScopes(t *testing.T) { //nolint:paralleltest // msiexec runs one installation at a time
 	if testing.Short() {
 		t.Skip("installing needs msiexec time and elevation")
@@ -170,6 +175,17 @@ func TestMsiexecInstallScopes(t *testing.T) { //nolint:paralleltest // msiexec r
 
 			if got := installScopeState(t, code, false); got != scopeEverywhere(tc.want) {
 				t.Errorf("after the install: %+v, want everything in %s", got, tc.want)
+			}
+
+			// A repair that reinstalls every component evaluates the
+			// transitive components' conditions again, so ALLUSERS must
+			// name the installed context then too (ENVVAR-03).
+			repairLog := filepath.Join(dir, "repair.log")
+			msiexecQuiet(t, repairLog, "/i", path, "REINSTALL=ALL", "REINSTALLMODE=amus")
+			t.Logf("ENVVAR-03 %s repair: ALLUSERS %q", tc.name, serverProperties(readLog(repairLog))["ALLUSERS"])
+
+			if got := installScopeState(t, code, false); got != scopeEverywhere(tc.want) {
+				t.Errorf("after the repair: %+v, want everything in %s", got, tc.want)
 			}
 
 			msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)

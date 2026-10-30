@@ -289,14 +289,15 @@ environment variable's `scope` defaults to `auto`: the builder writes it
 as a machine variable in a generated component with the condition
 `ALLUSERS=1` and as a user variable in one with `NOT ALLUSERS`, so a
 `PATH` entry goes to the machine `PATH` for all users and to the user's
-`PATH` per user. ALLUSERS is 1 per machine and unset per user once the
-context is fixed, also after a switch on the scope page (INST-02). A
-component with `scope: perMachine` installs only per machine and may write
-HKLM and HKU values and removals, machine variables, event log sources and
-`serviceControl` rows; one with `scope: perUser` installs only per user.
+`PATH` per user. ALLUSERS is 1 per machine and unset per user when the
+install runs, also after a switch on the scope page (INST-02), and in a
+repair (ENVVAR-03). A component with `scope: perMachine` installs only per
+machine and may write HKLM and HKU values and removals, machine variables
+and event log sources; one with `scope: perUser` installs only per user.
 The builder adds `ALLUSERS=1` or `NOT ALLUSERS` to the component's
-`condition`. Services stay refused, since ICE105 rejects every
-`ServiceInstall` row, and so do the folders ICE105 rejects.
+`condition`, which must leave room for it in the 255 characters of
+`Component.Condition`. Services and `serviceControl` stay refused, and so
+do the folders ICE105 rejects.
 
 ```yaml
 package:
