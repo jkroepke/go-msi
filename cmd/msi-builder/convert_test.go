@@ -192,7 +192,8 @@ components:
 // TestConvertKeepsHarvestedCodes converts a Files glob with --msi: a package
 // with one component and code per file, below a subfolder too, stands in
 // for WiX's harvest. The folder source keeps those codes in guids, and the
-// package built from the converted file has them.
+// package built from the converted file has them. A second glob into the
+// same folder matches the same paths; the file on disk picks the glob.
 func TestConvertKeepsHarvestedCodes(t *testing.T) {
 	t.Parallel()
 
@@ -214,16 +215,20 @@ components:
       <Directory Id="INSTALLFOLDER" Name="Hello" />
     </StandardDirectory>
     <Files Include="dist\**" Directory="INSTALLFOLDER" />
+    <Files Include="extra\**" Directory="INSTALLFOLDER" />
   </Package>
 </Wix>
 `
 
-	if err := os.MkdirAll(filepath.Join(dir, "dist", "docs"), 0o750); err != nil {
-		t.Fatal(err)
+	for _, sub := range []string{"dist/docs", "extra"} {
+		if err := os.MkdirAll(filepath.Join(dir, filepath.FromSlash(sub)), 0o750); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	for name, data := range map[string]string{
 		"v1.yaml": built, "app.wxs": src, "dist/hello.exe": "MZ", "dist/docs/guide.md": "# Guide", "dist/news.md": "new in 1.1.0",
+		"extra/more.txt": "more",
 	} {
 		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte(data), 0o600); err != nil {
 			t.Fatal(err)
@@ -257,8 +262,15 @@ components:
 		}
 	}
 
-	if strings.Contains(stderr.String(), "Files glob") {
-		t.Errorf("convert noted the glob: %s", stderr.String())
+	// Both globs match every file; the disk tells which one holds it.
+	if i := strings.Index(string(yaml), "source: extra/"); i < 0 || strings.Index(string(yaml), "hello.exe:") > i {
+		t.Errorf("the codes are not on dist/:\n%s", yaml)
+	}
+
+	// v1 has no file of extra/, which line 8 adds, so only that glob gets
+	// a note.
+	if strings.Contains(stderr.String(), "app.wxs:7:") || !strings.Contains(stderr.String(), "app.wxs:8: TODO: hello-1.0.0.msi has no component") {
+		t.Errorf("convert notes: %s", stderr.String())
 	}
 
 	stdout.Reset()

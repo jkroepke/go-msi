@@ -543,7 +543,8 @@ func TestConvertAdvertisedLateRemoval(t *testing.T) {
 }
 
 // A file two Files globs add goes to the glob whose folder is nearest above
-// it; with the same folder it goes to neither, and both name it.
+// it, among those whose source folder holds it when convert can look; with
+// the same folder it goes to neither, and both name it.
 func TestConvertBuiltCodesNestedGlobs(t *testing.T) {
 	t.Parallel()
 
@@ -594,6 +595,19 @@ func TestConvertBuiltCodesNestedGlobs(t *testing.T) {
 
 	if lines := globNotes(t, res.Notes, true); len(lines) > 0 {
 		t.Errorf("glob notes in lines %v, want none", lines)
+	}
+
+	// When only bin/ holds assets/logo.png next to the source, the nearer
+	// assets/ glob does not take its code.
+	res, err = wixconvert.Convert(strings.NewReader(fmt.Sprintf(src, "")), wixconvert.Options{
+		Built: built, Exists: func(rel string) bool { return rel == "bin/assets/logo.png" || rel == "bin/app.exe" },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(res.YAML), "assets/logo.png: '{00000000-0000-4000-8000-000000000002}'") {
+		t.Errorf("bin/ lacks assets/logo.png:\n%s", res.YAML)
 	}
 
 	// A second glob into the install folder adds app.exe too.

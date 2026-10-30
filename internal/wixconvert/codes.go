@@ -348,8 +348,8 @@ func (c *converter) harvestedCodes() map[*comp]map[string]*BuiltComponent {
 		}
 
 		src, rel, tied := c.nearestHarvest(sources, row)
-		if len(tied) > 0 {
-			src = c.breakTie(tied, rel)
+		for _, other := range tied {
+			other.comp.tied = append(other.comp.tied, rel)
 		}
 
 		if src == nil || seen[src.comp][strings.ToLower(rel)] {
@@ -369,27 +369,39 @@ func (c *converter) harvestedCodes() map[*comp]map[string]*BuiltComponent {
 	return found
 }
 
+// candidate is a folder source that adds a file, with the file's path
+// below its folder.
+type candidate struct {
+	src *harvest
+	rel string
+}
+
 // nearestHarvest returns the folder source that adds the key file of row
 // and whose folder is nearest above it, with the file's path below that
-// folder. When none adds it, it returns nil; when several with the same
+// folder. Only the sources whose source folder holds the file count when
+// one does. When none adds it, it returns nil; when several with the same
 // folder do, nil and those sources.
 func (c *converter) nearestHarvest(sources []harvest, row *BuiltComponent) (*harvest, string, []*harvest) {
-	nearest := make([]*harvest, 0, len(sources))
-	bestRel, depth := "", -1
+	cands := make([]candidate, 0, len(sources))
 
 	for i := range sources {
 		folder, below := c.builtPath(row.Directory, sources[i].target)
 		rel := path.Join(folder, row.KeyFile)
 
-		if !below || !sources[i].filter.Included(rel) {
-			continue
+		if below && sources[i].filter.Included(rel) {
+			cands = append(cands, candidate{src: &sources[i], rel: rel})
 		}
+	}
 
-		switch steps := strings.Count(rel, "/"); {
+	nearest := make([]*harvest, 0, len(cands))
+	bestRel, depth := "", -1
+
+	for _, cand := range c.onDisk(cands) {
+		switch steps := strings.Count(cand.rel, "/"); {
 		case len(nearest) == 0 || steps < depth:
-			nearest, bestRel, depth = append(nearest[:0], &sources[i]), rel, steps
+			nearest, bestRel, depth = append(nearest[:0], cand.src), cand.rel, steps
 		case steps == depth:
-			nearest = append(nearest, &sources[i])
+			nearest = append(nearest, cand.src)
 		}
 	}
 
@@ -403,43 +415,28 @@ func (c *converter) nearestHarvest(sources []harvest, row *BuiltComponent) (*har
 	return nil, bestRel, nearest
 }
 
-// breakTie returns the folder source of the tied ones whose source folder
-// holds the file rel, or records the file as tied on each and returns nil.
-func (c *converter) breakTie(tied []*harvest, rel string) *harvest {
-	if src := c.onDisk(tied, rel); src != nil {
-		return src
-	}
-
-	for _, other := range tied {
-		other.comp.tied = append(other.comp.tied, rel)
-	}
-
-	return nil
-}
-
-// onDisk returns the only one of the tied folder sources whose source
-// folder holds the file rel, or nil.
-func (c *converter) onDisk(tied []*harvest, rel string) *harvest {
+// onDisk returns the candidates whose source folder, next to the source
+// file, holds the file, or all of them when none does or convert cannot
+// look.
+func (c *converter) onDisk(cands []candidate) []candidate {
 	if c.exists == nil {
-		return nil
+		return cands
 	}
 
-	var found *harvest
+	held := make([]candidate, 0, len(cands))
 
-	for _, src := range tied {
-		folder := strings.TrimSuffix(src.comp.folder.str("source"), "/")
-		if strings.Contains(folder, "${") || !c.exists(path.Join(folder, rel)) {
-			continue
+	for _, cand := range cands {
+		folder := strings.TrimSuffix(cand.src.comp.folder.str("source"), "/")
+		if !strings.Contains(folder, "${") && c.exists(path.Join(folder, cand.rel)) {
+			held = append(held, cand)
 		}
-
-		if found != nil {
-			return nil
-		}
-
-		found = src
 	}
 
-	return found
+	if len(held) == 0 {
+		return cands
+	}
+
+	return held
 }
 
 // listed are the codes the source's components give themselves: WiX took
