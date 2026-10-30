@@ -4,14 +4,14 @@
 # WiX variables became ${NAME} references; pass them with --var NAME=value: Version.
 # TODO(line 7): <?include common.wxi?>: convert the included file and merge it in by hand
 # TODO(line 48): the hand-built dialog PortDlg cannot be converted; ui.dialogs lays out text, password, checkbox and choice fields
-# TODO(line 172): rescheduling the standard action RemoveExistingProducts in InstallExecuteSequence has no counterpart
+# TODO(line 174): rescheduling the standard action RemoveExistingProducts in InstallExecuteSequence has no counterpart
 # TODO(line 51): a second progress text for InstallFiles is ignored
-# TODO(line 162): the custom action Greet is a script; script custom actions are never supported, use a run action
-# TODO(line 163): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
+# TODO(line 164): the custom action Greet is a script; script custom actions are never supported, use a run action
+# TODO(line 165): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
 # TODO(line 50): the progress text of InstallFiles cannot be converted: msi-builder writes progress texts only for its customActions
 # TODO(line 52): the progress text of LaunchHello is dropped: the action was not converted to a customActions entry of its own
-# TODO(line 174): drop Wix4BroadcastEnvironmentChange_X64: Windows Installer announces environment changes itself
-# TODO(line 175): Wix4BroadcastSettingChange_X64 has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action
+# TODO(line 176): drop Wix4BroadcastEnvironmentChange_X64: Windows Installer announces environment changes itself
+# TODO(line 177): Wix4BroadcastSettingChange_X64 has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action
 # TODO: WiX generated the GUIDs of Component1, hello.yaml, and msi-builder generates other ones; with removeOld afterInstallExecute an upgrade from the WiX package then deletes their files. Copy WiX's GUIDs into components[].guid: msi-builder inspect --table Component wix.msi
 schema: msi-builder/v1
 vars:
@@ -281,6 +281,13 @@ customActions:
     error: Hello does not install on 32-bit Windows.
     schedule:
       - {sequence: execute, before: LaunchConditions, condition: NOT VersionNT64}
+  # Runs in the UI sequence, or in the execute sequence of a quiet install.
+  - id: SetHELLO_EDITION
+    setProperty: {name: HELLO_EDITION, value: full}
+    once: firstSequence
+    schedule:
+      - {sequence: ui, after: AppSearch}
+      - {sequence: execute, after: AppSearch}
   - id: SetHELLO_ARGS
     setProperty: {name: HELLO_ARGS, value: '--config "[#hello.yaml]"'}
     schedule:

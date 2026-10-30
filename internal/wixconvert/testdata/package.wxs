@@ -151,6 +151,8 @@
       <fw:FirewallException Id="HelloRule" Name="Hello" Program="[#hello.exe]" Protocol="tcp" Port="[PORT]" Scope="localSubnet" />
     </Component>
 
+    <!-- Runs in the UI sequence, or in the execute sequence of a quiet install. -->
+    <SetProperty Id="HELLO_EDITION" Value="full" After="AppSearch" Sequence="first" />
     <SetProperty Id="HELLO_ARGS" Value="--config &quot;[#hello.yaml]&quot;" Before="InstallFiles" Sequence="execute" Condition="NOT HELLO_ARGS" />
     <SetDirectory Id="LogsDir" Value="[%SYSTEMROOT]\Temp\Hello" Sequence="execute" />
     <CustomAction Id="StopClients" FileRef="hello.exe" ExeCommand="detach --all" Execute="deferred" Impersonate="no" Return="ignore" />

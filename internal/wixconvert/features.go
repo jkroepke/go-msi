@@ -3,6 +3,7 @@ package wixconvert
 import (
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -199,6 +200,20 @@ func (c *converter) emitFeatures() {
 	}
 }
 
+// installLevel is the package's INSTALLLEVEL: features up to that level
+// install by default.
+func (c *converter) installLevel() int {
+	for _, p := range c.properties {
+		if p.attr("Id") == "INSTALLLEVEL" {
+			if n, err := strconv.Atoi(c.value(p, "Value")); err == nil {
+				return n
+			}
+		}
+	}
+
+	return 1
+}
+
 func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat list of independent WiX attributes
 	elm := feat.e
 	out := newMap()
@@ -208,9 +223,9 @@ func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat lis
 	out.set("title", c.value(elm, "Title"))
 	out.set("description", c.value(elm, "Description"))
 
-	switch l := elm.attr("Level"); l {
-	case "", "1":
-	case "0":
+	switch level, err := strconv.Atoi(elm.attr("Level")); {
+	case elm.attr("Level") == "" || err == nil && level > 0 && level <= c.installLevel():
+	case err == nil && level == 0:
 		out.set("default", "disabled")
 	default:
 		out.set("default", "off")

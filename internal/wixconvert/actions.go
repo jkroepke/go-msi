@@ -735,10 +735,17 @@ func (c *converter) actionFlags(action *omap, custom *elem, program bool) { //no
 	}
 }
 
+// seqFirst is the Sequence of a setter that runs in the first sequence only.
+const seqFirst = "first"
+
 // setterSequences are the sequences a SetProperty or SetDirectory runs in.
 func (c *converter) setterSequences(action *omap, setter *elem) []string {
 	switch seq := setter.attr("Sequence"); seq {
 	case "", onBoth, seqExecute, seqUI:
+	case seqFirst:
+		// Runs in the first sequence that reaches it: the UI sequence
+		// when there is one, else the execute sequence.
+		action.set("once", "firstSequence")
 	default:
 		c.todof(action, "", setter.line, "Sequence=%q has no counterpart", seq)
 	}
@@ -750,7 +757,7 @@ func (c *converter) setterSequences(action *omap, setter *elem) []string {
 // runs in.
 func setterSequenceNames(setter *elem) []string {
 	switch seq := setter.attr("Sequence"); seq {
-	case "", onBoth:
+	case "", onBoth, seqFirst:
 		return []string{seqUI, seqExecute}
 	case seqUI:
 		return []string{seqUI}

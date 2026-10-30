@@ -4,11 +4,11 @@
 # WiX variables became ${NAME} references; pass them with --var NAME=value: ProductName.
 # TODO(line 5): <?if $(var.Edition) = "full"?> is not evaluated: only its first branch was converted
 # TODO(line 7): the <?else?> branch was left out; convert it by hand if your build takes it
-# TODO(line 50): <?if $(var.Arch) = "arm64"?> is not evaluated: only its first branch was converted
-# TODO(line 52): the <?else?> branch was left out; convert it by hand if your build takes it
-# TODO(line 49): the extension attributes util:Extra on <Component> have no counterpart
-# TODO(line 63): advertised shortcuts are never supported; this one is a plain shortcut
-# TODO(line 63): the shortcut "Hello Help" has no Target: advertised shortcuts are never supported; point it at a file
+# TODO(line 52): <?if $(var.Arch) = "arm64"?> is not evaluated: only its first branch was converted
+# TODO(line 54): the <?else?> branch was left out; convert it by hand if your build takes it
+# TODO(line 51): the extension attributes util:Extra on <Component> have no counterpart
+# TODO(line 65): advertised shortcuts are never supported; this one is a plain shortcut
+# TODO(line 65): the shortcut "Hello Help" has no Target: advertised shortcuts are never supported; point it at a file
 schema: msi-builder/v1
 vars:
   Greeting: Hello
@@ -30,7 +30,6 @@ features:
     features:
       - id: Samples
         title: Samples
-        default: off
         components: [SampleFile]
 components:
   - id: PluginA
@@ -51,4 +50,5 @@ components:
       - source: dist/sample.txt
         id: sample.txt
 properties:
+  # TODO(line 41): INSTALLLEVEL 2 was left out: the features up to that level became default: on, the others default: off, which msi-builder writes for its INSTALLLEVEL of 1
   GREETING: ${Greeting}, welcome to ${ProductName}
