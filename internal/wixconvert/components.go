@@ -214,6 +214,7 @@ type compConv struct {
 // componentChildren convert the elements a Component holds.
 var componentChildren = map[string]func(cc *compConv, e *elem){ //nolint:gochecknoglobals // dispatch table
 	"File":                  (*compConv).file,
+	"Files":                 (*compConv).folderFiles,
 	"RegistryKey":           func(cc *compConv, e *elem) { cc.registry(e, e.attr("Root"), "") },
 	"RegistryValue":         func(cc *compConv, e *elem) { cc.registry(e, e.attr("Root"), "") },
 	"RemoveRegistryKey":     (*compConv).removeRegistry,
@@ -576,8 +577,11 @@ func (cc *compConv) removeRegistry(elm *elem) {
 	if elm.is("RemoveRegistryValue") {
 		name := conv.value(elm, "Name")
 		if name == "" {
-			conv.todof(entry, "", elm.line,
-				"RemoveRegistryValue without Name removes the default value; msi-builder's removeRegistry without name removes the key")
+			// removeRegistry without a name would delete the whole key.
+			conv.todof(cc.out, "", elm.line, "RemoveRegistryValue %s\\%s without Name removes the default value and was left out: "+
+				"removeRegistry without name removes the whole key", elm.attr("Root"), conv.value(elm, "Key"))
+
+			return
 		}
 
 		entry.set("name", name)
@@ -587,7 +591,10 @@ func (cc *compConv) removeRegistry(elm *elem) {
 	}
 
 	if elm.attr("Action") == "removeOnUninstall" {
-		cc.out.add("registry", entry.set("type", "key").set("removeOnUninstall", true))
+		// A registry entry with removeOnUninstall would also create the
+		// key on install, which WiX never does.
+		conv.todof(cc.out, "", elm.line, "RemoveRegistryKey %s\\%s was left out: msi-builder has no removal on uninstall only, "+
+			"and removeRegistry removes the key on install", elm.attr("Root"), conv.value(elm, "Key"))
 
 		return
 	}
@@ -642,4 +649,67 @@ func (cc *compConv) inProfile() bool {
 	top := cc.c.top(folder)
 
 	return top != nil && config.IsProfileFolder(top.id)
+}
+
+// folderFiles converts a WiX 4 Files element, which harvests a glob, to a
+// folder source with include and exclude patterns, or a plain file source
+// when the Include names one file.
+func (cc *compConv) folderFiles(elm *elem) {
+	conv := cc.c
+	full := sourcePath(conv.expand(elm, elm.attr("Include")))
+	src, include := splitGlob(full)
+
+	files := newMap()
+	files.order("source", "include", "exclude")
+	files.head = comments(elm)
+
+	if include == "" {
+		src = full
+	} else if include != "**" {
+		files.set("include", []string{include})
+	}
+
+	files.set("source", src)
+
+	var exclude []string
+
+	for _, kid := range elm.kids {
+		pattern := sourcePath(conv.expand(kid, kid.attr("Files")))
+
+		rel, below := strings.CutPrefix(pattern, src)
+		if src == "./" {
+			rel, below = pattern, !strings.HasPrefix(pattern, "../") && !strings.HasPrefix(pattern, "/")
+		}
+
+		switch {
+		case !kid.is("Exclude"):
+			conv.todof(files, "", kid.line, "<%s> in <Files> has no counterpart", kid.qname())
+		case include == "" || !below:
+			conv.todof(files, "", kid.line, "the Exclude %s is not below the folder %s; leave the file out by hand", pattern, src)
+		default:
+			exclude = append(exclude, rel)
+		}
+	}
+
+	files.set("exclude", exclude)
+	cc.out.add("files", files)
+	cc.files++
+}
+
+// splitGlob splits a glob path into the folder before its first wildcard,
+// with a trailing slash, and the pattern below that folder.
+func splitGlob(pattern string) (string, string) {
+	parts := strings.Split(pattern, "/")
+	for i, part := range parts {
+		if strings.ContainsAny(part, "*?[") {
+			folder := strings.Join(parts[:i], "/")
+			if folder == "" {
+				folder = "."
+			}
+
+			return folder + "/", strings.Join(parts[i:], "/")
+		}
+	}
+
+	return pattern, ""
 }

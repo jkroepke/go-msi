@@ -137,6 +137,9 @@ func TestValidateAccepted(t *testing.T) {
 			"  launch: {file: app.exe}\n" +
 			"  languages: {de: {launch: {text: '&Starten'}, dialogs: {ExtraDlg: {title: y, description: z, " +
 			"fields: {OPT: {label: Stufe, options: {b: '&Hoch'}}, NAME: null}}}}, fr: {dialogs: {ExtraDlg: null}}}\n",
+		// Installed states and properties are fine in a component condition.
+		"installed states": base + strings.Replace(appComponent, "    files:",
+			"    condition: '!Main=3 AND ?App=3 OR START=\"&x\"'\n    services: [{name: svc, control: {startCondition: 'START=\"1\"'}}]\n    files:", 1),
 		// Only a dual package reserves the scope page's names.
 		"scope names in a perMachine package": pkg(`{platform: x64}`) + appComponent +
 			"properties:\n  BuilderInstallScope: {value: x}\n",
@@ -915,6 +918,18 @@ func TestValidate(t *testing.T) {
 		"start condition syntax": {
 			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, control: {startCondition: 'A AND'}}]\n    files:", 1),
 			sevError, "components[0].services[0].control.startCondition", "",
+		},
+		"start condition on a feature state": {
+			base + strings.Replace(appComponent, "    files:", "    services: [{name: svc, control: {startCondition: '&Main=3'}}]\n    files:", 1),
+			sevError, "components[0].services[0].control.startCondition", "action state of &Main",
+		},
+		"component condition on a component state": {
+			base + strings.Replace(appComponent, "    files:", "    condition: '$App=3 OR ?App=3'\n    files:", 1),
+			sevError, "components[0].condition", "action state of $App, but",
+		},
+		"component condition syntax": {
+			base + strings.Replace(appComponent, "    files:", "    condition: 'A AND'\n    files:", 1),
+			sevError, "components[0].condition", "",
 		},
 		"service control without event": {
 			base + strings.Replace(appComponent, "    files:", "    serviceControl: [{name: Old}]\n    files:", 1),

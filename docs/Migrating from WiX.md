@@ -506,6 +506,12 @@ A shortcut starts in its program's folder. Shortcuts to folders and to
 programs outside the package are component shortcuts with `folder` or
 `program`. Advertised shortcuts (`Advertise="yes"`) are not supported.
 
+`msi-builder convert` moves a shortcut onto its file only when the file is
+in the shortcut's own component; on a file of another component it would
+take that component's lifetime, such as `permanent`. Otherwise the shortcut
+stays a component shortcut: a `[#file]` target becomes `file`, and a
+`[DIRECTORY]name` target stays the same path as `program`.
+
 ## Services
 
 ```xml

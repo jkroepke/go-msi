@@ -2,6 +2,7 @@ package wixconvert
 
 import (
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -19,6 +20,8 @@ func (c *converter) walkUI(e *elem) { //nolint:cyclop // one case per kind of UI
 			c.uiNav = append(c.uiNav, kid)
 		case kid.is("Property"):
 			c.properties = append(c.properties, kid)
+		case kid.is("Error"):
+			c.errorRows = append(c.errorRows, kid)
 		case kid.is("ProgressText"):
 			c.progressTexts = append(c.progressTexts, kid)
 		case kid.is("Dialog"):
@@ -195,5 +198,55 @@ func (c *converter) uiLaunch(wizard *omap) {
 
 	if p := props["WIXUI_EXITDIALOGOPTIONALCHECKBOX"]; p == nil || c.value(p, "Value") != "1" {
 		launch.set("checked", false)
+	}
+}
+
+// errorArg is a reference to an error argument, [1] to [9].
+var errorArg = regexp.MustCompile(`\[[0-9]\]`)
+
+// errorText returns the text of an error action: the message of the Error
+// row it names by number, inlined because msi-builder writes no Error rows
+// of its own, or the text itself.
+func (c *converter) errorText(custom *elem) string {
+	value := c.value(custom, "Error")
+
+	for _, row := range c.errorRows {
+		if strings.TrimSpace(row.attr("Id")) != strings.TrimSpace(custom.attr("Error")) {
+			continue
+		}
+
+		c.usedErrors[row] = true
+
+		message := c.errorMessage(row)
+		if message == "" {
+			return value
+		}
+
+		if errorArg.MatchString(message) {
+			c.todof(nil, "", row.line, "the Error row %s refers to error arguments such as [1], which are empty in an error action's text",
+				strings.TrimSpace(value))
+		}
+
+		return message
+	}
+
+	return value
+}
+
+func (c *converter) errorMessage(row *elem) string {
+	if row.has("Message") {
+		return c.value(row, "Message")
+	}
+
+	return c.expand(row, strings.TrimSpace(row.text))
+}
+
+// emitErrorRows notes the Error rows no error action took in, such as
+// replaced Windows Installer messages.
+func (c *converter) emitErrorRows() {
+	for _, row := range c.errorRows {
+		if !c.usedErrors[row] {
+			c.todof(nil, "", row.line, "the Error row %s has no counterpart; only error actions take in their message", strings.TrimSpace(row.attr("Id")))
+		}
 	}
 }
