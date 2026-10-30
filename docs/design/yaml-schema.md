@@ -1634,7 +1634,8 @@ wizard's progress page shows a deferred action's text while it runs (an
 immediate action's was not watched there, and one in the `ui` sequence
 runs before the progress page; basic UI is documented to show it, not
 tested), and the verbose
-log writes it as `Action hh:mm:ss: <id>. <text>` when there is a UI, and
+log writes it as `Action hh:mm:ss: <id>. <text>` with the full UI (basic
+UI not tested), and
 for a deferred action as the script's `ActionStart` line also under `/qn`
 (CA-08). A deferred action's text is formatted when the script is written,
 so it shows property values from that moment.

@@ -609,7 +609,7 @@ type CustomAction struct { //nolint:govet // field order is the YAML key order
 	Once         string        `yaml:"once"`
 	// Progress is the action's description in the ActionText table, shown
 	// by the wizard's progress page while a deferred action runs and
-	// written to the log.
+	// written to the verbose log (under /qn only for deferred actions).
 	Progress string      `yaml:"progress"`
 	Schedule []Placement `yaml:"schedule"`
 
