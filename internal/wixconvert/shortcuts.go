@@ -106,23 +106,7 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 
 	target := elm.attr("Target")
 	if file := c.targetFile(target); file != nil {
-		c.markAdvertised(elm)
-
-		link := c.shortcut(elm, pending.comp.dir, pending.tree)
-		c.workingDirectory(link, elm, file.dir)
-
-		// A shortcut component with a code stays, so that an upgrade
-		// that removes the old version late presumably keeps its
-		// shortcut: UPG-11 kept it with the code shared, though with the
-		// same key path in both versions, which a WiX port does not have.
-		if pending.comp.dropIfEmpty && hasCode(pending.comp.out) {
-			link.set("file", file.key)
-			pending.comp.out.add("shortcuts", link)
-
-			return
-		}
-
-		file.out.add("shortcuts", link)
+		c.fileTargetShortcut(pending, file)
 
 		return
 	}
@@ -149,6 +133,29 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 	link.set("workingDirectory", c.dirRef(elm.attr("WorkingDirectory")))
 	pending.comp.out.add("shortcuts", link)
 	c.markAdvertised(elm)
+}
+
+// fileTargetShortcut puts a Shortcut whose Target is a packaged file onto
+// that file, or keeps it on its shortcut component.
+func (c *converter) fileTargetShortcut(pending pendingShortcut, file *fileRef) {
+	elm := pending.e
+	c.markAdvertised(elm)
+
+	link := c.shortcut(elm, pending.comp.dir, pending.tree)
+	c.workingDirectory(link, elm, file.dir)
+
+	// A shortcut component with a code stays, so that an upgrade that
+	// removes the old version late presumably keeps its shortcut: UPG-11
+	// kept it with the code shared, though with the same key path in both
+	// versions, which a WiX port does not have.
+	if pending.comp.dropIfEmpty && hasCode(pending.comp.out) {
+		link.set("file", file.key)
+		pending.comp.out.add("shortcuts", link)
+
+		return
+	}
+
+	file.out.add("shortcuts", link)
 }
 
 // isDir reports whether an ID names a directory of the file or a standard
