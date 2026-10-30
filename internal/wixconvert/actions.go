@@ -136,7 +136,7 @@ func (c *converter) emitActions() {
 
 	for _, custom := range c.actionOrder {
 		actionID := custom.attr("Id")
-		if c.consumed[custom] || c.onlyLaunch(actionID, byAction) {
+		if c.skipAction(custom, byAction) {
 			continue
 		}
 
@@ -153,7 +153,7 @@ func (c *converter) emitActions() {
 	}
 
 	for _, setter := range c.setters {
-		if c.consumed[setter] {
+		if c.skipSetter(setter, byAction) {
 			continue
 		}
 
@@ -283,6 +283,34 @@ func (c *converter) extensionAnchors(action *omap, custom *elem) {
 				"does not have; convert placed this action after %s, check that place", anchor, target)
 		}
 	}
+}
+
+// skipAction reports whether a custom action is left out of
+// customActions: taken in by another action or key, or not needed.
+func (c *converter) skipAction(custom *elem, byAction map[string][]any) bool {
+	return c.consumed[custom] || c.onlyLaunch(custom.attr("Id"), byAction) ||
+		c.perMachineFolder(custom, custom.attr(attrProperty), byAction)
+}
+
+// skipSetter reports whether a SetProperty or SetDirectory is left out.
+func (c *converter) skipSetter(setter *elem, byAction map[string][]any) bool {
+	return c.consumed[setter] || setter.is("SetProperty") && c.perMachineFolder(setter, setter.attr("Id"), byAction)
+}
+
+// perMachineFolder reports whether an action sets WixPerMachineFolder, the
+// per-machine folder of WixUI_Advanced, and leaves it out: msi-builder's
+// dual-scope packages pick the folder for each scope themselves.
+func (c *converter) perMachineFolder(action *elem, property string, byAction map[string][]any) bool {
+	if property != "WixPerMachineFolder" || !action.has("Value") {
+		return false
+	}
+
+	delete(byAction, setterName(action))
+	delete(byAction, action.attr("Id"))
+	c.todof(nil, "", action.line, "the action %s, which sets WixPerMachineFolder for WixUI_Advanced, was left out: "+
+		"msi-builder sets the install folder of each scope itself", action.attr("Id"))
+
+	return true
 }
 
 // onlyLaunch reports whether the action is the finish page's launch action

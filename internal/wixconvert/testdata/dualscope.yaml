@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
 # Converted from dualscope.wxs by msi-builder convert.
 # Review it, resolve the TODO comments, then run msi-builder validate.
+# TODO(line 26): the action OverridePerMachineFolder, which sets WixPerMachineFolder for WixUI_Advanced, was left out: msi-builder sets the install folder of each scope itself
 schema: msi-builder/v1
 product:
   name: Hello
@@ -20,7 +21,7 @@ features:
   - id: DefaultFeature
     directory: INSTALLFOLDER
     allowAbsent: false
-    components: [Component1, Component2, Component3]
+    components: [Component1, Component2, Component3, Component4]
 components:
   - id: Component1
     files:
@@ -39,6 +40,13 @@ components:
     scope: perMachine
   - id: Component3
     registry:
+      - root: HKLM
+        key: Software\Example\Hello
+        name: Machine
+        value: "1"
+    scope: perMachine
+  - id: Component4
+    registry:
       - root: HKCU
         key: Software\Example\Hello
         name: u
@@ -49,3 +57,7 @@ components:
         action: append
         scope: user
     scope: perUser
+ui:
+  enabled: true
+  chooseFeatures: true
+  chooseDirectory: true

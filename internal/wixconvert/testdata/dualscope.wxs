@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- A dual-scope sample whose components install in one scope only. -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
   <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301" Scope="perUserOrMachine">
     <MajorUpgrade DowngradeErrorMessage="newer" />
     <StandardDirectory Id="ProgramFiles6432Folder">
@@ -12,10 +12,23 @@
         <RegistryValue Root="HKLM" Key="Software\Example\Hello" Name="InstalledBy" Value="msi" KeyPath="yes" />
         <Environment Id="PathM" Name="PATH" Value="[INSTALLFOLDER]" Part="last" System="yes" Action="set" />
       </Component>
+      <Component Directory="INSTALLFOLDER" Condition="ALLUSERS">
+        <RegistryValue Root="HKLM" Key="Software\Example\Hello" Name="Machine" Value="1" KeyPath="yes" />
+      </Component>
       <Component Directory="INSTALLFOLDER" Condition="NOT ALLUSERS=1">
         <Environment Id="PathU" Name="PATH" Value="[INSTALLFOLDER]" Part="last" System="no" Action="set" />
         <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="u" Value="1" KeyPath="yes" />
       </Component>
     </Feature>
+
+    <!-- The scope page of WixUI_Advanced; msi-builder picks the folders itself. -->
+    <ui:WixUI Id="WixUI_Advanced" />
+    <CustomAction Id="OverridePerMachineFolder" Property="WixPerMachineFolder" Value="[ProgramFiles64Folder][ApplicationFolderName]" />
+    <InstallUISequence>
+      <Custom Action="OverridePerMachineFolder" After="WixSetDefaultPerMachineFolder" />
+    </InstallUISequence>
+    <InstallExecuteSequence>
+      <Custom Action="OverridePerMachineFolder" After="WixSetDefaultPerMachineFolder" />
+    </InstallExecuteSequence>
   </Package>
 </Wix>

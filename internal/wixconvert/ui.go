@@ -43,7 +43,7 @@ func (c *converter) uiRef(e *elem) {
 func (c *converter) chooseFeatures() bool {
 	id := c.uiID()
 
-	return id == uiFeatureTree || id == uiMondo
+	return id == uiFeatureTree || id == uiMondo || id == uiAdvanced
 }
 
 func (c *converter) uiID() string {
@@ -78,10 +78,14 @@ func (c *converter) emitUI() {
 		if wizardID == uiMondo {
 			c.todof(wizard, "chooseFeatures", line, "msi-builder has no setup type page (Typical, Custom, Complete)")
 		}
-	case "WixUI_Advanced":
-		wizard.set("enabled", true)
-		c.todof(wizard, "enabled", line, "WixUI_Advanced: set package.scope to perUserOrMachine or perMachineOrUser, which need "+
-			"installerVersion 5.0, for the scope page")
+	case uiAdvanced:
+		// The advanced path shows the folder and the feature tree.
+		wizard.set("enabled", true).set("chooseFeatures", true).set("chooseDirectory", true)
+
+		if !c.dualScope() {
+			c.todof(wizard, "enabled", line, "WixUI_Advanced: set package.scope to perUserOrMachine or perMachineOrUser, which need "+
+				"installerVersion 5.0, for the scope page")
+		}
 	default:
 		wizard.set("enabled", true)
 		c.todof(wizard, "enabled", line, "the wizard %s is not a WiX standard wizard; check the ui keys", wizardID)

@@ -173,6 +173,7 @@ const (
 // WiX standard wizards and their variables.
 const (
 	uiMondo            = "WixUI_Mondo"
+	uiAdvanced         = "WixUI_Advanced"
 	uiFeatureTree      = "WixUI_FeatureTree"
 	varWixUILicenseRtf = "WixUILicenseRtf"
 	varWixUIBannerBmp  = "WixUIBannerBmp"
@@ -251,6 +252,7 @@ var quotedText = regexp.MustCompile(`"[^"]*"`)
 // scopeConditions are the conditions that install a component of a dual
 // package in one scope only: ALLUSERS is 1 per machine and unset per user.
 var scopeConditions = map[string]string{ //nolint:gochecknoglobals // lookup table
+	propAllUsers:     scopeMachine,
 	"ALLUSERS=1":     scopeMachine,
 	`ALLUSERS="1"`:   scopeMachine,
 	"NOT ALLUSERS":   scopeUser,
@@ -258,10 +260,15 @@ var scopeConditions = map[string]string{ //nolint:gochecknoglobals // lookup tab
 	`ALLUSERS=""`:    scopeUser,
 }
 
+// dualScope reports whether the package lets the user pick the scope.
+func (c *converter) dualScope() bool {
+	return c.scope == scopeUserOrMachine || c.scope == scopeMachineOrUser
+}
+
 // scopeCondition returns the components[].scope a condition stands for in
 // a dual package, or "".
 func (c *converter) scopeCondition(cond string) string {
-	if c.scope != scopeUserOrMachine && c.scope != scopeMachineOrUser {
+	if !c.dualScope() {
 		return ""
 	}
 

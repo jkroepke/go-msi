@@ -226,7 +226,7 @@ func (c *converter) allUsers(pkgOut *omap, scope string) (string, bool) {
 	found := false
 
 	for _, elm := range c.properties {
-		if elm.attr("Id") != "ALLUSERS" {
+		if elm.attr("Id") != propAllUsers {
 			continue
 		}
 
@@ -253,7 +253,9 @@ func (c *converter) perUserNote(pkgOut *omap) {
 
 	c.todof(pkgOut, "scope", line,
 		"the WiX v3 Package has no InstallScope and the file sets no ALLUSERS, which Windows Installer installs per user; "+
-			"msi-builder installs per machine by default, set scope: perUser to keep the per-user install")
+			"msi-builder installs per machine by default. Keep that when the package writes to Program Files or other "+
+			"machine-wide places, which a per-user package cannot; an upgrade may then not find a version installed per user. "+
+			"Set scope: perUser only for a package that installs into the user profile")
 }
 
 func (c *converter) emitMedia(pkgOut *omap) {
@@ -381,6 +383,8 @@ const (
 	scopeUser          = "perUser"
 	scopeUserOrMachine = "perUserOrMachine"
 	scopeMachineOrUser = "perMachineOrUser"
+	// propAllUsers is the property that selects the scope.
+	propAllUsers = "ALLUSERS"
 )
 
 func orAny(version string) string {
@@ -492,7 +496,7 @@ func skippedProperty(id string) bool {
 	}
 
 	switch id {
-	case "ALLUSERS", "WixShellExecTarget", "QtExecCmdLine", "QtExec64CmdLine", "WixQuietExecCmdLine", "WixQuietExec64CmdLine", "WIXUI_INSTALLDIR",
+	case propAllUsers, "WixShellExecTarget", "QtExecCmdLine", "QtExec64CmdLine", "WixQuietExecCmdLine", "WixQuietExec64CmdLine", "WIXUI_INSTALLDIR",
 		"WIXUI_EXITDIALOGOPTIONALCHECKBOX", "WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT", "WIXUI_EXITDIALOGOPTIONALTEXT":
 		return true
 	}
