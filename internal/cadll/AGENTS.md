@@ -118,6 +118,11 @@ the root `AGENTS.md` first.
   name: `BuilderRemoveFoldersPackage` lists the package's directory IDs
   and `packageRefusal` refuses a folder that is or holds one of them
   unless `REMOVE~="ALL"`, because any property can alias the install dir.
+  Read-only files go with `FileDispositionInfoEx` and
+  `FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE` (the handle needs
+  `FILE_WRITE_ATTRIBUTES`); before Windows 10 1809, Server 2016 included,
+  that call fails and the old clear-then-delete path with its link-count
+  check runs.
   Do not go back to temporary `RemoveFile` rows: RemoveFiles
   deletes by path and followed a junction swapped in after the listing
   (FILE-11, CI run 41058565605), an arbitrary delete as LocalSystem. The
