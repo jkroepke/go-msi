@@ -73,7 +73,7 @@ func (c *converter) placements() map[string][]any {
 // resources of components, so that a component condition can stand in for
 // a condition on them.
 var resourceActions = map[string]bool{ //nolint:gochecknoglobals // lookup table
-	"InstallFiles": true, "RemoveFiles": true, "DuplicateFiles": true, "RemoveDuplicateFiles": true, "MoveFiles": true,
+	actInstallFiles: true, "RemoveFiles": true, "DuplicateFiles": true, "RemoveDuplicateFiles": true, "MoveFiles": true,
 	"CreateFolders": true, "RemoveFolders": true, "CreateShortcuts": true, "RemoveShortcuts": true,
 	"WriteRegistryValues": true, "RemoveRegistryValues": true, "WriteIniValues": true, "RemoveIniValues": true,
 	"WriteEnvironmentStrings": true, "RemoveEnvironmentStrings": true, "InstallServices": true, "DeleteServices": true,
@@ -301,16 +301,10 @@ func (c *converter) extensionAnchors(action *omap, custom *elem) {
 				continue
 			}
 
-			// CostFinalize is in every sequence that takes custom
-			// actions, before the installation changes anything; a
-			// deferred action must run inside the script. Keeping before
-			// or after keeps the order of the actions around the anchor,
-			// such as a rollback action before its deferred one.
-			target := "CostFinalize"
-			if action.str("execute") != "" {
-				target = "InstallFiles"
-			}
-
+			// Keeping before or after keeps the order of the actions
+			// around the anchor, such as a rollback action before its
+			// deferred one.
+			target := fallbackAnchor(action.str("execute") != "")
 			placement.set(key, target)
 			c.todof(action, "schedule", custom.line, "%s is an action of a WiX extension, which the msi-builder package "+
 				"does not have; convert placed this action %s %s, check that place", anchor, key, target)
@@ -383,6 +377,24 @@ func (c *converter) reanchor(byAction map[string][]any) func(string, []any) {
 	return move
 }
 
+// The standard actions that convert places actions on.
+const (
+	actCostFinalize = "CostFinalize"
+	actInstallFiles = "InstallFiles"
+)
+
+// fallbackAnchor is the standard action an action whose anchor is gone
+// moves next to: CostFinalize, in every sequence that takes custom actions,
+// before the installation changes anything, or InstallFiles for a deferred
+// action, which must run inside the install script.
+func fallbackAnchor(deferred bool) string {
+	if deferred {
+		return actInstallFiles
+	}
+
+	return actCostFinalize
+}
+
 // The keys of a placement that name its anchor.
 const (
 	keyBefore = "before"
@@ -394,7 +406,7 @@ const (
 // not in the placement's sequence leaves the placement at CostFinalize,
 // which both sequences have, or at InstallFiles for an action that runs in
 // the install script, with a note.
-func (c *converter) followAnchors(id string, placement *omap, anchors map[anchorKey]*omap, sources map[string]*elem) *omap {
+func (c *converter) followAnchors(actionID string, placement *omap, anchors map[anchorKey]*omap, sources map[string]*elem) *omap {
 	for range len(sources) + 1 {
 		key := keyAfter
 		if placement.str(keyBefore) != "" {
@@ -410,14 +422,12 @@ func (c *converter) followAnchors(id string, placement *omap, anchors map[anchor
 
 		anchor := anchors[anchorKey{name, placement.str("sequence")}]
 		if anchor == nil {
-			target := "CostFinalize"
-			if custom := c.actions[id]; custom != nil && !immediate(custom) {
-				target = "InstallFiles"
-			}
+			custom := c.actions[actionID]
+			target := fallbackAnchor(custom != nil && !immediate(custom))
 
 			moved := moveAnchor(placement, flowMap().set(key, target))
 			c.todof(moved, "", src.line, "%s was scheduled next to %s, which is not in the %s sequence; convert "+
-				"placed it %s %s, check that place", id, name, placement.str("sequence"), key, target)
+				"placed it %s %s, check that place", actionID, name, placement.str("sequence"), key, target)
 
 			return moved
 		}
@@ -911,7 +921,7 @@ func (c *converter) setter(setter *elem) (*omap, []any) {
 		action.set("setDirectory", flowMap().set("directory", c.dirRef(setterID)).set("value", c.value(setter, "Value")))
 
 		if before == "" && after == "" {
-			after = "CostFinalize"
+			after = actCostFinalize
 		}
 	} else {
 		action.set("setProperty", flowMap().set("name", setterID).set("value", c.value(setter, "Value")))
