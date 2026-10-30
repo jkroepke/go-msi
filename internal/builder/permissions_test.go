@@ -157,7 +157,8 @@ func TestPermissionGrants(t *testing.T) {
 	}
 
 	// The engine builds the data right before the deferred actions: two
-	// complementary resets and a reset of the count, then two type-51
+	// complementary resets, a reset of the count and the user's SID in a
+	// per-user install, then two type-51
 	// actions per grant with its condition, in authoring order, then the
 	// data of each deferred action, set in every install, so that none
 	// comes from the command line.
@@ -166,6 +167,7 @@ func TestPermissionGrants(t *testing.T) {
 		{"BuilderGrantData", "NOT Installed", "i[ProductCode]"},
 		{"BuilderGrantData", "Installed", "m[ProductCode]"},
 		{"BuilderGrantCount", "", ":"},
+		{"BuilderGrantData", "NOT ALLUSERS", "[BuilderGrantData]|[UserSID]"},
 		{"BuilderGrantData", installed + " AND (DATA=1)", data + "f|1301bf|3|NS|" + dir + "|NS"},
 		{"BuilderGrantCount", installed + " AND (DATA=1)", count},
 		{"BuilderGrantData", installed + " AND (DATA=1)", data + "f|120089|0|.\\svc|" + dir + "|.\\svc"},
@@ -177,7 +179,7 @@ func TestPermissionGrants(t *testing.T) {
 		{"BuilderGrantExec", "", "+[BuilderGrantCount][BuilderGrantData]"},
 		{"BuilderGrantRollback", "", "-[BuilderGrantCount][BuilderGrantData]"},
 		{"BuilderGrantCommit", "", "c[BuilderGrantCount][BuilderGrantData]"},
-		{"BuilderGrantCommit", `REMOVE~="ALL"`, "x[ProductCode]"},
+		{"BuilderGrantCommit", `REMOVE~="ALL"`, "x[BuilderGrantData]"},
 		{"BuilderRun", `NOT REMOVE~="ALL"`, "BuilderGrant"}, // BuilderGrantRollback
 		{"BuilderRun", `NOT REMOVE~="ALL"`, "BuilderGrant"}, // BuilderGrantExec
 		{"BuilderRun", "", "BuilderGrant"},                  // BuilderGrantCommit

@@ -1038,7 +1038,7 @@ done:
 // BuilderGrantRollback and the commit action BuilderGrantCommit, all on the
 // entry point BuilderGrant, get this CustomActionData:
 //
-//     <op>:<count><mode><ProductCode>
+//     <op>:<count><mode><ProductCode>[|<UserSID>]
 //     <kind>|<mask>|<flags>|<account template>|<object>|<account>
 //     ...
 //
@@ -1054,9 +1054,11 @@ done:
 // lines differs.
 //
 // op is `+` (grant), `-` (rollback), `c` (commit) or `x` (the commit of the
-// removal of the product, `x<ProductCode>` without a count, a mode or
-// entries). mode
-// is `i` on a first install and `m` in a maintenance install. kind is `f`
+// removal of the product, `x` before the head line without a count; it
+// ignores the mode and the entries). mode
+// is `i` on a first install and `m` in a maintenance install. `|<UserSID>`
+// marks a per-user install (ALLUSERS unset), with the SID of the user it
+// installs for. kind is `f`
 // (file or folder) or `s` (service), mask and flags are hexadecimal access
 // rights and ACE flags, the account is a SID string, an SDDL alias such as
 // NS, a service manager name such as LocalSystem, or a name for
@@ -1077,7 +1079,13 @@ done:
 // An account that comes from a property, such as [SVC_ACCOUNT], is
 // remembered: the commit action stores the account of an entry whose
 // template contains `[` under that template in
-// HKLM\SOFTWARE\msi-builder\GrantAccounts\<ProductCode>, and a
+// HKLM\SOFTWARE\msi-builder\GrantAccounts\<ProductCode> in a per-machine
+// install and in HKEY_USERS\<UserSID>\Software\msi-builder\GrantAccounts\
+// <ProductCode> in a per-user one: a standard user's per-user install runs
+// the action as that user (documented), who cannot write HKLM, and two users
+// can install the same product per user. HKEY_USERS by SID, not HKCU, is
+// the installing user's hive also when the action runs as LocalSystem (an
+// elevated per-user install). A
 // maintenance install (a repair from Apps & Features, a self-repair, a
 // feature added later, a patch), whose command line does not have the
 // property, grants to the remembered account when every property in the
@@ -1087,6 +1095,8 @@ done:
 
 static const WCHAR rollbackKey[] = u"Software\\msi-builder\\GrantRollback\\";
 static const WCHAR accountsKey[] = u"SOFTWARE\\msi-builder\\GrantAccounts\\";
+static const WCHAR userAccountsKey[] = u"\\Software\\msi-builder\\GrantAccounts\\";
+static const WCHAR msgUserSid[] = u"the user's security identifier is missing or malformed; accounts are neither remembered nor looked up";
 static const WCHAR msgRemembered[] = u"the account is empty in a maintenance install; granting to the remembered account";
 static const WCHAR msgRemember[] = u"cannot remember the account of";
 static const WCHAR condRemoveAll[] = u"REMOVE~=\"ALL\"";
@@ -1126,6 +1136,7 @@ static const WCHAR *const serviceAccounts[][2] = {
 // sign-extended 0x80000001 and 0x80000002.
 #define HKCU_ ((HANDLE)(INTPTR)(int)0x80000001)
 #define HKLM_ ((HANDLE)(INTPTR)(int)0x80000002)
+#define HKU_ ((HANDLE)(INTPTR)(int)0x80000003)
 
 static WCHAR wlower(WCHAR c)
 {
@@ -1224,20 +1235,54 @@ static WCHAR *field(WCHAR *s, WCHAR sep)
     return s + 1;
 }
 
-// accountsPath returns HKLM's key of the remembered accounts of a product.
-static int accountsPath(wbuf *path, const WCHAR *product)
+// grantScope is where a product's remembered accounts are: HKLM in a
+// per-machine install, the user's hive in HKEY_USERS in a per-user one.
+// sid is 0 per machine; per user, bad tells that it was missing or not a SID
+// string, and nothing is remembered or looked up.
+typedef struct {
+    const WCHAR *product, *sid;
+    int bad;
+} grantScope;
+
+// validSid tells whether s looks like a SID string (S-1-...), so that it
+// cannot name another key below HKEY_USERS.
+static int validSid(const WCHAR *s)
 {
-    return wbufAdd(path, accountsKey, wlen(accountsKey)) && wbufAdd(path, product, wlen(product));
+    if (s[0] != 'S' || s[1] != '-' || s[2] != '1' || s[3] != '-' || !s[4]) {
+        return 0;
+    }
+    for (s += 4; *s; s++) {
+        if ((*s < '0' || *s > '9') && *s != '-') {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+// accountsPath returns the root and the key of the remembered accounts of a
+// product, or 0.
+static HANDLE accountsPath(wbuf *path, const grantScope *scope)
+{
+    if (scope->bad) {
+        return 0;
+    }
+    if (!scope->sid) {
+        return wbufAdd(path, accountsKey, wlen(accountsKey)) && wbufAdd(path, scope->product, wlen(scope->product)) ? HKLM_ : 0;
+    }
+    return wbufAdd(path, scope->sid, wlen(scope->sid)) && wbufAdd(path, userAccountsKey, wlen(userAccountsKey)) &&
+                   wbufAdd(path, scope->product, wlen(scope->product))
+               ? HKU_
+               : 0;
 }
 
 // remembered returns the account an earlier install remembered for an
 // account template, or 0.
-static WCHAR *remembered(const WCHAR *product, const WCHAR *template)
+static WCHAR *remembered(const grantScope *scope, const WCHAR *template)
 {
-    HANDLE heap = GetProcessHeap(), key = 0;
+    HANDLE heap = GetProcessHeap(), key = 0, root;
     wbuf path = {0, 0, 0};
     WCHAR *value = 0;
-    if (accountsPath(&path, product) && !RegOpenKeyExW(HKLM_, path.s, 0, KEY_QUERY_VALUE, &key)) {
+    if ((root = accountsPath(&path, scope)) != 0 && !RegOpenKeyExW(root, path.s, 0, KEY_QUERY_VALUE, &key)) {
         DWORD kind = 0, size = 0;
         if (!RegQueryValueExW(key, template, 0, &kind, 0, &size) && kind == REG_SZ && size) {
             // The zeroed extra character ends a value stored without one.
@@ -1316,7 +1361,7 @@ static int parseEntry(WCHAR *entry, grantEntry *e)
 // template, which *kept holds for the caller to free. It returns 0, after a
 // log line when log is set, when there is none: *fail tells whether that
 // fails the install (a first install) or skips the entry.
-static WCHAR *grantAccount(MSIHANDLE install, const WCHAR *product, int again, const grantEntry *e, WCHAR **kept, int log, int *fail)
+static WCHAR *grantAccount(MSIHANDLE install, const grantScope *scope, int again, const grantEntry *e, WCHAR **kept, int log, int *fail)
 {
     const WCHAR *template = e->template;
     WCHAR *name = trim(e->account), *lit = hasBracket(template) ? literal(template) : 0;
@@ -1327,7 +1372,7 @@ static WCHAR *grantAccount(MSIHANDLE install, const WCHAR *product, int again, c
         *name = 0;
     }
     HeapFree(GetProcessHeap(), 0, lit);
-    if (!*name && again && (*kept = remembered(product, template)) != 0 && *trim(*kept)) {
+    if (!*name && again && (*kept = remembered(scope, template)) != 0 && *trim(*kept)) {
         // A property set on the command line of the first install is
         // not there in a repair from Apps & Features, a self-repair or
         // a patch, which replace files and add components.
@@ -1616,15 +1661,19 @@ done:
 // does it, so a failed install or repair leaves the account that was
 // remembered before. It never fails: without it, only a maintenance install
 // without the property skips the grant.
-static void rememberAccount(MSIHANDLE install, const WCHAR *product, const WCHAR *template, const WCHAR *account)
+static void rememberAccount(MSIHANDLE install, const grantScope *scope, const WCHAR *template, const WCHAR *account)
 {
-    HANDLE heap = GetProcessHeap(), key = 0;
+    HANDLE heap = GetProcessHeap(), key = 0, root;
     wbuf path = {0, 0, 0};
-    if (!accountsPath(&path, product)) {
+    if (scope->bad) {
+        return; // logged once
+    }
+    if ((root = accountsPath(&path, scope)) == 0) {
         logft(install, tmplGrant, msgNoMemory, 0, 0);
+        HeapFree(heap, 0, path.s);
         return;
     }
-    long err = RegCreateKeyExW(HKLM_, path.s, 0, 0, 0, KEY_SET_VALUE, 0, &key, 0);
+    long err = RegCreateKeyExW(root, path.s, 0, 0, 0, KEY_SET_VALUE, 0, &key, 0);
     if (!err) {
         err = RegSetValueExW(key, template, 0, REG_SZ, (const BYTE *)account, (DWORD)((wlen(account) + 1) * sizeof(WCHAR)));
         RegCloseKey(key);
@@ -1651,8 +1700,18 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
         HeapFree(heap, 0, data);
         return data ? ERROR_INSTALL_FAILURE : ERROR_SUCCESS;
     }
-    WCHAR *product = op == 'x' ? data + 1 : head + 1;
+    if (op == 'x' && (data[1] == 'i' || data[1] == 'm')) {
+        head = data + 1; // the head line of the data, without a count
+    }
+    WCHAR *product = head ? head + 1 : data + 1;
     WCHAR *entries = field(product, '\n');
+    grantScope scope = {product, field(product, '|'), 0};
+    if (scope.sid && !validSid(scope.sid)) {
+        scope.bad = 1;
+        if (op != '-') {
+            logft(install, tmplGrant, msgUserSid, 0, 0);
+        }
+    }
     if (!*product) {
         // An empty ProductCode would name every product's key below.
         logft(install, tmplGrant, msgGrantData, 0, 0);
@@ -1673,8 +1732,9 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
     }
     wbuf path = {0, 0, 0};
     if (op == 'x') {
-        if (accountsPath(&path, product)) {
-            RegDeleteTreeW(HKLM_, path.s);
+        HANDLE root = accountsPath(&path, &scope);
+        if (root) {
+            RegDeleteTreeW(root, path.s);
         }
         HeapFree(heap, 0, path.s);
         HeapFree(heap, 0, data);
@@ -1711,13 +1771,13 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
         } else if (!*e.object || hasControl(e.object, 0)) {
             logft(install, tmplGrant, msgBadObject, e.object, 0);
         } else {
-            account = grantAccount(install, product, again, &e, &kept, op == '+', &fail);
+            account = grantAccount(install, &scope, again, &e, &kept, op == '+', &fail);
         }
         // The commit remembers the accounts that came from properties; a
         // rollback undoes every grant it can and never fails.
         if (account && op == 'c') {
             if (hasBracket(e.template)) {
-                rememberAccount(install, product, e.template, account);
+                rememberAccount(install, &scope, e.template, account);
             }
         } else if (account) {
             fail = !applyEntry(install, &e, account, op == '+', key, keyErr, name);

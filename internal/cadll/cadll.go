@@ -80,8 +80,14 @@ const (
 	GrantInstall     = 'i'
 	GrantMaintenance = 'm'
 
+	// GrantUser follows the ProductCode in the head line of a per-user
+	// install, before the user's SID: the accounts are remembered in that
+	// user's hive instead of HKLM.
+	GrantUser = '|'
+
 	// GrantForget is the operation of the commit of a removal, which
-	// forgets the remembered accounts.
+	// forgets the remembered accounts. The head line of the data follows
+	// it without a count.
 	GrantForget = 'x'
 )
 

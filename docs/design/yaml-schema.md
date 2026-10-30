@@ -1256,7 +1256,8 @@ folderPermissions:
   around a formatted account are dropped. An account that contains `|` or
   a control character, cannot be resolved or names a domain fails the
   installation, and so does an empty one on a first install. An account
-  from a property is remembered per product, so a maintenance install (a
+  from a property is remembered per product (per product and user in a
+  per-user install), so a maintenance install (a
   repair from Apps & Features, a self-repair, a feature added later, a
   patch) whose properties in the account are all empty grants to the
   account of the last successful install;
