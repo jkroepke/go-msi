@@ -77,7 +77,12 @@ func (c *converter) filesNamed(name string) []*fileRef {
 
 		installed := c.literal(ref.e.attr("Name"))
 		if installed == "" {
-			installed = baseName(sourcePath(c.literal(ref.e.attr("Source"))))
+			src := ref.e.attr("Source")
+			if src == "" {
+				src = ref.e.attr("src")
+			}
+
+			installed = baseName(sourcePath(c.literal(src)))
 		}
 
 		if strings.EqualFold(installed, name) {

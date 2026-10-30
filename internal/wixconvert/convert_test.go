@@ -1040,3 +1040,35 @@ func TestConvertCloseApplication(t *testing.T) {
 		t.Errorf("the YAML closes %d files, want only hello.exe:\n%s", got, out)
 	}
 }
+
+// TestConvertCloseApplicationV3Src checks that a v3 File with the
+// deprecated src attribute is found by its installed name.
+func TestConvertCloseApplicationV3Src(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+  <Product Id="*" Name="Hello" Language="1033" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <Package InstallerVersion="500" Compressed="yes" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="Hello">
+          <Component Id="C" Guid="*">
+            <File Id="hello" src="bin\hello.exe" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+    <Feature Id="Main"><ComponentRef Id="C" /></Feature>
+    <util:CloseApplication Id="x" Target="hello.exe" CloseMessage="yes">NOT Installed</util:CloseApplication>
+  </Product>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(res.YAML), "close: {terminate: false}") {
+		t.Errorf("hello.exe is not closed:\n%s", res.YAML)
+	}
+}
