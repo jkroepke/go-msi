@@ -850,7 +850,8 @@ default `upgrade.removeOld` (`afterInstallInitialize`), or
 installed, and new GUIDs do no harm. With `afterInstallExecute`, which
 `preserve: true` also selects, the new version is installed first: it
 skips files that are already there, and removing the old version then
-deletes the files of every component whose GUID changed. Keep the WiX
+deletes the files, registry values, environment variables and shortcuts
+of every component whose GUID changed (case UPG-11 in the spec). Keep the WiX
 GUIDs with `guid` on those components, or keep the early removal.
 `msi-builder convert --msi old.msi` does this for you: it takes the GUID
 of each component from the WiX package, by its `Id` or, for a component
