@@ -47,11 +47,11 @@ func (v *validator) grant(path string, grant *Grant, kind string) {
 		v.errorf(path+".account", "account is empty")
 	case strings.ContainsFunc(grant.Account, func(r rune) bool { return r == '|' || r < 0x20 }):
 		v.errorf(path+".account", "an account name cannot contain | or control characters")
-	case strings.Contains(grant.Account, "[["):
+	case nestedReference(grant.Account):
 		// The builder keeps the properties of an account out of
 		// SecureCustomProperties, which it cannot do for a property whose
 		// name comes from another one (specification section 17.7).
-		v.errorf(path+".account", "an account cannot name its property through another property ([[...]])")
+		v.errorf(path+".account", "an account cannot name its property through another property ([A[B]] or [[B]])")
 	}
 
 	if _, err := rights.Mask(grant.Rights, kind == permService); err != nil {
@@ -79,4 +79,27 @@ func (v *validator) movableGrants(cfg *Config, known *refs, compPath string, com
 			"by an action, a property or a dialog field), and an inheriting grant then reaches every file below that folder and stays "+
 			"after removal; grant on a folder with private ids below a fixed standard folder, or set inherit: false", movable)
 	}
+}
+
+// nestedReference reports whether a formatted string has a [ inside a
+// [...] reference, apart from the escapes [\[] and [\]].
+func nestedReference(text string) bool {
+	open := false
+
+	for i := 0; i < len(text); i++ {
+		switch {
+		case strings.HasPrefix(text[i:], `[\`) && len(text) > i+3 && text[i+3] == ']':
+			i += 3
+		case text[i] == '[':
+			if open {
+				return true
+			}
+
+			open = true
+		case text[i] == ']':
+			open = false
+		}
+	}
+
+	return false
 }

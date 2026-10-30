@@ -524,7 +524,7 @@ directories:
     children:
       - id: APPLICATIONFOLDER
         name: windows_exporter
-        configurable: true       # public + Secure (not when a grant uses it), can be set on the command line and in the UI
+        configurable: true       # public + Secure (not when a per-machine grant uses it), can be set on the command line and in the UI
         children:
           - id: TEXTFILEDIR
             name: textfile_inputs
@@ -1306,8 +1306,9 @@ builder then warns about the repair unless the wizard sets the property.
 The wizard needs `secure: true` when a dialog field, the folder page or
 the feature tree sets the account or folder, and the builder warns about
 a property the wizard sets, or a configurable directory other than the
-install dir, that is not secure. An account cannot use a nested
-`[[NAME]]` reference. Per-user packages are not affected. Three actions on the embedded custom action
+install dir, that is not secure. A `setProperty` or `setDirectory`
+action that sets such a property makes the properties in its value count
+too. An account cannot use a nested reference (`[[NAME]]`, `[A[B]]`). Per-user packages are not affected. Three actions on the embedded custom action
 DLL apply them, after `InstallFiles` (after `InstallServices` when the
 package has services) and before `StartServices`, so a service can use its
 folder when it starts: the deferred `BuilderGrantExec` grants without
@@ -1707,7 +1708,7 @@ properties:
 | Key | Default | Notes |
 |---|---|---|
 | `value` | none | Written to the Property table; an empty value writes no row. With `search` it is set by an action after `AppSearch` instead (see below) |
-| `secure` | `true` for public names, except those a permission grant's account or folder comes from | Listed in `SecureCustomProperties` |
+| `secure` | `true` for public names, except, in per-machine and dual packages, those a permission grant's account or folder comes from | Listed in `SecureCustomProperties` |
 | `hidden` | `false` | Listed in `MsiHiddenProperties` |
 | `search` | none | Fills the property from the registry, a folder, a file or an installed component; one search or a list, see below |
 

@@ -300,9 +300,10 @@ func (b *build) unsecureGrantProperty(name string, wizard bool) {
 	dir, isDir := b.dirs[name]
 	configurable := isDir && name != b.cfg.InstallDir.ID && b.configurable(name)
 
+	wasSecure := b.secure[name]
 	delete(b.secure, name)
 
-	if !wizard && !configurable {
+	if !wasSecure || !wizard && !configurable {
 		return
 	}
 
@@ -361,15 +362,14 @@ func (b *build) secureOptIn(name string) string {
 }
 
 // grantProperties returns, sorted, the public properties a grant's account
-// or folder comes from.
+// or folder comes from, also through the value of a setDirectory or
+// setProperty action that sets one of them.
 func (b *build) grantProperties() []string {
-	set := make(map[string]bool)
+	sources := make(map[string]bool)
 
 	for _, grant := range b.grants {
 		for _, name := range propertyRefs(grant.cfg.Account) {
-			if config.IsPublicProperty(name) {
-				set[name] = true
-			}
+			sources[name] = true
 		}
 
 		for dirID, depth := grant.folder, 0; dirID != "" && depth < 64; depth++ {
@@ -379,15 +379,55 @@ func (b *build) grantProperties() []string {
 				break
 			}
 
-			if config.IsPublicProperty(dirID) {
-				set[dirID] = true
-			}
-
+			sources[dirID] = true
 			dirID = dir.parent
 		}
 	}
 
+	b.actionSources(sources)
+
+	set := make(map[string]bool)
+
+	for name := range sources {
+		if config.IsPublicProperty(name) {
+			set[name] = true
+		}
+	}
+
 	return sortedKeys(set)
+}
+
+// actionSources adds to sources the properties in the value of each
+// setDirectory or setProperty action that sets one of them, until nothing
+// new is found.
+func (b *build) actionSources(sources map[string]bool) {
+	for changed := true; changed; {
+		changed = false
+
+		for _, action := range b.cfg.CustomActions {
+			var target, value string
+
+			switch {
+			case action.SetDirectory != nil:
+				target, value = action.SetDirectory.Directory, action.SetDirectory.Value
+			case action.SetProperty != nil:
+				target, value = action.SetProperty.Name, action.SetProperty.Value
+			default:
+				continue
+			}
+
+			if !sources[target] {
+				continue
+			}
+
+			for _, name := range propertyRefs(value) {
+				if !sources[name] {
+					sources[name] = true
+					changed = true
+				}
+			}
+		}
+	}
 }
 
 // uiSetProperties returns the properties the wizard sets: the dialog

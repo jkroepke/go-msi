@@ -341,7 +341,10 @@ func TestPermissionGrantErrors(t *testing.T) {
 		}, "cannot contain |"},
 		"nested reference in account": {func(c *config.Component) {
 			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "[[WHICH]]", Rights: config.StringList{"read"}}}}
-		}, "[[...]]"},
+		}, "[[B]]"},
+		"inner reference in account": {func(c *config.Component) {
+			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "[SVC_[WHICH]]", Rights: config.StringList{"read"}}}}
+		}, "[[B]]"},
 		"line break in condition": {func(c *config.Component) {
 			c.Files[0].Permissions = &config.Permissions{Condition: "A=1\nOR B=1", Grant: []*config.Grant{{Account: "NS", Rights: config.StringList{"read"}}}}
 		}, "line breaks"},
@@ -459,6 +462,14 @@ components:
 			secure:    []string{"OTHER"},
 			notSecure: []string{"SVC_ACCOUNT", "DATADIR"},
 			warnings:  []string{"directories:"},
+		},
+		{
+			name: "set by an action", scope: "perMachine", props: "  SVC_ACCOUNT: {}\n  ACCOUNT_SOURCE: {}\n  DATA_ROOT: {}",
+			extra: folderGrant + "customActions:\n" +
+				"  - { id: SetAccount, setProperty: { name: SVC_ACCOUNT, value: '[ACCOUNT_SOURCE]' }, schedule: [{ sequence: execute, after: CostFinalize }] }\n" +
+				"  - { id: SetData, setDirectory: { directory: INSTALLDIR, value: '[DATA_ROOT]x' }, schedule: [{ sequence: execute, after: CostFinalize }] }\n",
+			secure:    []string{"OTHER"},
+			notSecure: []string{"SVC_ACCOUNT", "ACCOUNT_SOURCE", "DATA_ROOT", "INSTALLDIR"},
 		},
 		{
 			name: "dual scope", scope: "perUserOrMachine", props: "  SVC_ACCOUNT: { secure: true }",
