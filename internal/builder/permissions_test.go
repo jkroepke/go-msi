@@ -467,12 +467,12 @@ components:
 			warnings:  []string{"directories:"},
 		},
 		{
-			name: "set by an action", scope: "perMachine", props: "  SVC_ACCOUNT: {}\n  ACCOUNT_SOURCE: {}\n  DATA_ROOT: {}",
+			name: "set by an action", scope: "perMachine", props: "  SVC_ACCOUNT: {}\n  ACCOUNT_SOURCE: {}\n  DATA_ROOT: {}\n  WHICH: {}",
 			extra: folderGrant + "customActions:\n" +
-				"  - { id: SetAccount, setProperty: { name: SVC_ACCOUNT, value: '[ACCOUNT_SOURCE]' }, schedule: [{ sequence: execute, after: CostFinalize }] }\n" +
+				"  - { id: SetAccount, setProperty: { name: SVC_ACCOUNT, value: '[ACCOUNT_SOURCE][[WHICH]]' }, schedule: [{ sequence: execute, after: CostFinalize }] }\n" +
 				"  - { id: SetData, setDirectory: { directory: INSTALLDIR, value: '[DATA_ROOT]x' }, schedule: [{ sequence: execute, after: CostFinalize }] }\n",
 			secure:    []string{"OTHER"},
-			notSecure: []string{"SVC_ACCOUNT", "ACCOUNT_SOURCE", "DATA_ROOT", "INSTALLDIR"},
+			notSecure: []string{"SVC_ACCOUNT", "ACCOUNT_SOURCE", "DATA_ROOT", "INSTALLDIR", "WHICH"},
 		},
 		{
 			name: "dual scope", scope: "perUserOrMachine", props: "  SVC_ACCOUNT: { secure: true }",

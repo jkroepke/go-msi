@@ -434,7 +434,7 @@ func (b *build) actionSources(sources map[string]bool) {
 				continue
 			}
 
-			for _, name := range propertyRefs(value) {
+			for _, name := range innerRefs(value) {
 				if !sources[name] {
 					sources[name] = true
 					changed = true
@@ -485,4 +485,31 @@ func (b *build) uiSetProperties() map[string]bool {
 	}
 
 	return set
+}
+
+// innerRefs lists the names after every [ in a formatted string, those of
+// nested references ([[NAME]], [A[B]]) included, which propertyRefs skips.
+func innerRefs(text string) []string {
+	var out []string
+
+	for i := range len(text) {
+		if text[i] != '[' {
+			continue
+		}
+
+		end := i + 1
+		for end < len(text) && (text[end] == '_' || text[end] == '.' || isAlnum(text[end])) {
+			end++
+		}
+
+		if name := text[i+1 : end]; config.IsIdentifier(name) {
+			out = append(out, name)
+		}
+	}
+
+	return out
+}
+
+func isAlnum(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
