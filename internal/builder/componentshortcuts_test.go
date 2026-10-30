@@ -503,3 +503,35 @@ func TestShortcutCarrierNotPermanent(t *testing.T) {
 		t.Errorf("%d carriers with condition SITE, want 1", siteCarriers)
 	}
 }
+
+// Builds that made the carrier of a permanent component permanent left its
+// ComponentId registered after uninstall, so the carrier of a permanent
+// component gets a ComponentId of its own: the same component without
+// permanent keeps the old one.
+func TestShortcutCarrierGUIDOfPermanentComponent(t *testing.T) {
+	t.Parallel()
+
+	carrierGUID := func(permanent bool) any {
+		res := mustBuild(t, shortcutConfig(t, fmt.Sprintf(`
+  - id: Conf
+    permanent: %v
+    files:
+      - source: app.exe
+        shortcuts: [{ name: Edit }]
+`, permanent)))
+
+		for _, row := range rows(t, res.Database, "Component") {
+			if row[0] != "Conf" {
+				return row[1]
+			}
+		}
+
+		t.Fatal("no generated shortcut component")
+
+		return nil
+	}
+
+	if kept, removable := carrierGUID(false), carrierGUID(true); kept == removable {
+		t.Errorf("carrier of a permanent component has the ComponentId %v of a removable one", kept)
+	}
+}

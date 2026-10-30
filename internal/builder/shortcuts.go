@@ -239,7 +239,33 @@ func (b *build) shortcutComponent(info *componentInfo, dirID string) string {
 		attributes |= comp64Bit
 	}
 
-	var guid any = uuid5(namespaceComponent, b.upgradeCode+"|"+bitness+"|shortcuts|"+carrier)
+	guid := b.carrierGUID(info, own, bitness, carrier)
+
+	b.table("Component").Add(carrier, guid, dirID, attributes, nullable(comp.Condition), registry)
+	b.table("Registry").Add(registry, registryRoots["HKCU"], `Software\[Manufacturer]\[ProductName]`, valueName, "#1", carrier)
+	b.dirs[dirID].used = true
+	b.carriers[comp.ID] = append(b.carriers[comp.ID], carrier)
+
+	return carrier
+}
+
+// carrierGUID returns the ComponentId of a shortcut carrier: generated from
+// the upgrade code, its bitness and key, or the component's own guid when
+// the component of shortcuts only is the carrier.
+func (b *build) carrierGUID(info *componentInfo, own bool, bitness, carrier string) any {
+	comp := info.cfg
+
+	seed := b.upgradeCode + "|" + bitness + "|shortcuts|" + carrier
+
+	// Builds before this rule made the carrier of a permanent component
+	// permanent too, and Windows keeps a permanent ComponentId registered
+	// after uninstall, so a later package with the same code would keep its
+	// shortcuts as well. A new code leaves that registration behind.
+	if !own && info.attributes&compPermanent != 0 {
+		seed += "|removable"
+	}
+
+	var guid any = uuid5(namespaceComponent, seed)
 
 	// A component of shortcuts only is the carrier, so its guid applies.
 	if own {
@@ -259,12 +285,7 @@ func (b *build) shortcutComponent(info *componentInfo, dirID string) string {
 		b.uniqueGUID(info.cfg.Path(info.index), comp.ID, guid)
 	}
 
-	b.table("Component").Add(carrier, guid, dirID, attributes, nullable(comp.Condition), registry)
-	b.table("Registry").Add(registry, registryRoots["HKCU"], `Software\[Manufacturer]\[ProductName]`, valueName, "#1", carrier)
-	b.dirs[dirID].used = true
-	b.carriers[comp.ID] = append(b.carriers[comp.ID], carrier)
-
-	return carrier
+	return guid
 }
 
 // writeShortcut writes a Shortcut row. seed makes the generated key
