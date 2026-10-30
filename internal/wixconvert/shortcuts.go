@@ -85,8 +85,11 @@ func (c *converter) workingDirectory(s *omap, e *elem, fileDir string) {
 	}
 }
 
-// placeShortcut puts a Shortcut outside a File onto the file it starts, or
-// makes it a shortcut of its component.
+// placeShortcut puts a Shortcut outside a File onto the file it starts when
+// that file is in the shortcut's component, or makes it a shortcut of its
+// component. A shortcut moved onto a file in another component would take
+// that component's lifetime, such as permanence, and its target formats empty
+// when an upgrade leaves that component alone.
 func (c *converter) placeShortcut(pending pendingShortcut) {
 	elm := pending.e
 
@@ -97,7 +100,7 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 	}
 
 	target := elm.attr("Target")
-	if file := c.targetFile(target); file != nil {
+	if file := c.targetFile(target); file != nil && file.comp == pending.comp {
 		s := c.shortcut(elm, pending.comp.dir, pending.tree)
 		c.workingDirectory(s, elm, file.dir)
 		file.out.add("shortcuts", s)

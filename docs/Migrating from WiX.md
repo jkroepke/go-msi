@@ -502,6 +502,12 @@ A shortcut starts in its program's folder. Shortcuts to folders and to
 programs outside the package are component shortcuts with `folder` or
 `program`. Advertised shortcuts (`Advertise="yes"`) are not supported.
 
+`msi-builder convert` moves a shortcut onto its file only when the file is
+in the shortcut's own component. Otherwise the shortcut stays a component
+shortcut with the WiX target as `program`. On the file it would take the
+file component's lifetime, such as `permanent`, and a `[#file]` target
+formats empty in an upgrade that leaves that component alone.
+
 ## Services
 
 ```xml

@@ -263,14 +263,7 @@ func (c *converter) emitUpgrade() {
 	}
 
 	for _, upgradeElem := range c.upgrades {
-		if strings.Trim(strings.ToLower(upgradeElem.attr("Id")), "{}") == upgradeCode {
-			c.todof(upgrade, "", upgradeElem.line,
-				"an <Upgrade> for the package's own UpgradeCode is a hand-made major upgrade; msi-builder writes its own, check the upgrade keys")
-
-			continue
-		}
-
-		c.emitRelated(upgrade, upgradeElem)
+		c.emitRelated(upgrade, upgradeElem, strings.Trim(strings.ToLower(upgradeElem.attr("Id")), "{}") == upgradeCode)
 	}
 
 	if c.major == nil && len(c.upgrades) == 0 {
@@ -326,10 +319,20 @@ func (c *converter) emitMajor(upgrade *omap, major *elem) {
 	}
 }
 
-func (c *converter) emitRelated(upgrade *omap, upgradeElem *elem) {
+// emitRelated converts the UpgradeVersion rows of an Upgrade element. For
+// the package's own UpgradeCode only the detect-only rows carry over: the
+// rows that remove older versions are the major upgrade msi-builder writes
+// itself.
+func (c *converter) emitRelated(upgrade *omap, upgradeElem *elem, own bool) {
 	for _, kid := range upgradeElem.kids {
-		if !kid.is("UpgradeVersion") {
+		switch {
+		case !kid.is("UpgradeVersion"):
 			c.todof(upgrade, "", kid.line, "<%s> in <Upgrade> has no counterpart", kid.qname())
+
+			continue
+		case own && !kid.yes("OnlyDetect"):
+			c.todof(upgrade, "", kid.line,
+				"an UpgradeVersion for the package's own UpgradeCode is a hand-made major upgrade; msi-builder writes its own, check the upgrade keys")
 
 			continue
 		}
