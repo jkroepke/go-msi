@@ -38,7 +38,7 @@ var heading = regexp.MustCompile("(?m)^#+ (.+)$")
 // twice. Subtests are named after the heading above the example. Each file
 // a source or license names is created: a versioned program for .exe and
 // .dll, text otherwise, and a folder source gets a program, a .pdb and a
-// text file, and so is each file that icons and binaries name.
+// text file. Each file that icons and binaries name is text too.
 func TestGuideExamples(t *testing.T) {
 	t.Parallel()
 

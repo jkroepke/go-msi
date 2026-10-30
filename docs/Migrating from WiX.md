@@ -6,7 +6,7 @@ today and want to build the same package with msi-builder. It shows how a
 what msi-builder does not do.
 
 Most of a WiX file has no counterpart at all: msi-builder writes component
-key paths, cabinets, short names, `ServiceControl` rows, Start menu cleanup
+key paths, cabinets, short names, `ServiceControl` elements, Start menu cleanup
 and the wizard's dialogs itself. A port is therefore usually much shorter
 than the `.wxs` file it replaces. A test builds every YAML example on this
 page with this version of msi-builder. The XML snippets use WiX v4 and later
@@ -126,10 +126,11 @@ msi-builder does the same by default:
 
 | WiX | msi-builder |
 |---|---|
-| `MediaTemplate`, `Media`, `EmbedCab="yes"`, `Compressed="yes"` | One embedded LZX cabinet; `package.compression` and `package.cabinet` change it |
+| `MediaTemplate`, `Media`, `EmbedCab`, `Compressed="yes"` | Embedded LZX cabinets, split automatically for large payloads; `package.compression`, `package.cabinet` and `package.embedCabinets` change it |
 | `InstallerVersion` | 5.0; `package.installerVersion` sets another |
-| `KeyPath="yes"` | The first file of a component, else its first registry value, else its folder |
-| `Guid="*"`, `ProductCode="*"` (v3 `Product Id="*"`) | Generated from the upgrade code and stable names |
+| `KeyPath="yes"` on the first file, or on the component | The first file of a component, else its first registry value, else its folder; `keyPath` names another one |
+| `Guid="*"` | Component GUIDs are generated from the upgrade code and stable names |
+| `ProductCode="*"` (v3 `Product Id="*"`) | Generated from the upgrade code, the version, the platform and the inputs: an unchanged rebuild keeps it, any change gives a new one |
 | `ComponentGroup`, `ComponentGroupRef`, `ComponentRef`, `FeatureRef` | Features list their components; without `features` every component is in one feature |
 | `ServiceControl` for the package's own service | Started on install, stopped on install and uninstall, deleted on uninstall, with `Wait="yes"` |
 | `RemoveFolder` and an HKCU `RegistryValue` key path next to a Start menu shortcut | Written for every shortcut and profile folder |
@@ -154,7 +155,7 @@ msi-builder does the same by default:
 | `Feature` | `features` |
 | `Component` | `components` |
 | `File` | `components[].files` |
-| Heat harvesting, `Files` (v4) | A folder `source` ending in `/` |
+| Heat harvesting, `Files` (v5) | A folder `source` ending in `/` |
 | `CreateFolder` | `components[].createFolder` |
 | `RemoveFile`, `RemoveFolder` | `components[].removeFiles` |
 | `util:RemoveFolderEx` | `components[].purge` |
@@ -168,7 +169,7 @@ msi-builder does the same by default:
 | `util:EventSource` | `components[].eventLog` |
 | `fw:FirewallException` | `firewall` |
 | `PermissionEx` (SDDL), `Permission` | `permissions.sddl`, `folderPermissions.sddl` |
-| `util:PermissionEx` | `permissions.grant`, `folderPermissions.grant` |
+| `util:PermissionEx` | `permissions.grant`, `folderPermissions.grant`; on a registry key, `permissions.sddl` |
 | `Property` | `properties` |
 | `RegistrySearch`, `DirectorySearch`, `FileSearch`, `ComponentSearch` | `properties.<NAME>.search` |
 | `Launch` (v3 `Condition` under `Product`) | `launchConditions` |
@@ -234,12 +235,17 @@ upgrade:
       property: OLDX86FOUND
 ```
 
-- `Schedule` takes the same names in `removeOld`. WiX's default is
+- `Schedule` takes the same names in `removeOld`: `afterInstallValidate`,
+  `afterInstallInitialize`, `afterInstallExecute` and
+  `afterInstallFinalize`; `afterInstallExecuteAgain` has no counterpart, use
+  `afterInstallExecute`. WiX's default is
   `afterInstallValidate`; msi-builder's is `afterInstallInitialize`, which
   also removes the old version first, but inside the installation, so a
   failed upgrade puts the old version back.
-- `AllowDowngrades="yes"` is `downgrade: allow`, and
-  `IgnoreRemoveFailure="yes"` is `ignoreRemoveFailure: true`.
+- `AllowDowngrades="yes"` has no direct counterpart: msi-builder never
+  removes a newer version. `downgrade: allow` and `downgrade: ignore`
+  install the older version next to the newer one.
+- `IgnoreRemoveFailure="yes"` is `ignoreRemoveFailure: true`.
 - WiX sets `WIX_UPGRADE_DETECTED` during an upgrade, msi-builder sets
   `OLDERVERSIONBEINGUPGRADED`. If your conditions use the WiX name, keep it
   with `upgrade.property: WIX_UPGRADE_DETECTED`, and
@@ -307,10 +313,14 @@ components:
   becomes a `setDirectory` custom action. Often a standard folder does the
   same: `[%SYSTEMROOT]\Temp\Hello` is `WindowsFolder/Temp/Hello`.
 - A WiX `RegistrySearch` that restores the install folder from the last
-  install is `installDir.remember: true`. It writes its own registry value,
-  though, so the first upgrade from the WiX package does not find the WiX
-  value; keep the WiX search in `properties` for that (see
-  [Properties and searches](#properties-and-searches)).
+  install is `installDir.remember: true`. It writes its own value,
+  `InstallDir` under `HKLM\Software\<manufacturer>\<product name>`, so the
+  first upgrade from the WiX package does not find the WiX value. To keep
+  the WiX value instead, leave `remember` out, keep the WiX registry value
+  in `registry`, and turn the search into a `search` of the install folder
+  property, such as `properties.INSTALLFOLDER.search` (see
+  [Properties and searches](#properties-and-searches)). Use one of the two,
+  not both.
 
 ## Components, files and features
 
@@ -319,17 +329,18 @@ components:
 | `Component Id`, `Guid`, `Directory`, `Condition` (v3 child `Condition`) | `id`, `guid`, `directory`, `condition` |
 | `Permanent`, `NeverOverwrite`, `SharedDllRefCount`, `Transitive` | `permanent`, `neverOverwrite`, `sharedDllRefCount`, `transitive` |
 | `Bitness="always32"`, `"always64"` (v3 `Win64`) | `bitness: 32`, `64` |
+| `KeyPath="yes"` on a later file or a registry value | `keyPath` |
 | `File Source`, `Name`, `Id` | `source`, `name`, `id` |
 | `Checksum`, `Vital`, `ReadOnly`, `Hidden`, `System` | `checksum`, `vital`, `readOnly`, `hidden`, `system` |
 | `DefaultVersion`, `CompanionFile` | `version` |
 
-A program (`.exe`, `.dll`) must have a version resource, as Windows
-Installer's file rules expect. For one without, add
-`allowUnversionedExecutable: true` to the file.
+msi-builder requires a version resource on programs (`.exe`, `.dll`),
+because an upgrade can lose a program without one.
+`allowUnversionedExecutable: true` on the file allows it, with a warning.
 
 A feature lists its components, by ID or in place. `Level="1"` is the
-default, `Level="2"` (or any level above `INSTALLLEVEL`) is `default: off`,
-and `Level="0"` is `default: disabled`:
+default, `Level="2"` is `default: off`, `Level="0"` is
+`default: disabled`, and any other level goes into `level`:
 
 ```xml
 <Feature Id="Main" Title="Hello">
@@ -360,8 +371,9 @@ features:
     components: [Manual]
 ```
 
-`Display`, `AllowAbsent` and `ConfigurableDirectory` are `display`,
-`allowAbsent` and `directory` on the feature.
+`AllowAbsent` and `ConfigurableDirectory` are `allowAbsent` and
+`directory` on the feature, and `Display` is `display` with the values
+`expanded`, `collapsed` and `hidden`.
 
 Files that Heat harvested, or a v4 `Files` element, become a folder
 source. Every file below the folder is installed in the same structure:
@@ -570,6 +582,8 @@ firewall:
   [YAML Schema Design](design/yaml-schema.md).
 - The core `PermissionEx` with an `Sddl` attribute, and `Permission`,
   replace the permissions; write an SDDL string in `sddl` for those.
+  Registry values take only `sddl`, so a `util:PermissionEx` on a registry
+  key becomes an SDDL string too.
 - `Scope="any"` is the default; `remoteAddresses` limits the rule and
   `profiles` the networks.
 
@@ -619,6 +633,7 @@ element in a sequence becomes a `schedule` placement of that entry:
 | `Property` + `Value`, or `SetProperty` | `setProperty: {name, value}` |
 | `Directory` + `Value`, or `SetDirectory` | `setDirectory` |
 | `FileRef` (v3 `FileKey`) + `ExeCommand`; `Directory` + `ExeCommand` | `run` (hidden window, output in the log) or `exec` |
+| `Property` + `ExeCommand` | `execProperty` |
 | `WixQuietExec` / `CAQuietExec` with the command in a property | `run` |
 | `BinaryRef` (v3 `BinaryKey`) + `DllEntry` | `dll` with a `binaries` entry |
 | `BinaryRef` + `ExeCommand` | `exe` with a `binaries` entry |
@@ -733,8 +748,11 @@ components:
 ```
 
 `purge` deletes the component's folder on uninstall, but not when an
-upgrade replaces the product, and it only accepts folders outside the
-install folder. It takes a `condition`, such as `DELETE_DATA="1"`.
+upgrade replaces the product. The folder must be outside the install
+folder, written as a path below a standard folder like
+`CommonAppDataFolder/Example/Hello`; a public directory ID such as
+`DATADIR`, which the command line could point anywhere, is rejected. It
+takes a `condition`, such as `DELETE_DATA="1"`.
 
 ## Signing
 
@@ -755,17 +773,18 @@ msi-builder signs on Linux and macOS too; see [Signing](signing.md).
 | Drivers (`difx:Driver`, DIFxApp, driver install custom actions) | Not supported |
 | `util:XmlFile`, `util:XmlConfig` | Ship the complete file, or edit it with a `run` action (no rollback) |
 | `util:EventManifest` | Install the manifest file and register it with `wevtutil`, see below |
-| `CopyFile`, `DuplicateFile`, `MoveFile` | Install the file twice, in two components |
+| `CopyFile`, `DuplicateFile` of a package file | Install the file twice, in two components |
+| `MoveFile`, `CopyFile` of a file already on the machine | A `run` action |
 | `IniFile` | Ship the complete file; `.url` shortcuts are supported |
 | `Class`, `TypeLib`, `AppId` (COM) | Write the registry values with `registry` |
 | `util:User`, `util:Group`, `util:FileShare`, `util:PerformanceCategory`, IIS, SQL and HTTP extensions | A `run` action, if you need it |
 | `util:CloseApplication` | The built-in files-in-use dialog and Restart Manager |
 | `util:BroadcastEnvironmentChange`, `util:BroadcastSettingChange` | None; see [Environment variables](#environment-variables) |
 | `DiskPrompt`, `Media DiskPrompt` and `VolumeLabel` | Leave them out: they only matter for packages on several disks |
-| Several `Media` disks, spanned cabinets | Large payloads are split into cabinets beside the `.msi` (`package.embedCabinets: false`) |
+| Several `Media` disks, spanned cabinets | Large payloads are split into several cabinets automatically; above 2 GB, `package.embedCabinets: false` puts them beside the `.msi` |
 | XML fragments, `<?include?>`, raw table XML | No XML input; `tables` adds tables the schema does not cover, but cannot change the standard ones |
 | Hand-built dialogs | `ui.dialogs` fields |
-| Merge modules (`Merge`, `MergeRef`), patches, transforms (`.mst`), Burn bundles | Not supported |
+| Merge modules (`Merge`, `MergeRef`), patches, transforms (`.mst`), Burn bundles | Never supported; ship a new package instead of a patch |
 | Advertised shortcuts and installs (`Advertise="yes"`) | Never supported |
 | VBScript and JScript custom actions | Never supported; use a `run` action |
 | `WixExitEarlyWithSuccess` | A launch condition, which stops the install as a failure |
