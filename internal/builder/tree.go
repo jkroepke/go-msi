@@ -928,6 +928,10 @@ func (b *build) features() error {
 
 		tbl.Add(feature.ID, parentID, nullable(feature.Title), nullable(feature.Description), disp, *feature.Level, nullable(feature.Directory), attrs)
 
+		for _, cond := range feature.Conditions {
+			b.table("Condition").Add(feature.ID, cond.Value(), cond.FullCondition())
+		}
+
 		for _, component := range feature.Components {
 			for _, id := range b.featureComponents(component.ID) {
 				featureComps.Add(feature.ID, id)

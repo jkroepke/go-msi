@@ -124,6 +124,11 @@ var defs = map[string][]string{ //nolint:gochecknoglobals // lookup table
 		"Control_Cancel|S50||Identifier|Control|2||||Defines the cancel control. Hitting escape or clicking on the close icon on the dialog is equivalent " +
 			"to pushing this button.",
 	},
+	"Condition": {
+		"Feature_|s38|K|Identifier|Feature|1||||Reference to a Feature entry in Feature table.",
+		"Level|i2|K||||0|32767||New selection Level to set in Feature table if Condition evaluates to TRUE.",
+		"Condition|S255||Condition||||||Expression evaluated to determine if Level in the Feature table is to change.",
+	},
 	"Component": {
 		"Component|s72|K|Identifier||||||Primary key used to identify a particular component record.",
 		"ComponentId|S38||Guid||||||A string GUID unique to this component, version, and language.",

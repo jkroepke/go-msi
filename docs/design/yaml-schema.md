@@ -564,6 +564,8 @@ features:
     title: windows_exporter ${VERSION}
     description: The binary and configuration files for windows_exporter
     default: on                # on | off | disabled
+    conditions:                # level changes at a first install
+      - { condition: NOT VersionNT64, default: disabled }
     display: expanded          # expanded | collapsed | hidden
     directory: APPLICATIONFOLDER
     allowAbsent: false
@@ -590,6 +592,28 @@ features:
   also installs `off` features. Set `default` or `level`, not both; `level`
   is for packages that use more than these three levels.
 - `level: 0` disables a feature; `ADDLOCAL=ALL` cannot turn it on.
+- `conditions` are `Condition` table rows: each entry has a `condition`
+  and the `default` (`on`, `off`, `disabled`) or `level` that replaces the
+  feature's level when the condition is true. Two entries of one feature
+  cannot set the same level (the row key is feature and level); join their
+  conditions with `OR`. A condition cannot ask for a feature or component
+  state (`!`, `?`, `&`, `$`): the documentation says the engine evaluates
+  the table before it has them (not tested). The
+  builder writes each row as `NOT Installed AND (<condition>)`: the engine
+  evaluates the rows at every run, also with `ADDLOCAL` and at the
+  uninstall, and a feature that a row disables when the product is removed
+  keeps its files (INST-05). The conditions therefore
+  decide first installs and, in part, major upgrades; a feature disabled at the
+  first install can be added later with `ADDLOCAL`. A major upgrade
+  without the property drops a feature whose `disabled` condition is then
+  true (`ASSOC <> 1`), and the old version's copy is removed. A feature that is off by default and has no
+  `disabled` condition was kept by an upgrade when the old version had
+  installed it, and stayed absent when the old version had left it out,
+  even with its condition true; one that the old version had disabled
+  followed its condition. A condition with `default: off` was not tested
+  in an upgrade. A condition cannot use `Installed`, which the guard
+  makes always false.
+  When several conditions are true, the higher level won (INST-05).
 - Every component is in at least one feature (ICE21). A component used by
   two features is defined once in `components` and named by ID in both.
 - `allowAdvertise` defaults to `false`; advertised installs are not supported (section 6).

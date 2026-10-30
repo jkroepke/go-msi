@@ -1,10 +1,13 @@
 package wixconvert
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/jkroepke/msi-builder/internal/condition"
 )
 
 // addFeature indexes a Feature where it sits: in a feature, in a feature
@@ -203,25 +206,34 @@ func (c *converter) emitFeatures() {
 // featureLevel converts the Level of a feature, with its defines filled in.
 func (c *converter) featureLevel(out *omap, elm *elem) {
 	text := strings.TrimSpace(c.literal(elm.attr("Level")))
-
-	switch level, err := strconv.Atoi(text); {
-	case text == "" || err == nil && level == 1:
-	case err == nil && level == 0:
-		out.set("default", "disabled")
-	case err == nil && level != 2:
-		out.set("level", level)
-	case err == nil:
-		out.set("default", "off")
-	default:
-		out.set("default", "off")
-		c.todof(out, "default", elm.line, "the feature level %q is no number; convert assumed default off", text)
+	if text == "" {
+		return
 	}
+
+	if !validLevel(text) {
+		out.set("default", "off")
+		c.todof(out, "default", elm.line, "the feature level %q is not a number from 0 to %d; convert assumed default off", text, maxLevel)
+
+		return
+	}
+
+	if text != "1" {
+		conditionLevel(out, text)
+	}
+}
+
+// validLevel reports whether text is a feature level, a number from 0 to
+// maxLevel.
+func validLevel(text string) bool {
+	level, err := strconv.Atoi(text)
+
+	return err == nil && level >= 0 && level <= maxLevel
 }
 
 func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat list of independent WiX attributes
 	elm := feat.e
 	out := newMap()
-	out.order("id", "title", "description", "default", "level", "display", "directory", "allowAbsent", "components", "features")
+	out.order("id", "title", "description", "default", "level", "conditions", "display", "directory", "allowAbsent", "components", "features")
 	out.head = comments(elm)
 	out.set("id", elm.attr("Id"))
 	out.set("title", c.value(elm, "Title"))
@@ -261,12 +273,7 @@ func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat lis
 		c.todof(out, "", elm.line, "advertised features are never supported")
 	}
 
-	for _, k := range elm.kids {
-		if k.is("Level") || k.is("Condition") {
-			c.todof(out, "default", k.line, "conditional feature levels have no counterpart; the condition was %q",
-				strings.TrimSpace(k.attr("Condition")+k.text))
-		}
-	}
+	c.featureConditions(out, elm)
 
 	var ids []string
 
@@ -283,4 +290,84 @@ func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat lis
 	}
 
 	return out
+}
+
+// conditionLevel sets default for the levels it names (0, 1 and 2) and
+// level for any other; conditionalLevelProblem has checked the number.
+func conditionLevel(out *omap, level string) {
+	switch number, _ := strconv.Atoi(level); number {
+	case 0:
+		out.set("default", "disabled")
+	case 1:
+		out.set("default", "on")
+	case 2:
+		out.set("default", "off")
+	default:
+		out.set("level", number)
+	}
+}
+
+// maxLevel is the largest feature level (Feature.Level and Condition.Level
+// are i2 columns between 0 and 32767).
+const maxLevel = 32767
+
+// featureConditions converts the conditional levels of a feature: WiX v3
+// writes <Condition Level="0">text</Condition>, WiX v4 and later
+// <Level Value="0" Condition="..."/>.
+func (c *converter) featureConditions(out *omap, elm *elem) {
+	for _, kid := range elm.kids {
+		var level, cond string
+
+		switch {
+		case kid.is("Condition"):
+			level, cond = strings.TrimSpace(c.literal(kid.attr("Level"))), c.expand(kid, strings.TrimSpace(kid.text))
+		case kid.is("Level"):
+			level, cond = strings.TrimSpace(c.literal(kid.attr("Value"))), c.value(kid, "Condition")
+		default:
+			continue
+		}
+
+		if reason := conditionalLevelProblem(level, cond); reason != "" {
+			c.todof(out, "default", kid.line, "the conditional level %q with condition %q was not converted: %s", level, cond, reason)
+
+			continue
+		}
+
+		entry := newMap()
+		entry.order("condition", "default", "level")
+		entry.set("condition", cond)
+		conditionLevel(entry, level)
+		out.add("conditions", entry)
+	}
+}
+
+// conditionalLevelProblem says why a conditional level cannot become a
+// conditions entry, or returns "". A condition with ${NAME} references is
+// only checked once the variables are substituted.
+func conditionalLevelProblem(level, cond string) string {
+	if !validLevel(level) {
+		return fmt.Sprintf("the level is not a number from 0 to %d", maxLevel)
+	}
+
+	if strings.TrimSpace(cond) == "" {
+		return "the condition is empty"
+	}
+
+	if states := condition.States(cond); len(states) > 0 {
+		return "a feature condition cannot ask for feature or component states (" + strings.Join(states, ", ") + ")"
+	}
+
+	if slices.Contains(condition.Properties(cond), "Installed") {
+		return "Installed is always false there, because msi-builder applies feature conditions to first installs only"
+	}
+
+	if strings.Contains(cond, "${") {
+		return ""
+	}
+
+	if err := condition.Check(cond); err != nil {
+		return err.Error()
+	}
+
+	return ""
 }

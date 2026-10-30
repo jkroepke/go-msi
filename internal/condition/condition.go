@@ -306,7 +306,16 @@ func Properties(s string) []string {
 
 // ActionStates returns the feature and component action state references of
 // a condition (&Feature, $Component), in order.
-func ActionStates(s string) []string {
+func ActionStates(s string) []string { return prefixed(s, "&$") }
+
+// States returns the feature and component state references of a
+// condition, installed (!Feature, ?Component) and action (&Feature,
+// $Component), in order.
+func States(s string) []string { return prefixed(s, "!?&$") }
+
+// prefixed returns the references of a condition whose prefix is one of
+// prefixes, in order.
+func prefixed(s, prefixes string) []string {
 	l := &lexer{s: s}
 
 	var out []string
@@ -317,7 +326,7 @@ func ActionStates(s string) []string {
 			return out
 		}
 
-		if tok.kind == tokPrefix && (tok.text[0] == '&' || tok.text[0] == '$') {
+		if tok.kind == tokPrefix && strings.IndexByte(prefixes, tok.text[0]) >= 0 {
 			out = append(out, tok.text)
 		}
 	}

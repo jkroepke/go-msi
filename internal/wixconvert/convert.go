@@ -447,9 +447,9 @@ var packageElems = map[string]func(c *converter, e *elem){ //nolint:gochecknoglo
 
 // walkElem indexes one core element and reports whether it knows it.
 func (c *converter) walkElem(elm *elem, within scope) bool {
-	// A v3 feature condition is read by the feature; it is not a launch
-	// condition.
-	if elm.name == elemCondition && within.feature != nil {
+	// A feature's conditional levels (v3 Condition, v4 Level) are read by
+	// the feature; a v3 Condition there is not a launch condition.
+	if (elm.name == elemCondition || elm.name == "Level") && within.feature != nil {
 		return true
 	}
 
