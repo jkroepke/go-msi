@@ -50,6 +50,10 @@ features:
           - source: ${BINARY}
             name: windows_exporter.exe
             checksum: true
+            # End only processes that run this installation's binary, so a
+            # copy elsewhere or a Kubernetes HostProcess container keeps
+            # running.
+            close: true
         services:
           - name: windows_exporter
             description: Exports Prometheus metrics about the system
@@ -119,7 +123,7 @@ properties:
   SERVICE_ACCOUNT: {}
   SERVICE_PASSWORD: { hidden: true }
   # The Restart Manager would shut down every process holding a package
-  # file; ServiceControl and KillProcess already stop this installation.
+  # file; ServiceControl and close already stop this installation.
   MSIRESTARTMANAGERCONTROL: Disable
 
 customActions:
@@ -157,21 +161,6 @@ customActions:
     return: check
     schedule:
       - { sequence: execute, before: InstallServices, condition: CONFIG_FILE="config.yaml" AND $Executable=3 }
-
-  # Kill only processes that run this installation's binary, so a copy
-  # elsewhere or a Kubernetes HostProcess container keeps running.
-  - id: KillProcess
-    exec:
-      command: >-
-        "[System64Folder]WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive
-        -ExecutionPolicy Bypass -Command "Get-Process -Name windows_exporter -ErrorAction SilentlyContinue
-        | Where-Object Path -EQ '[APPLICATIONFOLDER]windows_exporter.exe' | Stop-Process -Force"
-      directory: System64Folder
-    execute: deferred
-    impersonate: false
-    return: ignore
-    schedule:
-      - { sequence: execute, before: RemoveFiles }
 
 icons:
   icon.ico: ${ICON}

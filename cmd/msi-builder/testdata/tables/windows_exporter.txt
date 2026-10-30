@@ -6,7 +6,7 @@ summary  4: prometheus-community
 summary  5: Installer
 summary  6: This installer database contains the logic and data required to install windows_exporter.
 summary  7: x64;1033
-summary  9: {E76C1216-0E9B-5F30-A7C0-A19B54587E0F}
+summary  9: {4DF45F8B-D23C-52F2-9BF0-D2FCDE436DBA}
 summary 12: 2026-01-02T03:04:05Z
 summary 13: 2026-01-02T03:04:05Z
 summary 14: 500
@@ -315,9 +315,13 @@ s72!	s72!
 APPLICATIONFOLDER	FirewallException_Firewall
 APPLICATIONFOLDER_textfile_inputs	APPLICATIONFOLDER_textfile_inputs
 
-== CustomAction (22 rows)
+== CustomAction (25 rows)
 Action	Type	Source	Target	ExtendedType
 s72!	i2	S72	S255	I4
+BuilderCloseExec	3073	BuilderRun	BuilderClose	
+BuilderCloseReset	51	BuilderCloseExec	|	
+BuilderCloseSchedule	1	BuilderRun	BuilderCloseSchedule	
+BuilderCloseSetA52F7C783FF0C5DA383E689E0A675C0E	51	BuilderCloseExec	[BuilderCloseExec][APPLICATIONFOLDER]windows_exporter.exe|	
 CheckExtraFlags	19		The parameter '--config.file' must not be included in EXTRA_FLAGS. Use CONFIG_FILE instead. Please remove it and try again.	
 CreateConfigFile	3073	BuilderRun	BuilderRun	
 CreateConfigFile.Data	51	CreateConfigFile	[APPLICATIONFOLDER]|"[%ComSpec]" /c TYPE NUL >>"[APPLICATIONFOLDER]config.yaml"	
@@ -326,7 +330,6 @@ FwAddRollback2DD00848	3426	System64Folder	"[System64Folder]netsh.exe" advfirewal
 FwClear2DD00848	3170	System64Folder	"[System64Folder]netsh.exe" advfirewall firewall delete rule name="windows_exporter" dir=in	
 FwRemove2DD00848	3170	System64Folder	"[System64Folder]netsh.exe" advfirewall firewall delete rule name="windows_exporter" dir=in	
 FwRemoveRollback2DD00848	3426	System64Folder	"[System64Folder]netsh.exe" advfirewall firewall add rule name="windows_exporter" dir=in action=allow protocol=tcp localport=[LISTEN_PORT] program="[#windows_exporter.exe]" remoteip=[FwIP2DD00848] description="windows_exporter HTTP endpoint"	
-KillProcess	3170	System64Folder	"[System64Folder]WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-Process -Name windows_exporter -ErrorAction SilentlyContinue | Where-Object Path -EQ '[APPLICATIONFOLDER]windows_exporter.exe' | Stop-Process -Force"	
 ServiceRecovery_windows_exporter	3170	System64Folder	"[System64Folder]sc.exe" failure "windows_exporter" reset= 0 actions= restart/60000/restart/60000/restart/60000	
 SetARPINSTALLLOCATION	51	ARPINSTALLLOCATION	[APPLICATIONFOLDER]	
 SetArg_windows_exporter_1	51	Arg_windows_exporter_1	--config.file="[APPLICATIONFOLDER]config.yaml"	
@@ -413,10 +416,14 @@ Name	Data
 s72!	v0
 icon.ico	[binary 70 bytes]
 
-== InstallExecuteSequence (51 rows)
+== InstallExecuteSequence (54 rows)
 Action	Condition	Sequence
 s72!	S255	I2
 AllocateRegistrySpace	NOT Installed	1550
+BuilderCloseExec	BuilderCloseExec	3499
+BuilderCloseReset		3497
+BuilderCloseSchedule		1399
+BuilderCloseSetA52F7C783FF0C5DA383E689E0A675C0E	$Executable=2 OR $Executable=3	3498
 CheckExtraFlags	EXTRA_FLAGS AND (EXTRA_FLAGS >< "--config.file")	1499
 CostFinalize		1000
 CostInitialize		800
@@ -436,7 +443,6 @@ InstallFinalize		6600
 InstallInitialize		1500
 InstallServices	VersionNT	5800
 InstallValidate		1400
-KillProcess		3499
 LaunchConditions		100
 MigrateFeatureStates		1200
 MsiConfigureServices	VersionNT>=600	5850
@@ -508,7 +514,7 @@ s72!	s255	i2	i4	L0	s72
 scd_windows_exporter	windows_exporter	5	3	1	Executable
 scf_windows_exporter	windows_exporter	5	4	1	Executable
 
-== Property (21 rows)
+== Property (22 rows)
 Property	Value
 s72!	l0
 ALLUSERS	1
@@ -518,6 +524,7 @@ ARPNOREPAIR	1
 ARPPRODUCTICON	icon.ico
 ARPSIZE	10000
 ARPURLINFOABOUT	https://github.com/prometheus-community/windows_exporter
+BuilderCloseApps	$Executable=2 OR $Executable=31388|[APPLICATIONFOLDER]windows_exporter.exe
 CONFIG_FILE	config.yaml
 DefaultUIFont	DefaultFont
 ErrorDialog	ErrorDlg
@@ -525,7 +532,7 @@ LISTEN_PORT	9182
 MSIRESTARTMANAGERCONTROL	Disable
 Manufacturer	prometheus-community
 MsiHiddenProperties	SERVICE_PASSWORD
-ProductCode	{92FDE127-3AEF-5651-A6DE-D0726B08DDE7}
+ProductCode	{F54AA32A-2A4F-587E-BCF9-BE376D551941}
 ProductLanguage	1033
 ProductName	windows_exporter
 ProductVersion	0.32.0.5
