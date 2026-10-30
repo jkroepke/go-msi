@@ -996,6 +996,71 @@ warning too: the engine runs as SYSTEM, and a folder locked to
 `NetworkService` alone failed its install and the rollback of an upgrade. A
 `LockPermissions` custom table cannot coexist with it (ICE104, error 1941).
 
+**Grants.** `grant` in a `permissions` block of a file or service, or in
+`folderPermissions`, adds an access-allowed ACE to the DACL the object has
+after it is installed and keeps every ACE already there, inherited or
+explicit. That is what a data folder below `ProgramData` usually needs, and
+the account may come from a property, which `sddl` cannot do
+(specification section 17.7, SEC-02):
+
+```yaml
+folderPermissions:
+  grant:
+    - account: '[SERVICE_ACCOUNT]'   # formatted at install time
+      rights: [modify]               # names or hexadecimal masks
+      inherit: true                  # folders only; default true (OICI)
+  condition: ''                      # optional; applies to sddl and grant
+```
+
+- `account` is a SID string, a two-letter SDDL alias such as `NS` or `BU`,
+  one of the service manager's names `LocalSystem`,
+  `NT AUTHORITY\LocalService` and `NT AUTHORITY\NetworkService` (the
+  spellings `ServiceInstall` takes, mapped to their SIDs), `.\name` for a
+  local account, or another name for `LookupAccountNameW`, such as
+  `CONTOSO\svc`. Windows localizes the names of built-in accounts and
+  groups (`BUILTIN\Users`, `NT AUTHORITY\NETWORK SERVICE`), so use their
+  SIDs or aliases; a two-letter name that is an SDDL alias is read as the
+  alias. Spaces
+  around a formatted account are dropped. An account that contains `|` or
+  a control character, cannot be resolved or names a domain fails the
+  installation, and so does an empty one on a first install. An account
+  from a property is remembered per product, so a maintenance install (a
+  repair from Apps & Features, a self-repair, a feature added later, a
+  patch) whose properties in the account are all empty grants to the
+  account of the last successful install;
+  only an account that was never remembered is skipped there, with a log
+  line. Removing the product forgets it. A major upgrade is a first
+  install of the new product and needs the account again.
+- An inheriting grant on a folder that a property, an action or a dialog
+  can move, such as `INSTALLDIR`, gets a warning: `INSTALLDIR=C:\Windows`
+  would grant on that whole tree.
+- `rights` for files and folders: `full`, `modify`, `readExecute`, `read`
+  and `write` (the simple rights Explorer shows); for services: `full`
+  (`SERVICE_ALL_ACCESS`), `read` (`SERVICE_GENERIC_READ`), `start`, `stop`
+  and `pauseContinue`. A `0x` hexadecimal mask adds other rights of the
+  object; generic rights, `MAXIMUM_ALLOWED` and `ACCESS_SYSTEM_SECURITY` are
+  rejected, because an explicit ACE keeps them unmapped. The rights are
+  merged into the account's explicit allow ACE with the same inheritance,
+  if there is one.
+- Registry values cannot have grants: secure the key with `sddl`.
+- `sddl` and `grant` can be combined: the engine applies the SDDL when it
+  creates the object, then the grants are added to it.
+
+The builder lists the grants, each with the condition that its component
+is installed or repaired (`$Component=3`) and the block's condition, in the
+property `BuilderGrants`. Four actions on the embedded custom action DLL
+apply them, after `InstallFiles` (after `InstallServices` when the package
+has services) and before `StartServices`, so a service can use its folder
+when it starts: `BuilderGrantSchedule` evaluates the conditions and formats
+accounts and objects, the deferred `BuilderGrantExec` grants without
+impersonation (as LocalSystem in a per-machine install) and records the rights it added, `BuilderGrantRollback` takes exactly those
+away again, so rights an object had before a failed install or repair stay,
+and `BuilderGrantCommit` drops the record and remembers the accounts that
+came from properties. A repair grants again; an object that kept its ACE is
+left as it is (a file a `/fa` repair overwrote kept its ACE, SEC-02). Uninstalling does not take them away: the objects the
+package created are removed, and a folder that existed before keeps the
+ACE.
+
 **Registry values.**
 
 ```yaml

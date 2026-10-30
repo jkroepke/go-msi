@@ -291,10 +291,29 @@ func (p *Purge) Enabled() bool {
 }
 
 // Permissions secures an installed object with an SDDL string through
-// MsiLockPermissionsEx (specification section 6.2).
-type Permissions struct {
-	SDDL      string `yaml:"sddl"`
-	Condition string `yaml:"condition"`
+// MsiLockPermissionsEx (specification section 6.2), which replaces the
+// DACL, and grants rights that are added to the DACL the object has, by the
+// custom action DLL (specification section 17.7). Condition applies to both.
+type Permissions struct { //nolint:govet // field order is the YAML key order
+	SDDL      string   `yaml:"sddl"`
+	Grant     []*Grant `yaml:"grant"`
+	Condition string   `yaml:"condition"`
+}
+
+// Grant adds an access-allowed ACE for an account to the DACL of a file,
+// folder or service and keeps the ACEs that are already there.
+type Grant struct { //nolint:govet // field order is the YAML key order
+	// Account is formatted at install time: a [Property], a SID string, an
+	// SDDL alias such as NS, the service manager's names LocalSystem,
+	// NT AUTHORITY\LocalService and NT AUTHORITY\NetworkService, .\name
+	// for a local account, or another account name.
+	Account string `yaml:"account"`
+	// Rights are rights names or hexadecimal access masks
+	// (docs/design/yaml-schema.md, "Grants").
+	Rights StringList `yaml:"rights"`
+	// Inherit, for a folder only, makes the ACE apply to subfolders and
+	// files (OICI); it defaults to true.
+	Inherit *bool `yaml:"inherit"`
 }
 
 // File is a payload file.

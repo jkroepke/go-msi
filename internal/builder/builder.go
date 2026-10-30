@@ -118,7 +118,10 @@ type build struct { //nolint:govet // grouped by build step
 	lastScopeAction string
 	// runDLL is set once the custom action DLL of run actions is in the
 	// Binary table.
-	runDLL     bool
+	runDLL bool
+	// grants are the permission grants that grantActions turns into
+	// custom actions.
+	grants     []*grantInfo
 	cfg        *config.Config
 	numbered   map[string][]sequence.Numbered
 	tables     map[string]*msidb.Table

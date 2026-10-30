@@ -1,6 +1,7 @@
 # internal/cadll
 
-The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
+The custom action DLL of `run` actions and permission grants. Read the root
+`AGENTS.md` first.
 
 - `src/builderrun.c` is the whole DLL: freestanding C11, no C runtime, no SDK
   header. Every Win32 and MSI prototype it uses is declared in the file from
@@ -48,6 +49,23 @@ The custom action DLL of `run` actions. Read the root `AGENTS.md` first.
   CA-03 package that `internal/builder/nativetest` installs on Windows
   (`TestMsiexecRunActions`), natively on the x64 and arm64 runners. The x64
   package under emulation on arm64 passed once (CA-03) and is not rerun.
+- Permission grants (spec 17.7) use the exports `BuilderGrantSchedule`
+  (immediate) and `BuilderGrant` (the deferred `BuilderGrantExec`, its
+  rollback and the commit action, told apart by the first character of
+  `CustomActionData`: `+`, `-`, `c`, and `x` for the commit of a removal). The schedule action reads the
+  `BuilderGrants` property, evaluates each line's condition, formats account
+  and object separately and rejects `|` and control characters in what a
+  property could inject. The deferred action records the rights it adds in
+  `HKCU\Software\msi-builder\GrantRollback\<ProductCode>` (the LocalSystem
+  hive) before it writes the DACL, so the rollback takes away only those;
+  never make the rollback revoke the authored mask, which strips rights an
+  object had before a failed repair or upgrade. An account from a property
+  is remembered by the commit action (`a` lines,
+  `HKLM\SOFTWARE\msi-builder\GrantAccounts\<ProductCode>`, value named
+  after the template), because `msiexec /fa` and Apps & Features
+  repairs run without the first install's command line properties (observed
+  on the CI runner, SEC-02). Wide strings in this part
+  are `u"..."` literals, which clang types as `unsigned short` arrays.
 - Never take code from another installer toolkit's custom action library;
   the Windows Installer custom action contract is documented by Microsoft
   and the spec (section 9.4).

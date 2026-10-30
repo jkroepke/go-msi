@@ -249,6 +249,13 @@ jobs:
         shell: bash
         run: go test -v -count=1 -run 'TestMsiexecOSProperties|TestMsiexecSearchesOSFileVersion|TestMsiexecUsesMsiFileHash|TestMsiexecUpgradeVersions|TestMsiexecFirewallPortLists' ./internal/builder/nativetest/
 
+      # Print what MsiLockPermissionsEx and permission grants do to the
+      # ACEs an object inherits or already has (MSISPEC-RESULTS SEC-02).
+      - name: go test (permission results)
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        shell: bash
+        run: go test -v -count=1 -run 'TestMsiexecSDDLWithoutProtection|TestMsiexecGrants' ./internal/builder/nativetest/
+
       # Print where upgrades of installDir.remember packages go, silently
       # and through the wizard (MSISPEC-RESULTS SEARCH-06, SEARCH-07, UI-08).
       - name: go test (remembered install folder results)
