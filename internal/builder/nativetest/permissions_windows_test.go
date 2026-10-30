@@ -71,8 +71,9 @@ func objectSDDL(t *testing.T, path string) string {
 // an SDDL string without the P (protected) flag (SEC-02): files and folders
 // still get a protected DACL with the authored ACEs only, so they drop what
 // they inherit, and a folder that existed before the install loses its own
-// explicit ACEs; a registry key reads back unprotected, with the authored
-// ACEs marked inherited and none of its parent's. An SDDL replaces the DACL
+// explicit ACEs; a registry key reads back with the authored ACEs and none
+// of its parent's, either unprotected with the ACEs marked inherited or
+// protected (both seen on the same runner image). An SDDL replaces the DACL
 // whatever its flags, which is why grants exist.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
@@ -121,9 +122,16 @@ func TestMsiexecSDDLWithoutProtection(t *testing.T) {
 	key := objectSDDL(t, `HKLM:\SOFTWARE\MsiBuilderTest\Sec02`)
 	t.Logf("SEC-02: after install, registry key: %s", key)
 
-	if strings.Contains(key, "D:P") || strings.Count(key, "(") != 3 ||
-		!strings.Contains(key, "(A;CIID;KA;;;SY)") || !strings.Contains(key, "(A;CIID;KA;;;BA)") || !strings.Contains(key, "(A;CIID;KR;;;NS)") {
-		t.Errorf("registry key: %s, want the authored ACEs, marked inherited, and no others", key)
+	// The key reads back in one of two forms on the same runner image:
+	// unprotected with the authored ACEs marked inherited, or protected with
+	// them as authored. Either way they are the only ACEs.
+	inherited := !strings.Contains(key, "D:P") &&
+		strings.Contains(key, "(A;CIID;KA;;;SY)") && strings.Contains(key, "(A;CIID;KA;;;BA)") && strings.Contains(key, "(A;CIID;KR;;;NS)")
+	protected := strings.Contains(key, "D:P") &&
+		strings.Contains(key, "(A;CI;KA;;;SY)") && strings.Contains(key, "(A;CI;KA;;;BA)") && strings.Contains(key, "(A;CI;KR;;;NS)")
+
+	if strings.Count(key, "(") != 3 || (!inherited && !protected) {
+		t.Errorf("registry key: %s, want the authored ACEs and no others", key)
 	}
 
 	msiexecQuiet(t, filepath.Join(filepath.Dir(path), "uninstall.log"), "/x", path)
