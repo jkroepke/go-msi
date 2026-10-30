@@ -535,16 +535,7 @@ func (cc *compConv) registryData(elm *elem, typ string) any {
 	conv := cc.c
 
 	if typ != typeMultiString {
-		if elm.has("Value") {
-			if v := conv.value(elm, "Value"); v != "" || typ != "" && typ != "expandString" {
-				return v
-			}
-
-			// An empty string value, which a registry entry must state.
-			return emptyText{}
-		}
-
-		return conv.expand(elm, strings.TrimSpace(elm.text))
+		return cc.scalarData(elm, typ)
 	}
 
 	var values []string
@@ -565,6 +556,22 @@ func (cc *compConv) registryData(elm *elem, typ string) any {
 	}
 
 	return values
+}
+
+// scalarData is the value of a RegistryValue that is not a multi-string.
+func (cc *compConv) scalarData(elm *elem, typ string) any {
+	conv := cc.c
+
+	if !elm.has("Value") {
+		return conv.expand(elm, strings.TrimSpace(elm.text))
+	}
+
+	if v := conv.value(elm, "Value"); v != "" || typ != "" && typ != "expandString" {
+		return v
+	}
+
+	// An empty string value, which a registry entry must state.
+	return emptyText{}
 }
 
 func joinKey(parent, key string) string {

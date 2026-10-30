@@ -162,7 +162,7 @@ func isEmpty(value any) bool {
 }
 
 // node turns a value into a YAML node.
-// emptyText is an empty string that is written, as '', where set leaves
+// emptyText is an empty string that is written, as ”, where set leaves
 // other empty strings out.
 type emptyText struct{}
 

@@ -183,6 +183,20 @@ func (c *converter) uiLaunch(wizard *omap) {
 
 	launch := wizard.child("launch")
 
+	c.launchFile(wizard, launch, target)
+
+	if p := props["WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT"]; p != nil {
+		launch.set("text", c.value(p, "Value"))
+	}
+
+	if p := props["WIXUI_EXITDIALOGOPTIONALCHECKBOX"]; p == nil || c.value(p, "Value") != "1" {
+		launch.set("checked", false)
+	}
+}
+
+// launchFile sets the file the finish page launches: the WixShellExecTarget
+// file, or the file the launch action runs.
+func (c *converter) launchFile(wizard, launch *omap, target *elem) {
 	switch custom := c.actions[c.launchAction]; {
 	case target != nil:
 		v := c.value(target, "Value")
@@ -200,14 +214,6 @@ func (c *converter) uiLaunch(wizard *omap) {
 		}
 	default:
 		c.todof(wizard, "launch", 0, "the launch checkbox starts no file of the package that convert can tell; set launch.file")
-	}
-
-	if p := props["WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT"]; p != nil {
-		launch.set("text", c.value(p, "Value"))
-	}
-
-	if p := props["WIXUI_EXITDIALOGOPTIONALCHECKBOX"]; p == nil || c.value(p, "Value") != "1" {
-		launch.set("checked", false)
 	}
 }
 
