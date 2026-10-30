@@ -7,13 +7,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jkroepke/msi-builder/internal/ice"
 )
 
 // installScopeConfig is a dual-scope package with the wizard's scope and
 // install folder pages, a remembered install folder, a Start menu shortcut,
 // an HKMU value, an HKCR value, a variable that follows the context
 // (ENVVAR-03) and two components that install in one context only, one
-// with an HKLM value and one with an HKCU value. The components are
+// with an HKLM value, an HKLM removal and an event log source, and one
+// with an HKCU value. The components are
 // transitive, so a repair evaluates their conditions again. ${SCOPE} and
 // ${PLATFORM} choose the variant.
 const installScopeConfig = `schema: msi-builder/v1
@@ -38,6 +41,8 @@ components:
     scope: perMachine
     transitive: true
     registry: [{ root: HKLM, key: Software\MsiBuilderTest\ScopeMachine, name: Only, value: machine }]
+    removeRegistry: [{ root: HKLM, key: Software\MsiBuilderTest\ScopeMachineOld }]
+    eventLog: [{ source: MsiBuilderScopeTest, messageFile: "[SystemFolder]EventCreate.exe" }]
   - id: UserOnly
     directory: INSTALLDIR
     scope: perUser
@@ -252,5 +257,31 @@ func TestICEInstallScope(t *testing.T) {
 	for _, scope := range []string{"perUserOrMachine", "perMachineOrUser"} {
 		path, _ := buildInstallScope(t, t.TempDir(), scope, "x64")
 		requireCleanICE(t, path, cub)
+
+		findings, err := ice.Run(path, cub)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// ICE105 warns about the HKLM rows of the perMachine component in
+		// a package that starts per user, never about the machine
+		// variable or the removal, and is silent in one that starts per
+		// machine (ENVVAR-03).
+		var ice105 []string
+
+		for _, finding := range findings {
+			if finding.ICE == "ICE105" && finding.Type != ice.Info {
+				ice105 = append(ice105, finding.String())
+				t.Logf("ENVVAR-03 %s: %s", scope, finding)
+
+				if finding.Table != "Registry" || finding.Type != ice.Warning {
+					t.Errorf("%s: unexpected ICE105 finding %s", scope, finding)
+				}
+			}
+		}
+
+		if got := len(ice105) > 0; got != (scope == "perUserOrMachine") {
+			t.Errorf("%s: ICE105 findings %q; want warnings only in perUserOrMachine", scope, ice105)
+		}
 	}
 }

@@ -110,3 +110,33 @@ func TestContextComponents(t *testing.T) {
 		t.Errorf("variables in components %v, want two carriers", carriers)
 	}
 }
+
+// TestContextCarrierAttributes checks that the carriers of a variable that
+// follows the context keep the condition, transitive and 64-bit flags of
+// its component, so that a repair evaluates them again (ENVVAR-03).
+func TestContextCarrierAttributes(t *testing.T) {
+	t.Parallel()
+
+	const (
+		transitive = 0x40
+		bits64     = 0x100
+	)
+
+	extra := `  - { id: Path, directory: INSTALLDIR, condition: OPT, transitive: true, environment: [{ name: PATH, value: '[INSTALLDIR]', action: append }] }
+ui: { enabled: false }
+`
+	database := buildScope(t, "perMachineOrUser", "x64", extra).Database
+
+	want := map[string]string{"=-*PATH": "(OPT) AND ALLUSERS=1", "=-PATH": "(OPT) AND NOT ALLUSERS"}
+
+	for _, row := range rows(t, database, "Environment") {
+		carrier := fmt.Sprint(row[3])
+		cond := cell(t, database, "Component", "Condition", func(r []any) bool { return r[0] == carrier })
+		attrs, _ := cell(t, database, "Component", "Attributes", func(r []any) bool { return r[0] == carrier }).(int)
+
+		if cond != want[fmt.Sprint(row[1])] || attrs&transitive == 0 || attrs&bits64 == 0 {
+			t.Errorf("carrier of %v: condition %v, attributes %#x; want %s, transitive and 64-bit",
+				row[1], cond, attrs, want[fmt.Sprint(row[1])])
+		}
+	}
+}

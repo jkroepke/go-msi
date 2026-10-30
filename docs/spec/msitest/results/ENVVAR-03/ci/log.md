@@ -32,7 +32,8 @@ The server's `ALLUSERS` in the repair log was `1` per machine and empty per
 user, so the transitive conditions kept the same components.
 
 As a standard user, `perUserOrMachine` installed per user with exit 0
-without writing the HKLM value or the machine variable; `perMachineOrUser`
+without writing the HKLM value or the machine variable (the user's own
+environment was not checked); `perMachineOrUser`
 failed with 1925 as in INST-02.
 
 ICE suite (`TestICEInstallScope`, no errors): `perUserOrMachine` got one
@@ -40,6 +41,7 @@ new warning, `ICE105 warning: msidbRegistryRootLocalMachine or
 msidbRegistryRootUsers cannot be defined as root for per user install of
 application. [Registry.Root]`, for the HKLM row of the conditioned
 component. `perMachineOrUser` got no ICE105 finding, and neither package
-got one for the `*` Environment row. ICE105 therefore does not read
-component conditions, warns rather than fails for HKLM rows, and checks
-only a package that starts per user (inferred from the two packages).
+got one for the `*` Environment row. So ICE105 posts a warning for an
+HKLM row although its component's condition keeps it out of a per-user
+install, and posted nothing for the package that starts per machine.
+Whether it reports an unconditioned HKLM row as an error was not tested.

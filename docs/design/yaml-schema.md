@@ -318,11 +318,13 @@ components:
 A `perMachine` component's resources are not installed per user at all,
 so a value that both contexts need belongs under HKMU, which follows the
 context. `scope` on a component of a package with a single context is an
-error. ICE105 does not read component conditions: in a `perUserOrMachine`
-package it warns about the HKLM and HKU `Registry` rows of a `perMachine`
-component (and the builder passes that warning on), while it reported
-nothing for them in a `perMachineOrUser` package and nothing for machine
-variables in either (ENVVAR-03).
+error. In a `perUserOrMachine` package ICE105 warns about the HKLM
+`Registry` rows of a `perMachine` component although the condition keeps
+them out of a per-user install, and the builder passes that warning on;
+it reported nothing for them in a `perMachineOrUser` package and nothing
+for the machine variable in either (ENVVAR-03). HKU values, HKLM
+`removeRegistry` entries and event log sources in such a component were
+not run through msiexec as a standard user.
 
 ### 4.3 `upgrade`
 
@@ -605,7 +607,7 @@ components:
     environment: []
     createFolder: false
     condition: ""
-    scope: ""                        # dual packages only: perMachine | perUser, see "Install scope"
+    # scope: perMachine              # dual packages only: perMachine | perUser, see "Install scope"
     permanent: false
     neverOverwrite: false
     preserve: false                  # neverOverwrite + a late removeOld, see below
