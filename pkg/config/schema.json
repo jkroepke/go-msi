@@ -1817,7 +1817,7 @@
         },
         "removeRegistry": {
           "type": "array",
-          "description": "Registry keys or values deleted when the component is installed, before its own values are written.",
+          "description": "Registry keys or values deleted when the component is installed, before its own values are written, or keys deleted when it is removed.",
           "items": {
             "type": "object",
             "properties": {
@@ -1846,6 +1846,15 @@
               "name": {
                 "type": "string",
                 "description": "The value to delete. Leave it out to delete the key with all its values and subkeys."
+              },
+              "on": {
+                "enum": [
+                  "install",
+                  "uninstall",
+                  "both"
+                ],
+                "default": "install",
+                "description": "When to delete: install (also on a repair), uninstall (whole keys only; the key is never created) or both."
               }
             },
             "required": [

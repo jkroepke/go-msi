@@ -757,7 +757,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 		generated := profileKeyPath(cfg, known, comp)
 		files := v.componentFiles(cfg, p, comp, fileIDs, paths, generated)
 		v.componentRegistry(p, comp, regIDs, perUser)
-		v.componentRemoveRegistry(p, comp, removeIDs, perUser)
+		v.componentRemoveRegistry(p, comp, removeIDs, regIDs, perUser)
 		v.componentRemoveFiles(cfg, p, comp, known, removeFileIDs)
 		keyFile := v.componentKeyFile(p, comp, files, generated)
 
@@ -1278,37 +1278,67 @@ func (v *validator) registryLocation(entryPath, root, key string, perUser bool) 
 }
 
 // componentRemoveRegistry checks the registry keys and values a component
-// deletes when it is installed.
-func (v *validator) componentRemoveRegistry(p string, c *Component, ids map[string]bool, perUser bool) {
-	seen := make(map[[3]string]bool)
+// deletes when it is installed or removed. Uninstall removals are Registry
+// rows, so their ids share regIDs with the registry entries.
+func (v *validator) componentRemoveRegistry(p string, c *Component, ids, regIDs map[string]bool, perUser bool) {
+	seen := make(map[[4]string]bool)
 
 	for j, entry := range c.RemoveRegistry {
 		entryPath := fmt.Sprintf("%s.removeRegistry[%d]", p, j)
 
-		if entry.ID != "" {
-			if !IsIdentifier(entry.ID) || len(entry.ID) > MaxIdentifierLength {
-				v.errorf(entryPath+".id", "%q is not an identifier of at most %d characters", entry.ID, MaxIdentifierLength)
-			}
-
-			if ids[entry.ID] {
-				v.errorf(entryPath+".id", "removeRegistry id %s is defined twice", entry.ID)
-			}
-
-			ids[entry.ID] = true
+		if entry.On != "" {
+			v.oneOf(entryPath+".on", entry.On, RemoveOnInstall, RemoveOnUninstall, RemoveOnBoth)
 		}
 
+		v.removeRegistryID(entryPath, entry, ids, regIDs)
 		v.registryLocation(entryPath, entry.Root, entry.Key, perUser)
 
 		if entry.Name == "-" {
 			v.errorf(entryPath+".name", "leave name out to delete the whole key")
 		}
 
-		key := [3]string{entry.Root, strings.ToLower(entry.Key), strings.ToLower(entry.Name)}
+		// Only a whole key can be removed at uninstall without writing
+		// anything at install: a Registry row with a name and no value
+		// writes an empty value (REG-04).
+		if entry.Name != "" && (entry.On == RemoveOnUninstall || entry.On == RemoveOnBoth) {
+			v.errorf(entryPath+".name", "on: %s removes whole keys only; a value the package writes is removed with it already", entry.On)
+		}
+
+		key := [4]string{entry.Root, strings.ToLower(entry.Key), strings.ToLower(entry.Name), cmp.Or(entry.On, RemoveOnInstall)}
 		if seen[key] {
 			v.errorf(entryPath, "this key or value is already removed by this component")
 		}
 
 		seen[key] = true
+	}
+}
+
+// removeRegistryID checks the id of a removeRegistry entry: unique among
+// the RemoveRegistry rows when it removes at install, and among the
+// Registry rows when it removes at uninstall.
+func (v *validator) removeRegistryID(entryPath string, entry *RemoveRegistry, ids, regIDs map[string]bool) {
+	if entry.ID == "" {
+		return
+	}
+
+	if !IsIdentifier(entry.ID) || len(entry.ID) > MaxIdentifierLength {
+		v.errorf(entryPath+".id", "%q is not an identifier of at most %d characters", entry.ID, MaxIdentifierLength)
+	}
+
+	if entry.On != RemoveOnUninstall {
+		if ids[entry.ID] {
+			v.errorf(entryPath+".id", "removeRegistry id %s is defined twice", entry.ID)
+		}
+
+		ids[entry.ID] = true
+	}
+
+	if entry.On == RemoveOnUninstall || entry.On == RemoveOnBoth {
+		if regIDs[entry.ID] {
+			v.errorf(entryPath+".id", "registry id %s is defined twice", entry.ID)
+		}
+
+		regIDs[entry.ID] = true
 	}
 }
 

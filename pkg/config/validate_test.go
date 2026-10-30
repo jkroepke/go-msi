@@ -102,6 +102,11 @@ func TestValidateAccepted(t *testing.T) {
 			"{component: {guid: '{6a0d3c2e-5b1f-4e7a-9c3d-2f8e1b4a7c60}'}}]}}\n",
 		"remove registry": base + strings.Replace(appComponent, "    files:",
 			"    removeRegistry: [{root: HKCU, key: Software\\Classes\\old}, {root: HKMU, key: Software\\X, name: Legacy}]\n    files:", 1),
+		// The same key at install and at uninstall, and an uninstall id
+		// that a RemoveRegistry row of another entry uses too.
+		"remove registry on uninstall": base + strings.Replace(appComponent, "    files:",
+			"    removeRegistry: [{id: A, root: HKCR, key: '*\\shell\\app'}, {id: B, root: HKCR, key: '*\\shell\\app', on: uninstall}, "+
+				"{id: C, root: HKLM, key: Software\\X, on: both}, {id: A, root: HKLM, key: Software\\Y, on: uninstall}]\n    files:", 1),
 		// Program Files and HKCR follow the context of a dual package.
 		"dual scope": pkg(`{platform: x64, scope: perUserOrMachine}`) + strings.Replace(appComponent, "    files:",
 			"    registry: [{root: HKCR, key: .app, value: App.File}, {root: HKMU, key: Software\\X, name: N, value: v}]\n    files:", 1),
@@ -937,6 +942,23 @@ func TestValidate(t *testing.T) {
 		"remove registry bad id": {
 			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{id: 'a b', root: HKLM, key: Software\\X}]\n    files:", 1),
 			sevError, "components[0].removeRegistry[0].id", "not an identifier",
+		},
+		"remove registry bad on": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X, on: never}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[0].on", "not one of",
+		},
+		"remove registry value on uninstall": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X, name: V, on: uninstall}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[0].name", "whole keys only",
+		},
+		"remove registry uninstall twice": {
+			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{root: HKLM, key: Software\\X, on: uninstall}, {root: HKLM, key: software\\x, on: uninstall}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[1]", "already removed",
+		},
+		"remove registry uninstall id of a registry entry": {
+			base + strings.Replace(appComponent, "    files:", "    registry: [{id: A, root: HKLM, key: Software\\X, name: N, value: v}]\n"+
+				"    removeRegistry: [{id: A, root: HKLM, key: Software\\Y, on: both}]\n    files:", 1),
+			sevError, "components[0].removeRegistry[0].id", "registry id A is defined twice",
 		},
 		"remove registry id twice": {
 			base + strings.Replace(appComponent, "    files:", "    removeRegistry: [{id: A, root: HKLM, key: Software\\X}]\n    files:", 1) +
