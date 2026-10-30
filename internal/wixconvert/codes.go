@@ -118,6 +118,7 @@ func (c *converter) checkCodes() {
 
 	c.noteDroppedValues()
 	c.noteAdvertised()
+	c.noteHarvested()
 
 	if c.built == nil {
 		c.noteLateRemoval(open)
@@ -189,6 +190,28 @@ func (c *converter) noteAdvertised() {
 		lines)
 }
 
+// noteHarvested notes the folder sources that a WiX Files glob became under
+// a late removal: WiX gave every harvested file a component and code of its
+// own, a folder source takes no guid, so the removal of the WiX package
+// deletes those files (UPG-11).
+func (c *converter) noteHarvested() {
+	upgrade := c.out.mapAt("upgrade")
+	if upgrade == nil || !lateRemoval[upgrade.str("removeOld")] {
+		return
+	}
+
+	for _, comp := range c.comps {
+		if comp.out == nil || !comp.harvests {
+			continue
+		}
+
+		c.todof(comp.out, "", comp.e.line,
+			"WiX gave each file of this Files glob a component of its own, and a folder source takes no guid, so the late "+
+				"removeOld deletes these files on the first upgrade from the WiX package; remove the old version early "+
+				"(afterInstallInitialize), or list the files with the guid WiX gave each one")
+	}
+}
+
 // openCodes returns the components whose Guid WiX generated and that have
 // no code of the WiX package, and counts the ones that have one.
 func (c *converter) openCodes() ([]*comp, int) {
@@ -200,6 +223,8 @@ func (c *converter) openCodes() ([]*comp, int) {
 		switch {
 		case comp.out != nil && comp.pinned:
 			pinned++
+		case comp.harvests:
+			// noteHarvested covers it: a folder source takes no guid.
 		case comp.generated && comp.out != nil && comp.out.get("guid") == nil:
 			// A dropped component installs nothing, so it loses nothing.
 			open = append(open, comp)

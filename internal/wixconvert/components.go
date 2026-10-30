@@ -1,6 +1,7 @@
 package wixconvert
 
 import (
+	"path"
 	"strconv"
 	"strings"
 
@@ -707,6 +708,19 @@ func (cc *compConv) folderFiles(elm *elem) {
 
 	files.set("exclude", exclude)
 	cc.out.add("files", files)
+	cc.countFiles(src, include != "")
+}
+
+// countFiles counts a Files element: a glob harvests, and one file is the
+// key file when it comes first.
+func (cc *compConv) countFiles(src string, glob bool) {
+	switch {
+	case glob:
+		cc.cp.harvests = true
+	case cc.files == 0:
+		cc.keyFile = path.Base(src)
+	}
+
 	cc.files++
 }
 

@@ -185,6 +185,9 @@ type comp struct {
 	// when the built package gave it one.
 	generated bool
 	pinned    bool
+	// harvests is set when a Files glob became a folder source, which
+	// takes no guid.
+	harvests bool
 }
 
 type group struct {

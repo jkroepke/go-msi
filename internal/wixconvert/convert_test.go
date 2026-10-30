@@ -373,6 +373,70 @@ func TestConvertBuiltCodesOnce(t *testing.T) {
 	}
 }
 
+// A Files element outside a component: one file matches by its name, and a
+// glob, which became a folder source without a guid, gets the early removal
+// as its note instead of a guid to copy.
+func TestConvertBuiltCodesFiles(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade Schedule="afterInstallExecute" DowngradeErrorMessage="A newer version is installed." />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" />
+    </StandardDirectory>
+    <Files Include="dist\tools\**" Directory="INSTALLFOLDER" Subdirectory="tools" />
+    <Files Include="dist\LICENSE.txt" Directory="INSTALLFOLDER" />
+  </Package>
+</Wix>
+`
+	built := &wixconvert.BuiltPackage{Name: "hello.msi", Components: []wixconvert.BuiltComponent{
+		{ID: "fil1", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "INSTALLFOLDER", KeyFile: "LICENSE.txt"},
+		{ID: "fil2", Code: "{00000000-0000-4000-8000-000000000002}", Directory: "dirA1", KeyFile: "tool.exe"},
+	}}
+
+	for _, opts := range []wixconvert.Options{{Built: built}, {}} {
+		res, err := wixconvert.Convert(strings.NewReader(src), opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		lines := globNotes(t, res.Notes, opts.Built != nil)
+		if !slices.Equal(lines, []int{7}) {
+			t.Errorf("Built %t: glob notes in lines %v, want [7]", opts.Built != nil, lines)
+		}
+
+		if pinned := strings.Contains(string(res.YAML), "guid: '{00000000-0000-4000-8000-000000000001}'"); pinned != (opts.Built != nil) {
+			t.Errorf("Built %t: LICENSE.txt pinned %t:\n%s", opts.Built != nil, pinned, res.YAML)
+		}
+
+		if strings.Contains(string(res.YAML), "000000000002") {
+			t.Errorf("the folder source got a guid:\n%s", res.YAML)
+		}
+	}
+}
+
+// globNotes returns the lines of the Files glob notes and fails on any
+// other note about codes but the late removal of the file in line 8.
+func globNotes(t *testing.T, notes []wixconvert.Note, built bool) []int {
+	t.Helper()
+
+	var lines []int
+
+	for _, note := range notes {
+		switch {
+		case strings.HasPrefix(note.Message, "WiX gave each file of this Files glob a component of its own"):
+			lines = append(lines, note.Line)
+		case strings.Contains(note.Message, "no matching component"), strings.HasPrefix(note.Message, "WiX generated the Guid"):
+			if built || !strings.Contains(note.Message, "the component in line 8;") {
+				t.Errorf("unexpected note %v", note)
+			}
+		}
+	}
+
+	return lines
+}
+
 // Advertised shortcuts get a note when the old version is removed late,
 // unless convert left them out.
 func TestConvertAdvertisedLateRemoval(t *testing.T) {

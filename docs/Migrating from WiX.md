@@ -885,3 +885,5 @@ untested for advertised shortcuts).
 package, also the ones WiX generated. A folder source cannot take a `guid`,
 so its files are safe only with the early removal, which a package with
 `preserve: true` cannot use.
+Convert leaves a `# TODO` on a WiX `Files` glob it turned into a folder
+source under a late removal.
