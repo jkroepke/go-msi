@@ -70,7 +70,7 @@ versioning after 1.0.
   `sign`, `verify`, `completion` and `version`, built on `spf13/cobra`.
 - [`internal/wixconvert`](internal/wixconvert): the best-effort WiX `.wxs` to
   YAML converter behind `msi-builder convert`, on `encoding/xml` only. It
-  indexes the source in one pass and emits an ordered `omap`, so the YAML keeps
+  reads the source in one pass and emits an ordered `omap`, so the YAML keeps
   the schema's key order; everything without a counterpart becomes a
   `# TODO` comment next to the key it belongs to and a `Note` for stderr.
   Snapshots in `testdata/` (regenerate with `MSI_BUILDER_UPDATE_SNAPSHOTS=1`)
