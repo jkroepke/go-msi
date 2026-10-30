@@ -50,9 +50,10 @@ features:
           - source: ${BINARY}
             name: windows_exporter.exe
             checksum: true
-            # End only processes that run this installation's binary, so a
-            # copy elsewhere or a Kubernetes HostProcess container keeps
-            # running.
+            # ServiceControl stops the service, but its process can outlive
+            # STOPPED and hold the binary. close ends it before RemoveFiles,
+            # only processes that run this installation's binary, so a copy
+            # elsewhere or a Kubernetes HostProcess container keeps running.
             close: true
         services:
           - name: windows_exporter
