@@ -163,6 +163,8 @@ BOOL WINAPI FindClose(HANDLE);
 DWORD WINAPI GetFileAttributesW(const WCHAR *);
 DWORD WINAPI GetLongPathNameW(const WCHAR *, WCHAR *, DWORD);
 int WINAPI CompareStringOrdinal(const WCHAR *, int, const WCHAR *, int, BOOL);
+DWORD WINAPI GetFinalPathNameByHandleW(HANDLE, WCHAR *, DWORD, DWORD);
+DWORD WINAPI ExpandEnvironmentStringsW(const WCHAR *, WCHAR *, DWORD);
 
 // advapi32.dll
 BOOL WINAPI OpenThreadToken(HANDLE, DWORD, BOOL, HANDLE *);
@@ -271,6 +273,11 @@ enum {
     AUTHORED_INHERIT_FLAGS = VALID_INHERIT_FLAGS & ~INHERITED_ACE,
 
     KEY_QUERY_VALUE = 0x1,
+    KEY_WOW64_64KEY = 0x100,
+    REG_EXPAND_SZ = 2,
+    FILE_READ_ATTRIBUTES = 0x80,
+    FILE_SHARE_ALL = 7,
+    FILE_FLAG_BACKUP_SEMANTICS = 0x02000000,
     KEY_SET_VALUE = 0x2,
     REG_SZ = 1,
     REG_DWORD = 4,
@@ -1678,22 +1685,26 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
 //
 //     <condition> US <component> US <mode> US <anchor> US <property>
 //
-// (US is U+001F). The builder puts the component state into the condition
-// ($Component=2 AND NOT UPGRADINGPRODUCTCODE for a removal, $Component=3
-// for an install), so the uninstall half of a major upgrade, which runs this
-// action of the old package with UPGRADINGPRODUCTCODE set, keeps the folder.
-// For an entry whose condition holds, the action reads the folder from the
-// property, refuses a folder that is not one an application could own (a
-// drive root, a folder that is or holds a standard folder, a folder in the
-// Windows folder, a junction or another reparse point), and lists the
-// folders below it. It then adds temporary RemoveFile rows for the
+// (US is U+001F). The action runs before CostInitialize, because costing
+// collects the folders that RemoveFile.DirProperty names. Component states
+// are not known yet, so the rows carry the component and the engine applies
+// them only when it installs or removes it; the condition (REMOVE AND NOT
+// UPGRADINGPRODUCTCODE for a removal) only skips listing where no row could
+// apply, and keeps the folder in the uninstall half of a major upgrade,
+// which runs this action of the old package with UPGRADINGPRODUCTCODE set.
+// For an entry whose condition holds, the action clears the anchor, reads
+// the folder from the property, refuses a folder that is not one an
+// application could own (a drive root, a folder that is or holds a standard
+// folder or the profiles folder, a profile, a folder in the Windows folder,
+// a reparse point, a folder reached through one), and lists the folders
+// below it. It then adds temporary RemoveFile rows for the
 // component, with the entry's install mode: for each subfolder, deepest
 // first, a `*` row and a folder row on a property of its own, then a folder
 // row for the folder itself, whose `*` row the package carries already (it
 // also keeps the RemoveFile table in the package). Last it sets the anchor
 // property that those two rows name, which stays empty when the entry is
 // skipped, so the package's own rows then remove nothing. The engine's
-// RemoveFiles action deletes the files and folders and restores them on a
+// RemoveFiles action deletes the files and folders and backs them up for a
 // rollback. A folder behind a junction is not entered, so the junction and
 // the folders above it stay. The action never fails the installation: what
 // it cannot do is logged as `BuilderRemoveFolders: ...` and left in place.
@@ -1709,6 +1720,10 @@ static const WCHAR msgRemoveRoot[] = u"refused, a drive root";
 static const WCHAR msgRemoveStandard[] = u"refused, it is or holds the standard folder";
 static const WCHAR msgRemoveWindows[] = u"refused, inside the Windows folder";
 static const WCHAR msgRemoveReparse[] = u"refused, a junction or another reparse point";
+static const WCHAR msgRemoveRedirected[] = u"refused, reached through a junction, a symbolic link or a substituted drive, which leads to";
+static const WCHAR msgRemoveProfiles[] = u"refused, it is a user profile, the profiles folder or a folder that holds it";
+static const WCHAR profileListKey[] = u"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList";
+static const WCHAR profilesDirectory[] = u"ProfilesDirectory";
 static const WCHAR msgRemoveSkipLink[] = u"left in place with the folders above it, a junction or another reparse point";
 static const WCHAR msgRemoveList[] = u"cannot list the folder";
 static const WCHAR msgRemoveTable[] = u"cannot add RemoveFile rows";
@@ -1793,29 +1808,116 @@ static int plainPath(const WCHAR *path)
                 return 0;
             }
         }
+        // Windows drops a trailing space or dot of a name, so
+        // "C:\Program Files \" opens Program Files but compares unlike it.
+        if ((*p == ' ' || *p == '.') && (p[1] == '\\' || p[1] == 0)) {
+            return 0;
+        }
     }
     return 1;
 }
 
-// refusal returns why a folder must not be removed, or 0. folder is a long
-// path with a trailing backslash; protectedName receives the property name
-// of a standard folder it reaches.
+// finalPath returns the path an existing folder has after every junction,
+// symbolic link and substituted drive on the way is resolved, as C:\...\
+// with a trailing backslash, or 0 when it cannot be opened or is not on a
+// local drive.
+static WCHAR *finalPath(const WCHAR *path)
+{
+    HANDLE file = CreateFileW(path, FILE_READ_ATTRIBUTES, FILE_SHARE_ALL, 0, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+    WCHAR *out = 0;
+    DWORD n = GetFinalPathNameByHandleW(file, 0, 0, 0);
+    if (n) {
+        out = HeapAlloc(GetProcessHeap(), 0, ((SIZE_T)n + 2) * sizeof(WCHAR));
+        DWORD got = out ? GetFinalPathNameByHandleW(file, out, n, 0) : 0;
+        // \\?\C:\... for a local drive; \\?\UNC\... is a network share.
+        if (got < 7 || got >= n || out[0] != '\\' || out[1] != '\\' || out[2] != '?' || out[3] != '\\' || out[5] != ':' || !plainPath(out + 4)) {
+            HeapFree(GetProcessHeap(), 0, out);
+            out = 0;
+        } else {
+            memcpy(out, out + 4, ((SIZE_T)got - 3) * sizeof(WCHAR));
+            got -= 4;
+            if (out[got - 1] != '\\') {
+                out[got++] = '\\';
+                out[got] = 0;
+            }
+        }
+    }
+    CloseHandle(file);
+    return out;
+}
+
+static int samePath(const WCHAR *a, const WCHAR *b)
+{
+    SIZE_T n = wlen(a);
+    return n == wlen(b) && CompareStringOrdinal(a, (int)n, b, (int)n, 1) == CSTR_EQUAL;
+}
+
+// profilesRoot returns the final path of the folder that holds the user
+// profiles (ProfilesDirectory, C:\Users by default), or 0.
+static WCHAR *profilesRoot(void)
+{
+    HANDLE key = 0;
+    WCHAR *raw = 0, *expanded = 0, *root = 0;
+    if (RegOpenKeyExW(HKLM_, profileListKey, 0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &key)) {
+        return 0;
+    }
+    DWORD kind = 0, size = 0;
+    if (!RegQueryValueExW(key, profilesDirectory, 0, &kind, 0, &size) && (kind == REG_SZ || kind == REG_EXPAND_SZ) && size) {
+        raw = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (SIZE_T)size + 2 * sizeof(WCHAR));
+        if (raw && !RegQueryValueExW(key, profilesDirectory, 0, &kind, (BYTE *)raw, &size)) {
+            DWORD n = ExpandEnvironmentStringsW(raw, 0, 0);
+            expanded = n ? HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, ((SIZE_T)n + 1) * sizeof(WCHAR)) : 0;
+            if (expanded && ExpandEnvironmentStringsW(raw, expanded, n) && expanded[0]) {
+                root = finalPath(expanded);
+            }
+        }
+    }
+    RegCloseKey(key);
+    HeapFree(GetProcessHeap(), 0, raw);
+    HeapFree(GetProcessHeap(), 0, expanded);
+    return root;
+}
+
+// inProfiles reports whether folder is the profiles folder, holds it, or is
+// a profile in it: another user's profile, Public or Default, which no
+// standard folder property of the installing account names.
+static int inProfiles(const WCHAR *folder)
+{
+    WCHAR *root = profilesRoot();
+    if (!root) {
+        return 0;
+    }
+    int hit = below(root, folder);
+    if (!hit && below(folder, root)) {
+        const WCHAR *rest = folder + wlen(root);
+        while (*rest && *rest != '\\') {
+            rest++;
+        }
+        hit = rest[0] == '\\' && rest[1] == 0;
+    }
+    HeapFree(GetProcessHeap(), 0, root);
+    return hit;
+}
+
+// refusal returns why a folder must not be removed, or 0. folder is the
+// final path with a trailing backslash; protectedName receives the
+// property name of a standard folder it reaches. Standard folders are
+// compared by their final paths too, so a link to one is caught.
 static const WCHAR *refusal(MSIHANDLE install, const WCHAR *folder, const WCHAR **protectedName)
 {
     if (wlen(folder) <= 3) {
         return msgRemoveRoot;
     }
-    DWORD attrs = GetFileAttributesW(folder);
-    if (attrs == INVALID_FILE_ATTRIBUTES || !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
-        return msgRemoveMissing;
-    }
-    if (attrs & FILE_ATTRIBUTE_REPARSE_POINT) {
-        return msgRemoveReparse;
+    if (inProfiles(folder)) {
+        return msgRemoveProfiles;
     }
     const WCHAR *why = 0;
     for (SIZE_T i = 0; !why && i < sizeof(protectedFolders) / sizeof(protectedFolders[0]); i++) {
         WCHAR *value = property(install, protectedFolders[i]);
-        WCHAR *full = value ? longPath(value) : 0;
+        WCHAR *full = value ? finalPath(value) : 0;
         const WCHAR *std = full ? full : value;
         if (std && wlen(std) && std[wlen(std) - 1] == '\\') {
             if (below(std, folder)) {
@@ -1827,6 +1929,43 @@ static const WCHAR *refusal(MSIHANDLE install, const WCHAR *folder, const WCHAR 
         }
         HeapFree(GetProcessHeap(), 0, full);
         HeapFree(GetProcessHeap(), 0, value);
+    }
+    return why;
+}
+
+// checkFolder resolves the folder a property names and returns why it must
+// not be removed, or 0 with *folder set to its path. *detail receives a
+// text to log after the reason, owned by the caller when *owned is set.
+static const WCHAR *checkFolder(MSIHANDLE install, WCHAR *path, WCHAR **folder, const WCHAR **detail, WCHAR **owned)
+{
+    if (!plainPath(path)) {
+        return msgRemovePath;
+    }
+    DWORD attrs = GetFileAttributesW(path);
+    if (attrs == INVALID_FILE_ATTRIBUTES || !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+        return msgRemoveMissing;
+    }
+    if (attrs & FILE_ATTRIBUTE_REPARSE_POINT) {
+        return msgRemoveReparse;
+    }
+    WCHAR *full = longPath(path), *final = finalPath(path);
+    const WCHAR *why = 0;
+    if (!full || !final) {
+        why = msgRemovePath;
+    } else if (!samePath(full, final)) {
+        // A junction or symbolic link above the folder, or a subst drive:
+        // the guards compare paths, so only a path without one is checked.
+        why = msgRemoveRedirected;
+        *detail = *owned = final;
+        final = 0;
+    } else {
+        why = refusal(install, final, detail);
+    }
+    HeapFree(GetProcessHeap(), 0, full);
+    if (why) {
+        HeapFree(GetProcessHeap(), 0, final);
+    } else {
+        *folder = final;
     }
     return why;
 }
@@ -2007,6 +2146,10 @@ static void removeEntry(MSIHANDLE install, MSIHANDLE view, WCHAR *line)
         logft(install, tmplRemove, msgRemoveData, 0, 0);
         return;
     }
+    // The package's own row removes whatever the anchor names, so a value
+    // from the command line or a transform must not survive a skip.
+    static const WCHAR none[] = {0};
+    MsiSetPropertyW(install, anchor, none);
     if (*line) {
         int cond = MsiEvaluateConditionW(install, line);
         if (cond != MSICONDITION_TRUE && cond != MSICONDITION_NONE) {
@@ -2016,8 +2159,8 @@ static void removeEntry(MSIHANDLE install, MSIHANDLE view, WCHAR *line)
             return;
         }
     }
-    WCHAR *value = property(install, name), *folder = 0;
-    const WCHAR *why = 0, *std = 0;
+    WCHAR *value = property(install, name), *folder = 0, *owned = 0;
+    const WCHAR *why = 0, *detail = 0;
     if (!value || !*trim(value)) {
         why = msgRemoveEmpty;
     } else {
@@ -2028,13 +2171,7 @@ static void removeEntry(MSIHANDLE install, MSIHANDLE view, WCHAR *line)
                 path[n] = '\\';
                 path[n + 1] = 0;
             }
-            if (!plainPath(path)) {
-                why = msgRemovePath;
-            } else if ((folder = longPath(path)) == 0) {
-                why = msgRemoveMissing;
-            } else {
-                why = refusal(install, folder, &std);
-            }
+            why = checkFolder(install, path, &folder, &detail, &owned);
             HeapFree(GetProcessHeap(), 0, path);
         } else {
             why = msgNoMemory;
@@ -2043,12 +2180,12 @@ static void removeEntry(MSIHANDLE install, MSIHANDLE view, WCHAR *line)
     if (why) {
         static const WCHAR space[] = u" ";
         wbuf text = {0, 0, 0};
-        const WCHAR *shown = folder ? folder : (value ? value : name);
-        if (wbufAdd(&text, why, wlen(why)) && (!std || (wbufAdd(&text, space, 1) && wbufAdd(&text, std, wlen(std))))) {
+        const WCHAR *shown = value ? trim(value) : name;
+        if (wbufAdd(&text, why, wlen(why)) && (!detail || (wbufAdd(&text, space, 1) && wbufAdd(&text, detail, wlen(detail))))) {
             logft(install, tmplRemove, shown, text.s, 0);
         }
         HeapFree(GetProcessHeap(), 0, text.s);
-        HeapFree(GetProcessHeap(), 0, folder);
+        HeapFree(GetProcessHeap(), 0, owned);
     } else {
         removeTree(install, view, component, mode[0] - '0', anchor, folder);
     }

@@ -52,7 +52,8 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     GetTickCount64:0 GetExitCodeProcess:8 CloseHandle:4 GetCurrentThread:0 \
     GetProcessHeap:0 HeapAlloc:12 HeapReAlloc:16 HeapFree:12 GetLastError:0 \
     MultiByteToWideChar:24 TerminateProcess:8 LocalFree:4 GetComputerNameW:8 \
-    FindFirstFileW:8 FindNextFileW:8 FindClose:4 GetFileAttributesW:4 GetLongPathNameW:12 CompareStringOrdinal:20 >"$tmp/$out/kernel32.def"
+    FindFirstFileW:8 FindNextFileW:8 FindClose:4 GetFileAttributesW:4 GetLongPathNameW:12 CompareStringOrdinal:20 \
+    GetFinalPathNameByHandleW:16 ExpandEnvironmentStringsW:12 >"$tmp/$out/kernel32.def"
   imports advapi32 OpenThreadToken:16 DuplicateTokenEx:24 CreateProcessAsUserW:44 SystemFunction036:8 \
     ConvertStringSidToSidW:8 LookupAccountNameW:28 GetNamedSecurityInfoW:32 SetNamedSecurityInfoW:28 \
     GetSecurityDescriptorControl:12 InitializeAcl:12 GetAce:12 AddAce:20 AddAccessAllowedAceEx:20 \

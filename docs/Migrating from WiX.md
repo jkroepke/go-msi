@@ -764,9 +764,16 @@ takes a `condition`, such as `DELETE_DATA="1"`.
 
 When the folder comes from a property, as `Property="APPLICATIONFOLDER"`
 with a registry search does, use `removeFolders` instead. It reads the
-property at install time and also removes the install folder:
+property before costing, as `RemoveFolderEx` does, so the property needs a
+search: `installDir.remember` for the install folder, `properties` with a
+`search` for any other folder:
 
 ```yaml
+installDir:
+  id: INSTALLFOLDER
+  name: Hello
+  remember: true                      # the RegistrySearch that RemoveFolderEx needs
+
 components:
   - files:
       - source: hello.exe
@@ -776,9 +783,10 @@ components:
 ```
 
 Like `purge`, it keeps the folder when an upgrade replaces the product,
-and the engine restores everything if the uninstall rolls back. It refuses
-drive roots, standard folders such as Program Files and the folders that
-hold them, folders in the Windows folder and junctions.
+and the engine's own file removal is expected to restore everything if the
+uninstall rolls back. It refuses drive roots, standard folders such as
+Program Files and the folders that hold them, user profiles, folders in
+the Windows folder and folders behind junctions.
 
 ## Signing
 

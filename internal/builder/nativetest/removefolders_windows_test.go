@@ -24,19 +24,26 @@ import (
 // outside the install dir find it again at uninstall. OLD_DIR is removed on
 // install. GUARD_WIN (inside the Windows folder) and GUARD_STD (a folder
 // that holds TemplateFolder, which StdInside points into it) must be
-// refused. FailRemove fails a removal after RemoveFiles when FAIL_REMOVE is
-// set, so the engine rolls the removal back.
+// refused, and so must GUARD_LINK, a folder reached through a junction.
+// FailRemove fails a removal after RemoveFiles when FAIL_REMOVE is set, so
+// the engine rolls the removal back. Swap replaces the listed folder
+// DATA_DIR\empty with a junction to OUTSIDE_DIR after the listing and
+// before RemoveFiles, the way a user who can write there could, to see
+// whether the engine's RemoveFiles follows it.
 const removeFoldersConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderRemoveFolders, manufacturer: msi-builder tests, version: %s, upgradeCode: 953f4393-d6f8-4869-9f33-427757ebacb1 }
 package: { platform: x64 }
-installDir: { name: MsiBuilderRemoveFolders }
+installDir: { name: MsiBuilderRemoveFolders, remember: true }
 properties:
   DATA_DIR:
     search: { registry: { root: HKLM, key: SOFTWARE\MsiBuilderRemoveFolders, name: DataDir, type: directory } }
   OLD_DIR: {}
   GUARD_WIN: {}
   GUARD_STD: {}
-  FAIL_REMOVE: {}
+  GUARD_LINK: {}
+  FAIL_REMOVE: { secure: true }
+  SWAP: { secure: true }
+  OUTSIDE_DIR: { secure: true }
 components:
   - files: [{ source: app.exe }]
     registry: [{ root: HKLM, key: SOFTWARE\MsiBuilderRemoveFolders, name: DataDir, value: '[DATA_DIR]' }]
@@ -46,16 +53,23 @@ components:
       - { property: OLD_DIR, on: install }
       - property: GUARD_WIN
       - property: GUARD_STD
+      - property: GUARD_LINK
 customActions:
   - id: StdInside
     setProperty: { name: TemplateFolder, value: '[GUARD_STD]Inner\' }
-    schedule: [{ sequence: execute, after: AppSearch, condition: GUARD_STD }]
+    schedule: [{ sequence: execute, after: AppSearch, condition: GUARD_STD }]   # before BuilderRemoveFolders, which runs right before CostInitialize
   - id: FailRemove
     run: { command: '"[System64Folder]cmd.exe" /c exit 1' }
     execute: deferred
     impersonate: false
     return: check
     schedule: [{ sequence: execute, after: RemoveFiles, condition: REMOVE~="ALL" AND FAIL_REMOVE="1" }]
+  - id: Swap
+    run: { command: '"[System64Folder]cmd.exe" /c rmdir "[DATA_DIR]empty" && mklink /J "[DATA_DIR]empty" "[OUTSIDE_DIR]"' }
+    execute: deferred
+    impersonate: false
+    return: check
+    schedule: [{ sequence: execute, before: RemoveFiles, condition: REMOVE~="ALL" AND SWAP="1" }]
 `
 
 // buildRemoveFolders writes one version of the FILE-11 package.
@@ -91,7 +105,7 @@ func buildRemoveFolders(t *testing.T, version string) (string, string) {
 
 // removeFoldersTree holds the folders the test fills and checks.
 type removeFoldersTree struct {
-	install, data, outside, old, guardWin, guardStd string
+	install, data, outside, old, guardWin, guardStd, guardLink string
 }
 
 func newRemoveFoldersTree() removeFoldersTree {
@@ -104,6 +118,8 @@ func newRemoveFoldersTree() removeFoldersTree {
 		old:      filepath.Join(data, "Old"),
 		guardWin: filepath.Join(os.Getenv("SystemRoot"), "MsiBuilderRemoveFolders"),
 		guardStd: filepath.Join(data, "Std"),
+		// Link is a junction to Outside; the guard sees the path through it.
+		guardLink: filepath.Join(data, "Link", "inner"),
 	}
 }
 
@@ -148,6 +164,13 @@ func (tree removeFoldersTree) fill(t *testing.T) {
 		t.Fatalf("mklink /J: %v\n%s", err, out)
 	}
 
+	writeFile(t, filepath.Join(tree.outside, `inner\k.txt`))
+
+	//nolint:gosec // test-controlled paths
+	if out, err := exec.CommandContext(t.Context(), "cmd", "/c", "mklink", "/J", filepath.Dir(tree.guardLink), tree.outside).CombinedOutput(); err != nil {
+		t.Fatalf("mklink /J: %v\n%s", err, out)
+	}
+
 	writeFile(t, filepath.Join(tree.old, `x\y.txt`))
 	writeFile(t, filepath.Join(tree.guardWin, "g.txt"))
 	writeFile(t, filepath.Join(tree.guardStd, `Inner\s.txt`))
@@ -161,6 +184,8 @@ func (tree removeFoldersTree) cleanup(packages ...string) {
 	}
 
 	_ = os.Remove(filepath.Join(tree.data, "link"))
+	_ = os.Remove(filepath.Join(tree.data, "empty"))
+	_ = os.Remove(filepath.Dir(tree.guardLink))
 	_ = os.Chmod(filepath.Join(tree.data, `sub\b.txt`), 0o600)
 	_ = os.RemoveAll(filepath.Dir(tree.data))
 	_ = os.RemoveAll(tree.install)
@@ -188,7 +213,10 @@ func (tree removeFoldersTree) requireData(t *testing.T, when string) {
 func (tree removeFoldersTree) requireGuarded(t *testing.T, when string) {
 	t.Helper()
 
-	for _, path := range []string{filepath.Join(tree.outside, "keep.txt"), filepath.Join(tree.guardWin, "g.txt"), filepath.Join(tree.guardStd, `Inner\s.txt`)} {
+	for _, path := range []string{
+		filepath.Join(tree.outside, "keep.txt"), filepath.Join(tree.outside, `inner\k.txt`),
+		filepath.Join(tree.guardWin, "g.txt"), filepath.Join(tree.guardStd, `Inner\s.txt`),
+	} {
 		if !exists(path) {
 			t.Errorf("%s: %s is gone", when, path)
 		}
@@ -216,7 +244,7 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 	t.Cleanup(func() { tree.cleanup(oldPkg, newPkg) })
 	tree.fill(t)
 
-	guards := []string{"GUARD_WIN=" + tree.guardWin + `\`, "GUARD_STD=" + tree.guardStd + `\`}
+	guards := []string{"GUARD_WIN=" + tree.guardWin + `\`, "GUARD_STD=" + tree.guardStd + `\`, "GUARD_LINK=" + tree.guardLink + `\`}
 
 	log := filepath.Join(logs, "install.log")
 	if code := msiexecCode(t, log, "/i", oldPkg, "DATA_DIR="+tree.data+`\`, "OLD_DIR="+tree.old+`\`); code != 0 {
@@ -261,14 +289,17 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 	tree.requireGuarded(t, "after the rolled-back removal")
 
 	log = filepath.Join(logs, "uninstall.log")
-	if code := msiexecCode(t, log, append([]string{"/x", newPkg}, guards...)...); code != 0 {
+	if code := msiexecCode(t, log, append([]string{"/x", newPkg, "SWAP=1", "OUTSIDE_DIR=" + tree.outside}, guards...)...); code != 0 {
 		t.Fatalf("msiexec /x returned %d\n%s", code, readLog(log))
 	}
 
 	text = readLog(log)
 	t.Logf("removal:\n%s", grepLog(text, "BuilderRemoveFolders: "))
 
-	for _, want := range []string{"refused, inside the Windows folder", "refused, it is or holds the standard folder TemplateFolder", "a junction or another reparse point"} {
+	for _, want := range []string{
+		"refused, inside the Windows folder", "refused, it is or holds the standard folder TemplateFolder",
+		"refused, reached through a junction", "a junction or another reparse point",
+	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the removal log lacks %q", want)
 		}
@@ -278,10 +309,18 @@ func TestMsiexecRemoveFolders(t *testing.T) {
 		t.Error("the install dir is still there after the removal")
 	}
 
-	for _, name := range dataFiles {
-		if exists(filepath.Join(tree.data, name)) {
+	// Swap made "empty" a junction after the listing; whatever the engine
+	// did with it, the files behind it must stay (requireGuarded).
+	for _, name := range append([]string{`sub`, `sub\deeper`}, dataFiles...) {
+		if name != "empty" && exists(filepath.Join(tree.data, name)) {
 			t.Errorf("%s is still there after the removal", name)
 		}
+	}
+
+	if _, err := os.Lstat(filepath.Join(tree.data, "empty")); err == nil {
+		t.Log("the junction that Swap put in place of the listed folder empty is still there")
+	} else {
+		t.Log("the engine removed the junction that Swap put in place of the listed folder empty")
 	}
 
 	// The junction stays, and with it DATA_DIR.

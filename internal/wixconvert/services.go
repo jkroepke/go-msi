@@ -315,7 +315,31 @@ func (cc *compConv) purge(elm *elem) {
 		return
 	}
 
-	entry := newMap().set("property", cmp.Or(prop, cc.cp.dir))
+	cc.removeFolders(elm, cmp.Or(prop, cc.cp.dir), when, cond)
+}
+
+// removeFolders writes the removeFolders entry of a util:RemoveFolderEx.
+func (cc *compConv) removeFolders(elm *elem, prop, when, cond string) {
+	conv := cc.c
+	entry := newMap().set("property", conv.dirRef(prop))
+
+	// The removal reads the property before costing, where the install
+	// dir only has a path when installDir.remember searched for it; WiX
+	// packages restore it with a RegistrySearch of their own.
+	inst := conv.installDir
+	if _, isDir := conv.dirs[prop]; isDir && (inst == nil || inst.id != prop) {
+		conv.todof(cc.out, "removeFolders", elm.line,
+			"util:RemoveFolderEx reads %s before costing, where a directory has no path yet; remember the path in the registry "+
+				"and name a property with a search instead", prop)
+	}
+
+	if inst != nil && conv.dirRef(inst.id) == conv.dirRef(prop) {
+		install := conv.out.child("installDir")
+		if install.get("remember") == nil {
+			install.set("remember", true)
+			install.comment("remember", "util:RemoveFolderEx reads the install dir before costing; remember searches for it there.")
+		}
+	}
 
 	switch when {
 	case onInstall, onBoth:

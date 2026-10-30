@@ -26,11 +26,7 @@ func (v *validator) componentRemoveFolders(cfg *Config, known *refs, compPath st
 
 		v.oneOf(entryPath+".on", entry.On, RemoveOnInstall, RemoveOnUninstall, RemoveOnBoth)
 
-		if entry.Condition != "" {
-			if err := condition.Check(entry.Condition); err != nil {
-				v.errorf(entryPath+".condition", "%v", err)
-			}
-		}
+		v.removeFolderCondition(entryPath+".condition", entry.Condition)
 
 		name := entry.Property
 		if !v.removeFolderProperty(entryPath+".property", name) {
@@ -48,10 +44,7 @@ func (v *validator) componentRemoveFolders(cfg *Config, known *refs, compPath st
 			set = setProperties(cfg)
 		}
 
-		if known.dirs[name] == nil && name != cfg.InstallDir.ID && !set[name] {
-			v.warnf(entryPath+".property", "nothing in the package sets %s, so only the command line can name the folder; "+
-				"use a directory ID or a property with a value or a search", name)
-		}
+		v.removeFolderSource(cfg, known, entryPath+".property", name, set)
 	}
 }
 
@@ -72,4 +65,44 @@ func (v *validator) removeFolderProperty(field, name string) bool {
 	}
 
 	return false
+}
+
+// removeFolderSource checks that something sets the property before
+// costing, where the removal reads it: a directory gets its path only at
+// CostFinalize, after that, except the install dir that installDir.remember
+// searches for.
+func (v *validator) removeFolderSource(cfg *Config, known *refs, field, name string, set map[string]bool) {
+	switch {
+	case name == cfg.InstallDir.ID && cfg.InstallDir.Remember:
+	case name == cfg.InstallDir.ID:
+		v.errorf(field, "%s gets its path at CostFinalize, after the removal reads it; set installDir.remember: true, "+
+			"whose search sets %s before", name, name)
+	case known.dirs[name] != nil && !hasSearch(cfg, name):
+		v.errorf(field, "the directory %s gets its path at CostFinalize, after the removal reads it; remember the path in "+
+			"the registry and name a property with a search", name)
+	case !set[name]:
+		v.warnf(field, "nothing in the package sets %s, so only the command line can name the folder; "+
+			"use a property with a search that finds the folder again at uninstall", name)
+	}
+}
+
+// hasSearch reports whether a properties entry fills name with a search.
+func hasSearch(cfg *Config, name string) bool {
+	prop := cfg.Properties[name]
+
+	return prop != nil && len(prop.Search) > 0
+}
+
+// removeFolderCondition checks the condition of a removeFolders entry, which
+// goes into one line of the BuilderRemoveFolders property.
+func (v *validator) removeFolderCondition(field, cond string) {
+	switch {
+	case cond == "":
+	case strings.ContainsFunc(cond, func(r rune) bool { return r < 0x20 }):
+		v.errorf(field, "the condition cannot contain line breaks or control characters")
+	default:
+		if err := condition.Check(cond); err != nil {
+			v.errorf(field, "%v", err)
+		}
+	}
 }

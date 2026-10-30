@@ -8,7 +8,7 @@ import (
 
 // TestRemoveFolders writes one anchor RemoveFile row per removeFolders
 // entry, lists the entries with their conditions in BuilderRemoveFolders,
-// schedules the action after CostFinalize, embeds the DLL and makes the
+// schedules the action before CostInitialize, embeds the DLL and makes the
 // public properties secure.
 func TestRemoveFolders(t *testing.T) {
 	t.Parallel()
@@ -20,6 +20,7 @@ func TestRemoveFolders(t *testing.T) {
       - property: INSTALLDIR
       - { property: DATA_DIR, on: both, condition: DELETE_DATA="1" }
       - { property: OLD_DIR, on: install }
+installDir: { remember: true }
 properties:
   DATA_DIR: { value: 'C:\Data\' }
   OLD_DIR: { value: 'C:\Old\' }
@@ -55,9 +56,9 @@ properties:
 	comp := fmt.Sprint(cell(t, database, "Component", "Component", func(r []any) bool { return r[2] == "INSTALLDIR" }))
 
 	for i, want := range []string{
-		"$" + comp + "=2 AND NOT UPGRADINGPRODUCTCODE\x1f" + comp + "\x1f2\x1f" + modes["2"] + "\x1fINSTALLDIR",
-		"($" + comp + "=3 OR ($" + comp + "=2 AND NOT UPGRADINGPRODUCTCODE)) AND (DELETE_DATA=\"1\")\x1f" + comp + "\x1f3\x1f" + modes["3"] + "\x1fDATA_DIR",
-		"$" + comp + "=3\x1f" + comp + "\x1f1\x1f" + modes["1"] + "\x1fOLD_DIR",
+		"REMOVE AND NOT UPGRADINGPRODUCTCODE\x1f" + comp + "\x1f2\x1f" + modes["2"] + "\x1fINSTALLDIR",
+		"NOT UPGRADINGPRODUCTCODE AND (DELETE_DATA=\"1\")\x1f" + comp + "\x1f3\x1f" + modes["3"] + "\x1fDATA_DIR",
+		"\x1f" + comp + "\x1f1\x1f" + modes["1"] + "\x1fOLD_DIR",
 	} {
 		if lines[i] != want {
 			t.Errorf("line %d = %q, want %q", i, lines[i], want)
@@ -78,8 +79,8 @@ properties:
 		return n
 	}
 
-	if at := seq("BuilderRemoveFolders"); at <= seq("CostFinalize") || at >= seq("InstallValidate") {
-		t.Errorf("BuilderRemoveFolders at %d, want between CostFinalize %d and InstallValidate %d", at, seq("CostFinalize"), seq("InstallValidate"))
+	if at := seq("BuilderRemoveFolders"); at <= seq("AppSearch") || at >= seq("CostInitialize") {
+		t.Errorf("BuilderRemoveFolders at %d, want between AppSearch %d and CostInitialize %d", at, seq("AppSearch"), seq("CostInitialize"))
 	}
 
 	rowWhere(t, database, "Binary", func(r []any) bool { return r[0] == "BuilderRun" })

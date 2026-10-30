@@ -42,6 +42,8 @@ upgrade:
   property: WIX_UPGRADE_DETECTED
 installDir:
   id: INSTALLFOLDER
+  # util:RemoveFolderEx reads the install dir before costing; remember searches for it there.
+  remember: true
 directories:
   - id: ProgramFiles64Folder
     children:

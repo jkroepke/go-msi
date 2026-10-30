@@ -30,7 +30,7 @@ func (b *build) removeFolders() error {
 			anchor := generatedID(removeFolderAnchor, comp.ID, entry.Property, entry.On)
 
 			b.table("RemoveFile").Add(anchor, comp.ID, "*", anchor, mode)
-			lines = append(lines, cadll.RemoveFoldersEntry(removeFolderCondition(comp.ID, entry), comp.ID, mode, anchor, entry.Property))
+			lines = append(lines, cadll.RemoveFoldersEntry(removeFolderCondition(entry), comp.ID, mode, anchor, entry.Property))
 
 			// The action runs on the server, where only secure public
 			// properties from the client arrive.
@@ -54,33 +54,38 @@ func (b *build) removeFolders() error {
 
 	b.properties[cadll.RemoveFolders] = strings.Join(lines, "\n")
 
-	// After CostFinalize the directories are resolved and the component
-	// states known; the rows must be there before RemoveFiles.
+	// Before CostInitialize, after the searches: costing collects the
+	// folders that RemoveFile.DirProperty names, and a property it has not
+	// seen there fails InstallValidate with error 2727 (FILE-11).
 	b.addAction(&actionInfo{name: cadll.RemoveFolders, typ: caDLL, source: cadll.Key, target: cadll.RemoveFolders})
-	b.schedule(seqInstallExecute, cadll.RemoveFolders, "", "", actCostFinalize, 0)
+	b.schedule(seqInstallExecute, cadll.RemoveFolders, "", actCostInitialize, "", 0)
 
 	return nil
 }
 
-// removeFolderCondition is the condition under which an entry removes its
-// folder: the component is installed (install), or removed but not by the
-// major upgrade of another product (uninstall), and the entry's condition.
-func removeFolderCondition(component string, entry *config.RemoveFolder) string {
-	installed := "$" + component + "=3"
-	removed := "$" + component + "=2 AND NOT UPGRADINGPRODUCTCODE"
-
+// removeFolderCondition is the condition under which the action lists an
+// entry's folder. Component states are not known before costing, so the
+// rows carry the component and the engine applies them only when it
+// installs (mode 1) or removes (mode 2) the component; the condition only
+// skips the listing where no row could apply: an uninstall entry when
+// nothing is removed or when the major upgrade of another product removes
+// this one, which must keep the folder.
+func removeFolderCondition(entry *config.RemoveFolder) string {
 	var cond string
 
 	switch entry.On {
 	case config.RemoveOnInstall:
-		cond = installed
 	case config.RemoveOnBoth:
-		cond = "(" + installed + " OR (" + removed + "))"
+		cond = "NOT UPGRADINGPRODUCTCODE"
 	default:
-		cond = removed
+		cond = "REMOVE AND NOT UPGRADINGPRODUCTCODE"
 	}
 
-	if entry.Condition != "" {
+	switch {
+	case entry.Condition == "":
+	case cond == "":
+		cond = entry.Condition
+	default:
 		cond += " AND (" + entry.Condition + ")"
 	}
 
