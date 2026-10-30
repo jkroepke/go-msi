@@ -207,12 +207,12 @@ jobs:
       # Windows on Arm installs the run action probe, the remembered install
       # folder package, the shortcut property package and the language
       # transform packages natively (Arm64 packages, the first with the arm64
-      # DLL). msiexec is slow on this runner, so the rest of the native suite
+      # DLL), and the x64 package that refuses Arm64 (PROP-03). msiexec is slow on this runner, so the rest of the native suite
       # stays on x64.
       - name: go test (Windows on Arm)
         if: matrix.suite == 'arm'
         shell: bash
-        run: go test ./internal/cadll/ ./internal/builder/nativetest/ -run 'TestBinaries|TestMsiexecRunActions|TestMsiexecRememberInstallDir|TestMsiexecShortcutProperties|TestLanguagesInstallLANG03|TestFullUILanguages' -v -timeout 20m -shuffle=on
+        run: go test ./internal/cadll/ ./internal/builder/nativetest/ -run 'TestBinaries|TestMsiexecRunActions|TestMsiexecRememberInstallDir|TestMsiexecShortcutProperties|TestLanguagesInstallLANG03|TestFullUILanguages|TestMsiexecNativeArch' -v -timeout 20m -shuffle=on
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure() && matrix.suite == 'native'
