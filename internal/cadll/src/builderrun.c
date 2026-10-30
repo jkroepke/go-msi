@@ -203,6 +203,19 @@ UINT WINAPI MsiFormatRecordW(MSIHANDLE, MSIHANDLE, WCHAR *, DWORD *);
 int WINAPI MsiEvaluateConditionW(MSIHANDLE, const WCHAR *);
 BOOL WINAPI MsiGetMode(MSIHANDLE, int);
 
+// authz.dll: the groups of the account that started the session, from its
+// SID, for the deferred side of the folder removal, which runs as
+// LocalSystem.
+typedef struct {
+    DWORD LowPart;
+    long HighPart;
+} LUID_;
+BOOL WINAPI AuthzInitializeResourceManager(DWORD, void *, void *, void *, const WCHAR *, void **);
+BOOL WINAPI AuthzInitializeContextFromSid(DWORD, void *, void *, void *, LUID_, void *, void **);
+BOOL WINAPI AuthzGetInformationFromContext(void *, int, DWORD, DWORD *, void *);
+BOOL WINAPI AuthzFreeContext(void *);
+BOOL WINAPI AuthzFreeResourceManager(void *);
+
 // ntdll.dll: NtCreateFile opens a name relative to a directory handle,
 // which no kernel32 function does, and NtSetInformationFile renames into
 // a directory handle, which SetFileInformationByHandle refuses with
@@ -330,6 +343,9 @@ enum {
     FileAttributeTagInfo_ = 9,
     FileFullDirectoryInfo_ = 14,
     FileFullDirectoryRestartInfo_ = 15,
+    // Authz.
+    AUTHZ_RM_FLAG_NO_AUDIT = 1,
+    AuthzContextInfoGroupsSids = 2,
     // NtSetInformationFile FILE_INFORMATION_CLASS.
     FileRenameInformation_ = 10,
     // NtCreateFile.
@@ -1780,6 +1796,8 @@ static const WCHAR propRemoveExec[] = u"BuilderRemoveFoldersExec";
 static const WCHAR propRemoveCommit[] = u"BuilderRemoveFoldersCommit";
 static const WCHAR backupPrefix[] = u"BuilderRemoveFolders.";
 static const WCHAR msgRemoveData[] = u"malformed folder removal data";
+static const WCHAR msgRemoveNotAdminExec[] =
+    u"nothing removed: the account that started the session is no administrator, or its groups cannot be read";
 static const WCHAR msgRemoveEmpty[] = u"the property is empty; nothing removed";
 static const WCHAR msgRemoveMissing[] = u"the folder does not exist; nothing removed";
 static const WCHAR msgRemovePath[] = u"refused, not a full local folder path";
@@ -1985,38 +2003,78 @@ static WCHAR *userSid(void)
     return sid;
 }
 
+// TOKEN_GROUPS: a count, then SID_AND_ATTRIBUTES {PSID; DWORD} pairs.
+typedef struct {
+    void *sid;
+    DWORD attributes;
+} tokenGroup;
+typedef struct {
+    DWORD count;
+    tokenGroup group[1];
+} tokenGroups;
+
+// holdsAdmins reports whether groups lists the Administrators group, in
+// any state: enabled, or deny-only for an administrator under UAC.
+static int holdsAdmins(const tokenGroups *groups)
+{
+    void *admins = 0;
+    int found = 0;
+    if (groups && ConvertStringSidToSidW(adminsSid, &admins)) {
+        for (DWORD i = 0; i < groups->count && !found; i++) {
+            found = EqualSid(groups->group[i].sid, admins) != 0;
+        }
+        LocalFree(admins);
+    }
+    return found;
+}
+
 // userIsAdmin reports whether the account the action runs as is in the
-// Administrators group, enabled or, for an administrator under UAC whose
-// token is filtered, deny-only; LocalSystem's token holds it as well.
+// Administrators group; LocalSystem's token holds it as well.
 static int userIsAdmin(void)
 {
     HANDLE token = 0;
     if (!OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 1, &token) && !OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
         return 0;
     }
-    void *admins = 0;
     DWORD size = 0;
-    int found = 0;
     GetTokenInformation(token, 2 /* TokenGroups */, 0, 0, &size);
-    // TOKEN_GROUPS: a count, then SID_AND_ATTRIBUTES {PSID; DWORD} pairs.
-    struct group {
-        void *sid;
-        DWORD attributes;
-    };
-    struct groups {
-        DWORD count;
-        struct group group[1];
-    } *groups = size ? HeapAlloc(GetProcessHeap(), 0, size) : 0;
-    if (groups && GetTokenInformation(token, 2, groups, size, &size) && ConvertStringSidToSidW(adminsSid, &admins)) {
-        for (DWORD i = 0; i < groups->count && !found; i++) {
-            found = EqualSid(groups->group[i].sid, admins) != 0;
-        }
-    }
-    if (admins) {
-        LocalFree(admins);
-    }
+    tokenGroups *groups = size ? HeapAlloc(GetProcessHeap(), 0, size) : 0;
+    int found = groups && GetTokenInformation(token, 2, groups, size, &size) && holdsAdmins(groups);
     HeapFree(GetProcessHeap(), 0, groups);
     CloseHandle(token);
+    return found;
+}
+
+// sessionIsAdmin reports, for the deferred side, whether the account that
+// started the session (the engine's UserSID) is LocalSystem or in the
+// Administrators group, as Authz computes its groups from the SID. The
+// CustomActionData comes from the immediate action, which runs in a
+// custom action server under that account's token, so for any other
+// account it could say anything; such data must not reach LocalSystem.
+static int sessionIsAdmin(MSIHANDLE install)
+{
+    static const WCHAR userSidProp[] = u"UserSID";
+    static const WCHAR systemSid[] = u"S-1-5-18";
+    WCHAR *text = property(install, userSidProp);
+    void *sid = 0, *rm = 0, *ctx = 0;
+    tokenGroups *groups = 0;
+    int found = text && wieq(text, systemSid);
+    if (!found && text && ConvertStringSidToSidW(text, &sid) && AuthzInitializeResourceManager(AUTHZ_RM_FLAG_NO_AUDIT, 0, 0, 0, 0, &rm)) {
+        LUID_ none = {0, 0};
+        DWORD size = 0;
+        if (AuthzInitializeContextFromSid(0, sid, rm, 0, none, 0, &ctx)) {
+            AuthzGetInformationFromContext(ctx, AuthzContextInfoGroupsSids, 0, &size, 0);
+            groups = size ? HeapAlloc(GetProcessHeap(), 0, size) : 0;
+            found = groups && AuthzGetInformationFromContext(ctx, AuthzContextInfoGroupsSids, size, &size, groups) && holdsAdmins(groups);
+            AuthzFreeContext(ctx);
+        }
+        AuthzFreeResourceManager(rm);
+    }
+    HeapFree(GetProcessHeap(), 0, groups);
+    if (sid) {
+        LocalFree(sid);
+    }
+    HeapFree(GetProcessHeap(), 0, text);
     return found;
 }
 
@@ -2655,6 +2713,11 @@ __declspec(dllexport) UINT WINAPI BuilderRemoveFoldersExec(MSIHANDLE install)
     const WCHAR *token = data && op ? data + 1 : 0;
     if (!folders || (op != 'u' && op != 'm' && op != 'd' && op != 'c') || wlen(token) != 32) {
         logft(install, tmplRemove, msgRemoveData, 0, 0);
+        HeapFree(GetProcessHeap(), 0, data);
+        return ERROR_SUCCESS;
+    }
+    if (!sessionIsAdmin(install)) {
+        logft(install, tmplRemove, msgRemoveNotAdminExec, 0, 0);
         HeapFree(GetProcessHeap(), 0, data);
         return ERROR_SUCCESS;
     }

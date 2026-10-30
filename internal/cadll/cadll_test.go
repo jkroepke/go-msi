@@ -75,7 +75,7 @@ func TestBinaries(t *testing.T) {
 
 			slices.Sort(libs)
 
-			if want := []string{"advapi32.dll", "kernel32.dll", "msi.dll", "ntdll.dll", "user32.dll"}; !slices.Equal(libs, want) {
+			if want := []string{"advapi32.dll", "authz.dll", "kernel32.dll", "msi.dll", "ntdll.dll", "user32.dll"}; !slices.Equal(libs, want) {
 				t.Errorf("imports %v, want %v", libs, want)
 			}
 

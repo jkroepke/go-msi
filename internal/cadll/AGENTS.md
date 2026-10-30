@@ -74,7 +74,7 @@ the root `AGENTS.md` first.
   layouts the DLL declares itself are pinned by `_Static_assert`s on their
   documented sizes for 32- and 64-bit builds.
 - `cadll_test.go` checks the checksums, the PE machine, the export and that
-  the imports are only kernel32, advapi32, msi, user32 and ntdll (NtCreateFile, NtSetInformationFile, RtlNtStatusToDosError). `testdata/probe` is the
+  the imports are only kernel32, advapi32, msi, user32, authz (the deferred folder removal's administrator check) and ntdll (NtCreateFile, NtSetInformationFile, RtlNtStatusToDosError). `testdata/probe` is the
   CA-03 package that `internal/builder/nativetest` installs on Windows
   (`TestMsiexecRunActions`), natively on the x64 and arm64 runners. The x64
   package under emulation on arm64 passed once (CA-03) and is not rerun.
@@ -128,7 +128,11 @@ the root `AGENTS.md` first.
   properties are secure by default (or `configurable`), so a standard
   user's command line can reach an elevated session: the immediate side removes nothing when
   `MsiRunningElevated` is set and its token holds no Administrators
-  group. The backup folder's name (the token) is visible to anyone who
+  group. That check runs in the user's own custom action server, so the
+  deferred side repeats it: it reads the engine's `UserSID` and asks Authz
+  (`AuthzInitializeContextFromSid`) for that account's groups, and does
+  nothing unless it is LocalSystem or holds Administrators; its
+  CustomActionData is never trusted on its own. The backup folder's name (the token) is visible to anyone who
   lists the volume root; never rely on it being secret, only on
   `openBackup`'s owner and protected-DACL check. The
   guards (drive roots, standard folder properties and their parents

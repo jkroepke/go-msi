@@ -66,10 +66,12 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
   imports msi MsiGetPropertyW:16 MsiCreateRecord:4 MsiRecordSetStringW:12 MsiRecordSetInteger:12 MsiProcessMessage:12 \
     MsiCloseHandle:4 MsiSetPropertyW:12 MsiFormatRecordW:16 MsiEvaluateConditionW:8 \
     MsiGetMode:8 >"$tmp/$out/msi.def"
+  imports authz AuthzInitializeResourceManager:24 AuthzInitializeContextFromSid:32 AuthzGetInformationFromContext:20 \
+    AuthzFreeContext:4 AuthzFreeResourceManager:4 >"$tmp/$out/authz.def"
   imports ntdll NtCreateFile:44 NtSetInformationFile:20 RtlNtStatusToDosError:4 >"$tmp/$out/ntdll.def"
   imports user32 EnumWindows:8 GetWindowThreadProcessId:8 PostMessageW:16 GetClassNameW:12 \
     IsWindowVisible:4 GetWindow:8 >"$tmp/$out/user32.def"
-  for lib in kernel32 advapi32 msi ntdll user32; do
+  for lib in kernel32 advapi32 msi authz ntdll user32; do
     "$DLLTOOL" -m "$arch" -k -d "$tmp/$out/$lib.def" -l "$tmp/$out/$lib.lib"
   done
   "$CLANG" --target="$triple-pc-windows-msvc" -std=c11 -O2 -Wall -Wextra -Werror \
@@ -78,7 +80,7 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     -c src/builderrun.c -o "$tmp/$out/builderrun.obj"
   "$CLANG" --target="$triple-pc-windows-msvc" -fuse-ld=lld -nostdlib -shared \
     -o "builderrun-$out.dll" "$tmp/$out/builderrun.obj" \
-    "$tmp/$out/kernel32.lib" "$tmp/$out/advapi32.lib" "$tmp/$out/msi.lib" "$tmp/$out/ntdll.lib" "$tmp/$out/user32.lib" \
+    "$tmp/$out/kernel32.lib" "$tmp/$out/advapi32.lib" "$tmp/$out/msi.lib" "$tmp/$out/authz.lib" "$tmp/$out/ntdll.lib" "$tmp/$out/user32.lib" \
     -Wl,/Brepro -Wl,/nodefaultlib -Wl,/entry:_DllMainCRTStartup -Wl,/export:BuilderRun -Wl,/export:BuilderGrant -Wl,/export:BuilderGrantSchedule \
     -Wl,/export:BuilderClose -Wl,/export:BuilderCloseSchedule -Wl,/export:BuilderRemoveFolders -Wl,/export:BuilderRemoveFoldersExec \
     -Wl,/release -Wl,/opt:ref -Wl,/opt:icf -Wl,/subsystem:windows
