@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -26,6 +25,8 @@ var (
 	pDispatchMessageW          = user32.NewProc("DispatchMessageW")
 	pPostMessageW              = user32.NewProc("PostMessageW")
 	pPostQuitMessage           = user32.NewProc("PostQuitMessage")
+	pGetShellWindow            = user32.NewProc("GetShellWindow")
+	pGetWindowThreadProcessID  = user32.NewProc("GetWindowThreadProcessId")
 	pOpenProcess               = kernel32.NewProc("OpenProcess")
 	pReadProcessMemory         = kernel32.NewProc("ReadProcessMemory")
 	pNtQueryInformationProcess = syscall.NewLazyDLL("ntdll.dll").NewProc("NtQueryInformationProcess")
@@ -169,19 +170,19 @@ func utf16At(text *uint16, limit int) string {
 }
 
 // explorerPID returns the PID of the shell in this session, or 0.
-func explorerPID(t *testing.T) int {
-	t.Helper()
-
-	const ps = `$s = (Get-Process -Id $PID).SessionId; Get-Process explorer -ErrorAction SilentlyContinue | Where-Object SessionId -eq $s | Select-Object -First 1 -ExpandProperty Id`
-
-	out, err := exec.CommandContext(t.Context(), "powershell", "-NoProfile", "-NonInteractive", "-Command", ps).Output()
-	if err != nil {
+// The owner of the shell window is the desktop Explorer, not a separate
+// folder-window process.
+func explorerPID() int {
+	hwnd, _, _ := pGetShellWindow.Call()
+	if hwnd == 0 {
 		return 0
 	}
 
-	pid, _ := strconv.Atoi(strings.TrimSpace(string(out)))
+	var pid uint32
 
-	return pid
+	_, _, _ = pGetWindowThreadProcessID.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+
+	return int(pid)
 }
 
 // processEnvironment reads the current environment block of a 64-bit
@@ -324,7 +325,7 @@ func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // ms
 
 	changes := listenSettingChanges(t)
 
-	shell := explorerPID(t)
+	shell := explorerPID()
 	if shell == 0 {
 		t.Log("no Explorer in this session: only the broadcast is checked")
 	}
@@ -356,8 +357,9 @@ func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // ms
 	time.Sleep(broadcastSettle)
 
 	if shell != 0 {
-		_, ok := shellSees(t, raw)
-		t.Logf("after a plain reg add: messages %q, Explorer sees %s: %t", changes.take(), raw, ok)
+		if _, ok := shellSees(t, raw); ok {
+			t.Errorf("Explorer has %s before any install (messages %q), so the reload checks prove nothing", raw, changes.take())
+		}
 	}
 
 	for _, tc := range []struct { //nolint:paralleltest // msiexec runs one installation at a time

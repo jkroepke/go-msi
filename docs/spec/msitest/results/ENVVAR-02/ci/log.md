@@ -10,7 +10,7 @@
 A hidden top-level window on a thread of the test process logs every
 `WM_SETTINGCHANGE`. Explorer's environment block is read through its PEB
 (`ProcessParameters` at PEB+0x20, `Environment` at +0x80), which is what a
-program started from the Start menu or Run inherits. Before the packages
+program started from the Start menu or Run inherits (inferred). Before the packages
 run, `reg add HKCU\Environment /v MSIBUILDER_UNANNOUNCED /d 1` writes a
 variable without a broadcast. Each package installs `app.txt` and sets its
 variable to `[INSTALLDIR]`; every step runs `msiexec /qn` and waits 5 s.
