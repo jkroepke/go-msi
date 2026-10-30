@@ -210,6 +210,28 @@ func TestValidate(t *testing.T) {
 `,
 			sevError, "customActions[0].return", "asyncNoWait",
 		},
+		// An unquoted executable from a property is hijacked through the
+		// CreateProcess prefix search (CWE-428).
+		"run unquoted executable": {
+			base + appComponent + `customActions:
+  - id: Run
+    run: {command: '[INSTALLDIR]tool.exe --init'}
+    execute: deferred
+    return: check
+    schedule: [{sequence: execute, after: InstallFiles}]
+`,
+			sevError, "customActions[0].run.command", "must be quoted",
+		},
+		"exec unquoted executable": {
+			base + appComponent + `customActions:
+  - id: Run
+    exec: {command: '[#app.exe] --init'}
+    execute: deferred
+    return: check
+    schedule: [{sequence: execute, after: InstallFiles}]
+`,
+			sevError, "customActions[0].exec.command", "must be quoted",
+		},
 		"run unknown directory": {
 			base + appComponent + `customActions:
   - id: Run
