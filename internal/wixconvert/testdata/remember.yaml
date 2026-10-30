@@ -7,7 +7,7 @@ product:
   manufacturer: Example
   version: 1.0.0
   upgradeCode: '{0B7C3D2E-5F41-4A6B-8C9D-1E2F3A4B5C6D}'
-  description: Hello édition
+  description: Hello edition
 package:
   platform: x64
   scope: perUser

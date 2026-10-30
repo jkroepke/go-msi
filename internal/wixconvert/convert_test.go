@@ -240,3 +240,25 @@ func TestConvertUnmappedNotes(t *testing.T) {
 		}
 	}
 }
+
+// TestConvertWindows1252 checks that a source declared windows-1252 is
+// decoded: 0xE9 is é there and invalid UTF-8.
+func TestConvertWindows1252(t *testing.T) {
+	t.Parallel()
+
+	src := "<?xml version=\"1.0\" encoding=\"windows-1252\"?>\n" +
+		`<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <SummaryInformation Description="Hello ` + "\xe9" + `dition" />
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(res.YAML), "Hello édition") {
+		t.Errorf("the description was not decoded:\n%s", res.YAML)
+	}
+}
