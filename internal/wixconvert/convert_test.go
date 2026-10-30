@@ -373,9 +373,9 @@ func TestConvertBuiltCodesOnce(t *testing.T) {
 	}
 }
 
-// A Files element outside a component: one file matches by its name, and a
+// A Files element: one file outside a component matches by its name, and a
 // glob, which became a folder source without a guid, gets the early removal
-// as its note instead of a guid to copy.
+// as its note instead of a guid to copy, also in a component with an Id.
 func TestConvertBuiltCodesFiles(t *testing.T) {
 	t.Parallel()
 
@@ -387,12 +387,14 @@ func TestConvertBuiltCodesFiles(t *testing.T) {
     </StandardDirectory>
     <Files Include="dist\tools\**" Directory="INSTALLFOLDER" Subdirectory="tools" />
     <Files Include="dist\LICENSE.txt" Directory="INSTALLFOLDER" />
+    <Component Id="Tools" Directory="INSTALLFOLDER"><Files Include="dist\more\*.dll" /></Component>
   </Package>
 </Wix>
 `
 	built := &wixconvert.BuiltPackage{Name: "hello.msi", Components: []wixconvert.BuiltComponent{
 		{ID: "fil1", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "INSTALLFOLDER", KeyFile: "LICENSE.txt"},
 		{ID: "fil2", Code: "{00000000-0000-4000-8000-000000000002}", Directory: "dirA1", KeyFile: "tool.exe"},
+		{ID: "Tools", Code: "{00000000-0000-4000-8000-000000000003}", Directory: "INSTALLFOLDER", KeyFile: "a.dll"},
 	}}
 
 	for _, opts := range []wixconvert.Options{{Built: built}, {}} {
@@ -402,16 +404,16 @@ func TestConvertBuiltCodesFiles(t *testing.T) {
 		}
 
 		lines := globNotes(t, res.Notes, opts.Built != nil)
-		if !slices.Equal(lines, []int{7}) {
-			t.Errorf("Built %t: glob notes in lines %v, want [7]", opts.Built != nil, lines)
+		if !slices.Equal(lines, []int{7, 9}) {
+			t.Errorf("Built %t: glob notes in lines %v, want [7 9]", opts.Built != nil, lines)
 		}
 
 		if pinned := strings.Contains(string(res.YAML), "guid: '{00000000-0000-4000-8000-000000000001}'"); pinned != (opts.Built != nil) {
 			t.Errorf("Built %t: LICENSE.txt pinned %t:\n%s", opts.Built != nil, pinned, res.YAML)
 		}
 
-		if strings.Contains(string(res.YAML), "000000000002") {
-			t.Errorf("the folder source got a guid:\n%s", res.YAML)
+		if strings.Contains(string(res.YAML), "000000000002") || strings.Contains(string(res.YAML), "000000000003") {
+			t.Errorf("a folder source got a guid:\n%s", res.YAML)
 		}
 	}
 }

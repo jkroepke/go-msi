@@ -149,7 +149,8 @@ func (c *converter) component(comp *comp, tree map[*dir]bool) *omap {
 		content.child(kid)
 	}
 
-	if comp.generated && c.built != nil {
+	// A folder source takes no guid.
+	if comp.generated && !comp.harvests && c.built != nil {
 		c.pinCode(comp, content.keyFile)
 	}
 
