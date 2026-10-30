@@ -172,7 +172,8 @@ jobs:
           if [ "$RUNNER_OS" = Linux ]; then
             go test ./... -short -timeout 25m -shuffle=on -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./...
           else
-            go test $(go list ./... | grep -v '/internal/builder/nativetest$') -timeout 25m -shuffle=on -race
+            mapfile -t pkgs < <(go list ./... | grep -v '/internal/builder/nativetest$')
+            go test "${pkgs[@]}" -timeout 25m -shuffle=on -race
           fi
 
       # The native tests open the built packages with msi.dll, run the ICE
