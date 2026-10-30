@@ -193,6 +193,13 @@ go test ./... -shuffle=on -race
   non-administrator installs with 1625 unless the machine policy `DisableMsi`
   is 0, and a per-user test package needs `INSTALLDIR` under
   `LocalAppDataFolder`, or it stops with 1303 at Program Files.
+- CI runs every Windows test in the one `go test` step, verbose and under
+  `-race`, so a result test's `t.Log` output is in that step's log; do not
+  add a step that reruns tests with `-v` only to print them. A test that
+  cannot run there (it needs a non-race build, a lot of disk or an
+  environment variable) gets its own step. The `TestNonAdmin` tests run in
+  the main step: the step before it creates the standard user `msitest` and
+  exports `MSI_BUILDER_NONADMIN_USER` and `MSI_BUILDER_NONADMIN_PASSWORD`.
 - To learn what Windows does before writing a test, a temporary nativetest
   that collects its observations and reports them with one `t.Errorf` runs
   on the `windows-latest` runner: push the branch and start CI with
@@ -207,6 +214,12 @@ go test ./... -shuffle=on -race
   that way (`docs/spec/msitest/results/SEARCH-05/probe`). A probe opened as a
   pull request runs on every push too; keep the raw results in
   `docs/spec/msitest/results` before deleting it.
+- Native tests run in shuffled order, so a test that checks what an install
+  creates must not share registry keys or folders with other tests: give it
+  its own root and delete it before and after. Whether a key's parent exists
+  before the install changes the DACL `MsiLockPermissionsEx` gives the key
+  (a created parent gets the protected DACL and the key inherits it;
+  SEC-02 flaked with a shared `HKLM\SOFTWARE\MsiBuilderTest` parent).
 - Wizard changes need a full-UI run: `/qn` never shows a dialog, so dialog
   bugs (wrong event names, missing ErrorIcon) only appear with the full UI.
   `internal/builder/nativetest/fullui_windows_test.go` drives msiexec through

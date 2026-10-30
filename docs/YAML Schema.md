@@ -494,7 +494,14 @@ customActions:
 `when: install` runs on a first installation only, not on an upgrade or a
 repair; add a second placement with `when: upgrade` for upgrades. The
 command runs without a window, and its output goes into the
-installation log (`msiexec /i hello.msi /l*v install.log`). Prefer the
+installation log (`msiexec /i hello.msi /l*v install.log`). Quote the
+executable when it comes from a folder or property, as above: an
+unquoted `[INSTALLDIR]hello.exe` is rejected, because Windows would try
+`C:\Program.exe` first and the command runs as LocalSystem. `directory`
+only sets the working directory; name the program with its folder or
+`[#hello.exe]`, since a bare `hello.exe` is looked up next to msiexec and
+on `PATH`. Pass a folder as `"[INSTALLDIR]."`, not `"[INSTALLDIR]"`, whose
+trailing backslash would escape the closing quote. Prefer the
 recipes above where one fits: they also undo themselves on uninstall.
 
 ### Install for the current user only
