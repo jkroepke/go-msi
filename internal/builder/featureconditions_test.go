@@ -46,14 +46,16 @@ features:
 		t.Fatal(err)
 	}
 
-	var got []string
-	for _, row := range rows(t, database, "Condition") {
+	conditions := rows(t, database, "Condition")
+	got := make([]string, 0, len(conditions))
+
+	for _, row := range conditions {
 		got = append(got, fmt.Sprint(row...))
 	}
 
 	slices.Sort(got)
 
-	want := []string{"Assoc0ASSOC <> 1", "Assoc1ASSOC = 1", "Assoc5VersionNT64"}
+	want := []string{"Assoc0NOT Installed AND (ASSOC <> 1)", "Assoc1NOT Installed AND (ASSOC = 1)", "Assoc5NOT Installed AND (VersionNT64)"}
 	if !slices.Equal(got, want) {
 		t.Errorf("Condition rows %q, want %q", got, want)
 	}

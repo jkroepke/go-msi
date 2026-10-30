@@ -553,6 +553,8 @@ features:
     title: windows_exporter ${VERSION}
     description: The binary and configuration files for windows_exporter
     default: on                # on | off | disabled
+    conditions:                # level changes at a first install
+      - { condition: NOT VersionNT64, default: disabled }
     display: expanded          # expanded | collapsed | hidden
     directory: APPLICATIONFOLDER
     allowAbsent: false
@@ -579,6 +581,13 @@ features:
   also installs `off` features. Set `default` or `level`, not both; `level`
   is for packages that use more than these three levels.
 - `level: 0` disables a feature; `ADDLOCAL=ALL` cannot turn it on.
+- `conditions` are `Condition` table rows: each entry has a `condition`
+  and the `default` (`on`, `off`, `disabled`) or `level` that replaces the
+  feature's level when the condition is true. Two entries of one feature
+  cannot set the same level (the row key is feature and level); join their
+  conditions with `OR`. A condition cannot ask for a feature or component
+  state (`!`, `?`, `&`, `$`): the engine evaluates the table before it has
+  them. INST-05_PLACEHOLDER
 - Every component is in at least one feature (ICE21). A component used by
   two features is defined once in `components` and named by ID in both.
 - `allowAdvertise` defaults to `false`; advertised installs are not supported (section 6).

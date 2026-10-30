@@ -623,7 +623,7 @@ func (v *validator) featureConditions(featurePath string, feature *Feature) {
 	for i, cond := range feature.Conditions {
 		condPath := fmt.Sprintf("%s.conditions[%d]", featurePath, i)
 
-		v.featureCondition(condPath, cond.Condition)
+		v.featureCondition(condPath, cond)
 
 		switch {
 		case cond.Default != "" && cond.Level != nil:
@@ -652,23 +652,31 @@ func (v *validator) featureConditions(featurePath string, feature *Feature) {
 }
 
 // featureCondition checks the condition of a Condition row: its syntax,
-// and that it asks for no feature or component state. The engine
-// evaluates the Condition table before it reads installed states and sets
-// action states, so such a term is always false (documented, INST-05).
-func (v *validator) featureCondition(field, cond string) {
-	if !v.required(field+".condition", cond) {
+// its length, and that it asks for no feature or component state. The
+// engine evaluates the Condition table before it reads installed states
+// and sets action states, so such a term is always false (documented, not
+// tested).
+func (v *validator) featureCondition(field string, cond *FeatureCondition) {
+	field += ".condition"
+
+	if !v.required(field, cond.Condition) {
 		return
 	}
 
-	if err := condition.Check(cond); err != nil {
-		v.errorf(field+".condition", "%v", err)
+	if err := condition.Check(cond.Condition); err != nil {
+		v.errorf(field, "%v", err)
 
 		return
 	}
 
-	if states := condition.States(cond); len(states) > 0 {
-		v.errorf(field+".condition", "refers to the state of %s, but feature conditions are evaluated before "+
-			"features and components have one (INST-05); use a property instead", strings.Join(states, ", "))
+	if states := condition.States(cond.Condition); len(states) > 0 {
+		v.errorf(field, "refers to the state of %s, but the engine evaluates feature conditions before "+
+			"features and components have one (documented); use a property instead", strings.Join(states, ", "))
+	}
+
+	if full := cond.FullCondition(); len(full) > maxComponentCondition {
+		v.errorf(field, "with the first-install check the builder adds, the condition is %d characters; "+
+			"Condition.Condition holds %d", len(full), maxComponentCondition)
 	}
 }
 

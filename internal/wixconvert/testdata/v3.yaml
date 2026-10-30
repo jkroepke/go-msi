@@ -50,7 +50,9 @@ features:
     components: [ToolExe]
   - id: Docs
     title: Documentation
-    # TODO(line 57): conditional feature levels have no counterpart; the condition was "NOT INSTALLDOCS"
+    conditions:
+      - condition: NOT INSTALLDOCS
+        default: disabled
     components: [Readme]
 components:
   - id: Readme

@@ -3,7 +3,10 @@ package wixconvert
 import (
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
+
+	"github.com/jkroepke/msi-builder/internal/condition"
 )
 
 // addFeature indexes a Feature where it sits: in a feature, in a feature
@@ -202,19 +205,13 @@ func (c *converter) emitFeatures() {
 func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat list of independent WiX attributes
 	elm := feat.e
 	out := newMap()
-	out.order("id", "title", "description", "default", "display", "directory", "allowAbsent", "components", "features")
+	out.order("id", "title", "description", "default", "level", "conditions", "display", "directory", "allowAbsent", "components", "features")
 	out.head = comments(elm)
 	out.set("id", elm.attr("Id"))
 	out.set("title", c.value(elm, "Title"))
 	out.set("description", c.value(elm, "Description"))
 
-	switch l := elm.attr("Level"); l {
-	case "", "1":
-	case "0":
-		out.set("default", "disabled")
-	default:
-		out.set("default", "off")
-	}
+	c.featureLevel(out, "", elm.line, elm.attr("Level"))
 
 	switch display := elm.attr("Display"); display {
 	case "":
@@ -246,12 +243,7 @@ func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat lis
 		c.todof(out, "", elm.line, "advertised features are never supported")
 	}
 
-	for _, k := range elm.kids {
-		if k.is("Level") || k.is("Condition") {
-			c.todof(out, "default", k.line, "conditional feature levels have no counterpart; the condition was %q",
-				strings.TrimSpace(k.attr("Condition")+k.text))
-		}
-	}
+	c.featureConditions(out, elm)
 
 	var ids []string
 
@@ -268,4 +260,61 @@ func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat lis
 	}
 
 	return out
+}
+
+// featureLevel sets default for the levels it names (0, 1 and 2) and level
+// for any other, on a feature (key "") or one of its conditions (key
+// "condition"); a condition always gets one of the two.
+func (c *converter) featureLevel(out *omap, key string, line int, level string) {
+	switch level {
+	case "", "1":
+		if key != "" {
+			out.set("default", "on")
+		}
+	case "0":
+		out.set("default", "disabled")
+	case "2":
+		out.set("default", "off")
+	default:
+		number, err := strconv.Atoi(level)
+		if err != nil {
+			out.set("default", "off")
+			c.todof(out, key, line, "Level=%q is not a number; set level", level)
+
+			return
+		}
+
+		out.set("level", number)
+	}
+}
+
+// featureConditions converts the conditional levels of a feature: WiX v3
+// writes <Condition Level="0">text</Condition>, WiX v4 and later
+// <Level Value="0" Condition="..."/>.
+func (c *converter) featureConditions(out *omap, elm *elem) {
+	for _, kid := range elm.kids {
+		var level, cond string
+
+		switch {
+		case kid.is("Condition"):
+			level, cond = kid.attr("Level"), strings.TrimSpace(kid.text)
+		case kid.is("Level"):
+			level, cond = kid.attr("Value"), c.value(kid, "Condition")
+		default:
+			continue
+		}
+
+		if states := condition.States(cond); condition.Check(cond) != nil || len(states) > 0 || level == "" {
+			c.todof(out, "default", kid.line, "the conditional level %q with condition %q has no counterpart; "+
+				"a feature condition needs a level and cannot ask for feature or component states", level, cond)
+
+			continue
+		}
+
+		entry := newMap()
+		entry.order("condition", "default", "level")
+		entry.set("condition", cond)
+		c.featureLevel(entry, "condition", kid.line, level)
+		out.add("conditions", entry)
+	}
 }

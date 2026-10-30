@@ -207,15 +207,23 @@ func (f *Feature) levelIsDefault() bool {
 	return f.Level != nil && f.Level == f.defaultedLevel && *f.Level == f.defaultedValue
 }
 
-// FeatureCondition is a level that replaces the feature's level when the
-// condition is true. The engine evaluates it in CostFinalize, and only when
-// no feature request property (ADDLOCAL, REMOVE, ...) is set.
-type FeatureCondition struct {
+// FeatureCondition is a level that replaces the feature's level at a first
+// install when the condition is true. The engine evaluates it in
+// CostFinalize, also when ADDLOCAL is set (INST-05).
+type FeatureCondition struct { //nolint:govet // field order is the YAML key order
 	Condition string `yaml:"condition"`
 	// Default is on, off or disabled, like Feature.Default; set it or
 	// Level.
 	Default string `yaml:"default"`
 	Level   *int   `yaml:"level"`
+}
+
+// FullCondition returns the Condition row's condition: the condition
+// applies to first installs only, because a feature that is disabled
+// (level 0) when the product is removed keeps its files and registry
+// values (INST-05).
+func (c *FeatureCondition) FullCondition() string {
+	return "NOT Installed AND (" + c.Condition + ")"
 }
 
 // Value returns the level the condition sets: Level, or the level of

@@ -162,6 +162,43 @@ func TestValidate(t *testing.T) {
 		path string
 		msg  string
 	}{
+		// INST-05: Condition rows.
+		"feature condition without level": {
+			strings.Replace(base, "    components: [App]\n", "    components: [App]\n    conditions:\n      - condition: X = 1\n", 1) + appComponent,
+			sevError, "features[0].conditions[0]", "set default or level",
+		},
+		"feature condition with default and level": {
+			strings.Replace(base, "    components: [App]\n", "    components: [App]\n    conditions:\n      - { condition: X = 1, default: on, level: 1 }\n", 1) + appComponent,
+			sevError, "features[0].conditions[0].default", "not both",
+		},
+		"feature condition without condition": {
+			strings.Replace(base, "    components: [App]\n", "    components: [App]\n    conditions:\n      - { default: off }\n", 1) + appComponent,
+			sevError, "features[0].conditions[0].condition", "required",
+		},
+		"feature condition syntax": {
+			strings.Replace(base, "    components: [App]\n", "    components: [App]\n    conditions:\n      - { condition: X =, default: off }\n", 1) + appComponent,
+			sevError, "features[0].conditions[0].condition", "",
+		},
+		"feature condition on installed state": {
+			strings.Replace(base, "    components: [App]\n", "    components: [App]\n    conditions:\n      - { condition: '!Main = 3', default: off }\n", 1) + appComponent,
+			sevError, "features[0].conditions[0].condition", "before features and components",
+		},
+		"feature condition on action state": {
+			strings.Replace(base, "    components: [App]\n", "    components: [App]\n    conditions:\n      - { condition: '&Main = 3', default: off }\n", 1) + appComponent,
+			sevError, "features[0].conditions[0].condition", "before features and components",
+		},
+		"feature condition level range": {
+			strings.Replace(base, "    components: [App]\n", "    components: [App]\n    conditions:\n      - { condition: X = 1, level: 40000 }\n", 1) + appComponent,
+			sevError, "features[0].conditions[0].level", "between 0 and",
+		},
+		"feature condition default value": {
+			strings.Replace(base, "    components: [App]\n", "    components: [App]\n    conditions:\n      - { condition: X = 1, default: maybe }\n", 1) + appComponent,
+			sevError, "features[0].conditions[0].default", "not one of",
+		},
+		"feature conditions share a level": {
+			strings.Replace(base, "    components: [App]\n", "    components: [App]\n    conditions:\n      - { condition: X = 1, default: off }\n      - { condition: Y = 1, level: 2 }\n", 1) + appComponent,
+			sevError, "features[0].conditions[1]", "join the conditions with OR",
+		},
 		// MSISPEC-RESULTS finding 2 (SUM-03).
 		"page count above 500": {
 			pkg(`{platform: x64, installerVersion: "5.1"}`) + appComponent,
