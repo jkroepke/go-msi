@@ -125,11 +125,13 @@ type converter struct {
 	newerClaimed string
 	icons        []*elem
 	defines      [][2]string
-	sequences    []*elem
-	setters      []*elem
-	structure    map[string]func(c *converter, e *elem, sc scope)
-	features     []*feature
-	featureByID  map[string]*feature
+	// defined are the define values with earlier defines filled in.
+	defined     map[string]string
+	sequences   []*elem
+	setters     []*elem
+	structure   map[string]func(c *converter, e *elem, sc scope)
+	features    []*feature
+	featureByID map[string]*feature
 	// quietCommands are the command line sources of the quiet exec
 	// actions, and consumed the sources they take in.
 	quietCommands map[string]commandSource
@@ -163,12 +165,15 @@ type dir struct {
 }
 
 type comp struct {
-	e           *elem
-	out         *omap
-	id          string
-	dir         string
-	inFeature   bool
-	dropIfEmpty bool
+	e   *elem
+	out *omap
+	id  string
+	dir string
+	// shortcutGUID is the WiX GUID of a shortcut component whose rows
+	// dropShortcutRows changed.
+	shortcutGUID string
+	inFeature    bool
+	dropIfEmpty  bool
 }
 
 type group struct {

@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- A dual-scope sample whose components install in one scope only. -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <?define MainLevel = "1" ?>
   <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301" Scope="perUserOrMachine">
     <MajorUpgrade DowngradeErrorMessage="newer" />
     <StandardDirectory Id="ProgramFiles6432Folder">
       <Directory Id="INSTALLFOLDER" Name="Hello" />
     </StandardDirectory>
-    <Feature Id="DefaultFeature" ConfigurableDirectory="INSTALLFOLDER" AllowAbsent="no">
+    <Feature Id="DefaultFeature" ConfigurableDirectory="INSTALLFOLDER" AllowAbsent="no" Level="$(var.MainLevel)">
       <Component Directory="INSTALLFOLDER"><File Source="hello.exe" /></Component>
       <Component Directory="INSTALLFOLDER" Condition="ALLUSERS=1">
         <RegistryValue Root="HKLM" Key="Software\Example\Hello" Name="InstalledBy" Value="msi" KeyPath="yes" />
@@ -27,8 +28,11 @@
     <InstallUISequence>
       <Custom Action="OverridePerMachineFolder" After="WixSetDefaultPerMachineFolder" />
     </InstallUISequence>
+    <!-- Placed on the left-out setter, so it moves to that one's place. -->
+    <SetProperty Id="HELLOMODE" Value="dual" After="OverridePerMachineFolder" Sequence="execute" />
     <InstallExecuteSequence>
       <Custom Action="OverridePerMachineFolder" After="WixSetDefaultPerMachineFolder" />
+      <RemoveExistingProducts After="InstallValidate" Condition="NOT UPGRADINGPRODUCTCODE" />
     </InstallExecuteSequence>
   </Package>
 </Wix>

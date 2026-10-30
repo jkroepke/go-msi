@@ -12,7 +12,7 @@
 # TODO(line 52): the progress text of LaunchHello is dropped: the action was not converted to a customActions entry of its own
 # TODO(line 178): drop Wix4BroadcastEnvironmentChange_X64: Windows Installer announces environment changes itself
 # TODO(line 179): Wix4BroadcastSettingChange_X64 has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action
-# TODO: WiX generated the GUIDs of Component1, hello.yaml, StartMenu, and msi-builder generates other ones; with removeOld afterInstallExecute an upgrade from the WiX package then deletes their files. Copy WiX's GUIDs into components[].guid: msi-builder inspect --table Component wix.msi
+# TODO: WiX generated the GUIDs of Component1, hello.yaml, and msi-builder generates other ones; with removeOld afterInstallExecute an upgrade from the WiX package then deletes their files. Copy WiX's GUIDs into components[].guid: msi-builder inspect --table Component wix.msi
 schema: msi-builder/v1
 vars:
   Port: "8080"
@@ -207,9 +207,10 @@ components:
           rights: ["0x120116"]
   # The RemoveFolder and HKCU key path of this shortcut component were left out:
   # msi-builder writes both for every shortcut.
-  # Its WiX GUID 0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a14 was left out with them: a component with other resources needs a new GUID.
+  # Its WiX GUID is kept: with removeOld afterInstallExecute, a new GUID would let the removal of the old version delete the shortcut.
   - id: StartMenu
     directory: ProgramMenuFolder/Example
+    guid: 0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a14
     shortcuts:
       - name: Hello
         program: '[INSTALLFOLDER]hello.exe'

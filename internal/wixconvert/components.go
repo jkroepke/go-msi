@@ -371,11 +371,8 @@ func (cc *compConv) dropShortcutRows() {
 			"msi-builder writes both for every shortcut.")
 
 		if guid := cc.out.str("guid"); guid != "" && guid != valueNone {
-			// The component no longer holds what the WiX one did; an
-			// upgrade that kept the GUID would leave the old rows behind.
-			cc.out.del("guid")
-			cc.out.head = append(cc.out.head, "Its WiX GUID "+guid+" was left out with them: a component with other "+
-				"resources needs a new GUID.")
+			// shortcutGUIDs decides on it once the upgrade is known.
+			cc.cp.shortcutGUID = guid
 		}
 	}
 

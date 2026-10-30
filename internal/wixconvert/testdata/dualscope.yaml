@@ -1,15 +1,18 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
 # Converted from dualscope.wxs by msi-builder convert.
 # Review it, resolve the TODO comments, then run msi-builder validate.
-# TODO(line 26): the action OverridePerMachineFolder, which sets WixPerMachineFolder for WixUI_Advanced, was left out: msi-builder sets the install folder of each scope itself
+# TODO(line 35): the standard action RemoveExistingProducts in InstallExecuteSequence runs only when NOT UPGRADINGPRODUCTCODE; msi-builder schedules the standard actions itself, without conditions
+# TODO(line 27): the action OverridePerMachineFolder, which sets WixPerMachineFolder for WixUI_Advanced, was left out: msi-builder sets the install folder of each scope itself
 schema: msi-builder/v1
+vars:
+  MainLevel: "1"
 product:
   name: Hello
   manufacturer: Example
   version: 1.0.0
   upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301
 package:
-  # TODO(line 4): WiX takes the platform from wix build -arch; check package.platform
+  # TODO(line 5): WiX takes the platform from wix build -arch; check package.platform
   platform: x64
   scope: perUserOrMachine
 upgrade:
@@ -57,6 +60,13 @@ components:
         action: append
         scope: user
     scope: perUser
+customActions:
+  # Placed on the left-out setter, so it moves to that one's place.
+  - id: SetHELLOMODE
+    setProperty: {name: HELLOMODE, value: dual}
+    # TODO(line 32): WixSetDefaultPerMachineFolder is an action of a WiX extension, which the msi-builder package does not have; convert placed this action after CostFinalize, check that place
+    schedule:
+      - {sequence: execute, after: CostFinalize}
 ui:
   enabled: true
   chooseFeatures: true

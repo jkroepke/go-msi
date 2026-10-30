@@ -69,6 +69,20 @@ func (c *converter) placements() map[string][]any {
 	return byAction
 }
 
+// resourceActions are the standard actions that install or remove the
+// resources of components, so that a component condition can stand in for
+// a condition on them.
+var resourceActions = map[string]bool{ //nolint:gochecknoglobals // lookup table
+	"InstallFiles": true, "RemoveFiles": true, "DuplicateFiles": true, "RemoveDuplicateFiles": true, "MoveFiles": true,
+	"CreateFolders": true, "RemoveFolders": true, "CreateShortcuts": true, "RemoveShortcuts": true,
+	"WriteRegistryValues": true, "RemoveRegistryValues": true, "WriteIniValues": true, "RemoveIniValues": true,
+	"WriteEnvironmentStrings": true, "RemoveEnvironmentStrings": true, "InstallServices": true, "DeleteServices": true,
+	"StartServices": true, "StopServices": true, "RegisterTypeLibraries": true, "UnregisterTypeLibraries": true,
+	"SelfRegModules": true, "SelfUnregModules": true, "RegisterClassInfo": true, "UnregisterClassInfo": true,
+	"RegisterExtensionInfo": true, "UnregisterExtensionInfo": true, "RegisterProgIdInfo": true, "UnregisterProgIdInfo": true,
+	"RegisterMIMEInfo": true, "UnregisterMIMEInfo": true, "InstallODBC": true, "RemoveODBC": true,
+}
+
 // standardAction converts a standard action in a sequence.
 func (c *converter) standardAction(entry, seq *elem) {
 	switch {
@@ -83,10 +97,22 @@ func (c *converter) standardAction(entry, seq *elem) {
 		}
 	case entry.is("Show"):
 		c.todof(nil, "", entry.line, "<Show Dialog=%q> schedules a dialog; use the ui keys", entry.attr("Dialog"))
-	case c.condition(entry) != "":
+	default:
+		c.standardActionNote(entry, seq)
+	}
+}
+
+// standardActionNote notes a standard action that a sequence reschedules or
+// conditions, neither of which msi-builder takes.
+func (c *converter) standardActionNote(entry, seq *elem) {
+	switch cond := c.condition(entry); {
+	case cond != "" && resourceActions[entry.name]:
 		c.todof(nil, "", entry.line, "the standard action %s runs only when %s; msi-builder has no conditions on standard "+
 			"actions, so put the condition on the components whose resources it handles (components[].condition)",
-			entry.name, c.condition(entry))
+			entry.name, cond)
+	case cond != "":
+		c.todof(nil, "", entry.line, "the standard action %s in %s runs only when %s; msi-builder schedules the standard "+
+			"actions itself, without conditions", entry.name, seq.name, cond)
 	default:
 		c.todof(nil, "", entry.line, "rescheduling the standard action %s in %s has no counterpart", entry.name, seq.name)
 	}
@@ -135,7 +161,7 @@ func (c *converter) scheduleReboot(entry *elem) {
 func (c *converter) emitActions() {
 	byAction := c.placements()
 	c.quietExecCommands()
-	c.reanchor(byAction)
+	reanchor := c.reanchor(byAction)
 	progress := c.progress()
 
 	for _, custom := range c.actionOrder {
@@ -162,6 +188,8 @@ func (c *converter) emitActions() {
 		}
 
 		action, schedule := c.setter(setter)
+		reanchor(schedule)
+
 		id := action.str("id")
 		c.setProgress(action, id, progress)
 		action.set("schedule", append(schedule, byAction[id]...))
@@ -306,7 +334,7 @@ func (c *converter) skipSetter(setter *elem, byAction map[string][]any) bool {
 // per-machine folder of WixUI_Advanced, and leaves it out: msi-builder's
 // dual-scope packages pick the folder for each scope themselves.
 func (c *converter) perMachineFolder(action *elem, property string, byAction map[string][]any) bool {
-	if property != "WixPerMachineFolder" || !action.has("Value") {
+	if property != propPerMachineFolder || !action.has("Value") {
 		return false
 	}
 
@@ -332,13 +360,15 @@ func (c *converter) onlyLaunch(actionID string, byAction map[string][]any) bool 
 // anchorKey names an action in one sequence.
 type anchorKey struct{ action, sequence string }
 
-// reanchor moves the placements anchored on a command line setter, which
-// becomes part of its run action, to the setter's own anchor in the same
-// sequence.
-func (c *converter) reanchor(byAction map[string][]any) {
+// reanchor moves the placements anchored on an action that convert leaves
+// out, a command line setter that becomes part of its run action or a
+// WixPerMachineFolder setter, to that action's own anchor in the same
+// sequence. It returns the function that does so, for the schedules of
+// SetProperty and SetDirectory.
+func (c *converter) reanchor(byAction map[string][]any) func([]any) {
 	anchors, sourceIDs := c.sourceAnchors(byAction)
 
-	for _, entries := range byAction {
+	move := func(entries []any) {
 		for i, entry := range entries {
 			placement, ok := entry.(*omap)
 			if !ok {
@@ -362,15 +392,21 @@ func (c *converter) reanchor(byAction map[string][]any) {
 			}
 		}
 	}
+
+	for _, entries := range byAction {
+		move(entries)
+	}
+
+	return move
 }
 
-// sourceAnchors returns the placement of each consumed command line source
-// in each sequence, and the names of the sources.
+// sourceAnchors returns the placement of each left-out setter in each
+// sequence, and the names of the setters.
 func (c *converter) sourceAnchors(byAction map[string][]any) (map[anchorKey]*omap, map[string]bool) {
 	anchors := make(map[anchorKey]*omap)
 	sourceIDs := make(map[string]bool)
 
-	for _, src := range c.consumedSources() {
+	for _, src := range append(c.consumedSources(), c.perMachineSources()...) {
 		sourceIDs[src.id] = true
 
 		schedule := byAction[src.id]
@@ -389,6 +425,20 @@ func (c *converter) sourceAnchors(byAction map[string][]any) (map[anchorKey]*oma
 	}
 
 	return anchors, sourceIDs
+}
+
+// perMachineSources returns the setters of WixPerMachineFolder, which
+// perMachineFolder leaves out.
+func (c *converter) perMachineSources() []commandSource {
+	var sources []commandSource
+
+	for _, src := range c.commandSources() {
+		if src.property == propPerMachineFolder {
+			sources = append(sources, src)
+		}
+	}
+
+	return sources
 }
 
 // consumedSources returns each command line source that became part of a

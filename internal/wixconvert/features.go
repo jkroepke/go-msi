@@ -200,6 +200,24 @@ func (c *converter) emitFeatures() {
 	}
 }
 
+// featureLevel converts the Level of a feature, with its defines filled in.
+func (c *converter) featureLevel(out *omap, elm *elem) {
+	text := strings.TrimSpace(c.literal(elm.attr("Level")))
+
+	switch level, err := strconv.Atoi(text); {
+	case text == "" || err == nil && level == 1:
+	case err == nil && level == 0:
+		out.set("default", "disabled")
+	case err == nil && level != 2:
+		out.set("level", level)
+	case err == nil:
+		out.set("default", "off")
+	default:
+		out.set("default", "off")
+		c.todof(out, "default", elm.line, "the feature level %q is no number; convert assumed default off", text)
+	}
+}
+
 func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat list of independent WiX attributes
 	elm := feat.e
 	out := newMap()
@@ -211,15 +229,7 @@ func (c *converter) feature(feat *feature) *omap { //nolint:cyclop // a flat lis
 
 	// default: off is level 2; other levels keep their number, which the
 	// package's INSTALLLEVEL property, if any, still compares.
-	switch level, err := strconv.Atoi(elm.attr("Level")); {
-	case elm.attr("Level") == "" || err == nil && level == 1:
-	case err == nil && level == 0:
-		out.set("default", "disabled")
-	case err == nil && level != 2:
-		out.set("level", level)
-	default:
-		out.set("default", "off")
-	}
+	c.featureLevel(out, elm)
 
 	switch display := elm.attr("Display"); display {
 	case "":

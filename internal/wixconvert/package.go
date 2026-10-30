@@ -11,21 +11,25 @@ import (
 // takes in its value, as the WiX preprocessor does: msi-builder does not
 // expand a variable inside a vars value.
 func (c *converter) emitVars() {
-	defined := make(map[string]string)
+	c.defined = make(map[string]string)
 
 	for _, define := range c.defines {
-		value := preprocessorVar.ReplaceAllStringFunc(define[1], func(ref string) string {
-			parts := preprocessorVar.FindStringSubmatch(ref)
-			if v, ok := defined[varName(parts[2])]; ok && parts[1] != "env" && parts[1] != "sys" {
-				return v
-			}
-
-			return ref
-		})
-
-		defined[define[0]] = value
+		value := c.literal(define[1])
+		c.defined[define[0]] = value
 		c.out.child("vars").set(define[0], c.expand(c.pkg, value))
 	}
+}
+
+// literal fills the values of the defines known so far into text.
+func (c *converter) literal(text string) string {
+	return preprocessorVar.ReplaceAllStringFunc(text, func(ref string) string {
+		parts := preprocessorVar.FindStringSubmatch(ref)
+		if v, ok := c.defined[varName(parts[2])]; ok && parts[1] != "env" && parts[1] != "sys" {
+			return v
+		}
+
+		return ref
+	})
 }
 
 // emit writes the output in msi-builder's key order.
@@ -60,12 +64,16 @@ func (c *converter) emit() {
 // upgrade sees new components, and removing the old package then deletes
 // files the new one installed.
 func (c *converter) guidNote() {
-	upgrade := c.out.mapAt("upgrade")
-	if upgrade == nil {
-		return
+	var removeOld string
+	if upgrade := c.out.mapAt("upgrade"); upgrade != nil {
+		removeOld = upgrade.str("removeOld")
 	}
 
-	if removeOld := upgrade.str("removeOld"); removeOld != "afterInstallExecute" && removeOld != "afterInstallFinalize" {
+	late := removeOld == "afterInstallExecute" || removeOld == "afterInstallFinalize"
+
+	c.shortcutGUIDs(late, removeOld)
+
+	if !late {
 		return
 	}
 
@@ -83,7 +91,31 @@ func (c *converter) guidNote() {
 
 	c.todof(nil, "", 0, "WiX generated the GUIDs of %s, and msi-builder generates other ones; with removeOld %s an upgrade "+
 		"from the WiX package then deletes their files. Copy WiX's GUIDs into components[].guid: msi-builder inspect --table Component wix.msi",
-		strings.Join(generated, ", "), upgrade.str("removeOld"))
+		strings.Join(generated, ", "), removeOld)
+}
+
+// shortcutGUIDs decides on the WiX GUIDs of shortcut components whose rows
+// dropShortcutRows changed. Such a component needs a new GUID, since an
+// upgrade that kept it would leave the old rows behind, unless the old
+// version is removed late: removing it would then delete the shortcut that
+// the new component installed.
+func (c *converter) shortcutGUIDs(late bool, removeOld string) {
+	for _, comp := range c.comps {
+		if comp.shortcutGUID == "" || comp.out == nil {
+			continue
+		}
+
+		if late {
+			comp.out.head = append(comp.out.head, "Its WiX GUID is kept: with removeOld "+removeOld+", a new GUID "+
+				"would let the removal of the old version delete the shortcut.")
+
+			continue
+		}
+
+		comp.out.del("guid")
+		comp.out.head = append(comp.out.head, "Its WiX GUID "+comp.shortcutGUID+" was left out with them: a component "+
+			"with other resources needs a new GUID.")
+	}
 }
 
 func (c *converter) emitProduct() {
@@ -385,6 +417,8 @@ const (
 	scopeMachineOrUser = "perMachineOrUser"
 	// propAllUsers is the property that selects the scope.
 	propAllUsers = "ALLUSERS"
+	// propPerMachineFolder is WixUI_Advanced's per-machine install folder.
+	propPerMachineFolder = "WixPerMachineFolder"
 )
 
 func orAny(version string) string {
