@@ -67,7 +67,7 @@ func (c *converter) builtComponent(comp *comp, keyFile string) *BuiltComponent {
 	// WiX gives a component without an Id the Id of its key path, which
 	// convert takes too.
 	if comp.id != "" {
-		if row := c.builtByID(comp.id); row != nil && !c.claimed[row.ID] {
+		if row := c.builtByID(comp.id); row != nil && c.compByID[row.ID] == comp && !c.claimed[row.ID] {
 			return row
 		}
 	}

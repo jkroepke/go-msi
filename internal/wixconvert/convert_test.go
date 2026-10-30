@@ -558,6 +558,13 @@ func TestConvertBuiltCodeOfKeyPathID(t *testing.T) {
         <Component>
           <File Id="main.exe" Source="main.exe" />
         </Component>
+        <!-- WiX names it after the registry value, not the file. -->
+        <Component>
+          <RegistryKey Root="HKLM" Key="Software\Example\Hello">
+            <RegistryValue Id="installed" Name="installed" Value="1" Type="string" KeyPath="yes" />
+          </RegistryKey>
+          <File Id="notes.txt" Source="notes.txt" />
+        </Component>
       </Directory>
     </StandardDirectory>
   </Package>
@@ -565,6 +572,7 @@ func TestConvertBuiltCodeOfKeyPathID(t *testing.T) {
 
 	built := &wixconvert.BuiltPackage{Name: "hello.msi", Components: []wixconvert.BuiltComponent{
 		{ID: "main.exe", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "INSTALLFOLDER", KeyFile: "main.exe"},
+		{ID: "installed", Code: "{00000000-0000-4000-8000-000000000002}", Directory: "INSTALLFOLDER"},
 	}}
 
 	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{Built: built})
@@ -572,7 +580,11 @@ func TestConvertBuiltCodeOfKeyPathID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if want := "guid: '{00000000-0000-4000-8000-000000000001}'"; !strings.Contains(string(res.YAML), want) {
-		t.Errorf("YAML lacks %q:\n%s", want, res.YAML)
+	for _, want := range []string{"guid: '{00000000-0000-4000-8000-000000000001}'", "- id: installed\n",
+		"guid: '{00000000-0000-4000-8000-000000000002}'",
+	} {
+		if !strings.Contains(string(res.YAML), want) {
+			t.Errorf("YAML lacks %q:\n%s", want, res.YAML)
+		}
 	}
 }

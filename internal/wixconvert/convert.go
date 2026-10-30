@@ -518,8 +518,8 @@ func keyFileID(elm *elem) string {
 	return ""
 }
 
-// keyElem returns a component's key path: the element marked KeyPath, else
-// the first File.
+// keyElem returns a component's key path: the element marked KeyPath, also
+// one inside a RegistryKey, else the first File.
 func keyElem(elm *elem) *elem {
 	var first *elem
 
@@ -527,12 +527,31 @@ func keyElem(elm *elem) *elem {
 		switch {
 		case kid.yes("KeyPath"):
 			return kid
+		case kid.is("RegistryKey"):
+			if key := markedKey(kid); key != nil {
+				return key
+			}
 		case kid.is("File") && first == nil:
 			first = kid
 		}
 	}
 
 	return first
+}
+
+// markedKey returns the element marked KeyPath below a RegistryKey.
+func markedKey(elm *elem) *elem {
+	for _, kid := range elm.kids {
+		if kid.yes("KeyPath") {
+			return kid
+		}
+
+		if key := markedKey(kid); key != nil {
+			return key
+		}
+	}
+
+	return nil
 }
 
 // subdir adds the folders of a Subdirectory path, such as bin\\x64, below a
