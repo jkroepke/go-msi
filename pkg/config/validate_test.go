@@ -37,6 +37,18 @@ const appComponent = `components:
       - source: app.exe
 `
 
+// progressAction is a customActions section with one immediate action
+// whose progress text is text; an empty text leaves the key out.
+func progressAction(text string) string {
+	progress := ""
+	if text != "" {
+		progress = "    progress: " + text + "\n"
+	}
+
+	return "customActions:\n  - id: Prepare\n    setProperty: {name: A, value: x}\n" + progress +
+		"    schedule: [{sequence: execute, after: CostFinalize}]\n"
+}
+
 // pkg returns base with its package section replaced.
 func pkg(flow string) string {
 	return strings.Replace(base, "package:\n  platform: x64\n", "package: "+flow+"\n", 1)
@@ -203,6 +215,32 @@ func TestValidate(t *testing.T) {
     schedule: [{sequence: execute, after: InstallFiles}]
 `,
 			sevError, "customActions[0].return", "CA-02",
+		},
+		// CA-08: progress texts.
+		"blank progress": {
+			base + appComponent + progressAction("'  '"),
+			sevError, "customActions[0].progress", "blank",
+		},
+		"progress wider than its column": {
+			base + appComponent + progressAction(strings.Repeat("x", 65)),
+			sevWarning, "customActions[0].progress", "ICE03",
+		},
+		"progress for an unknown action": {
+			base + appComponent + progressAction("Preparing") + "ui: {enabled: true, languages: {de: {progress: {Other: Vorbereiten}}}}\n",
+			sevError, "ui.languages.de.progress.Other", "not the id of a custom action",
+		},
+		"progress translation without a base text": {
+			base + appComponent + progressAction("") + "ui: {enabled: true, languages: {de: {progress: {Prepare: Vorbereiten}}}}\n",
+			sevError, "ui.languages.de.progress.Prepare", "no progress text",
+		},
+		"progress for a generated action": {
+			base + appComponent + "    services: [{ name: svc, arguments: [{ value: -b, condition: B }] }]\n" +
+				"ui: {enabled: true, languages: {de: {progress: {SetArg_svc_1: Vorbereiten}}}}\n",
+			sevError, "ui.languages.de.progress.SetArg_svc_1", "not the id of a custom action",
+		},
+		"empty progress translation": {
+			base + appComponent + progressAction("Preparing") + "ui: {enabled: true, languages: {de: {progress: {Prepare: ''}}}}\n",
+			sevError, "ui.languages.de.progress.Prepare", "empty",
 		},
 		// CA-03: run actions carry the same return rule and a few of their own.
 		"run without return": {

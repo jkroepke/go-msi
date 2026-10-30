@@ -11,7 +11,7 @@ import (
 // removeFolders lists the removeFolders entries in the BuilderRemoveFolders
 // property for the immediate action of the same name, which checks each
 // folder and hands the accepted ones to the deferred, rollback and commit
-// actions after it (specification section 17.8): the deferred one moves
+// actions after it (specification section 17.9): the deferred one moves
 // each folder by handle into a private backup folder, the rollback one
 // moves it back, the commit one deletes it without following junctions.
 func (b *build) removeFolders() error {

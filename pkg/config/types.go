@@ -469,7 +469,7 @@ type RemoveFile struct {
 // RemoveFolder removes the folder that a property or directory holds at
 // install time, with everything in it: the custom action DLL moves it aside
 // and deletes it at commit without following junctions (specification
-// section 17.8).
+// section 17.9).
 type RemoveFolder struct {
 	// Property holds the full path of the folder: a directory ID or a
 	// property, for example one a registry search fills.
@@ -629,7 +629,11 @@ type CustomAction struct { //nolint:govet // field order is the YAML key order
 	Return       string        `yaml:"return"`
 	HideTarget   bool          `yaml:"hideTarget"`
 	Once         string        `yaml:"once"`
-	Schedule     []Placement   `yaml:"schedule"`
+	// Progress is the action's description in the ActionText table, shown
+	// by the wizard's progress page while a deferred action runs and
+	// written to the verbose log (under /qn only for deferred actions).
+	Progress string      `yaml:"progress"`
+	Schedule []Placement `yaml:"schedule"`
 
 	// origin is the YAML path of the service argument an action was
 	// generated from.

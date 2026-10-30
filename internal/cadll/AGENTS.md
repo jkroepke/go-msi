@@ -95,7 +95,7 @@ The custom action DLL of `run` actions and permission grants. Read the root
   repairs run without the first install's command line properties (observed
   on the CI runner, SEC-02). Wide strings in this part
   are `u"..."` literals, which clang types as `unsigned short` arrays.
-- Folder removal (spec 17.8) is the immediate export `BuilderRemoveFolders`
+- Folder removal (spec 17.9) is the immediate export `BuilderRemoveFolders`
   (checks, after RemoveFiles) and `BuilderRemoveFoldersExec` for the
   rollback (`u`), deferred (`m`, or `d` with rollback disabled) and commit
   (`c`) actions. Do not go back to temporary `RemoveFile` rows: RemoveFiles
