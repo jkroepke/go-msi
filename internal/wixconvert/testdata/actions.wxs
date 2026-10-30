@@ -70,7 +70,7 @@
       <Custom Action="StartTray" After="InstallFinalize" Condition="NOT REMOVE" />
       <Custom Action="StartMonitor" After="StartTray" Condition="NOT REMOVE" />
       <Custom Action="SetStopCmd" Before="StopHello" />
-      <Custom Action="StopHello" Before="InstallValidate" />
+      <Custom Action="StopHello" After="Wix4CloseApplications_X64" />
       <Custom Action="SetGreetCmd" After="InstallFinalize" />
       <Custom Action="Greet" After="SetGreetCmd" Condition="NOT Installed AND NOT WIX_UPGRADE_DETECTED" />
       <Custom Action="Cleanup" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />

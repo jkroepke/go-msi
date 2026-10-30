@@ -2,6 +2,7 @@ package wixconvert
 
 import (
 	"maps"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -147,6 +148,7 @@ func (c *converter) emitActions() {
 		c.setProgress(action, actionID, progress)
 		action.set("schedule", byAction[actionID])
 		delete(byAction, actionID)
+		c.extensionAnchors(action, custom)
 		c.out.add("customActions", action)
 	}
 
@@ -239,6 +241,40 @@ func (c *converter) setProgress(action *omap, actionID string, texts map[string]
 		}
 
 		c.todof(action, key, text.line, "the progress template of %s is not converted: msi-builder writes no ActionText templates", actionID)
+	}
+}
+
+// extensionAction matches the ID of a WiX extension's custom action, such
+// as Wix4CloseApplications_X64.
+var extensionAction = regexp.MustCompile(`^Wix[0-9]*[A-Z]`)
+
+// extensionAnchors notes placements anchored on a WiX extension's action,
+// which the msi-builder package does not have.
+func (c *converter) extensionAnchors(action *omap, custom *elem) {
+	schedule, ok := action.get("schedule").([]any)
+	if !ok {
+		return
+	}
+
+	for _, entry := range schedule {
+		placement, ok := entry.(*omap)
+		if !ok {
+			continue
+		}
+
+		for _, key := range []string{"before", "after"} {
+			anchor := placement.str(key)
+			if !extensionAction.MatchString(anchor) || c.actions[anchor] != nil {
+				continue
+			}
+
+			// CostFinalize is in every sequence that takes custom
+			// actions, before the installation changes anything.
+			placement.del(key)
+			placement.set("after", "CostFinalize")
+			c.todof(action, "schedule", custom.line, "%s is an action of a WiX extension, which the msi-builder package "+
+				"does not have; convert placed this action after CostFinalize, check that place", anchor)
+		}
 	}
 }
 

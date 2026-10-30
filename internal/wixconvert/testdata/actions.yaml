@@ -66,8 +66,9 @@ customActions:
     run:
       command: '"[System64Folder]taskkill.exe" /im hello.exe /f'
     return: ignore
+    # TODO(line 49): Wix4CloseApplications_X64 is an action of a WiX extension, which the msi-builder package does not have; convert placed this action after CostFinalize, check that place
     schedule:
-      - {sequence: execute, before: InstallValidate}
+      - {sequence: execute, after: CostFinalize}
   - id: Greet
     run:
       command: '"[System64Folder]cmd.exe" /c echo hello'

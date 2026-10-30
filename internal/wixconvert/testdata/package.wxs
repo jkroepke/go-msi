@@ -99,6 +99,12 @@
             <Verb Id="open" Command="Open with Hello" Argument="&quot;%1&quot;" />
           </Extension>
         </ProgId>
+        <!-- Only names an icon; it opens nothing. -->
+        <ProgId Id="Example.HelloVault" Description="Hello vault" Icon="hello.exe" IconIndex="2">
+          <Extension Id="hellovault" ContentType="application/x-hello-vault">
+            <MIME ContentType="application/x-hello-vault" Default="yes" />
+          </Extension>
+        </ProgId>
         <ServiceControl Id="HelloControl" Name="Hello" Start="install" Stop="both" Remove="uninstall" Wait="no" />
         <ServiceControl Id="LegacyControl" Name="HelloLegacy" Stop="install" Remove="install" />
         <util:EventSource Name="Hello" Log="Application" EventMessageFile="[#hello.exe]" SupportsErrors="yes" SupportsInformationals="yes" />

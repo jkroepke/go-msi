@@ -166,10 +166,15 @@ func isEmpty(value any) bool {
 // other empty strings out.
 type emptyText struct{}
 
+// emptyList is an empty list that is written, as [].
+type emptyList struct{}
+
 func node(value any) *yaml.Node {
 	switch val := value.(type) {
 	case emptyText:
 		return scalar("")
+	case emptyList:
+		return &yaml.Node{Kind: yaml.SequenceNode, Style: yaml.FlowStyle}
 	case *omap:
 		return val.node()
 	case []any:

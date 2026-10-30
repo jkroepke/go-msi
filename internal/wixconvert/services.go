@@ -689,6 +689,11 @@ func (cc *compConv) progID(elm *elem) { //nolint:cyclop // a flat list of indepe
 		}
 	}
 
+	if fileType.get("verbs") == nil {
+		// Without verbs msi-builder writes an open verb; WiX writes none.
+		fileType.set("verbs", emptyList{})
+	}
+
 	conv.pendingTypes = append(conv.pendingTypes, pendingType{e: elm, comp: cc.cp, target: target, out: fileType, parent: cc.out})
 }
 
