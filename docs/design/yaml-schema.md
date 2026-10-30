@@ -878,6 +878,50 @@ entries (REG-04). Any number of ProgIDs may list an extension with
 `openWithOnly`; the default may be registered once. Explorer's "Open with"
 choice of the user (`UserChoice`) still wins over the package's default.
 
+**Closing running programs.** `close` on a program stops its running
+copies when its component is installed, repaired or removed, so that an
+upgrade does not leave the old version running from a pending-delete copy
+and an uninstall does not wait for a reboot:
+
+```yaml
+files:
+  - source: tray.exe
+    close: true                    # WM_CLOSE, 5 s, then terminate
+  - source: agent.exe
+    close:
+      timeout: 10s                 # how long it gets to quit; 0s to 5m, default 5s
+      terminate: false             # default true: end what is still running
+```
+
+Two actions on the embedded DLL do it (specification section 17.8):
+before `InstallValidate`, as the installing user, every process whose image
+is the installed file gets `WM_CLOSE` on its top-level windows, and the
+install waits up to `timeout` for those to exit; after `StopServices` and
+before `RemoveFiles`, as LocalSystem in a per-machine install, the copies
+still running from that path are ended, in any session, with exit code
+1602. A process matches by its full path, compared without case, so a copy
+of the program in another folder (a portable copy, a Kubernetes
+HostProcess container) keeps running. This is the difference to WiX's
+`util:CloseApplication`, which matches the file name only (CLOSE-01; the
+2026-10-25 evaluation of the `windows_exporter` example found that a
+problem). A console program or a service has no window to close, so it is
+ended, or left alone with `terminate: false`; a service the package
+installs is stopped by its `control` events first. A window on another
+user's desktop does not get `WM_CLOSE` either; its process is ended. Ending
+a program loses what it has not saved, so `terminate: false` suits editors
+and tools where the user should decide; the engine's files-in-use dialog
+then lists what is still running. Only files that end in `.exe` take
+`close`, and a folder source does not.
+
+Set `MSIRESTARTMANAGERCONTROL: Disable` with `close`. Restart Manager
+otherwise asks every process that holds a package file to shut down in a
+silent install, also an unrelated one that only has the file open, and
+waits for the user in a basic UI (close-apps evaluation, 2026-10-25);
+`close` covers the programs the package knows about. Not adopted from WiX:
+closing a program by name wherever it runs, end-session messages
+(`WM_QUERYENDSESSION`), registering programs for a restart after the
+install, and a reboot prompt for programs that refuse to exit.
+
 **Component shortcuts.** A component can list `shortcuts` of its own, for
 shortcuts that do not point at a file listed with them. Each names exactly
 one target:

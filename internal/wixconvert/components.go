@@ -58,7 +58,7 @@ var unsupported = map[string]string{ //nolint:gochecknoglobals // lookup table
 	"util:Group":               hintRun,
 	"util:FileShare":           hintRun,
 	"util:PerformanceCategory": hintRun,
-	"util:CloseApplication":    "the built-in files-in-use dialog and Restart Manager handle running programs",
+	"util:CloseApplication":    "set close: true on the program's file (files[].close); it matches the installed path, not the name",
 	"util:TouchFile":           "leave it out",
 }
 

@@ -171,6 +171,7 @@ msi-builder does the same by default:
 | `Environment` | `components[].environment` |
 | `Shortcut`, `util:InternetShortcut` | `files[].shortcuts`, `components[].shortcuts` |
 | `ProgId`, `Extension`, `Verb` | `files[].fileTypes` |
+| `util:CloseApplication` | `files[].close` on the program's file; it matches the installed path, not the file name |
 | `ServiceInstall`, `ServiceConfig`, `util:ServiceConfig` | `components[].services` |
 | `ServiceControl` for another service | `components[].serviceControl` |
 | `util:EventSource` | `components[].eventLog` |
@@ -786,7 +787,6 @@ msi-builder signs on Linux and macOS too; see [Signing](signing.md).
 | `IniFile` | Ship the complete file; `.url` shortcuts are supported |
 | `Class`, `TypeLib`, `AppId` (COM) | Write the registry values with `registry` |
 | `util:User`, `util:Group`, `util:FileShare`, `util:PerformanceCategory`, IIS, SQL and HTTP extensions | A `run` action, if you need it |
-| `util:CloseApplication` | The built-in files-in-use dialog and Restart Manager |
 | `util:BroadcastEnvironmentChange`, `util:BroadcastSettingChange` | None; see [Environment variables](#environment-variables) |
 | `DiskPrompt`, `Media DiskPrompt` and `VolumeLabel` | Leave them out: they only matter for packages on several disks |
 | Several `Media` disks, spanned cabinets | Large payloads are split into several cabinets automatically; above 2 GB, `package.embedCabinets: false` puts them beside the `.msi` |

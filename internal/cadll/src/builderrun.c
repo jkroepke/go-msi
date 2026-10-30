@@ -6,7 +6,7 @@
 // ERROR_INSTALL_FAILURE for anything else.
 //
 // The DLL is freestanding: it includes no SDK header and links no C runtime,
-// only kernel32.dll, advapi32.dll and msi.dll, whose prototypes are written
+// only kernel32.dll, advapi32.dll, msi.dll and user32.dll, whose prototypes are written
 // out below from Microsoft's documentation of each function. It is built by
 // build.sh with clang and lld for x86, x64 and arm64.
 //
