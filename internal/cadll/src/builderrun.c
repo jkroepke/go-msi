@@ -2716,11 +2716,12 @@ __declspec(dllexport) UINT WINAPI BuilderRemoveFoldersExec(MSIHANDLE install)
         HeapFree(GetProcessHeap(), 0, data);
         return ERROR_SUCCESS;
     }
-    // Only the move and the delete at once take folders from the data; the
-    // rollback and the commit only reach the backup folder the move made.
-    // A deferred action that runs with the user's own rights (a per-user
-    // install without elevation) can do nothing the user could not.
-    if ((op == 'm' || op == 'd') && userIsAdmin() && !sessionIsAdmin(install)) {
+    // Every op checks: the rollback and the commit name their folders and
+    // token from the same data, and a backup folder an earlier removal left
+    // behind would pass openBackup. A deferred action that runs with the
+    // user's own rights (a per-user install without elevation) can do
+    // nothing the user could not, so it skips the check.
+    if (userIsAdmin() && !sessionIsAdmin(install)) {
         logft(install, tmplRemove, msgRemoveNotAdminExec, 0, 0);
         HeapFree(GetProcessHeap(), 0, data);
         return ERROR_SUCCESS;

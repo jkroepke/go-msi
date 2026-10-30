@@ -132,10 +132,12 @@ the root `AGENTS.md` first.
   deferred side repeats it: it reads the engine's `UserSID` and asks Authz
   (`AuthzInitializeContextFromSid`) for that account's groups, and does
   nothing unless it is LocalSystem or holds Administrators; its
-  CustomActionData is never trusted on its own. Only the move (`m`, `d`)
-  checks, and only when the deferred action holds Administrators itself:
-  a per-user install without elevation runs it as the user, and the
-  rollback and commit only reach the backup folder a checked move made. The backup folder's name (the token) is visible to anyone who
+  CustomActionData is never trusted on its own. Every op checks, but only
+  when the deferred action holds Administrators itself (a per-user install
+  without elevation runs it as the user): a forged rollback could
+  otherwise move a backup folder an earlier removal left behind. FILE-12
+  checks that a `UserSID` set by an earlier action does not reach the
+  deferred side. The backup folder's name (the token) is visible to anyone who
   lists the volume root; never rely on it being secret, only on
   `openBackup`'s owner and protected-DACL check. The
   guards (drive roots, standard folder properties and their parents
