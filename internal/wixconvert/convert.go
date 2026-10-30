@@ -114,6 +114,7 @@ type converter struct {
 	upgrades      []*elem
 	media         []*elem
 	launches      []*elem
+	uiNav         []*elem
 	icons         []*elem
 	defines       [][2]string
 	sequences     []*elem
@@ -121,6 +122,10 @@ type converter struct {
 	structure     map[string]func(c *converter, e *elem, sc scope)
 	features      []*feature
 	featureByID   map[string]*feature
+	// quietCommands are the command line sources of the quiet exec
+	// actions, and consumed the sources they take in.
+	quietCommands map[string]commandSource
+	consumed      map[*elem]bool
 	featureGrps   map[string]*featureGroup
 	topGroupRefs  []string
 	comps         []*comp
@@ -459,6 +464,34 @@ func (c *converter) addDir(elm *elem, parentID string, standard bool) *dir {
 	return folder
 }
 
+// subdir adds the folders of a Subdirectory path, such as bin\\x64, below a
+// directory and returns the ID of the last one.
+func (c *converter) subdir(parentID, path string, line int) string {
+	for _, name := range strings.FieldsFunc(path, func(r rune) bool { return r == '\\' || r == '/' }) {
+		dirID := parentID + "_" + idPart(name)
+		if _, ok := c.dirs[dirID]; !ok {
+			folder := &dir{id: dirID, name: name, parentID: parentID, line: line}
+			c.dirs[dirID] = folder
+			c.dirOrder = append(c.dirOrder, folder)
+		}
+
+		parentID = dirID
+	}
+
+	return parentID
+}
+
+// idPart makes a folder name usable in a directory ID.
+func idPart(name string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '_' || r == '.' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' {
+			return r
+		}
+
+		return '_'
+	}, name)
+}
+
 // linkDirs links each directory to its parent.
 func (c *converter) linkDirs() {
 	for _, folder := range c.dirOrder {
@@ -478,10 +511,14 @@ func (c *converter) group(id string) *group {
 	return grp
 }
 
-func (c *converter) addComp(e *elem, within scope) {
-	comp := &comp{e: e, id: e.attr("Id"), dir: e.attr(attrDirectory)}
+func (c *converter) addComp(elm *elem, within scope) {
+	comp := &comp{e: elm, id: elm.attr("Id"), dir: elm.attr(attrDirectory)}
 	if comp.dir == "" {
 		comp.dir = within.dir
+	}
+
+	if sub := elm.attr("Subdirectory"); sub != "" {
+		comp.dir = c.subdir(comp.dir, sub, elm.line)
 	}
 
 	c.comps = append(c.comps, comp)

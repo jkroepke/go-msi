@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -117,6 +118,68 @@ func TestConvertNotes(t *testing.T) {
 		if res.Notes[i] != want[i] {
 			t.Errorf("note %d is %q, want %q", i, res.Notes[i], want[i])
 		}
+	}
+}
+
+// TestConvertUINavigation checks that Publish rows that reorder the WiX
+// dialogs stay TODOs unless they take out the whole license page.
+func TestConvertUINavigation(t *testing.T) {
+	t.Parallel()
+
+	const todo = "<Publish> in <UI> customizes the WiX dialogs and cannot be converted"
+
+	for name, tc := range map[string]struct {
+		ui      string
+		want    []wixconvert.Note
+		license bool
+	}{
+		"no wizard": {
+			ui:   `<UI Id="MyUI"><Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" /></UI>`,
+			want: []wixconvert.Note{{Line: 4, Message: todo}},
+		},
+		"license skipped": {
+			ui: `<ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" /><UI>
+<Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" Condition="NOT Installed" />
+<Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Condition="NOT Installed" /></UI>`,
+		},
+		"back row alone": {
+			ui: `<ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" /><UI>
+<Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" /></UI>`,
+			want:    []wixconvert.Note{{Line: 5, Message: todo}},
+			license: true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" /><WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
+    ` + tc.ui + `
+  </Package>
+</Wix>`
+
+			res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var notes []wixconvert.Note
+
+			for _, note := range res.Notes {
+				if note.Message == todo {
+					notes = append(notes, note)
+				}
+			}
+
+			if !slices.Equal(notes, tc.want) {
+				t.Errorf("notes %q, want %q", notes, tc.want)
+			}
+
+			if got := strings.Contains(string(res.YAML), "license: license.rtf"); got != tc.license {
+				t.Errorf("license kept: %v, want %v\n%s", got, tc.license, res.YAML)
+			}
+		})
 	}
 }
 

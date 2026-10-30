@@ -245,6 +245,11 @@ go test ./... -shuffle=on -race
   `ActionStart` operation). A `/qn` log omits an immediate action's
   description; it appears as `Action hh:mm:ss: <name>. <text>` only with a
   UI (CA-08).
+- To see what a broadcast reaches, `broadcast_windows_test.go` logs
+  `WM_SETTINGCHANGE` in a hidden top-level window (message-only windows
+  get no broadcasts: documented, unverified) and reads Explorer's current environment block
+  through its PEB, which shows what programs started from the shell
+  inherit. The runner's session has an Explorer (ENVVAR-02).
 - `HKCU\Software` is shared by the 32-bit and 64-bit registry views, so
   `reg query /reg:32` finds a per-user value the package wrote in the 64-bit
   view; only HKLM tells the views apart (SEARCH-06).

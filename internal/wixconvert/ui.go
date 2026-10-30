@@ -8,13 +8,15 @@ import (
 
 // walkUI indexes the content of a UI element: a UIRef picks a wizard,
 // everything else builds dialogs by hand.
-func (c *converter) walkUI(e *elem) {
+func (c *converter) walkUI(e *elem) { //nolint:cyclop // one case per kind of UI child
 	for _, kid := range e.kids {
 		switch {
 		case kid.is("UIRef"):
 			c.uiRef(kid)
 		case kid.is("Publish") && kid.attr("Event") == "DoAction" && kid.attr("Dialog") == "ExitDialog":
 			c.launchAction = kid.attr("Value")
+		case kid.is("Publish") && kid.attr("Event") == "NewDialog":
+			c.uiNav = append(c.uiNav, kid)
 		case kid.is("Property"):
 			c.properties = append(c.properties, kid)
 		case kid.is("ProgressText"):
@@ -60,6 +62,8 @@ func (c *converter) emitUI() {
 
 	switch wizardID := c.uiID(); wizardID {
 	case "":
+		c.uiNavigation(nil, "")
+
 		return
 	case "WixUI_Minimal":
 		wizard.set("enabled", true)
@@ -80,7 +84,62 @@ func (c *converter) emitUI() {
 	}
 
 	c.uiVariables(wizard)
+	c.uiNavigation(wizard, c.uiID())
 	c.uiLaunch(wizard)
+}
+
+// navRow is a NewDialog Publish row: the button that opens a dialog.
+type navRow struct{ dialog, control, value string }
+
+// licenseSkips lists, for each standard wizard, the two Publish rows that
+// take the license page out of the wizard: Next on the welcome page opens
+// the page after the license, and Back there returns to the welcome page.
+var licenseSkips = map[string][2]navRow{ //nolint:gochecknoglobals // lookup table
+	"WixUI_InstallDir": {{dlgWelcome, ctlNext, "InstallDirDlg"}, {"InstallDirDlg", ctlBack, dlgWelcome}},
+	uiFeatureTree:      {{dlgWelcome, ctlNext, "CustomizeDlg"}, {"CustomizeDlg", ctlBack, dlgWelcome}},
+	uiMondo:            {{dlgWelcome, ctlNext, "SetupTypeDlg"}, {"SetupTypeDlg", ctlBack, dlgWelcome}},
+}
+
+const (
+	dlgWelcome = "WelcomeDlg"
+	ctlNext    = "Next"
+	ctlBack    = "Back"
+)
+
+// uiNavigation converts the NewDialog Publish rows. Rows that skip the
+// license page leave ui.license out, since the wizard never shows it; any
+// other row reorders the WiX dialogs and stays a TODO.
+func (c *converter) uiNavigation(wizard *omap, wizardID string) {
+	skips, known := licenseSkips[wizardID]
+	skipping := func(row *elem, want navRow) bool {
+		return known && navRow{row.attr("Dialog"), row.attr("Control"), row.attr("Value")} == want && alwaysTrue(c.condition(row))
+	}
+
+	// The Back row only belongs to the skip when the Next row is there.
+	skipped := slices.ContainsFunc(c.uiNav, func(row *elem) bool { return skipping(row, skips[0]) })
+
+	for _, row := range c.uiNav {
+		if skipped && (skipping(row, skips[0]) || skipping(row, skips[1])) {
+			continue
+		}
+
+		c.todof(wizard, "", row.line, "<Publish> in <UI> customizes the WiX dialogs and cannot be converted")
+	}
+
+	if skipped {
+		wizard.del("license")
+	}
+}
+
+// alwaysTrue reports whether a Publish condition holds on a first install,
+// the only time the wizard shows the license page.
+func alwaysTrue(cond string) bool {
+	switch strings.ToUpper(strings.Join(strings.Fields(cond), " ")) {
+	case "", "1", "NOT INSTALLED":
+		return true
+	default:
+		return false
+	}
 }
 
 // uiVariables converts the WixVariables that the standard wizards read.
