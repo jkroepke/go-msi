@@ -138,18 +138,35 @@ func TestMsiexecGrantNullDACLChild(t *testing.T) {
 
 	root := filepath.Join(os.Getenv("ProgramData"), "MsiBuilderSec03")
 	existing := filepath.Join(root, "existing")
-	open := filepath.Join(existing, "open")
 
-	if err := os.MkdirAll(open, 0o750); err != nil {
+	// Children without a DACL: a folder and a file as SetFileSecurityW
+	// leaves them, and a folder whose descriptor says its DACL follows the
+	// automatic inheritance model (SE_DACL_AUTO_INHERITED, AI).
+	children := []struct{ name, sddl string }{
+		{"open", "D:NO_ACCESS_CONTROL"},
+		{"open-ai", "D:AINO_ACCESS_CONTROL"},
+		{"open.txt", "D:NO_ACCESS_CONTROL"},
+	}
+
+	for _, child := range children[:2] {
+		if err := os.MkdirAll(filepath.Join(existing, child.name), 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The test's own objects also keep the folder when the package is
+	// removed.
+	if err := os.WriteFile(filepath.Join(existing, "open.txt"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	// A file of its own keeps the folder when the package is removed.
-	if err := os.WriteFile(filepath.Join(existing, "keep.txt"), []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
+	reset := func() {
+		for _, child := range children {
+			setSecurity(t, filepath.Join(existing, child.name), child.sddl)
+		}
 	}
 
-	setSecurity(t, open, "D:NO_ACCESS_CONTROL")
+	reset()
 
 	dir := t.TempDir()
 	path := buildConfig(t, dir, "sec03", nullDACLConfig, map[string][]byte{
@@ -158,18 +175,23 @@ func TestMsiexecGrantNullDACLChild(t *testing.T) {
 
 	t.Cleanup(func() {
 		_ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn").Run()
-		// The test folder's owner, the elevated test, may always write
-		// the DACL, also an empty one.
-		setSecurity(t, open, "D:NO_ACCESS_CONTROL")
+		// The test's objects' owner, the elevated test, may always write
+		// the DACL, also over an empty one.
+		reset()
 
 		_ = os.RemoveAll(root)
 	})
 
-	before := fileDACL(t, open)
-	t.Logf("SEC-03: NULL-DACL child before: %s, parent: %s", before, fileDACL(t, existing))
+	t.Logf("SEC-03: parent before: %s", fileDACL(t, existing))
 
-	if before != "D:NO_ACCESS_CONTROL" {
-		t.Fatalf("child before the install: %s, want D:NO_ACCESS_CONTROL", before)
+	before := map[string]string{}
+	for _, child := range children {
+		before[child.name] = fileDACL(t, filepath.Join(existing, child.name))
+		t.Logf("SEC-03: %s before: %s", child.name, before[child.name])
+
+		if !strings.Contains(before[child.name], "NO_ACCESS_CONTROL") {
+			t.Fatalf("%s before the install: %s, want no DACL", child.name, before[child.name])
+		}
 	}
 
 	// Rollback: the grant ran, then FailNow failed the install.
@@ -186,30 +208,29 @@ func TestMsiexecGrantNullDACLChild(t *testing.T) {
 		}
 	}
 
-	afterRollback := fileDACL(t, open)
-	t.Logf("SEC-03: NULL-DACL child after rollback: %s", afterRollback)
+	requireNullDACLs := func(when string) {
+		t.Helper()
 
-	writeErr := os.WriteFile(filepath.Join(open, "probe.txt"), []byte("x"), 0o600)
-	t.Logf("SEC-03: writing a file into the child after rollback: %v", writeErr)
+		for _, child := range children {
+			got := fileDACL(t, filepath.Join(existing, child.name))
+			t.Logf("SEC-03: %s %s: %s", child.name, when, got)
 
-	if !strings.Contains(afterRollback, "NO_ACCESS_CONTROL") {
-		t.Errorf("child after rollback: %s, want no DACL (NO_ACCESS_CONTROL) as before", afterRollback)
+			if got != before[child.name] {
+				t.Errorf("%s %s: %s, want %s as before", child.name, when, got, before[child.name])
+			}
+		}
 	}
 
-	// Install: the grant reaches the folder; the child had full access
-	// for everyone, so it needs nothing of it.
-	setSecurity(t, open, "D:NO_ACCESS_CONTROL")
+	requireNullDACLs("after rollback")
+
+	// Install: the grant reaches the folder; the children gave everyone
+	// full access already, so they need nothing of it.
+	reset()
 	msiexecQuiet(t, filepath.Join(dir, "install.log"), "/i", path)
 
 	t.Logf("SEC-03: parent after install: %s", fileDACL(t, existing))
-
-	afterInstall := fileDACL(t, open)
-	t.Logf("SEC-03: NULL-DACL child after install: %s", afterInstall)
-
-	if !strings.Contains(afterInstall, "NO_ACCESS_CONTROL") {
-		t.Errorf("child after install: %s, want no DACL (NO_ACCESS_CONTROL) as before", afterInstall)
-	}
+	requireNullDACLs("after install")
 
 	msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
-	t.Logf("SEC-03: NULL-DACL child after uninstall: %s", fileDACL(t, open))
+	requireNullDACLs("after uninstall")
 }
