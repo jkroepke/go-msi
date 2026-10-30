@@ -146,7 +146,9 @@ func TestMsiexecSearchesFiles(t *testing.T) { //nolint:paralleltest // msiexec r
 
 	cleanup := func() {
 		_ = os.RemoveAll(locatorRoot)
-		_ = exec.CommandContext(ctx, "reg.exe", "delete", locatorKey, "/f", "/reg:64").Run()
+		// The parent too: leaving HKLM\SOFTWARE\MsiBuilderTest behind
+		// changes what other tests' installs create.
+		_ = exec.CommandContext(ctx, "reg.exe", "delete", `HKLM\SOFTWARE\MsiBuilderTest`, "/f", "/reg:64").Run()
 	}
 
 	cleanup()

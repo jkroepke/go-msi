@@ -1,6 +1,6 @@
 # SEC-02: SDDL without the P flag, and permission grants (CI)
 
-- Runner: GitHub `windows-latest` (Windows Server 2025), elevated, 2026-10-29
+- Runner: GitHub `windows-latest` (Windows Server 2025), elevated, 2026-10-29 and 2026-10-30
 - Tests: `TestMsiexecSDDLWithoutProtection` and `TestMsiexecGrants` in
   `internal/builder/nativetest/permissions_windows_test.go`
 
@@ -27,6 +27,34 @@ existing folder lost its Guests ACE. The registry key is not protected,
 but holds only the authored ACEs, marked inherited (`ID`), and none of
 `HKLM\SOFTWARE`'s. A `/fa` repair in that run left every DACL as after the
 install. The test now asserts this.
+
+### Registry key below an existing key
+
+The key was `HKLM\SOFTWARE\MsiBuilderTest\Sec02`, and other tests create
+and delete `HKLM\SOFTWARE\MsiBuilderTest`. The key sometimes read back as
+`O:SYG:SYD:P(A;CI;KA;;;SY)(A;CI;KR;;;NS)(A;CI;KA;;;BA)` (main, CI run
+41018777226, 2026-10-30): a protected DACL with exactly the authored ACEs,
+as for files. That the parent existed before the install in that run is
+inferred: the run did not log the test order, but the run below gives
+exactly this SDDL for a key below an existing key. Before PR #141,
+`TestMsiexecSearchesFiles` deleted only its `Locator` subkey and left the
+parent behind (a likely source, also inferred).
+
+Since PR #141 the test uses its own root `HKLM\SOFTWARE\MsiBuilderSec02`,
+creates `Existing` before the install, and writes `New\Key` and
+`Existing\Key`. CI run 41036088523 (2026-10-30, the `-v` SEC-02 step) logged:
+
+| Key | SDDL after install |
+| --- | --- |
+| `New` (created by the install) | `O:SYG:SYD:P(A;CI;KA;;;SY)(A;CI;KR;;;NS)(A;CI;KA;;;BA)` |
+| `New\Key` | `O:SYG:SYD:(A;CIID;KA;;;SY)(A;CIID;KA;;;BA)(A;CIID;KR;;;NS)` |
+| `Existing` (created by the test) | `O:LA…D:AI(A;CIID;KR;;;BU)(A;CIID;KA;;;BA)(A;CIID;KA;;;SY)…`, inherited from `HKLM\SOFTWARE` (not logged before the install) |
+| `Existing\Key` | `O:SYG:SYD:P(A;CI;KA;;;SY)(A;CI;KR;;;NS)(A;CI;KA;;;BA)` |
+
+So the key the install creates below an existing key gets the authored
+SDDL as a protected DACL, and the Registry row's key below it inherits it.
+Only one created level was tested. The test asserts all three
+installed keys.
 
 ## Grants
 

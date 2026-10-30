@@ -16,9 +16,15 @@ import (
 // sec02Root is the ProgramData folder of SEC-02.
 const sec02Root = `MsiBuilderSec02`
 
+// sec02Key is the HKLM key below which SEC-02 writes its registry values. No
+// other test uses it, because whether its subkeys exist before the install
+// changes the DACL the registry values' keys get.
+const sec02Key = `SOFTWARE\MsiBuilderSec02`
+
 // sec02SDDLConfig secures a file, a new folder, a folder that exists before
-// the install and a registry key with SDDL strings that have no P (protected)
-// flag.
+// the install and two registry keys, one below a key the install creates and
+// one below a key that exists before, with SDDL strings that have no P
+// (protected) flag.
 const sec02SDDLConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderSec02, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 3a8f1c52-9e0d-4b7a-a6c3-2d5e8f1b7c94 }
 package: { platform: x64 }
@@ -38,7 +44,12 @@ components:
   - id: Key
     registry:
       - root: HKLM
-        key: 'SOFTWARE\MsiBuilderTest\Sec02'
+        key: 'SOFTWARE\MsiBuilderSec02\New\Key'
+        name: Value
+        value: x
+        permissions: { sddl: 'D:(A;CI;KA;;;SY)(A;CI;KA;;;BA)(A;CI;KR;;;NS)' }
+      - root: HKLM
+        key: 'SOFTWARE\MsiBuilderSec02\Existing\Key'
         name: Value
         value: x
         permissions: { sddl: 'D:(A;CI;KA;;;SY)(A;CI;KA;;;BA)(A;CI;KR;;;NS)' }
@@ -71,10 +82,11 @@ func objectSDDL(t *testing.T, path string) string {
 // an SDDL string without the P (protected) flag (SEC-02): files and folders
 // still get a protected DACL with the authored ACEs only, so they drop what
 // they inherit, and a folder that existed before the install loses its own
-// explicit ACEs; a registry key reads back with the authored ACEs and none
-// of its parent's, either unprotected with the ACEs marked inherited or
-// protected (both seen on the same runner image). An SDDL replaces the DACL
-// whatever its flags, which is why grants exist.
+// explicit ACEs. A registry key below a key that exists before the install
+// gets the same protected DACL; when the install creates the parent too, the
+// parent gets it and the key reads back with the authored ACEs marked
+// inherited, and none of the existing key's above it.
+// An SDDL replaces the DACL whatever its flags, which is why grants exist.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestMsiexecSDDLWithoutProtection(t *testing.T) {
@@ -91,6 +103,16 @@ func TestMsiexecSDDLWithoutProtection(t *testing.T) {
 
 	grantGuests(t, existing)
 
+	regKey := `HKLM\` + sec02Key
+	deleteKey := func() { _ = exec.CommandContext(context.Background(), "reg", "delete", regKey, "/f", "/reg:64").Run() }
+
+	// Another run may have left the key; its subkeys must not exist yet.
+	deleteKey()
+
+	if out, err := exec.CommandContext(t.Context(), "reg", "add", regKey+`\Existing`, "/f", "/reg:64").CombinedOutput(); err != nil {
+		t.Fatalf("reg add: %v\n%s", err, out)
+	}
+
 	path := buildConfig(t, t.TempDir(), "sec02", sec02SDDLConfig, map[string][]byte{
 		"app.exe": testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}}),
 	})
@@ -98,7 +120,8 @@ func TestMsiexecSDDLWithoutProtection(t *testing.T) {
 	t.Cleanup(func() {
 		_ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn").Run()
 		_ = os.RemoveAll(root)
-		_ = exec.CommandContext(context.Background(), "reg", "delete", `HKLM\SOFTWARE\MsiBuilderTest\Sec02`, "/f").Run()
+
+		deleteKey()
 	})
 
 	t.Logf("SEC-02: existing folder before install: %s", objectSDDL(t, existing))
@@ -119,19 +142,29 @@ func TestMsiexecSDDLWithoutProtection(t *testing.T) {
 		}
 	}
 
-	key := objectSDDL(t, `HKLM:\SOFTWARE\MsiBuilderTest\Sec02`)
-	t.Logf("SEC-02: after install, registry key: %s", key)
+	regPath := `HKLM:\` + sec02Key
+	for _, name := range []string{`New`, `New\Key`, `Existing`, `Existing\Key`} {
+		t.Logf("SEC-02: after install, registry key %s: %s", name, objectSDDL(t, regPath+`\`+name))
+	}
 
-	// The key reads back in one of two forms on the same runner image:
-	// unprotected with the authored ACEs marked inherited, or protected with
-	// them as authored. Either way they are the only ACEs.
-	inherited := !strings.Contains(key, "D:P") &&
-		strings.Contains(key, "(A;CIID;KA;;;SY)") && strings.Contains(key, "(A;CIID;KA;;;BA)") && strings.Contains(key, "(A;CIID;KR;;;NS)")
-	protected := strings.Contains(key, "D:P") &&
-		strings.Contains(key, "(A;CI;KA;;;SY)") && strings.Contains(key, "(A;CI;KA;;;BA)") && strings.Contains(key, "(A;CI;KR;;;NS)")
+	// The key below the existing key: like a file, a protected DACL with
+	// the authored ACEs only.
+	if key := objectSDDL(t, regPath+`\Existing\Key`); !strings.Contains(key, "D:P(") || strings.Count(key, "(") != 3 ||
+		!strings.Contains(key, "(A;CI;KA;;;SY)") || !strings.Contains(key, "(A;CI;KA;;;BA)") || !strings.Contains(key, "(A;CI;KR;;;NS)") {
+		t.Errorf(`registry key Existing\Key: %s, want a protected DACL with the authored ACEs only`, key)
+	}
 
-	if strings.Count(key, "(") != 3 || (!inherited && !protected) {
-		t.Errorf("registry key: %s, want the authored ACEs and no others", key)
+	// The key the install creates below the root gets the protected DACL,
+	// and the key below it inherits the authored ACEs and none of the
+	// root's.
+	if key := objectSDDL(t, regPath+`\New`); !strings.Contains(key, "D:P(") || strings.Count(key, "(") != 3 ||
+		!strings.Contains(key, "(A;CI;KA;;;SY)") || !strings.Contains(key, "(A;CI;KA;;;BA)") || !strings.Contains(key, "(A;CI;KR;;;NS)") {
+		t.Errorf(`registry key New: %s, want a protected DACL with the authored ACEs only`, key)
+	}
+
+	if key := objectSDDL(t, regPath+`\New\Key`); strings.Contains(key, "D:P") || strings.Count(key, "(") != 3 ||
+		!strings.Contains(key, "(A;CIID;KA;;;SY)") || !strings.Contains(key, "(A;CIID;KA;;;BA)") || !strings.Contains(key, "(A;CIID;KR;;;NS)") {
+		t.Errorf(`registry key New\Key: %s, want the authored ACEs, marked inherited, and no others`, key)
 	}
 
 	msiexecQuiet(t, filepath.Join(filepath.Dir(path), "uninstall.log"), "/x", path)
