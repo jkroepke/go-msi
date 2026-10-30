@@ -49,7 +49,6 @@ func (c *converter) shortcut(elm *elem, dirID string, tree map[*dir]bool) *omap 
 
 	if elm.yes("Advertise") {
 		c.todof(link, "", elm.line, "advertised shortcuts are never supported; this one is a plain shortcut")
-		c.advertised = append(c.advertised, strconv.Itoa(elm.line))
 	}
 
 	for _, a := range []string{"Hotkey", "DescriptionResourceDll", "DisplayResourceDll"} {
@@ -78,6 +77,14 @@ func (c *converter) fileShortcut(f *omap, e *elem, ref *fileRef, tree map[*dir]b
 	s := c.shortcut(e, ref.comp.dir, tree)
 	c.workingDirectory(s, e, ref.dir)
 	f.add("shortcuts", s)
+	c.markAdvertised(e)
+}
+
+// markAdvertised records an advertised shortcut that became a plain one.
+func (c *converter) markAdvertised(e *elem) {
+	if e.yes("Advertise") {
+		c.advertised = append(c.advertised, strconv.Itoa(e.line))
+	}
 }
 
 func (c *converter) workingDirectory(s *omap, e *elem, fileDir string) {
@@ -98,6 +105,10 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 	}
 
 	target := elm.attr("Target")
+	if target != "" {
+		c.markAdvertised(elm)
+	}
+
 	if file := c.targetFile(target); file != nil {
 		link := c.shortcut(elm, pending.comp.dir, pending.tree)
 		c.workingDirectory(link, elm, file.dir)

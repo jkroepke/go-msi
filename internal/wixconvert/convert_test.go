@@ -2,6 +2,7 @@ package wixconvert_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -374,13 +375,14 @@ func TestConvertBuiltCodesOnce(t *testing.T) {
 	}
 }
 
-// Advertised shortcuts get a note when the old version is removed late.
+// Advertised shortcuts get a note when the old version is removed late,
+// unless convert left them out.
 func TestConvertAdvertisedLateRemoval(t *testing.T) {
 	t.Parallel()
 
-	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+	const src = `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
-    <MajorUpgrade Schedule="afterInstallExecute" DowngradeErrorMessage="A newer version is installed." />
+    %s
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Hello" />
     </StandardDirectory>
@@ -388,20 +390,34 @@ func TestConvertAdvertisedLateRemoval(t *testing.T) {
     <Component Id="Main" Directory="INSTALLFOLDER" Guid="6d1c0a42-93b8-4e57-a2f1-0c7e5d9b3a61">
       <File Source="hello.exe">
         <Shortcut Name="Hello" Directory="ProgramMenuFolder" Advertise="yes" />
+        <Shortcut Name="Hello again" Directory="ProgramMenuFolder" Advertise="yes" />
       </File>
+    </Component>
+    <Component Id="Menu" Directory="ProgramMenuFolder" Guid="2b8f4e17-5a0c-4d93-b6e2-9f1a3c7d5e08">
+      <Shortcut Name="Hello docs" Advertise="yes" />
+      <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="menu" Value="1" KeyPath="yes" />
     </Component>
   </Package>
 </Wix>
 `
 
-	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	const note = "the WiX package's advertised shortcuts (lines 10, 11) are deleted by this late removal"
 
-	if !slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool {
-		return strings.HasPrefix(n.Message, "the WiX package's advertised shortcuts (line 10) are deleted by this late removal")
-	}) {
-		t.Errorf("notes %v lack the advertised shortcut", res.Notes)
+	for upgrade, want := range map[string]bool{
+		`<MajorUpgrade Schedule="afterInstallExecute" DowngradeErrorMessage="A newer version is installed." />`:    true,
+		`<MajorUpgrade Schedule="afterInstallInitialize" DowngradeErrorMessage="A newer version is installed." />`: false,
+		``: false,
+	} {
+		res, err := wixconvert.Convert(strings.NewReader(fmt.Sprintf(src, upgrade)), wixconvert.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// The shortcut without a Target in line 16 is left out, so the
+		// note does not list it.
+		got := slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool { return strings.HasPrefix(n.Message, note) })
+		if got != want {
+			t.Errorf("%s: note %t, want %t: %v", upgrade, got, want, res.Notes)
+		}
 	}
 }
