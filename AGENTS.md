@@ -86,7 +86,7 @@ versioning after 1.0.
   comes from the built `Directory` table below the glob's folder, filtered by
   the same include/exclude matcher as the build; among the globs whose source
   folder holds a file on disk (`Options.Exists`), when any does, it goes to
-  the one whose folder is nearest; a tie leaves it unpinned with a TODO (UPG-12, which installs a real
+  the one whose folder is nearest; a tie leaves it unpinned with a todo note (UPG-12, which installs a real
   WiX 5 package on CI). The fixtures are our own sample app: never copy
   third-party `.wxs` files in, and never read WiX source code (clean room).
 - [`internal/spool`](internal/spool), [`internal/memtest`](internal/memtest),
