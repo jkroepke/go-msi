@@ -40,13 +40,13 @@ components:
     keyPath: hello.exe
   # Controls the service of another component.
   # TODO(line 26): the condition "&Complete = 3" was left out: it tests the action state &Complete, which is not set yet when the installer evaluates component conditions; test a property instead
-  # TODO(line 28): the ServiceControl for HelloSvc became services[].control of the component that installs it, which keeps that component's condition and feature instead of this one's
+  # TODO(line 28): the ServiceControl for HelloSvc became services[].control of HelloExe, which keeps that component's condition and feature instead of this one's; merge its events into the control of HelloSvcLite too
   - id: HelloSvcControl
     files:
       - source: dist/hello.yaml
         id: hello.yaml
   # A second control of the same service, which is left out.
-  # TODO(line 33): the ServiceControl for HelloSvc was left out: msi-builder takes one control per service, and services[].control comes from the ServiceControl on line 28; merge the events there
+  # TODO(line 33): the ServiceControl for HelloSvc was left out: msi-builder takes one control per service; merge the events into services[].control of HelloSvcLite, HelloExe
   - id: HelloSvcRestart
     files:
       - source: dist/hello.ini
@@ -78,7 +78,6 @@ components:
       - source: dist/rnd.txt
         id: rnd.txt
     condition: EDITION="R&D"
-  # TODO(line 58): RemoveRegistryKey HKCR\*\shell\Hello was left out: msi-builder has no removal on uninstall only, and removeRegistry removes the key on install
   # TODO(line 59): RemoveRegistryValue HKCU\Software\Example\Hello without Name removes the default value and was left out: removeRegistry without name removes the whole key
   # The RemoveFolder and HKCU key path of this shortcut component were left out:
   # msi-builder writes both for every shortcut.
@@ -89,6 +88,10 @@ components:
         key: Software\Example\Hello\Handlers
         name: PlayMedia
         value: ""
+    removeRegistry:
+      - root: HKCR
+        key: '*\shell\Hello'
+        on: uninstall
     shortcuts:
       # The target is a property that holds a URL, not a folder.
       - name: Hello Console

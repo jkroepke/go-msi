@@ -56,9 +56,9 @@ features:
 components:
   # The RemoveFolder and HKCU key path of this shortcut component were left out:
   # msi-builder writes both for every shortcut.
-  # Its WiX GUID {2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E64} was left out with them: a component with other resources needs a new GUID.
   - id: ToolsMenuLinks
     directory: ProgramMenuFolder/Hello Tools
+    guid: '{2C1D6E4F-8A9B-4C3D-9E2F-1A0B3C4D5E64}'
     shortcuts:
       - name: Read me
         file: readme.txt

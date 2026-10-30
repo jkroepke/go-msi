@@ -15,7 +15,9 @@ syntax; v3 names are mentioned where they differ.
 ## How a port goes
 
 1. Let msi-builder write a first `msi.yaml`:
-   `msi-builder convert -o msi.yaml app.wxs`. It converts what it can and
+   `msi-builder convert --msi app-1.4.0.msi -o msi.yaml app.wxs`, where
+   `app-1.4.0.msi` is your last release built by WiX from that file. It
+   converts what it can, keeps the component GUIDs WiX generated, and
    leaves a `# TODO` comment for everything else; see
    [convert](cli/msi-builder_convert.md). It reads one `.wxs` file, the one
    with `Package` (v3 `Product`); port fragments from other files by hand.
@@ -37,10 +39,11 @@ syntax; v3 names are mentioned where they differ.
 - **Names that users type**, such as the install folder property
   (`INSTALLFOLDER`) and the public properties of your command line
   (`PORT=8080`). Keep the install folder's ID with `installDir.id`.
-- **Component GUIDs you wrote yourself** go into `guid`. Components with
-  `Guid="*"` or no `Guid` get new GUIDs from msi-builder, which is fine with
-  the default upgrade, because it removes the old version before it installs
-  the new one. It matters only with a late removal; see
+- **Component GUIDs** go into `guid`: the ones you wrote yourself, and with
+  `msi-builder convert --msi` also the ones WiX generated for `Guid="*"` or
+  no `Guid`. Without them, msi-builder generates new GUIDs, which is fine
+  with the default upgrade, because it removes the old version before it
+  installs the new one. With a late removal the upgrade deletes files; see
   [Checking the port](#checking-the-port).
 
 ## A whole package
@@ -171,6 +174,7 @@ msi-builder does the same by default:
 | `Environment` | `components[].environment` |
 | `Shortcut`, `util:InternetShortcut` | `files[].shortcuts`, `components[].shortcuts` |
 | `ProgId`, `Extension`, `Verb` | `files[].fileTypes` |
+| `util:CloseApplication` | `files[].close` on the program's file; it matches the installed path, not the filename |
 | `ServiceInstall`, `ServiceConfig`, `util:ServiceConfig` | `components[].services` |
 | `ServiceControl` for another service | `components[].serviceControl` |
 | `util:EventSource` | `components[].eventLog` |
@@ -254,6 +258,13 @@ upgrade:
   never removes a newer version. `downgrade: allow` and `downgrade: ignore`
   install the older version next to the newer one.
 - `IgnoreRemoveFailure="yes"` is `ignoreRemoveFailure: true`.
+- A WiX v3 `<Product>` whose `<Package>` has no `InstallScope` leaves
+  `ALLUSERS` unset, so Windows Installer registers it for the installing
+  user only, even when it installs into Program Files. A `perMachine`
+  package does not find a product registered per user, so the upgrade
+  installs next to it (seen in a real-world port). Remove the old version
+  first; as it is registered for one user, run `msiexec /x {old ProductCode}`
+  as the user who installed it.
 - WiX sets `WIX_UPGRADE_DETECTED` during an upgrade, msi-builder sets
   `OLDERVERSIONBEINGUPGRADED`. If your conditions use the WiX name, keep it
   with `upgrade.property: WIX_UPGRADE_DETECTED`, and
@@ -445,9 +456,11 @@ components:
 Values the package writes are removed on uninstall, as in WiX.
 `removeRegistry` removes keys and values that exist before the install,
 when the component is installed. `RemoveRegistryKey` with
-`Action="removeOnUninstall"` has no counterpart: it removes a key on
-uninstall without ever creating it, and a `type: key` entry with
-`removeOnUninstall: true` also creates the key on install.
+`Action="removeOnUninstall"` is a `removeRegistry` entry with
+`on: uninstall`: it deletes the key with its subkeys when the component is
+removed, and the install does not create it. A `type: key` entry with
+`removeOnUninstall: true` deletes the key at uninstall too, but also
+creates it at install.
 
 ## Environment variables
 
@@ -723,7 +736,7 @@ undo themselves on uninstall and roll back on a failed install.
 | `WixUI_Minimal` | `ui.enabled: true` with `ui.license` |
 | `WixUI_InstallDir` | `ui.enabled: true` with `chooseDirectory: true` |
 | `WixUI_FeatureTree`, `WixUI_Mondo` | `ui.enabled: true` with `chooseFeatures: true` |
-| `WixUI_Advanced` | `package.scope: perUserOrMachine` or `perMachineOrUser`, which adds a scope page |
+| `WixUI_Advanced` | `package.scope: perUserOrMachine` or `perMachineOrUser`, which adds a scope page, with `chooseDirectory: true` and `chooseFeatures: true` |
 | `WixUILicenseRtf` | `ui.license` (`.rtf` or text) |
 | `WixUIBannerBmp`, `WixUIDialogBmp` | `ui.theme.banner`, `ui.theme.dialog` (BMP, PNG or JPEG, same sizes) |
 | `WIXUI_EXITDIALOGOPTIONALCHECKBOX` with `WixShellExec` | `ui.launch.file` |
@@ -739,6 +752,11 @@ ui:
   launch:
     file: hello.exe
 ```
+
+`WixUI_Advanced` sets the per-user folder to `%LOCALAPPDATA%\Apps\<folder>`
+(seen in a real-world port, also with `/qn`). msi-builder installs per
+user to `%LOCALAPPDATA%\Programs\<folder>`. A per-user msi-builder upgrade of
+such an installation should therefore move the files there.
 
 The wizard pages are msi-builder's own, with its own bitmaps. It has no
 setup type page (Typical, Custom, Complete) like `WixUI_Mondo`, and dialogs
@@ -809,7 +827,6 @@ msi-builder signs on Linux and macOS too; see [Signing](signing.md).
 | `IniFile` | Ship the complete file; `.url` shortcuts are supported |
 | `Class`, `TypeLib`, `AppId` (COM) | Write the registry values with `registry` |
 | `util:User`, `util:Group`, `util:FileShare`, `util:PerformanceCategory`, IIS, SQL and HTTP extensions | A `run` action, if you need it |
-| `util:CloseApplication` | The built-in files-in-use dialog and Restart Manager |
 | `util:BroadcastEnvironmentChange` | Drop it: Windows Installer broadcasts environment changes itself; see [Environment variables](#environment-variables) |
 | `util:BroadcastSettingChange` | None; if your `registry` values are a setting that Windows reads only on `WM_SETTINGCHANGE`, send it from a `run` action |
 | `DiskPrompt`, `Media DiskPrompt` and `VolumeLabel` | Leave them out: they only matter for packages on several disks |
@@ -869,9 +886,28 @@ default `upgrade.removeOld` (`afterInstallInitialize`), or
 installed, and new GUIDs do no harm. With `afterInstallExecute`, which
 `preserve: true` also selects, the new version is installed first: it
 skips files that are already there, and removing the old version then
-deletes the files of every component whose GUID changed. Keep the WiX
+deletes the files, registry values, environment variables and shortcuts
+of every component whose GUID changed (case UPG-11 in the spec). Keep the WiX
 GUIDs with `guid` on those components, or keep the early removal.
+`msi-builder convert --msi old.msi` does this for you: it takes the GUID
+of each component from the WiX package, by its `Id` or, for a component
+without one, by its key file, also for a shortcut component, which keeps
+its shortcut (a shared GUID kept the shortcut in UPG-11; with WiX's own
+key path value this is inferred), and leaves a `# TODO` on any
+component it cannot find there. Such a kept shortcut component gets
+msi-builder's own HKCU key path, so the HKCU value WiX wrote for it
+stays behind after a late removal and the uninstall; convert names it in a
+`# TODO`, and a `removeRegistry` entry in another component removes it. Without `--msi`, convert leaves one `# TODO` at
+`upgrade.removeOld` that names the components without a WiX `Guid`.
+Advertised WiX shortcuts are lost in that upgrade even with every GUID
+kept: msi-builder installs plain shortcuts at the same paths, and the late
+removal of the WiX package then deletes them (seen in a real-world port).
+Convert leaves a `# TODO` for them; remove the old version early, at least
+for the first upgrade from WiX, or give the shortcuts other names (both
+untested for advertised shortcuts).
 `msi-builder inspect --table Component old.msi` shows the GUIDs of the WiX
 package, also the ones WiX generated. A folder source cannot take a `guid`,
 so its files are safe only with the early removal, which a package with
 `preserve: true` cannot use.
+Convert leaves a `# TODO` on a WiX `Files` glob it turned into a folder
+source under a late removal.

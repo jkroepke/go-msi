@@ -239,6 +239,7 @@ Silent-failure cases a producer has to guard against itself:
 | REG-05 | Confirmed | Design of PR #120, since reverted (MSISPEC chapter 16). [log](msitest/results/REG-05/server2025/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40919274640 (`TestMsiexecFileTypes`): uninstall keeps the package's `.ext` default and `Content Type` and another program's later default, removes the ProgID and its `OpenWithProgids` entries, and `BuilderAssocChanged` runs on install and uninstall. SERVER2025, 2026-10-29 (`msitest/reg05`): a `SHChangeNotifyRegister` listener in the client's session received one `SHCNE_ASSOCCHANGED` per install and per uninstall from the action (session 2); plain `Registry` rows send none; `ProgId`/`Extension`/`Verb` rows (WiX 5, `Advertise="yes"`, local install) send one per install and per uninstall while the engine's Register/Unregister{Extension,ProgId}Info actions run (the sending action not isolated) and lose `.ext` on uninstall |
 | REG-06 | Confirmed | GitHub `windows-latest` runner, 2026-10-29, CI run 40929158590 (PR #122, `TestMsiexecFileTypes`): RegisterExtensionInfo and RegisterProgIdInfo wrote `.ext` = ProgID, `ProgID\shell` = `open,print`, `shell\open` = `&Open`, `shell\open\command` = `"C:\Program Files\MsiBuilderFileTypes\app.exe" "%1"` (the key path) plus a `command` `REG_MULTI_SZ` with a Darwin descriptor and `"%1"`; the ProgID default stayed unset although the `ProgId` row had a `Description` (no `Class_`). After another program set the `.msibtdoc` default and the uninstall, `.msibtdoc` had no default and no `Content Type`, and `.msibtkeep` lost another program's `PerceivedType`: UnregisterExtensionInfo deletes the `.ext` key's values (other programs' subkeys not planted in this run) |
 | REG-07 | Confirmed | SERVER2025, 2026-10-29, real-world survey (`local\wxs-realworld\out\<case>\preowned\`, black box): of 52 WiX MSIs (rounds 2 to 5) plus the shipped Zabbix agent2 7.0.21 and Datadog 7.85 MSIs, 10 have file associations; 9 use only HKCR `Registry` rows, jpegview (advertised) uses `ProgId`/`Extension`/`Verb`/`MIME`; none calls `SHChangeNotify`. Pre-owned test on the WiX builds of xca, openhashtab and py-launcher and on msi-builder ports of them and of jpegview (msi-builder binary commit not recorded; `TestMsiexecFileTypes` covers msi-builder's own rows: GitHub `windows-latest` runner, CI run 40940473938, PR #127, passed): the `.ext` key stays, its default (also another program's later one) and `Content Type` go, the foreign `PerceivedType`, `OpenWithProgids` entry and `ShellNew` subkey stay, the package's ProgID and `OpenWithProgids` entry go. jpegview's WiX build (native tables) deletes the whole `.ext` key with the foreign values and subkeys |
+| REG-08 | Confirmed | [log](msitest/results/REG-08/ci/log.md); GitHub `windows-latest` runner, 2026-10-30, CI runs 41064566042 and 41069826896 (PR #157): per machine, a `Registry` row named `-` with a Null value neither creates nor deletes its key at install (a key that existed before keeps its subkey and the subkey's value) and a `/fomus` repair leaves keys that exist (a repair over a missing key not tested); uninstall deletes the key with its subkeys in the component's view only (64-bit and 32-bit components, HKCR as `HKLM\SOFTWARE\Classes` per machine). An early major upgrade (`afterInstallInitialize`) deletes the keys with the old product although the new version has the same rows; after a late one (`afterInstallExecute`) they stayed |
 | ENVVAR-01 | Contradicted | [log](msitest/results/ENVVAR-01/environment/log.md); finding 4; segment removal on uninstall confirmed |
 | ENVVAR-02 | Confirmed | [ci](msitest/results/ENVVAR-02/ci/log.md); GitHub `windows-latest` runner, 2026-10-30, CI runs 41049121338 and 41052974347 (PR #142): one `WM_SETTINGCHANGE` with `"Environment"` after each install, repair and uninstall of the machine, user (per-machine package) and user (per-user package) variants, none without `Environment` rows; Explorer's environment block gained and lost each variable and picked up a value written by `reg add` without a broadcast before each step |
 | ENVVAR-03 | Confirmed | [ci](msitest/results/ENVVAR-03/ci/log.md); GitHub `windows-latest` runner, 2026-10-30, CI runs 41054581404, 41055965846 and 41058183558 (PR #149): in `ALLUSERS=2` packages a variable split into components conditioned `ALLUSERS=1` (`*` name) and `NOT ALLUSERS`, and HKLM/HKCU values in such components, install only in their context, silently and through the scope page; a standard user's per-user install writes neither the machine variable nor the HKLM value; a repair of transitive components keeps them (server `ALLUSERS` `1` or empty); ICE105 warns about the conditioned HKLM `Registry` and `RemoveRegistry` rows in `perUserOrMachine` only and never about the `*` row |
@@ -261,6 +262,7 @@ Silent-failure cases a producer has to guard against itself:
 | UPG-08 | Confirmed | [ci](msitest/results/UPG-08/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40940932552: 1.010.0 upgrades 1.9.0, and 1.9.0 over 1.010.0 is refused with 1603: the fields compare as numbers |
 | UPG-09 | Confirmed | [ci](msitest/results/UPG-09/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40940932552: an x86 package removes the x64 product of its upgrade code and installs to `Program Files (x86)`, and the reverse |
 | UPG-10 | Confirmed | [ci](msitest/results/UPG-10/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40965856107: a failed removal of the old product fails the upgrade with 1603 without IgnoreRemoveFailure (`RemoveExistingProducts` after InstallInitialize); with it the upgrade ends with 0 with `RemoveExistingProducts` after InstallValidate, InstallInitialize, InstallExecute or InstallFinalize, and the old product stays registered |
+| UPG-11 | Confirmed | [ci](msitest/results/UPG-11/ci/log.md); GitHub `windows-latest` runner, 2026-10-30, CI run 41058220285: a major upgrade with `RemoveExistingProducts` after InstallExecute whose new version has other component codes loses the files, the HKLM value, the environment variable and the shortcut of every changed code; with the old codes pinned, or with the removal after InstallInitialize, everything stays; a shortcut moved from its own component into a generated carrier is lost even with the other codes pinned |
 | SVC-01 | Confirmed | [failure-actions table](msitest/results/SVC-01/failureactions-table-restart/log.md) 1939; [sc.exe recipe](msitest/results/SVC-01/sc-failure-recipe/log.md) works; without event 128 the service stays |
 | SVC-03 | Confirmed | [per-step](msitest/results/SVC-03/per-step/log.md); per-step restart delays, a reset in seconds and `INFINITE`; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
 | SVC-04 | Confirmed | SERVER2025, 2026-10-29, windows_exporter with `EXTRA_FLAGS=--no-such-flag`: split rows (start `Wait=0`), from msi-builder and from the WiX-built package, install with exit 0 in 1–2 s and leave the service stopped; one row with `Wait=1` fails with 1920 after about 247 s of start retries and rolls back; [details](#service-start-without-waiting-svc-04) |
@@ -1068,3 +1070,33 @@ full-UI test package with two more actions: `SetMarker`, an immediate
   `ActionStart` operation, so it holds the property values of the moment the
   script was written.
 - Not covered: basic UI (`/qb`).
+
+## Closing running programs (CLOSE-01)
+
+Run on 2026-10-30 in the `Build & Test (windows-latest, native)` job
+(Windows Server 2025 x64, elevated) of PR #151, runs 41063132919 (commit
+090c35d) and 41070407809 (commit da6d3dd, the DLL this PR ships, after the
+pseudo-console and unowned-window filters), with the same results, by
+`TestMsiexecClosesApps` in
+`internal/builder/nativetest/close_windows_test.go`. The package installs
+`gui.exe` and `cli.exe` with `close: true` and `keep.exe` with
+`close: {timeout: 2s, terminate: false}` to `C:\Program Files\MsiBuilderClose`,
+with `MSIRESTARTMANAGERCONTROL=Disable`. The test starts the helpers itself
+(`CREATE_NO_WINDOW`) and runs `msiexec /qn` with a verbose log.
+
+| Step | Result |
+| --- | --- |
+| `/fomus` repair with `gui.exe` (hidden window), `cli.exe` (console), `keep.exe` (console), `keep.exe` (visible main window plus a hidden helper window) and a copy of `cli.exe` in another folder running | exit 0. `BuilderCloseSchedule` logged "asked to close" and "exited" for `gui.exe` (exit code 0, its `WM_CLOSE` marker written) and for the visible `keep.exe` (exit 0, its hidden window got no `WM_CLOSE`), and "has no window to close on this desktop" for both console programs. `BuilderCloseExec` got `CustomActionData` `\|...\cli.exe\|...\gui.exe\|`, ended `cli.exe` (exit code 1602) and logged `gui.exe` as not running. The console `keep.exe` and the copy elsewhere kept running |
+| `/x` with `gui.exe`, `cli.exe` and the copy elsewhere running | exit 0. `gui.exe` closed by `WM_CLOSE` as above, `cli.exe` ended with 1602, the copy elsewhere kept running, the product was removed |
+
+- `InstallValidate` ran after `BuilderCloseSchedule` and logged `Info 1603.
+  The file ...\cli.exe is being held in use by the following process` twice
+  in the uninstall: for the installed `cli.exe` and for the copy in the other
+  folder, so the engine's files-in-use check matches by name. In a silent
+  install that is only a log line; `gui.exe`, closed before, was not listed.
+- The immediate action ran in the engine's impersonated custom action server
+  (`MSI (s)` in the log) and still reached the windows of the helpers, which
+  run in the same session as the elevated test process.
+- Not covered: a full-UI install (the files-in-use dialog), a standard user's
+  install, another user's session, a 32-bit or Arm64 package, a major
+  upgrade, Windows Server 2016.

@@ -150,22 +150,23 @@ func (c *converter) recovery(svc *omap, elm *elem) {
 }
 
 // resolveControls converts the ServiceControls of the component. One of a
-// service that the component installs becomes its control; one of a
-// service that another component of the package installs goes to that
-// service's control, which msi-builder requires.
+// service that the component installs becomes its control. One of a
+// service that other components of the package install becomes the
+// control of those without a ServiceControl of their own, which msi-builder
+// requires, or is left out with a note.
 func (cc *compConv) resolveControls() {
+	conv := cc.c
+
 	for _, elm := range cc.controls {
-		name := cc.c.value(elm, "Name")
+		name := conv.value(elm, "Name")
 
 		var own *omap
 
 		for _, s := range cc.services {
-			if s.get("name") == name {
+			if strings.EqualFold(s.str("name"), name) {
 				own = s
 			}
 		}
-
-		chosen, installed := cc.c.serviceControl(name)
 
 		switch {
 		case own != nil && !cc.controlled[own]:
@@ -173,20 +174,37 @@ func (cc *compConv) resolveControls() {
 			// control, also when another component installs it too.
 			cc.ownControl(own, elm)
 		case own != nil:
-			cc.c.todof(cc.out, "", elm.line, "the ServiceControl for %s was left out: msi-builder takes one control per "+
+			conv.todof(cc.out, "", elm.line, "the ServiceControl for %s was left out: msi-builder takes one control per "+
 				"service of a component; merge the events into the first one", name)
-		case !installed:
-			cc.foreignControl(elm)
-		case elm == chosen:
-			cc.c.todof(cc.out, "", elm.line, "the ServiceControl for %s became services[].control of the component "+
-				"that installs it, which keeps that component's condition and feature instead of this one's", name)
 		default:
-			cc.c.todof(cc.out, "", elm.line, "the ServiceControl for %s was left out: msi-builder takes one control per "+
-				"service, and services[].control comes from the ServiceControl on line %d; merge the events there", name, chosen.line)
+			cc.otherComponentControl(elm, name)
 		}
 	}
 
 	cc.otherControls()
+}
+
+// otherComponentControl converts a ServiceControl of a service that the
+// component does not install.
+func (cc *compConv) otherComponentControl(elm *elem, name string) {
+	conv := cc.c
+	withOwn, without := conv.serviceInstallers(name)
+
+	switch {
+	case len(withOwn)+len(without) == 0:
+		cc.foreignControl(elm)
+	case elm == conv.borrowedControl(name) && len(without) > 0:
+		msg := "the ServiceControl for %s became services[].control of %s, which keeps that component's condition " +
+			"and feature instead of this one's"
+		if len(withOwn) > 0 {
+			msg += "; merge its events into the control of " + conv.compNames(withOwn) + " too"
+		}
+
+		conv.todof(cc.out, "", elm.line, msg, name, conv.compNames(without))
+	default:
+		conv.todof(cc.out, "", elm.line, "the ServiceControl for %s was left out: msi-builder takes one control per "+
+			"service; merge the events into services[].control of %s", name, conv.compNames(append(withOwn, without...)))
+	}
 }
 
 // otherControls gives the services without a ServiceControl in their own
@@ -198,7 +216,7 @@ func (cc *compConv) otherControls() {
 		}
 
 		name := svc.str("name")
-		if elm, _ := cc.c.serviceControl(name); elm != nil {
+		if elm := cc.c.borrowedControl(name); elm != nil {
 			cc.ownControl(svc, elm)
 
 			continue
@@ -210,45 +228,57 @@ func (cc *compConv) otherControls() {
 	}
 }
 
-// serviceControl returns the ServiceControl that becomes the control of a
-// service: the one in the component that installs the service, else the
-// first in the file, and whether the package installs the service.
-func (c *converter) serviceControl(name string) (*elem, bool) {
-	named := func(kind string) func(e *elem) bool {
-		return func(e *elem) bool { return e.is(kind) && c.value(e, "Name") == name }
-	}
-
-	installer := c.findElem(func(e *elem) bool {
-		return e.is("Component") && slices.ContainsFunc(e.kids, named("ServiceInstall"))
-	})
-	if installer != nil {
-		if i := slices.IndexFunc(installer.kids, named("ServiceControl")); i >= 0 {
-			return installer.kids[i], true
-		}
-	}
-
-	return c.findElem(named("ServiceControl")), installer != nil
+// namedKid returns a matcher of the elements of a kind that name a service;
+// service names do not depend on case.
+func (c *converter) namedKid(kind, name string) func(e *elem) bool {
+	return func(e *elem) bool { return e.is(kind) && strings.EqualFold(c.value(e, "Name"), name) }
 }
 
-// findElem returns the first element of the file that match accepts.
-func (c *converter) findElem(match func(e *elem) bool) *elem {
-	var find func(e *elem) *elem
+// serviceInstallers returns the components that install a service, those
+// with a ServiceControl of it and those without.
+func (c *converter) serviceInstallers(name string) ([]*comp, []*comp) {
+	var withOwn, without []*comp
 
-	find = func(e *elem) *elem {
-		if match(e) {
-			return e
+	for _, comp := range c.comps {
+		if !slices.ContainsFunc(comp.e.kids, c.namedKid("ServiceInstall", name)) {
+			continue
 		}
 
-		for _, kid := range e.kids {
-			if found := find(kid); found != nil {
-				return found
-			}
+		if slices.ContainsFunc(comp.e.kids, c.namedKid("ServiceControl", name)) {
+			withOwn = append(withOwn, comp)
+		} else {
+			without = append(without, comp)
 		}
-
-		return nil
 	}
 
-	return find(c.doc.root)
+	return withOwn, without
+}
+
+// borrowedControl returns the ServiceControl that becomes the control of a
+// service in the components that install it without one of their own: the
+// first in a component that does not install the service.
+func (c *converter) borrowedControl(name string) *elem {
+	for _, comp := range c.comps {
+		if slices.ContainsFunc(comp.e.kids, c.namedKid("ServiceInstall", name)) {
+			continue
+		}
+
+		if i := slices.IndexFunc(comp.e.kids, c.namedKid("ServiceControl", name)); i >= 0 {
+			return comp.e.kids[i]
+		}
+	}
+
+	return nil
+}
+
+// compNames lists components by ID.
+func (c *converter) compNames(comps []*comp) string {
+	names := make([]string, 0, len(comps))
+	for _, comp := range comps {
+		names = append(names, c.compID(comp))
+	}
+
+	return strings.Join(names, ", ")
 }
 
 // events reports whether a ServiceControl event value includes install and

@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // SchemaV1 is the only schema identifier this package accepts.
@@ -212,7 +213,7 @@ type Component struct { //nolint:govet // field order is the YAML key order
 	Files     []*File          `yaml:"files"`
 	Registry  []*RegistryValue `yaml:"registry"`
 	// RemoveRegistry deletes registry keys or values when the component is
-	// installed.
+	// installed or, for whole keys, removed.
 	RemoveRegistry []*RemoveRegistry `yaml:"removeRegistry"`
 	// RemoveFiles deletes files or empty folders when the component is
 	// installed or removed (RemoveFile rows).
@@ -335,6 +336,9 @@ type File struct { //nolint:govet // field order is the YAML key order
 	Permissions                *Permissions `yaml:"permissions"`
 	Shortcuts                  []*Shortcut  `yaml:"shortcuts"`
 	FileTypes                  []*FileType  `yaml:"fileTypes"`
+	// Close asks running copies of the program to close before it is
+	// replaced or removed, and ends those that do not.
+	Close *Close `yaml:"close"`
 	// Include and Exclude are glob patterns over the paths below a folder
 	// source (one that ends in a slash); see Config.ExpandFolders.
 	Include StringList `yaml:"include"`
@@ -343,6 +347,48 @@ type File struct { //nolint:govet // field order is the YAML key order
 	// FS, when set, is where Source is read from, overriding Config.FS for
 	// this file. AddTree sets it. It is never read from YAML.
 	FS fs.FS `yaml:"-"`
+}
+
+// Close stops the running copies of an installed program when its
+// component is installed, repaired or removed (specification section 17.9):
+// windows on the installing user's desktop get WM_CLOSE before
+// InstallValidate, and with Terminate the processes still running from the
+// installed path are ended after StopServices. "close: true" is the short
+// form of an empty mapping; "close: false" sets Disabled.
+type Close struct {
+	// Timeout is how long the programs get to close; nil means
+	// DefaultCloseTimeout.
+	Timeout *Duration `yaml:"timeout"`
+	// Terminate ends the processes that are still running; nil means true.
+	Terminate *bool `yaml:"terminate"`
+	Disabled  bool  `yaml:"-"`
+}
+
+// DefaultCloseTimeout is how long running programs get to close when
+// close.timeout is not set.
+const DefaultCloseTimeout = 5 * time.Second
+
+// MaxCloseTimeout is the longest close.timeout: the install waits up to that
+// long for each such file before InstallValidate.
+const MaxCloseTimeout = 5 * time.Minute
+
+// Enabled reports whether c asks for the program to be closed.
+func (c *Close) Enabled() bool {
+	return c != nil && !c.Disabled
+}
+
+// TimeoutOrDefault returns Timeout, or DefaultCloseTimeout when it is unset.
+func (c *Close) TimeoutOrDefault() time.Duration {
+	if c.Timeout == nil {
+		return DefaultCloseTimeout
+	}
+
+	return time.Duration(*c.Timeout)
+}
+
+// Terminates reports whether the processes that do not close are ended.
+func (c *Close) Terminates() bool {
+	return c.Terminate == nil || *c.Terminate
 }
 
 // FileType is a ProgId that the file it is listed under opens, with the
@@ -439,7 +485,8 @@ type RegistryValue struct { //nolint:govet // field order is the YAML key order
 }
 
 // RemoveRegistry is a registry key or value that is deleted when its
-// component is installed, before the component's own values are written.
+// component is installed, before the component's own values are written,
+// or a key that is deleted when the component is removed.
 type RemoveRegistry struct {
 	ID   string `yaml:"id"`
 	Root string `yaml:"root"`
@@ -447,6 +494,9 @@ type RemoveRegistry struct {
 	// Name is the value to delete; empty deletes the key with all its values
 	// and subkeys.
 	Name string `yaml:"name"`
+	// On is install (empty means install), uninstall or both. Uninstall
+	// and both delete whole keys only.
+	On string `yaml:"on"`
 }
 
 // RemoveFile is one RemoveFile row: the files of one folder that match a
@@ -462,7 +512,7 @@ type RemoveFile struct {
 	On string `yaml:"on"`
 }
 
-// Values of RemoveFile.On.
+// Values of RemoveFile.On and RemoveRegistry.On.
 const (
 	RemoveOnInstall   = "install"
 	RemoveOnUninstall = "uninstall"

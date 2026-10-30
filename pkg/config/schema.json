@@ -10,7 +10,7 @@
     },
     "vars": {
       "type": "object",
-      "description": "Defaults for ${NAME} substitution.",
+      "description": "Defaults for ${NAME} substitution. A value may use other variables; --var and --env values override it.",
       "additionalProperties": {
         "type": [
           "string",
@@ -1723,6 +1723,30 @@
                   "additionalProperties": false
                 }
               },
+              "close": {
+                "description": "Close running copies of this program (an .exe) when its component is installed, repaired or removed: WM_CLOSE to its windows on the installing user's desktop before InstallValidate, then, unless terminate is false, the processes still running from the installed path are ended after StopServices. Copies in other folders are left alone.",
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/bool"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "timeout": {
+                        "type": "string",
+                        "description": "A Go duration such as 10s: how long the program gets to close, at most 5m.",
+                        "default": "5s"
+                      },
+                      "terminate": {
+                        "$ref": "#/$defs/bool",
+                        "description": "End the processes that are still running after the timeout.",
+                        "default": true
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              },
               "include": {
                 "$ref": "#/$defs/stringList",
                 "description": "Folder sources only: doublestar glob patterns of the files to add, default all. A pattern without / matches a name in any folder; ** matches any number of folders; a trailing / matches folders only. Case is ignored."
@@ -1828,7 +1852,7 @@
         },
         "removeRegistry": {
           "type": "array",
-          "description": "Registry keys or values deleted when the component is installed, before its own values are written.",
+          "description": "Registry keys or values deleted when the component is installed, before its own values are written, or keys deleted when it is removed.",
           "items": {
             "type": "object",
             "properties": {
@@ -1857,6 +1881,15 @@
               "name": {
                 "type": "string",
                 "description": "The value to delete. Leave it out to delete the key with all its values and subkeys."
+              },
+              "on": {
+                "enum": [
+                  "install",
+                  "uninstall",
+                  "both"
+                ],
+                "default": "install",
+                "description": "When to delete: install (also on a repair), uninstall (whole keys only; the install does not create the key) or both."
               }
             },
             "required": [

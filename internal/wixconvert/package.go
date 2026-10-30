@@ -56,66 +56,7 @@ func (c *converter) emit() {
 	c.emitUI()
 	c.emitErrorRows()
 	c.emitActionRefs()
-	c.guidNote()
-}
-
-// guidNote warns about components whose GUID WiX generated when the old
-// version is removed late. msi-builder generates other GUIDs, so the
-// upgrade sees new components, and removing the old package then deletes
-// files the new one installed.
-func (c *converter) guidNote() {
-	var removeOld string
-	if upgrade := c.out.mapAt("upgrade"); upgrade != nil {
-		removeOld = upgrade.str("removeOld")
-	}
-
-	late := removeOld == "afterInstallExecute" || removeOld == "afterInstallFinalize"
-
-	c.shortcutGUIDs(late, removeOld)
-
-	if !late {
-		return
-	}
-
-	var generated []string
-
-	for _, comp := range c.comps {
-		if comp.out != nil && comp.out.get("guid") == nil {
-			generated = append(generated, c.compID(comp))
-		}
-	}
-
-	if len(generated) == 0 {
-		return
-	}
-
-	c.todof(nil, "", 0, "WiX generated the GUIDs of %s, and msi-builder generates other ones; with removeOld %s an upgrade "+
-		"from the WiX package then deletes their files. Copy WiX's GUIDs into components[].guid: msi-builder inspect --table Component wix.msi",
-		strings.Join(generated, ", "), removeOld)
-}
-
-// shortcutGUIDs decides on the WiX GUIDs of shortcut components whose rows
-// dropShortcutRows changed. Such a component needs a new GUID, since an
-// upgrade that kept it would leave the old rows behind, unless the old
-// version is removed late: removing it would then delete the shortcut that
-// the new component installed.
-func (c *converter) shortcutGUIDs(late bool, removeOld string) {
-	for _, comp := range c.comps {
-		if comp.shortcutGUID == "" || comp.out == nil {
-			continue
-		}
-
-		if late {
-			comp.out.head = append(comp.out.head, "Its WiX GUID is kept: with removeOld "+removeOld+", a new GUID "+
-				"would let the removal of the old version delete the shortcut.")
-
-			continue
-		}
-
-		comp.out.del("guid")
-		comp.out.head = append(comp.out.head, "Its WiX GUID "+comp.shortcutGUID+" was left out with them: a component "+
-			"with other resources needs a new GUID.")
-	}
+	c.checkCodes()
 }
 
 func (c *converter) emitProduct() {

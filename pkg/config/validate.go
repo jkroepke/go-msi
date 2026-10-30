@@ -763,7 +763,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 		// machine, so its machine data needs no per-user context.
 		userData := perUser && comp.Scope != ScopePerMachine
 		v.componentRegistry(p, comp, regIDs, userData)
-		v.componentRemoveRegistry(p, comp, removeIDs, userData)
+		v.componentRemoveRegistry(p, comp, removeIDs, regIDs, userData)
 		v.componentRemoveFiles(cfg, p, comp, known, removeFileIDs)
 		keyFile := v.componentKeyFile(p, comp, files, generated)
 
@@ -1180,6 +1180,7 @@ func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component
 		v.uniqueTarget(filePath, comp, fileName(file), paths)
 
 		v.fileVersion(filePath, file, comp)
+		v.fileClose(filePath, file)
 
 		if versionedFile(file) {
 			versioned++
@@ -1208,6 +1209,29 @@ func (v *validator) componentFiles(cfg *Config, compPath string, comp *Component
 	}
 
 	return nil
+}
+
+// fileClose checks a close block: only a program has running copies, and
+// the timeout delays the install before InstallValidate.
+func (v *validator) fileClose(filePath string, file *File) {
+	if !file.Close.Enabled() {
+		return
+	}
+
+	if !strings.EqualFold(path.Ext(fileName(file)), ".exe") {
+		v.errorf(filePath+".close", "%s is not a program; close needs a file that ends in .exe", fileName(file))
+	}
+
+	if file.Close.Timeout == nil {
+		return
+	}
+
+	switch d := time.Duration(*file.Close.Timeout); {
+	case d < 0 || d > MaxCloseTimeout:
+		v.errorf(filePath+".close.timeout", "must be between 0s and %s", MaxCloseTimeout)
+	case d%time.Millisecond != 0:
+		v.errorf(filePath+".close.timeout", "must be a whole number of milliseconds")
+	}
 }
 
 // versionedFile reports whether the File row gets a Version: an explicit
@@ -1335,37 +1359,108 @@ func (v *validator) registryLocation(entryPath, root, key string, perUser bool) 
 }
 
 // componentRemoveRegistry checks the registry keys and values a component
-// deletes when it is installed.
-func (v *validator) componentRemoveRegistry(p string, c *Component, ids map[string]bool, perUser bool) {
-	seen := make(map[[3]string]bool)
+// deletes when it is installed or removed. Uninstall removals are Registry
+// rows, so their ids share regIDs with the registry entries.
+func (v *validator) componentRemoveRegistry(p string, comp *Component, ids, regIDs map[string]bool, perUser bool) {
+	seen := make(map[[4]string]bool)
 
-	for j, entry := range c.RemoveRegistry {
+	for j, entry := range comp.RemoveRegistry {
 		entryPath := fmt.Sprintf("%s.removeRegistry[%d]", p, j)
 
-		if entry.ID != "" {
-			if !IsIdentifier(entry.ID) || len(entry.ID) > MaxIdentifierLength {
-				v.errorf(entryPath+".id", "%q is not an identifier of at most %d characters", entry.ID, MaxIdentifierLength)
-			}
-
-			if ids[entry.ID] {
-				v.errorf(entryPath+".id", "removeRegistry id %s is defined twice", entry.ID)
-			}
-
-			ids[entry.ID] = true
+		if entry.On != "" {
+			v.oneOf(entryPath+".on", entry.On, RemoveOnInstall, RemoveOnUninstall, RemoveOnBoth)
 		}
 
+		v.removeRegistryID(entryPath, entry, ids, regIDs)
 		v.registryLocation(entryPath, entry.Root, entry.Key, perUser)
 
-		if entry.Name == "-" {
-			v.errorf(entryPath+".name", "leave name out to delete the whole key")
+		v.removeRegistryName(entryPath, comp, entry)
+
+		// Install removals are RemoveRegistry rows and uninstall removals
+		// Registry rows; both is one of each, and a table holds each
+		// key or value once.
+		for _, table := range removeRegistryTables(entry.On) {
+			key := [4]string{table, entry.Root, strings.ToLower(entry.Key), strings.ToLower(entry.Name)}
+			if seen[key] {
+				v.errorf(entryPath, "this key or value is already removed by this component")
+
+				break
+			}
+
+			seen[key] = true
+		}
+	}
+}
+
+// removeRegistryName checks the name of a removeRegistry entry and the
+// generated id of an uninstall removal.
+func (v *validator) removeRegistryName(entryPath string, comp *Component, entry *RemoveRegistry) {
+	if entry.Name == "-" {
+		v.errorf(entryPath+".name", "leave name out to delete the whole key")
+	}
+
+	if entry.On != RemoveOnUninstall && entry.On != RemoveOnBoth {
+		return
+	}
+
+	// Only a whole key can be removed at uninstall without writing
+	// anything at install: a Registry row with a name and no value writes
+	// an empty value (REG-04).
+	if entry.Name != "" {
+		v.errorf(entryPath+".name", "on: %s removes whole keys only; a value the package writes is removed with it already", entry.On)
+	}
+
+	if entry.ID == "" && writesDashValue(comp, entry) {
+		v.errorf(entryPath+".id", "a registry entry named - on this key has the same generated id; set id on one of them")
+	}
+}
+
+// removeRegistryTables names the tables a removeRegistry entry adds rows to.
+func removeRegistryTables(on string) []string {
+	switch on {
+	case RemoveOnUninstall:
+		return []string{"Registry"}
+	case RemoveOnBoth:
+		return []string{"RemoveRegistry", "Registry"}
+	default:
+		return []string{"RemoveRegistry"}
+	}
+}
+
+// writesDashValue reports whether the component writes a registry value
+// named - without an id on the key that entry removes at uninstall.
+func writesDashValue(comp *Component, entry *RemoveRegistry) bool {
+	return slices.ContainsFunc(comp.Registry, func(reg *RegistryValue) bool {
+		return reg.ID == "" && reg.Name == "-" && reg.Type != registryTypeKey && reg.Root == entry.Root && strings.EqualFold(reg.Key, entry.Key)
+	})
+}
+
+// removeRegistryID checks the id of a removeRegistry entry: unique among
+// the RemoveRegistry rows when it removes at install, and among the
+// Registry rows when it removes at uninstall.
+func (v *validator) removeRegistryID(entryPath string, entry *RemoveRegistry, ids, regIDs map[string]bool) {
+	if entry.ID == "" {
+		return
+	}
+
+	if !IsIdentifier(entry.ID) || len(entry.ID) > MaxIdentifierLength {
+		v.errorf(entryPath+".id", "%q is not an identifier of at most %d characters", entry.ID, MaxIdentifierLength)
+	}
+
+	if entry.On != RemoveOnUninstall {
+		if ids[entry.ID] {
+			v.errorf(entryPath+".id", "removeRegistry id %s is defined twice", entry.ID)
 		}
 
-		key := [3]string{entry.Root, strings.ToLower(entry.Key), strings.ToLower(entry.Name)}
-		if seen[key] {
-			v.errorf(entryPath, "this key or value is already removed by this component")
+		ids[entry.ID] = true
+	}
+
+	if entry.On == RemoveOnUninstall || entry.On == RemoveOnBoth {
+		if regIDs[entry.ID] {
+			v.errorf(entryPath+".id", "registry id %s is defined twice", entry.ID)
 		}
 
-		seen[key] = true
+		regIDs[entry.ID] = true
 	}
 }
 
