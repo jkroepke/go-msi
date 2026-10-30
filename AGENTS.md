@@ -239,6 +239,12 @@ go test ./... -shuffle=on -race
   absent from the control view the driver walks (UI-07). A PathEdit's
   text (the install folder) is among the window's names (UI-08). Each
   driver run starts with an empty log.
+- `ActionText.Description` is declared `Text`, but the engine formats it:
+  `[ProductName]` was resolved on the progress page and in the log, and a
+  deferred action's text is resolved when the script is written (its
+  `ActionStart` operation). A `/qn` log omits an immediate action's
+  description; it appears as `Action hh:mm:ss: <name>. <text>` only with a
+  UI (CA-08).
 - `HKCU\Software` is shared by the 32-bit and 64-bit registry views, so
   `reg query /reg:32` finds a per-user value the package wrote in the 64-bit
   view; only HKLM tells the views apart (SEARCH-06).

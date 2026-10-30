@@ -159,8 +159,12 @@ func (c *converter) emitActions() {
 		}
 	}
 
-	// The actions that were converted took their texts; a custom action
-	// left here was not converted and has a note of its own.
+	c.leftoverProgress(progress)
+}
+
+// leftoverProgress notes the progress texts that no converted action took.
+// A custom action left here was not converted and has a note of its own.
+func (c *converter) leftoverProgress(progress map[string]*elem) {
 	for _, id := range slices.Sorted(maps.Keys(progress)) {
 		if c.actions[id] == nil {
 			c.todof(nil, "", progress[id].line, "the progress text of %s cannot be converted: msi-builder writes progress texts only for its customActions", id)

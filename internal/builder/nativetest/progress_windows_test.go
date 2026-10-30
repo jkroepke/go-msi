@@ -129,5 +129,10 @@ func TestFullUIProgressText(t *testing.T) { //nolint:paralleltest // msiexec run
 		t.Error("CA-08: no window showed the formatted progress text of WaitStep")
 	}
 
+	// With a UI the log carries every action's formatted description.
+	if text := readLog(log); !strings.Contains(text, "SetMarker. Preparing "+fullUIName) {
+		t.Error("CA-08: the full UI log has no formatted description of SetMarker")
+	}
+
 	t.Logf("CA-08 UI:\n%s\nlog:\n%s", excerpt(seen, "Waiting", "Preparing"), excerpt(readLog(log), "SetMarker", "WaitStep", "Preparing"))
 }

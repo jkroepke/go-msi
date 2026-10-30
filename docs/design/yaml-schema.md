@@ -1626,7 +1626,13 @@ customActions:
 ```
 
 The builder writes it to the `ActionText` table, without a template.
-PROGRESS_FACTS
+The text is formatted, so `[ProductName]` and other properties work: the
+wizard's progress page shows it while the action runs (basic UI is
+documented to as well, not tested), and the verbose
+log writes it as `Action hh:mm:ss: <id>. <text>` when there is a UI, and
+for a deferred action as the script's `ActionStart` line also under `/qn`
+(CA-08). A deferred action's text is formatted when the script is written,
+so it shows property values from that moment.
 A `ui.languages` entry translates it with `progress: {<id>: text}`. A
 blank text is an error, and one longer than 64 characters, the width of
 `ActionText.Description`, is a warning (ICE03). Standard actions keep the
@@ -2167,7 +2173,7 @@ A `languages` key is a decimal LCID or a language tag: a full tag such as
 LCID. An entry may set `strings`, `finishText`, `license`, `launch`,
 `dialogs` and `progress`, which replace `ui.strings`, `ui.finishText`,
 `ui.license`, `ui.launch.text`, the texts of `ui.dialogs` and the
-`progress` texts of `customActions` (keyed by action `id`; an id without a
+`progress` texts of `customActions` (keyed by action ID; an ID without a
 base text is an error) in that language; a field it
 leaves out keeps the base language's value, and a text key it leaves out
 takes the built-in translation, and without one the base language's text.
