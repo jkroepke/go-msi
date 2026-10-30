@@ -200,7 +200,8 @@ go test ./... -shuffle=on -race
   output is in the `go test (native)` log; do not add a step that reruns
   tests with `-v` only to print them. A test that cannot run in either
   suite (it needs a lot of disk, an environment variable or a full-size
-  run the race build shrinks) gets its own step. The `TestNonAdmin` tests run in the native step: the step
+  run the race build shrinks) gets its own step. The `TestNonAdmin` tests
+  run in the native step: the step
   before it creates the standard user `msitest` and exports
   `MSI_BUILDER_NONADMIN_USER` and `MSI_BUILDER_NONADMIN_PASSWORD`.
 - To learn what Windows does before writing a test, a temporary nativetest
