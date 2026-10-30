@@ -143,7 +143,7 @@ func ApplyDefaults(cfg *Config) { //nolint:cyclop,gocognit,gocyclo // a flat lis
 	})
 
 	for _, comp := range cfg.Components {
-		defaultComponent(comp)
+		defaultComponent(comp, pkg.Scope)
 
 		for _, file := range comp.Files {
 			defaultFileTypes(file)
@@ -284,7 +284,7 @@ func preserves(cfg *Config) bool {
 	return false
 }
 
-func defaultComponent(comp *Component) { //nolint:cyclop,gocognit // a flat list of independent defaults
+func defaultComponent(comp *Component, scope Scope) { //nolint:cyclop,gocognit // a flat list of independent defaults
 	if comp.Preserve {
 		comp.NeverOverwrite = true
 	}
@@ -374,9 +374,7 @@ func defaultComponent(comp *Component) { //nolint:cyclop,gocognit // a flat list
 			env.Action = "set"
 		}
 
-		if env.Scope == "" {
-			env.Scope = "machine"
-		}
+		env.Scope = environmentScope(env.Scope, scope, comp.Scope)
 
 		// A removal has nothing to undo at uninstall.
 		if env.RemoveOnUninstall == nil {
@@ -428,5 +426,30 @@ func defaultServiceControl(controls []*ControlledService) {
 		if ctl.Wait == nil {
 			ctl.Wait = new(true)
 		}
+	}
+}
+
+// environmentScope resolves an environment variable's scope, empty or
+// auto, to the context its component installs in: user in a per-user
+// package or component, auto in a dual package's component without a
+// scope, whose variable the builder writes per machine or per user as the
+// context turns out (ENVVAR-03), and machine otherwise. An explicit
+// machine or user stays.
+func environmentScope(env string, pkg, comp Scope) string {
+	if env != "" && env != envAuto {
+		return env
+	}
+
+	if comp == "" {
+		comp = pkg
+	}
+
+	switch {
+	case comp.Dual():
+		return envAuto
+	case comp == ScopePerUser:
+		return envUser
+	default:
+		return envMachine
 	}
 }

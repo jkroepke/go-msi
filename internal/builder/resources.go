@@ -20,8 +20,16 @@ const (
 	rootHKCU = "HKCU"
 	rootHKLM = "HKLM"
 	rootHKU  = "HKU"
-	// envMachine is the scope of a system environment variable.
+	// envMachine is the scope of a system environment variable, envUser
+	// of a user one and envAuto of one that follows the context of a dual
+	// package.
 	envMachine = "machine"
+	envUser    = "user"
+	envAuto    = "auto"
+	// ALLUSERS is 1 in a per-machine installation and unset in a per-user
+	// one, also in a dual package after the context is chosen (INST-02).
+	condPerMachine = "ALLUSERS=1"
+	condPerUser    = "NOT ALLUSERS"
 )
 
 var registryRoots = map[string]int{rootHKMU: -1, rootHKCR: 0, rootHKCU: 1, rootHKLM: 2, rootHKU: 3} //nolint:gochecknoglobals // lookup table
@@ -152,42 +160,127 @@ func eventLogID(comp *config.Component, e *config.EventSource) string {
 // written explicitly, because the machine-scope flag does not imply it
 // (MSISPEC-RESULTS ENVVAR-01).
 func (b *build) writeEnvironment(info *componentInfo) {
-	tbl := b.table("Environment")
+	// Every package has the table, also without rows.
+	b.table("Environment")
+
 	comp := info.cfg
 
 	for _, env := range comp.Environment {
-		var prefix string
+		key := generatedID("env", "Environment", comp.ID, env.Name, env.Action, env.Scope)
+		if env.Scope != envAuto {
+			b.environmentRow(key, env, env.Scope, comp.ID)
 
-		switch env.Action {
-		case "setIfAbsent":
-			prefix = "+"
-		case "remove":
-			prefix = "!"
-		default:
-			prefix = "="
+			continue
 		}
 
-		if *env.RemoveOnUninstall {
-			prefix += "-"
+		// A variable that follows the context is a machine variable in a
+		// component installed only per machine and a user variable in one
+		// installed only per user (ENVVAR-03).
+		for _, scope := range []string{envMachine, envUser} {
+			b.environmentRow(key+scope[:1], env, scope, b.environmentCarrier(info, scope))
 		}
-
-		if env.Scope == envMachine {
-			prefix += "*"
-		}
-
-		var value any
-
-		switch env.Action {
-		case "append":
-			value = "[~];" + env.Value
-		case "prepend":
-			value = env.Value + ";[~]"
-		default:
-			value = nullable(env.Value)
-		}
-
-		tbl.Add(generatedID("env", "Environment", comp.ID, env.Name, env.Action, env.Scope), prefix+env.Name, value, comp.ID)
 	}
+}
+
+// environmentRow writes the Environment row key of env in scope for
+// component.
+func (b *build) environmentRow(key string, env *config.Environment, scope, component string) {
+	var prefix string
+
+	switch env.Action {
+	case "setIfAbsent":
+		prefix = "+"
+	case "remove":
+		prefix = "!"
+	default:
+		prefix = "="
+	}
+
+	if *env.RemoveOnUninstall {
+		prefix += "-"
+	}
+
+	if scope == envMachine {
+		prefix += "*"
+	}
+
+	var value any
+
+	switch env.Action {
+	case "append":
+		value = "[~];" + env.Value
+	case "prepend":
+		value = env.Value + ";[~]"
+	default:
+		value = nullable(env.Value)
+	}
+
+	b.table("Environment").Add(key, prefix+env.Name, value, component)
+}
+
+// environmentCarrier returns the component that installs a dual package's
+// variables that follow the context, in scope: it installs with the
+// component of info, in its features, but only in that context, since a
+// machine variable in a per-user installation would need elevation. Its
+// key path is a registry value in the context's root, named after the
+// carrier, and it lies in TARGETDIR, so that the carrier of a component in
+// a profile folder needs no HKCU key path in both contexts (ICE38).
+func (b *build) environmentCarrier(info *componentInfo, scope string) string {
+	comp := info.cfg
+	carrier := generatedID("cmp", "Environment", b.upgradeCode, comp.ID, scope)
+
+	if slices.Contains(b.carriers[comp.ID], carrier) {
+		return carrier
+	}
+
+	registry := generatedID("reg", "Environment", b.upgradeCode, comp.ID, scope)
+
+	bitness := "32"
+	attributes := compRegistryKeyPath | info.attributes&(compPermanent|compTransitive)
+
+	if info.attributes&comp64Bit != 0 {
+		bitness = "64"
+		attributes |= comp64Bit
+	}
+
+	guid := uuid5(namespaceComponent, b.upgradeCode+"|"+bitness+"|environment|"+carrier)
+	root, context := rootHKMU, condPerMachine
+
+	if scope == envUser {
+		root, context = rootHKCU, condPerUser
+	}
+
+	cond := context
+	if comp.Condition != "" {
+		cond = "(" + comp.Condition + ") AND " + cond
+	}
+
+	b.table("Component").Add(carrier, guid, targetDir, attributes, cond, registry)
+	b.table("Registry").Add(registry, registryRoots[root], `Software\[Manufacturer]\[ProductName]`, carrier, "#1", carrier)
+	b.carriers[comp.ID] = append(b.carriers[comp.ID], carrier)
+
+	return carrier
+}
+
+// componentCondition is the Component.Condition of comp: its condition,
+// and in a dual package the context its scope limits it to.
+func componentCondition(comp *config.Component) any {
+	var context string
+
+	switch comp.Scope {
+	case config.ScopePerMachine:
+		context = condPerMachine
+	case config.ScopePerUser:
+		context = condPerUser
+	case "", config.ScopePerUserOrMachine, config.ScopePerMachineOrUser:
+		return nullable(comp.Condition)
+	}
+
+	if comp.Condition == "" {
+		return context
+	}
+
+	return "(" + comp.Condition + ") AND " + context
 }
 
 // Service constants.
@@ -366,8 +459,8 @@ func (b *build) startCarrier(info *componentInfo, svc *config.Service) string {
 	guid := uuid5(namespaceComponent, b.upgradeCode+"|"+bitness+"|start|"+carrier)
 
 	cond := "(" + svc.Control.StartCondition + ")"
-	if comp.Condition != "" {
-		cond = "(" + comp.Condition + ") AND " + cond
+	if compCond, ok := componentCondition(comp).(string); ok {
+		cond = "(" + compCond + ") AND " + cond
 	}
 
 	// A public property set in the wizard must reach the server, unless

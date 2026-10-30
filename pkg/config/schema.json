@@ -2206,11 +2206,13 @@
                 ]
               },
               "scope": {
+                "description": "Default: user in a per-user package or component, auto (per machine or per user as installed) in a dual package, machine otherwise.",
                 "anyOf": [
                   {
                     "enum": [
                       "machine",
-                      "user"
+                      "user",
+                      "auto"
                     ]
                   },
                   {
@@ -2234,6 +2236,20 @@
         },
         "condition": {
           "$ref": "#/$defs/condition"
+        },
+        "scope": {
+          "description": "In a perUserOrMachine or perMachineOrUser package only: install the component only in this context. A perMachine component may write HKLM values and machine variables.",
+          "anyOf": [
+            {
+              "enum": [
+                "perMachine",
+                "perUser"
+              ]
+            },
+            {
+              "$ref": "#/$defs/var"
+            }
+          ]
         },
         "permanent": {
           "$ref": "#/$defs/bool"

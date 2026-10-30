@@ -229,6 +229,7 @@ func (c *Config) expandFolder(comp *Component, compPath string) ([]*Component, e
 // to a component generated from it.
 func copyFolderSettings(generated, comp *Component) {
 	generated.Condition = comp.Condition
+	generated.Scope = comp.Scope
 	generated.Permanent = comp.Permanent
 	generated.NeverOverwrite = comp.NeverOverwrite
 	generated.Preserve = comp.Preserve

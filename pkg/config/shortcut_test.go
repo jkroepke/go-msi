@@ -18,7 +18,7 @@ func TestShortcutsOnlyFields(t *testing.T) {
 	want := []string{
 		"ID", "Directory", "GUID", "Files", "Registry", "RemoveRegistry", "RemoveFiles", "Services", "ServiceControl",
 		"EventLog",
-		"Environment", "Purge", "CreateFolder", "Condition", "Permanent", "NeverOverwrite", "Preserve",
+		"Environment", "Purge", "CreateFolder", "Condition", "Scope", "Permanent", "NeverOverwrite", "Preserve",
 		"SharedDLLRefCount", "Transitive", "KeyPath", "Bitness", "FolderPermissions", "Shortcuts",
 	}
 
