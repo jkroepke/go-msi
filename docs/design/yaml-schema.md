@@ -1558,7 +1558,7 @@ Kinds, exactly one per action:
 | `setProperty` | 51 | Never deferred |
 | `setDirectory` | 35 | After CostFinalize |
 | `error` | 19 | Text or an `Error` table number |
-| `exec` | 34 | `command` is a formatted command line; deferred commands are formatted when the script is written, so no CustomActionData is needed. The executable must be quoted when it comes from a property or folder reference (`"[#tool.exe]" --init`): an unquoted path with a space is tried piece by piece by `CreateProcess` |
+| `exec` | 34 | `command` is a formatted command line; deferred commands are formatted when the script is written, so no CustomActionData is needed. The executable must be quoted when it comes from a property or folder reference (`"[#tool.exe]" --init`): an unquoted path with a space is tried piece by piece by `CreateProcess`. A property alone (`[OLD_UNINSTALL] /S`) is a warning, since an `UninstallString` is usually quoted already; a directory key alone stays an error |
 | `execProperty` | 50 | `property` holds the executable, `arguments` the rest |
 | `run` | 1 + 51 | `command` and an optional `directory`; see below |
 | `dll` | 1 | `binary` (a `binaries` key) and `entry` |
@@ -1580,7 +1580,8 @@ command in both places. The command runs in a job object: a cancel ends it
 with everything it started, and so does the end of the action, so a
 command cannot leave a background process behind. `return` is required (`check` or `ignore`;
 `asyncWait` is allowed, `asyncNoWait` is not). The executable must be
-quoted when it comes from a property or folder reference, as for `exec`;
+quoted when it comes from a property or folder reference, as for `exec`
+(a property alone is a warning, as there);
 `directory` is the working directory only, not where a bare program name
 is looked up. Impersonation follows
 `impersonate`: the DLL starts the process with the impersonated user's

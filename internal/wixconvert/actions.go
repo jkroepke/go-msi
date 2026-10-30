@@ -281,9 +281,7 @@ func (c *converter) programKind(action *omap, custom *elem) bool { //nolint:cycl
 	case custom.has(attrDirectory) && custom.has("ExeCommand"):
 		action.set("run", newMap().set("command", exe).set("directory", c.dirRef(custom.attr(attrDirectory))))
 
-		if token, _, _ := strings.Cut(strings.TrimLeft(exe, " \t"), " "); !strings.HasPrefix(token, `"`) && strings.Contains(token, "[") {
-			c.todof(action, "run", custom.line, "quote the executable %s: an unquoted path with a space is tried piece by piece by CreateProcess", token)
-		}
+		c.quoteNote(action, custom.line, exe)
 	case custom.has(attrProperty) && custom.has("ExeCommand"):
 		action.set("execProperty", newMap().set("property", custom.attr(attrProperty)).set("arguments", exe))
 	case binary != "" && quietExec[custom.attr("DllEntry")]:
@@ -443,4 +441,25 @@ func setCondition(schedule *omap, cond string) {
 	}
 
 	schedule.set("condition", cond)
+}
+
+// quoteNote adds a note when the executable of a command line is an unquoted
+// reference: a property alone may hold a quoted command line already (an
+// UninstallString), anything else formats to a bare path that CreateProcess
+// tries piece by piece (CWE-428), which msi-builder rejects.
+func (c *converter) quoteNote(action *omap, line int, command string) {
+	token, _, _ := strings.Cut(strings.TrimLeft(command, " \t"), " ")
+	if strings.HasPrefix(token, `"`) || !strings.Contains(token, "[") {
+		return
+	}
+
+	bare := len(token) >= 3 && token[0] == '[' && token[len(token)-1] == ']' &&
+		strings.Count(token, "[") == 1 && strings.Count(token, "]") == 1 && !strings.ContainsRune(`#!$%\~`, rune(token[1]))
+	if bare {
+		c.todof(action, "run", line, "check %s: quote it if it holds a bare path; leave it if it holds a quoted command line such as an UninstallString", token)
+
+		return
+	}
+
+	c.todof(action, "run", line, "quote the executable %s: an unquoted path with a space is tried piece by piece by CreateProcess", token)
 }
