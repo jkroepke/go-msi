@@ -19,7 +19,7 @@ syntax; v3 names are mentioned where they differ.
    leaves a `# TODO` comment for everything else; see
    [convert](cli/msi-builder_convert.md). It reads one `.wxs` file, the one
    with `Package` (v3 `Product`); port fragments from other files by hand.
-2. Work through the TODO comments with the table and the sections below,
+2. Work through these comments with the table and the sections below,
    and check the result with `msi-builder validate`. WiX variables become
    `${NAME}` references, which the comment at the top of the file lists;
    pass each one, such as `msi-builder validate --var Version=1.4.0 msi.yaml`,
