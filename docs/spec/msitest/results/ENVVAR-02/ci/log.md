@@ -31,11 +31,14 @@ variable to `[INSTALLDIR]`; every step runs `msiexec /qn` and waits 5 s.
 - The first run read only the first entry of Explorer's block (a parser
   bug, fixed in the second run); its broadcast results were the same.
 - A `SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0,
-  "Environment", SMTO_ABORTIFHUNG, 5000)` from the test process, which is
-  what a broadcast custom action sends, reached the window with the same
-  parameters (run 41049121338).
-- Not covered: a pending restart (Microsoft's page says no message is sent
-  then), the per-user install by a standard user, Windows Server 2016.
+  "Environment", SMTO_ABORTIFHUNG, 5000)` from the test process (the
+  window's own process), which is what a broadcast custom action sends,
+  reached the window with the same parameters (run 41049121338). That
+  probe step is not part of the final test.
+- Not covered: programs other than Explorer that were already running
+  (an open command prompt), a pending restart (Microsoft's page says no
+  message is sent then), the per-user install by a standard user, Windows
+  Server 2016.
 
 Confirmed: the engine broadcasts by itself, so msi-builder needs no
 broadcast action.

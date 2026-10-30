@@ -3,6 +3,7 @@
 package nativetest_test
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -185,7 +186,7 @@ func explorerPID(t *testing.T) int {
 
 // processEnvironment reads the current environment block of a 64-bit
 // process through its PEB: ProcessParameters at PEB+0x20, Environment at
-// ProcessParameters+0x80. SetEnvironmentStrings swaps that pointer, so it
+// ProcessParameters+0x80. A reload replaces that pointer, so it
 // shows what a program the process starts next would inherit.
 func processEnvironment(pid int) (map[string]string, error) {
 	const queryInformation, vmRead = 0x0400, 0x0010
@@ -238,9 +239,14 @@ func processEnvironment(pid int) (map[string]string, error) {
 	var data []byte
 
 	page := make([]byte, 4096-block%4096)
-	for len(data) < 4<<20 {
+
+	for {
+		if len(data) >= 4<<20 {
+			return nil, errors.New("no end of the environment block in 4 MiB")
+		}
+
 		if err := read(block+uintptr(len(data)), page); err != nil {
-			break
+			return nil, fmt.Errorf("environment block after %d bytes: %w", len(data), err)
 		}
 
 		data = append(data, page...)
@@ -375,6 +381,9 @@ func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // ms
 				_ = exec.Command("msiexec", "/x", path, "/qn").Run() //nolint:noctx // cleanup after the test context ends
 			})
 
+			// A broadcast may trail the previous subtest's cleanup.
+			time.Sleep(broadcastSettle)
+
 			step := func(verb string, installed bool, args ...string) {
 				changes.take()
 
@@ -398,8 +407,8 @@ func TestMsiexecEnvironmentBroadcast(t *testing.T) { //nolint:paralleltest // ms
 				switch {
 				case tc.env == "" && announced != 0:
 					t.Errorf("%s without Environment rows: %d Environment broadcasts, want none", verb, announced)
-				case tc.env != "" && announced == 0:
-					t.Errorf("%s: no WM_SETTINGCHANGE for Environment", verb)
+				case tc.env != "" && announced != 1:
+					t.Errorf("%s: %d WM_SETTINGCHANGE for Environment, want one", verb, announced)
 				}
 
 				if tc.env == "" {

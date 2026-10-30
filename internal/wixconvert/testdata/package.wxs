@@ -158,5 +158,6 @@
       <RemoveExistingProducts After="InstallFinalize" />
     </InstallExecuteSequence>
     <CustomActionRef Id="Wix4BroadcastEnvironmentChange_X64" />
+    <CustomActionRef Id="Wix4BroadcastSettingChange_X64" />
   </Package>
 </Wix>

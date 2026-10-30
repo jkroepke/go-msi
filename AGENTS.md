@@ -240,8 +240,8 @@ go test ./... -shuffle=on -race
   text (the install folder) is among the window's names (UI-08). Each
   driver run starts with an empty log.
 - To see what a broadcast reaches, `broadcast_windows_test.go` logs
-  `WM_SETTINGCHANGE` in a hidden top-level window (Microsoft documents
-  that message-only windows get no broadcasts) and reads Explorer's current environment block
+  `WM_SETTINGCHANGE` in a hidden top-level window (message-only windows
+  get no broadcasts: documented, unverified) and reads Explorer's current environment block
   through its PEB, which shows what programs started from the shell
   inherit. The runner's session has an Explorer (ENVVAR-02).
 - `HKCU\Software` is shared by the 32-bit and 64-bit registry views, so

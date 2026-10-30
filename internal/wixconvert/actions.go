@@ -414,7 +414,7 @@ func (c *converter) emitActionRefs() {
 		switch {
 		case strings.Contains(refID, "BroadcastEnvironmentChange"):
 			c.todof(nil, "", ref.line,
-				"%s is not needed: Windows Installer announces environment changes itself", refID)
+				"drop %s: Windows Installer announces environment changes itself", refID)
 		case strings.Contains(refID, "BroadcastSettingChange"):
 			c.todof(nil, "", ref.line,
 				"%s has no counterpart, and nothing msi-builder writes needs it", refID)

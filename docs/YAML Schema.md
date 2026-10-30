@@ -198,7 +198,7 @@ components:
 ```
 
 The entry is removed again on uninstall. Windows announces the change, so
-programs started afterwards see it; a command prompt that is already open
+programs started from Explorer afterwards see it; a command prompt that is already open
 keeps the old `PATH`, so open a new one.
 
 ### Write registry values
