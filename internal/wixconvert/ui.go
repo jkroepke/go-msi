@@ -179,6 +179,11 @@ func (c *converter) uiLaunch(wizard *omap) {
 
 	target := props["WixShellExecTarget"]
 	if target == nil && props["WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT"] == nil {
+		if c.launchAction != "" {
+			c.todof(wizard, "", 0, "the Finish button runs the action %s, which has no counterpart: ui.launch starts a file "+
+				"of the package from a check box on the finish page", c.launchAction)
+		}
+
 		return
 	}
 

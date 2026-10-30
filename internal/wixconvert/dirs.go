@@ -347,6 +347,11 @@ func (c *converter) emitDirs(tree map[*dir]bool) { //nolint:cyclop,gocognit // o
 		entry.set("id", c.dirRef(folder.id))
 		entry.set("name", folder.name)
 
+		if folder.name == "" && !folder.std {
+			c.todof(entry, "", folder.line, "the Directory %s has no Name, so it is its parent folder unless an action "+
+				"sets it; msi-builder has no such folder, give it a name or use a standard folder", folder.id)
+		}
+
 		if folder == c.installDir {
 			entry.set("configurable", true)
 		}

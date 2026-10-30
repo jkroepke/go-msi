@@ -204,3 +204,33 @@ func TestConvertV3Scope(t *testing.T) {
 		t.Errorf("no scope note in\n%s", res.YAML)
 	}
 }
+
+// TestConvertUnmappedNotes checks the TODOs of WiX constructs whose output
+// cannot validate or would be lost silently.
+func TestConvertUnmappedNotes(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <Directory Id="VOLUME">
+      <Directory Id="INSTALLFOLDER" Name="Hello"><Component><File Source="hello.exe" /></Component></Directory>
+    </Directory>
+    <SetDirectory Id="VOLUME" Value="[WindowsVolume]" />
+    <CustomAction Id="Notes" Directory="INSTALLFOLDER" ExeCommand="explorer.exe https://example.com/notes" Return="asyncNoWait" />
+    <ui:WixUI Id="WixUI_Minimal" />
+    <UI><Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="Notes" Condition="NOT Installed" /></UI>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{"the Directory VOLUME has no Name", "the Finish button runs the action Notes"} {
+		if !slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool { return strings.HasPrefix(n.Message, want) }) {
+			t.Errorf("no note %q in %q", want, res.Notes)
+		}
+	}
+}
