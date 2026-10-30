@@ -181,6 +181,8 @@ type comp struct {
 	folder *omap
 	id     string
 	dir    string
+	// keyFile is the name of the key path file WiX picks, if any.
+	keyFile string
 	// droppedValues are the HKCU key path values of a shortcut component
 	// that msi-builder replaces with its own.
 	droppedValues []string

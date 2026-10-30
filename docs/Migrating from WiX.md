@@ -897,10 +897,13 @@ for the first upgrade from WiX, or give the shortcuts other names (both
 untested for advertised shortcuts).
 `msi-builder inspect --table Component old.msi` shows the GUIDs of the WiX
 package, also the ones WiX generated. WiX gives each file of a `Files`
-glob or a Heat harvest a component and GUID of its own; a folder source
+glob a component and GUID of its own; the folder source the glob becomes
 keeps them in `guids`, by the path of each file below the folder, and
 convert with `--msi` fills it in from the WiX package (UPG-12 upgraded a
-WiX `Files` package this way and kept every file):
+WiX `Files` package this way and kept every file). A Heat harvest is a
+list of `Component` elements, which convert keeps as components with
+their `guid` pinned; to replace them with a folder source by hand, move
+each GUID into `guids`:
 
 ```yaml
 components:

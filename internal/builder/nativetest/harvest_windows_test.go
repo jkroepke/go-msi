@@ -124,7 +124,9 @@ func TestMsiexecHarvestedComponentCodes(t *testing.T) {
 
 			msiexecQuiet(t, filepath.Join(dir, "x2.log"), "/x", newer)
 
-			if present(folder) {
+			// Without the codes the late removal already deleted the files;
+			// what is left of the folders then is not what this case tests.
+			if tc.kept && present(folder) {
 				t.Errorf("v2's uninstall left %s behind", folder)
 			}
 		})

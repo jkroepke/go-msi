@@ -376,7 +376,7 @@ func TestConvertBuiltCodesOnce(t *testing.T) {
 // A Files element: one file outside a component matches by its name, and a
 // glob, which became a folder source, keeps the codes of the files it adds
 // in guids, found by their path below its folder; a file it excludes, or
-// one another component took, keeps none there. A glob without a file in
+// one another component took or names by its Guid, keeps none there. A glob without a file in
 // the package gets the note instead, also in a component with an Id.
 func TestConvertBuiltCodesFiles(t *testing.T) {
 	t.Parallel()
@@ -390,6 +390,8 @@ func TestConvertBuiltCodesFiles(t *testing.T) {
     <Files Include="dist\tools\**" Directory="INSTALLFOLDER" Subdirectory="tools"><Exclude Files="dist\tools\*.pdb" /></Files>
     <Files Include="dist\LICENSE.txt" Directory="INSTALLFOLDER" />
     <Component Id="Tools" Directory="INSTALLFOLDER"><Files Include="dist\more\*.dll" /></Component>
+    <Component Directory="INSTALLFOLDER" Subdirectory="tools"><File Source="build\helper.exe" /></Component>
+    <Component Directory="INSTALLFOLDER" Subdirectory="tools" Guid="00000000-0000-4000-8000-000000000006"><File Source="build\config.xml" /></Component>
   </Package>
 </Wix>
 `
@@ -401,6 +403,8 @@ func TestConvertBuiltCodesFiles(t *testing.T) {
 			{ID: "fil4", Code: "{00000000-0000-4000-8000-000000000004}", Directory: "dirA2", KeyFile: "Help.md"},
 			{ID: "fil5", Code: "{00000000-0000-4000-8000-000000000005}", Directory: "dirA1", KeyFile: "tool.pdb"},
 			{ID: "Tools", Code: "{00000000-0000-4000-8000-000000000003}", Directory: "INSTALLFOLDER", KeyFile: "a.dll"},
+			{ID: "cmp6", Code: "{00000000-0000-4000-8000-000000000006}", Directory: "dirA1", KeyFile: "config.xml"},
+			{ID: "cmp7", Code: "{00000000-0000-4000-8000-000000000007}", Directory: "dirA1", KeyFile: "helper.exe"},
 		},
 		Directories: []wixconvert.BuiltDirectory{
 			{ID: "TARGETDIR", Name: "SourceDir"},
@@ -438,6 +442,19 @@ func TestConvertBuiltCodesFiles(t *testing.T) {
 		}
 	}
 
+	// The components below the glob's folder keep their own codes: one
+	// that WiX generated, which pinCode took first, and one from the
+	// source; the folder source lists neither.
+	for _, file := range []string{"helper.exe:", "config.xml:"} {
+		if strings.Contains(string(res.YAML), file) {
+			t.Errorf("guids lists %s\n%s", file, res.YAML)
+		}
+	}
+
+	if !strings.Contains(string(res.YAML), "guid: '{00000000-0000-4000-8000-000000000007}'") {
+		t.Errorf("helper.exe lost its code:\n%s", res.YAML)
+	}
+
 	res, err = wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -449,7 +466,8 @@ func TestConvertBuiltCodesFiles(t *testing.T) {
 }
 
 // globNotes returns the lines of the Files glob notes and fails on any
-// other note about codes but the late removal of the file in line 8.
+// other note about codes but the late removal of the files in lines 8 and
+// 10.
 func globNotes(t *testing.T, notes []wixconvert.Note, built bool) []int {
 	t.Helper()
 
@@ -461,7 +479,7 @@ func globNotes(t *testing.T, notes []wixconvert.Note, built bool) []int {
 			strings.HasPrefix(note.Message, "hello.msi has no component for a file of this Files glob"):
 			lines = append(lines, note.Line)
 		case strings.Contains(note.Message, "no matching component"), strings.HasPrefix(note.Message, "WiX generated the Guid"):
-			if built || !strings.Contains(note.Message, "the component in line 8;") {
+			if built || !strings.Contains(note.Message, "the component in line 8, the component in line 10;") {
 				t.Errorf("unexpected note %v", note)
 			}
 		}

@@ -290,10 +290,11 @@ func (c *converter) harvestedCodes(comp *comp) map[string]*BuiltComponent {
 
 	guids := make(map[string]*BuiltComponent)
 	seen := make(map[string]bool)
+	known := c.listedCodes()
 
 	for i := range c.built.Components {
 		row := &c.built.Components[i]
-		if !c.free(row) || row.KeyFile == "" {
+		if !c.free(row) || row.KeyFile == "" || known.has(row) {
 			continue
 		}
 
@@ -310,6 +311,44 @@ func (c *converter) harvestedCodes(comp *comp) map[string]*BuiltComponent {
 	}
 
 	return guids
+}
+
+// listed are the built components that a component of the source stands
+// for without having claimed them: its guid is their code, which WiX took
+// from the source, or its key file is theirs, in the same folder, which
+// pinCode could not tell apart from another one.
+type listed struct {
+	codes    map[string]bool
+	keyFiles map[string]bool
+}
+
+// has reports whether a component of the source stands for row.
+func (l listed) has(row *BuiltComponent) bool {
+	guid, err := config.NormalizeGUID(row.Code)
+
+	return err == nil && l.codes[guid] || l.keyFiles[strings.ToLower(row.Directory+"/"+row.KeyFile)]
+}
+
+// listedCodes collects the codes and key files of the source's components
+// that are no folder source.
+func (c *converter) listedCodes() listed {
+	known := listed{codes: make(map[string]bool), keyFiles: make(map[string]bool)}
+
+	for _, comp := range c.comps {
+		if comp.out == nil || comp.folder != nil {
+			continue
+		}
+
+		if guid, err := config.NormalizeGUID(comp.out.str("guid")); err == nil {
+			known.codes[guid] = true
+		}
+
+		if dirID := c.builtDir(c.dirs[comp.dir], comp.dir); comp.keyFile != "" && dirID != "" {
+			known.keyFiles[strings.ToLower(dirID+"/"+comp.keyFile)] = true
+		}
+	}
+
+	return known
 }
 
 // claim marks a built component as taken, so that no other component gets
