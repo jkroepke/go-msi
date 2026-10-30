@@ -325,8 +325,8 @@ func TestConvertBuiltCodes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := wixconvert.Note{Line: 38, Message: "WiX generated the Guid of the component in line 7, Main, the component in line 17, " +
-		"the component in line 20, Menu and 2 more components; msi-builder generates other codes"}
+	want := wixconvert.Note{Line: 38, Message: "WiX generated the Guid of a.txt, Main, notes.txt, readme.txt, Menu and 2 more components; " +
+		"msi-builder generates other codes"}
 
 	if !slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool {
 		return n.Line == want.Line && strings.HasPrefix(n.Message, want.Message)

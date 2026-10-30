@@ -25,12 +25,12 @@ features:
   - id: DefaultFeature
     directory: INSTALLFOLDER
     allowAbsent: false
-    components: [Component1, Component2, Component3, Component4]
+    components: [hello.exe, Component1, Component2, Component3]
 components:
-  - id: Component1
+  - id: hello.exe
     files:
       - source: hello.exe
-  - id: Component2
+  - id: Component1
     registry:
       - root: HKLM
         key: Software\Example\Hello
@@ -42,14 +42,14 @@ components:
         action: append
         scope: machine
     scope: perMachine
-  - id: Component3
+  - id: Component2
     registry:
       - root: HKLM
         key: Software\Example\Hello
         name: Machine
         value: "1"
     scope: perMachine
-  - id: Component4
+  - id: Component3
     registry:
       - root: HKCU
         key: Software\Example\Hello

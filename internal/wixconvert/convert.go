@@ -15,10 +15,11 @@ import (
 	"io"
 	"maps"
 	"slices"
-
 	"strings"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // Note is something the converter could not convert, with the line of the
@@ -509,10 +510,26 @@ func (c *converter) addDir(elm *elem, parentID string, standard bool) *dir {
 }
 
 // keyFileID returns the Id of a component's key path, which WiX gives a
-// component without an Id.
+// component without an Id, or "" when WiX generates it.
 func keyFileID(elm *elem) string {
-	if key := keyElem(elm); key != nil {
+	key := keyElem(elm)
+
+	switch {
+	case key == nil:
+		return ""
+	case key.has("Id") || !key.is("File"):
 		return key.attr("Id")
+	}
+
+	// WiX gives a File without an Id its name, when that is an identifier.
+	name := key.attr("Name")
+	if name == "" {
+		source := strings.ReplaceAll(key.attr("Source"), `\`, "/")
+		name = source[strings.LastIndex(source, "/")+1:]
+	}
+
+	if config.IsIdentifier(name) {
+		return name
 	}
 
 	return ""
@@ -627,7 +644,11 @@ func implicitComponent(file *elem) *elem {
 func (c *converter) addComp(elm *elem, within scope) {
 	comp := &comp{e: elm, id: elm.attr("Id"), dir: elm.attr(attrDirectory)}
 	if comp.id == "" {
-		comp.id = keyFileID(elm)
+		// Two files of one name in other folders would give two components
+		// one Id; the later one gets a generated one.
+		if id := keyFileID(elm); c.compByID[id] == nil {
+			comp.id = id
+		}
 	}
 
 	if comp.dir == "" {

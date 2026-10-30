@@ -35,7 +35,7 @@ package:
   summary:
     keywords: hello,service
 upgrade:
-  # TODO(line 15): WiX generated the Guid of Component1, hello.yaml; msi-builder generates other codes, and removing the old version after installing this one deletes their files on the first upgrade from the WiX package. Run msi-builder convert again with --msi and the package WiX built, or set each guid from msi-builder inspect --table Component
+  # TODO(line 15): WiX generated the Guid of manual.pdf, hello.yaml; msi-builder generates other codes, and removing the old version after installing this one deletes their files on the first upgrade from the WiX package. Run msi-builder convert again with --msi and the package WiX built, or set each guid from msi-builder inspect --table Component
   removeOld: afterInstallExecute
   downgrade: allow
   downgradeMessage: A newer version of Hello is already installed.
@@ -73,13 +73,13 @@ features:
         title: Documentation
         default: off
         display: expanded
-        components: [Component1]
+        components: [manual.pdf]
   - id: Firewall
     title: Firewall rule
     default: disabled
     components: [FirewallRule]
 components:
-  - id: Component1
+  - id: manual.pdf
     files:
       - source: docs/manual.pdf
   # TODO(line 123): <util:XmlFile> is not supported: ship the complete file, or edit it with a run action (no rollback)
