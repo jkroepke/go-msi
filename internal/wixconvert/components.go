@@ -153,12 +153,22 @@ func (c *converter) component(comp *comp, tree map[*dir]bool) *omap {
 
 	// A folder source takes no guid.
 	if comp.generated && !comp.harvests && c.built != nil {
-		c.pinCode(comp, content.keyFile)
+		c.pinCode(comp, builtKeyFile(elm, content.keyFile))
 	}
 
 	content.finish()
 
 	return out
+}
+
+// builtKeyFile returns the key file a component has in the built package:
+// none when its key path is no file.
+func builtKeyFile(elm *elem, keyFile string) string {
+	if key := keyElem(elm); key != nil && !key.is("File") && !key.is("Files") {
+		return ""
+	}
+
+	return keyFile
 }
 
 // Bitness values.

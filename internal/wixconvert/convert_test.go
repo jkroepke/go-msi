@@ -565,6 +565,11 @@ func TestConvertBuiltCodeOfKeyPathID(t *testing.T) {
           </RegistryKey>
           <File Id="notes.txt" Source="notes.txt" />
         </Component>
+        <!-- Its key path is no file, so no built row matches its file. -->
+        <Component>
+          <RegistryValue Root="HKLM" Key="Software\Example\Hello" Name="extra" Value="1" Type="string" KeyPath="yes" />
+          <File Source="extra.txt" />
+        </Component>
         <!-- An HKCU key path before a file stays the key path. -->
         <Component Id="Prefs">
           <RegistryValue Id="prefs" Root="HKCU" Key="Software\Example\Hello" Name="prefs" Value="1" Type="integer" KeyPath="yes" />
@@ -578,6 +583,7 @@ func TestConvertBuiltCodeOfKeyPathID(t *testing.T) {
 	built := &wixconvert.BuiltPackage{Name: "hello.msi", Components: []wixconvert.BuiltComponent{
 		{ID: "main.exe", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "INSTALLFOLDER", KeyFile: "main.exe"},
 		{ID: "installed", Code: "{00000000-0000-4000-8000-000000000002}", Directory: "INSTALLFOLDER"},
+		{ID: "other", Code: "{00000000-0000-4000-8000-000000000003}", Directory: "INSTALLFOLDER", KeyFile: "extra.txt"},
 	}}
 
 	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{Built: built})
@@ -592,5 +598,9 @@ func TestConvertBuiltCodeOfKeyPathID(t *testing.T) {
 		if !strings.Contains(string(res.YAML), want) {
 			t.Errorf("YAML lacks %q:\n%s", want, res.YAML)
 		}
+	}
+
+	if strings.Contains(string(res.YAML), "000000000003") {
+		t.Errorf("a component with a registry key path took the code of a file component:\n%s", res.YAML)
 	}
 }
