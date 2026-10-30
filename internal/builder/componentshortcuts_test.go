@@ -435,3 +435,130 @@ func TestShortcutsOnlyComponentDuplicateGUID(t *testing.T) {
 		t.Errorf("a shared guid: %v", err)
 	}
 }
+
+// The generated carrier of a permanent component's shortcuts, of its files or
+// its own, is not permanent: the file stays after uninstall, its shortcuts do
+// not (wazuh's "Edit conf"). The carrier keeps condition and transitive.
+// A component of shortcuts alone keeps its own permanent flag.
+func TestShortcutCarrierNotPermanent(t *testing.T) {
+	t.Parallel()
+
+	res := mustBuild(t, shortcutConfig(t, `
+  - id: Conf
+    permanent: true
+    files:
+      - source: app.exe
+        shortcuts: [{ name: Edit }]
+  - id: Site
+    permanent: true
+    transitive: true
+    condition: SITE
+    files: [{ source: app.exe, name: site.exe }]
+    shortcuts: [{ name: Home, url: "https://a" }]
+  - id: Menu
+    permanent: true
+    shortcuts: [{ name: Docs, url: "https://a" }]
+`))
+
+	generated, siteCarriers := 0, 0
+
+	for _, row := range rows(t, res.Database, "Component") {
+		attributes, ok := row[3].(int)
+		if !ok {
+			t.Fatalf("component %v attributes %v", row[0], row[3])
+		}
+
+		permanent := attributes&0x10 != 0 // msidbComponentAttributesPermanent
+
+		switch row[0] {
+		case "Conf", "Site", "Menu":
+			if !permanent {
+				t.Errorf("component %v lost its permanent flag", row[0])
+			}
+		default:
+			generated++
+
+			if permanent {
+				t.Errorf("generated shortcut component %v is permanent (attributes %v)", row[0], row[3])
+			}
+
+			// Site's carrier keeps its condition and the transitive bit.
+			if row[4] != "SITE" {
+				continue
+			}
+
+			siteCarriers++
+
+			if attributes&0x40 == 0 { // msidbComponentAttributesTransitive
+				t.Errorf("carrier %v of Site lost the transitive bit (attributes %v)", row[0], row[3])
+			}
+		}
+	}
+
+	if generated != 2 {
+		t.Errorf("%d generated shortcut components, want 2 (Conf and Site)", generated)
+	}
+
+	if siteCarriers != 1 {
+		t.Errorf("%d carriers with condition SITE, want 1", siteCarriers)
+	}
+}
+
+// Builds that made the carrier of a permanent component permanent left its
+// ComponentId registered after uninstall, so the carrier of a permanent
+// component gets a ComponentId of its own: the same component without
+// permanent keeps the old one.
+func TestShortcutCarrierGUIDOfPermanentComponent(t *testing.T) {
+	t.Parallel()
+
+	build := func(permanent bool) (any, string) {
+		res := mustBuild(t, shortcutConfig(t, fmt.Sprintf(`
+  - id: Conf
+    permanent: %v
+    files:
+      - source: app.exe
+        shortcuts: [{ name: Edit }]
+`, permanent)))
+
+		var guids []any
+
+		for _, row := range rows(t, res.Database, "Component") {
+			if row[0] != "Conf" {
+				guids = append(guids, row[1])
+			}
+		}
+
+		if len(guids) != 1 {
+			t.Fatalf("generated shortcut components %v, want 1", guids)
+		}
+
+		return guids[0], res.ProductCode
+	}
+
+	// The carrier of a removable component keeps the ComponentId that
+	// every earlier build gave it.
+	const earlier = "{E8F093D1-5257-5AA8-804A-DF8360647E81}"
+
+	kept, keptCode := build(false)
+	removable, removableCode := build(true)
+
+	if kept != earlier {
+		t.Errorf("carrier of a removable component has the ComponentId %v, want %v", kept, earlier)
+	}
+
+	if removable == kept {
+		t.Errorf("carrier of a permanent component has the ComponentId %v of a removable one", kept)
+	}
+
+	// The ProductCode changes with it (hashRemovableCarriers), or a rebuild
+	// over an earlier build fails with 1638; the removable one keeps its own.
+	const keptCodeEarlier, permanentCodeEarlier = "{0F9FB8C6-3B99-519E-815E-27EE6DF18EB8}", "{9CB60842-0523-5131-9926-CDF051520981}"
+
+	if keptCode != keptCodeEarlier {
+		t.Errorf("ProductCode %v, want the earlier %v", keptCode, keptCodeEarlier)
+	}
+
+	if removableCode == permanentCodeEarlier {
+		t.Errorf("ProductCode %v of a permanent component's carrier did not change", removableCode)
+	}
+}

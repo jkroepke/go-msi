@@ -781,8 +781,22 @@ component of their own: in the folder of the first shortcut, with the
 component's condition, 64-bit unless that folder is a 32-bit one (ICE80),
 an HKCU value under `Software\[Manufacturer]\[ProductName]` as its key path
 (ICE38, ICE43), `RemoveFile` rows for the folders it creates below a
-profile folder (ICE64), and in every feature of the file's component. In a
-per-user package that folder must not be a per-machine one (ICE105).
+profile folder (ICE64), and in every feature of the file's component. In
+a per-user package that folder must not be a per-machine one (ICE105).
+The generated component of a component that also installs something is
+never permanent, so the shortcuts of a file in a `permanent` component
+are removed on uninstall while the file stays
+(observed on a clean Windows machine: wazuh's "Edit conf" shortcut of its
+permanent `ossec.conf`). Builds before this rule made that component
+permanent, and Windows keeps a permanent ComponentId registered after
+uninstall: a later package with the same ComponentId kept the shortcut and
+its key path value after its own uninstall (observed). The generated
+component of a `permanent` component therefore gets a ComponentId that no
+older build used, and the ProductCode digest changes with it, so that a
+rebuild of the same version does not fail with 1638. The old registration
+stays for good, but no longer keeps the new package's shortcuts: the new
+package's uninstall removed the shortcut and the key path value of the
+same name (observed).
 SHORTCUT-01 installed and removed shortcuts from an own HKCU-keyed component and
 from the file's own component alike, and removed an empty Start menu folder
 without a `RemoveFile` row; the Windows tests run the ICE suite on the
@@ -965,8 +979,9 @@ package, and without an `id` it is named after its first shortcut (or the
 product, when that shortcut has no `name`)
 (`Docs_Shortcuts`), so that its ComponentId does not depend on the order of
 the components. Its `guid`, `condition`, `permanent` and `transitive`
-apply to that component; its `directory` is not used. A component with a
-folder source cannot list them.
+apply to that component; its `directory` is not used. In a component that
+also installs something, `permanent` stays with that component, not with
+its shortcuts. A component with a folder source cannot list them.
 SHORTCUT-03 and SHORTCUT-04 installed every kind on Windows.
 
 **Permissions.** A file, registry value, service or the component's folder
