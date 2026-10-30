@@ -1333,6 +1333,13 @@
           "description": "0 disables the feature. Use it or default, not both.",
           "default": 1
         },
+        "conditions": {
+          "type": "array",
+          "description": "Levels that replace the feature's level at a first install when their condition is true (Condition table). Not evaluated when ADDLOCAL, REMOVE or another feature request is set.",
+          "items": {
+            "$ref": "#/$defs/featureCondition"
+          }
+        },
         "display": {
           "anyOf": [
             {
@@ -1409,6 +1416,50 @@
           "level"
         ]
       }
+    },
+    "featureCondition": {
+      "type": "object",
+      "properties": {
+        "condition": {
+          "$ref": "#/$defs/condition",
+          "description": "Evaluated in CostFinalize; it cannot ask for feature or component states."
+        },
+        "default": {
+          "anyOf": [
+            {
+              "enum": [
+                "on",
+                "off",
+                "disabled"
+              ]
+            },
+            {
+              "$ref": "#/$defs/var"
+            }
+          ],
+          "description": "The level to set: on is 1, off is 2, disabled is 0. Use it or level, not both."
+        },
+        "level": {
+          "$ref": "#/$defs/int",
+          "description": "The level to set. Use it or default, not both."
+        }
+      },
+      "required": [
+        "condition"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "default"
+          ]
+        },
+        {
+          "required": [
+            "level"
+          ]
+        }
+      ]
     },
     "guid": {
       "anyOf": [

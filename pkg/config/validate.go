@@ -586,6 +586,7 @@ func (v *validator) features(cfg *Config, known *refs) {
 
 			v.oneOf(featurePath+".display", feature.Display, "expanded", "collapsed", "hidden")
 			v.featureDefault(featurePath, feature)
+			v.featureConditions(featurePath, feature)
 
 			v.featureRefs(featurePath, feature, known)
 
@@ -610,6 +611,64 @@ func (v *validator) featureDefault(featurePath string, feature *Feature) {
 
 	if !feature.levelIsDefault() {
 		v.errorf(featurePath+".default", "set default or level, not both")
+	}
+}
+
+// featureConditions checks the conditional levels of a feature. Each
+// becomes a Condition row keyed by feature and level, so two entries
+// cannot share a level.
+func (v *validator) featureConditions(featurePath string, feature *Feature) {
+	levels := make(map[int]bool)
+
+	for i, cond := range feature.Conditions {
+		condPath := fmt.Sprintf("%s.conditions[%d]", featurePath, i)
+
+		v.featureCondition(condPath, cond.Condition)
+
+		switch {
+		case cond.Default != "" && cond.Level != nil:
+			v.errorf(condPath+".default", "set default or level, not both")
+
+			continue
+		case cond.Default != "":
+			v.oneOf(condPath+".default", cond.Default, FeatureOn, FeatureOff, FeatureDisabled)
+		case cond.Level == nil:
+			v.errorf(condPath, "set default or level")
+
+			continue
+		case *cond.Level < 0 || *cond.Level > maxSequenceNumber:
+			v.errorf(condPath+".level", "must be between 0 and %d", maxSequenceNumber)
+
+			continue
+		}
+
+		level := cond.Value()
+		if levels[level] {
+			v.errorf(condPath, "another condition of feature %s sets level %d; join the conditions with OR", feature.ID, level)
+		}
+
+		levels[level] = true
+	}
+}
+
+// featureCondition checks the condition of a Condition row: its syntax,
+// and that it asks for no feature or component state. The engine
+// evaluates the Condition table before it reads installed states and sets
+// action states, so such a term is always false (documented, INST-05).
+func (v *validator) featureCondition(field, cond string) {
+	if !v.required(field+".condition", cond) {
+		return
+	}
+
+	if err := condition.Check(cond); err != nil {
+		v.errorf(field+".condition", "%v", err)
+
+		return
+	}
+
+	if states := condition.States(cond); len(states) > 0 {
+		v.errorf(field+".condition", "refers to the state of %s, but feature conditions are evaluated before "+
+			"features and components have one (INST-05); use a property instead", strings.Join(states, ", "))
 	}
 }
 

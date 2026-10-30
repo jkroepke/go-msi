@@ -94,3 +94,12 @@ func TestActionStates(t *testing.T) {
 		t.Errorf("ActionStates = %v, want %v", got, want)
 	}
 }
+
+func TestStates(t *testing.T) {
+	t.Parallel()
+
+	got := States(`&Main.Sub=3 AND !Main<>3 OR $Comp=2 AND ?Comp=3 AND %PATH AND START="!Quoted"`)
+	if want := []string{"&Main.Sub", "!Main", "$Comp", "?Comp"}; !slices.Equal(got, want) {
+		t.Errorf("States = %v, want %v", got, want)
+	}
+}
