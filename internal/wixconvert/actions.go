@@ -162,18 +162,14 @@ func (c *converter) emitActions() {
 	}
 }
 
-// reanchor moves the placements anchored on a command line setter, which
-// becomes part of its run action, to the setter's own anchor.
-func (c *converter) reanchor(byAction map[string][]any) {
-	anchors := make(map[string]*omap)
+// anchorKey names an action in one sequence.
+type anchorKey struct{ action, sequence string }
 
-	for src := range c.consumed {
-		if entries := byAction[src.attr("Id")]; len(entries) > 0 {
-			if first, ok := entries[0].(*omap); ok {
-				anchors[src.attr("Id")] = first
-			}
-		}
-	}
+// reanchor moves the placements anchored on a command line setter, which
+// becomes part of its run action, to the setter's own anchor in the same
+// sequence.
+func (c *converter) reanchor(byAction map[string][]any) {
+	anchors, sourceIDs := c.sourceAnchors(byAction)
 
 	for _, entries := range byAction {
 		for i, entry := range entries {
@@ -182,16 +178,67 @@ func (c *converter) reanchor(byAction map[string][]any) {
 				continue
 			}
 
-			anchor, ok := anchors[placement.str("after")]
-			if !ok {
-				anchor, ok = anchors[placement.str("before")]
+			name := placement.str("after")
+			if name == "" {
+				name = placement.str("before")
 			}
 
-			if ok {
+			if !sourceIDs[name] {
+				continue
+			}
+
+			if anchor := anchors[anchorKey{name, placement.str("sequence")}]; anchor != nil {
 				entries[i] = moveAnchor(placement, anchor)
+			} else {
+				c.todof(placement, "", 0, "this action was scheduled next to %s, which is not in the %s sequence; schedule it yourself",
+					name, placement.str("sequence"))
 			}
 		}
 	}
+}
+
+// sourceAnchors returns the placement of each consumed command line source
+// in each sequence, and the names of the sources.
+func (c *converter) sourceAnchors(byAction map[string][]any) (map[anchorKey]*omap, map[string]bool) {
+	anchors := make(map[anchorKey]*omap)
+	sourceIDs := make(map[string]bool)
+
+	for _, src := range c.consumedSources() {
+		sourceIDs[src.id] = true
+
+		schedule := byAction[src.id]
+		if src.e.is("SetProperty") {
+			_, schedule = c.setter(src.e)
+		}
+
+		for _, entry := range schedule {
+			if placement, ok := entry.(*omap); ok {
+				key := anchorKey{src.id, placement.str("sequence")}
+				if anchors[key] == nil {
+					anchors[key] = placement
+				}
+			}
+		}
+	}
+
+	return anchors, sourceIDs
+}
+
+// consumedSources returns each command line source that became part of a
+// run action once, in the order of the actions.
+func (c *converter) consumedSources() []commandSource {
+	var sources []commandSource
+
+	seen := make(map[*elem]bool)
+
+	for _, quiet := range c.actionOrder {
+		if src, ok := c.quietCommands[quiet.attr("Id")]; ok && !seen[src.e] {
+			seen[src.e] = true
+			sources = append(sources, src)
+		}
+	}
+
+	return sources
 }
 
 // moveAnchor returns the placement with the anchor of another one.
@@ -237,9 +284,7 @@ func (c *converter) commandSources() []commandSource {
 
 	for _, setter := range c.setters {
 		if setter.is("SetProperty") {
-			// The action WiX makes for a SetProperty is named after the
-			// property and the action it is scheduled next to.
-			sources = append(sources, commandSource{e: setter, id: setter.attr("Id"), property: setter.attr("Id")})
+			sources = append(sources, commandSource{e: setter, id: setterName(setter), property: setter.attr("Id")})
 		}
 	}
 
@@ -287,44 +332,68 @@ func (c *converter) commandFor(quiet *elem, sources []commandSource) (commandSou
 	return candidates[0], true
 }
 
-// scheduledBefore finds the candidate that the sequences schedule right
+// seqEntry is a Custom element of a sequence, or a SetProperty, in one
+// schedule sequence.
+type seqEntry struct {
+	e        *elem
+	sequence string
+}
+
+// scheduledBefore finds the candidate that the same sequence schedules right
 // before the action: Before it, named in its After, or with the highest
 // sequence number below its own.
 func (c *converter) scheduledBefore(quiet *elem, candidates []commandSource) (commandSource, bool) {
 	actionID := quiet.attr("Id")
 	entries := c.sequenceEntries()
+	own := entries[actionID]
 
 	for _, src := range candidates {
-		for _, entry := range append(entries[src.id], src.e) {
-			if entry.attr("Before") == actionID {
-				return src, true
-			}
-		}
-
-		for _, entry := range entries[actionID] {
-			if entry.attr("After") == src.id {
-				return src, true
+		for _, srcEntry := range sourceEntries(src, entries) {
+			for _, ownEntry := range own {
+				if srcEntry.sequence == ownEntry.sequence &&
+					(srcEntry.e.attr("Before") == actionID || ownEntry.e.attr("After") == src.id) {
+					return src, true
+				}
 			}
 		}
 	}
 
-	return lowerSequence(entries, actionID, candidates)
+	return lowerSequence(entries, own, candidates)
+}
+
+// sourceEntries returns where a command line source is scheduled: in the
+// sequences, or for a SetProperty, by its own attributes.
+func sourceEntries(src commandSource, entries map[string][]seqEntry) []seqEntry {
+	if !src.e.is("SetProperty") {
+		return entries[src.id]
+	}
+
+	var own []seqEntry
+	for _, seq := range setterSequenceNames(src.e) {
+		own = append(own, seqEntry{e: src.e, sequence: seq})
+	}
+
+	return own
 }
 
 // lowerSequence finds the candidate with the highest sequence number below
-// the action's.
-func lowerSequence(entries map[string][]*elem, actionID string, candidates []commandSource) (commandSource, bool) {
+// the action's in the same sequence.
+func lowerSequence(entries map[string][]seqEntry, own []seqEntry, candidates []commandSource) (commandSource, bool) {
 	best, bestAt := commandSource{}, -1
 
-	for _, entry := range entries[actionID] {
-		ownAt, err := strconv.Atoi(entry.attr("Sequence"))
+	for _, ownEntry := range own {
+		ownAt, err := strconv.Atoi(ownEntry.e.attr("Sequence"))
 		if err != nil {
 			continue
 		}
 
 		for _, src := range candidates {
 			for _, srcEntry := range entries[src.id] {
-				if srcAt, err := strconv.Atoi(srcEntry.attr("Sequence")); err == nil && srcAt < ownAt && srcAt > bestAt {
+				if srcEntry.sequence != ownEntry.sequence {
+					continue
+				}
+
+				if srcAt, err := strconv.Atoi(srcEntry.e.attr("Sequence")); err == nil && srcAt < ownAt && srcAt > bestAt {
 					best, bestAt = src, srcAt
 				}
 			}
@@ -335,13 +404,14 @@ func lowerSequence(entries map[string][]*elem, actionID string, candidates []com
 }
 
 // sequenceEntries indexes the Custom elements of the sequences by action.
-func (c *converter) sequenceEntries() map[string][]*elem {
-	entries := make(map[string][]*elem)
+func (c *converter) sequenceEntries() map[string][]seqEntry {
+	entries := make(map[string][]seqEntry)
 
 	for _, seq := range c.sequences {
 		for _, entry := range seq.kids {
 			if entry.is("Custom") {
-				entries[entry.attr("Action")] = append(entries[entry.attr("Action")], entry)
+				id := entry.attr("Action")
+				entries[id] = append(entries[id], seqEntry{e: entry, sequence: sequenceNames[seq.name]})
 			}
 		}
 	}
@@ -524,15 +594,35 @@ func (c *converter) actionFlags(action *omap, custom *elem, program bool) { //no
 // setterSequences are the sequences a SetProperty or SetDirectory runs in.
 func (c *converter) setterSequences(action *omap, setter *elem) []string {
 	switch seq := setter.attr("Sequence"); seq {
-	case "", onBoth:
-		return []string{seqUI, seqExecute}
-	case seqExecute, seqUI:
-		return []string{seq}
+	case "", onBoth, seqExecute, seqUI:
 	default:
 		c.todof(action, "", setter.line, "Sequence=%q has no counterpart", seq)
+	}
 
+	return setterSequenceNames(setter)
+}
+
+// setterSequenceNames returns the sequences a SetProperty or SetDirectory
+// runs in.
+func setterSequenceNames(setter *elem) []string {
+	switch seq := setter.attr("Sequence"); seq {
+	case "", onBoth:
+		return []string{seqUI, seqExecute}
+	case seqUI:
+		return []string{seqUI}
+	default:
 		return []string{seqExecute}
 	}
+}
+
+// setterName returns the name of the action WiX makes for a SetProperty or
+// SetDirectory: its Action attribute, or Set and its Id.
+func setterName(setter *elem) string {
+	if name := setter.attr("Action"); name != "" {
+		return name
+	}
+
+	return "Set" + setter.attr("Id")
 }
 
 // setter converts SetProperty and SetDirectory elements, which carry their
@@ -540,13 +630,7 @@ func (c *converter) setterSequences(action *omap, setter *elem) []string {
 func (c *converter) setter(setter *elem) (*omap, []any) {
 	action := newAction(setter)
 	setterID := setter.attr("Id")
-
-	name := setter.attr("Action")
-	if name == "" {
-		name = "Set" + setterID
-	}
-
-	action.set("id", name)
+	action.set("id", setterName(setter))
 
 	before, after := setter.attr("Before"), setter.attr("After")
 

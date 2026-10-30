@@ -17,7 +17,7 @@ installDir:
   id: INSTALLFOLDER
   name: Hello
 components:
-  # TODO(line 20): util:RemoveFolderEx was not converted: purge refuses a folder below INSTALLFOLDER, a public directory ID that can point anywhere; keep the data in a folder with private (mixed-case) IDs below a fixed standard folder, such as CommonAppDataFolder/Vendor/Product, and purge that
+  # TODO(line 20): util:RemoveFolderEx was not converted: purge refuses a folder below INSTALLFOLDER, a directory that can point anywhere; keep the data in a folder with private (mixed-case) IDs below a fixed standard folder, such as CommonAppDataFolder/Vendor/Product, and purge that
   - id: HelloExe
     directory: bin
     files:

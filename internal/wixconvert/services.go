@@ -1,6 +1,7 @@
 package wixconvert
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -297,20 +298,45 @@ func (cc *compConv) removeFile(elm *elem) {
 	cc.out.add("removeFiles", row)
 }
 
-// movableDir returns the first directory from dirID up to its root whose
-// output ID is public, which the command line can point anywhere.
+// movableDir returns the first directory from dirID up to its root that can
+// point anywhere: one whose output ID is public, which the command line sets,
+// or one an action or property sets.
 func (c *converter) movableDir(dirID string) string {
+	set := c.setDirs()
+
 	for folder := c.dirs[dirID]; folder != nil; folder = folder.parent {
-		if id := c.dirRef(folder.id); config.IsPublicProperty(id) && !config.IsStandardFolder(id) {
+		if id := c.dirRef(folder.id); set[folder.id] || config.IsPublicProperty(id) && !config.IsStandardFolder(id) {
 			return id
 		}
 	}
 
-	if c.dirs[dirID] == nil && config.IsPublicProperty(c.dirRef(dirID)) {
+	if c.dirs[dirID] == nil && (set[dirID] || config.IsPublicProperty(c.dirRef(dirID))) {
 		return c.dirRef(dirID)
 	}
 
 	return ""
+}
+
+// setDirs returns the WiX IDs that a SetDirectory, SetProperty, custom
+// action or property sets.
+func (c *converter) setDirs() map[string]bool {
+	set := make(map[string]bool)
+
+	for _, setter := range c.setters {
+		set[setter.attr("Id")] = true
+	}
+
+	for _, custom := range c.actionOrder {
+		if custom.has("Value") {
+			set[custom.attr(attrDirectory)+custom.attr(attrProperty)] = true
+		}
+	}
+
+	for _, prop := range c.properties {
+		set[prop.attr("Id")] = true
+	}
+
+	return set
 }
 
 func (cc *compConv) purge(elm *elem) {
@@ -323,7 +349,7 @@ func (cc *compConv) purge(elm *elem) {
 
 	if movable := conv.movableDir(target); movable != "" {
 		conv.todof(cc.out, "", elm.line,
-			"util:RemoveFolderEx was not converted: purge refuses a folder below %s, a public directory ID that can point anywhere; "+
+			"util:RemoveFolderEx was not converted: purge refuses a folder below %s, a directory that can point anywhere; "+
 				"keep the data in a folder with private (mixed-case) IDs below a fixed standard folder, such as "+
 				"CommonAppDataFolder/Vendor/Product, and purge that", movable)
 
@@ -395,8 +421,7 @@ func (c *converter) firewall(elm *elem, comp *comp, program string) { //nolint:c
 	}
 
 	rule.set("program", program)
-	rule.set("protocol", c.value(elm, "Protocol"))
-	rule.set("port", c.value(elm, "Port"))
+	c.firewallProtocol(rule, elm)
 
 	var remote []string
 
@@ -437,6 +462,28 @@ func (c *converter) firewall(elm *elem, comp *comp, program string) { //nolint:c
 	}
 
 	c.out.add("firewall", rule)
+}
+
+// firewallProtocol sets the protocol and port of a firewall rule. A WiX
+// exception without Protocol is not limited to TCP, msi-builder's default:
+// without a port it becomes any, and with one it needs a choice, because a
+// Windows firewall rule with a port must name TCP or UDP.
+func (c *converter) firewallProtocol(rule *omap, elm *elem) {
+	protocol, port := c.value(elm, "Protocol"), c.value(elm, "Port")
+
+	switch {
+	case protocol != "":
+	case port == "":
+		protocol = "any"
+	default:
+		protocol = "tcp"
+
+		c.todof(rule, "protocol", elm.line, "the firewall exception sets no Protocol; msi-builder opens port %s for tcp only, "+
+			"add a udp rule if the program needs it", port)
+	}
+
+	rule.set("protocol", protocol)
+	rule.set("port", port)
 }
 
 // compID returns the component's ID, giving it one when WiX generated it.
@@ -545,14 +592,18 @@ const (
 	rightsService = "service"
 )
 
-// fileRights maps util:PermissionEx attributes to file rights: names
-// where msi-builder has one, else the access mask bits from the Windows
-// file access rights.
-var fileRights = []struct { //nolint:gochecknoglobals // lookup table
+// namedRight is a util:PermissionEx attribute and the right it grants: a
+// msi-builder right name, or else access mask bits.
+type namedRight struct {
 	attr  string
 	right string
 	mask  int
-}{
+}
+
+// fileRights maps util:PermissionEx attributes to file rights: names
+// where msi-builder has one, else the access mask bits from the Windows
+// file access rights.
+var fileRights = []namedRight{ //nolint:gochecknoglobals // lookup table
 	{"GenericAll", rightsFull, 0},
 	{"FileAllRights", rightsFull, 0},
 	{"GenericRead", "read", 0},
@@ -578,12 +629,27 @@ var fileRights = []struct { //nolint:gochecknoglobals // lookup table
 	{"Synchronize", "", 0x100000},
 }
 
-var serviceRights = map[string]string{ //nolint:gochecknoglobals // lookup table
-	"GenericAll":           rightsFull,
-	"GenericRead":          "read",
-	"ServiceStart":         "start",
-	"ServiceStop":          "stop",
-	"ServicePauseContinue": "pauseContinue",
+// serviceRights maps util:PermissionEx attributes to service rights: names
+// where msi-builder has one, else the access mask bits from the Windows
+// service access rights.
+var serviceRights = []namedRight{ //nolint:gochecknoglobals // lookup table
+	{"GenericAll", rightsFull, 0},
+	{"GenericRead", "read", 0},
+	{"GenericWrite", "", 0x20002},   // READ_CONTROL | SERVICE_CHANGE_CONFIG
+	{"GenericExecute", "", 0x20170}, // READ_CONTROL | start, stop, pause, user-defined control
+	{"ServiceQueryConfig", "", 0x1},
+	{"ServiceChangeConfig", "", 0x2},
+	{"ServiceQueryStatus", "", 0x4},
+	{"ServiceEnumerateDependents", "", 0x8},
+	{"ServiceStart", "start", 0},
+	{"ServiceStop", "stop", 0},
+	{"ServicePauseContinue", "pauseContinue", 0},
+	{"ServiceInterrogate", "", 0x80},
+	{"ServiceUserDefinedControl", "", 0x100},
+	{"Delete", "", 0x10000},
+	{"ReadPermission", "", 0x20000},
+	{"ChangePermission", "", 0x40000},
+	{"TakeOwnership", "", 0x80000},
 }
 
 // wellKnownAccounts are the SDDL aliases of built-in accounts by their
@@ -646,31 +712,26 @@ func (c *converter) rights(target *omap, key string, elm *elem, kind string) []s
 		mask  int
 	)
 
+	table := fileRights
+	if kind == rightsService {
+		table = serviceRights
+	}
+
 	for _, attrName := range elm.order {
 		if !elm.yes(attrName) {
 			continue
 		}
 
-		if kind == rightsService {
-			if r, ok := serviceRights[attrName]; ok {
-				names = append(names, r)
-			} else {
-				c.todof(target, key, elm.line, "the service right %s has no name in msi-builder; add its access mask", attrName)
-			}
+		idx := slices.IndexFunc(table, func(r namedRight) bool { return r.attr == attrName })
 
-			continue
-		}
-
-		for _, right := range fileRights {
-			if right.attr != attrName {
-				continue
-			}
-
-			if right.right != "" {
-				names = append(names, right.right)
-			} else {
-				mask |= right.mask
-			}
+		switch {
+		case idx < 0 && kind == rightsService:
+			c.todof(target, key, elm.line, "the service right %s has no counterpart; add its access mask", attrName)
+		case idx < 0:
+		case table[idx].right != "":
+			names = append(names, table[idx].right)
+		default:
+			mask |= table[idx].mask
 		}
 	}
 
