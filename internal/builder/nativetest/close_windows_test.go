@@ -15,7 +15,7 @@ import (
 	"github.com/jkroepke/msi-builder/internal/testpe"
 )
 
-// closeConfig installs the close helper three times: gui.exe and con.exe
+// closeConfig installs the close helper three times: gui.exe and cli.exe
 // are closed with the defaults (WM_CLOSE, 5 s, then terminate), keep.exe
 // only gets WM_CLOSE. Restart Manager is off, as the design doc recommends
 // with close: it would shut the programs down itself in a silent install.
@@ -28,7 +28,7 @@ installDir: { name: MsiBuilderClose }
 properties: { MSIRESTARTMANAGERCONTROL: Disable }
 components:
   - files: [{ source: gui.exe, close: true }]
-  - files: [{ source: con.exe, close: true }]
+  - files: [{ source: cli.exe, close: true }]
   - files: [{ source: keep.exe, close: { timeout: 2s, terminate: false } }]
 `
 
@@ -246,7 +246,7 @@ func TestMsiexecClosesApps(t *testing.T) {
 
 	helper := closeHelper(t)
 	dir := t.TempDir()
-	path := buildConfig(t, dir, "close", closeConfig, map[string][]byte{"gui.exe": helper, "con.exe": helper, "keep.exe": helper})
+	path := buildConfig(t, dir, "close", closeConfig, map[string][]byte{"gui.exe": helper, "cli.exe": helper, "keep.exe": helper})
 	installDir := filepath.Join(os.Getenv("ProgramFiles"), "MsiBuilderClose")
 
 	defer func() {
@@ -259,7 +259,7 @@ func TestMsiexecClosesApps(t *testing.T) {
 	}
 
 	copyDir := t.TempDir()
-	other := filepath.Join(copyDir, "con.exe")
+	other := filepath.Join(copyDir, "cli.exe")
 
 	if err := os.WriteFile(other, helper, 0o700); err != nil { //nolint:gosec // an executable
 		t.Fatal(err)
@@ -276,7 +276,7 @@ func TestMsiexecClosesApps(t *testing.T) {
 	} {
 		marker := filepath.Join(dir, step.name+".closed")
 		gui := startHelper(t, filepath.Join(installDir, "gui.exe"), "window", marker)
-		con := startHelper(t, filepath.Join(installDir, "con.exe"), "console")
+		con := startHelper(t, filepath.Join(installDir, "cli.exe"), "console")
 
 		var keep *running
 		if step.name == "repair" {
@@ -302,11 +302,11 @@ func TestMsiexecClosesApps(t *testing.T) {
 		}
 
 		if got := con.exited(15 * time.Second); got != 1602 {
-			t.Errorf("%s: con.exe exit code %d, want 1602 from the deferred action (-1: still running)", step.name, got)
+			t.Errorf("%s: cli.exe exit code %d, want 1602 from the deferred action (-1: still running)", step.name, got)
 		}
 
 		if got := elsewhere.exited(time.Second); got != -1 {
-			t.Errorf("%s: the copy of con.exe in another folder exited with %d", step.name, got)
+			t.Errorf("%s: the copy of cli.exe in another folder exited with %d", step.name, got)
 		}
 
 		if keep != nil {

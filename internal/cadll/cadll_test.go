@@ -88,7 +88,7 @@ func TestBinaries(t *testing.T) {
 			// The log template and the immediate property are UTF-16 arrays
 			// in the C source, which a rename of the Go constants misses.
 			for _, want := range []string{cadll.Entry + ": [1]", cadll.GrantEntryPoint + ": [1]", cadll.DataProperty, cadll.GrantProperty, cadll.GrantExec, cadll.GrantRollback, cadll.GrantCommit,
-				cadll.CloseEntryPoint + ": [1]", cadll.CloseProperty, cadll.CloseExec,
+				cadll.CloseEntryPoint + ": [1]", cadll.CloseProperty,
 			} {
 				if !bytes.Contains(data, utf16z(want)) {
 					t.Errorf("UTF-16 string %q not found", want)

@@ -61,7 +61,8 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     RegQueryValueExW:24 RegDeleteTreeW:8 RegCloseKey:4 >"$tmp/$out/advapi32.def"
   imports msi MsiGetPropertyW:16 MsiCreateRecord:4 MsiRecordSetStringW:12 MsiRecordSetInteger:12 MsiProcessMessage:12 \
     MsiCloseHandle:4 MsiSetPropertyW:12 MsiFormatRecordW:16 MsiEvaluateConditionW:8 >"$tmp/$out/msi.def"
-  imports user32 EnumWindows:8 GetWindowThreadProcessId:8 PostMessageW:16 GetClassNameW:12 >"$tmp/$out/user32.def"
+  imports user32 EnumWindows:8 GetWindowThreadProcessId:8 PostMessageW:16 GetClassNameW:12 \
+    IsWindowVisible:4 GetWindow:8 >"$tmp/$out/user32.def"
   for lib in kernel32 advapi32 msi user32; do
     "$DLLTOOL" -m "$arch" -k -d "$tmp/$out/$lib.def" -l "$tmp/$out/$lib.lib"
   done

@@ -96,17 +96,21 @@ the root `AGENTS.md` first.
   on the CI runner, SEC-02). Wide strings in this part
   are `u"..."` literals, which clang types as `unsigned short` arrays.
 - `close` (spec 17.8) uses the exports `BuilderCloseSchedule` (immediate,
-  before InstallValidate, as the user: `WM_CLOSE` to the windows of every
-  process whose image path equals the file's, then a wait) and
-  `BuilderClose` (the deferred `BuilderCloseExec`, LocalSystem, after
-  StopServices: `TerminateProcess` with 1602). They are the only user32
-  imports (`EnumWindows`, `GetWindowThreadProcessId`, `PostMessageW`,
-  `GetClassNameW`); keep user32 out of every other path. A process matches
-  by `QueryFullProcessImageNameW` and `CompareStringOrdinal` without case,
-  never by name alone, so copies elsewhere survive. `BuilderCloseApps`
-  lines end their `<timeout>|<flags>|` field with `|` because `hexfield`
-  needs the terminator. Neither action fails the install; the schedule
-  action returns `ERROR_INSTALL_USEREXIT` only after a cancel.
+  before InstallValidate, as the user: `WM_CLOSE` to the visible unowned
+  top-level windows of every process whose image path equals the file's,
+  to its hidden ones only when it has none, then a wait) and `BuilderClose`
+  (the deferred `BuilderCloseExec`, LocalSystem, after StopServices:
+  `TerminateProcess` with 1602). They are the only user32 imports; keep
+  user32 out of every other path. A process matches by
+  `QueryFullProcessImageNameW` and `CompareStringOrdinal` without case,
+  never by name alone, so copies elsewhere survive. The paths
+  `BuilderCloseExec` ends come from type-51 actions of the engine
+  (`[BuilderCloseExec][DIR]file|`), never from the schedule action: the
+  impersonated custom action server runs with the user's token, so data it
+  sets for a LocalSystem action is under the user's control. Grants
+  (above) predate this and still hand their data over from the schedule
+  action. Neither close action fails the install; the schedule action
+  returns `ERROR_INSTALL_USEREXIT` only after a cancel.
 - Never take code from another installer toolkit's custom action library;
   the Windows Installer custom action contract is documented by Microsoft
   and the spec (section 9.4).

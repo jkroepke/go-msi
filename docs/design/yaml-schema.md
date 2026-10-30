@@ -893,25 +893,45 @@ files:
       terminate: false             # default true: end what is still running
 ```
 
-Two actions on the embedded DLL do it (specification section 17.8):
-before `InstallValidate`, as the installing user, every process whose image
-is the installed file gets `WM_CLOSE` on its top-level windows, and the
-install waits up to `timeout` for those to exit; after `StopServices` and
-before `RemoveFiles`, as LocalSystem in a per-machine install, the copies
-still running from that path are ended, in any session, with exit code
-1602. A process matches by its full path, compared without case, so a copy
-of the program in another folder (a portable copy, a Kubernetes
-HostProcess container) keeps running. This is the difference to WiX's
-`util:CloseApplication`, which matches the file name only (CLOSE-01; the
-2026-10-25 evaluation of the `windows_exporter` example found that a
-problem). A console program or a service has no window to close, so it is
-ended, or left alone with `terminate: false`; a service the package
-installs is stopped by its `control` events first. A window on another
-user's desktop does not get `WM_CLOSE` either; its process is ended. Ending
-a program loses what it has not saved, so `terminate: false` suits editors
-and tools where the user should decide; the engine's files-in-use dialog
-then lists what is still running. Only files that end in `.exe` take
-`close`, and a folder source does not.
+Two actions on the embedded DLL do it (specification section 17.8).
+Before `InstallValidate`, as the installing user, every process whose
+image is the installed file gets `WM_CLOSE` on its visible top-level
+windows (on its hidden ones when it has no visible window, as a program in
+the notification area), and the install waits up to `timeout` for those
+to exit. After `StopServices` and before `RemoveFiles`, as LocalSystem in a
+per-machine install, the copies still running from that path are ended
+with exit code 1602, in every session. A process matches by its full path,
+compared without case, so a copy of the program in another folder (a
+portable copy, a Kubernetes HostProcess container) keeps running; WiX's
+`util:CloseApplication` matches the file name only (reported), which the
+2026-10-25 evaluation of the `windows_exporter` example found a problem.
+An install folder given as an 8.3 path, a `subst` drive or a junction does
+not match the image path the process reports, so nothing is closed then
+(fails safe; not tested).
+
+What gets ended, and when:
+
+- Every repair of the component counts, also one that does not replace
+  the file (`$Component=3`), and so does every removal.
+- Copies that other users run on the same machine, a terminal server
+  included, are ended without a `WM_CLOSE`, because the first action only
+  reaches the installing user's desktop (CLOSE-01 checks the installing
+  user's side only). Ending a program loses what it has not saved, so
+  `terminate: false` suits editors and tools where the user should decide;
+  the engine's files-in-use handling then deals with what still runs.
+- A console program has no window, so it is ended, or left alone with
+  `terminate: false`.
+- A service the package installs is stopped by its `control` events
+  first when `stopOnInstall` and `stopOnUninstall` are on (the defaults);
+  without them its process is ended like any other, and the service's
+  recovery actions may start it again.
+- In the first major upgrade from a version without `close`, the old
+  version is removed before the deferred action runs when `removeOld` is
+  early (the default), so a windowless program of the old version still
+  runs from a pending-delete copy until it is ended right after. From then
+  on both versions carry `close`.
+
+Only files that end in `.exe` take `close`, and a folder source does not.
 
 Set `MSIRESTARTMANAGERCONTROL: Disable` with `close`. Restart Manager
 otherwise asks every process that holds a package file to shut down in a
