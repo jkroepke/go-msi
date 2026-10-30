@@ -201,9 +201,9 @@ go test ./... -shuffle=on -race
   tests with `-v` only to print them. A test that cannot run in either
   suite (it needs a lot of disk, an environment variable or a full-size
   run the race build shrinks) gets its own step. The `TestNonAdmin` tests
-  run in the native step: the step
-  before it creates the standard user `msitest` and exports
-  `MSI_BUILDER_NONADMIN_USER` and `MSI_BUILDER_NONADMIN_PASSWORD`.
+  run in the native step: the step before it creates the standard user
+  `msitest` and exports `MSI_BUILDER_NONADMIN_USER` and
+  `MSI_BUILDER_NONADMIN_PASSWORD`.
 - To learn what Windows does before writing a test, a temporary nativetest
   that collects its observations and reports them with one `t.Errorf` runs
   on the `windows-latest` runner: push the branch and start CI with
