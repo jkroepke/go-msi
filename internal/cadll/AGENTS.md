@@ -99,8 +99,10 @@ the root `AGENTS.md` first.
   object had before a failed repair or upgrade. An account from a property
   is remembered by the commit action (lines whose template has `[`,
   `HKLM\SOFTWARE\msi-builder\GrantAccounts\<ProductCode>`, value named
-  after the template; in a per-user install the head line ends with
-  `|<UserSID>` and the key is `HKEY_USERS\<SID>\Software\msi-builder\GrantAccounts\<ProductCode>`:
+  after the template; in a per-user install the head line ends with `|`,
+  the DLL reads `UserSID` itself (the engine's value, which an action that
+  changes the session property cannot change, FILE-12; never format it into
+  the data) and the key is `HKEY_USERS\<SID>\Software\msi-builder\GrantAccounts\<ProductCode>`:
   never use `HKCU` there, which is LocalSystem's hive when an elevated
   per-user install runs the action as LocalSystem, and never fall back to
   HKLM, which users who install the same product per user would share), because `msiexec /fa` and Apps & Features

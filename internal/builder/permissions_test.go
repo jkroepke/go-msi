@@ -167,7 +167,7 @@ func TestPermissionGrants(t *testing.T) {
 		{"BuilderGrantData", "NOT Installed", "i[ProductCode]"},
 		{"BuilderGrantData", "Installed", "m[ProductCode]"},
 		{"BuilderGrantCount", "", ":"},
-		{"BuilderGrantData", "NOT ALLUSERS", "[BuilderGrantData]|[UserSID]"},
+		{"BuilderGrantData", "NOT ALLUSERS", "[BuilderGrantData]|"},
 		{"BuilderGrantData", installed + " AND (DATA=1)", data + "f|1301bf|3|NS|" + dir + "|NS"},
 		{"BuilderGrantCount", installed + " AND (DATA=1)", count},
 		{"BuilderGrantData", installed + " AND (DATA=1)", data + "f|120089|0|.\\svc|" + dir + "|.\\svc"},

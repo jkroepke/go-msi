@@ -142,8 +142,8 @@ func (b *build) grantActions() {
 // condition, one that appends the grant with its account and object
 // formatted by the engine and one that counts it, then the data of each
 // deferred action. The count lets the DLL find a line break that a
-// formatted value added. The head line ends with the user's SID in a
-// per-user install, whose accounts are remembered in that user's hive. A
+// formatted value added. The head line ends with a marker in a per-user
+// install, whose accounts are remembered in that user's hive. A
 // removal only hands the commit action the forgetting of the remembered
 // accounts, with that head line, so a failed removal keeps them.
 func (b *build) grantData() {
@@ -155,8 +155,9 @@ func (b *build) grantData() {
 		{"BuilderGrantReset", cadll.GrantData, condNotInstalled, string(cadll.GrantInstall) + "[ProductCode]"},
 		{"BuilderGrantResetMaintenance", cadll.GrantData, "Installed", string(cadll.GrantMaintenance) + "[ProductCode]"},
 		{"BuilderGrantResetCount", cadll.GrantCount, "", ":"},
-		// A per-user install remembers the accounts in the user's hive.
-		{"BuilderGrantUser", cadll.GrantData, condPerUser, "[" + cadll.GrantData + "]" + string(cadll.GrantUser) + "[UserSID]"},
+		// A per-user install remembers the accounts in the hive of the
+		// engine's UserSID, which the DLL reads itself.
+		{"BuilderGrantUser", cadll.GrantData, condPerUser, "[" + cadll.GrantData + "]" + string(cadll.GrantUser)},
 	}
 
 	for i, grant := range b.grants {

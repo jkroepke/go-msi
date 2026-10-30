@@ -322,6 +322,7 @@ enum {
     FILE_FLAG_BACKUP_SEMANTICS = 0x02000000,
     KEY_SET_VALUE = 0x2,
     REG_SZ = 1,
+    REG_BINARY = 3,
     REG_DWORD = 4,
     MSICONDITION_TRUE = 1,
     MSIRUNMODE_ROLLBACKENABLED = 3,
@@ -1038,7 +1039,7 @@ done:
 // BuilderGrantRollback and the commit action BuilderGrantCommit, all on the
 // entry point BuilderGrant, get this CustomActionData:
 //
-//     <op>:<count><mode><ProductCode>[|<UserSID>]
+//     <op>:<count><mode><ProductCode>[|]
 //     <kind>|<mask>|<flags>|<account template>|<object>|<account>
 //     ...
 //
@@ -1056,9 +1057,12 @@ done:
 // op is `+` (grant), `-` (rollback), `c` (commit) or `x` (the commit of the
 // removal of the product, `x` before the head line without a count; it
 // ignores the mode and the entries). mode
-// is `i` on a first install and `m` in a maintenance install. `|<UserSID>`
-// marks a per-user install (ALLUSERS unset), with the SID of the user it
-// installs for. kind is `f`
+// is `i` on a first install and `m` in a maintenance install. A `|` after
+// the ProductCode marks a per-user install (ALLUSERS unset); the user's SID
+// is then the engine's UserSID, which a deferred action reads with
+// MsiGetPropertyW: it is the account that started the session even after an
+// action changed the session's property (FILE-12), unlike a value formatted
+// into the data. kind is `f`
 // (file or folder) or `s` (service), mask and flags are hexadecimal access
 // rights and ACE flags, the account is a SID string, an SDDL alias such as
 // NS, a service manager name such as LocalSystem, or a name for
@@ -1069,11 +1073,13 @@ done:
 // A grant adds the rights to the account's explicit allow ACE with the same
 // inheritance flags, or adds such an ACE after the last explicit ACE, and
 // keeps every other ACE, the inherited ones included. Before it changes an
-// object it records the rights it adds, which the account did not have, in
+// object it records the rights it adds, which the account did not have, and
+// the account's SID in
 // HKCU\Software\msi-builder\GrantRollback\<ProductCode> under the entry's
-// number (HKCU of the account the action runs as: LocalSystem's hive in a
+// number (the SID as REG_BINARY under the number with `s`; HKCU of the account the action runs as: LocalSystem's hive in a
 // per-machine install). The rollback takes
-// exactly those rights away again and the commit deletes the record, so rights
+// exactly those rights away again from that SID, without working out the
+// account again, and the commit deletes the record, so rights
 // that were there before the install survive a rollback.
 //
 // An account that comes from a property, such as [SVC_ACCOUNT], is
@@ -1096,6 +1102,7 @@ done:
 static const WCHAR rollbackKey[] = u"Software\\msi-builder\\GrantRollback\\";
 static const WCHAR accountsKey[] = u"SOFTWARE\\msi-builder\\GrantAccounts\\";
 static const WCHAR userAccountsKey[] = u"\\Software\\msi-builder\\GrantAccounts\\";
+static const WCHAR propUserSid[] = u"UserSID";
 static const WCHAR msgUserSid[] = u"the user's security identifier is missing or malformed; remembered accounts are not used";
 static const WCHAR msgRemembered[] = u"the account is empty in a maintenance install; granting to the remembered account";
 static const WCHAR msgRemember[] = u"cannot remember the account of";
@@ -1240,7 +1247,8 @@ static WCHAR *field(WCHAR *s, WCHAR sep)
 // sid is 0 per machine; per user, bad tells that it was missing or not a SID
 // string, and nothing is remembered or looked up.
 typedef struct {
-    const WCHAR *product, *sid;
+    const WCHAR *product;
+    WCHAR *sid;
     int bad;
 } grantScope;
 
@@ -1577,13 +1585,31 @@ static int applyEntry(MSIHANDLE install, grantEntry *e, const WCHAR *account, in
     DWORD mask = e->mask, flags = e->flags;
     int type = e->type;
     WCHAR *object = e->object;
+    void *sid = 0;
+    // The SID is recorded under the entry's number with `s`; valueName
+    // has at most ten digits.
+    WCHAR sidName[16];
+    SIZE_T nameLen = wlen(valueName);
+    memcpy(sidName, valueName, nameLen * sizeof(WCHAR));
+    sidName[nameLen] = 's';
+    sidName[nameLen + 1] = 0;
     if (!grant) {
-        // Only what this install added is taken away.
+        // Only what this install added is taken away, from the account it
+        // was granted to: the recorded SID, never the account worked out
+        // again, which in a per-user install comes from a key the user can
+        // write.
         DWORD added = 0, size = sizeof added, kind = 0;
         if (!key || RegQueryValueExW(key, valueName, 0, &kind, (BYTE *)&added, &size) || kind != REG_DWORD || !added) {
             return 1;
         }
         mask = added;
+        BYTE recorded[68]; // a SID has at most 15 subauthorities
+        size = sizeof recorded;
+        if (RegQueryValueExW(key, sidName, 0, &kind, recorded, &size) || kind != REG_BINARY || size < 8 || recorded[0] != 1 ||
+            recorded[1] > 15 || size != 8 + 4 * (DWORD)recorded[1] || (sid = HeapAlloc(heap, 0, size)) == 0) {
+            return 1;
+        }
+        memcpy(sid, recorded, size);
     }
     // A folder comes as [DIRECTORY], which ends in a backslash; a drive root
     // such as C:\ keeps it.
@@ -1593,7 +1619,9 @@ static int applyEntry(MSIHANDLE install, grantEntry *e, const WCHAR *account, in
     }
 
     int ok = 0;
-    void *sid = resolveSid(install, account);
+    if (grant) {
+        sid = resolveSid(install, account);
+    }
     void *sd = 0;
     ACL *dacl = 0, *acl = 0;
     if (!sid) {
@@ -1623,6 +1651,9 @@ static int applyEntry(MSIHANDLE install, grantEntry *e, const WCHAR *account, in
     }
     if (grant) {
         long regErr = key ? RegSetValueExW(key, valueName, 0, REG_DWORD, (const BYTE *)&changed, sizeof changed) : keyErr;
+        if (!regErr) {
+            regErr = RegSetValueExW(key, sidName, 0, REG_BINARY, (const BYTE *)sid, GetLengthSid(sid));
+        }
         if (regErr) {
             logft(install, tmplGrant, msgRecord, object, (DWORD)regErr);
             goto done;
@@ -1646,7 +1677,9 @@ static int applyEntry(MSIHANDLE install, grantEntry *e, const WCHAR *account, in
         goto done;
     }
     logft(install, tmplGrant, grant ? msgGranted : msgRevoked, object, 0);
-    logft(install, tmplGrant, msgTo, account, 0);
+    if (account) {
+        logft(install, tmplGrant, msgTo, account, 0);
+    }
     ok = 1;
 done:
     if (sd) {
@@ -1705,8 +1738,13 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
     }
     WCHAR *product = head ? head + 1 : data + 1;
     WCHAR *entries = field(product, '\n');
-    grantScope scope = {product, field(product, '|'), 0};
-    if (scope.sid && !validSid(scope.sid)) {
+    grantScope scope = {product, 0, 0};
+    if (field(product, '|')) {
+        // Per user: the engine's UserSID names the hive.
+        scope.sid = property(install, propUserSid);
+        scope.bad = !scope.sid;
+    }
+    if (scope.bad || (scope.sid && !validSid(scope.sid))) {
         scope.bad = 1;
         if (op != '-') {
             logft(install, tmplGrant, msgUserSid, 0, 0);
@@ -1715,6 +1753,7 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
     if (!*product) {
         // An empty ProductCode would name every product's key below.
         logft(install, tmplGrant, msgGrantData, 0, 0);
+        HeapFree(heap, 0, scope.sid);
         HeapFree(heap, 0, data);
         return op == '+' ? ERROR_INSTALL_FAILURE : ERROR_SUCCESS;
     }
@@ -1727,6 +1766,7 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
     if (op != 'x' && lines != count) {
         // A line break in a formatted account or object added lines.
         logft(install, tmplGrant, msgGrantLines, 0, 0);
+        HeapFree(heap, 0, scope.sid);
         HeapFree(heap, 0, data);
         return op == '+' ? ERROR_INSTALL_FAILURE : ERROR_SUCCESS;
     }
@@ -1737,10 +1777,12 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
             RegDeleteTreeW(root, path.s);
         }
         HeapFree(heap, 0, path.s);
+        HeapFree(heap, 0, scope.sid);
         HeapFree(heap, 0, data);
         return ERROR_SUCCESS;
     }
     if (!wbufAdd(&path, rollbackKey, wlen(rollbackKey)) || !wbufAdd(&path, product, wlen(product))) {
+        HeapFree(heap, 0, scope.sid);
         HeapFree(heap, 0, data);
         return op == '+' ? ERROR_INSTALL_FAILURE : ERROR_SUCCESS;
     }
@@ -1764,14 +1806,17 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
         WCHAR name[12];
         SIZE_T pos = 0;
         grantEntry e;
-        int fail = 1;
+        int fail = 1, parsed = 0;
         wappendnum(name, &pos, index);
         if (!parseEntry(entry, &e)) {
             logft(install, tmplGrant, msgGrantData, 0, 0);
         } else if (!*e.object || hasControl(e.object, 0)) {
             logft(install, tmplGrant, msgBadObject, e.object, 0);
         } else {
-            account = grantAccount(install, &scope, again, &e, &kept, op == '+', &fail);
+            parsed = 1;
+            if (op != '-') {
+                account = grantAccount(install, &scope, again, &e, &kept, op == '+', &fail);
+            }
         }
         // The commit remembers the accounts that came from properties; a
         // rollback undoes every grant it can and never fails.
@@ -1779,7 +1824,8 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
             if (hasBracket(e.template)) {
                 rememberAccount(install, &scope, e.template, account);
             }
-        } else if (account) {
+        } else if (account || (op == '-' && parsed)) {
+            // The rollback takes the account from the record.
             fail = !applyEntry(install, &e, account, op == '+', key, keyErr, name);
         }
         HeapFree(heap, 0, kept);
@@ -1796,6 +1842,7 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
         RegDeleteTreeW(HKCU_, path.s);
     }
     HeapFree(heap, 0, path.s);
+    HeapFree(heap, 0, scope.sid);
     HeapFree(heap, 0, data);
     return result;
 }
