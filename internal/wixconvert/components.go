@@ -210,6 +210,7 @@ type compConv struct {
 	shortcuts    int
 	files        int
 	keyIsDir     bool
+	keyIsFile    bool // keyPath is a File
 }
 
 // componentChildren convert the elements a Component holds.
@@ -243,6 +244,9 @@ const elemShortcut = "Shortcut"
 // actionState matches a feature or component action state, &Feature or
 // $Component, in a condition.
 var actionState = regexp.MustCompile(`[&$][A-Za-z_][A-Za-z0-9_.]*`)
+
+// quotedText matches a string literal in a condition.
+var quotedText = regexp.MustCompile(`"[^"]*"`)
 
 // scopeConditions are the conditions that install a component of a dual
 // package in one scope only: ALLUSERS is 1 per machine and unset per user.
@@ -278,7 +282,7 @@ func (c *converter) componentCondition(out *omap, line int, cond string) {
 		return
 	}
 
-	if state := actionState.FindString(cond); state != "" {
+	if state := actionState.FindString(quotedText.ReplaceAllString(cond, `""`)); state != "" {
 		c.todof(out, "", line, "the condition %q was left out: it tests the action state %s, which is not set yet when "+
 			"the installer evaluates component conditions; test a property instead", cond, state)
 
@@ -361,7 +365,7 @@ func (cc *compConv) dropShortcutRows() {
 
 	cc.cp.dropIfEmpty = true
 
-	if cc.keyPath != "" && cc.out.get("registry") == nil {
+	if cc.keyPath != "" && !cc.keyIsFile && cc.out.get("registry") == nil {
 		cc.out.del("keyPath")
 	}
 }
@@ -401,7 +405,7 @@ func (cc *compConv) file(elm *elem) { //nolint:cyclop // a flat list of independ
 	conv.files = append(conv.files, ref)
 
 	if elm.yes("KeyPath") && cc.files > 0 {
-		cc.keyPath = name
+		cc.keyPath, cc.keyIsFile = name, true
 	}
 
 	cc.files++

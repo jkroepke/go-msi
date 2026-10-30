@@ -162,6 +162,7 @@ func (c *converter) emitActions() {
 		c.setProgress(action, id, progress)
 		action.set("schedule", append(schedule, byAction[id]...))
 		delete(byAction, id)
+		c.extensionAnchors(action, setter)
 		c.out.add("customActions", action)
 	}
 
@@ -269,11 +270,17 @@ func (c *converter) extensionAnchors(action *omap, custom *elem) {
 			}
 
 			// CostFinalize is in every sequence that takes custom
-			// actions, before the installation changes anything.
+			// actions, before the installation changes anything; a
+			// deferred action must run inside the script.
+			target := "CostFinalize"
+			if action.str("execute") != "" {
+				target = "InstallInitialize"
+			}
+
 			placement.del(key)
-			placement.set("after", "CostFinalize")
+			placement.set("after", target)
 			c.todof(action, "schedule", custom.line, "%s is an action of a WiX extension, which the msi-builder package "+
-				"does not have; convert placed this action after CostFinalize, check that place", anchor)
+				"does not have; convert placed this action after %s, check that place", anchor, target)
 		}
 	}
 }

@@ -196,20 +196,28 @@ func (c *converter) shortcutFile(pending pendingShortcut, target string) *fileRe
 	return nil
 }
 
-// advertisedFile returns the file an advertised shortcut starts: the first
-// file of its component, which WiX makes the key path.
+// advertisedFile returns the file an advertised shortcut starts: the key
+// path of its component, the File marked KeyPath or else the first one.
 func (c *converter) advertisedFile(pending pendingShortcut) *fileRef {
 	if !pending.e.yes("Advertise") {
 		return nil
 	}
 
-	for _, f := range c.files {
-		if f.comp == pending.comp {
-			return f
+	var first *fileRef
+
+	key := keyFileID(pending.comp.e)
+
+	for _, ref := range c.files {
+		switch {
+		case ref.comp != pending.comp:
+		case ref.key == key:
+			return ref
+		case first == nil:
+			first = ref
 		}
 	}
 
-	return nil
+	return first
 }
 
 // fileTargetShortcut places a shortcut to a packaged file: on the file when

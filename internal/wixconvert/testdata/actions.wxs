@@ -13,8 +13,9 @@
 
     <ComponentGroup Id="Main" Directory="INSTALLFOLDER">
       <Component Id="HelloExe" Subdirectory="bin">
-        <File Id="hello.exe" Source="dist\hello.exe" />
-        <!-- Advertised: becomes a plain shortcut to the component's file. -->
+        <File Id="readme.txt" Source="dist\readme.txt" />
+        <File Id="hello.exe" Source="dist\hello.exe" KeyPath="yes" />
+        <!-- Advertised: becomes a plain shortcut to the component's key file. -->
         <Shortcut Id="AdvLink" Name="Hello" Directory="AppMenu" Advertise="yes" />
         <ServiceInstall Name="HelloSvc" Start="auto" Type="ownProcess" ErrorControl="normal">
           <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart" ThirdFailureActionType="none" />
@@ -25,6 +26,10 @@
       <Component Id="HelloSvcControl" Condition="&amp;Complete = 3">
         <File Id="hello.yaml" Source="dist\hello.yaml" />
         <ServiceControl Id="HelloSvcStart" Name="HelloSvc" Start="install" Stop="both" Remove="uninstall" />
+      </Component>
+      <!-- An & in a string is no action state. -->
+      <Component Id="RnD" Condition="EDITION=&quot;R&amp;D&quot;">
+        <File Id="rnd.txt" Source="dist\rnd.txt" />
       </Component>
     </ComponentGroup>
 
@@ -60,6 +65,9 @@
     <CustomAction Id="StartTray" FileRef="hello.exe" ExeCommand="--tray" Execute="immediate" Return="asyncNoWait" />
     <CustomAction Id="StartMonitor" Directory="INSTALLFOLDER" ExeCommand="[MONITOR] --monitor" Return="asyncNoWait" />
     <CustomAction Id="NeedsAdmin" Error="25000" />
+    <!-- Placed on actions of a WiX extension. -->
+    <CustomAction Id="Configure" FileRef="hello.exe" ExeCommand="--configure" Execute="deferred" Impersonate="no" />
+    <SetProperty Id="CLOSING" Value="1" Before="Wix4CloseApplications_X64" Sequence="execute" />
     <UI>
       <Error Id="25000">Hello needs administrator rights.</Error>
       <Error Id="1316">A file is missing.</Error>
@@ -75,6 +83,7 @@
       <Custom Action="Greet" After="SetGreetCmd" Condition="NOT Installed AND NOT WIX_UPGRADE_DETECTED" />
       <Custom Action="Cleanup" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
       <Custom Action="Register" After="InstallFiles" Condition="NOT Installed" />
+      <Custom Action="Configure" After="Wix4ExecFirewallExceptionsInstall_X64" Condition="NOT Installed" />
     </InstallExecuteSequence>
   </Package>
 </Wix>

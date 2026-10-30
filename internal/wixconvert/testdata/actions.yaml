@@ -2,7 +2,7 @@
 # Converted from actions.wxs by msi-builder convert.
 # Review it, resolve the TODO comments, then run msi-builder validate.
 # TODO(line 5): the WiX package has no MajorUpgrade; msi-builder adds the standard major upgrade (set upgrade: false to leave it out)
-# TODO(line 65): the Error row 1316 has no counterpart; only error actions take in their message
+# TODO(line 73): the Error row 1316 has no counterpart; only error actions take in their message
 schema: msi-builder/v1
 product:
   name: Hello
@@ -18,15 +18,17 @@ installDir:
   id: INSTALLFOLDER
   name: Hello
 components:
-  # TODO(line 22): util:RemoveFolderEx was not converted: purge refuses a folder below INSTALLFOLDER, a directory that can point anywhere; keep the data in a folder with private (mixed-case) IDs below a fixed standard folder, such as CommonAppDataFolder/Vendor/Product, and purge that
+  # TODO(line 23): util:RemoveFolderEx was not converted: purge refuses a folder below INSTALLFOLDER, a directory that can point anywhere; keep the data in a folder with private (mixed-case) IDs below a fixed standard folder, such as CommonAppDataFolder/Vendor/Product, and purge that
   - id: HelloExe
     directory: bin
     files:
+      - source: dist/readme.txt
+        id: readme.txt
       - source: dist/hello.exe
         id: hello.exe
         shortcuts:
-          # Advertised: becomes a plain shortcut to the component's file.
-          # TODO(line 18): advertised shortcuts are never supported; this one is a plain shortcut
+          # Advertised: becomes a plain shortcut to the component's key file.
+          # TODO(line 19): advertised shortcuts are never supported; this one is a plain shortcut
           - name: Hello
             directory: ProgramMenuFolder/Hello
     services:
@@ -35,15 +37,22 @@ components:
         recovery:
           actions: [restart, restart, none]
           restartDelay: 0s
+    keyPath: hello.exe
   # Controls the service of another component.
-  # TODO(line 25): the condition "&Complete = 3" was left out: it tests the action state &Complete, which is not set yet when the installer evaluates component conditions; test a property instead
-  # TODO(line 27): the ServiceControl for HelloSvc became services[].control of the component that installs it, which keeps that component's condition and feature instead of this one's
+  # TODO(line 26): the condition "&Complete = 3" was left out: it tests the action state &Complete, which is not set yet when the installer evaluates component conditions; test a property instead
+  # TODO(line 28): the ServiceControl for HelloSvc became services[].control of the component that installs it, which keeps that component's condition and feature instead of this one's
   - id: HelloSvcControl
     files:
       - source: dist/hello.yaml
         id: hello.yaml
-  # TODO(line 36): RemoveRegistryKey HKCR\*\shell\Hello was left out: msi-builder has no removal on uninstall only, and removeRegistry removes the key on install
-  # TODO(line 37): RemoveRegistryValue HKCU\Software\Example\Hello without Name removes the default value and was left out: removeRegistry without name removes the whole key
+  # An & in a string is no action state.
+  - id: RnD
+    files:
+      - source: dist/rnd.txt
+        id: rnd.txt
+    condition: EDITION="R&D"
+  # TODO(line 41): RemoveRegistryKey HKCR\*\shell\Hello was left out: msi-builder has no removal on uninstall only, and removeRegistry removes the key on install
+  # TODO(line 42): RemoveRegistryValue HKCU\Software\Example\Hello without Name removes the default value and was left out: removeRegistry without name removes the whole key
   # The RemoveFolder and HKCU key path of this shortcut component were left out:
   # msi-builder writes both for every shortcut.
   - id: ConsoleLink
@@ -65,7 +74,7 @@ customActions:
     run:
       command: '"[System64Folder]taskkill.exe" /im hello.exe /f'
     return: ignore
-    # TODO(line 49): Wix4CloseApplications_X64 is an action of a WiX extension, which the msi-builder package does not have; convert placed this action after CostFinalize, check that place
+    # TODO(line 54): Wix4CloseApplications_X64 is an action of a WiX extension, which the msi-builder package does not have; convert placed this action after CostFinalize, check that place
     schedule:
       - {sequence: execute, after: CostFinalize}
   - id: Greet
@@ -96,7 +105,7 @@ customActions:
     schedule:
       - {sequence: execute, after: InstallFinalize, condition: NOT REMOVE}
   - id: StartMonitor
-    # TODO(line 61): check [MONITOR]: quote it if it holds a bare path; leave it if it holds a quoted command line such as an UninstallString
+    # TODO(line 66): check [MONITOR]: quote it if it holds a bare path; leave it if it holds a quoted command line such as an UninstallString
     exec:
       command: '[MONITOR] --monitor'
       directory: INSTALLFOLDER
@@ -107,3 +116,18 @@ customActions:
     error: Hello needs administrator rights.
     schedule:
       - {sequence: execute, after: LaunchConditions, condition: NOT Privileged}
+  # Placed on actions of a WiX extension.
+  - id: Configure
+    run:
+      command: '"[#hello.exe]" --configure'
+    execute: deferred
+    impersonate: false
+    return: check
+    # TODO(line 69): Wix4ExecFirewallExceptionsInstall_X64 is an action of a WiX extension, which the msi-builder package does not have; convert placed this action after InstallInitialize, check that place
+    schedule:
+      - {sequence: execute, condition: NOT Installed, after: InstallInitialize}
+  - id: SetCLOSING
+    setProperty: {name: CLOSING, value: "1"}
+    # TODO(line 70): Wix4CloseApplications_X64 is an action of a WiX extension, which the msi-builder package does not have; convert placed this action after CostFinalize, check that place
+    schedule:
+      - {sequence: execute, after: CostFinalize}
