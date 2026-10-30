@@ -3,6 +3,7 @@ package builder
 import (
 	"cmp"
 	"fmt"
+	"io"
 	"iter"
 	"maps"
 	"slices"
@@ -174,6 +175,27 @@ func (b *build) createFolder(carrier, dirID string, created map[string]bool) {
 	b.table("CreateFolder").Add(dirID, carrier)
 }
 
+// hashRemovableCarriers adds a marker to the ProductCode digest when a
+// permanent component has shortcuts in a generated component. Earlier
+// builds made the generated component permanent under the ComponentId that
+// carrierGUID now changes, so the rebuild needs another code, or installing
+// it over the old one fails with 1638.
+func (b *build) hashRemovableCarriers(hasher io.Writer) {
+	if slices.ContainsFunc(b.cfg.Components, func(comp *config.Component) bool {
+		return comp.Permanent && !shortcutsOnly(comp) && hasShortcuts(comp)
+	}) {
+		_, _ = hasher.Write([]byte("shortcuts:removable-carrier"))
+	}
+}
+
+// hasShortcuts reports whether a component lists shortcuts, of its own or
+// of its files.
+func hasShortcuts(comp *config.Component) bool {
+	return len(comp.Shortcuts) > 0 || slices.ContainsFunc(comp.Files, func(file *config.File) bool {
+		return len(file.Shortcuts) > 0
+	})
+}
+
 // shortcutsOnly reports whether a component holds nothing but shortcuts,
 // as the config package decides it: it gets no Component row of its own,
 // and the generated component that carries its shortcuts takes its id.
@@ -210,9 +232,10 @@ func (b *build) shortcutComponent(info *componentInfo, dirID string) string {
 	comp := info.cfg
 
 	valueName := generatedID("cmp", "Shortcuts", b.upgradeCode, comp.ID)
+	own := shortcutsOnly(comp)
 
 	carrier := valueName
-	if shortcutsOnly(comp) {
+	if own {
 		carrier = comp.ID
 	}
 
@@ -222,18 +245,52 @@ func (b *build) shortcutComponent(info *componentInfo, dirID string) string {
 	// 32-bit folder fails ICE80.
 	is64 := info.is64 && !config.Is32BitFolder(b.topFolder(dirID))
 
+	// A generated carrier keeps the component's transitive condition but not
+	// its permanence: a file that stays installed is no reason for its
+	// shortcuts to outlive the product. Only a component of shortcuts alone,
+	// which is the carrier itself, is permanent when it says so.
 	bitness := "32"
-	attributes := compRegistryKeyPath | info.attributes&(compPermanent|compTransitive)
+	attributes := compRegistryKeyPath | info.attributes&compTransitive
+
+	if own {
+		attributes |= info.attributes & compPermanent
+	}
 
 	if is64 {
 		bitness = "64"
 		attributes |= comp64Bit
 	}
 
-	var guid any = uuid5(namespaceComponent, b.upgradeCode+"|"+bitness+"|shortcuts|"+carrier)
+	guid := b.carrierGUID(info, own, bitness, carrier)
+
+	b.table("Component").Add(carrier, guid, dirID, attributes, componentCondition(comp), registry)
+	b.table("Registry").Add(registry, registryRoots["HKCU"], `Software\[Manufacturer]\[ProductName]`, valueName, "#1", carrier)
+	b.dirs[dirID].used = true
+	b.carriers[comp.ID] = append(b.carriers[comp.ID], carrier)
+
+	return carrier
+}
+
+// carrierGUID returns the ComponentId of a shortcut carrier: generated from
+// the upgrade code, its bitness and key, or the component's own guid when
+// the component of shortcuts only is the carrier.
+func (b *build) carrierGUID(info *componentInfo, own bool, bitness, carrier string) any {
+	comp := info.cfg
+
+	seed := b.upgradeCode + "|" + bitness + "|shortcuts|" + carrier
+
+	// Builds that made the carrier of a permanent component permanent as
+	// well left its ComponentId registered after uninstall, and a later
+	// package with the same code kept its shortcuts too (observed). A new
+	// code leaves that registration behind.
+	if !own && info.attributes&compPermanent != 0 {
+		seed += "|removable"
+	}
+
+	var guid any = uuid5(namespaceComponent, seed)
 
 	// A component of shortcuts only is the carrier, so its guid applies.
-	if shortcutsOnly(comp) {
+	if own {
 		switch comp.GUID {
 		case config.Auto:
 		case config.None:
@@ -250,12 +307,7 @@ func (b *build) shortcutComponent(info *componentInfo, dirID string) string {
 		b.uniqueGUID(info.cfg.Path(info.index), comp.ID, guid)
 	}
 
-	b.table("Component").Add(carrier, guid, dirID, attributes, componentCondition(comp), registry)
-	b.table("Registry").Add(registry, registryRoots["HKCU"], `Software\[Manufacturer]\[ProductName]`, valueName, "#1", carrier)
-	b.dirs[dirID].used = true
-	b.carriers[comp.ID] = append(b.carriers[comp.ID], carrier)
-
-	return carrier
+	return guid
 }
 
 // writeShortcut writes a Shortcut row. seed makes the generated key
