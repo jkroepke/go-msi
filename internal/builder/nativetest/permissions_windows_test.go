@@ -84,9 +84,8 @@ func objectSDDL(t *testing.T, path string) string {
 // they inherit, and a folder that existed before the install loses its own
 // explicit ACEs. A registry key below a key that exists before the install
 // gets the same protected DACL; a key below a key the install creates reads
-// back with the authored ACEs marked inherited, because the created parent
-// gets them. An SDDL replaces the DACL whatever its flags, which is why grants
-// exist.
+// back with the authored ACEs marked inherited, and none of HKLM\SOFTWARE's.
+// An SDDL replaces the DACL whatever its flags, which is why grants exist.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestMsiexecSDDLWithoutProtection(t *testing.T) {

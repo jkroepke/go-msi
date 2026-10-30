@@ -28,6 +28,22 @@ but holds only the authored ACEs, marked inherited (`ID`), and none of
 `HKLM\SOFTWARE`'s. A `/fa` repair in that run left every DACL as after the
 install. The test now asserts this.
 
+### Registry key below an existing key
+
+The key was `HKLM\SOFTWARE\MsiBuilderTest\Sec02`, and other tests create
+and delete `HKLM\SOFTWARE\MsiBuilderTest`. With `-shuffle=on` the parent
+sometimes existed before the install, and the key then read back as
+`O:SYG:SYD:P(A;CI;KA;;;SY)(A;CI;KR;;;NS)(A;CI;KA;;;BA)` (main, CI run
+41018777226, 2026-10-30): a protected DACL with exactly the authored ACEs,
+as for files. The `ID` result above is what a key gets when the install
+also creates its parent.
+
+Since PR #141 the test uses its own root `HKLM\SOFTWARE\MsiBuilderSec02`,
+creates `Existing` before the install, and writes `New\Key` and
+`Existing\Key`. CI run 41036088523 (2026-10-30) passed both assertions:
+`Existing\Key` has `D:P` with the three authored ACEs, `New\Key` the
+three authored ACEs marked `ID` and no others.
+
 ## Grants
 
 CI run 40974613442, commit 39126ee (`TestMsiexecGrants`, which asserts
