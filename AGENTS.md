@@ -193,6 +193,13 @@ go test ./... -shuffle=on -race
   non-administrator installs with 1625 unless the machine policy `DisableMsi`
   is 0, and a per-user test package needs `INSTALLDIR` under
   `LocalAppDataFolder`, or it stops with 1303 at Program Files.
+- CI runs every Windows test in the one `go test` step, verbose and under
+  `-race`, so a result test's `t.Log` output is in that step's log; do not
+  add a step that reruns tests with `-v` only to print them. A test that
+  cannot run there (it needs a non-race build, a lot of disk or an
+  environment variable) gets its own step. The `TestNonAdmin` tests run in
+  the main step: the step before it creates the standard user `msitest` and
+  exports `MSI_BUILDER_NONADMIN_USER` and `MSI_BUILDER_NONADMIN_PASSWORD`.
 - To learn what Windows does before writing a test, a temporary nativetest
   that collects its observations and reports them with one `t.Errorf` runs
   on the `windows-latest` runner: push the branch and start CI with
