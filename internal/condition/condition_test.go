@@ -89,8 +89,8 @@ func TestProperties(t *testing.T) {
 func TestActionStates(t *testing.T) {
 	t.Parallel()
 
-	got := ActionStates(`&Main=3 AND !Main<>3 OR $Comp=2 AND ?Comp=3 AND %PATH AND START="1"`)
-	if want := []string{"&Main", "$Comp"}; !slices.Equal(got, want) {
+	got := ActionStates(`&Main.Sub=3 AND !Main<>3 OR $Comp=2 AND ?Comp=3 AND %PATH AND START="&Quoted"`)
+	if want := []string{"&Main.Sub", "$Comp"}; !slices.Equal(got, want) {
 		t.Errorf("ActionStates = %v, want %v", got, want)
 	}
 }
