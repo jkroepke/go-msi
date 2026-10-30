@@ -4,14 +4,15 @@
 # WiX variables became ${NAME} references; pass them with --var NAME=value: Version.
 # TODO(line 7): <?include common.wxi?>: convert the included file and merge it in by hand
 # TODO(line 48): the hand-built dialog PortDlg cannot be converted; ui.dialogs lays out text, password, checkbox and choice fields
-# TODO(line 179): rescheduling the standard action RemoveExistingProducts in InstallExecuteSequence has no counterpart
+# TODO(line 166): <util:CloseApplication> for hello.exe only detects the running program (Property HELLORUNNING), which has no counterpart; files[].close on the program's file closes it instead
+# TODO(line 183): rescheduling the standard action RemoveExistingProducts in InstallExecuteSequence has no counterpart
 # TODO(line 51): a second progress text for InstallFiles is ignored
-# TODO(line 169): the custom action Greet is a script; script custom actions are never supported, use a run action
-# TODO(line 170): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
+# TODO(line 173): the custom action Greet is a script; script custom actions are never supported, use a run action
+# TODO(line 174): the custom action ConfigureIIS calls the WiX extension Wix4IIsCA_X64!ConfigureIIs, which has no counterpart
 # TODO(line 50): the progress text of InstallFiles cannot be converted: msi-builder writes progress texts only for its customActions
 # TODO(line 52): the progress text of LaunchHello is dropped: the action was not converted to a customActions entry of its own
-# TODO(line 181): drop Wix4BroadcastEnvironmentChange_X64: Windows Installer announces environment changes itself
-# TODO(line 182): Wix4BroadcastSettingChange_X64 has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action
+# TODO(line 185): drop Wix4BroadcastEnvironmentChange_X64: Windows Installer announces environment changes itself
+# TODO(line 186): Wix4BroadcastSettingChange_X64 has no counterpart; if the package writes a setting that Windows reads only on WM_SETTINGCHANGE, send it from a run action
 schema: msi-builder/v1
 vars:
   Port: "8080"
@@ -118,6 +119,8 @@ components:
               - extension: hellovault
                 contentType: application/x-hello-vault
             verbs: []
+        # TODO(line 164): close came from <util:CloseApplication>: WiX matches the running program by its file name, close by its installed path; RebootPrompt, Timeout and ElevatedCloseMessage map only roughly; set the property MSIRESTARTMANAGERCONTROL to Disable, so that the Restart Manager does not close the program as well
+        close: {terminate: false}
     registry:
       - root: HKLM
         key: SOFTWARE\Example\Hello
