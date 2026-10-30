@@ -74,7 +74,7 @@ the root `AGENTS.md` first.
   layouts the DLL declares itself are pinned by `_Static_assert`s on their
   documented sizes for 32- and 64-bit builds.
 - `cadll_test.go` checks the checksums, the PE machine, the export and that
-  the imports are only kernel32, advapi32, msi and user32. `testdata/probe` is the
+  the imports are only kernel32, advapi32, msi, user32, authz (the deferred folder removal's administrator check) and ntdll (NtCreateFile, NtSetInformationFile, RtlNtStatusToDosError). `testdata/probe` is the
   CA-03 package that `internal/builder/nativetest` installs on Windows
   (`TestMsiexecRunActions`), natively on the x64 and arm64 runners. The x64
   package under emulation on arm64 passed once (CA-03) and is not rerun.
@@ -111,6 +111,51 @@ the root `AGENTS.md` first.
   (above) predate this and still hand their data over from the schedule
   action. Neither close action fails the install; the schedule action
   returns `ERROR_INSTALL_USEREXIT` only after a cancel.
+- Folder removal (spec 17.10) is the immediate export `BuilderRemoveFolders`
+  (checks, after RemoveFiles) and `BuilderRemoveFoldersExec` for the
+  rollback (`u`), deferred (`m`, or `d` with rollback disabled) and commit
+  (`c`) actions. Package folders are protected by path, not by property
+  name: `BuilderRemoveFoldersPackage` lists the package's directory IDs
+  and `packageRefusal` refuses a folder that is or holds one of them
+  unless `REMOVE~="ALL"`, because any property can alias the install dir.
+  Read-only files go with `FileDispositionInfoEx` and
+  `FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE` (the handle needs
+  `FILE_WRITE_ATTRIBUTES`); before Windows 10 1809, Server 2016 included,
+  that call fails and the old clear-then-delete path with its link-count
+  check runs.
+  Do not go back to temporary `RemoveFile` rows: RemoveFiles
+  deletes by path and followed a junction swapped in after the listing
+  (FILE-11, CI run 41058565605), an arbitrary delete as LocalSystem. The
+  deferred side therefore works by handle: open without following
+  (`FILE_FLAG_OPEN_REPARSE_POINT`), re-check the final path by that
+  handle, rename by that handle into `X:\BuilderRemoveFolders.<token>`,
+  and delete entries opened relative to their folder's handle with
+  `NtCreateFile`, deleting links as links. Rename into a directory handle
+  with `NtSetInformationFile(FileRenameInformation)`:
+  `SetFileInformationByHandle(FileRenameInfo)` with `RootDirectory` set
+  fails with error 87 (FILE-11, CI run 41064763472). Public folder
+  properties are secure by default (or `configurable`), so a standard
+  user's command line can reach an elevated session: the immediate side removes nothing when
+  `MsiRunningElevated` is set and its token holds no Administrators
+  group. That check runs in the user's own custom action server, so the
+  deferred side repeats it: it reads the engine's `UserSID` and asks Authz
+  (`AuthzInitializeContextFromSid`) for that account's groups, and does
+  nothing unless it is LocalSystem or holds Administrators; its
+  CustomActionData is never trusted on its own. Every op checks, but only
+  when the deferred action holds Administrators itself (a per-user install
+  without elevation runs it as the user): a forged rollback could
+  otherwise move a backup folder an earlier removal left behind. FILE-12
+  checks that a `UserSID` set by an earlier action does not reach the
+  deferred side. The backup folder's name (the token) is visible to anyone who
+  lists the volume root; never rely on it being secret, only on
+  `openBackup`'s owner and protected-DACL check. The
+  guards (drive roots, standard folder properties and their parents
+  compared by final path, profiles by token SID, the Windows folder, a
+  reparse point as the folder, a junction or link above it; not a volume
+  mounted in a folder above it) only ever skip an entry, and no action
+  fails the installation: a cleanup must not block an uninstall. Test guards only on
+  folders the test creates (FILE-11 points `TemplateFolder` into one), so
+  a broken guard cannot delete anything that matters.
 - Never take code from another installer toolkit's custom action library;
   the Windows Installer custom action contract is documented by Microsoft
   and the spec (section 9.4).

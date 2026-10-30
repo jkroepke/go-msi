@@ -1,6 +1,7 @@
 package wixconvert
 
 import (
+	"cmp"
 	"slices"
 	"strconv"
 	"strings"
@@ -457,46 +458,90 @@ func (c *converter) setDirs() map[string]bool {
 	return set
 }
 
+// purge converts util:RemoveFolderEx. The removal of the component's own
+// folder on uninstall, when no directory up to its root can point
+// elsewhere, becomes purge, whose deferred rmdir FILE-03 verified; any
+// other folder or On becomes a removeFolders entry, which reads the folder
+// at install time.
 func (cc *compConv) purge(elm *elem) {
 	conv := cc.c
+	prop := elm.attr(attrProperty)
+	when := elm.attr("On")
+	cond := conv.value(elm, "Condition")
 
-	if elm.attr("On") == onInstall {
-		// Emptying the folder before the install has no counterpart.
-		conv.todof(cc.out, "", elm.line, "util:RemoveFolderEx On=\"install\" was not converted: purge runs on uninstall only")
+	// A property that only reads the component's own folder back, by a
+	// RegistrySearch of a value the component writes, names that folder.
+	if prop != "" && cc.remembers(prop) {
+		prop = cc.cp.dir
+	}
+
+	when = cc.uninstallHalf(elm, cmp.Or(prop, cc.cp.dir), when)
+
+	if (prop == "" || prop == cc.cp.dir) && (when == "" || when == "uninstall") && conv.movableDir(cc.cp.dir) == "" &&
+		cc.out.get("purge") == nil {
+		if cond != "" {
+			cc.out.set("purge", newMap().set("condition", cond))
+		} else {
+			cc.out.set("purge", true)
+		}
 
 		return
 	}
 
-	target := elm.attr(attrProperty)
-	if target == "" || cc.remembers(target) {
-		target = cc.cp.dir
+	cc.removeFolders(elm, cmp.Or(prop, cc.cp.dir), when, cond)
+}
+
+// uninstallHalf returns the On a util:RemoveFolderEx keeps: a folder of
+// the package is removed on uninstall only, so the install half of
+// On="both" is left out with a note.
+func (cc *compConv) uninstallHalf(elm *elem, folder, when string) string {
+	conv := cc.c
+	if _, isDir := conv.dirs[folder]; !isDir || when != onBoth {
+		return when
 	}
 
-	if movable := conv.movableDir(target); movable != "" {
-		conv.todof(cc.out, "", elm.line,
-			"util:RemoveFolderEx was not converted: purge refuses a folder below %s, a directory that can point anywhere; "+
-				"keep the data in a folder with private (mixed-case) IDs below a fixed standard folder, such as "+
-				"CommonAppDataFolder/Vendor/Product, and purge that", movable)
+	conv.todof(cc.out, "", elm.line, "the install half of util:RemoveFolderEx On=\"both\" on %s was not converted: "+
+		"removeFolders removes a folder of the package on uninstall only, since a repair would lose the files the "+
+		"installer keeps there", folder)
+
+	return ""
+}
+
+// removeFolders writes the removeFolders entry of a util:RemoveFolderEx.
+func (cc *compConv) removeFolders(elm *elem, prop, when, cond string) {
+	conv := cc.c
+	entry := newMap().set("property", conv.dirRef(prop))
+
+	// The removal reads the folder after costing, so a directory works
+	// (markNeededDirs keeps its ID), but the install dir has the path chosen at install time only when
+	// installDir.remember searches for it, as WiX packages do with a
+	// RegistrySearch of their own.
+	inst := conv.installDir
+	if _, isDir := conv.dirs[prop]; isDir && when == onInstall {
+		conv.todof(cc.out, "", elm.line, "util:RemoveFolderEx On=\"install\" on %s was not converted: removeFolders removes a folder "+
+			"of the package on uninstall only, since a repair would lose the files the installer keeps there", prop)
 
 		return
 	}
 
-	if p := elm.attr(attrProperty); p != "" && target != cc.cp.dir {
-		conv.todof(cc.out, "purge", elm.line,
-			"util:RemoveFolderEx removes the folder in %s; purge removes the component's folder, so put this component there", p)
+	if inst != nil && conv.dirRef(inst.id) == conv.dirRef(prop) {
+		install := conv.out.child("installDir")
+		if install.get("remember") == nil {
+			install.set("remember", true)
+			install.comment("remember", "util:RemoveFolderEx needs the install dir chosen at install time; remember searches for it.")
+		}
 	}
 
-	if on := elm.attr("On"); on != "" && on != "uninstall" {
-		conv.todof(cc.out, "purge", elm.line, "purge runs on uninstall only, not On=%q", on)
+	switch when {
+	case onInstall, onBoth:
+		entry.set("on", when)
 	}
 
-	if cond := conv.value(elm, "Condition"); cond != "" {
-		cc.out.set("purge", newMap().set("condition", cond))
-
-		return
+	if cond != "" {
+		entry.set("condition", cond)
 	}
 
-	cc.out.set("purge", true)
+	cc.out.add("removeFolders", entry)
 }
 
 // remembers reports whether prop is the folder of this component as the

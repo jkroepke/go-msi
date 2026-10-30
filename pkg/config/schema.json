@@ -1986,6 +1986,35 @@
             "additionalProperties": false
           }
         },
+        "removeFolders": {
+          "type": "array",
+          "description": "Folders removed with every file and subfolder in them when the component is installed or removed, but not on the uninstall half of a major upgrade. The folder comes from a property or directory at install time and is moved aside, then deleted at the end without following junctions; drive roots, standard folders, folders that hold one, other users' profiles, folders in the Windows folder and junctions are refused.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "property": {
+                "type": "string",
+                "description": "The directory ID or property that holds the folder's full path, for example one a registry search fills."
+              },
+              "on": {
+                "enum": [
+                  "install",
+                  "uninstall",
+                  "both"
+                ],
+                "default": "uninstall"
+              },
+              "condition": {
+                "type": "string",
+                "description": "A condition ANDed with the one that decides whether the folder is listed, for example DELETE_DATA=\"1\"; the component's install or remove state still applies."
+              }
+            },
+            "required": [
+              "property"
+            ],
+            "additionalProperties": false
+          }
+        },
         "services": {
           "type": "array",
           "items": {

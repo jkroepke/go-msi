@@ -42,8 +42,7 @@ components:
         value: '[AppDataExample]'
     purge: true
   # Removes a folder that the component does not remember.
-  # TODO(line 40): util:RemoveFolderEx was not converted: purge refuses a folder below CACHEPATH, a directory that can point anywhere; keep the data in a folder with private (mixed-case) IDs below a fixed standard folder, such as CommonAppDataFolder/Vendor/Product, and purge that
-  # TODO(line 42): util:RemoveFolderEx On="install" was not converted: purge runs on uninstall only
+  # TODO(line 42): util:RemoveFolderEx On="install" on AppDataExample was not converted: removeFolders removes a folder of the package on uninstall only, since a repair would lose the files the installer keeps there
   - id: CleanupCache
     directory: AppDataExample
     guid: '{3E4F5061-7283-494A-BC5D-6E7F80910213}'
@@ -52,6 +51,8 @@ components:
         key: Software\Example\Hello
         name: Cache
         value: '[AppDataExample]'
+    removeFolders:
+      - property: CACHEPATH
 properties:
   # The data folder that the uninstall removes.
   DATAPATH:

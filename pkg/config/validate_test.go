@@ -122,6 +122,10 @@ func TestValidateAccepted(t *testing.T) {
 			"{component: {guid: '{6a0d3c2e-5b1f-4e7a-9c3d-2f8e1b4a7c60}'}}]}}\n",
 		"remove registry": base + strings.Replace(appComponent, "    files:",
 			"    removeRegistry: [{root: HKCU, key: Software\\Classes\\old}, {root: HKMU, key: Software\\X, name: Legacy}]\n    files:", 1),
+		"remove folders": strings.Replace(base, "        configurable: true\n", "        configurable: true\n        children: [{id: DATADIR, name: data}]\n", 1) +
+			"installDir: {id: INSTALLDIR, remember: true}\n" + strings.Replace(appComponent, "    files:",
+			"    removeFolders: [{property: INSTALLDIR}, {property: DATA_DIR, on: both, condition: DELETE_DATA=\"1\"}, {property: DATADIR}]\n    files:", 1) +
+			"properties: {DATA_DIR: {search: {registry: {root: HKLM, key: Software\\X, name: Data, type: directory}}}}\n",
 		// The same key at install and at uninstall, and an uninstall id
 		// that a RemoveRegistry row of another entry uses too.
 		"remove registry on uninstall": base + strings.Replace(appComponent, "    files:",
@@ -815,6 +819,58 @@ func TestValidate(t *testing.T) {
 			base + "installDir: {id: INSTALLDIR, remember: true}\n" + appComponent +
 				"customActions:\n  - id: RestoreInstallDir\n    setProperty: {name: A, value: b}\n    schedule: [{sequence: execute, after: CostFinalize}]\n",
 			sevError, "customActions[0].id", "installDir.remember adds",
+		},
+		"removeFolders without property": {
+			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{on: uninstall}]\n    files:", 1),
+			sevError, "components[0].removeFolders[0].property", "required",
+		},
+		"removeFolders standard folder": {
+			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: CommonAppDataFolder}]\n    files:", 1),
+			sevError, "components[0].removeFolders[0].property", "standard folder",
+		},
+		"removeFolders reserved property": {
+			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: BuilderRemoveFoldersExec}]\n    files:", 1),
+			sevError, "components[0].removeFolders[0].property", "reserved",
+		},
+		"removeFolders bad on": {
+			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: DATA_DIR, on: upgrade}]\n    files:", 1),
+			sevError, "components[0].removeFolders[0].on", "upgrade",
+		},
+		"removeFolders bad condition": {
+			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: DATA_DIR, condition: 'A ='}]\n    files:", 1),
+			sevError, "components[0].removeFolders[0].condition", "",
+		},
+		"removeFolders condition with a line break": {
+			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: DATA_DIR, condition: \"A\\nOR B\"}]\n    files:", 1),
+			sevError, "components[0].removeFolders[0].condition", "line breaks",
+		},
+		"removeFolders twice": {
+			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: DATA_DIR}, {property: DATA_DIR, on: uninstall}]\n    files:", 1),
+			sevError, "components[0].removeFolders[1]", "already removes",
+		},
+		"removeFolders install dir without remember": {
+			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: INSTALLDIR}]\n    files:", 1),
+			sevWarning, "components[0].removeFolders[0].property", "installDir.remember",
+		},
+		"removeFolders below the install dir without remember": {
+			strings.Replace(base, "        configurable: true\n", "        configurable: true\n        children: [{id: DATADIR, name: data}]\n", 1) +
+				strings.Replace(appComponent, "    files:", "    removeFolders: [{property: DATADIR}]\n    files:", 1),
+			sevWarning, "components[0].removeFolders[0].property", "chosen at install time for INSTALLDIR",
+		},
+		"removeFolders configurable folder": {
+			strings.Replace(base, "        configurable: true\n", "        configurable: true\n  - id: CommonAppDataFolder\n"+
+				"    children: [{id: DATADIR, name: data, configurable: true}]\n", 1) +
+				"installDir: {id: INSTALLDIR, remember: true}\n" +
+				strings.Replace(appComponent, "    files:", "    removeFolders: [{property: DATADIR}]\n    files:", 1),
+			sevWarning, "components[0].removeFolders[0].property", "remember it in the registry",
+		},
+		"removeFolders install on a package folder": {
+			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: INSTALLDIR, on: both}]\n    files:", 1),
+			sevError, "components[0].removeFolders[0].on", "a folder of the package",
+		},
+		"removeFolders unset property": {
+			base + strings.Replace(appComponent, "    files:", "    removeFolders: [{property: NVS_HOME}]\n    files:", 1),
+			sevWarning, "components[0].removeFolders[0].property", "only the command line",
 		},
 		// CLOSE-01.
 		"close on a non-program": {

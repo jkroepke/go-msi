@@ -647,6 +647,7 @@ components:
     neverOverwrite: false
     preserve: false                  # neverOverwrite + a late removeOld, see below
     purge: false                     # true or {condition: …}, see below
+    removeFolders: []                # a folder from a property, with its subfolders, see below
     sharedDllRefCount: false
     keyPath: windows_exporter.exe   # file name, registry id or "directory"
     bitness: auto                    # auto (from platform) | 32 | 64
@@ -780,6 +781,71 @@ components:
     purge:
       condition: DELETE_DATA="1"
 ```
+
+**Folder trees from a property.** `removeFolders` deletes the folder that
+a property or directory ID holds, with every file and subfolder in it,
+including what the application wrote there. The removal reads the folder
+after costing, so a directory ID has its path; an install dir chosen at
+install time is only known again at uninstall with `installDir.remember`
+(a warning otherwise), and any other property needs something that sets
+it, typically a search for a path the first install wrote to the
+registry.
+
+```yaml
+installDir:
+  remember: true
+properties:
+  DATA_DIR:
+    search: { registry: { root: HKLM, key: SOFTWARE\Example, name: DataDir, type: directory } }
+components:
+  - files: [{ source: app.exe }]
+    registry: [{ root: HKLM, key: SOFTWARE\Example, name: DataDir, value: '[DATA_DIR]' }]
+    removeFolders:
+      - property: INSTALLDIR          # on: uninstall (default) | install | both
+      - { property: DATA_DIR, condition: DELETE_DATA="1" }
+```
+
+Actions of the embedded DLL (specification section 17.10) run right after
+RemoveFiles: an immediate one checks each folder, a deferred one moves it
+by handle into a private folder at its volume's root, a rollback one moves
+it back, and a commit one deletes it, opening each entry relative to its
+folder without following junctions or links, which it deletes as links.
+`uninstall` removes when the component is removed, but not on the
+uninstall half of a major upgrade (`UPGRADINGPRODUCTCODE`), and a folder
+of the package only when the whole product goes (`REMOVE~="ALL"`), so
+that removing one feature keeps the files of the others; the DLL also
+compares paths and refuses, unless `REMOVE~="ALL"`, any folder that is or
+holds one of the package's directories, so a property that holds the
+install dir under another name is refused as well (confirmed by FILE-11 on a major upgrade); `install` is
+expected to remove every time the component is installed, which includes
+a repair that reinstalls it and the new product of an upgrade (only the
+first install is tested); `both` does both. The condition is ANDed and may
+not contain line breaks. The properties keep the security their own
+settings give them (`secure`, `configurable`). Unlike `purge`, the folder may be the install dir
+or any folder the property names. That is the point of the feature, and
+also its risk: `INSTALLDIR=D:\Tools` on the command line makes the
+uninstall empty `D:\Tools`. An elevated session that a standard user
+started (a repair of a per-machine product, for one) removes nothing, so
+the user cannot point LocalSystem at a folder of their choice (expected). The action refuses an empty value, a path that
+is not a full local path (`C:\…`, no `.` or `..`, no name ending in a space
+or a dot), a drive root, a folder reached through a junction, a symbolic
+link or a `subst` drive, a junction itself, the profiles folder, every
+profile and every folder inside another user's profile and in Public and
+Default (the profile of the account that started the session is allowed;
+a session that runs as LocalSystem, such as a deployment tool's, has none
+and refuses every user's data), everything when the profiles cannot be
+read, every standard folder of the engine (Program Files, ProgramData,
+the Windows and system folders, the profile folders such as AppData,
+Documents and the Desktop, Temp) and every folder that holds one, and any
+folder inside the Windows folder; it logs the reason as
+`BuilderRemoveFolders: …` and removes nothing for that entry. FILE-11
+tested the junction path, the Public profile, a folder that holds
+`TemplateFolder`, a folder inside the Windows folder and the installing
+account's own profile; the other refusals are expected, not tested.
+A junction below the folder is deleted as a link; what it points to stays
+(tested). A folder that cannot be moved, typically because a file in it
+is open, is expected to stay whole (not tested). The actions never fail
+the installation.
 
 **Key path.** Default: the first file, else the first registry value, else
 the directory, which gets a `CreateFolder` row (ICE18). A component below a
@@ -1517,7 +1583,7 @@ components:
 
 The folder must be the component's only file. Settings that name one file
 or one component cannot be copied to many: `guid` (other than `auto`),
-`keyPath`, `registry`, `removeRegistry`, `removeFiles`, `services`, `serviceControl`, `eventLog`,
+`keyPath`, `registry`, `removeRegistry`, `removeFiles`, `removeFolders`, `services`, `serviceControl`, `eventLog`,
 `environment`, `purge`, `createFolder` and `folderPermissions` on the
 component, and `name`, `id`, `version`, `language` and `shortcuts` on the
 file, are errors. Put them on a component of their own and exclude its file

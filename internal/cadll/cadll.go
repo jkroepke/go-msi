@@ -86,6 +86,28 @@ func GrantEntry(condition string, kind byte, mask, flags uint32, account, object
 	return strings.Join([]string{condition, fmt.Sprintf("%c|%x|%x", kind, mask, flags), account, object}, grantSeparator)
 }
 
+// RemoveFolders names the immediate action of folder removal, its entry
+// point and the property that lists the folders. RemoveFoldersExec is the
+// entry point of the deferred, rollback and commit actions, which are named
+// RemoveFoldersExec, RemoveFoldersUndo and RemoveFoldersCommit and take the
+// properties of the same names as CustomActionData.
+const (
+	RemoveFolders       = "BuilderRemoveFolders"
+	RemoveFoldersExec   = "BuilderRemoveFoldersExec"
+	RemoveFoldersUndo   = "BuilderRemoveFoldersUndo"
+	RemoveFoldersCommit = "BuilderRemoveFoldersCommit"
+	// RemoveFoldersPackage lists the package's own directories, one per
+	// line, which a removal may reach only when the whole product goes.
+	RemoveFoldersPackage = "BuilderRemoveFoldersPackage"
+)
+
+// RemoveFoldersEntry encodes one line of the BuilderRemoveFolders property:
+// the condition under which the folder is removed and the property that
+// holds it. Neither may contain a line break or U+001F.
+func RemoveFoldersEntry(condition, property string) string {
+	return condition + grantSeparator + property
+}
+
 // Closing running programs: the property the builder lists the files in,
 // the immediate action that asks them to close, and the entry point and
 // the deferred action that end what is left. CloseExecSeparator ends each

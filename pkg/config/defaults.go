@@ -284,6 +284,21 @@ func preserves(cfg *Config) bool {
 	return false
 }
 
+// defaultRemoveOn removes on uninstall where an entry does not say when.
+func defaultRemoveOn(comp *Component) {
+	for _, entry := range comp.RemoveFiles {
+		if entry.On == "" {
+			entry.On = RemoveOnUninstall
+		}
+	}
+
+	for _, entry := range comp.RemoveFolders {
+		if entry.On == "" {
+			entry.On = RemoveOnUninstall
+		}
+	}
+}
+
 func defaultComponent(comp *Component, scope Scope) { //nolint:cyclop,gocognit // a flat list of independent defaults
 	if comp.Preserve {
 		comp.NeverOverwrite = true
@@ -311,11 +326,7 @@ func defaultComponent(comp *Component, scope Scope) { //nolint:cyclop,gocognit /
 		}
 	}
 
-	for _, entry := range comp.RemoveFiles {
-		if entry.On == "" {
-			entry.On = RemoveOnUninstall
-		}
-	}
+	defaultRemoveOn(comp)
 
 	for _, r := range comp.Registry {
 		if r.Type == "" {

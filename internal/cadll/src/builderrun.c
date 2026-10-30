@@ -6,8 +6,10 @@
 // ERROR_INSTALL_FAILURE for anything else.
 //
 // The DLL is freestanding: it includes no SDK header and links no C runtime,
-// only kernel32.dll, advapi32.dll, msi.dll and user32.dll, whose prototypes are written
-// out below from Microsoft's documentation of each function. It is built by
+// only kernel32.dll, advapi32.dll, msi.dll, user32.dll (for closing running
+// programs) and ntdll.dll (for handle-relative opens and renames), whose
+// prototypes are written out below from Microsoft's documentation of each
+// function. It is built by
 // build.sh with clang and lld for x86, x64 and arm64.
 //
 // Input, in CustomActionData for deferred, rollback and commit actions and in
@@ -110,6 +112,7 @@ typedef struct {
     SIZE_T ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemoryUsed, PeakJobMemoryUsed;
 } JOBOBJECT_EXTENDED_LIMIT_INFORMATION;
 
+
 _Static_assert(sizeof(OVERLAPPED) == (sizeof(void *) == 4 ? 20 : 32), "OVERLAPPED layout");
 _Static_assert(sizeof(STARTUPINFOEXW) == (sizeof(void *) == 4 ? 72 : 112), "STARTUPINFOEXW layout");
 _Static_assert(sizeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION) == (sizeof(void *) == 4 ? 112 : 144), "JOBOBJECT_EXTENDED_LIMIT_INFORMATION layout");
@@ -137,6 +140,7 @@ unsigned long long WINAPI GetTickCount64(void);
 BOOL WINAPI GetExitCodeProcess(HANDLE, DWORD *);
 BOOL WINAPI CloseHandle(HANDLE);
 HANDLE WINAPI GetCurrentThread(void);
+HANDLE WINAPI GetCurrentProcess(void);
 HANDLE WINAPI GetProcessHeap(void);
 void *WINAPI HeapAlloc(HANDLE, DWORD, SIZE_T);
 void *WINAPI HeapReAlloc(HANDLE, DWORD, void *, SIZE_T);
@@ -145,9 +149,23 @@ DWORD WINAPI GetLastError(void);
 int WINAPI MultiByteToWideChar(UINT, DWORD, const char *, int, WCHAR *, int);
 void *WINAPI LocalFree(void *);
 BOOL WINAPI GetComputerNameW(WCHAR *, DWORD *);
+DWORD WINAPI GetFileAttributesW(const WCHAR *);
+DWORD WINAPI GetLongPathNameW(const WCHAR *, WCHAR *, DWORD);
+int WINAPI CompareStringOrdinal(const WCHAR *, int, const WCHAR *, int, BOOL);
+DWORD WINAPI GetFinalPathNameByHandleW(HANDLE, WCHAR *, DWORD, DWORD);
+DWORD WINAPI ExpandEnvironmentStringsW(const WCHAR *, WCHAR *, DWORD);
+BOOL WINAPI SetFileInformationByHandle(HANDLE, int, void *, DWORD);
+BOOL WINAPI GetFileInformationByHandleEx(HANDLE, int, void *, DWORD);
+BOOL WINAPI CreateDirectoryW(const WCHAR *, SECURITY_ATTRIBUTES *);
+BOOL WINAPI RemoveDirectoryW(const WCHAR *);
+BOOL WINAPI MoveFileExW(const WCHAR *, const WCHAR *, DWORD);
 
 // advapi32.dll
 BOOL WINAPI OpenThreadToken(HANDLE, DWORD, BOOL, HANDLE *);
+BOOL WINAPI OpenProcessToken(HANDLE, DWORD, HANDLE *);
+BOOL WINAPI GetTokenInformation(HANDLE, int, void *, DWORD, DWORD *);
+BOOL WINAPI ConvertSidToStringSidW(void *, WCHAR **);
+BOOL WINAPI ConvertStringSecurityDescriptorToSecurityDescriptorW(const WCHAR *, DWORD, void **, DWORD *);
 BOOL WINAPI DuplicateTokenEx(HANDLE, DWORD, SECURITY_ATTRIBUTES *, int, int, HANDLE *);
 BOOL WINAPI CreateProcessAsUserW(HANDLE, const WCHAR *, WCHAR *, SECURITY_ATTRIBUTES *, SECURITY_ATTRIBUTES *, BOOL, DWORD, void *, const WCHAR *, STARTUPINFOW *, PROCESS_INFORMATION *);
 // RtlGenRandom, exported by advapi32.dll under this name.
@@ -156,6 +174,7 @@ BYTE WINAPI SystemFunction036(void *, DWORD); // returns BOOLEAN, one byte
 BOOL WINAPI ConvertStringSidToSidW(const WCHAR *, void **);
 BOOL WINAPI LookupAccountNameW(const WCHAR *, const WCHAR *, void *, DWORD *, WCHAR *, DWORD *, int *);
 DWORD WINAPI GetNamedSecurityInfoW(const WCHAR *, int, DWORD, void **, void **, ACL **, ACL **, void **);
+DWORD WINAPI GetSecurityInfo(HANDLE, int, DWORD, void **, void **, ACL **, ACL **, void **);
 DWORD WINAPI SetNamedSecurityInfoW(WCHAR *, int, DWORD, void *, void *, ACL *, ACL *);
 BOOL WINAPI GetSecurityDescriptorControl(void *, unsigned short *, DWORD *);
 BOOL WINAPI InitializeAcl(ACL *, DWORD, DWORD);
@@ -170,6 +189,7 @@ long WINAPI RegSetValueExW(HANDLE, const WCHAR *, DWORD, DWORD, const BYTE *, DW
 long WINAPI RegQueryValueExW(HANDLE, const WCHAR *, DWORD *, DWORD *, BYTE *, DWORD *);
 long WINAPI RegDeleteTreeW(HANDLE, const WCHAR *);
 long WINAPI RegCloseKey(HANDLE);
+long WINAPI RegEnumKeyExW(HANDLE, DWORD, WCHAR *, DWORD *, DWORD *, WCHAR *, DWORD *, void *);
 
 // msi.dll
 UINT WINAPI MsiGetPropertyW(MSIHANDLE, const WCHAR *, WCHAR *, DWORD *);
@@ -181,18 +201,62 @@ UINT WINAPI MsiCloseHandle(MSIHANDLE);
 UINT WINAPI MsiSetPropertyW(MSIHANDLE, const WCHAR *, const WCHAR *);
 UINT WINAPI MsiFormatRecordW(MSIHANDLE, MSIHANDLE, WCHAR *, DWORD *);
 int WINAPI MsiEvaluateConditionW(MSIHANDLE, const WCHAR *);
+BOOL WINAPI MsiGetMode(MSIHANDLE, int);
+
+// authz.dll: the groups of the account that started the session, from its
+// SID, for the deferred side of the folder removal, which runs as
+// LocalSystem.
+typedef struct {
+    DWORD LowPart;
+    long HighPart;
+} LUID_;
+BOOL WINAPI AuthzInitializeResourceManager(DWORD, void *, void *, void *, const WCHAR *, void **);
+BOOL WINAPI AuthzInitializeContextFromSid(DWORD, void *, void *, void *, LUID_, void *, void **);
+BOOL WINAPI AuthzGetInformationFromContext(void *, int, DWORD, DWORD *, void *);
+BOOL WINAPI AuthzFreeContext(void *);
+BOOL WINAPI AuthzFreeResourceManager(void *);
+
+// ntdll.dll: NtCreateFile opens a name relative to a directory handle,
+// which no kernel32 function does, and NtSetInformationFile renames into
+// a directory handle, which SetFileInformationByHandle refuses with
+// ERROR_INVALID_PARAMETER (FILE-11, CI run 41064763472).
+typedef struct {
+    unsigned short Length, MaximumLength;
+    WCHAR *Buffer;
+} UNICODE_STRING;
+typedef struct {
+    DWORD Length;
+    HANDLE RootDirectory;
+    UNICODE_STRING *ObjectName;
+    DWORD Attributes;
+    void *SecurityDescriptor, *SecurityQualityOfService;
+} OBJECT_ATTRIBUTES;
+typedef struct {
+    union {
+        long Status;
+        void *Pointer;
+    } u;
+    SIZE_T Information;
+} IO_STATUS_BLOCK;
+_Static_assert(sizeof(OBJECT_ATTRIBUTES) == (sizeof(void *) == 4 ? 24 : 48), "OBJECT_ATTRIBUTES layout");
+_Static_assert(sizeof(IO_STATUS_BLOCK) == (sizeof(void *) == 4 ? 8 : 16), "IO_STATUS_BLOCK layout");
+long WINAPI NtCreateFile(HANDLE *, DWORD, OBJECT_ATTRIBUTES *, IO_STATUS_BLOCK *, void *, DWORD, DWORD, DWORD, DWORD, void *, DWORD);
+long WINAPI NtSetInformationFile(HANDLE, IO_STATUS_BLOCK *, void *, DWORD, int);
+DWORD WINAPI RtlNtStatusToDosError(long);
 
 // Values that do not fit an int are macros: C11 allows only int-sized
 // enumerators (6.7.2.2), and clang accepts larger ones silently.
 #define PROTECTED_DACL_SECURITY_INFORMATION 0x80000000u
 #define MAXDWORD_ 0xFFFFFFFFu
 #define INVALID_HANDLE_VALUE ((HANDLE)(INTPTR)-1)
+#define INVALID_FILE_ATTRIBUTES 0xFFFFFFFFu
 
 enum {
     ERROR_SUCCESS = 0,
     ERROR_IO_PENDING = 997,
     ERROR_BROKEN_PIPE = 109,
     ERROR_MORE_DATA = 234,
+    ERROR_NO_MORE_ITEMS = 259,
     ERROR_NO_TOKEN = 1008,
     ERROR_INSTALL_USEREXIT = 1602,
     ERROR_INSTALL_FAILURE = 1603,
@@ -237,6 +301,9 @@ enum {
     DACL_SECURITY_INFORMATION = 4,
     UNPROTECTED_DACL_SECURITY_INFORMATION = 0x20000000,
     SE_DACL_PROTECTED = 0x1000,
+    OWNER_SECURITY_INFORMATION = 1,
+    READ_CONTROL_ = 0x20000,
+    FileStandardInfo_ = 1,
     ACL_REVISION = 2,
     ACCESS_ALLOWED_ACE_TYPE = 0,
     INHERITED_ACE = 0x10,
@@ -247,10 +314,50 @@ enum {
     AUTHORED_INHERIT_FLAGS = VALID_INHERIT_FLAGS & ~INHERITED_ACE,
 
     KEY_QUERY_VALUE = 0x1,
+    KEY_WOW64_64KEY = 0x100,
+    KEY_ENUMERATE_SUB_KEYS = 0x8,
+    REG_EXPAND_SZ = 2,
+    FILE_READ_ATTRIBUTES = 0x80,
+    FILE_SHARE_ALL = 7,
+    FILE_FLAG_BACKUP_SEMANTICS = 0x02000000,
     KEY_SET_VALUE = 0x2,
     REG_SZ = 1,
     REG_DWORD = 4,
     MSICONDITION_TRUE = 1,
+    MSIRUNMODE_ROLLBACKENABLED = 3,
+    FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000,
+    DELETE_ = 0x10000,
+    SYNCHRONIZE_ = 0x100000,
+    FILE_LIST_DIRECTORY = 1,
+    FILE_ADD_SUBDIRECTORY = 4,
+    FILE_WRITE_ATTRIBUTES = 0x100,
+    FILE_ATTRIBUTE_READONLY = 1,
+    FILE_ATTRIBUTE_NORMAL = 0x80,
+    ERROR_ALREADY_EXISTS = 183,
+    ERROR_NO_MORE_FILES = 18,
+    ERROR_NOT_ENOUGH_MEMORY = 8,
+    ERROR_NOT_SAME_DEVICE = 17,
+    // FILE_INFO_BY_HANDLE_CLASS values.
+    FileBasicInfo_ = 0,
+    FileDispositionInfo_ = 4,
+    FileDispositionInfoEx_ = 21,
+    FileAttributeTagInfo_ = 9,
+    FileFullDirectoryInfo_ = 14,
+    FileFullDirectoryRestartInfo_ = 15,
+    // Authz.
+    AUTHZ_RM_FLAG_NO_AUDIT = 1,
+    AuthzContextInfoGroupsSids = 2,
+    // NtSetInformationFile FILE_INFORMATION_CLASS.
+    FileRenameInformation_ = 10,
+    // NtCreateFile.
+    OBJ_CASE_INSENSITIVE = 0x40,
+    FILE_OPEN_ = 1,
+    FILE_SYNCHRONOUS_IO_NONALERT = 0x20,
+    FILE_OPEN_FOR_BACKUP_INTENT = 0x4000,
+    FILE_OPEN_REPARSE_POINT = 0x00200000,
+    FILE_ATTRIBUTE_DIRECTORY = 0x10,
+    FILE_ATTRIBUTE_REPARSE_POINT = 0x400,
+    CSTR_EQUAL = 2,
     MSICONDITION_NONE = 2,
 
     // SID_NAME_USE
@@ -286,6 +393,17 @@ void *memcpy(void *dst, const void *src, SIZE_T len)
         *d++ = *s++;
     }
     return dst;
+}
+
+// moveDown copies len bytes to a lower address of the same buffer, front to
+// back, which memcpy does not promise for overlapping ranges.
+static void moveDown(void *dst, const void *src, SIZE_T len)
+{
+    BYTE *d = dst;
+    const BYTE *s = src;
+    while (len--) {
+        *d++ = *s++;
+    }
 }
 
 static SIZE_T wlen(const WCHAR *s)
@@ -526,7 +644,7 @@ static void emitLines(MSIHANDLE install, output *o, SIZE_T scanFrom)
         start = i + 1;
     }
     if (start) {
-        memcpy(o->buf, o->buf + start, o->len - start);
+        moveDown(o->buf, o->buf + start, o->len - start);
         o->len -= start;
     }
     if (o->len == LINE_BUFFER) {
@@ -1645,6 +1763,1100 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
     return result;
 }
 
+// Folder removal. The immediate action BuilderRemoveFolders runs after
+// RemoveFiles, when component states and directory paths are known, and
+// reads the private property BuilderRemoveFolders, one line per
+// removeFolders entry:
+//
+//     <condition> US <property>
+//
+// (US is U+001F). For an entry whose condition holds it reads the folder
+// from the property and refuses a folder that is not one an application
+// could own (a drive root, a folder that is or holds a standard folder or
+// the profiles folder, a profile, a folder in the Windows folder, a reparse
+// point, a folder reached through one). It hands the accepted folders to
+// the deferred export BuilderRemoveFoldersExec as the CustomActionData of
+// three actions, each a line of folders after a header line
+// <op><token>: u (rollback) moves each folder back from its backup, m
+// (deferred) moves each folder by handle into X:\BuilderRemoveFolders.<token>\<n>,
+// a new folder with a protected access list for LocalSystem,
+// Administrators and its owner (its name is no secret: anyone can list the
+// volume root; what makes it safe is that the deferred, rollback and commit
+// sides only use it after checking that owner and access list), and c (commit) deletes the backups; with rollback disabled, which
+// skips commit actions, the deferred action gets d and deletes right away.
+// Deleting opens every entry relative to the handle of its folder without
+// following a junction or a symbolic link, which it removes as a link, so
+// a folder swapped for a junction after the listing cannot redirect it.
+// What it cannot do is logged as `BuilderRemoveFolders: ...` and left in
+// place; the actions never fail the installation.
+
+static const WCHAR tmplRemove[] = u"BuilderRemoveFolders: [1]";
+static const WCHAR propRemove[] = u"BuilderRemoveFolders";
+static const WCHAR propRemoveUndo[] = u"BuilderRemoveFoldersUndo";
+static const WCHAR propRemovePackage[] = u"BuilderRemoveFoldersPackage";
+static const WCHAR msgRemovePackage[] = u"refused, it is or holds a folder of the package, which goes only when the whole product is removed:";
+static const WCHAR propRemoveExec[] = u"BuilderRemoveFoldersExec";
+static const WCHAR propRemoveCommit[] = u"BuilderRemoveFoldersCommit";
+static const WCHAR backupPrefix[] = u"BuilderRemoveFolders.";
+static const WCHAR msgRemoveData[] = u"malformed folder removal data";
+static const WCHAR msgRemoveNotAdminExec[] =
+    u"nothing removed: the account that started the session is no administrator, or its groups cannot be read";
+static const WCHAR msgRemoveEmpty[] = u"the property is empty; nothing removed";
+static const WCHAR msgRemoveMissing[] = u"the folder does not exist; nothing removed";
+static const WCHAR msgRemovePath[] = u"refused, not a full local folder path";
+static const WCHAR msgRemoveRoot[] = u"refused, a drive root";
+static const WCHAR msgRemoveStandard[] = u"refused, it is or holds the standard folder";
+static const WCHAR msgRemoveWindows[] = u"refused, inside the Windows folder";
+static const WCHAR msgRemoveReparse[] = u"refused, a junction or another reparse point";
+static const WCHAR msgRemoveRedirected[] = u"refused, reached through a junction, a symbolic link or a substituted drive, which leads to";
+static const WCHAR msgRemoveProfiles[] = u"refused, it is a user profile, the profiles folder or a folder that holds one";
+static const WCHAR msgRemoveOtherProfile[] = u"refused, inside another user's profile";
+static const WCHAR msgRemoveSharedProfile[] = u"refused, inside the Public or Default profile";
+static const WCHAR msgRemoveNoProfiles[] = u"refused, the user profiles cannot be read";
+static const WCHAR profileListKey[] = u"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList";
+static const WCHAR profilesDirectory[] = u"ProfilesDirectory";
+static const WCHAR profileImagePath[] = u"ProfileImagePath";
+static const WCHAR msgRemoving[] = u"to remove";
+static const WCHAR msgRemoveNotAdmin[] =
+    u"nothing removed: the session runs elevated, but the account that started it is no administrator, and the folders could come from its command line";
+static const WCHAR propRunningElevated[] = u"MsiRunningElevated";
+static const WCHAR adminsSid[] = u"S-1-5-32-544";
+static const WCHAR msgRemoveSchedule[] = u"cannot hand the folders to the deferred actions";
+static const WCHAR msgRemoveMoved[] = u"moved aside";
+static const WCHAR msgRemoveChanged[] = u"left in place, it is no longer the folder that was checked";
+static const WCHAR msgRemoveBusy[] = u"left in place, it cannot be moved (a file in it may be in use)";
+static const WCHAR msgRemoveBackup[] = u"left in place, the backup folder at the root of its volume cannot be created or has no access list of its own (a FAT volume)";
+static const WCHAR msgRemoveVolume[] = u"left in place, it is on a volume mounted in a folder";
+static const WCHAR msgRemoveRestored[] = u"restored";
+static const WCHAR msgRemoveRestore[] = u"cannot be restored, it stays in the backup folder at the root of its volume";
+static const WCHAR msgRemoveDeleted[] = u"deleted";
+static const WCHAR msgRemoveLeft[] = u"not everything could be deleted, the rest stays in the backup folder at the root of its volume";
+static const WCHAR backupSddl[] = u"D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;OW)";
+
+// The standard folder properties a removal must not reach: neither the
+// folder itself nor a folder that holds it may be removed.
+static const WCHAR *const protectedFolders[] = {
+    u"WindowsVolume", u"WindowsFolder", u"SystemFolder", u"System64Folder", u"System16Folder",
+    u"ProgramFilesFolder", u"ProgramFiles64Folder", u"CommonFilesFolder", u"CommonFiles64Folder",
+    u"CommonAppDataFolder", u"AppDataFolder", u"LocalAppDataFolder", u"TempFolder",
+    u"PersonalFolder", u"DesktopFolder", u"FavoritesFolder", u"MyPicturesFolder", u"TemplateFolder",
+    u"ProgramMenuFolder", u"StartMenuFolder", u"StartupFolder", u"SendToFolder", u"RecentFolder",
+    u"NetHoodFolder", u"PrintHoodFolder", u"AdminToolsFolder", u"FontsFolder",
+};
+
+// wstrdup copies a string into a heap buffer with room for extra more
+// characters.
+static WCHAR *wstrdup(const WCHAR *s, SIZE_T extra)
+{
+    SIZE_T n = wlen(s);
+    WCHAR *out = HeapAlloc(GetProcessHeap(), 0, (n + extra + 1) * sizeof(WCHAR));
+    if (out) {
+        memcpy(out, s, (n + 1) * sizeof(WCHAR));
+    }
+    return out;
+}
+
+// longPath returns the long form of an existing path with a trailing
+// backslash, or 0 when it does not exist.
+static WCHAR *longPath(const WCHAR *path)
+{
+    DWORD n = GetLongPathNameW(path, 0, 0);
+    if (!n) {
+        return 0;
+    }
+    WCHAR *out = HeapAlloc(GetProcessHeap(), 0, ((SIZE_T)n + 2) * sizeof(WCHAR));
+    if (!out) {
+        return 0;
+    }
+    DWORD got = GetLongPathNameW(path, out, n);
+    if (!got || got >= n) {
+        HeapFree(GetProcessHeap(), 0, out);
+        return 0;
+    }
+    if (out[got - 1] != '\\') {
+        out[got++] = '\\';
+        out[got] = 0;
+    }
+    return out;
+}
+
+// below reports whether path is folder or a folder below it, ignoring case.
+// Both end with a backslash.
+static int below(const WCHAR *path, const WCHAR *folder)
+{
+    SIZE_T n = wlen(folder), m = wlen(path);
+    return n <= m && CompareStringOrdinal(path, (int)n, folder, (int)n, 1) == CSTR_EQUAL;
+}
+
+// plainPath reports whether path is a full local path, C:\ and folder names,
+// without the . and .. segments, a forward slash or a control character.
+static int plainPath(const WCHAR *path)
+{
+    WCHAR d = wlower(path[0]);
+    if (d < 'a' || d > 'z' || path[1] != ':' || path[2] != '\\') {
+        return 0;
+    }
+    for (const WCHAR *p = path + 2; *p; p++) {
+        if (*p < 0x20 || *p == '/' || *p == ':' || *p == '*' || *p == '?' || *p == '"' || *p == '<' || *p == '>' || *p == '|') {
+            return 0;
+        }
+        if (*p == '\\') {
+            const WCHAR *seg = p + 1;
+            SIZE_T dots = 0;
+            while (seg[dots] == '.') {
+                dots++;
+            }
+            if ((seg[0] == '\\') || (dots && (seg[dots] == '\\' || seg[dots] == 0))) {
+                return 0;
+            }
+        }
+        // Windows drops a trailing space or dot of a name, so
+        // "C:\Program Files \" opens Program Files but compares unlike it.
+        if ((*p == ' ' || *p == '.') && (p[1] == '\\' || p[1] == 0)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+// finalPath returns the path an existing folder has after every junction,
+// symbolic link and substituted drive on the way is resolved, as C:\...\
+// with a trailing backslash, or 0 when it cannot be opened or is not on a
+// local drive.
+static WCHAR *finalPathOf(HANDLE file)
+{
+    WCHAR *out = 0;
+    DWORD n = GetFinalPathNameByHandleW(file, 0, 0, 0);
+    if (n) {
+        out = HeapAlloc(GetProcessHeap(), 0, ((SIZE_T)n + 2) * sizeof(WCHAR));
+        DWORD got = out ? GetFinalPathNameByHandleW(file, out, n, 0) : 0;
+        // \\?\C:\... for a local drive; \\?\UNC\... is a network share.
+        if (got < 7 || got >= n || out[0] != '\\' || out[1] != '\\' || out[2] != '?' || out[3] != '\\' || out[5] != ':' || !plainPath(out + 4)) {
+            HeapFree(GetProcessHeap(), 0, out);
+            out = 0;
+        } else {
+            moveDown(out, out + 4, ((SIZE_T)got - 3) * sizeof(WCHAR));
+            got -= 4;
+            if (out[got - 1] != '\\') {
+                out[got++] = '\\';
+                out[got] = 0;
+            }
+        }
+    }
+    return out;
+}
+
+static WCHAR *finalPath(const WCHAR *path)
+{
+    HANDLE file = CreateFileW(path, FILE_READ_ATTRIBUTES, FILE_SHARE_ALL, 0, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+    WCHAR *out = finalPathOf(file);
+    CloseHandle(file);
+    return out;
+}
+
+static int samePath(const WCHAR *a, const WCHAR *b)
+{
+    SIZE_T n = wlen(a);
+    return n == wlen(b) && CompareStringOrdinal(a, (int)n, b, (int)n, 1) == CSTR_EQUAL;
+}
+
+// regFolder returns the final path of the folder that a REG_SZ or
+// REG_EXPAND_SZ value of key names, or 0.
+static WCHAR *regFolder(HANDLE key, const WCHAR *name)
+{
+    WCHAR *raw = 0, *expanded = 0, *folder = 0;
+    DWORD kind = 0, size = 0;
+    if (!RegQueryValueExW(key, name, 0, &kind, 0, &size) && (kind == REG_SZ || kind == REG_EXPAND_SZ) && size) {
+        raw = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (SIZE_T)size + 2 * sizeof(WCHAR));
+        if (raw && !RegQueryValueExW(key, name, 0, &kind, (BYTE *)raw, &size)) {
+            DWORD n = ExpandEnvironmentStringsW(raw, 0, 0);
+            expanded = n ? HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, ((SIZE_T)n + 1) * sizeof(WCHAR)) : 0;
+            if (expanded && ExpandEnvironmentStringsW(raw, expanded, n) && expanded[0]) {
+                folder = finalPath(expanded);
+            }
+        }
+    }
+    HeapFree(GetProcessHeap(), 0, raw);
+    HeapFree(GetProcessHeap(), 0, expanded);
+    return folder;
+}
+
+// userSid returns the SID of the account the action runs as, as a string:
+// the impersonated user's, else the process's. 0 when it cannot be read.
+static WCHAR *userSid(void)
+{
+    HANDLE token = 0;
+    if (!OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 1, &token) && !OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+        return 0;
+    }
+    WCHAR *sid = 0, *text = 0;
+    DWORD size = 0;
+    GetTokenInformation(token, 1 /* TokenUser */, 0, 0, &size);
+    // TOKEN_USER starts with the pointer to the user's SID.
+    void **user = size ? HeapAlloc(GetProcessHeap(), 0, size) : 0;
+    if (user && GetTokenInformation(token, 1, user, size, &size) && ConvertSidToStringSidW(user[0], &text)) {
+        sid = wstrdup(text, 0);
+        LocalFree(text);
+    }
+    HeapFree(GetProcessHeap(), 0, user);
+    CloseHandle(token);
+    return sid;
+}
+
+// TOKEN_GROUPS: a count, then SID_AND_ATTRIBUTES {PSID; DWORD} pairs.
+typedef struct {
+    void *sid;
+    DWORD attributes;
+} tokenGroup;
+typedef struct {
+    DWORD count;
+    tokenGroup group[1];
+} tokenGroups;
+
+// holdsAdmins reports whether groups lists the Administrators group, in
+// any state: enabled, or deny-only for an administrator under UAC.
+static int holdsAdmins(const tokenGroups *groups)
+{
+    void *admins = 0;
+    int found = 0;
+    if (groups && ConvertStringSidToSidW(adminsSid, &admins)) {
+        for (DWORD i = 0; i < groups->count && !found; i++) {
+            found = EqualSid(groups->group[i].sid, admins) != 0;
+        }
+        LocalFree(admins);
+    }
+    return found;
+}
+
+// userIsAdmin reports whether the account the action runs as is in the
+// Administrators group; LocalSystem's token holds it as well.
+static int userIsAdmin(void)
+{
+    HANDLE token = 0;
+    if (!OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 1, &token) && !OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+        return 0;
+    }
+    DWORD size = 0;
+    GetTokenInformation(token, 2 /* TokenGroups */, 0, 0, &size);
+    tokenGroups *groups = size ? HeapAlloc(GetProcessHeap(), 0, size) : 0;
+    int found = groups && GetTokenInformation(token, 2, groups, size, &size) && holdsAdmins(groups);
+    HeapFree(GetProcessHeap(), 0, groups);
+    CloseHandle(token);
+    return found;
+}
+
+// sessionIsAdmin reports, for the deferred side, whether the account that
+// started the session (the engine's UserSID) is LocalSystem or in the
+// Administrators group, as Authz computes its groups from the SID. The
+// CustomActionData comes from the immediate action, which runs in a
+// custom action server under that account's token, so for any other
+// account it could say anything; such data must not reach LocalSystem.
+static int sessionIsAdmin(MSIHANDLE install)
+{
+    static const WCHAR userSidProp[] = u"UserSID";
+    static const WCHAR systemSid[] = u"S-1-5-18";
+    WCHAR *text = property(install, userSidProp);
+    void *sid = 0, *rm = 0, *ctx = 0;
+    tokenGroups *groups = 0;
+    int found = text && wieq(text, systemSid);
+    if (!found && text && ConvertStringSidToSidW(text, &sid) && AuthzInitializeResourceManager(AUTHZ_RM_FLAG_NO_AUDIT, 0, 0, 0, 0, &rm)) {
+        LUID_ none = {0, 0};
+        DWORD size = 0;
+        if (AuthzInitializeContextFromSid(0, sid, rm, 0, none, 0, &ctx)) {
+            AuthzGetInformationFromContext(ctx, AuthzContextInfoGroupsSids, 0, &size, 0);
+            groups = size ? HeapAlloc(GetProcessHeap(), 0, size) : 0;
+            found = groups && AuthzGetInformationFromContext(ctx, AuthzContextInfoGroupsSids, size, &size, groups) && holdsAdmins(groups);
+            AuthzFreeContext(ctx);
+        }
+        AuthzFreeResourceManager(rm);
+    }
+    HeapFree(GetProcessHeap(), 0, groups);
+    if (sid) {
+        LocalFree(sid);
+    }
+    HeapFree(GetProcessHeap(), 0, text);
+    return found;
+}
+
+// profileCheck returns why folder must not be removed because of the
+// profile at profile (freed here), or 0: inside the installing account's
+// own profile (own) only the standard folder guards apply, which name that
+// account's folders; inside any other, other is the reason.
+static const WCHAR *profileCheck(const WCHAR *folder, WCHAR *profile, int own, const WCHAR *other)
+{
+    const WCHAR *why = 0;
+    if (profile && below(profile, folder)) {
+        why = msgRemoveProfiles;
+    } else if (profile && below(folder, profile) && !own) {
+        why = other;
+    }
+    HeapFree(GetProcessHeap(), 0, profile);
+    return why;
+}
+
+// profileRefusal returns why folder must not be removed because of the user
+// profiles, or 0: the profiles folder (ProfilesDirectory, C:\Users by
+// default), a folder that holds it, a folder directly in it, a folder that
+// is or holds a profile of ProfileList, Public or Default, and any folder
+// inside a profile other than that of the account the action runs as,
+// found by its SID. The immediate action runs with the token of the
+// account that started the session, so a per-machine removal still keeps
+// that account's own profile open; only a session that itself runs as
+// LocalSystem (a deployment tool) has no profile of its own, and then every
+// user's data is refused. When the profiles cannot be read, everything is.
+static const WCHAR *profileRefusal(const WCHAR *folder)
+{
+    HANDLE key = 0;
+    if (RegOpenKeyExW(HKLM_, profileListKey, 0, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS | KEY_WOW64_64KEY, &key)) {
+        return msgRemoveNoProfiles;
+    }
+    WCHAR *root = regFolder(key, profilesDirectory);
+    const WCHAR *why = root ? 0 : msgRemoveNoProfiles;
+    if (root && below(root, folder)) {
+        why = msgRemoveProfiles;
+    } else if (root && below(folder, root)) {
+        const WCHAR *rest = folder + wlen(root);
+        while (*rest && *rest != '\\') {
+            rest++;
+        }
+        if (rest[0] == '\\' && rest[1] == 0) {
+            why = msgRemoveProfiles;
+        }
+    }
+    HeapFree(GetProcessHeap(), 0, root);
+    static const WCHAR *const shared[] = {u"Public", u"Default"};
+    for (SIZE_T i = 0; !why && i < sizeof(shared) / sizeof(shared[0]); i++) {
+        why = profileCheck(folder, regFolder(key, shared[i]), 0, msgRemoveSharedProfile);
+    }
+    WCHAR *own = userSid();
+    WCHAR sid[256];
+    for (DWORD i = 0; !why; i++) {
+        DWORD n = sizeof(sid) / sizeof(sid[0]);
+        long err = RegEnumKeyExW(key, i, sid, &n, 0, 0, 0, 0);
+        if (err == ERROR_NO_MORE_ITEMS) {
+            break;
+        }
+        if (err == ERROR_MORE_DATA) {
+            // A SID is far shorter than the buffer; this is no profile.
+            continue;
+        }
+        HANDLE sub = 0;
+        if (err || RegOpenKeyExW(key, sid, 0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &sub)) {
+            why = msgRemoveNoProfiles;
+            break;
+        }
+        // Windows keeps a profile it could not load under "<SID>.bak",
+        // usually with the same ProfileImagePath; that SID is still ours.
+        static const WCHAR bak[] = u".bak";
+        SIZE_T ownLen = own ? wlen(own) : 0;
+        int mine = own && (n == ownLen || (n == ownLen + 4 && CompareStringOrdinal(sid + ownLen, 4, bak, 4, 1) == CSTR_EQUAL)) &&
+                   CompareStringOrdinal(own, (int)ownLen, sid, (int)ownLen, 1) == CSTR_EQUAL;
+        why = profileCheck(folder, regFolder(sub, profileImagePath), mine, msgRemoveOtherProfile);
+        RegCloseKey(sub);
+    }
+    RegCloseKey(key);
+    HeapFree(GetProcessHeap(), 0, own);
+    return why;
+}
+
+// refusal returns why a folder must not be removed, or 0. folder is the
+// final path with a trailing backslash; protectedName receives the
+// property name of a standard folder it reaches. Standard folders are
+// compared by their final paths too, so a link to one is caught.
+static const WCHAR *refusal(MSIHANDLE install, const WCHAR *folder, const WCHAR **protectedName)
+{
+    if (wlen(folder) <= 3) {
+        return msgRemoveRoot;
+    }
+    const WCHAR *why = profileRefusal(folder);
+    for (SIZE_T i = 0; !why && i < sizeof(protectedFolders) / sizeof(protectedFolders[0]); i++) {
+        WCHAR *value = property(install, protectedFolders[i]);
+        WCHAR *full = value ? finalPath(value) : 0;
+        const WCHAR *std = full ? full : value;
+        if (std && wlen(std) && std[wlen(std) - 1] == '\\') {
+            if (below(std, folder)) {
+                why = msgRemoveStandard;
+                *protectedName = protectedFolders[i];
+            } else if (i == 1 && below(folder, std)) {
+                why = msgRemoveWindows;
+            }
+        }
+        HeapFree(GetProcessHeap(), 0, full);
+        HeapFree(GetProcessHeap(), 0, value);
+    }
+    return why;
+}
+
+// checkFolder resolves the folder a property names and returns why it must
+// not be removed, or 0 with *folder set to its path. *detail receives a
+// text to log after the reason, owned by the caller when *owned is set.
+static const WCHAR *checkFolder(MSIHANDLE install, WCHAR *path, WCHAR **folder, const WCHAR **detail, WCHAR **owned)
+{
+    if (!plainPath(path)) {
+        return msgRemovePath;
+    }
+    DWORD attrs = GetFileAttributesW(path);
+    if (attrs == INVALID_FILE_ATTRIBUTES || !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+        return msgRemoveMissing;
+    }
+    if (attrs & FILE_ATTRIBUTE_REPARSE_POINT) {
+        return msgRemoveReparse;
+    }
+    WCHAR *full = longPath(path), *final = finalPath(path);
+    const WCHAR *why = 0;
+    if (!full || !final) {
+        why = msgRemovePath;
+    } else if (!samePath(full, final)) {
+        // A junction or symbolic link above the folder, or a subst drive:
+        // the guards compare paths, so only a path without one is checked.
+        why = msgRemoveRedirected;
+        *detail = *owned = final;
+        final = 0;
+    } else {
+        why = refusal(install, final, detail);
+    }
+    HeapFree(GetProcessHeap(), 0, full);
+    if (why) {
+        HeapFree(GetProcessHeap(), 0, final);
+    } else {
+        *folder = final;
+    }
+    return why;
+}
+
+// checkEntry handles one line of BuilderRemoveFolders and appends the
+// folder to out when it may be removed.
+static const WCHAR *packageRefusal(MSIHANDLE install, const WCHAR *folder, WCHAR **owned);
+
+static void checkEntry(MSIHANDLE install, WCHAR *line, wbuf *out)
+{
+    WCHAR *name = field(line, 0x1F);
+    if (!name || !*name) {
+        logft(install, tmplRemove, msgRemoveData, 0, 0);
+        return;
+    }
+    if (*line) {
+        int cond = MsiEvaluateConditionW(install, line);
+        if (cond != MSICONDITION_TRUE && cond != MSICONDITION_NONE) {
+            if (cond != 0) {
+                logft(install, tmplRemove, msgCondition, line, 0);
+            }
+            return;
+        }
+    }
+    WCHAR *value = property(install, name), *folder = 0, *owned = 0;
+    const WCHAR *why = 0, *detail = 0;
+    if (!value || !*trim(value)) {
+        why = msgRemoveEmpty;
+    } else {
+        WCHAR *path = wstrdup(trim(value), 1);
+        if (path) {
+            SIZE_T n = wlen(path);
+            if (n && path[n - 1] != '\\') {
+                path[n] = '\\';
+                path[n + 1] = 0;
+            }
+            why = checkFolder(install, path, &folder, &detail, &owned);
+            HeapFree(GetProcessHeap(), 0, path);
+            WCHAR *pkg = 0;
+            if (!why && (why = packageRefusal(install, folder, &pkg)) != 0) {
+                HeapFree(GetProcessHeap(), 0, owned);
+                owned = pkg;
+                detail = pkg;
+                HeapFree(GetProcessHeap(), 0, folder);
+                folder = 0;
+            }
+        } else {
+            why = msgNoMemory;
+        }
+    }
+    if (why) {
+        static const WCHAR space[] = u" ";
+        wbuf text = {0, 0, 0};
+        const WCHAR *shown = value && *trim(value) ? trim(value) : name;
+        if (wbufAdd(&text, why, wlen(why)) && (!detail || (wbufAdd(&text, space, 1) && wbufAdd(&text, detail, wlen(detail))))) {
+            logft(install, tmplRemove, shown, text.s, 0);
+        }
+        HeapFree(GetProcessHeap(), 0, text.s);
+        HeapFree(GetProcessHeap(), 0, owned);
+    } else {
+        static const WCHAR nl[] = u"\n";
+        logft(install, tmplRemove, msgRemoving, folder, 0);
+        if (!wbufAdd(out, nl, 1) || !wbufAdd(out, folder, wlen(folder))) {
+            logft(install, tmplRemove, msgNoMemory, 0, 0);
+        }
+        HeapFree(GetProcessHeap(), 0, folder);
+    }
+    HeapFree(GetProcessHeap(), 0, value);
+}
+
+// packageRefusal returns why folder (a final path) must not be removed now
+// because it is or holds one of the package's own directories, whose path
+// it then hands back in *owned, or 0. Such a folder goes only when the
+// whole product is removed: on an install, a repair or the removal of one
+// feature the installer keeps files there that the move would take away.
+// The entry's property may hold the install dir under any name, so this
+// compares paths, not names; a directory that does not exist yet compares
+// by its path as the engine resolved it.
+static const WCHAR *packageRefusal(MSIHANDLE install, const WCHAR *folder, WCHAR **owned)
+{
+    if (MsiEvaluateConditionW(install, condRemoveAll) == MSICONDITION_TRUE) {
+        return 0;
+    }
+    WCHAR *list = property(install, propRemovePackage);
+    const WCHAR *why = 0;
+    for (WCHAR *id = list; id && *id && !why;) {
+        WCHAR *next = field(id, '\n');
+        WCHAR *value = property(install, id);
+        if (value && *trim(value)) {
+            WCHAR *path = finalPath(trim(value));
+            if (!path) {
+                path = wstrdup(trim(value), 1);
+                SIZE_T n = path ? wlen(path) : 0;
+                if (n && path[n - 1] != '\\') {
+                    path[n] = '\\';
+                    path[n + 1] = 0;
+                }
+            }
+            if (path && below(path, folder)) {
+                why = msgRemovePackage;
+                *owned = path;
+                path = 0;
+            }
+            HeapFree(GetProcessHeap(), 0, path);
+        }
+        HeapFree(GetProcessHeap(), 0, value);
+        id = next;
+    }
+    HeapFree(GetProcessHeap(), 0, list);
+    return why;
+}
+
+// setRemoveData sets the CustomActionData of one deferred action: op, the
+// token, and the folders.
+static int setRemoveData(MSIHANDLE install, const WCHAR *prop, WCHAR op, const WCHAR *token, const wbuf *folders)
+{
+    wbuf data = {0, 0, 0};
+    int ok = wbufAdd(&data, &op, 1) && wbufAdd(&data, token, wlen(token)) && wbufAdd(&data, folders->s, folders->len) &&
+             MsiSetPropertyW(install, prop, data.s) == ERROR_SUCCESS;
+    HeapFree(GetProcessHeap(), 0, data.s);
+    return ok;
+}
+
+__declspec(dllexport) UINT WINAPI BuilderRemoveFolders(MSIHANDLE install)
+{
+    // The rollback, deferred and commit actions run when their property
+    // holds data, so none may keep a value this action did not set.
+    static const WCHAR empty[] = {0};
+    MsiSetPropertyW(install, propRemoveUndo, empty);
+    MsiSetPropertyW(install, propRemoveExec, empty);
+    MsiSetPropertyW(install, propRemoveCommit, empty);
+    WCHAR *list = property(install, propRemove);
+    if (!list) {
+        return ERROR_SUCCESS;
+    }
+    // An elevated session that a standard user started (a repair of a
+    // per-machine product, an assigned one, AlwaysInstallElevated) would
+    // remove as LocalSystem a folder from that user's command line, since
+    // the folder properties are secure. Without elevation the deferred
+    // actions run as the user (documented), who could delete the folder
+    // anyway.
+    WCHAR *elevated = property(install, propRunningElevated);
+    int refuse = elevated && *elevated && !userIsAdmin();
+    HeapFree(GetProcessHeap(), 0, elevated);
+    if (refuse) {
+        logft(install, tmplRemove, msgRemoveNotAdmin, 0, 0);
+        HeapFree(GetProcessHeap(), 0, list);
+        return ERROR_SUCCESS;
+    }
+    wbuf folders = {0, 0, 0};
+    for (WCHAR *line = list; line && *line;) {
+        WCHAR *next = field(line, '\n');
+        checkEntry(install, line, &folders);
+        line = next;
+    }
+    BYTE random[16];
+    if (folders.len) {
+        WCHAR token[33];
+        SIZE_T pos = 0;
+        token[0] = 0;
+        int ok = SystemFunction036(random, sizeof random) != 0;
+        for (SIZE_T i = 0; ok && i < sizeof random; i++) {
+            wappendhex(token, &pos, random[i]);
+        }
+        // With rollback disabled the installer runs no commit action, so
+        // the deferred action deletes at once.
+        if (ok && MsiGetMode(install, MSIRUNMODE_ROLLBACKENABLED)) {
+            ok = setRemoveData(install, propRemoveUndo, 'u', token, &folders) && setRemoveData(install, propRemoveExec, 'm', token, &folders) &&
+                 setRemoveData(install, propRemoveCommit, 'c', token, &folders);
+        } else if (ok) {
+            ok = setRemoveData(install, propRemoveExec, 'd', token, &folders);
+        }
+        if (!ok) {
+            logft(install, tmplRemove, msgRemoveSchedule, 0, GetLastError());
+        }
+    }
+    HeapFree(GetProcessHeap(), 0, folders.s);
+    HeapFree(GetProcessHeap(), 0, list);
+    return ERROR_SUCCESS;
+}
+
+// backupPath writes X:\BuilderRemoveFolders.<token> and, with index
+// nonzero, \<index> after it into a heap string, for the volume of folder.
+static WCHAR *backupPath(const WCHAR *folder, const WCHAR *token, DWORD index)
+{
+    WCHAR *out = HeapAlloc(GetProcessHeap(), 0, (3 + wlen(backupPrefix) + wlen(token) + 16) * sizeof(WCHAR));
+    if (!out) {
+        return 0;
+    }
+    SIZE_T pos = 0;
+    out[pos++] = folder[0];
+    out[pos++] = ':';
+    out[pos++] = '\\';
+    out[pos] = 0;
+    wappend(out, &pos, backupPrefix);
+    wappend(out, &pos, token);
+    if (index) {
+        out[pos++] = '\\';
+        wappendnum(out, &pos, index);
+    }
+    return out;
+}
+
+// openNoFollow opens a folder by path for the given access without
+// following a reparse point at its end; 0 when it is not a plain folder.
+static HANDLE openNoFollow(const WCHAR *path, DWORD access)
+{
+    HANDLE h = CreateFileW(path, access | SYNCHRONIZE_ | FILE_READ_ATTRIBUTES, FILE_SHARE_ALL, 0, OPEN_EXISTING,
+                           FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, 0);
+    if (h == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+    DWORD tag[2] = {0, 0};
+    if (!GetFileInformationByHandleEx(h, FileAttributeTagInfo_, tag, sizeof tag) || !(tag[0] & FILE_ATTRIBUTE_DIRECTORY) ||
+        (tag[0] & FILE_ATTRIBUTE_REPARSE_POINT)) {
+        CloseHandle(h);
+        return 0;
+    }
+    return h;
+}
+
+// renameInto moves the object of h into the folder dir as name; 0 on
+// success, else the Windows error.
+static DWORD renameInto(HANDLE h, HANDLE dir, const WCHAR *name)
+{
+    SIZE_T n = wlen(name);
+    // FILE_RENAME_INFORMATION.
+    struct rename {
+        DWORD flags;
+        HANDLE root;
+        DWORD length;
+        WCHAR name[1];
+    };
+    _Static_assert(__builtin_offsetof(struct rename, name) == (sizeof(void *) == 4 ? 12 : 20), "FILE_RENAME_INFORMATION layout");
+    SIZE_T size = sizeof(struct rename) + n * sizeof(WCHAR);
+    struct rename *info = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size);
+    if (!info) {
+        return ERROR_NOT_ENOUGH_MEMORY;
+    }
+    info->root = dir;
+    info->length = (DWORD)(n * sizeof(WCHAR));
+    memcpy(info->name, name, n * sizeof(WCHAR));
+    IO_STATUS_BLOCK io;
+    long st = NtSetInformationFile(h, &io, info, (DWORD)size, FileRenameInformation_);
+    HeapFree(GetProcessHeap(), 0, info);
+    return st >= 0 ? 0 : RtlNtStatusToDosError(st);
+}
+
+// openRelative opens the entry name (bytes long, not terminated) of the
+// folder dir without following a reparse point; 0 on failure.
+static HANDLE openRelative(HANDLE dir, WCHAR *name, DWORD bytes, DWORD access)
+{
+    UNICODE_STRING us = {(unsigned short)bytes, (unsigned short)bytes, name};
+    OBJECT_ATTRIBUTES oa = {sizeof oa, dir, &us, 0, 0, 0};
+    IO_STATUS_BLOCK io;
+    HANDLE h = 0;
+    long st = NtCreateFile(&h, access | SYNCHRONIZE_ | FILE_READ_ATTRIBUTES, &oa, &io, 0, 0, FILE_SHARE_ALL, FILE_OPEN_,
+                           FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_FOR_BACKUP_INTENT, 0, 0);
+    return st >= 0 ? h : 0;
+}
+
+// plainFolder reports whether h is a folder that is no reparse point.
+static int plainFolder(HANDLE h)
+{
+    DWORD tag[2] = {0, 0};
+    return GetFileInformationByHandleEx(h, FileAttributeTagInfo_, tag, sizeof tag) && (tag[0] & FILE_ATTRIBUTE_DIRECTORY) &&
+           !(tag[0] & FILE_ATTRIBUTE_REPARSE_POINT);
+}
+
+// deleteHandle marks the object of h for deletion; it goes when h is
+// closed. Since Windows 10 1809 the disposition ignores a read-only
+// attribute itself, which leaves the attribute alone; before that it is
+// cleared first, but not on a file with more than one name, whose other
+// name may be outside the tree.
+static int deleteHandle(HANDLE h, DWORD attrs)
+{
+    // FILE_DISPOSITION_FLAG_DELETE | FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE
+    DWORD flags = 0x1 | 0x10;
+    if (SetFileInformationByHandle(h, FileDispositionInfoEx_, &flags, sizeof flags)) {
+        return 1;
+    }
+    struct {
+        long long allocation, size;
+        DWORD links;
+        BYTE pending, directory;
+    } standard = {0, 0, 0, 0, 0};
+    if ((attrs & FILE_ATTRIBUTE_READONLY) && GetFileInformationByHandleEx(h, FileStandardInfo_, &standard, sizeof standard) &&
+        standard.links <= 1) {
+        struct {
+            long long times[4];
+            DWORD attributes;
+        } basic = {{0, 0, 0, 0}, attrs & ~(DWORD)FILE_ATTRIBUTE_READONLY};
+        if (!basic.attributes) {
+            basic.attributes = FILE_ATTRIBUTE_NORMAL;
+        }
+        SetFileInformationByHandle(h, FileBasicInfo_, &basic, sizeof basic);
+    }
+    BYTE dispose = 1;
+    return SetFileInformationByHandle(h, FileDispositionInfo_, &dispose, sizeof dispose) != 0;
+}
+
+// FILE_FULL_DIR_INFO up to the name.
+typedef struct {
+    DWORD NextEntryOffset, FileIndex;
+    long long CreationTime, LastAccessTime, LastWriteTime, ChangeTime, EndOfFile, AllocationSize;
+    DWORD FileAttributes, FileNameLength, EaSize;
+    WCHAR FileName[1];
+} DIRINFO;
+_Static_assert(__builtin_offsetof(DIRINFO, FileName) == 68, "FILE_FULL_DIR_INFO layout");
+
+enum { DIR_BUFFER = 64 * 1024, MAX_PASSES = 4096 };
+
+// emptyFolder deletes everything in the folder of dir: each entry is opened
+// relative to dir, a junction or link as itself, so nothing outside the
+// folder is reached whatever is swapped in meanwhile. It returns 0 when
+// something stays.
+static int emptyFolder(HANDLE dir, int depth)
+{
+    BYTE *buf = depth < 256 ? HeapAlloc(GetProcessHeap(), 0, DIR_BUFFER) : 0;
+    if (!buf) {
+        return 0;
+    }
+    // Each pass reads the first batch afresh, since deleting changes the
+    // listing. The folder is empty when a pass sees nothing; a pass that
+    // deletes nothing, or too many passes for someone still adding
+    // entries, ends it.
+    int empty = 0;
+    for (int pass = 0, progress = 1; progress && pass < MAX_PASSES; pass++) {
+        progress = 0;
+        if (!GetFileInformationByHandleEx(dir, FileFullDirectoryRestartInfo_, buf, DIR_BUFFER)) {
+            empty = GetLastError() == ERROR_NO_MORE_FILES;
+            break;
+        }
+        int seen = 0;
+        for (DIRINFO *e = (DIRINFO *)buf;; e = (DIRINFO *)((BYTE *)e + e->NextEntryOffset)) {
+            DWORD n = e->FileNameLength / sizeof(WCHAR);
+            int dot = e->FileName[0] == '.' && (n == 1 || (n == 2 && e->FileName[1] == '.'));
+            if (!dot) {
+                seen = 1;
+                int isDir = (e->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) && !(e->FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT);
+                HANDLE h = openRelative(dir, e->FileName, e->FileNameLength, DELETE_ | FILE_WRITE_ATTRIBUTES | (isDir ? FILE_LIST_DIRECTORY : 0));
+                DWORD tag[2] = {0, 0};
+                if (h && GetFileInformationByHandleEx(h, FileAttributeTagInfo_, tag, sizeof tag)) {
+                    int nowDir = (tag[0] & FILE_ATTRIBUTE_DIRECTORY) && !(tag[0] & FILE_ATTRIBUTE_REPARSE_POINT);
+                    // An entry that changed between file, link and folder
+                    // since it was listed is left to the next pass, which
+                    // lists it afresh.
+                    if (nowDir == isDir && (!isDir || emptyFolder(h, depth + 1)) && deleteHandle(h, tag[0])) {
+                        progress = 1;
+                    }
+                }
+                if (h) {
+                    CloseHandle(h);
+                }
+            }
+            if (!e->NextEntryOffset) {
+                break;
+            }
+        }
+        if (!seen) {
+            empty = 1;
+            break;
+        }
+    }
+    HeapFree(GetProcessHeap(), 0, buf);
+    return empty;
+}
+
+// deleteFolder deletes the folder of h with everything in it.
+static int deleteFolder(HANDLE h)
+{
+    DWORD tag[2] = {0, 0};
+    return emptyFolder(h, 0) && GetFileInformationByHandleEx(h, FileAttributeTagInfo_, tag, sizeof tag) && deleteHandle(h, tag[0]);
+}
+
+// sidIs reports whether sid is the SID in text form.
+static int sidIs(void *sid, const WCHAR *text)
+{
+    WCHAR *s = 0;
+    int same = text && ConvertSidToStringSidW(sid, &s) && samePath(s, text);
+    if (s) {
+        LocalFree(s);
+    }
+    return same;
+}
+
+// openBackup opens the backup folder at root for access, and only when it
+// is the folder this removal created: a plain folder at that very path,
+// owned by LocalSystem, the administrators or the account the action runs
+// as, with a protected access list. A folder or junction someone else put
+// there with the token from a log is refused. 0 otherwise.
+static HANDLE openBackup(const WCHAR *root, DWORD access)
+{
+    HANDLE h = openNoFollow(root, access | READ_CONTROL_);
+    if (!h) {
+        return 0;
+    }
+    WCHAR *final = finalPathOf(h), *user = userSid();
+    void *owner = 0, *sd = 0;
+    ACL *dacl = 0;
+    unsigned short control = 0;
+    DWORD revision = 0;
+    SIZE_T n = wlen(root);
+    int ok = final && wlen(final) == n + 1 && CompareStringOrdinal(final, (int)n, root, (int)n, 1) == CSTR_EQUAL &&
+             !GetSecurityInfo(h, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION, &owner, 0, &dacl, 0, &sd) &&
+             GetSecurityDescriptorControl(sd, &control, &revision) && (control & SE_DACL_PROTECTED) &&
+             (sidIs(owner, u"S-1-5-18") || sidIs(owner, u"S-1-5-32-544") || sidIs(owner, user));
+    if (sd) {
+        LocalFree(sd);
+    }
+    HeapFree(GetProcessHeap(), 0, user);
+    HeapFree(GetProcessHeap(), 0, final);
+    if (!ok) {
+        CloseHandle(h);
+        return 0;
+    }
+    return h;
+}
+
+// openMoved opens backup folder <index> relative to root.
+static HANDLE openMoved(HANDLE root, DWORD index, DWORD access)
+{
+    WCHAR num[12];
+    SIZE_T pos = 0;
+    wappendnum(num, &pos, index);
+    HANDLE h = openRelative(root, num, (DWORD)(pos * sizeof(WCHAR)), access);
+    if (h && !plainFolder(h)) {
+        CloseHandle(h);
+        h = 0;
+    }
+    return h;
+}
+
+// moveAside moves folder, opened without following a reparse point and
+// checked to still be the folder at that path, into the backup folder as
+// <index>. The backup folder is created on the first call for its volume
+// (created holds a bit per drive letter), and only a folder this removal
+// created is used: one that existed before could carry any owner and
+// access list.
+static int moveAside(MSIHANDLE install, const WCHAR *folder, const WCHAR *token, DWORD index, DWORD *created)
+{
+    WCHAR *root = backupPath(folder, token, 0), *final = 0;
+    DWORD volume = 1u << (wlower(folder[0]) - 'a');
+    HANDLE dir = 0, h = 0;
+    int ok = 0;
+    if (!root) {
+        logft(install, tmplRemove, msgNoMemory, 0, 0);
+        return 0;
+    }
+    int fresh = 0;
+    if (!(*created & volume)) {
+        // A new folder of the token's own: only LocalSystem, the
+        // administrators and its owner may open it.
+        void *sd = 0;
+        if (ConvertStringSecurityDescriptorToSecurityDescriptorW(backupSddl, 1, &sd, 0)) {
+            SECURITY_ATTRIBUTES sa = {sizeof sa, sd, 0};
+            if (CreateDirectoryW(root, &sa)) {
+                *created |= volume;
+                fresh = 1;
+            }
+            LocalFree(sd);
+        }
+    }
+    dir = *created & volume ? openBackup(root, FILE_ADD_SUBDIRECTORY) : 0;
+    if (!dir && fresh) {
+        // A volume without access lists (FAT, exFAT) keeps no protected
+        // DACL, so openBackup refuses the folder just made; take it away
+        // again (a junction put there instead goes as a link) and leave
+        // the folders of this volume in place.
+        RemoveDirectoryW(root);
+        *created &= ~volume;
+    }
+    h = dir ? openNoFollow(folder, DELETE_) : 0;
+    final = h ? finalPathOf(h) : 0;
+    if (!dir) {
+        logft(install, tmplRemove, folder, msgRemoveBackup, GetLastError());
+    } else if (!h) {
+        // Gone since the immediate action, or a reparse point now.
+        if (GetFileAttributesW(folder) != INVALID_FILE_ATTRIBUTES) {
+            logft(install, tmplRemove, folder, msgRemoveChanged, 0);
+        }
+    } else if (!final || !samePath(final, folder)) {
+        logft(install, tmplRemove, folder, msgRemoveChanged, 0);
+    } else {
+        WCHAR num[12];
+        SIZE_T pos = 0;
+        wappendnum(num, &pos, index);
+        DWORD err = renameInto(h, dir, num);
+        if (!err) {
+            logft(install, tmplRemove, folder, msgRemoveMoved, 0);
+            ok = 1;
+        } else if (err == ERROR_NOT_SAME_DEVICE) {
+            // The backup folder is on the drive letter's volume, not on a
+            // volume mounted in a folder above this one.
+            logft(install, tmplRemove, folder, msgRemoveVolume, 0);
+        } else {
+            logft(install, tmplRemove, folder, msgRemoveBusy, err);
+        }
+    }
+    HeapFree(GetProcessHeap(), 0, final);
+    if (h) {
+        CloseHandle(h);
+    }
+    if (dir) {
+        CloseHandle(dir);
+    }
+    HeapFree(GetProcessHeap(), 0, root);
+    return ok;
+}
+
+// restore moves backup folder <index> back to folder (with its trailing
+// backslash): by handle into the parent folder, opened without following a
+// reparse point and checked to still be at that path, so that a junction
+// put in place of a folder above it cannot send the tree elsewhere.
+// It returns 1 when restored, 0 when nothing was moved for index (the
+// folder was left in place, or a second entry named it) and -1 on failure.
+static int restore(HANDLE root, DWORD index, WCHAR *folder)
+{
+    SIZE_T n = wlen(folder) - 1, cut = n;
+    while (cut && folder[cut - 1] != '\\') {
+        cut--;
+    }
+    HANDLE moved = openMoved(root, index, DELETE_), parent = 0;
+    WCHAR *final = 0;
+    int ok = moved ? -1 : 0;
+    if (moved && cut >= 3) {
+        WCHAR keep = folder[cut];
+        folder[cut] = 0;
+        parent = openNoFollow(folder, FILE_ADD_SUBDIRECTORY);
+        final = parent ? finalPathOf(parent) : 0;
+        int same = final && samePath(final, folder);
+        folder[cut] = keep;
+        folder[n] = 0;
+        ok = same && !renameInto(moved, parent, folder + cut) ? 1 : -1;
+        folder[n] = '\\';
+    }
+    HeapFree(GetProcessHeap(), 0, final);
+    if (parent) {
+        CloseHandle(parent);
+    }
+    if (moved) {
+        CloseHandle(moved);
+    }
+    return ok;
+}
+
+// The deferred, rollback and commit side; see the comment above
+// BuilderRemoveFolders.
+__declspec(dllexport) UINT WINAPI BuilderRemoveFoldersExec(MSIHANDLE install)
+{
+    static const WCHAR customActionData[] = u"CustomActionData";
+    WCHAR *data = property(install, customActionData);
+    WCHAR *folders = data ? field(data, '\n') : 0;
+    WCHAR op = data ? data[0] : 0;
+    const WCHAR *token = data && op ? data + 1 : 0;
+    if (!folders || (op != 'u' && op != 'm' && op != 'd' && op != 'c') || wlen(token) != 32) {
+        logft(install, tmplRemove, msgRemoveData, 0, 0);
+        HeapFree(GetProcessHeap(), 0, data);
+        return ERROR_SUCCESS;
+    }
+    // Every op checks: the rollback and the commit name their folders and
+    // token from the same data, and a backup folder an earlier removal left
+    // behind would pass openBackup. A deferred action that runs with the
+    // user's own rights (a per-user install without elevation) can do
+    // nothing the user could not, so it skips the check.
+    if (userIsAdmin() && !sessionIsAdmin(install)) {
+        logft(install, tmplRemove, msgRemoveNotAdminExec, 0, 0);
+        HeapFree(GetProcessHeap(), 0, data);
+        return ERROR_SUCCESS;
+    }
+    // The lines in order; the rollback runs backwards, so that a folder
+    // moved after one inside it is back before that one returns into it.
+    DWORD count = 0, created = 0, volumes = 0;
+    for (WCHAR *line = folders; line && *line; line = field(line, '\n')) {
+        count++;
+    }
+    WCHAR **list = HeapAlloc(GetProcessHeap(), 0, (count ? count : 1) * sizeof(WCHAR *));
+    if (!list) {
+        logft(install, tmplRemove, msgNoMemory, 0, 0);
+        HeapFree(GetProcessHeap(), 0, data);
+        return ERROR_SUCCESS;
+    }
+    // field cut each line at its end.
+    WCHAR *line = folders;
+    for (DWORD i = 0; i < count; i++) {
+        list[i] = line;
+        line += wlen(line) + 1;
+    }
+    for (DWORD i = 0; i < count; i++) {
+        DWORD index = op == 'u' ? count - i : i + 1;
+        WCHAR *folder = list[index - 1];
+        WCHAR *rootPath = backupPath(folder, token, 0);
+        volumes |= 1u << (wlower(folder[0]) - 'a');
+        if (!rootPath) {
+            logft(install, tmplRemove, msgNoMemory, 0, 0);
+        } else if ((op == 'm' || op == 'd') && !moveAside(install, folder, token, index, &created)) {
+            // Left in place and logged.
+        } else if (op != 'm') {
+            HANDLE root = openBackup(rootPath, DELETE_ | FILE_LIST_DIRECTORY | FILE_WRITE_ATTRIBUTES);
+            HANDLE moved = root && op != 'u' ? openMoved(root, index, DELETE_ | FILE_LIST_DIRECTORY | FILE_WRITE_ATTRIBUTES) : 0;
+            int restored = op == 'u' && root ? restore(root, index, folder) : 0;
+            if (restored > 0) {
+                logft(install, tmplRemove, folder, msgRemoveRestored, 0);
+            } else if (restored < 0) {
+                logft(install, tmplRemove, folder, msgRemoveRestore, GetLastError());
+            } else if (moved && deleteFolder(moved)) {
+                logft(install, tmplRemove, msgRemoveDeleted, folder, 0);
+            } else if (moved) {
+                logft(install, tmplRemove, folder, msgRemoveLeft, 0);
+            }
+            if (moved) {
+                CloseHandle(moved);
+            }
+            if (root) {
+                CloseHandle(root);
+            }
+        }
+        HeapFree(GetProcessHeap(), 0, rootPath);
+    }
+    HeapFree(GetProcessHeap(), 0, list);
+    // Each backup folder goes once it is empty.
+    for (WCHAR drive = 'a'; op != 'm' && drive <= 'z'; drive++) {
+        WCHAR *rootPath = volumes & (1u << (drive - 'a')) ? backupPath(&drive, token, 0) : 0;
+        HANDLE root = rootPath ? openBackup(rootPath, DELETE_) : 0;
+        if (root) {
+            deleteHandle(root, 0);
+            CloseHandle(root);
+        }
+        HeapFree(GetProcessHeap(), 0, rootPath);
+    }
+    HeapFree(GetProcessHeap(), 0, data);
+    return ERROR_SUCCESS;
+}
+
 // Closing running copies of package files (spec 17.9). BuilderCloseSchedule,
 // an immediate action before InstallValidate, reads the property
 // BuilderCloseApps that the builder writes, one entry per line:
@@ -1711,7 +2923,6 @@ BOOL WINAPI Process32FirstW(HANDLE, PROCESSENTRY32W *);
 BOOL WINAPI Process32NextW(HANDLE, PROCESSENTRY32W *);
 HANDLE WINAPI OpenProcess(DWORD, BOOL, DWORD);
 BOOL WINAPI QueryFullProcessImageNameW(HANDLE, DWORD, WCHAR *, DWORD *);
-int WINAPI CompareStringOrdinal(const WCHAR *, int, const WCHAR *, int, BOOL);
 
 // user32.dll
 BOOL WINAPI EnumWindows(WNDENUMPROC, INTPTR);
@@ -1726,7 +2937,6 @@ enum {
     PROCESS_TERMINATE = 0x1,
     PROCESS_QUERY_LIMITED_INFORMATION = 0x1000,
     SYNCHRONIZE = 0x100000,
-    CSTR_EQUAL = 2,
     WM_CLOSE = 0x10,
     GW_OWNER = 4,
     // The longest path QueryFullProcessImageNameW returns, in characters.

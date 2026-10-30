@@ -850,6 +850,7 @@ func (v *validator) components(cfg *Config, known *refs) {
 		v.componentRegistry(p, comp, regIDs, userData)
 		v.componentRemoveRegistry(p, comp, removeIDs, regIDs, userData)
 		v.componentRemoveFiles(cfg, p, comp, known, removeFileIDs)
+		v.componentRemoveFolders(cfg, known, p, comp)
 		keyFile := v.componentKeyFile(p, comp, files, generated)
 
 		for j, svc := range comp.Services {

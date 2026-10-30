@@ -491,6 +491,47 @@ components:
       condition: DELETE_DATA="1"
 ```
 
+### Delete a folder that a property names
+
+`removeFolders` deletes the folder in a property, with everything in it,
+when the product is removed (and, expected but not tested, the feature
+that holds the component), but not when an upgrade replaces the product. It works for any directory,
+the install folder (with `installDir.remember`, so the uninstall finds a
+folder chosen at install time) and a folder the first install remembered
+in the registry. The folder is moved aside and deleted at the end, so a
+failed uninstall puts it back, and a junction inside it is deleted as
+a link, never followed (tested on Windows). `on:
+install` and `on: both` are for folders the package does not install to,
+and a folder that is or holds a folder of the package goes only when the
+whole product is removed, not with one feature, on install or on repair,
+whichever property names it (tested for an upgrade, expected for a
+repair and a feature removal). It refuses folders in the Windows folder, folders
+that hold a standard folder, folders behind junctions and the Public
+profile (tested), and drive roots, standard folders such as Program
+Files, other users' profiles and anything in an elevated session a
+standard user started (expected, not tested), but a folder an
+administrator names, such as `INSTALLDIR=D:\Tools`, is emptied:
+
+```yaml
+installDir:
+  remember: true            # the uninstall finds the install folder again
+
+properties:
+  DATA_DIR:
+    search:
+      registry: { root: HKLM, key: SOFTWARE\Example\Hello, name: DataDir, type: directory }
+
+components:
+  - files:
+      - source: hello.exe
+    registry:
+      - { root: HKLM, key: SOFTWARE\Example\Hello, name: DataDir, value: '[DATA_DIR]' }
+    removeFolders:
+      - property: INSTALLDIR      # also what the program wrote into it
+      - property: DATA_DIR
+        condition: DELETE_DATA="1"
+```
+
 ### Ask before deleting data on uninstall
 
 A `flow: remove` dialog adds a page to the wizard's remove path, after
@@ -664,6 +705,7 @@ The keys used most inside them:
 | `components[].environment` | none | Environment variables such as `PATH` |
 | `components[].preserve` | `false` | Keep the user's changes on upgrade |
 | `components[].purge` | `false` | Delete the folder on uninstall |
+| `components[].removeFolders` | none | Delete the folder in a property on uninstall |
 | `features[].default` | `on` | `off` installs only on request |
 | `ui.enabled` | `false` | The setup wizard |
 | `ui.license` | none | License page |
