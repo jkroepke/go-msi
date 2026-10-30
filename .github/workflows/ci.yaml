@@ -66,7 +66,7 @@ jobs:
         os:
           - ubuntu-26.04
           - windows-latest
-          # Only the run action tests, see go test (Windows on Arm).
+          # Only a few native tests, see go test (Windows on Arm).
           - windows-11-arm
     permissions:
       contents: read
@@ -136,9 +136,32 @@ jobs:
           'MSI_BUILDER_ICE_CUB=C:\ice\darice.cub' >> $env:GITHUB_ENV
           'MSI_BUILDER_ICE_REQUIRED=1' >> $env:GITHUB_ENV
 
+      # Install packages as a standard user too (MSISPEC-RESULTS INST-02,
+      # PROP-01). The runner is thrown away after the job, so the step
+      # creates a local user with a random password and allows non-admin
+      # installs, which Windows Server turns off by default (DisableMsi).
+      # The TestNonAdmin tests in go test below skip without the user.
+      - name: Create a standard user
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bytes = [byte[]]::new(24)
+          [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+          $password = [Convert]::ToBase64String($bytes) + 'aA1!'
+          "::add-mask::$password"
+          New-LocalUser -Name msitest -Password (ConvertTo-SecureString $password -AsPlainText -Force) -PasswordNeverExpires | Out-Null
+          $policy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer'
+          if (-not (Test-Path $policy)) { New-Item $policy -Force | Out-Null }
+          Set-ItemProperty $policy -Name DisableMsi -Value 0 -Type DWord
+          'MSI_BUILDER_NONADMIN_USER=msitest' >> $env:GITHUB_ENV
+          "MSI_BUILDER_NONADMIN_PASSWORD=$password" >> $env:GITHUB_ENV
+
       # Windows runs the native tests too: they open the built packages with
       # msi.dll, run the ICE suite and install them with msiexec. They are
-      # skipped with -short.
+      # skipped with -short. The Windows run is verbose, so the job log holds
+      # what the result tests print with t.Log (MSISPEC-RESULTS logs cite this
+      # step); a result test needs no step of its own.
       # The install snapshots that differ from testdata are saved to
       # MSI_BUILDER_SNAPSHOT_DIR and uploaded below. The msiexec tests of
       # nativetest take about nine minutes under -race, close to go test's
@@ -148,16 +171,17 @@ jobs:
         shell: bash
         env:
           MSI_BUILDER_SNAPSHOT_DIR: ${{ runner.temp }}/install-snapshots
-        run: go test ./... ${{ runner.os != 'Windows' && '-short' || '' }} -timeout 25m -shuffle=on -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./...
+        run: go test ./... ${{ runner.os != 'Windows' && '-short' || '-v' }} -timeout 25m -shuffle=on -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./...
 
-      # Windows on Arm installs the run action probe and the remembered
-      # install folder package natively (Arm64 packages, the first with the
-      # arm64 DLL). msiexec is slow on this runner, so the rest of the native
-      # suite stays on x64.
+      # Windows on Arm installs the run action probe, the remembered install
+      # folder package, the shortcut property package and the language
+      # transform packages natively (Arm64 packages, the first with the arm64
+      # DLL). msiexec is slow on this runner, so the rest of the native suite
+      # stays on x64.
       - name: go test (Windows on Arm)
         if: runner.os == 'Windows' && runner.arch == 'ARM64'
         shell: bash
-        run: go test ./internal/cadll/ ./internal/builder/nativetest/ -run 'TestBinaries|TestMsiexecRunActions|TestMsiexecRememberInstallDir' -v -shuffle=on
+        run: go test ./internal/cadll/ ./internal/builder/nativetest/ -run 'TestBinaries|TestMsiexecRunActions|TestMsiexecRememberInstallDir|TestMsiexecShortcutProperties|TestLanguagesInstallLANG03|TestFullUILanguages' -v -timeout 20m -shuffle=on
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure() && runner.os == 'Windows' && runner.arch == 'X64'
@@ -186,104 +210,6 @@ jobs:
         env:
           MSI_BUILDER_LARGE_PACKAGE: '1'
         run: go test -v -count=1 -timeout 30m -run 'TestMsiexecInstallsLargePackage' ./internal/builder/nativetest/
-
-      # Print the Windows signature experiments (MSISPEC-RESULTS SIG-01…06,
-      # signed external cabinets SIG-08 and SIG-09).
-      - name: go test (signature results)
-        if: runner.os == 'Windows' && runner.arch == 'X64'
-        shell: bash
-        run: go test -v -count=1 -run 'TestSignature|TestCabinetSignature|TestMsiexecChecksSignedCabinets' ./internal/builder/nativetest/
-
-      # Print what the engine stores in an installed .lnk (MSISPEC-RESULTS
-      # SHORTCUT-02).
-      - name: go test (shortcut property results)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: go test -v -count=1 -run 'TestMsiexecShortcutProperties' ./internal/builder/nativetest/
-
-      - name: go test (language transform results)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: go test -v -count=1 -run 'TestLanguagesInstallLANG03|TestFullUILanguages' ./internal/builder/nativetest/
-
-      # Print what a major upgrade does when removing the old product fails,
-      # with and without IgnoreRemoveFailure (MSISPEC-RESULTS UPG-10).
-      - name: go test (upgrade remove failure results)
-        if: runner.os == 'Windows' && runner.arch == 'X64'
-        shell: bash
-        run: go test -v -count=1 -run 'TestMsiexecIgnoreRemoveFailure' ./internal/builder/nativetest/
-
-      # Print where and as whom the engine runs exe actions (MSISPEC-RESULTS
-      # CA-05). The x64 package under emulation on Arm64 tests Windows'
-      # emulation, not the package.
-      - name: go test (exe action results)
-        if: runner.os == 'Windows' && runner.arch == 'X64'
-        shell: bash
-        run: go test -v -count=1 -run 'TestMsiexecEXEActions' ./internal/builder/nativetest/
-
-      # Print what the engine writes for folder, program and URL shortcuts
-      # (MSISPEC-RESULTS SHORTCUT-03, SHORTCUT-04).
-      - name: go test (shortcut target results)
-        if: runner.os == 'Windows' && runner.arch == 'X64'
-        shell: bash
-        run: go test -v -count=1 -run 'TestMsiexecShortcutTargets' ./internal/builder/nativetest/
-
-      # Verbose run of the file type install and uninstall checks
-      # (MSISPEC-RESULTS REG-07).
-      - name: go test (file type results)
-        if: runner.os == 'Windows' && runner.arch == 'X64'
-        shell: bash
-        run: go test -v -count=1 -run 'TestMsiexecFileTypes' ./internal/builder/nativetest/
-
-      # Print the windows of the remove page runs and the ARP entry
-      # (MSISPEC-RESULTS UI-09, UI-10).
-      - name: go test (remove page results)
-        if: runner.os == 'Windows' && runner.arch == 'X64'
-        shell: bash
-        run: go test -v -count=1 -run 'TestFullUIRemoveDialog|TestICEFullUIRemove' ./internal/builder/nativetest/
-
-      # Print the cases of the spec audit (MSISPEC-RESULTS PROP-02,
-      # SEARCH-02, FILE-04, UPG-08, UPG-09, CA-07).
-      - name: go test (spec audit results)
-        if: runner.os == 'Windows' && runner.arch == 'X64'
-        shell: bash
-        run: go test -v -count=1 -run 'TestMsiexecOSProperties|TestMsiexecSearchesOSFileVersion|TestMsiexecUsesMsiFileHash|TestMsiexecUpgradeVersions|TestMsiexecFirewallPortLists' ./internal/builder/nativetest/
-
-      # Print what MsiLockPermissionsEx and permission grants do to the
-      # ACEs an object inherits or already has (MSISPEC-RESULTS SEC-02).
-      - name: go test (permission results)
-        if: runner.os == 'Windows' && runner.arch == 'X64'
-        shell: bash
-        run: go test -v -count=1 -run 'TestMsiexecSDDLWithoutProtection|TestMsiexecGrants' ./internal/builder/nativetest/
-
-      # Print where upgrades of installDir.remember packages go, silently
-      # and through the wizard (MSISPEC-RESULTS SEARCH-06, SEARCH-07, UI-08).
-      - name: go test (remembered install folder results)
-        if: runner.os == 'Windows' && runner.arch == 'X64'
-        shell: bash
-        run: go test -v -count=1 -timeout 25m -run 'TestMsiexecRemember|TestFullUIRemember' ./internal/builder/nativetest/
-
-      # Install packages as a standard user (MSISPEC-RESULTS INST-02,
-      # PROP-01). The runner is thrown away after the job, so the step
-      # creates a local user with a random password and allows non-admin
-      # installs, which Windows Server turns off by default (DisableMsi).
-      - name: go test (non-admin)
-        if: runner.os == 'Windows' && runner.arch == 'X64'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $bytes = [byte[]]::new(24)
-          [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
-          $password = [Convert]::ToBase64String($bytes) + 'aA1!'
-          "::add-mask::$password"
-          New-LocalUser -Name msitest -Password (ConvertTo-SecureString $password -AsPlainText -Force) -PasswordNeverExpires | Out-Null
-          $policy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer'
-          if (-not (Test-Path $policy)) { New-Item $policy -Force | Out-Null }
-          Set-ItemProperty $policy -Name DisableMsi -Value 0 -Type DWord
-          $env:MSI_BUILDER_NONADMIN_USER = 'msitest'
-          $env:MSI_BUILDER_NONADMIN_PASSWORD = $password
-          go test -v -count=1 -run 'TestNonAdmin' ./internal/builder/nativetest/
-          if ($LASTEXITCODE -ne 0) { throw "go test exited with $LASTEXITCODE" }
 
       - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         if: runner.os == 'Linux'
