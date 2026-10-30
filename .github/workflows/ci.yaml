@@ -66,7 +66,7 @@ jobs:
         os:
           - ubuntu-26.04
           - windows-latest
-          # Only the run action tests, see go test (Windows on Arm).
+          # Only a few native tests, see go test (Windows on Arm).
           - windows-11-arm
     permissions:
       contents: read
