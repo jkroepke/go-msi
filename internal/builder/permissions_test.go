@@ -196,7 +196,7 @@ func TestPermissionGrants(t *testing.T) {
 		name := byNumber[first+i]
 		r := rowWhere(t, database, "CustomAction", func(r []any) bool { return r[0] == name })
 
-		if r[2] != action.property || r[3] != action.target || strings.TrimSuffix(fmt.Sprint(conds[name]), "<nil>") != action.cond {
+		if (action.property != "BuilderRun" && fmt.Sprint(r[1]) != "51") || r[2] != action.property || r[3] != action.target || strings.TrimSuffix(fmt.Sprint(conds[name]), "<nil>") != action.cond {
 			t.Errorf("action %d at %d: %v condition %v, want %s=%q if %q", i, first+i, r, conds[name], action.property, action.target, action.cond)
 		}
 	}
@@ -249,8 +249,9 @@ func TestPermissionGrants(t *testing.T) {
 }
 
 // TestPermissionGrantRoom builds the most grants that fit after
-// InstallServices, which MsiConfigureServices at 5850 halves, and after
-// InstallFiles without services, where DuplicateFiles (4210) leaves more.
+// InstallServices, which MsiConfigureServices at 5850 halves, and 100
+// after InstallFiles without services, where the minimal package has no
+// numbered action before RegisterUser (6000).
 func TestPermissionGrantRoom(t *testing.T) {
 	t.Parallel()
 

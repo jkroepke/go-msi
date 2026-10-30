@@ -2,6 +2,7 @@ package builder
 
 import (
 	"slices"
+	"sort"
 	"strconv"
 
 	"github.com/jkroepke/msi-builder/internal/cadll"
@@ -192,7 +193,7 @@ func (b *build) grantData() {
 // anchor and the next numbered action, such as MsiConfigureServices (5850)
 // after InstallServices, with the number that fits, before numbering fails
 // with a less helpful error. It numbers the sequence with fewer grants
-// until it fits; other actions around the anchor take numbers there too.
+// to find how many fit; other actions around the anchor take numbers there too.
 func (b *build) checkGrantRoom() {
 	actions := b.schedules[seqInstallExecute]
 	if len(b.grantSetters) == 0 {
@@ -203,20 +204,26 @@ func (b *build) checkGrantRoom() {
 		return
 	}
 
-	for fit := len(b.grantSetters)/2 - 1; fit >= 0; fit-- {
+	// Fewer grants never need more numbers, so the most that fit is found
+	// by bisection.
+	fits := func(count int) bool {
 		dropped := make(map[string]bool, len(b.grantSetters))
-		for _, name := range b.grantSetters[2*fit:] {
+		for _, name := range b.grantSetters[2*count:] {
 			dropped[name] = true
 		}
 
-		fewer := slices.DeleteFunc(slices.Clone(actions), func(a sequence.Action) bool { return dropped[a.Name] })
-		if _, err := sequence.Number(fewer); err == nil {
-			b.errorf("components", "%d permission grants do not fit: each takes two actions after %s, which the package's other "+
-				"actions there share; at most %d fit in this package", len(b.grants), b.grantAnchor, fit)
+		_, err := sequence.Number(slices.DeleteFunc(slices.Clone(actions), func(a sequence.Action) bool { return dropped[a.Name] }))
 
-			return
-		}
+		return err == nil
 	}
+
+	if !fits(0) {
+		return // the numbering error is not the grants'
+	}
+
+	most := sort.Search(len(b.grantSetters)/2, func(count int) bool { return !fits(count + 1) })
+	b.errorf("components", "%d permission grants do not fit: each takes two actions after %s, which the package's other "+
+		"actions there share; at most %d fit in this package", len(b.grants), b.grantAnchor, most)
 }
 
 // grantSchedule adds the deferred grant actions after anchor. They do not
