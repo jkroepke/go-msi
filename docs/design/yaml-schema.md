@@ -919,8 +919,8 @@ What gets ended, and when:
   user's side only). Ending a program loses what it has not saved, so
   `terminate: false` suits editors and tools where the user should decide;
   the engine's files-in-use handling then deals with what still runs.
-- A console program has no window, so it is ended, or left alone with
-  `terminate: false`.
+- A console program has no window of its own (its console window is
+  left alone), so it is ended, or left alone with `terminate: false`.
 - A service the package installs is stopped by its `control` events
   first when `stopOnInstall` and `stopOnUninstall` are on (the defaults);
   without them its process is ended like any other, and the service's

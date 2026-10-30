@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -189,6 +190,10 @@ func startHelper(t *testing.T, exe string, args ...string) *running {
 	t.Helper()
 
 	proc := &running{cmd: exec.CommandContext(context.Background(), exe, args...), done: make(chan struct{})} //nolint:gosec // test-controlled path
+	// Without a console of its own, so a console window cannot take the
+	// place of the helper's window when go test runs without a console.
+	proc.cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000} // CREATE_NO_WINDOW
+
 	if err := proc.cmd.Start(); err != nil {
 		t.Fatalf("starting %s: %v", exe, err)
 	}

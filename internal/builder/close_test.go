@@ -16,7 +16,7 @@ func TestCloseApps(t *testing.T) {
 	t.Parallel()
 
 	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
-	cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe, "tray.exe": exe})
+	cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe, "tray.exe": exe, "agent.exe": exe})
 
 	comp := cfg.Components[0]
 	comp.Files[0].Close = &config.Close{}
@@ -25,13 +25,17 @@ func TestCloseApps(t *testing.T) {
 		ID: "Tray", Directory: comp.Directory,
 		Files: []*config.File{{Source: "tray.exe", Close: &config.Close{Timeout: &timeout, Terminate: new(false)}}},
 	})
-	cfg.Features[0].Components = append(cfg.Features[0].Components, cfg.Components[1])
+	cfg.Components = append(cfg.Components, &config.Component{
+		ID: "Agent", Directory: comp.Directory, Files: []*config.File{{Source: "agent.exe", Close: &config.Close{}}},
+	})
+	cfg.Features[0].Components = append(cfg.Features[0].Components, cfg.Components[1], cfg.Components[2])
 
 	res := mustBuild(t, cfg)
 	database := res.Database
 
 	dir := "[" + comp.Directory + "]"
 	want := strings.Join([]string{
+		"$Agent=2 OR $Agent=3\x1f1388|\x1f" + dir + "agent.exe",
 		"$" + comp.ID + "=2 OR $" + comp.ID + "=3\x1f1388|\x1f" + dir + "hello.exe",
 		"$Tray=2 OR $Tray=3\x1f5dc|\x1f" + dir + "tray.exe",
 	}, "\n")
@@ -80,20 +84,26 @@ func TestCloseApps(t *testing.T) {
 		t.Errorf("BuilderCloseExec at %d is not between InstallInitialize and RemoveFiles: %v", seq["BuilderCloseExec"], seq)
 	}
 
-	// Only hello.exe terminates: one type-51 action, run by the engine
-	// under the component condition, appends its path to the deferred
-	// action's data, right before that action.
+	// hello.exe and agent.exe terminate, tray.exe does not: one type-51
+	// action per file, run by the engine under the component condition,
+	// appends its path to the deferred action's data, right before that
+	// action.
+	setterOf := map[string]string{"hello.exe": "$" + comp.ID, "agent.exe": "$Agent"}
+
 	var setters []string
 
 	for _, row := range rows(t, database, "CustomAction") {
 		if strings.HasPrefix(fmt.Sprint(row[0]), "BuilderCloseSet") {
 			setters = append(setters, fmt.Sprint(row[0]))
 
-			if fmt.Sprint(row[1]) != "51" || row[2] != "BuilderCloseExec" || row[3] != "[BuilderCloseExec]"+dir+"hello.exe|" {
+			name := strings.TrimSuffix(strings.TrimPrefix(fmt.Sprint(row[3]), "[BuilderCloseExec]"+dir), "|")
+			state, ok := setterOf[name]
+
+			if !ok || fmt.Sprint(row[1]) != "51" || row[2] != "BuilderCloseExec" || row[3] != "[BuilderCloseExec]"+dir+name+"|" {
 				t.Errorf("setter row %v", row)
 			}
 
-			if want := "$" + comp.ID + "=2 OR $" + comp.ID + "=3"; conds[fmt.Sprint(row[0])] != want {
+			if want := state + "=2 OR " + state + "=3"; conds[fmt.Sprint(row[0])] != want {
 				t.Errorf("setter condition %v, want %q", conds[fmt.Sprint(row[0])], want)
 			}
 
@@ -103,8 +113,8 @@ func TestCloseApps(t *testing.T) {
 		}
 	}
 
-	if len(setters) != 1 {
-		t.Errorf("setters %v, want one for hello.exe", setters)
+	if len(setters) != 2 {
+		t.Errorf("setters %v, want one each for hello.exe and agent.exe", setters)
 	}
 
 	// The reset runs first and unconditionally, so a value set before
@@ -119,8 +129,9 @@ func TestCloseApps(t *testing.T) {
 	}
 
 	for _, name := range setters {
-		if seq["BuilderCloseReset"] >= seq[name] {
-			t.Errorf("BuilderCloseReset at %d is not before %s at %d", seq["BuilderCloseReset"], name, seq[name])
+		if seq["BuilderCloseReset"] >= seq[name] || seq[name] >= seq["BuilderCloseExec"] {
+			t.Errorf("%s at %d is not between BuilderCloseReset at %d and BuilderCloseExec at %d",
+				name, seq[name], seq["BuilderCloseReset"], seq["BuilderCloseExec"])
 		}
 	}
 

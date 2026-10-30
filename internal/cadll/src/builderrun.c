@@ -1835,10 +1835,12 @@ typedef struct {
 
 // postClose is the EnumWindows callback: it posts WM_CLOSE to a top-level
 // window of a target process. The input method windows that the system
-// gives every GUI thread are left alone.
+// gives every GUI thread are left alone, and so is a console window, which
+// the console host may report as the program's: closing it ends every
+// process attached to the console, not only this one.
 static BOOL WINAPI postClose(HWND window, INTPTR param)
 {
-    static const WCHAR ime[] = u"IME", msctf[] = u"MSCTFIME UI";
+    static const WCHAR ime[] = u"IME", msctf[] = u"MSCTFIME UI", console[] = u"ConsoleWindowClass";
     closeWindows *w = (closeWindows *)param;
     DWORD pid = 0;
     GetWindowThreadProcessId(window, &pid);
@@ -1849,9 +1851,9 @@ static BOOL WINAPI postClose(HWND window, INTPTR param)
         if (w->hidden ? w->targets[i].visible != 0 || IsWindowVisible(window) : !IsWindowVisible(window) || GetWindow(window, GW_OWNER)) {
             break;
         }
-        WCHAR cls[16];
-        int len = GetClassNameW(window, cls, 16);
-        if (len > 0 && (wieqi(cls, ime) || wieqi(cls, msctf))) {
+        WCHAR cls[24];
+        int len = GetClassNameW(window, cls, 24);
+        if (len > 0 && (wieqi(cls, ime) || wieqi(cls, msctf) || wieqi(cls, console))) {
             break;
         }
         if (PostMessageW(window, WM_CLOSE, 0, 0)) {
