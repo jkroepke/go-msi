@@ -301,10 +301,10 @@ func (cc *compConv) removeFile(elm *elem) {
 func (cc *compConv) purge(elm *elem) {
 	conv := cc.c
 	prop := elm.attr(attrProperty)
-	on := elm.attr("On")
+	when := elm.attr("On")
 	cond := conv.value(elm, "Condition")
 
-	if (prop == "" || prop == cc.cp.dir) && (on == "" || on == "uninstall") && !config.IsPublicProperty(cc.cp.dir) &&
+	if (prop == "" || prop == cc.cp.dir) && (when == "" || when == "uninstall") && !config.IsPublicProperty(cc.cp.dir) &&
 		cc.out.get("purge") == nil {
 		if cond != "" {
 			cc.out.set("purge", newMap().set("condition", cond))
@@ -317,9 +317,9 @@ func (cc *compConv) purge(elm *elem) {
 
 	entry := newMap().set("property", cmp.Or(prop, cc.cp.dir))
 
-	switch on {
+	switch when {
 	case onInstall, onBoth:
-		entry.set("on", on)
+		entry.set("on", when)
 	}
 
 	if cond != "" {
