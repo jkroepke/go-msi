@@ -234,7 +234,7 @@ func (c *converter) allUsers(pkgOut *omap, scope string) (string, bool) {
 		switch c.value(elm, "Value") {
 		case "2":
 			c.todof(pkgOut, "scope", elm.line,
-				"ALLUSERS=2 lets the user choose the scope; use scope perUserOrMachine or perMachineOrUser")
+				"ALLUSERS=2 lets the user choose the scope; use scope perUserOrMachine or perMachineOrUser, which need installerVersion 5.0")
 		case "":
 			scope = "perUser"
 		}
@@ -397,7 +397,8 @@ func (c *converter) ownUpgradeRow(upgrade *omap, kid *elem) bool {
 			"check the conditions that test it", kid.attr("Property"))
 	case !kid.yes("OnlyDetect"):
 		c.todof(upgrade, "", kid.line, "an UpgradeVersion for the package's own UpgradeCode (versions %s to %s) is a hand-made major upgrade; "+
-			"msi-builder writes its own, which removes every older version, check the upgrade keys",
+			"msi-builder writes its own, which removes every older version and never a newer one (downgrade: allow installs "+
+			"next to a newer version), check the upgrade keys",
 			orAny(c.value(kid, "Minimum")), orAny(c.value(kid, "Maximum")))
 	default:
 		return false

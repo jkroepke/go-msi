@@ -80,7 +80,8 @@ func (c *converter) emitUI() {
 		}
 	case "WixUI_Advanced":
 		wizard.set("enabled", true)
-		c.todof(wizard, "enabled", line, "WixUI_Advanced: set package.scope to perUserOrMachine or perMachineOrUser for the scope page")
+		c.todof(wizard, "enabled", line, "WixUI_Advanced: set package.scope to perUserOrMachine or perMachineOrUser, which need "+
+			"installerVersion 5.0, for the scope page")
 	default:
 		wizard.set("enabled", true)
 		c.todof(wizard, "enabled", line, "the wizard %s is not a WiX standard wizard; check the ui keys", wizardID)
