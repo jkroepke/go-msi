@@ -557,7 +557,7 @@ static void abandon(output *o)
 static void pump(MSIHANDLE install, output *o)
 {
     int exited = 0;
-    unsigned long long deadline = 0;
+    unsigned long long deadline = 0, lastPoll = GetTickCount64();
     for (;;) {
         // The grace period is also checked here, so that a leftover process
         // that keeps writing does not keep the action alive.
@@ -614,9 +614,12 @@ static void pump(MSIHANDLE install, output *o)
                     GetOverlappedResult(o->pipe, &ov, &got, 1);
                     eof = 1;
                     done = 1;
-                } else if (!exited && !o->cancelled && cancelled(install)) {
-                    o->cancelled = 1;
-                    stop(o);
+                } else if (!exited && !o->cancelled) {
+                    lastPoll = GetTickCount64();
+                    if (cancelled(install)) {
+                        o->cancelled = 1;
+                        stop(o);
+                    }
                 }
             }
         }
@@ -627,6 +630,15 @@ static void pump(MSIHANDLE install, output *o)
         // pipe is the end.
         o->len += got;
         emitLines(install, o, scanFrom);
+        // A child that writes without line ends completes no line and times
+        // out no wait, so the poll runs on the clock here as well.
+        if (!exited && !o->cancelled && GetTickCount64() - lastPoll >= CANCEL_POLL_MS) {
+            lastPoll = GetTickCount64();
+            if (cancelled(install)) {
+                o->cancelled = 1;
+                stop(o);
+            }
+        }
     }
     if (o->len && emitLine(install, o->buf, (int)o->len) == IDCANCEL && !o->cancelled) {
         o->cancelled = 1;
