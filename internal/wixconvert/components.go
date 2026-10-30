@@ -367,8 +367,8 @@ func (cc *compConv) finish() { //nolint:cyclop // one pass in a fixed order; spl
 	}
 
 	for _, value := range cc.hkcuKeyPaths {
-		// Not the first registry value: name it as the key path.
-		if cc.out.get("registry") != nil && cc.files == 0 && cc.keyPath == "" {
+		// Not the first resource: name it as the key path.
+		if (cc.out.get("registry") != nil || cc.files > 0) && cc.keyPath == "" {
 			cc.out.set("keyPath", value.get("id"))
 		} else {
 			value.del("id")

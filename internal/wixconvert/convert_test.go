@@ -565,6 +565,11 @@ func TestConvertBuiltCodeOfKeyPathID(t *testing.T) {
           </RegistryKey>
           <File Id="notes.txt" Source="notes.txt" />
         </Component>
+        <!-- An HKCU key path before a file stays the key path. -->
+        <Component Id="Prefs">
+          <RegistryValue Id="prefs" Root="HKCU" Key="Software\Example\Hello" Name="prefs" Value="1" Type="integer" KeyPath="yes" />
+          <File Id="prefs.ini" Source="prefs.ini" />
+        </Component>
       </Directory>
     </StandardDirectory>
   </Package>
@@ -582,6 +587,7 @@ func TestConvertBuiltCodeOfKeyPathID(t *testing.T) {
 
 	for _, want := range []string{"guid: '{00000000-0000-4000-8000-000000000001}'", "- id: installed\n",
 		"guid: '{00000000-0000-4000-8000-000000000002}'", "keyPath: installed\n",
+		"keyPath: prefs\n",
 	} {
 		if !strings.Contains(string(res.YAML), want) {
 			t.Errorf("YAML lacks %q:\n%s", want, res.YAML)
