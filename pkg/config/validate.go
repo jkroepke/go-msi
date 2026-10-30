@@ -1813,9 +1813,12 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 // executable out of the command line and, when the path has a space, tries
 // every prefix first (C:\Program.exe for C:\Program Files\App\tool.exe), so
 // a file an unprivileged user can create runs in place of the real one,
-// as LocalSystem in a deferred action (CWE-428). The check looks at the
-// first token only: a literal path with a space cannot be written
-// unquoted, and a bare name such as net.exe has no space to split on.
+// as LocalSystem in a deferred action without impersonation (CWE-428).
+// The check looks at the first token only and catches the [...] case
+// msi-builder's own examples lead to; an unquoted literal path with a
+// space (C:\Program Files\App\tool.exe) has the same problem and is the
+// author's to quote, since the token C:\Program alone does not show where
+// the path ends.
 func (v *validator) quotedExecutable(field, command string) {
 	command = strings.TrimLeft(command, " \t")
 	if command == "" || command[0] == '"' {
@@ -1825,7 +1828,8 @@ func (v *validator) quotedExecutable(field, command string) {
 	token, _, _ := strings.Cut(command, " ")
 	if strings.Contains(token, "[") {
 		v.errorf(field, "the executable must be quoted when it comes from a property or folder, as in \"%s\": "+
-			"an unquoted path with a space is tried piece by piece (C:\\Program.exe first) and the action runs as LocalSystem", token)
+			"an unquoted path with a space is tried piece by piece (C:\\Program.exe first), and a deferred action without "+
+			"impersonation runs as LocalSystem", token)
 	}
 }
 

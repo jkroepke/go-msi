@@ -1558,7 +1558,7 @@ Kinds, exactly one per action:
 | `setProperty` | 51 | Never deferred |
 | `setDirectory` | 35 | After CostFinalize |
 | `error` | 19 | Text or an `Error` table number |
-| `exec` | 34 | `command` is a formatted command line; deferred commands are formatted when the script is written, so no CustomActionData is needed |
+| `exec` | 34 | `command` is a formatted command line; deferred commands are formatted when the script is written, so no CustomActionData is needed. The executable must be quoted when it comes from a property or folder reference (`"[#tool.exe]" --init`): an unquoted path with a space is tried piece by piece by `CreateProcess` |
 | `execProperty` | 50 | `property` holds the executable, `arguments` the rest |
 | `run` | 1 + 51 | `command` and an optional `directory`; see below |
 | `dll` | 1 | `binary` (a `binaries` key) and `entry` |
@@ -1577,7 +1577,10 @@ warning. The command line is formatted when the action is scheduled, like
 through `CustomActionData` to deferred, rollback and commit actions and
 through the `BuilderRun` property to immediate ones. `hideTarget` hides the
 command in both places. `return` is required (`check` or `ignore`;
-`asyncWait` is allowed, `asyncNoWait` is not). Impersonation follows
+`asyncWait` is allowed, `asyncNoWait` is not). The executable must be
+quoted when it comes from a property or folder reference, as for `exec`;
+`directory` is the working directory only, not where a bare program name
+is looked up. Impersonation follows
 `impersonate`: the DLL starts the process with the impersonated user's
 token when there is one. The key `BuilderRun` is reserved in `binaries`.
 Output is decoded as UTF-8 when it is valid UTF-8 and in the OEM code page

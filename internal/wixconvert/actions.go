@@ -280,6 +280,10 @@ func (c *converter) programKind(action *omap, custom *elem) bool { //nolint:cycl
 		action.set("run", newMap().set("command", strings.TrimSpace(`"[#`+file+`]" `+exe)))
 	case custom.has(attrDirectory) && custom.has("ExeCommand"):
 		action.set("run", newMap().set("command", exe).set("directory", c.dirRef(custom.attr(attrDirectory))))
+
+		if token, _, _ := strings.Cut(strings.TrimLeft(exe, " \t"), " "); !strings.HasPrefix(token, `"`) && strings.Contains(token, "[") {
+			c.todof(action, "run", custom.line, "quote the executable %s: an unquoted path with a space is tried piece by piece by CreateProcess", token)
+		}
 	case custom.has(attrProperty) && custom.has("ExeCommand"):
 		action.set("execProperty", newMap().set("property", custom.attr(attrProperty)).set("arguments", exe))
 	case binary != "" && quietExec[custom.attr("DllEntry")]:
