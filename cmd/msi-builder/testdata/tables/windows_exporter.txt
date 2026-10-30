@@ -524,7 +524,7 @@ ARPNOREPAIR	1
 ARPPRODUCTICON	icon.ico
 ARPSIZE	10000
 ARPURLINFOABOUT	https://github.com/prometheus-community/windows_exporter
-BuilderCloseApps	$Executable=2 OR $Executable=31388|[APPLICATIONFOLDER]windows_exporter.exe
+BuilderCloseApps	$Executable=2 OR $Executable=3␟1388|␟[APPLICATIONFOLDER]windows_exporter.exe
 CONFIG_FILE	config.yaml
 DefaultUIFont	DefaultFont
 ErrorDialog	ErrorDlg

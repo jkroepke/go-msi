@@ -109,7 +109,7 @@ func TestParseErrors(t *testing.T) {
 		"former wizard key": {"schema: msi-builder/v1\nui: {wizard: true}\n", "wizard"},
 		"enabled value":     {"schema: msi-builder/v1\nui: {enabled: featureTree}\n", "into bool"},
 		"close value":       {"schema: msi-builder/v1\ncomponents: [{files: [{source: a.exe, close: soon}]}]\n", "`soon` into bool"},
-		"close key":         {"schema: msi-builder/v1\ncomponents: [{files: [{source: a.exe, close: {timout: 1s}}]}]\n", "timout"},
+		"close key":         {"schema: msi-builder/v1\ncomponents: [{files: [{source: a.exe, close: {wait: 1s}}]}]\n", "wait"},
 		"null option": {
 			"schema: msi-builder/v1\nui: {dialogs: [{id: D, title: T, after: X, fields: [{property: P, type: choice, options: [a, b, ~]}]}]}\n",
 			"an option cannot be empty",

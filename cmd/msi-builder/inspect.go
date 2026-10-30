@@ -174,7 +174,7 @@ func formatValue(v any) string {
 	case nil:
 		return ""
 	case string:
-		return val
+		return showControls(val)
 	case int:
 		return strconv.Itoa(val)
 	case []byte:
@@ -184,4 +184,18 @@ func formatValue(v any) string {
 	default:
 		return fmt.Sprint(val)
 	}
+}
+
+// showControls replaces the C0 control characters in a value with their
+// control pictures (U+2400 to U+241F), so that a tab, a newline or the
+// U+001F separator in the private properties of the embedded custom
+// action DLL keeps one row on one line and the output text.
+func showControls(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 {
+			return 0x2400 + r
+		}
+
+		return r
+	}, s)
 }
