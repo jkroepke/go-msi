@@ -176,26 +176,26 @@ func (c *converter) progress() map[string]*elem {
 	return texts
 }
 
-// setProgress sets the progress key of the action id from its
+// setProgress sets the progress key of the action actionID from its
 // ProgressText: the Message attribute of WiX v4 or later, or the element
 // text of WiX v3.
-func (c *converter) setProgress(action *omap, id string, texts map[string]*elem) {
-	e := texts[id]
-	if e == nil {
+func (c *converter) setProgress(action *omap, actionID string, texts map[string]*elem) {
+	text := texts[actionID]
+	if text == nil {
 		return
 	}
 
-	delete(texts, id)
+	delete(texts, actionID)
 
-	text := cmp.Or(e.attr("Message"), strings.TrimSpace(e.text))
-	if text == "" {
+	message := cmp.Or(text.attr("Message"), strings.TrimSpace(text.text))
+	if message == "" {
 		return
 	}
 
-	action.set("progress", text)
+	action.set("progress", message)
 
-	if e.has("Template") {
-		c.todof(action, "progress", e.line, "the progress template of %s is not converted: msi-builder writes no ActionText templates", id)
+	if text.has("Template") {
+		c.todof(action, "progress", text.line, "the progress template of %s is not converted: msi-builder writes no ActionText templates", actionID)
 	}
 }
 

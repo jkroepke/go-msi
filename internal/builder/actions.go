@@ -727,17 +727,17 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 
 	slices.SortStableFunc(b.actions, func(a, b *actionInfo) int { return strings.Compare(a.name, b.name) })
 
-	for _, a := range b.actions {
-		if !scheduled[a.name] && !a.fromUI {
-			b.warnf("customActions", "custom action %s is not scheduled in any sequence", a.name)
+	for _, action := range b.actions {
+		if !scheduled[action.name] && !action.fromUI {
+			b.warnf("customActions", "custom action %s is not scheduled in any sequence", action.name)
 		}
 
-		caTable.Add(a.name, a.typ, a.source, a.target, nil)
+		caTable.Add(action.name, action.typ, action.source, action.target, nil)
 
 		// Without a template: the action kinds msi-builder writes send
 		// no ActionData messages (specification section 17.8).
-		if a.progress != "" {
-			b.table("ActionText").Add(a.name, a.progress, nil)
+		if action.progress != "" {
+			b.table("ActionText").Add(action.name, action.progress, nil)
 		}
 	}
 

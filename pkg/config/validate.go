@@ -1688,17 +1688,17 @@ func (v *validator) customActions(cfg *Config, known *refs) {
 // progressWidth is the width of ActionText.Description.
 const progressWidth = 64
 
-// checkProgress checks a custom action's progress text at path: not blank,
+// checkProgress checks a custom action's progress text at textPath: not blank,
 // and a warning when it is wider than its column.
-func (v *validator) checkProgress(at, text string) {
+func (v *validator) checkProgress(textPath, text string) {
 	if text != "" && strings.TrimSpace(text) == "" {
-		v.errorf(at, "the text is blank; leave it out for no progress text")
+		v.errorf(textPath, "the text is blank; leave it out for no progress text")
 
 		return
 	}
 
 	if n := utf8.RuneCountInString(text); n > progressWidth {
-		v.warnf(at, "%d characters exceed the column width of %d (ICE03)", n, progressWidth)
+		v.warnf(textPath, "%d characters exceed the column width of %d (ICE03)", n, progressWidth)
 	}
 }
 

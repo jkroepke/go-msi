@@ -118,7 +118,7 @@ func TestFullUIProgressText(t *testing.T) { //nolint:paralleltest // msiexec run
 	}
 
 	if !strings.Contains(seen, "Waiting for ") {
-		t.Errorf("CA-08: no window showed the progress text of WaitStep")
+		t.Error("CA-08: no window showed the progress text of WaitStep")
 	}
 
 	t.Logf("CA-08 UI:\n%s", excerpt(seen, "Waiting", "Preparing", "Installing"))
