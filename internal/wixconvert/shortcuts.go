@@ -83,7 +83,7 @@ func (c *converter) fileShortcut(f *omap, e *elem, ref *fileRef, tree map[*dir]b
 // markAdvertised records an advertised shortcut that became a plain one.
 func (c *converter) markAdvertised(e *elem) {
 	if e.yes("Advertise") {
-		c.advertised = append(c.advertised, strconv.Itoa(e.line))
+		c.advertised = append(c.advertised, e.line)
 	}
 }
 

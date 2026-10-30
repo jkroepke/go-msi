@@ -95,7 +95,7 @@ type converter struct {
 	compByID     map[string]*comp
 	built        *BuiltPackage
 	claimed      map[string]bool // the built components a component took
-	advertised   []string        // the lines of advertised shortcuts
+	advertised   []int           // the lines of advertised shortcuts
 	doc          *document
 	wixVars      map[string]string
 	dirs         map[string]*dir

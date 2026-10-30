@@ -396,12 +396,14 @@ func TestConvertAdvertisedLateRemoval(t *testing.T) {
     <Component Id="Menu" Directory="ProgramMenuFolder" Guid="2b8f4e17-5a0c-4d93-b6e2-9f1a3c7d5e08">
       <Shortcut Name="Hello docs" Advertise="yes" />
       <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="menu" Value="1" KeyPath="yes" />
+      <Shortcut Name="Hello link" Target="[#hello.exe]" Advertise="yes" />
+      <Shortcut Name="Hello folder" Target="[INSTALLFOLDER]" Advertise="yes" />
     </Component>
   </Package>
 </Wix>
 `
 
-	const note = "the WiX package's advertised shortcuts (lines 10, 11) are deleted by this late removal"
+	const note = "the WiX package's advertised shortcuts (lines 10, 11, 17, 18) are deleted by this late removal"
 
 	for upgrade, want := range map[string]bool{
 		`<MajorUpgrade Schedule="afterInstallExecute" DowngradeErrorMessage="A newer version is installed." />`:    true,
@@ -413,7 +415,7 @@ func TestConvertAdvertisedLateRemoval(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// The shortcut without a Target in line 16 is left out, so the
+		// The shortcut without a Target in line 15 is left out, so the
 		// note does not list it.
 		got := slices.ContainsFunc(res.Notes, func(n wixconvert.Note) bool { return strings.HasPrefix(n.Message, note) })
 		if got != want {

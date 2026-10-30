@@ -3,6 +3,7 @@ package wixconvert
 import (
 	"cmp"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -180,9 +181,16 @@ func (c *converter) noteAdvertised() {
 		return
 	}
 
-	lines := "line " + c.advertised[0]
-	if len(c.advertised) > 1 {
-		lines = "lines " + strings.Join(c.advertised, ", ")
+	slices.Sort(c.advertised)
+
+	numbers := make([]string, 0, len(c.advertised))
+	for _, line := range c.advertised {
+		numbers = append(numbers, strconv.Itoa(line))
+	}
+
+	lines := "line " + numbers[0]
+	if len(numbers) > 1 {
+		lines = "lines " + strings.Join(numbers, ", ")
 	}
 
 	c.todof(upgrade, "removeOld", 0,
