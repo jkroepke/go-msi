@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -52,61 +53,21 @@ func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one 
 
 	root := doc.Content[0]
 
-	vars, err := fileVars(root)
+	vars, lines, err := fileVars(root)
 	if err != nil {
 		return nil, err
 	}
 
 	var errs []error
 
-	// A value from the file's vars may use other variables, which are
-	// expanded like any other string; values from the command line and the
-	// environment are taken as they are.
-	resolving := make(map[string]bool)
-	resolved := make(map[string]string)
-
-	var lookup func(string) (string, bool)
-
-	lookup = func(name string) (string, bool) {
-		if v, ok := opts.Vars[name]; ok {
-			return v, true
-		}
-
-		if opts.LookupEnv != nil {
-			if v, ok := opts.LookupEnv(name); ok {
-				return v, true
-			}
-		}
-
-		if v, ok := resolved[name]; ok {
-			return v, true
-		}
-
-		value, ok := vars[name]
-		if !ok {
-			return "", false
-		}
-
-		if resolving[name] {
-			errs = append(errs, fmt.Errorf("vars.%s: refers to itself through ${%s}", name, name))
-
-			return "", true
-		}
-
-		resolving[name] = true
-		value = expand(value, "vars."+name, lookup, &errs)
-		resolving[name] = false
-		resolved[name] = value
-
-		return value, true
-	}
+	r := &resolver{opts: opts, vars: vars, lines: lines, resolved: make(map[string]string), budget: maxSubstituted, errs: &errs}
 
 	for i := 0; i < len(root.Content); i += 2 {
 		if root.Content[i].Value == "vars" {
 			continue
 		}
 
-		substitute(root.Content[i+1], lookup, &errs)
+		substitute(root.Content[i+1], r.lookup, &errs)
 	}
 
 	if len(errs) > 0 {
@@ -148,22 +109,114 @@ func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one 
 	return cfg, nil
 }
 
-func fileVars(root *yaml.Node) (map[string]string, error) {
+// fileVars returns the file's vars and the line of each value.
+func fileVars(root *yaml.Node) (map[string]string, map[string]int, error) {
+	lines := make(map[string]int)
+
 	for i := 0; i < len(root.Content); i += 2 {
 		if root.Content[i].Value != "vars" {
 			continue
 		}
 
+		node := root.Content[i+1]
+
 		vars := make(map[string]string)
-		if err := root.Content[i+1].Decode(&vars); err != nil {
-			return nil, fmt.Errorf("vars: %w", err)
+		if err := node.Decode(&vars); err != nil {
+			return nil, nil, fmt.Errorf("vars: %w", err)
 		}
 
-		return vars, nil
+		if node.Kind == yaml.MappingNode {
+			for j := 0; j+1 < len(node.Content); j += 2 {
+				lines[node.Content[j].Value] = node.Content[j+1].Line
+			}
+		}
+
+		return vars, lines, nil
 	}
 
-	return make(map[string]string), nil
+	return make(map[string]string), lines, nil
 }
+
+// resolver looks up variables for substitution. A value from the file's
+// vars may use other variables, which are expanded like any other string;
+// values from the command line and the environment are taken as they are.
+// Every value handed out counts against one budget, so nested vars cannot
+// blow up exponentially.
+type resolver struct {
+	opts     Options
+	vars     map[string]string
+	lines    map[string]int
+	resolved map[string]string
+	errs     *[]error
+	stack    []string
+	budget   int
+}
+
+func (r *resolver) lookup(name string) (string, bool) {
+	value, ok := r.resolve(name)
+	if r.budget < 0 {
+		return "", ok
+	}
+
+	r.budget -= len(value)
+	if r.budget < 0 {
+		*r.errs = append(*r.errs, fmt.Errorf("variables expand to more than %d bytes in total", maxSubstituted))
+
+		return "", ok
+	}
+
+	return value, ok
+}
+
+func (r *resolver) resolve(name string) (string, bool) {
+	if v, ok := r.opts.Vars[name]; ok {
+		return v, true
+	}
+
+	if r.opts.LookupEnv != nil {
+		if v, ok := r.opts.LookupEnv(name); ok {
+			return v, true
+		}
+	}
+
+	if v, ok := r.resolved[name]; ok {
+		return v, true
+	}
+
+	value, ok := r.vars[name]
+	if !ok {
+		return "", false
+	}
+
+	// The cycle is reported on the entry that closes it.
+	if i := slices.Index(r.stack, name); i >= 0 {
+		chain := "${" + strings.Join(append(slices.Clone(r.stack[i:]), name), "} -> ${") + "}"
+		*r.errs = append(*r.errs, fmt.Errorf("%s: %s is a cycle", r.where(r.stack[len(r.stack)-1]), chain))
+
+		return "", true
+	}
+
+	r.stack = append(r.stack, name)
+	before := len(*r.errs)
+	value = expand(value, r.where(name), r.lookup, r.errs)
+	r.stack = r.stack[:len(r.stack)-1]
+
+	// A broken entry is reported once, here, and not again where it is used.
+	if len(*r.errs) > before {
+		value = ""
+	}
+
+	r.resolved[name] = value
+
+	return value, true
+}
+
+func (r *resolver) where(name string) string {
+	return fmt.Sprintf("line %d: vars.%s", r.lines[name], name)
+}
+
+// maxSubstituted caps the text that variables put into one document.
+const maxSubstituted = 16 << 20
 
 // yamlNulls are the plain scalars YAML 1.1 and 1.2 read as null, except the
 // empty string, which leaves an optional field unset.
