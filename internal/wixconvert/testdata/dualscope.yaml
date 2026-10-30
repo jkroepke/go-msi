@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
+# Converted from dualscope.wxs by msi-builder convert.
+# Review it, resolve the TODO comments, then run msi-builder validate.
+schema: msi-builder/v1
+product:
+  name: Hello
+  manufacturer: Example
+  version: 1.0.0
+  upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301
+package:
+  # TODO(line 4): WiX takes the platform from wix build -arch; check package.platform
+  platform: x64
+  scope: perUserOrMachine
+upgrade:
+  downgradeMessage: newer
+installDir:
+  id: INSTALLFOLDER
+  name: Hello
+features:
+  - id: DefaultFeature
+    directory: INSTALLFOLDER
+    allowAbsent: false
+    components: [Component1, Component2, Component3]
+components:
+  - id: Component1
+    files:
+      - source: hello.exe
+  - id: Component2
+    registry:
+      - root: HKLM
+        key: Software\Example\Hello
+        name: InstalledBy
+        value: msi
+    environment:
+      - name: PATH
+        value: '[INSTALLFOLDER]'
+        action: append
+        scope: machine
+    scope: perMachine
+  - id: Component3
+    registry:
+      - root: HKCU
+        key: Software\Example\Hello
+        name: u
+        value: "1"
+    environment:
+      - name: PATH
+        value: '[INSTALLFOLDER]'
+        action: append
+        scope: user
+    scope: perUser

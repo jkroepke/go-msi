@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A dual-scope sample whose components install in one scope only. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301" Scope="perUserOrMachine">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" />
+    </StandardDirectory>
+    <Feature Id="DefaultFeature" ConfigurableDirectory="INSTALLFOLDER" AllowAbsent="no">
+      <Component Directory="INSTALLFOLDER"><File Source="hello.exe" /></Component>
+      <Component Directory="INSTALLFOLDER" Condition="ALLUSERS=1">
+        <RegistryValue Root="HKLM" Key="Software\Example\Hello" Name="InstalledBy" Value="msi" KeyPath="yes" />
+        <Environment Id="PathM" Name="PATH" Value="[INSTALLFOLDER]" Part="last" System="yes" Action="set" />
+      </Component>
+      <Component Directory="INSTALLFOLDER" Condition="NOT ALLUSERS=1">
+        <Environment Id="PathU" Name="PATH" Value="[INSTALLFOLDER]" Part="last" System="no" Action="set" />
+        <RegistryValue Root="HKCU" Key="Software\Example\Hello" Name="u" Value="1" KeyPath="yes" />
+      </Component>
+    </Feature>
+  </Package>
+</Wix>

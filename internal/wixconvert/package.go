@@ -214,7 +214,8 @@ func (c *converter) emitScope(pkgOut *omap) {
 		c.perUserNote(pkgOut)
 	}
 
-	if scope != "" && scope != "perMachine" {
+	c.scope = scope
+	if scope != "" && scope != scopeMachine {
 		pkgOut.set("scope", scope)
 	}
 }
@@ -236,7 +237,7 @@ func (c *converter) allUsers(pkgOut *omap, scope string) (string, bool) {
 			c.todof(pkgOut, "scope", elm.line,
 				"ALLUSERS=2 lets the user choose the scope; use scope perUserOrMachine or perMachineOrUser, which need installerVersion 5.0")
 		case "":
-			scope = "perUser"
+			scope = scopeUser
 		}
 	}
 
@@ -372,6 +373,14 @@ var majorUpgradeProperty = map[string]bool{ //nolint:gochecknoglobals // lookup 
 const (
 	valueAny  = "any"
 	valueNone = "none"
+)
+
+// The install scopes, as package.scope and components[].scope name them.
+const (
+	scopeMachine       = "perMachine"
+	scopeUser          = "perUser"
+	scopeUserOrMachine = "perUserOrMachine"
+	scopeMachineOrUser = "perMachineOrUser"
 )
 
 func orAny(version string) string {

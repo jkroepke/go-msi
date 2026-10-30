@@ -244,10 +244,40 @@ const elemShortcut = "Shortcut"
 // $Component, in a condition.
 var actionState = regexp.MustCompile(`[&$][A-Za-z_][A-Za-z0-9_.]*`)
 
+// scopeConditions are the conditions that install a component of a dual
+// package in one scope only: ALLUSERS is 1 per machine and unset per user.
+var scopeConditions = map[string]string{ //nolint:gochecknoglobals // lookup table
+	"ALLUSERS=1":     scopeMachine,
+	`ALLUSERS="1"`:   scopeMachine,
+	"NOT ALLUSERS":   scopeUser,
+	"NOT ALLUSERS=1": scopeUser,
+	`ALLUSERS=""`:    scopeUser,
+}
+
+// scopeCondition returns the components[].scope a condition stands for in
+// a dual package, or "".
+func (c *converter) scopeCondition(cond string) string {
+	if c.scope != scopeUserOrMachine && c.scope != scopeMachineOrUser {
+		return ""
+	}
+
+	normalized := strings.Join(strings.Fields(strings.ReplaceAll(cond, "=", " = ")), " ")
+	normalized = strings.ReplaceAll(normalized, " = ", "=")
+
+	return scopeConditions[normalized]
+}
+
 // componentCondition sets a component's condition. The installer evaluates
 // it before features and components have action states, so msi-builder
 // rejects one that tests them.
 func (c *converter) componentCondition(out *omap, line int, cond string) {
+	if scope := c.scopeCondition(cond); scope != "" {
+		// The condition the builder writes for components[].scope.
+		out.set("scope", scope)
+
+		return
+	}
+
 	out.set("condition", cond)
 
 	if state := actionState.FindString(cond); state != "" {
