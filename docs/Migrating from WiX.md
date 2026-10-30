@@ -831,7 +831,7 @@ Program Files and other users' profiles (expected, not tested). A folder that is
 holds a folder of the package goes only when the whole product is removed,
 not with one feature, on install or on repair, whichever property names it,
 for example one a `SetDirectory` or `SetProperty` points at `INSTALLFOLDER`
-(expected, not tested).
+(tested for an upgrade, expected for a repair and a feature removal).
 
 `msi-builder convert` keeps a `util:RemoveFolderEx` whose property only
 reads back, by a `RegistrySearch`, the component's own folder from a

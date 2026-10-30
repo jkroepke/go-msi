@@ -476,7 +476,8 @@ a link, never followed (tested on Windows). `on:
 install` and `on: both` are for folders the package does not install to,
 and a folder that is or holds a folder of the package goes only when the
 whole product is removed, not with one feature, on install or on repair,
-whichever property names it (expected until tested). It refuses folders in the Windows folder, folders
+whichever property names it (tested for an upgrade, expected for a
+repair and a feature removal). It refuses folders in the Windows folder, folders
 that hold a standard folder, folders behind junctions and the Public
 profile (tested), and drive roots, standard folders such as Program
 Files, other users' profiles and anything in an elevated session a
