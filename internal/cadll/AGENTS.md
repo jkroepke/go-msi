@@ -47,8 +47,10 @@ The custom action DLL of `run` actions and permission grants. Read the root
   goes on with the child alone.
 - Output is read from one named pipe for stdout and stderr (a random
   `\\.\pipe\BuilderRun-<32 hex>` name from `RtlGenRandom`, one instance,
-  inbound: only a named pipe can be read overlapped, and the default pipe
-  security lets no other process write into it). A line ends at `\n`, `\r`
+  inbound: only a named pipe can be read overlapped; the random name, the
+  single instance and the default pipe security, which gives accounts
+  other than the creator, LocalSystem and administrators read access only,
+  keep other accounts from writing into the log). A line ends at `\n`, `\r`
   or `\r\n`; each is logged through `MsiProcessMessage(INSTALLMESSAGE_INFO)`
   with the fixed template `BuilderRun: [1]`, so brackets in the output are
   not formatted. The buffer is 64 KiB (`LINE_BUFFER`); a longer line is
@@ -57,7 +59,10 @@ The custom action DLL of `run` actions and permission grants. Read the root
   (5 s), then the job is ended and the rest is not read; while nothing
   arrives, a zero progress message every `CANCEL_POLL_MS` (1 s) asks the
   installer about a cancel, which `IDCANCEL` from a logged line also
-  signals. A line is decoded as UTF-8 when valid, else in the OEM code
+  signals (that a progress report returns the cancel and stays out of the
+  log is documented, not yet seen: the tests have no UI handler). A read
+  that fails for another reason closes the pipe and the action waits for
+  the child without it, still polling for a cancel. A line is decoded as UTF-8 when valid, else in the OEM code
   page. `chcp 65001` inside a `cmd /c` line does not make cmd.exe's `echo`
   write UTF-8 on the pipe (CA-03 on the x64 and Arm64 runners: the line
   stayed OEM and `€` came out as `?`); PowerShell with

@@ -151,7 +151,7 @@ BOOL WINAPI OpenThreadToken(HANDLE, DWORD, BOOL, HANDLE *);
 BOOL WINAPI DuplicateTokenEx(HANDLE, DWORD, SECURITY_ATTRIBUTES *, int, int, HANDLE *);
 BOOL WINAPI CreateProcessAsUserW(HANDLE, const WCHAR *, WCHAR *, SECURITY_ATTRIBUTES *, SECURITY_ATTRIBUTES *, BOOL, DWORD, void *, const WCHAR *, STARTUPINFOW *, PROCESS_INFORMATION *);
 // RtlGenRandom, exported by advapi32.dll under this name.
-BOOL WINAPI SystemFunction036(void *, DWORD);
+BYTE WINAPI SystemFunction036(void *, DWORD); // returns BOOLEAN, one byte
 
 BOOL WINAPI ConvertStringSidToSidW(const WCHAR *, void **);
 BOOL WINAPI LookupAccountNameW(const WCHAR *, const WCHAR *, void *, DWORD *, WCHAR *, DWORD *, int *);
@@ -184,7 +184,6 @@ int WINAPI MsiEvaluateConditionW(MSIHANDLE, const WCHAR *);
 
 // Values that do not fit an int are macros: C11 allows only int-sized
 // enumerators (6.7.2.2), and clang accepts larger ones silently.
-#define INFINITE 0xFFFFFFFFu
 #define PROTECTED_DACL_SECURITY_INFORMATION 0x80000000u
 #define MAXDWORD_ 0xFFFFFFFFu
 #define INVALID_HANDLE_VALUE ((HANDLE)(INTPTR)-1)
@@ -475,7 +474,8 @@ static const WCHAR msgDupToken[] = {'D', 'u', 'p', 'l', 'i', 'c', 'a', 't', 'e',
 static const WCHAR msgExit[] = {'e', 'x', 'i', 't', ' ', 'c', 'o', 'd', 'e', 0};
 static const WCHAR msgCancel[] = {'c', 'a', 'n', 'c', 'e', 'l', 'l', 'e', 'd', ' ', 'b', 'y', ' ', 't', 'h', 'e', ' ', 'u', 's', 'e', 'r', 0};
 static const WCHAR msgAbandon[] = u"a process the command started keeps the output open after the command exited; its further output is not logged and it is ended";
-static const WCHAR msgReadFail[] = u"ReadFile failed; further output is not logged";
+static const WCHAR msgReadFail[] = u"reading the output failed; further output is not logged";
+static const WCHAR msgResume[] = u"ResumeThread failed";
 static const WCHAR propData[] = {'C', 'u', 's', 't', 'o', 'm', 'A', 'c', 't', 'i', 'o', 'n', 'D', 'a', 't', 'a', 0};
 static const WCHAR propRun[] = {'B', 'u', 'i', 'l', 'd', 'e', 'r', 'R', 'u', 'n', 0};
 
@@ -538,6 +538,15 @@ static void emitLines(MSIHANDLE install, output *o, SIZE_T scanFrom)
     }
 }
 
+// abandon stops reading the pipe while the command may still run: the
+// pipe is closed, so the child's writes fail instead of blocking on a full
+// pipe, and the caller waits for the child without it.
+static void abandon(output *o)
+{
+    CloseHandle(o->pipe);
+    o->pipe = 0;
+}
+
 // pump reads the pipe until every writer has closed it and logs the lines.
 // The read is overlapped, so the wait also watches the child and the
 // installer: when the child has exited and another process keeps the pipe
@@ -550,17 +559,32 @@ static void pump(MSIHANDLE install, output *o)
     int exited = 0;
     unsigned long long deadline = 0;
     for (;;) {
+        // The grace period is also checked here, so that a leftover process
+        // that keeps writing does not keep the action alive.
+        if (!exited && WaitForSingleObject(o->process, 0) == WAIT_OBJECT_0) {
+            exited = 1;
+            deadline = GetTickCount64() + EXIT_GRACE_MS;
+        }
+        if (exited && GetTickCount64() >= deadline) {
+            logf(install, msgAbandon, 0, 0);
+            stop(o);
+            abandon(o);
+            break;
+        }
         OVERLAPPED ov;
         memset(&ov, 0, sizeof ov);
         ov.hEvent = o->event;
         DWORD got = 0;
         SIZE_T scanFrom = o->len;
+        int eof = 0;
         if (!ReadFile(o->pipe, o->buf + o->len, (DWORD)(LINE_BUFFER - o->len), &got, &ov)) {
             DWORD err = GetLastError();
+            if (err == ERROR_BROKEN_PIPE) {
+                break;
+            }
             if (err != ERROR_IO_PENDING) {
-                if (err != ERROR_BROKEN_PIPE) {
-                    logf(install, msgReadFail, 0, err);
-                }
+                logf(install, msgReadFail, 0, err);
+                abandon(o);
                 break;
             }
             int done = 0;
@@ -569,7 +593,11 @@ static void pump(MSIHANDLE install, output *o)
                 DWORD r = WaitForMultipleObjects(exited ? 1 : 2, handles, 0, CANCEL_POLL_MS);
                 if (r == WAIT_OBJECT_0) {
                     if (!GetOverlappedResult(o->pipe, &ov, &got, 0)) {
-                        got = 0;
+                        err = GetLastError();
+                        if (err != ERROR_BROKEN_PIPE) {
+                            logf(install, msgReadFail, 0, err);
+                        }
+                        eof = 1;
                     }
                     done = 1;
                 } else if (r == WAIT_OBJECT_0 + 1) {
@@ -578,11 +606,13 @@ static void pump(MSIHANDLE install, output *o)
                 } else if (r != WAIT_TIMEOUT || (exited && GetTickCount64() >= deadline)) {
                     if (r == WAIT_TIMEOUT) {
                         logf(install, msgAbandon, 0, 0);
-                        stop(o);
+                    } else {
+                        logf(install, msgReadFail, 0, GetLastError());
                     }
+                    stop(o);
                     CancelIoEx(o->pipe, &ov);
                     GetOverlappedResult(o->pipe, &ov, &got, 1);
-                    got = 0;
+                    eof = 1;
                     done = 1;
                 } else if (!exited && !o->cancelled && cancelled(install)) {
                     o->cancelled = 1;
@@ -590,15 +620,29 @@ static void pump(MSIHANDLE install, output *o)
                 }
             }
         }
-        if (got == 0) {
+        if (eof) {
             break;
         }
+        // A zero-length write by the child reads as zero bytes; only a broken
+        // pipe is the end.
         o->len += got;
         emitLines(install, o, scanFrom);
     }
     if (o->len && emitLine(install, o->buf, (int)o->len) == IDCANCEL && !o->cancelled) {
         o->cancelled = 1;
         stop(o);
+    }
+}
+
+// await waits for the command to exit, asking the installer about a cancel
+// while it runs.
+static void await(MSIHANDLE install, output *o)
+{
+    while (WaitForSingleObject(o->process, CANCEL_POLL_MS) == WAIT_TIMEOUT) {
+        if (!o->cancelled && cancelled(install)) {
+            o->cancelled = 1;
+            stop(o);
+        }
     }
 }
 
@@ -630,9 +674,10 @@ static int parse(WCHAR *data, WCHAR **dir, WCHAR **cmd)
 // makePipe creates the pipe the child writes to: a named pipe with a random
 // name, because only a named pipe can be read overlapped. The server end is
 // ours and not inheritable; the client end is the only inheritable handle
-// the child gets. The default security of a named pipe lets others read
-// but not write it, and the single instance is taken, so no other process
-// can write into the log.
+// the child gets. The random name, the single instance and the default
+// security of a named pipe (full control for the creator, LocalSystem and
+// administrators, read for everyone else) keep any other account from
+// writing into the log.
 static int makePipe(MSIHANDLE install, HANDLE *server, HANDLE *client)
 {
     static const WCHAR prefix[] = u"\\\\.\\pipe\\BuilderRun-";
@@ -805,10 +850,15 @@ __declspec(dllexport) UINT WINAPI BuilderRun(MSIHANDLE install)
         CloseHandle(o.job);
         o.job = 0;
     }
-    ResumeThread(pi.hThread);
+    DWORD suspended = ResumeThread(pi.hThread);
     CloseHandle(pi.hThread);
+    if (suspended == MAXDWORD_) {
+        logf(install, msgResume, 0, GetLastError());
+        stop(&o);
+        goto done;
+    }
     pump(install, &o);
-    WaitForSingleObject(o.process, INFINITE);
+    await(install, &o);
     DWORD exitCode = 1;
     GetExitCodeProcess(o.process, &exitCode);
     {

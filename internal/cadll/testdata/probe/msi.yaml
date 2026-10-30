@@ -105,8 +105,10 @@ customActions:
     execute: deferred
     impersonate: false
     return: check
+    # Only on the install: every other run of the probe would pay the five
+    # seconds too.
     schedule:
-      - { sequence: execute, after: InstallFiles }
+      - { sequence: execute, after: InstallFiles, condition: NOT REMOVE~="ALL" AND FAILPROBE<>"1" }
 
   - id: ProbeFails
     run:
