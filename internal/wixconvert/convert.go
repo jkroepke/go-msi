@@ -135,7 +135,7 @@ type converter struct {
 	pending      []pendingShortcut
 	pendingTypes []pendingType
 	anonymous    int
-	pinned       int
+	removeLine   int
 	uiLine       int
 	v3           bool
 }
@@ -159,8 +159,10 @@ type comp struct {
 	dir         string
 	inFeature   bool
 	dropIfEmpty bool
-	// generated is set when WiX generates the component's Guid.
+	// generated is set when WiX generates the component's Guid, pinned
+	// when the built package gave it one.
 	generated bool
+	pinned    bool
 }
 
 type group struct {

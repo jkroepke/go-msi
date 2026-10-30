@@ -87,9 +87,6 @@ components:
           - name: Hello
             directory: DesktopFolder
             arguments: --gui
-          - name: Hello
-            directory: ProgramMenuFolder/Example
-            description: Say hello
         fileTypes:
           - progId: Example.HelloDoc
             description: Hello document
@@ -199,6 +196,10 @@ components:
     directory: ProgramMenuFolder/Example
     guid: 0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a14
     shortcuts:
+      - name: Hello
+        file: hello.exe
+        directory: ProgramMenuFolder/Example
+        description: Say hello
       - name: Hello website
         url: https://example.com
         directory: ProgramMenuFolder/Example

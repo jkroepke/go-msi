@@ -49,8 +49,8 @@ func menuComponent(guid string) string {
 `, guid)
 }
 
-// TestMsiexecChangedComponentCodes upgrades a product whose component codes
-// were pinned by a v2 whose codes changed, as a port from another tool with
+// TestMsiexecChangedComponentCodes upgrades a product with pinned component
+// codes by a v2 whose codes changed, as a port from another tool with
 // generated codes does (UPG-11). With a late removal the old product's
 // uninstall is expected to delete every resource whose code changed, since
 // no other product holds that code; with an early removal or with the old

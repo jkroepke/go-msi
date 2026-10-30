@@ -74,7 +74,10 @@ versioning after 1.0.
   the schema's key order; everything without a counterpart becomes a
   `# TODO` comment next to the key it belongs to and a `Note` for stderr.
   Snapshots in `testdata/` (regenerate with `MSI_BUILDER_UPDATE_SNAPSHOTS=1`)
-  must stay valid configs. The fixtures are our own sample app: never copy
+  must stay valid configs. With `--msi` (`Options.Built`) it pins the
+  component codes WiX generated, matched by Id or by key file (`codes.go`),
+  because a late `removeOld` deletes the files of every changed code
+  (UPG-11); a shortcut component with a code keeps its shortcut. The fixtures are our own sample app: never copy
   third-party `.wxs` files in, and never read WiX source code (clean room).
 - [`internal/spool`](internal/spool), [`internal/memtest`](internal/memtest),
   [`internal/testpe`](internal/testpe): the spool target shared by file and

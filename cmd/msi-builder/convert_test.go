@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,6 +98,10 @@ installDir: { id: INSTALLFOLDER, name: Hello }
 components:
   - { id: Main, guid: 6d1c0a42-93b8-4e57-a2f1-0c7e5d9b3a61, files: [{ source: hello.exe }] }
   - { id: cmpNotes, guid: 2b8f4e17-5a0c-4d93-b6e2-9f1a3c7d5e08, files: [{ source: notes.txt }] }
+  - id: Settings
+    files: [{ source: settings.txt }]
+    registry: [{ id: SettingsKey, root: HKLM, key: 'SOFTWARE\Example\Hello', name: Level, value: '1' }]
+    keyPath: SettingsKey
 `
 	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
@@ -117,7 +122,7 @@ components:
 </Wix>
 `
 
-	for name, data := range map[string]string{"msi.yaml": built, "app.wxs": src, "hello.exe": "MZ", "notes.txt": "notes"} {
+	for name, data := range map[string]string{"msi.yaml": built, "app.wxs": src, "hello.exe": "MZ", "notes.txt": "notes", "settings.txt": "level: 1"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -128,6 +133,21 @@ components:
 	pkg := filepath.Join(dir, "hello-1.0.0.msi")
 	if code := run([]string{"build", "-o", pkg, filepath.Join(dir, "msi.yaml")}, &stdout, &stderr); code != 0 {
 		t.Fatalf("build: exit %d: %s", code, stderr.String())
+	}
+
+	// A registry key path is no key file, even with a file in the component.
+	read, err := builtPackage(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	keyFiles := map[string]string{}
+	for _, comp := range read.Components {
+		keyFiles[comp.ID] = comp.KeyFile
+	}
+
+	if want := map[string]string{"Main": "hello.exe", "cmpNotes": "notes.txt", "Settings": ""}; !maps.Equal(keyFiles, want) {
+		t.Errorf("key files %v, want %v", keyFiles, want)
 	}
 
 	stdout.Reset()

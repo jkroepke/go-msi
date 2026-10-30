@@ -98,9 +98,19 @@ func (c *converter) placeShortcut(pending pendingShortcut) {
 
 	target := elm.attr("Target")
 	if file := c.targetFile(target); file != nil {
-		s := c.shortcut(elm, pending.comp.dir, pending.tree)
-		c.workingDirectory(s, elm, file.dir)
-		file.out.add("shortcuts", s)
+		link := c.shortcut(elm, pending.comp.dir, pending.tree)
+		c.workingDirectory(link, elm, file.dir)
+
+		// A shortcut component with a code stays, so that an upgrade
+		// that removes the old version late keeps its shortcut (UPG-11).
+		if pending.comp.dropIfEmpty && pending.comp.out.get("guid") != nil {
+			link.set("file", file.key)
+			pending.comp.out.add("shortcuts", link)
+
+			return
+		}
+
+		file.out.add("shortcuts", link)
 
 		return
 	}

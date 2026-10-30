@@ -42,8 +42,7 @@ func (c *converter) pinCode(comp *comp, keyFile string) bool {
 	}
 
 	comp.out.set("guid", cmp.Or(built.Code, "none"))
-
-	c.pinned++
+	comp.pinned = true
 
 	return true
 }
@@ -92,13 +91,7 @@ func (c *converter) builtComponent(comp *comp, keyFile string) *BuiltComponent {
 // with a built package every one it lacks, without one all of them at once
 // when the upgrade removes the old version late.
 func (c *converter) checkCodes() {
-	var open []*comp
-
-	for _, comp := range c.comps {
-		if comp.out != nil && comp.generated && comp.out.get("guid") == nil {
-			open = append(open, comp)
-		}
-	}
+	open, pinned := c.openCodes()
 
 	if c.built == nil {
 		c.noteLateRemoval(open)
@@ -106,15 +99,40 @@ func (c *converter) checkCodes() {
 		return
 	}
 
-	if c.pinned > 0 {
-		c.header = append(c.header, fmt.Sprintf("The guid of %d components whose Guid WiX generated comes from %s.", c.pinned, c.built.Name))
+	if pinned > 0 {
+		c.header = append(c.header, fmt.Sprintf("The guid of %d components whose Guid WiX generated comes from %s.", pinned, c.built.Name))
 	}
 
 	for _, comp := range open {
+		if comp.out == nil {
+			continue // a shortcut component without a match left nothing behind
+		}
+
 		c.todof(comp.out, "", comp.e.line,
 			"%s has no matching component; set guid to the ComponentId WiX gave this one (msi-builder inspect --table Component)",
 			c.built.Name)
 	}
+}
+
+// openCodes returns the components whose Guid WiX generated and that have
+// no code of the WiX package, and counts the ones that have one.
+func (c *converter) openCodes() ([]*comp, int) {
+	var open []*comp
+
+	pinned := 0
+
+	for _, comp := range c.comps {
+		switch {
+		case comp.out != nil && comp.pinned:
+			pinned++
+		case comp.generated && (comp.out == nil || comp.out.get("guid") == nil):
+			// A dropped shortcut component counts too: its shortcut is
+			// on the file now, in a component with another code.
+			open = append(open, comp)
+		}
+	}
+
+	return open, pinned
 }
 
 // noteLateRemoval notes the components without a WiX Guid when the upgrade
@@ -125,7 +143,7 @@ func (c *converter) noteLateRemoval(open []*comp) {
 		return
 	}
 
-	line := 0
+	line := c.removeLine
 	if c.major != nil {
 		line = c.major.line
 	}
@@ -134,7 +152,7 @@ func (c *converter) noteLateRemoval(open []*comp) {
 
 	ids := make([]string, 0, listed+1)
 	for _, comp := range open[:min(len(open), listed)] {
-		ids = append(ids, cmp.Or(comp.out.str("id"), "the component in line "+strconv.Itoa(comp.e.line)))
+		ids = append(ids, cmp.Or(comp.e.attr("Id"), comp.id, "the component in line "+strconv.Itoa(comp.e.line)))
 	}
 
 	if len(open) > listed {

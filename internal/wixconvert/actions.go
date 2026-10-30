@@ -75,6 +75,7 @@ func (c *converter) standardAction(entry, seq *elem) {
 		c.scheduleReboot(entry)
 	case entry.is("RemoveExistingProducts") && c.major == nil && removeOldAfter[entry.attr("After")]:
 		c.out.child("upgrade").set("removeOld", "after"+entry.attr("After"))
+		c.removeLine = entry.line
 	case entry.is("Show"):
 		c.todof(nil, "", entry.line, "<Show Dialog=%q> schedules a dialog; use the ui keys", entry.attr("Dialog"))
 	default:
