@@ -342,8 +342,15 @@ func (c *converter) setDirs() map[string]bool {
 func (cc *compConv) purge(elm *elem) {
 	conv := cc.c
 
+	if elm.attr("On") == onInstall {
+		// Emptying the folder before the install has no counterpart.
+		conv.todof(cc.out, "", elm.line, "util:RemoveFolderEx On=\"install\" was not converted: purge runs on uninstall only")
+
+		return
+	}
+
 	target := elm.attr(attrProperty)
-	if target == "" {
+	if target == "" || cc.remembers(target) {
 		target = cc.cp.dir
 	}
 
@@ -356,7 +363,7 @@ func (cc *compConv) purge(elm *elem) {
 		return
 	}
 
-	if p := elm.attr(attrProperty); p != "" && p != cc.cp.dir {
+	if p := elm.attr(attrProperty); p != "" && target != cc.cp.dir {
 		conv.todof(cc.out, "purge", elm.line,
 			"util:RemoveFolderEx removes the folder in %s; purge removes the component's folder, so put this component there", p)
 	}
@@ -372,6 +379,86 @@ func (cc *compConv) purge(elm *elem) {
 	}
 
 	cc.out.set("purge", true)
+}
+
+// remembers reports whether prop is the folder of this component as the
+// component remembers it: the property only reads, by a RegistrySearch, a
+// registry value of the component that holds [folder]. A RemoveFolderEx on
+// such a property removes the component's folder, which purge does.
+func (cc *compConv) remembers(prop string) bool {
+	conv := cc.c
+
+	if !conv.onlyProperty(prop) {
+		return false
+	}
+
+	for _, p := range conv.properties {
+		if p.attr("Id") != prop || p.has("Value") {
+			continue
+		}
+
+		for _, search := range p.kids {
+			if search.is("RegistrySearch") && cc.writesFolder(search) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// onlyProperty reports whether a Property element is all that sets prop.
+func (c *converter) onlyProperty(prop string) bool {
+	for _, setter := range c.setters {
+		if setter.attr("Id") == prop {
+			return false
+		}
+	}
+
+	for _, custom := range c.actionOrder {
+		if custom.has("Value") && custom.attr(attrDirectory)+custom.attr(attrProperty) == prop {
+			return false
+		}
+	}
+
+	return true
+}
+
+// writesFolder reports whether the component writes its folder, as
+// [folder], to the registry value that search reads.
+func (cc *compConv) writesFolder(search *elem) bool {
+	want := []string{
+		strings.ToUpper(search.attr("Root")), strings.ToLower(strings.Trim(search.attr("Key"), `\`)),
+		strings.ToLower(search.attr("Name")),
+	}
+	folder := "[" + cc.cp.dir + "]"
+
+	var walk func(e *elem, root, key string) bool
+
+	walk = func(e *elem, root, key string) bool {
+		for _, kid := range e.kids {
+			regRoot, regKey := root, key
+			if kid.has("Root") {
+				regRoot = kid.attr("Root")
+			}
+
+			if kid.has("Key") {
+				regKey = joinKey(regKey, kid.attr("Key"))
+			}
+
+			switch {
+			case kid.is("RegistryKey") && walk(kid, regRoot, regKey):
+				return true
+			case kid.is("RegistryValue") && strings.TrimSuffix(kid.attr("Value"), `\`) == folder &&
+				slices.Equal(want, []string{strings.ToUpper(regRoot), strings.ToLower(strings.Trim(regKey, `\`)), strings.ToLower(kid.attr("Name"))}):
+				return true
+			}
+		}
+
+		return false
+	}
+
+	return walk(cc.cp.e, "", "")
 }
 
 func (cc *compConv) eventSource(elm *elem) {

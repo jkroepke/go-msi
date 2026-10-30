@@ -775,6 +775,12 @@ folder, written as a path below a standard folder like
 `DATADIR`, which the command line could point anywhere, is rejected. It
 takes a `condition`, such as `DELETE_DATA="1"`.
 
+`msi-builder convert` keeps a `util:RemoveFolderEx` whose property only
+reads back, by a `RegistrySearch`, the component's own folder from a
+registry value of that component: it becomes `purge` on the component.
+`On="install"`, which empties the folder before the install, has no
+counterpart and becomes a TODO.
+
 ## Signing
 
 `signtool sign` after `wix build` becomes a flag of the build, or the
