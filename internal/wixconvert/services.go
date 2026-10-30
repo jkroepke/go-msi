@@ -561,7 +561,7 @@ var fileRights = []struct { //nolint:gochecknoglobals // lookup table
 	{"GenericAll", rightsFull, 0},
 	{"FileAllRights", rightsFull, 0},
 	{"GenericRead", "read", 0},
-	{"GenericWrite", "write", 0},
+	{"GenericWrite", "", 0x120116}, // FILE_GENERIC_WRITE; write is 0x100116
 	{"GenericExecute", "", 0x1200A0},
 	{"Read", "", 0x1},
 	{"CreateFile", "", 0x2},

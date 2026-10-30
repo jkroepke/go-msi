@@ -120,6 +120,7 @@
       <Component Id="Data" Directory="DataDir" Guid="0b7e6b4e-6c1a-4c55-9e43-3b8f3c0d6a13">
         <CreateFolder>
           <util:PermissionEx User="NetworkService" Domain="NT AUTHORITY" GenericAll="yes" />
+          <util:PermissionEx User="Users" GenericWrite="yes" />
         </CreateFolder>
         <util:RemoveFolderEx On="uninstall" Property="DataDir" />
         <RegistryValue Root="HKLM" Key="SOFTWARE\Example\Hello" Name="DataDir" Value="[DataDir]" />
@@ -159,5 +160,6 @@
       <RemoveExistingProducts After="InstallFinalize" />
     </InstallExecuteSequence>
     <CustomActionRef Id="Wix4BroadcastEnvironmentChange_X64" />
+    <CustomActionRef Id="Wix4BroadcastSettingChange_X64" />
   </Package>
 </Wix>

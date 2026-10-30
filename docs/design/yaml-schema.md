@@ -1089,7 +1089,10 @@ folderPermissions:
   object; generic rights, `MAXIMUM_ALLOWED` and `ACCESS_SYSTEM_SECURITY` are
   rejected, because an explicit ACE keeps them unmapped. The rights are
   merged into the account's explicit allow ACE with the same inheritance,
-  if there is one.
+  if there is one. `write` is 0x100116, without `READ_CONTROL`; a port of
+  a `util:PermissionEx` with `GenericWrite` (`FILE_GENERIC_WRITE`, 0x120116)
+  writes `rights: ['0x120116']` to get the same mask, as `msi-builder
+  convert` does.
 - Registry values cannot have grants: secure the key with `sddl`.
 - `sddl` and `grant` can be combined: the engine applies the SDDL when it
   creates the object, then the grants are added to it.

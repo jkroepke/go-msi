@@ -459,9 +459,11 @@ when the component is installed. `RemoveRegistryKey` with
 | `System="yes"`, `System="no"` | `scope: machine`, `scope: user` |
 | `Permanent="yes"` | `removeOnUninstall: false` |
 
-WiX packages often add a reference to its `BroadcastEnvironmentChange`
-custom action. msi-builder has no counterpart: a command prompt that is
-already open keeps the old `PATH`, so open a new one.
+Drop the `BroadcastEnvironmentChange` custom action reference that WiX
+packages often carry. Windows Installer itself tells running programs that
+the environment changed, after the install, a repair and the uninstall, so
+programs started from Explorer afterwards see the new value. A command
+prompt that is already open keeps the old `PATH`; open a new one.
 
 ## Shortcuts
 
@@ -587,7 +589,9 @@ firewall:
 - `util:PermissionEx` adds rights and keeps the permissions the object
   already has; so does `grant`. The rights are `full`, `modify`,
   `readExecute`, `read` and `write`, and more in
-  [YAML Schema Design](design/yaml-schema.md).
+  [YAML Schema Design](design/yaml-schema.md). `GenericWrite` becomes
+  `'0x120116'`, because `write` leaves out the right to read the
+  permissions.
 - The core `PermissionEx` with an `Sddl` attribute, and `Permission`,
   replace the permissions; write an SDDL string in `sddl` for those.
   Registry values take only `sddl`, so a `util:PermissionEx` on a registry
@@ -813,7 +817,8 @@ msi-builder signs on Linux and macOS too; see [Signing](signing.md).
 | `Class`, `TypeLib`, `AppId` (COM) | Write the registry values with `registry` |
 | `util:User`, `util:Group`, `util:FileShare`, `util:PerformanceCategory`, IIS, SQL and HTTP extensions | A `run` action, if you need it |
 | `util:CloseApplication` | The built-in files-in-use dialog and Restart Manager |
-| `util:BroadcastEnvironmentChange`, `util:BroadcastSettingChange` | None; see [Environment variables](#environment-variables) |
+| `util:BroadcastEnvironmentChange` | Drop it: Windows Installer broadcasts environment changes itself; see [Environment variables](#environment-variables) |
+| `util:BroadcastSettingChange` | None; if your `registry` values are a setting that Windows reads only on `WM_SETTINGCHANGE`, send it from a `run` action |
 | `DiskPrompt`, `Media DiskPrompt` and `VolumeLabel` | Leave them out: they only matter for packages on several disks |
 | Several `Media` disks, spanned cabinets | Large payloads are split into several cabinets automatically; above 2 GB, `package.embedCabinets: false` puts them beside the `.msi` |
 | XML fragments, `<?include?>`, raw table XML | No XML input; `tables` adds tables the schema does not cover, but cannot change the standard ones |
