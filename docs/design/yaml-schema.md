@@ -783,7 +783,9 @@ an HKCU value under `Software\[Manufacturer]\[ProductName]` as its key path
 (ICE38, ICE43), `RemoveFile` rows for the folders it creates below a
 profile folder (ICE64), and in every feature of the file's component. It
 is never permanent: the shortcuts of a file in a `permanent` component are
-removed on uninstall, while the file stays. In a
+removed on uninstall, while the file stays. A build from before this rule
+made that component permanent, and an upgrade from it presumably leaves its
+shortcuts behind (not tested). In a
 per-user package that folder must not be a per-machine one (ICE105).
 SHORTCUT-01 installed and removed shortcuts from an own HKCU-keyed component and
 from the file's own component alike, and removed an empty Start menu folder
@@ -967,7 +969,9 @@ package, and without an `id` it is named after its first shortcut (or the
 product, when that shortcut has no `name`)
 (`Docs_Shortcuts`), so that its ComponentId does not depend on the order of
 the components. Its `guid`, `condition`, `permanent` and `transitive`
-apply to that component; its `directory` is not used. A component with a
+apply to that component; its `directory` is not used. In a component that
+also installs something, `permanent` stays with that component: its
+shortcuts are removed on uninstall. A component with a
 folder source cannot list them.
 SHORTCUT-03 and SHORTCUT-04 installed every kind on Windows.
 

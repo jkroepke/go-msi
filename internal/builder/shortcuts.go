@@ -210,9 +210,10 @@ func (b *build) shortcutComponent(info *componentInfo, dirID string) string {
 	comp := info.cfg
 
 	valueName := generatedID("cmp", "Shortcuts", b.upgradeCode, comp.ID)
+	own := shortcutsOnly(comp)
 
 	carrier := valueName
-	if shortcutsOnly(comp) {
+	if own {
 		carrier = comp.ID
 	}
 
@@ -229,7 +230,7 @@ func (b *build) shortcutComponent(info *componentInfo, dirID string) string {
 	bitness := "32"
 	attributes := compRegistryKeyPath | info.attributes&compTransitive
 
-	if shortcutsOnly(comp) {
+	if own {
 		attributes |= info.attributes & compPermanent
 	}
 
@@ -241,7 +242,7 @@ func (b *build) shortcutComponent(info *componentInfo, dirID string) string {
 	var guid any = uuid5(namespaceComponent, b.upgradeCode+"|"+bitness+"|shortcuts|"+carrier)
 
 	// A component of shortcuts only is the carrier, so its guid applies.
-	if shortcutsOnly(comp) {
+	if own {
 		switch comp.GUID {
 		case config.Auto:
 		case config.None:

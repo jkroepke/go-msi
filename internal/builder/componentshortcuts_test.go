@@ -436,8 +436,9 @@ func TestShortcutsOnlyComponentDuplicateGUID(t *testing.T) {
 	}
 }
 
-// The generated carrier of a permanent file's shortcuts is not permanent: the
-// file stays after uninstall, its shortcuts do not (wazuh's "Edit conf").
+// The generated carrier of a permanent component's shortcuts, of its files or
+// its own, is not permanent: the file stays after uninstall, its shortcuts do
+// not (wazuh's "Edit conf"). The carrier keeps condition and transitive.
 // A component of shortcuts alone keeps its own permanent flag.
 func TestShortcutCarrierNotPermanent(t *testing.T) {
 	t.Parallel()
@@ -448,6 +449,12 @@ func TestShortcutCarrierNotPermanent(t *testing.T) {
     files:
       - source: app.exe
         shortcuts: [{ name: Edit }]
+  - id: Site
+    permanent: true
+    transitive: true
+    condition: SITE
+    files: [{ source: app.exe, name: site.exe }]
+    shortcuts: [{ name: Home, url: "https://a" }]
   - id: Menu
     permanent: true
     shortcuts: [{ name: Docs, url: "https://a" }]
@@ -464,7 +471,7 @@ func TestShortcutCarrierNotPermanent(t *testing.T) {
 		permanent := attributes&0x10 != 0 // msidbComponentAttributesPermanent
 
 		switch row[0] {
-		case "Conf", "Menu":
+		case "Conf", "Site", "Menu":
 			if !permanent {
 				t.Errorf("component %v lost its permanent flag", row[0])
 			}
@@ -474,10 +481,15 @@ func TestShortcutCarrierNotPermanent(t *testing.T) {
 			if permanent {
 				t.Errorf("generated shortcut component %v is permanent (attributes %v)", row[0], row[3])
 			}
+
+			// Site's carrier keeps its condition and the transitive bit.
+			if row[4] == "SITE" && attributes&0x40 == 0 { // msidbComponentAttributesTransitive
+				t.Errorf("carrier %v of Site lost the transitive bit (attributes %v)", row[0], row[3])
+			}
 		}
 	}
 
-	if generated == 0 {
-		t.Error("no generated shortcut component")
+	if generated != 2 {
+		t.Errorf("%d generated shortcut components, want 2 (Conf and Site)", generated)
 	}
 }
