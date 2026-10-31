@@ -61,7 +61,6 @@ var unsupported = map[string]string{ //nolint:gochecknoglobals // lookup table
 	"util:Group":               hintRun,
 	"util:FileShare":           hintRun,
 	"util:PerformanceCategory": hintRun,
-	"util:CloseApplication":    "set close: true on the program's file (files[].close); it matches the installed path, not the name",
 	"util:TouchFile":           "leave it out",
 }
 
@@ -248,6 +247,7 @@ var componentChildren = map[string]func(cc *compConv, e *elem){ //nolint:gocheck
 	"Environment":           (*compConv).environment,
 	"ServiceInstall":        (*compConv).service,
 	"ServiceControl":        func(cc *compConv, e *elem) { cc.controls = append(cc.controls, e) },
+	elemCloseApp:            func(cc *compConv, e *elem) { cc.c.closeApps = append(cc.c.closeApps, e) },
 	"CreateFolder":          (*compConv).createFolder,
 	"RemoveFile":            (*compConv).removeFile,
 	"RemoveFolder":          (*compConv).removeFile,
@@ -417,7 +417,7 @@ func (cc *compConv) file(elm *elem) { //nolint:cyclop // a flat list of independ
 	conv := cc.c
 	file := newMap()
 	file.order("source", "name", "id", "version", "vital", "checksum", "readOnly", "hidden", "system",
-		"permissions", "shortcuts", "fileTypes")
+		"permissions", "shortcuts", "fileTypes", "close")
 	file.head = comments(elm)
 
 	src, name := cc.fileSource(file, elm)

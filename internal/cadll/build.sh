@@ -82,7 +82,7 @@ for target in i686:i386:x86 x86_64:i386:x86-64:x64 aarch64:arm64:arm64; do
     -o "builderrun-$out.dll" "$tmp/$out/builderrun.obj" \
     "$tmp/$out/kernel32.lib" "$tmp/$out/advapi32.lib" "$tmp/$out/msi.lib" "$tmp/$out/authz.lib" "$tmp/$out/ntdll.lib" "$tmp/$out/user32.lib" \
     -Wl,/Brepro -Wl,/nodefaultlib -Wl,/entry:_DllMainCRTStartup -Wl,/export:BuilderRun -Wl,/export:BuilderGrant \
-    -Wl,/export:BuilderClose -Wl,/export:BuilderCloseSchedule -Wl,/export:BuilderRemoveFolders -Wl,/export:BuilderRemoveFoldersExec \
+    -Wl,/export:BuilderClose -Wl,/export:BuilderCloseSchedule -Wl,/export:BuilderRemoveFoldersExec \
     -Wl,/release -Wl,/opt:ref -Wl,/opt:icf -Wl,/subsystem:windows
 done
 sha256sum builderrun-x86.dll builderrun-x64.dll builderrun-arm64.dll >SHA256SUMS
