@@ -22,10 +22,9 @@ msi-builder validate [flags] msi.yaml
 ## Flags
 
 ```text
-      --env              let environment variables fill ${NAME} references and, with --template, template variables
+      --env              let environment variables fill {{ .NAME }}
   -h, --help             help for validate
-      --template         render the file with Go text/template before parsing it
-      --var NAME=VALUE   set a variable referenced as ${NAME}, and as {{ .NAME }} with --template; repeatable
+      --var NAME=VALUE   set a variable read as {{ .NAME }}; repeatable
 ```
 
 ## See also

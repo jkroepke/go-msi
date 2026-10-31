@@ -36,16 +36,14 @@ func (v vars) Set(s string) error {
 
 // loadFlags are the flags shared by build and validate.
 type loadFlags struct {
-	vars     vars
-	env      bool
-	template bool
+	vars vars
+	env  bool
 }
 
 func (l *loadFlags) register(cmd *cobra.Command) {
 	l.vars = make(vars)
-	cmd.Flags().Var(l.vars, "var", "set a variable referenced as ${NAME}, and as {{ .NAME }} with --template; repeatable")
-	cmd.Flags().BoolVar(&l.env, "env", false, "let environment variables fill ${NAME} references and, with --template, template variables")
-	cmd.Flags().BoolVar(&l.template, "template", false, "render the file with Go text/template before parsing it")
+	cmd.Flags().Var(l.vars, "var", "set a variable read as {{ .NAME }}; repeatable")
+	cmd.Flags().BoolVar(&l.env, "env", false, "let environment variables fill {{ .NAME }}")
 	mustComplete(cmd.RegisterFlagCompletionFunc("var", cobra.NoFileCompletions))
 }
 
@@ -59,7 +57,7 @@ func (l *loadFlags) load(path string) (*config.Config, error) {
 }
 
 func (l *loadFlags) options() config.Options {
-	opts := config.Options{Vars: l.vars, Template: l.template}
+	opts := config.Options{Vars: l.vars}
 	if l.env {
 		opts.LookupEnv = os.LookupEnv
 	}
@@ -113,12 +111,10 @@ func newRenderCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "render [flags] msi.yaml",
-		Short: "Print a template file as build and validate --template read it",
+		Short: "Print the YAML that a file renders to",
 		Long: `Render runs msi.yaml through Go's text/template, as build and validate do
-with --template, and prints the YAML that comes out. ${NAME} references are
-left as they are, and quote writes ${ as $${, which build turns back into
-${. The line numbers of a YAML error with --template are lines of this
-output.`,
+before they read it, and prints the YAML that comes out, the vars header
+as it is. A YAML error names a line of this output.`,
 		Example:           "  msi-builder render --var ARCH=arm64 msi.yaml",
 		Args:              exactlyOne("msi.yaml"),
 		ValidArgsFunction: fileArg("yaml", "yml"),
@@ -139,15 +135,7 @@ output.`,
 		},
 	}
 
-	load.vars = make(vars)
-	cmd.Flags().Var(load.vars, "var", `set a variable read as {{ .NAME }} and ${NAME}; repeatable`)
-	cmd.Flags().BoolVar(&load.env, "env", false, "let environment variables fill template variables")
-	mustComplete(cmd.RegisterFlagCompletionFunc("var", cobra.NoFileCompletions))
-
-	// render always renders; --template is accepted so that a build
-	// command line can be reused.
-	cmd.Flags().BoolVar(&load.template, "template", true, "ignored: render always renders")
-	mustComplete(cmd.Flags().MarkHidden("template"))
+	load.register(cmd)
 
 	return cmd
 }

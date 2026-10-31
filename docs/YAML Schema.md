@@ -54,13 +54,15 @@ must have a version resource; msi-builder reads its version from it.
 
 ## Versions from the build
 
-`${NAME}` is replaced by a variable, so one file serves every release:
+The file is a Go [text/template](https://pkg.go.dev/text/template):
+`{{ .NAME }}` is replaced by a variable before the YAML is read, so one file
+serves every release:
 
 ```yaml
 product:
   name: Hello
   manufacturer: Example
-  version: ${VERSION}
+  version: "{{ .VERSION }}"
   upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301
 ```
 
@@ -68,23 +70,39 @@ product:
 msi-builder build --var VERSION=1.4.0 -o hello.msi msi.yaml
 ```
 
-With `--env`, environment variables are used too. `vars:` at the top of the
-file sets defaults, and a default may use other variables
-(`NAME: Acme ${ARCH}`); `--var` and `--env` values replace it. `[INSTALLDIR]` and other names in brackets are not
-variables: Windows Installer fills them in at install time.
+Quote a value that starts with `{{`, as above: YAML editors read an
+unquoted `{{ … }}` as a mapping. With `--env`, environment variables are
+used too. A variable that is set nowhere is an error that says how to set
+it. `[INSTALLDIR]` and other names in brackets are not variables: Windows
+Installer fills them in at install time.
 
-### Parts that depend on the build
+### Defaults for variables
 
-When a part of the file depends on the build, such as a file only the arm64
-package installs, pass `--template`: the file is then a Go
-[text/template](https://pkg.go.dev/text/template) that is rendered before it
-is read.
+Defaults go into a vars header: a first document that holds only `vars`
+and ends with a `---` line. A default may use other variables, and `--var`
+and `--env` values replace it:
 
 ```text
 vars:
-  ARCH: x64            # the default; --var ARCH=arm64 replaces it
+  ARCH: x64
+  NAME: Acme {{ .ARCH }}
+---
+schema: msi-builder/v1
+product:
+  name: "{{ .NAME }}"
+```
+
+### Parts that depend on the build
+
+`{{ if }}` and `{{ range }}` include parts only some builds need, such as a
+file only the arm64 package installs:
+
+```text
+vars:
+  ARCH: x64
+---
 package:
-  platform: {{ .ARCH }}
+  platform: "{{ .ARCH }}"
 components:
   - files:
       - source: hello.exe
@@ -94,26 +112,25 @@ components:
 ```
 
 ```shell
-msi-builder build --template --var ARCH=arm64 --var VERSION=1.4.0 msi.yaml
-msi-builder render --var ARCH=arm64 msi.yaml   # print the rendered YAML
+msi-builder build --var ARCH=arm64 --var VERSION=1.4.0 msi.yaml
+msi-builder render --var ARCH=arm64 --var VERSION=1.4.0 msi.yaml   # print the rendered YAML
 ```
 
-`{{ .ARCH }}` finds a variable as `${ARCH}` does: from `--var`, from the
-environment with `--env`, or from `vars:`, and fails when it is not set.
-`{{ var "ARCH" "x64" }}` falls back to `x64` instead, `{{ has "ARCH" }}`
-tests whether it is set, `{{ range split ";" .LANGS }}` loops over a list,
-and `{{ quote ... }}` writes any value as a YAML string. The `vars:` block
-is read before rendering, so the file has one, outside any `{{ if }}`, and
-it holds no `{{` and no anchor from elsewhere in the file. The rendered file
-then goes through `${NAME}` substitution, so a value that holds `${` is
-expanded once more unless it is written with `quote`. Put `{{- if ... }}`,
-`{{- else }}` and `{{- end }}` at the start of their own line: `{{-`
-removes the line break before it, and the YAML indentation stays intact.
-Avoid `-}}`, which also removes the next line's indentation. A YAML or `${NAME}` error names a line of the rendered
-file, which `msi-builder render` prints; a template error names a line of
-the file itself. A template is code: only build templates from a source you
-trust. Without `--template`, `{{` is plain text. The details are in the
-[design document](design/yaml-schema.md#311-templates).
+- `{{ if has "DEBUG" }}` tests whether a variable is set.
+- `{{ range split ";" .LANGS }}` loops over a list such as
+  `--var LANGS=en;de`.
+- `{{ .NAME | quote }}` writes any value as a YAML string. Use it for a
+  value that may hold `: `, a leading `[` or a line break.
+- `{{ "{{" }}` writes a literal `{{`, also in a comment.
+- Put `{{- if ... }}`, `{{- else }}` and `{{- end }}` at the start of their
+  own line: `{{-` removes the line break before it, and the YAML
+  indentation stays intact. Avoid `-}}`, which also removes the next
+  line's indentation.
+
+A YAML error names a line of the rendered file, which `msi-builder render`
+prints; a template error names a line of the file itself. A template is
+code: only build files from a source you trust. The details are in the
+[design document](design/yaml-schema.md#31-variables-and-templates).
 
 ## Recipes
 
@@ -748,7 +765,7 @@ and `components` (or `features`) are needed.
 | Key | What it sets | Default |
 |---|---|---|
 | `schema` | Always `msi-builder/v1` | required |
-| `vars` | Defaults for `${NAME}` variables | none |
+| `vars` | Defaults for `{{ .NAME }}` variables, in a header document | none |
 | `product` | Name, manufacturer, version, upgrade code | required |
 | `package` | Platform, install scope, compression | required (`platform`) |
 | `installDir` | The program's folder | `Program Files\<product name>` |

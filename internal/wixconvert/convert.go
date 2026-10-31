@@ -43,7 +43,7 @@ type Result struct {
 	YAML []byte
 	// Notes are the TODO comments in YAML, in source order.
 	Notes []Note
-	// Vars are the ${NAME} variables that YAML references and does not
+	// Vars are the {{ .NAME }} variables that YAML references and does not
 	// define; the WiX file took them from wix build -d or the
 	// environment, msi-builder build takes them with --var.
 	Vars []string
@@ -857,13 +857,28 @@ func (c *converter) render(opts Options) ([]byte, error) {
 		"Review it, resolve the TODO comments, then run msi-builder validate.",
 	}
 	if undefined := c.undefinedVars(); len(undefined) > 0 {
-		head = append(head, "WiX variables became ${NAME} references; pass them with --var NAME=value: "+strings.Join(undefined, ", ")+".")
+		head = append(head, "WiX variables became template variables; pass them with --var NAME=value: "+strings.Join(undefined, ", ")+".")
 	}
 
 	head = append(head, c.header...)
 
-	doc := &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{c.out.node()}}
-	doc.Content[0].Content[0].HeadComment = commentText(head)
+	// The vars go into a header document, which msi-builder reads before
+	// it renders the rest of the file as a template.
+	docs := make([]*yaml.Node, 0, 2)
+
+	if vars := c.out.mapAt("vars"); vars != nil && !vars.empty() {
+		hdr := newMap()
+		hdr.set("vars", vars)
+		hdr.comments["vars"] = c.out.comments["vars"]
+		docs = append(docs, &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{hdr.node()}})
+	}
+
+	c.out.keys = slices.DeleteFunc(c.out.keys, func(key string) bool { return key == "vars" })
+	delete(c.out.values, "vars")
+	delete(c.out.comments, "vars")
+
+	docs = append(docs, &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{c.out.node()}})
+	docs[0].Content[0].Content[0].HeadComment = commentText(head)
 
 	var buf bytes.Buffer
 
@@ -872,8 +887,10 @@ func (c *converter) render(opts Options) ([]byte, error) {
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
 
-	if err := enc.Encode(doc); err != nil {
-		return nil, fmt.Errorf("encode: %w", err)
+	for _, doc := range docs {
+		if err := enc.Encode(doc); err != nil {
+			return nil, fmt.Errorf("encode: %w", err)
+		}
 	}
 
 	if err := enc.Close(); err != nil {

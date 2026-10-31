@@ -29,10 +29,11 @@ versioning after 1.0.
   passes. A folder source's `guids` pin the codes of single files.
   Replaced components stay in `Config.folders`, so the second pass still
   reports problems at their YAML path.
-  `Options.Template` (CLI `--template`, opt-in only) runs the file through
-  `text/template` before YAML parsing (`template.go`, `Render`, also behind
-  `msi-builder render`); YAML errors then name lines of the rendered text,
-  and template examples in the docs are fenced as `text` because the guide
+  Every file is a Go `text/template` (`template.go`, `Render`, also behind
+  `msi-builder render`) with `{{ .NAME }}` as the only variable syntax;
+  `vars` live in a header document (`header.go`) read before rendering.
+  YAML errors name lines of the rendered text. Template examples in the
+  docs that hold a header or `{{-` are fenced as `text`, because the guide
   tests parse every `yaml` block.
 - [`pkg/builder`](pkg/builder): the public `Build`, `Options`, `Result` and
   `File`. It converts to and from `internal/builder` and adds nothing else;
@@ -290,9 +291,9 @@ go test ./... -shuffle=on -race
 - `HKCU\Software` is shared by the 32-bit and 64-bit registry views, so
   `reg query /reg:32` finds a per-user value the package wrote in the 64-bit
   view; only HKLM tells the views apart (SEARCH-06).
-- Quote `${VAR}` inside a YAML flow mapping (`{ version: "${VERSION}" }`):
-  `{` and `}` end a plain scalar there, so the document fails to parse
-  ("did not find expected ',' or '}'"). The windows-only tests only show
+- Quote `{{ .VAR }}` inside a YAML flow mapping
+  (`{ version: "{{ .VERSION }}" }`): `{` and `}` end a plain scalar there,
+  so the document fails to parse ("did not find expected ',' or '}'"). The windows-only tests only show
   this in CI, so parse their configs with `config.Parse` on Linux first.
 - Uninstall test products with `defer`, not `t.Cleanup`: `msiexecQuiet` runs
   under `t.Context()`, which is cancelled before cleanups run, so a cleanup

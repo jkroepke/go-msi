@@ -1,7 +1,7 @@
 // Command msi-builder builds Windows Installer packages from a YAML description.
 //
-//	msi-builder build [-o out.msi] [--var NAME=VALUE]... [--env] [--template] msi.yaml
-//	msi-builder validate [--var NAME=VALUE]... [--env] [--template] msi.yaml
+//	msi-builder build [-o out.msi] [--var NAME=VALUE]... [--env] msi.yaml
+//	msi-builder validate [--var NAME=VALUE]... [--env] msi.yaml
 //	msi-builder render [--var NAME=VALUE]... [--env] msi.yaml
 //	msi-builder inspect [--table NAME] package.msi
 //	msi-builder convert [-o msi.yaml] app.wxs

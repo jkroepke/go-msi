@@ -107,7 +107,6 @@ closes each one.
 ```yaml
 schema: msi-builder/v1   # required, selects this document;
                          # go-msi/v1 (the former name) fails with a hint
-vars: {}                 # defaults for ${NAME} substitution
 product: {}              # identity
 package: {}              # platform, scope, compression, summary information
 upgrade: {}              # major upgrade policy (on by default)
@@ -126,91 +125,39 @@ ui: {}                   # wizard (off by default), its pages and added dialogs
 tables: []               # escape hatch: custom tables
 ```
 
-### 3.1 Variables
+### 3.1 Variables and templates
 
-`${NAME}` anywhere in a string value is replaced before parsing the rest of
-the file. Values come, in order of precedence, from the command line
+The file is a Go `text/template` (stdlib only), rendered before it is read
+as YAML, for what WiX does with preprocessor variables, `<?if?>` and
+`<?foreach?>`. `{{ .NAME }}` reads a variable; it is the only variable
+syntax. Variables come, in order of precedence, from the command line
 (`--var NAME=value`), from the environment when the CLI is started with
-`--env`, and from `vars`. A value in `vars` may itself use variables,
-which are expanded the same way; a value from the command line or the
-environment is taken as it is, and a `vars` entry it overrides is not
-expanded at all. A cycle (`A: ${B}`, `B: ${A}`, or `A: ${A}`) is an error,
-reported on the entry that closes it. An undefined variable is an error
-where it is used, so a `vars` entry that nothing uses is not checked.
-`$${` writes a literal `${`, also inside `vars`. The text that variables
-insert into the document is capped at 16 MiB, and so is the text they
-insert into `vars` values (a value nested through several entries counts at
-each one), so doubling `vars` cannot blow up a document.
-Windows Installer's own `[Property]` syntax is left alone, so
-`[INSTALLDIR]` and `${VERSION}` never collide. Inside a flow mapping
-(`{ … }`) a value that starts with `${` must be quoted, as YAML reads `{` as
-the start of a mapping.
+`--env`, and from the vars header. A variable that is not set is an
+error that says how to set it; `{{ if has "NAME" }}` tests whether it is
+set, for `<?ifdef?>`.
 
-```yaml
-vars:
-  ARCH: x64
-  NAME: Acme ${ARCH}
-product:
-  name: ${NAME}
-  version: ${VERSION}
-package:
-  platform: ${ARCH}
-```
-
-### 3.1.1 Templates
-
-With `--template` (`Options.Template` in Go), the file is run through Go's
-`text/template` before it is parsed as YAML, for what WiX does with
-`<?if?>` and `<?foreach?>`: parts of the file that depend on the build.
-Templates are opt-in, and only the flag turns them on, because:
-
-- a `{{` that a plain file already holds (in a description, a formatted
-  string or a registry value) would change meaning;
-- a template is not valid YAML, so editors cannot check it against the
-  schema;
-- YAML errors in a template refer to lines of the rendered text, not of the
-  file.
-
-A plain file that holds `{{` and whose YAML does not parse or decode gets a
-hint to pass `--template`.
-
-A template finds variables as `${NAME}` does: from `--var`, then from the
-environment with `--env`, then from `vars`. `{{ .ARCH }}` reads one and is
-an error when it is not set, with a message that names `--var` and `vars`.
-`vars` is read from the raw file before rendering: the block runs from the
-top-level `vars:` line to the next line that starts in column one (other
-than a comment or the `}` or `]` that closes a flow collection). The file
-may have only one such line, so a `vars:` inside `{{ if }}` or a template
-comment is an error; the block may not hold `{{`, also not in a comment,
-and anchors defined outside it are not visible. Its values may use
-`${NAME}` as usual. All `--var` values and the `vars` entries are the
-template's data, so `{{ $.NAME }}` and `{{ index . "NAME" }}` work too;
-environment variables are added for the names the template uses. The
-functions are Go's built-in ones and five more, with no third-party library:
-
-| Function | Result |
-|---|---|
-| `var "NAME"` / `var "NAME" "default"` | The variable, else the default; without a default an unset variable is an error |
-| `has "NAME"` | Whether the variable is set |
-| `quote S` | `S` as a double-quoted YAML string, with `${` written as `$${` and characters YAML does not allow escaped, so any value arrives as given |
-| `indent N S` | `S` with every line after the first indented by `N` spaces |
-| `split SEP S` | The parts of `S` between each `SEP`, for `{{ range split ";" .LANGS }}`; an empty `S` has none, and an empty `SEP` is an error |
-
-The rendered text then goes through `${NAME}` substitution as described
-above, so a `${…}` that a template writes is replaced too, also one in a
-variable's value written with `{{ .NAME }}`; `quote` escapes it. YAML syntax errors and `${NAME}` errors name a line of the rendered
-text, which `msi-builder render` prints; template errors name a line of the
-file. An unknown key or a wrong type is reported with the line of the
-document as the decoder re-reads it, with or without a template. A template
-may write at most 16 MiB, but that does not bound the time or memory it
-takes: a template is code, so render only files from a source you trust, as
-you would run a build script.
+The vars header is a first YAML document that holds nothing but `vars` and
+ends with a `---` line, as GitLab CI does with `spec: inputs`. It is read
+before rendering, so it is plain YAML; a value in it may itself be a
+template that reads other variables (`NAME: Acme {{ .ARCH }}`, rendered
+once, when it is first needed). A value from the command line or the
+environment is taken as it is. A cycle (`A: "{{ .B }}"`, `B: "{{ .A }}"`)
+is an error, reported on the entry that closes it; a broken entry is an
+error only where the template reads it. A `vars` key in the document
+itself is an error that points to the header. `config.Config.Vars` holds
+the header's values as the template saw them.
 
 ```text
 vars:
   ARCH: x64
+  NAME: Acme {{ .ARCH }}
+---
+schema: msi-builder/v1
+product:
+  name: "{{ .NAME }}"
+  version: "{{ .VERSION }}"
 package:
-  platform: {{ .ARCH }}
+  platform: "{{ .ARCH }}"
 components:
   - files:
       - source: hello.exe
@@ -218,6 +165,35 @@ components:
       - source: hello-arm64.dll
 {{- end }}
 ```
+
+The functions are Go's built-in ones and four more:
+
+| Function | Result |
+|---|---|
+| `has "NAME"` | Whether the variable is set |
+| `quote S` | `S` as a double-quoted YAML string, with the characters YAML does not allow escaped, so any value arrives as given |
+| `indent N S` | `S` with every line after the first indented by `N` spaces |
+| `split SEP S` | The parts of `S` between each `SEP`, for `{{ range split ";" .LANGS }}`; an empty `S` has none, and an empty `SEP` is an error |
+
+A template writes text, so a value with YAML syntax (`: `, a leading `[`,
+a line break) changes the document unless it is written with `quote`. A
+value that starts with `{{` is quoted (`version: "{{ .VERSION }}"`): YAML
+editors read an unquoted `{{ … }}` as a mapping. `{{ "{{" }}` writes a
+literal `{{`, also in a comment, which is template text as well.
+Windows Installer's own `[Property]` syntax is left alone. The header is
+copied to the output of `msi-builder render`, which prints the rendered
+file; YAML errors name lines of that output, which match the file up to
+where the template writes or removes lines. Template errors name lines of
+the file. A template and the values of `vars` may each write at most
+16 MiB, but that does not bound the time or memory a template takes: a
+template is code, so build only files from a source you trust, as you
+would run a build script.
+
+Templates are always on, so a file has one variable syntax. Decisions not
+adopted: a `${NAME}` substitution after parsing next to templates (two
+syntaxes for one thing), an opt-in `--template` flag, and a `vars` block
+inside the templated document (the template could only see it after
+rendering it).
 
 ### 3.2 Editor support
 
@@ -232,8 +208,8 @@ schema: msi-builder/v1
 
 The JSON Schema checks keys, types, enums and syntax such as GUIDs, and
 rejects the nil GUID as an upgrade code. Editors see the file before
-variable substitution, so every typed value also accepts a string with a
-`${NAME}` variable. References between sections, lengths that depend on
+rendering, so every typed value also accepts a string with a `{{ }}`
+action, and a document that holds only `vars` is accepted as a header. References between sections, lengths that depend on
 other values and the rules of section 2 are checked only by
 `config.Validate`, which stays the authority. A test keeps the JSON Schema
 in step with the Go types.
@@ -643,7 +619,7 @@ which is the shortest form for a component that only one feature uses:
 ```yaml
 features:
   - id: DefaultFeature
-    title: windows_exporter ${VERSION}
+    title: windows_exporter {{ .VERSION }}
     description: The binary and configuration files for windows_exporter
     default: on                # on | off | disabled
     conditions:                # level changes, mostly at a first install

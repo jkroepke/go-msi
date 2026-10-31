@@ -1,12 +1,10 @@
 # `msi-builder render`
 
-Print a template file as build and validate --template read it
+Print the YAML that a file renders to
 
 Render runs msi.yaml through Go's text/template, as build and validate do
-with --template, and prints the YAML that comes out. ${NAME} references are
-left as they are, and quote writes ${ as $${, which build turns back into
-${. The line numbers of a YAML error with --template are lines of this
-output.
+before they read it, and prints the YAML that comes out, the vars header
+as it is. A YAML error names a line of this output.
 
 ## Usage
 
@@ -23,9 +21,9 @@ msi-builder render [flags] msi.yaml
 ## Flags
 
 ```text
-      --env              let environment variables fill template variables
+      --env              let environment variables fill {{ .NAME }}
   -h, --help             help for render
-      --var NAME=VALUE   set a variable read as {{ .NAME }} and ${NAME}; repeatable
+      --var NAME=VALUE   set a variable read as {{ .NAME }}; repeatable
 ```
 
 ## See also

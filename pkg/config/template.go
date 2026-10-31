@@ -7,17 +7,18 @@ import (
 	"fmt"
 	"maps"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"text/template"
 	"text/template/parse"
 	"unicode"
 	"unicode/utf8"
-
-	"go.yaml.in/yaml/v3"
 )
 
-// maxRendered caps the text a template writes. Without it a template such
-// as {{ range 1000000000 }} could fill the memory.
+// maxRendered caps the text a template writes, and separately the text that
+// the values of vars write. Without it a template such as
+// {{ range 1000000000 }} could fill the memory.
 const maxRendered = 16 << 20
 
 // maxIndent caps the indent function, so one call cannot allocate a huge
@@ -28,163 +29,282 @@ const maxIndent = 1024
 // maxRendered bytes.
 var errRenderedTooLarge = fmt.Errorf("the template writes more than %d bytes", maxRendered)
 
-// Render runs a document through Go's text/template, as Parse does when
-// Options.Template is set. Variables are found as ${NAME} finds them: in
-// Vars, then through LookupEnv, then in the file's vars block. {{ .NAME }}
-// reads one and fails when it is not set. The functions are:
+// Render runs a file through Go's text/template, as Parse does before it
+// reads the YAML, and returns the text that comes out. {{ .NAME }} reads a
+// variable: from Options.Vars, then through Options.LookupEnv, then from
+// the vars header (see header), whose values may use other variables the
+// same way. A variable that is not set is an error. The functions are Go's
+// built-in ones and:
 //
-//   - var NAME [DEFAULT]: the variable, else DEFAULT; without a DEFAULT an
-//     unset variable is an error.
-//   - has NAME: whether the variable is set.
-//   - quote S: S as a double-quoted YAML string, with ${ written as $${ so
-//     that the ${NAME} substitution after rendering leaves it as it is.
+//   - has "NAME": whether the variable is set, for what WiX does with
+//     <?ifdef?>.
+//   - quote S: S as a double-quoted YAML string, for a value that holds
+//     YAML syntax such as ": " or a line break.
 //   - indent N S: S with every line after the first indented by N spaces.
 //   - split SEP S: the parts of S between each SEP, for a range over a list
 //     such as --var LANGS=en;de; an empty S has no parts, and SEP must not
 //     be empty.
 //
-// The vars block is read from the raw text before rendering, so it must not
-// use template syntax. The rendered text then goes through ${NAME}
-// substitution like any file. The output is capped at 16 MiB, but a
-// template is code: like a build script, only render files you trust, as a
-// loop that writes nothing is not bounded.
+// The header is copied to the output as it is. The output is capped at
+// 16 MiB, but a template is code: like a build script, only render files
+// you trust, as a loop that writes nothing is not bounded.
 func Render(data []byte, opts Options) ([]byte, error) {
-	vars, lines, err := templateVars(data)
+	out, err := renderFile(data, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	var errs []error
+	return out.text, nil
+}
 
-	res := &resolver{
-		opts: opts, vars: vars, lines: lines, resolved: make(map[string]string),
-		docLeft: maxSubstituted, varsLeft: maxSubstituted, errs: &errs,
+// rendered is a rendered file.
+type rendered struct {
+	// vars are the values of the header's vars.
+	vars map[string]string
+	// text is the header as it is and the rendered body.
+	text []byte
+	// body is the rendered body after blank lines in place of the header,
+	// so that it has the lines of the file.
+	body []byte
+}
+
+func renderFile(data []byte, opts Options) (*rendered, error) {
+	vars := &varResolver{opts: opts, raw: make(map[string]string), lines: make(map[string]int), left: maxRendered}
+	body, offset := data, 0
+
+	hdr := splitHeader(data)
+	if hdr != nil {
+		var err error
+		if vars.raw, vars.lines, err = fileVars(hdr.root); err != nil {
+			return nil, err
+		}
+
+		body, offset = data[len(hdr.text):], hdr.lines
 	}
 
-	tmpl, err := template.New("msi.yaml").Option("missingkey=error").Funcs(templateFuncs(res.resolve, opts)).Parse(string(data))
+	tmpl, err := template.New("msi.yaml").Option("missingkey=error").Funcs(templateFuncs(vars)).Parse(string(body))
 	if err != nil {
-		return nil, fmt.Errorf("template: %w", templateErr(err, opts))
+		return nil, fmt.Errorf("template: %w", templateErr(err, opts, offset))
 	}
 
-	values := templateValues(opts, vars, lines)
+	values, err := vars.values(tmpl)
+	if err != nil {
+		return nil, err
+	}
 
-	// Environment variables cannot be listed, so the names the template
-	// uses are looked up too; a name that is not set stays out of the map
-	// and fails as missing.
+	out := &limitedBuffer{left: maxRendered}
+	if err := tmpl.Execute(out, values); err != nil {
+		return nil, vars.execErr(err, offset)
+	}
+
+	res := &rendered{body: append(bytes.Repeat([]byte("\n"), offset), out.Bytes()...), vars: values}
+	if hdr != nil {
+		res.text = append(slices.Clip(hdr.text), out.Bytes()...)
+		res.vars = make(map[string]string, len(vars.raw))
+
+		for name := range vars.raw {
+			res.vars[name] = values[name]
+		}
+	} else {
+		res.text = out.Bytes()
+		res.vars = nil
+	}
+
+	return res, nil
+}
+
+// varResolver finds the variables of a template. The value of a header
+// entry is itself a template that may read other variables; it is
+// rendered once, when it is first needed.
+type varResolver struct {
+	opts  Options
+	raw   map[string]string
+	lines map[string]int
+	done  map[string]string
+	errs  map[string]error
+	stack []string
+	// left is what the values of vars may still write.
+	left int
+}
+
+// defined reports whether name is set anywhere.
+func (r *varResolver) defined(name string) bool {
+	if _, ok := r.opts.Vars[name]; ok {
+		return true
+	}
+
+	if r.opts.LookupEnv != nil {
+		if _, ok := r.opts.LookupEnv(name); ok {
+			return true
+		}
+	}
+
+	_, ok := r.raw[name]
+
+	return ok
+}
+
+// get returns the value of a variable that is defined.
+func (r *varResolver) get(name string) (string, error) {
+	if v, ok := r.opts.Vars[name]; ok {
+		return v, nil
+	}
+
+	if r.opts.LookupEnv != nil {
+		if v, ok := r.opts.LookupEnv(name); ok {
+			return v, nil
+		}
+	}
+
+	if v, ok := r.done[name]; ok {
+		return v, nil
+	}
+
+	if err, ok := r.errs[name]; ok {
+		return "", err
+	}
+
+	value, err := r.renderVar(name)
+	if r.done == nil {
+		r.done, r.errs = make(map[string]string), make(map[string]error)
+	}
+
+	if err != nil {
+		r.errs[name] = err
+
+		return "", err
+	}
+
+	r.done[name] = value
+
+	return value, nil
+}
+
+// renderVar renders the value of the header entry name.
+func (r *varResolver) renderVar(name string) (string, error) {
+	where := fmt.Sprintf("line %d: vars.%s", r.lines[name], name)
+
+	// The cycle is reported on the entry that closes it.
+	if i := slices.Index(r.stack, name); i >= 0 {
+		chain := strings.Join(append(slices.Clone(r.stack[i:]), name), " -> ")
+
+		return "", fmt.Errorf("line %d: vars.%s: %s is a cycle", r.lines[r.stack[len(r.stack)-1]], r.stack[len(r.stack)-1], chain)
+	}
+
+	value := r.raw[name]
+	if !strings.Contains(value, "{{") {
+		return value, nil
+	}
+
+	r.stack = append(r.stack, name)
+	defer func() { r.stack = r.stack[:len(r.stack)-1] }()
+
+	tmpl, err := template.New("msi.yaml").Option("missingkey=error").Funcs(templateFuncs(r)).Parse(value)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", where, templateErr(err, r.opts, 0))
+	}
+
+	data := make(map[string]string)
+
+	for _, dep := range names(tmpl) {
+		if !r.defined(dep) {
+			continue
+		}
+
+		v, err := r.get(dep)
+		if err != nil {
+			return "", err
+		}
+
+		data[dep] = v
+	}
+
+	out := &limitedBuffer{left: r.left}
+	if err := tmpl.Execute(out, data); err != nil {
+		if errors.Is(err, errRenderedTooLarge) {
+			return "", fmt.Errorf("vars: %w", errRenderedTooLarge)
+		}
+
+		return "", fmt.Errorf("%s: %w", where, templateErr(err, r.opts, 0))
+	}
+
+	r.left -= out.Len()
+
+	if !utf8.Valid(out.Bytes()) {
+		return "", fmt.Errorf("%s: the value is not valid UTF-8", where)
+	}
+
+	return out.String(), nil
+}
+
+// values returns the data of the file's template: every --var, every
+// header entry and every environment variable the template reads, as far
+// as they render without an error. A broken entry is reported only where
+// the template reads it (see execErr), so one that a branch the build does
+// not take reads is no error.
+func (r *varResolver) values(tmpl *template.Template) (map[string]string, error) {
+	values := maps.Clone(r.opts.Vars)
+	if values == nil {
+		values = make(map[string]string)
+	}
+
+	add := func(name string) {
+		if _, ok := values[name]; ok || !r.defined(name) {
+			return
+		}
+
+		if v, err := r.get(name); err == nil {
+			values[name] = v
+		}
+	}
+
+	// In order, so that a cycle is reported on the same entry every time.
+	for _, name := range slices.Sorted(maps.Keys(r.raw)) {
+		add(name)
+	}
+
+	for _, name := range names(tmpl) {
+		add(name)
+	}
+
+	if r.left < 0 {
+		return nil, fmt.Errorf("vars: %w", errRenderedTooLarge)
+	}
+
+	return values, nil
+}
+
+// execErr reports an error of the file's template; a variable that is
+// missing because its header entry is broken reports the entry.
+func (r *varResolver) execErr(err error, offset int) error {
+	if errors.Is(err, errRenderedTooLarge) {
+		return fmt.Errorf("template: %w", errRenderedTooLarge)
+	}
+
+	if m := missingKey.FindStringSubmatch(err.Error()); m != nil {
+		if entryErr, ok := r.errs[m[1]]; ok {
+			return entryErr
+		}
+	}
+
+	return fmt.Errorf("template: %w", templateErr(err, r.opts, offset))
+}
+
+// names returns the variables that a template reads as .NAME or $.NAME.
+func names(tmpl *template.Template) []string {
+	var out []string
+
 	for _, tree := range tmpl.Templates() {
 		if tree.Tree != nil {
 			fieldNames(tree.Root, func(name string) {
-				if value, ok := res.resolve(name); ok {
-					values[name] = value
+				if !slices.Contains(out, name) {
+					out = append(out, name)
 				}
 			})
 		}
 	}
 
-	out := &limitedBuffer{left: maxRendered}
-	err = tmpl.Execute(out, values)
-
-	switch {
-	case len(errs) > 0:
-		return nil, errors.Join(errs...)
-	case errors.Is(err, errRenderedTooLarge):
-		return nil, fmt.Errorf("template: %w", errRenderedTooLarge)
-	case err != nil:
-		return nil, fmt.Errorf("template: %w", templateErr(err, opts))
-	}
-
-	return out.Bytes(), nil
-}
-
-// templateValues returns the data of a template: every --var and every
-// entry of vars that resolves without an error, so {{ index . "NAME" }} and
-// {{ $.NAME }} see them too. A broken entry is left out here and reported
-// where the template uses it, as ${NAME} reports it.
-func templateValues(opts Options, vars map[string]string, lines map[string]int) map[string]string {
-	var scratch []error
-
-	res := &resolver{
-		opts: opts, vars: vars, lines: lines, resolved: make(map[string]string),
-		docLeft: maxSubstituted, varsLeft: maxSubstituted, errs: &scratch,
-	}
-
-	values := make(map[string]string, len(opts.Vars)+len(vars))
-
-	for name := range vars {
-		before := len(scratch)
-		if value, ok := res.resolve(name); ok && len(scratch) == before {
-			values[name] = value
-		}
-	}
-
-	maps.Copy(values, opts.Vars)
-
-	return values
-}
-
-// varsKey finds the vars key at the top level of a raw file, also quoted
-// or after a byte order mark.
-var varsKey = regexp.MustCompile(`(?m)^(?:\x{FEFF})?(?:vars|"vars"|'vars')[ \t]*:`)
-
-// varsBeforeRendering starts the errors about the vars block of a template.
-const varsBeforeRendering = "with --template the vars block is read before rendering"
-
-// templateVars reads the vars block of a template before it is rendered:
-// the lines from "vars:" up to the next line that starts in column one.
-func templateVars(data []byte) (map[string]string, map[string]int, error) {
-	found := varsKey.FindAllIndex(data, -1)
-
-	switch len(found) {
-	case 0:
-		return make(map[string]string), make(map[string]int), nil
-	case 1:
-	default:
-		return nil, nil, fmt.Errorf("vars: lines %d and %d both start with vars:; %s, so there must be one, outside any {{ if }} or comment",
-			lineOf(data, found[0][0]), lineOf(data, found[1][0]), varsBeforeRendering)
-	}
-
-	loc := found[0]
-	block := data[loc[0]:blockEnd(data, loc[1])]
-
-	if i := bytes.Index(block, []byte("{{")); i >= 0 {
-		return nil, nil, fmt.Errorf("line %d: vars: %s and must not hold {{, also not in a comment", lineOf(data, loc[0]+i), varsBeforeRendering)
-	}
-
-	// Leading newlines keep the line numbers of the file.
-	text := append(bytes.Repeat([]byte("\n"), lineOf(data, loc[0])-1), block...)
-
-	var doc yaml.Node
-	if err := yaml.Unmarshal(text, &doc); err != nil {
-		return nil, nil, fmt.Errorf("vars: %w (%s on its own, so anchors defined outside it are not visible)", err, varsBeforeRendering)
-	}
-
-	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
-		return nil, nil, errors.New("vars: the block is not a mapping")
-	}
-
-	return fileVars(doc.Content[0])
-}
-
-// lineOf returns the line of data that offset pos is on, counted from 1.
-func lineOf(data []byte, pos int) int {
-	return bytes.Count(data[:pos], []byte("\n")) + 1
-}
-
-// blockEnd returns where the top-level block that goes on at pos ends: at
-// the next line that starts in column one with neither space, tab, comment
-// nor the end of a flow collection, or at the end of data.
-func blockEnd(data []byte, pos int) int {
-	for {
-		next := bytes.IndexByte(data[pos:], '\n')
-		if next < 0 {
-			return len(data)
-		}
-
-		pos += next + 1
-		if pos < len(data) && !strings.ContainsRune(" \t#\r\n}]", rune(data[pos])) {
-			return pos
-		}
-	}
+	return out
 }
 
 // fieldNames calls use with the first name of every field reference such
@@ -235,27 +355,9 @@ func branchNames(node *parse.BranchNode, use func(string)) {
 }
 
 // templateFuncs returns the functions Render adds to Go's built-in ones.
-func templateFuncs(lookup func(string) (string, bool), opts Options) template.FuncMap {
+func templateFuncs(vars *varResolver) template.FuncMap {
 	return template.FuncMap{
-		"var": func(name string, def ...string) (string, error) {
-			if v, ok := lookup(name); ok {
-				return v, nil
-			}
-
-			switch len(def) {
-			case 0:
-				return "", notSet(name, opts)
-			case 1:
-				return def[0], nil
-			default:
-				return "", errors.New("var takes a name and at most one default")
-			}
-		},
-		"has": func(name string) bool {
-			_, ok := lookup(name)
-
-			return ok
-		},
+		"has":   vars.defined,
 		"quote": quote,
 		"indent": func(n int, s string) (string, error) {
 			if n < 0 || n > maxIndent {
@@ -281,14 +383,13 @@ func templateFuncs(lookup func(string) (string, bool), opts Options) template.Fu
 // notSet is the error for a variable that is not set.
 func notSet(name string, opts Options) error {
 	if opts.LookupEnv == nil {
-		return fmt.Errorf("variable %s is not set; pass --var %s=VALUE, add it to vars, or pass --env to read it from the environment", name, name)
+		return fmt.Errorf("variable %s is not set; pass --var %s=VALUE, add it to the vars header, or pass --env to read it from the environment", name, name)
 	}
 
-	return fmt.Errorf("variable %s is not set; pass --var %s=VALUE, set it in the environment or add it to vars", name, name)
+	return fmt.Errorf("variable %s is not set; pass --var %s=VALUE, set it in the environment or add it to the vars header", name, name)
 }
 
-// quote writes value as a double-quoted YAML string. ${ becomes $${, which
-// the ${NAME} substitution after rendering turns back into ${.
+// quote writes value as a double-quoted YAML string.
 func quote(value string) (string, error) {
 	// json.Marshal would replace invalid bytes silently.
 	if !utf8.ValidString(value) {
@@ -302,7 +403,7 @@ func quote(value string) (string, error) {
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 
-	if err := enc.Encode(strings.ReplaceAll(value, "${", "$${")); err != nil {
+	if err := enc.Encode(value); err != nil {
 		return "", err //nolint:wrapcheck // encoding a string does not fail
 	}
 
@@ -321,35 +422,46 @@ func quote(value string) (string, error) {
 }
 
 // yamlPrintable holds the characters YAML allows unescaped in a file
-// (YAML 1.2, production c-printable).
+// (YAML 1.2, production c-printable), except U+0085, which a double-quoted
+// string folds as a line break.
 var yamlPrintable = &unicode.RangeTable{ //nolint:gochecknoglobals // lookup table
 	R16: []unicode.Range16{
 		{Lo: 0x09, Hi: 0x0A, Stride: 1}, {Lo: 0x0D, Hi: 0x0D, Stride: 1},
-		{Lo: 0x20, Hi: 0x7E, Stride: 1}, {Lo: 0x85, Hi: 0x85, Stride: 1},
+		{Lo: 0x20, Hi: 0x7E, Stride: 1},
 		{Lo: 0xA0, Hi: 0xD7FF, Stride: 1}, {Lo: 0xE000, Hi: 0xFFFD, Stride: 1},
 	},
 	R32: []unicode.Range32{{Lo: 0x10000, Hi: 0x10FFFF, Stride: 1}},
 }
 
-// missingKey matches text/template's error for a name the data lacks.
+// templateLine matches a line that text/template names inside a message.
+var templateLine = regexp.MustCompile(`(started at )msi\.yaml:(\d+)`)
+
+// missingKey matches text/template's error for a variable that is not set.
 var missingKey = regexp.MustCompile(`map has no entry for key "([^"]*)"`)
 
 // templateErr drops the template name that text/template puts in every
 // message, which Load already names, and says how to set a missing
 // variable, so an error reads "template: line 3:5: at <.ARCH>: variable
 // ARCH is not set; ...".
-func templateErr(err error, opts Options) error {
+func templateErr(err error, opts Options, offset int) error {
 	msg := strings.TrimPrefix(err.Error(), "template: ")
 	msg = strings.TrimPrefix(msg, "msi.yaml:")
 	msg = strings.Replace(msg, `executing "msi.yaml" at `, "at ", 1)
-	msg = strings.ReplaceAll(msg, "started at msi.yaml:", "started at line ")
+	msg = templateLine.ReplaceAllStringFunc(msg, func(m string) string {
+		sub := templateLine.FindStringSubmatch(m)
+		n, _ := strconv.Atoi(sub[2])
+
+		return sub[1] + strconv.Itoa(n+offset)
+	})
 
 	if m := missingKey.FindStringSubmatch(msg); m != nil {
 		msg = strings.Replace(msg, m[0], notSet(m[1], opts).Error(), 1)
 	}
 
 	if line, rest, ok := strings.Cut(msg, ":"); ok && line != "" && strings.Trim(line, "0123456789") == "" {
-		return fmt.Errorf("line %s:%s", line, rest)
+		n, _ := strconv.Atoi(line)
+
+		return fmt.Errorf("line %d:%s", n+offset, rest)
 	}
 
 	return errors.New(msg)

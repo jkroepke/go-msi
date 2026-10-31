@@ -30,7 +30,7 @@ msi-builder build [flags] msi.yaml
       --cert string            sign with this PEM certificate chain (signing certificate first)
       --cfb int                compound file version, 3 (512-byte sectors) or 4 (4096-byte sectors) (default 4)
       --description string     program name shown in the UAC prompt
-      --env                    let environment variables fill ${NAME} references and, with --template, template variables
+      --env                    let environment variables fill {{ .NAME }}
       --hash string            signature digest: sha256, sha384, sha512 or sha1 (default "sha256")
   -h, --help                   help for build
       --key string             PEM private key for --cert
@@ -39,10 +39,9 @@ msi-builder build [flags] msi.yaml
       --pfx string             sign with the key and certificates in this PKCS #12 file
   -q, --quiet                  print nothing on success
       --skip-verify            do not read the finished package back
-      --template               render the file with Go text/template before parsing it
       --timestamp-url string   RFC 3161 time-stamping authority
       --url string             more-information link of the signature
-      --var NAME=VALUE         set a variable referenced as ${NAME}, and as {{ .NAME }} with --template; repeatable
+      --var NAME=VALUE         set a variable read as {{ .NAME }}; repeatable
 ```
 
 ## See also
