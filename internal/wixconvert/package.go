@@ -909,9 +909,15 @@ func (c *converter) rawFolderNote(propOut *omap, kid *elem) {
 		"the property is set whenever the value exists, so if only that matters, the raw value is enough")
 }
 
-// hasNestedSearch reports whether a search is nested in elm.
+// hasNestedSearch reports whether a search that looks below the folder
+// is nested in elm. A DirectorySearch without Path stands for the same
+// folder, so it only counts by what is nested in it.
 func hasNestedSearch(elm *elem) bool {
 	return slices.ContainsFunc(elm.kids, func(kid *elem) bool {
+		if kid.is("DirectorySearch") && strings.TrimSpace(kid.attr("Path")) == "" {
+			return hasNestedSearch(kid)
+		}
+
 		return kid.is("DirectorySearch") || kid.is("FileSearch")
 	})
 }

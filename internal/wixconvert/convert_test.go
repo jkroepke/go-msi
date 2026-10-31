@@ -2394,7 +2394,7 @@ func TestConvertRawRegistryFolderSearch(t *testing.T) {
     <MajorUpgrade DowngradeErrorMessage="newer" />
     <Property Id="OLDDIR">
       <RegistrySearch Root="HKLM" Key="SOFTWARE\Example\Old" Name="InstallLocation"` + typ + `>
-        <DirectorySearch AssignToProperty="yes" />
+        <DirectorySearch AssignToProperty="yes"><DirectorySearch /></DirectorySearch>
       </RegistrySearch>
     </Property>
     <StandardDirectory Id="ProgramFiles64Folder">
