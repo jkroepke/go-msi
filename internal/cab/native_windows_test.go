@@ -1261,14 +1261,15 @@ func TestNativeFDIExtractsCopies(t *testing.T) { //nolint:paralleltest // the FD
 			}
 		}
 
-		// The shared folder is the second; two copies read it again.
-		folders := 36 + 8
-		shared := int64(binary.LittleEndian.Uint32(raw[folders+16:]) - binary.LittleEndian.Uint32(raw[folders+8:]))
+		// The shared folder is the second (its CFFOLDER at 36 + 8); the
+		// third starts where it ends. Two copies read it again.
+		folder := 36 + 8
+		shared := int64(binary.LittleEndian.Uint32(raw[folder+8:]) - binary.LittleEndian.Uint32(raw[folder:]))
 
 		t.Logf("CAB-14 compression %d window %d: cabinet of %d bytes, shared folder %d bytes, cabinet.dll read %d bytes",
 			opts.Compression, opts.Window, len(raw), shared, lastRead)
 
-		if lastRead > int64(len(raw))+2*shared+256<<10 {
+		if lastRead > int64(len(raw))+2*shared+64<<10 {
 			t.Errorf("compression %d: cabinet.dll read %d bytes of a %d-byte cabinet whose shared folder has %d", opts.Compression, lastRead, len(raw), shared)
 		}
 	}

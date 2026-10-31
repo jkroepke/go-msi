@@ -848,7 +848,10 @@ in `internal/builder/nativetest/media_windows_test.go`.
 
 ## Shared cabinet data (CAB-14)
 
-Experiment run on 2026-10-31 by the `windows-latest` CI runner (Windows
+CAB-14 itself is pending. The preliminary experiment below, which is not
+CAB-14, chose its layout.
+
+Preliminary experiment run on 2026-10-31 by the `windows-latest` CI runner (Windows
 Server 2025) for the cabinet sharing change (workflow run 41237366216,
 commit 574447a, a temporary test that was then removed): cabinet.dll's FDI
 extracted cabinets of four files in one folder, an 8 MiB and two 1 MiB
