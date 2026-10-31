@@ -56,6 +56,7 @@ Skipping action: BuilderGrantUser (condition is false)
 So in a maintenance install of a per-machine product the per-user marker
 never reached the DLL here, and the DLL's own check of the registered
 context (`MsiGetProductInfoExW`) is defence in depth that this run did not
-need. It did run: the commit of the first per-user installs above found
-the product registered for the user, since the account was remembered in
-the user's hive.
+need. Whether the commit of a first install already finds the product
+registered is not shown by these runs, since the marker falls back to the
+same hive; the commit action now logs which context it found (`BuilderGrant:
+the product is registered …`).

@@ -157,8 +157,8 @@ func TestPermissionGrants(t *testing.T) {
 	}
 
 	// The engine builds the data right before the deferred actions: two
-	// complementary resets, a reset of the count and the user's SID in a
-	// per-user install, then two type-51
+	// complementary resets, a reset of the count and the per-user marker
+	// `|`, then two type-51
 	// actions per grant with its condition, in authoring order, then the
 	// data of each deferred action, set in every install, so that none
 	// comes from the command line.

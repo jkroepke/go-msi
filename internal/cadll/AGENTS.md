@@ -108,7 +108,8 @@ the root `AGENTS.md` first.
   changes the session property cannot change, FILE-12; never format it into
   the data) and the key is `HKEY_USERS\<SID>\Software\msi-builder\GrantAccounts\<ProductCode>`:
   the context the engine registered the product in (`MsiGetProductInfoExW`,
-  `State`) overrides the marker in a maintenance install (registered
+  `State`) overrides the marker, unless the product is registered both per
+  machine and for the user, in a maintenance install (registered
   nowhere or a failed query: no remembered account) and in the commit of a
   first install (the marker only when registered nowhere), because a user
   may pass `ALLUSERS` to an elevated repair; only the removal's commit,

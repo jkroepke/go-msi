@@ -1104,6 +1104,11 @@ static const WCHAR rollbackKey[] = u"Software\\msi-builder\\GrantRollback\\";
 static const WCHAR accountsKey[] = u"SOFTWARE\\msi-builder\\GrantAccounts\\";
 static const WCHAR userAccountsKey[] = u"\\Software\\msi-builder\\GrantAccounts\\";
 static const WCHAR propUserSid[] = u"UserSID";
+static const WCHAR msgRegFailed[] = u"the product's registration cannot be read";
+static const WCHAR msgRegNowhere[] = u"the product is not registered yet; the install's scope decides";
+static const WCHAR msgRegMachine[] = u"the product is registered per machine";
+static const WCHAR msgRegUser[] = u"the product is registered for the user";
+static const WCHAR msgRegBoth[] = u"the product is registered per machine and for the user; the install's scope decides";
 static const WCHAR msgNoContext[] = u"cannot tell where the product is registered; remembered accounts are not used";
 static const WCHAR msgStillRegistered[] = u"the product is still registered in this scope; its remembered accounts stay";
 static const WCHAR msgUserSid[] = u"the user's security identifier is missing or malformed; remembered accounts are not used";
@@ -1264,34 +1269,30 @@ enum {
     CONTEXT_MACHINE = 4,
 };
 
-// registeredContext tells where the engine has a product registered: in the
-// machine context (CONTEXT_MACHINE), for the user with the SID
-// (CONTEXT_USERUNMANAGED, also for a managed per-user install), nowhere (0)
-// or, when a query fails for another reason than an unknown product, -1.
-static int registeredContext(const WCHAR *product, const WCHAR *sid)
+// registeredContexts tells where the engine has a product registered: a
+// mask of CONTEXT_MACHINE and CONTEXT_USERUNMANAGED (for the user with the
+// SID, managed or not), 0 for nowhere or, when a query fails for another
+// reason than an unknown product, -1. A product can be installed once per
+// machine and once per user at the same time (documented).
+static int registeredContexts(const WCHAR *product, const WCHAR *sid)
 {
     static const WCHAR stateProp[] = u"State";
-    static const int userContexts[] = {CONTEXT_USERUNMANAGED, CONTEXT_USERMANAGED};
-    WCHAR state[16];
-    DWORD n = 16;
-    UINT err = MsiGetProductInfoExW(product, 0, CONTEXT_MACHINE, stateProp, state, &n);
-    if (!err) {
-        return CONTEXT_MACHINE;
-    }
-    if (err != ERROR_UNKNOWN_PRODUCT_) {
-        return -1;
-    }
-    for (int i = 0; sid && i < 2; i++) {
-        n = 16;
-        err = MsiGetProductInfoExW(product, sid, userContexts[i], stateProp, state, &n);
-        if (!err) {
-            return CONTEXT_USERUNMANAGED;
+    static const int contexts[] = {CONTEXT_MACHINE, CONTEXT_USERUNMANAGED, CONTEXT_USERMANAGED};
+    int found = 0;
+    for (int i = 0; i < 3; i++) {
+        if (i && !sid) {
+            break;
         }
-        if (err != ERROR_UNKNOWN_PRODUCT_) {
+        WCHAR state[16];
+        DWORD n = 16;
+        UINT err = MsiGetProductInfoExW(product, i ? sid : 0, contexts[i], stateProp, state, &n);
+        if (!err) {
+            found |= i ? CONTEXT_USERUNMANAGED : CONTEXT_MACHINE;
+        } else if (err != ERROR_UNKNOWN_PRODUCT_) {
             return -1;
         }
     }
-    return 0;
+    return found;
 }
 
 // validSid tells whether s looks like a SID string (S-1-...), so that it
@@ -1799,17 +1800,22 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
         // runs after the product was unregistered, so the marker names the
         // scope, and nothing is deleted while the product is still
         // registered there.
+        // When the product is registered in both contexts, the engine set
+        // ALLUSERS to the one it works on, so the marker tells them apart.
         WCHAR *user = property(install, propUserSid);
-        context = registeredContext(product, user && validSid(user) ? user : 0);
+        context = registeredContexts(product, user && validSid(user) ? user : 0);
         HeapFree(heap, 0, user);
-        if (context > 0 && op != 'x') {
+        if (op == 'c') {
+            logft(install, tmplGrant, context < 0 ? msgRegFailed : context == 0 ? msgRegNowhere : context == CONTEXT_MACHINE ? msgRegMachine : context == CONTEXT_USERUNMANAGED ? msgRegUser : msgRegBoth, 0, 0);
+        }
+        if (context > 0 && context != (CONTEXT_MACHINE | CONTEXT_USERUNMANAGED) && op != 'x') {
             perUser = context == CONTEXT_USERUNMANAGED;
-        } else if (op != 'x' && (again || context < 0)) {
+        } else if (op != 'x' && (again || context < 0) && context != (CONTEXT_MACHINE | CONTEXT_USERUNMANAGED)) {
             scope.bad = 1;
             why = msgNoContext;
         }
     }
-    if (op == 'x' && context > 0 && perUser == (context == CONTEXT_USERUNMANAGED)) {
+    if (op == 'x' && context > 0 && (context & (perUser ? CONTEXT_USERUNMANAGED : CONTEXT_MACHINE))) {
         scope.bad = 1; // another install of the product still uses the accounts
         why = msgStillRegistered;
     }
