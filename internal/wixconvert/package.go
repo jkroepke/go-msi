@@ -838,7 +838,27 @@ func (c *converter) search(propOut *omap, elm *elem) *omap {
 
 	outer := newMap().set(kind, found)
 
+	return c.nestedSearch(propOut, elm, outer)
+}
+
+// nestedSearch returns the search nested in elm with outer as its under
+// search, or outer. A DirectorySearch without Path below another search
+// checks that the folder the outer one finds exists: below a RegistrySearch
+// that is a registry search of type directory, which returns the folder
+// only if it exists (SEARCH-07); below a DirectorySearch it is that folder.
+func (c *converter) nestedSearch(propOut *omap, elm *elem, outer *omap) *omap {
 	for _, kid := range elm.kids {
+		if kid.is("DirectorySearch") && strings.TrimSpace(kid.attr("Path")) == "" {
+			c.existenceCheck(propOut, elm, kid, outer)
+
+			if depth, err := strconv.Atoi(kid.attr("Depth")); err == nil && depth > 0 && hasNestedSearch(kid) {
+				c.todof(propOut, "", kid.line, "the DirectorySearch without Path has Depth=\"%d\"; convert left Depth out, so the "+
+					"search nested in it looks only in the folder the outer %s finds, not in its subfolders", depth, elm.qname())
+			}
+
+			return c.nestedSearch(propOut, kid, outer)
+		}
+
 		if inner := c.search(propOut, kid); inner != nil {
 			// The nested search looks below the folder this one finds.
 			attachUnder(inner, outer)
@@ -848,6 +868,29 @@ func (c *converter) search(propOut *omap, elm *elem) *omap {
 	}
 
 	return outer
+}
+
+// existenceCheck converts a DirectorySearch without Path below the search
+// elm, whose converted form is outer.
+func (c *converter) existenceCheck(propOut *omap, elm, kid *elem, outer *omap) {
+	switch {
+	case elm.is("RegistrySearch") && outer.mapAt("registry") != nil && slices.Contains([]string{"", "raw", keyDirectory}, elm.attr("Type")):
+		outer.mapAt("registry").set("type", "directory")
+	case elm.is("DirectorySearch"), hasNestedSearch(kid):
+		// A search nested in the folder only finds something if the folder
+		// exists, so it is the existence check.
+	default:
+		c.todof(propOut, "", kid.line, "the DirectorySearch without Path only checks that the folder the outer %s finds exists; "+
+			"properties.search has no such check, so convert left it out and the property is set even if the folder is missing",
+			elm.qname())
+	}
+}
+
+// hasNestedSearch reports whether a search is nested in elm.
+func hasNestedSearch(elm *elem) bool {
+	return slices.ContainsFunc(elm.kids, func(kid *elem) bool {
+		return kid.is("DirectorySearch") || kid.is("FileSearch")
+	})
 }
 
 // searchKind converts the attributes of one search element.
