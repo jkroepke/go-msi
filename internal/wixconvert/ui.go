@@ -16,6 +16,7 @@ func (c *converter) walkUI(e *elem) { //nolint:cyclop // one case per kind of UI
 			c.uiRef(kid)
 		case kid.is("Publish") && kid.attr("Event") == "DoAction" && kid.attr("Dialog") == "ExitDialog":
 			c.launchAction = kid.attr("Value")
+			c.noteDoActions(kid)
 		case kid.ns == nsUI && kid.name == "WixUI":
 			c.wixUI = kid
 		case kid.is("Publish") && kid.attr("Event") == "NewDialog":

@@ -1741,7 +1741,14 @@ func TestConvertUnscheduledActions(t *testing.T) {
     <UI>
       <ui:WixUI Id="WixUI_FeatureTree" />
       <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="DoAction" Value="Check" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="Readme" Condition="SHOWREADME" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="Launch" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1" />
     </UI>
+    <Binary Id="Tools" SourceFile="tools.dll" />
+    <CustomAction Id="Readme" BinaryRef="Tools" DllEntry="ShowReadme" />
+    <CustomAction Id="Launch" FileRef="hello.exe" ExeCommand="" Return="asyncNoWait" />
+    <CustomAction Id="Adv" Property="ADV" Value="1" />
+    <AdvertiseExecuteSequence><Custom Action="Adv" After="CostFinalize" /></AdvertiseExecuteSequence>
   </Package>
 </Wix>`
 
@@ -1754,6 +1761,9 @@ func TestConvertUnscheduledActions(t *testing.T) {
 	for _, want := range []string{
 		"the action Check runs only from the DoAction control event of the dialog LicenseAgreementDlg (line 14)",
 		"no sequence schedules the action Never, so it never runs; convert left it out",
+		"the action Readme runs only from the DoAction control event of the dialog ExitDialog (line 15), which has no " +
+			"counterpart; convert left it out; drop the binary Tools from binaries unless another action uses it",
+		"only <AdvertiseExecuteSequence> (line 22), which has no counterpart, schedules the action Adv; convert left it out",
 		"  enabled: true\n", "  chooseFeatures: true\n",
 	} {
 		if !strings.Contains(out, want) {

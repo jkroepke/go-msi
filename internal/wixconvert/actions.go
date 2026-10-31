@@ -53,6 +53,12 @@ func (c *converter) placements() map[string][]any {
 		if !ok {
 			c.todof(nil, "", seq.line, "<%s> has no counterpart", seq.name)
 
+			for _, entry := range seq.kids {
+				if id := entry.attr("Action"); entry.is("Custom") && c.otherSequences[id] == nil {
+					c.otherSequences[id] = seq
+				}
+			}
+
 			continue
 		}
 
@@ -422,6 +428,12 @@ func anchorText(placement *omap) string {
 func (c *converter) unscheduledAction(custom *elem) {
 	actionID := custom.attr("Id")
 
+	// The action's binary stays in binaries, which nothing may use now.
+	binary := ""
+	if id := custom.attr("BinaryRef") + custom.attr("BinaryKey"); id != "" {
+		binary = "; drop the binary " + id + " from binaries unless another action uses it"
+	}
+
 	if publish := c.doActions[actionID]; publish != nil {
 		where := "a dialog"
 		if dialog := publish.attr("Dialog"); dialog != "" {
@@ -429,12 +441,19 @@ func (c *converter) unscheduledAction(custom *elem) {
 		}
 
 		c.todof(nil, "", custom.line, "the action %s runs only from the DoAction control event of %s (line %d), which has "+
-			"no counterpart; convert left it out", actionID, where, publish.line)
+			"no counterpart; convert left it out%s", actionID, where, publish.line, binary)
 
 		return
 	}
 
-	c.todof(nil, "", custom.line, "no sequence schedules the action %s, so it never runs; convert left it out", actionID)
+	if seq := c.otherSequences[actionID]; seq != nil {
+		c.todof(nil, "", custom.line, "only <%s> (line %d), which has no counterpart, schedules the action %s; convert left it out%s",
+			seq.name, seq.line, actionID, binary)
+
+		return
+	}
+
+	c.todof(nil, "", custom.line, "no sequence schedules the action %s, so it never runs; convert left it out%s", actionID, binary)
 }
 
 // skipAction reports whether a custom action is left out of
