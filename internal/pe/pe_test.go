@@ -400,3 +400,56 @@ func TestShortOptionalHeader(t *testing.T) {
 		}
 	}
 }
+
+// movedVersion builds an image whose version resource data lies at RVA
+// 0x2200, past the resource section's 0x200 bytes of raw data but inside
+// its VirtualSize of 0x400, with the bytes in the file right after the
+// raw data. rawSize sets the section's SizeOfRawData.
+func movedVersion(t *testing.T, rawSize uint32) []byte {
+	t.Helper()
+
+	data := testpe.Build(testpe.Options{FileVersion: "1.2.3.4", Languages: []int{1033}, Padding: 0x200})
+
+	src := blockOffset(t, data, "VS_VERSION_INFO")
+	size := int(binary.LittleEndian.Uint32(data[testDataEntry+4:]))
+	copy(data[testRsrcRaw+0x200:], data[src:src+size])
+	clear(data[src : src+size])
+
+	binary.LittleEndian.PutUint32(data[testDataEntry:], 0x2200)
+	binary.LittleEndian.PutUint32(data[testRsrcSection+8:], 0x400) // VirtualSize
+	binary.LittleEndian.PutUint32(data[testRsrcSection+16:], rawSize)
+
+	return data
+}
+
+// TestRecordPastRawData reads a version resource that lies past the
+// section's raw data rounded to FileAlignment: it reads as zeros, so there
+// is no version even though the file holds its bytes. With the raw data
+// covering it, the version is read.
+func TestRecordPastRawData(t *testing.T) {
+	t.Parallel()
+
+	info, err := Parse(bytes.NewReader(movedVersion(t, 0x200)))
+	if err == nil && info.HasVersion {
+		t.Errorf("read past the raw data: %+v", info)
+	}
+
+	info, err = Parse(bytes.NewReader(movedVersion(t, 0x400)))
+	if err != nil || info.FileVersion != "1.2.3.4" || info.Language() != "1033" {
+		t.Errorf("covered by the raw data: %+v, %v", info, err)
+	}
+}
+
+// TestInvalidFileAlignment falls back to the unrounded raw size when
+// FileAlignment is not a power of two from 512 to 64 KiB.
+func TestInvalidFileAlignment(t *testing.T) {
+	t.Parallel()
+
+	data := corruptImage(t, testRsrcSection+16, 1)
+	binary.LittleEndian.PutUint32(data[0x80+24+36:], 0) // FileAlignment
+
+	info, err := Parse(bytes.NewReader(data))
+	if err == nil && info.HasVersion {
+		t.Errorf("one raw byte gave a version: %+v", info)
+	}
+}

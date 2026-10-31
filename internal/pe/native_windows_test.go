@@ -102,6 +102,14 @@ func TestMsiGetFileVersionAgrees(t *testing.T) {
 		}
 	}
 
+	moved := func(rawSize uint32) func(*testing.T) []byte {
+		return func(t *testing.T) []byte {
+			t.Helper()
+
+			return movedVersion(t, rawSize)
+		}
+	}
+
 	patch := func(off int, value uint32) func(*testing.T) []byte {
 		return func(t *testing.T) []byte {
 			t.Helper()
@@ -125,6 +133,8 @@ func TestMsiGetFileVersionAgrees(t *testing.T) {
 		"resource section raw size 0":   patch(testRsrcSection+16, 0),
 		"translation past its Var":      shrinkTranslation,
 		"raw data ends in Translation":  cutTranslation,
+		"record past rounded raw data":  moved(0x200),
+		"record inside raw data":        moved(0x400),
 		"resource section raw size 1":   patch(testRsrcSection+16, 1),
 		"NumberOfRvaAndSizes 0":         patch(testResourceDir-20, 0),
 		"NumberOfRvaAndSizes 2":         patch(testResourceDir-20, 2),
