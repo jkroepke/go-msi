@@ -2002,6 +2002,7 @@ func (v *validator) customActions(cfg *Config, known *refs) {
 		v.actionKind(cfg, actionPath, action, known)
 		inScript := action.Execute != executeImmediate
 		v.actionRun(cfg, actionPath, action)
+		v.actionScope(actionPath, action)
 		v.checkProgress(actionPath+".progress", action.Progress)
 
 		if len(action.Schedule) == 0 {
@@ -2014,6 +2015,30 @@ func (v *validator) customActions(cfg *Config, known *refs) {
 	}
 
 	v.runDataIDs(cfg)
+}
+
+// actionScope checks a custom action's scope: perMachine or perUser, only
+// in a dual package, and only for the execute sequences, which run after
+// the engine has fixed ALLUSERS for the context (INST-02). In a UI sequence
+// ALLUSERS is 2 again once the scope page has run.
+func (v *validator) actionScope(actionPath string, action *CustomAction) {
+	if action.Scope == "" {
+		return
+	}
+
+	v.oneOf(actionPath+".scope", string(action.Scope), string(ScopePerMachine), string(ScopePerUser))
+
+	if !v.scope.Dual() {
+		v.errorf(actionPath+".scope", "only a perUserOrMachine or perMachineOrUser package runs actions "+
+			"in one context; a %s package runs everything %s", v.scope, v.scope)
+	}
+
+	for j, placement := range action.Schedule {
+		if placement.Sequence == "ui" || placement.Sequence == sequenceAdminUI {
+			v.errorf(fmt.Sprintf("%s.schedule[%d].sequence", actionPath, j),
+				"an action with a scope runs only in execute sequences: the scope page sets ALLUSERS back to 2 in the UI sequence")
+		}
+	}
 }
 
 // progressWidth is the width of ActionText.Description.
@@ -2218,8 +2243,15 @@ func (v *validator) actionRun(cfg *Config, actionPath string, action *CustomActi
 		v.errorf(actionPath+".impersonate", "impersonate: false needs a deferred, rollback or commit action")
 	}
 
-	if !*action.Impersonate && cfg.Package.Scope.MayBePerUser() {
-		v.errorf(actionPath+".impersonate", "%s cannot run actions without impersonation (ICE105)", v.perUserPackage())
+	// A dual package may run an action without impersonation when its
+	// scope keeps it out of per-user installs (CA-09).
+	if !*action.Impersonate && cfg.Package.Scope.MayBePerUser() && action.Scope != ScopePerMachine {
+		hint := ""
+		if cfg.Package.Scope.Dual() {
+			hint = "; add scope: perMachine to run it only in per-machine installs"
+		}
+
+		v.errorf(actionPath+".impersonate", "%s cannot run actions without impersonation (ICE105)%s", v.perUserPackage(), hint)
 	}
 
 	if isExec && action.Return == "" {

@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/jkroepke/msi-builder/main/pkg/config/schema.json
 # Converted from dualscope.wxs by msi-builder convert.
 # Review it, resolve the TODO comments, then run msi-builder validate.
-# TODO(line 38): the standard action RemoveExistingProducts in InstallExecuteSequence runs only when NOT UPGRADINGPRODUCTCODE; msi-builder schedules the standard actions itself, without conditions
+# TODO(line 45): the standard action RemoveExistingProducts in InstallExecuteSequence runs only when NOT UPGRADINGPRODUCTCODE; msi-builder schedules the standard actions itself, without conditions
 # TODO(line 27): the action OverridePerMachineFolder, which sets WixPerMachineFolder for WixUI_Advanced, was left out: msi-builder sets the install folder of each scope itself
 # TODO(line 31): the action OverrideAgain, which sets WixPerMachineFolder for WixUI_Advanced, was left out: msi-builder sets the install folder of each scope itself
 schema: msi-builder/v1
@@ -62,6 +62,37 @@ components:
         scope: user
     scope: perUser
 customActions:
+  # Elevated actions run only per machine in msi-builder (CA-09).
+  - id: RegisterMachine
+    run:
+      command: '"[INSTALLFOLDER]hello.exe" --register'
+      directory: INSTALLFOLDER
+    execute: deferred
+    impersonate: false
+    # TODO(line 36): msi-builder runs an action without impersonation in a perUserOrMachine package only in per-machine installs (CA-09); the WiX package ran RegisterMachine in per-user installs too
+    scope: perMachine
+    return: check
+    schedule:
+      - {sequence: execute, after: InstallFiles, condition: NOT Installed}
+  - id: RegisterGuarded
+    run:
+      command: '"[INSTALLFOLDER]hello.exe" --guarded'
+      directory: INSTALLFOLDER
+    execute: deferred
+    impersonate: false
+    scope: perMachine
+    return: check
+    schedule:
+      - {sequence: execute, after: InstallFiles}
+  - id: SetupUser
+    run:
+      command: '"[INSTALLFOLDER]hello.exe" --user'
+      directory: INSTALLFOLDER
+    execute: deferred
+    scope: perUser
+    return: check
+    schedule:
+      - {sequence: execute, after: InstallFiles}
   # Placed on left-out setters, so they move to those setters' place.
   - id: SetHELLOMODE
     setProperty: {name: HELLOMODE, value: dual}

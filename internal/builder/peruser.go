@@ -32,7 +32,8 @@ func (b *build) checkPerUserRollback() {
 	}
 
 	for actionIndex, custom := range b.cfg.CustomActions {
-		if !canFailInstall(custom) {
+		// A perMachine action never runs in a per-user install.
+		if !canFailInstall(custom) || custom.Scope == config.ScopePerMachine {
 			continue
 		}
 

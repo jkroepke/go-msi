@@ -182,6 +182,7 @@ func (c *converter) emitActions() {
 		reanchor(actionID, byAction[actionID])
 		action.set("schedule", byAction[actionID])
 		delete(byAction, actionID)
+		c.actionScope(action, custom)
 		c.extensionAnchors(action, custom, byAction, sides)
 		c.out.add("customActions", action)
 	}
@@ -209,6 +210,85 @@ func (c *converter) emitActions() {
 	}
 
 	c.leftoverProgress(progress)
+}
+
+// actionScope gives an action of a dual package a scope: perMachine for
+// one without impersonation, which msi-builder runs only in per-machine
+// installs (CA-09), and the scope its schedules' conditions name when each
+// of them names the same one. A condition that only names the scope goes,
+// since the builder writes it.
+func (c *converter) actionScope(action *omap, custom *elem) {
+	if !c.dualScope() {
+		return
+	}
+
+	placements := schedulePlacements(action)
+	scope := c.namedScope(placements)
+	elevated := custom.no("Impersonate")
+
+	switch {
+	case scope != "" && (!elevated || scope == scopeMachine):
+		for _, placement := range placements {
+			placement.del("condition")
+		}
+
+		action.set("scope", scope)
+	case elevated:
+		action.set("scope", scopeMachine)
+
+		if !mentionsAllUsers(placements) {
+			c.todof(action, "scope", custom.line, "msi-builder runs an action without impersonation in a %s package only in "+
+				"per-machine installs (CA-09); the WiX package ran %s in per-user installs too", c.scope, custom.attr("Id"))
+		}
+	}
+}
+
+// schedulePlacements returns the placements of an action's schedule.
+func schedulePlacements(action *omap) []*omap {
+	schedule, ok := action.get("schedule").([]any)
+	if !ok {
+		return nil
+	}
+
+	placements := make([]*omap, 0, len(schedule))
+
+	for _, entry := range schedule {
+		if placement, ok := entry.(*omap); ok {
+			placements = append(placements, placement)
+		}
+	}
+
+	return placements
+}
+
+// namedScope returns the scope that the condition of every placement
+// names alone, or "".
+func (c *converter) namedScope(placements []*omap) string {
+	scope := ""
+
+	for _, placement := range placements {
+		found := c.scopeCondition(placement.str("condition"))
+		if found == "" || scope != "" && found != scope {
+			return ""
+		}
+
+		scope = found
+	}
+
+	return scope
+}
+
+// mentionsAllUsers reports whether every placement has a condition that
+// tests ALLUSERS, so that the action may have been meant for one context
+// already.
+func mentionsAllUsers(placements []*omap) bool {
+	for _, placement := range placements {
+		if !strings.Contains(strings.ToUpper(placement.str("condition")), "ALLUSERS") {
+			return false
+		}
+	}
+
+	return len(placements) > 0
 }
 
 // leftoverProgress notes the progress texts that no converted action took:
@@ -816,7 +896,7 @@ func (c *converter) command(quiet *elem) (string, bool) {
 func newAction(e *elem) *omap {
 	action := newMap()
 	action.order("id", "setProperty", "setDirectory", "error", "exec", "execProperty", "dll", "exe", "run",
-		"execute", "impersonate", "return", "hideTarget", "once", "progress", "schedule")
+		"execute", "impersonate", "scope", "return", "hideTarget", "once", "progress", "schedule")
 	action.head = comments(e)
 
 	return action

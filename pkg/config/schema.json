@@ -596,6 +596,20 @@
             "$ref": "#/$defs/bool",
             "default": true
           },
+          "scope": {
+            "description": "In a perUserOrMachine or perMachineOrUser package only: run the action only in this context (execute sequences only). A perMachine action may run without impersonation.",
+            "anyOf": [
+              {
+                "enum": [
+                  "perMachine",
+                  "perUser"
+                ]
+              },
+              {
+                "$ref": "#/$defs/var"
+              }
+            ]
+          },
           "return": {
             "anyOf": [
               {
