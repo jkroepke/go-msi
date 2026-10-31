@@ -2131,6 +2131,7 @@ func TestConvertElevatedActionScopes(t *testing.T) {
     <MajorUpgrade DowngradeErrorMessage="newer" />
     <CustomAction Id="Immediate" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]a.exe&quot;" Impersonate="no" Return="ignore" />
     <CustomAction Id="AdminToo" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]a.exe&quot;" Execute="deferred" Impersonate="no" />
+    <CustomAction Id="AdminOnly" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]a.exe&quot;" Execute="deferred" Impersonate="no" />
     <CustomAction Id="UserOnly" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]a.exe&quot;" Execute="deferred" Impersonate="no" />
     <InstallExecuteSequence>
       <Custom Action="Immediate" After="InstallFiles" Condition="NOT Installed" />
@@ -2139,6 +2140,7 @@ func TestConvertElevatedActionScopes(t *testing.T) {
     </InstallExecuteSequence>
     <AdminExecuteSequence>
       <Custom Action="AdminToo" After="InstallFiles" />
+      <Custom Action="AdminOnly" After="InstallFiles" />
     </AdminExecuteSequence>
   </Package>
 </Wix>`
@@ -2159,6 +2161,10 @@ func TestConvertElevatedActionScopes(t *testing.T) {
 
 	if !strings.Contains(yaml, "AdminToo runs without impersonation outside the execute sequence") {
 		t.Errorf("no note for AdminToo:\n%s", yaml)
+	}
+
+	if strings.Count(yaml, "move the other placements") != 1 || !strings.Contains(yaml, "it cannot run without impersonation in this package") {
+		t.Errorf("want the move note for AdminToo only and the cannot-run note for AdminOnly:\n%s", yaml)
 	}
 
 	if !strings.Contains(yaml, "condition: NOT Installed") {

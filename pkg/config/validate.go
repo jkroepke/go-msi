@@ -2023,13 +2023,15 @@ func executeOnly(schedule []Placement) bool {
 	return !slices.ContainsFunc(schedule, func(p Placement) bool { return p.Sequence != sequenceExecute })
 }
 
-// actionFolder rejects a standard folder that ICE105 forbids as an action's
-// working directory: the builder adds a Directory row for it, whatever the
-// action's scope. ICE105 warns about that row in perUserOrMachine and is
-// silent in perMachineOrUser (CA-09); a dual package refuses these folders
-// here in both scopes, as forbiddenFolder does for components.
-func (v *validator) actionFolder(field, dir string) {
-	if !v.scope.MayBePerUser() || !ice105Folders[dir] {
+// actionFolder rejects, in a dual package, an action's working directory
+// in or below a standard folder that ICE105 forbids: the builder adds a
+// Directory row for that folder, whatever the action's scope. ICE105 warns
+// about that row in perUserOrMachine and is silent in perMachineOrUser
+// (CA-09); a dual package refuses these folders here in both scopes, as
+// forbiddenFolder does for components.
+func (v *validator) actionFolder(field, dir string, known *refs) {
+	top := known.topFolder(dir)
+	if !v.scope.Dual() || !ice105Folders[top] {
 		return
 	}
 
@@ -2039,7 +2041,7 @@ func (v *validator) actionFolder(field, dir string) {
 	}
 
 	v.errorf(field, "%s cannot have the folder %s, which the action's directory adds (ICE105); "+
-		"%s, and name the program as [%s]program.exe", v.perUserPackage(), dir, use, dir)
+		"%s, and name the program as [%s]program.exe", v.perUserPackage(), top, use, top)
 }
 
 // actionScope checks a custom action's scope: perMachine or perUser, only
@@ -2188,7 +2190,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 			v.errorf(actionPath+".exec.directory", "directory %q is not defined", action.Exec.Directory)
 		}
 
-		v.actionFolder(actionPath+".exec.directory", action.Exec.Directory)
+		v.actionFolder(actionPath+".exec.directory", action.Exec.Directory, known)
 	case action.ExecProperty != nil:
 		v.required(actionPath+".execProperty.property", action.ExecProperty.Property)
 	case action.DLL != nil:
@@ -2209,7 +2211,7 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 			v.errorf(actionPath+".run.directory", "directory %q is not defined", dir)
 		}
 
-		v.actionFolder(actionPath+".run.directory", action.Run.Directory)
+		v.actionFolder(actionPath+".run.directory", action.Run.Directory, known)
 
 		if action.Return == "asyncNoWait" {
 			v.errorf(actionPath+".return", "run actions cannot use asyncNoWait; the DLL waits for the command")

@@ -174,8 +174,9 @@ func TestValidateAccepted(t *testing.T) {
     scope: perUser
     schedule: [{sequence: execute, after: CostFinalize}]
 `,
-		// A working directory installs nothing: only the folders ICE105
-		// rejects are refused, not Program Files.
+		// A working directory installs nothing: a per-user package keeps
+		// its action directories (CA-09 probed the Directory row in dual
+		// packages only), and a dual one refuses only the ICE105 folders.
 		"per-user action in Program Files": strings.Replace(pkg(`{platform: x64, scope: perUser}`), "id: ProgramFiles64Folder", "id: LocalAppDataFolder", 1) +
 			appComponent + `customActions:
   - id: Tool
@@ -536,6 +537,19 @@ func TestValidate(t *testing.T) {
     schedule: [{sequence: execute, before: InstallFinalize}]
 `,
 			sevError, "customActions[0].exec.directory", "System64Folder",
+		},
+		"dual scope action below the system folder": {
+			strings.Replace(pkg(`{platform: x64, scope: perMachineOrUser}`), "directories:\n",
+				"directories:\n  - id: SystemFolder\n    children:\n      - id: SYSSUB\n        name: Sub\n", 1) + appComponent + `customActions:
+  - id: Machine
+    run: {command: '"[System64Folder]cmd.exe" /c ver', directory: SYSSUB}
+    execute: deferred
+    impersonate: false
+    scope: perMachine
+    return: check
+    schedule: [{sequence: execute, before: InstallFinalize}]
+`,
+			sevError, "customActions[0].run.directory", "SystemFolder",
 		},
 		"action scope in the admin execute sequence": {
 			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + `customActions:

@@ -242,9 +242,7 @@ func (c *converter) actionScope(action *omap, custom *elem) {
 
 	if !inExecuteOnly(placements) {
 		if elevated {
-			c.todof(action, "impersonate", custom.line, "%s runs without impersonation outside the execute sequence; in a %s "+
-				"package msi-builder runs such an action only with scope: perMachine, which needs the execute sequence: "+
-				"move the other placements into an action of their own", custom.attr("Id"), c.scope)
+			c.outsideExecute(action, custom, placements)
 		}
 
 		return
@@ -288,6 +286,19 @@ func testsAllUsers(placements []*omap) bool {
 	return slices.ContainsFunc(placements, func(placement *omap) bool {
 		return strings.Contains(strings.ToUpper(placement.str("condition")), "ALLUSERS")
 	})
+}
+
+// outsideExecute notes an action without impersonation that runs outside
+// the execute sequence, where no scope keeps it out of per-user installs.
+func (c *converter) outsideExecute(action *omap, custom *elem, placements []*omap) {
+	fix := "move the other placements into an action of their own"
+	if !slices.ContainsFunc(placements, func(p *omap) bool { return p.str("sequence") == seqExecute }) {
+		fix = "it cannot run without impersonation in this package"
+	}
+
+	c.todof(action, "impersonate", custom.line, "%s runs without impersonation outside the execute sequence; in a %s "+
+		"package msi-builder runs such an action only with scope: perMachine, which needs the execute sequence: %s",
+		custom.attr("Id"), c.scope, fix)
 }
 
 // dropConditions removes the conditions of placements whose context the
