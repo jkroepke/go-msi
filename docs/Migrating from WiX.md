@@ -684,7 +684,10 @@ launchConditions:
 
 `DirectorySearch`, `FileSearch` and `ComponentSearch` are `directory`,
 `file` and `component` searches; a list of searches takes the first one
-that finds something. One thing works differently: in WiX, a search
+that finds something. `ComponentSearch Type="directory"`, for a component
+keyed on its folder, is `keyPath: directory`; without it the search would
+return the folder's parent (tested on Windows). For a component of the
+same package msi-builder picks the right one itself. One thing works differently: in WiX, a search
 overwrites a value given on the command line. In msi-builder the command
 line wins, and the search result is used only when the property is still
 empty.

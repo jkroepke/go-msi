@@ -770,6 +770,12 @@ func (c *converter) searchKind(propOut *omap, elm *elem) (string, *omap) {
 	case elm.is("ComponentSearch"):
 		found.set("guid", c.value(elm, "Guid"))
 
+		// The engine returns the parent of a folder key path unless the
+		// locator says directory (SEARCH-08).
+		if strings.EqualFold(elm.attr("Type"), "directory") {
+			found.set("keyPath", "directory")
+		}
+
 		return "component", found
 	}
 
