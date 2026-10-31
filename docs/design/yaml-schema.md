@@ -806,8 +806,9 @@ components:
 ```
 
 Actions of the embedded DLL (specification section 17.10) run right after
-RemoveFiles: an immediate one checks each folder, a deferred one moves it
-by handle into a private folder at its volume's root, a rollback one moves
+RemoveFiles, with data the engine builds from the entries (no action that
+runs as the user hands it over): a deferred one checks each folder and
+moves it by handle into a private folder at its volume's root, a rollback one moves
 it back, and a commit one deletes it, opening each entry relative to its
 folder without following junctions or links, which it deletes as links.
 `uninstall` removes when the component is removed, but not on the
@@ -820,7 +821,10 @@ install dir under another name is refused as well (confirmed by FILE-11 on a maj
 expected to remove every time the component is installed, which includes
 a repair that reinstalls it and the new product of an upgrade (only the
 first install is tested); `both` does both. The condition is ANDed and may
-not contain line breaks. The properties keep the security their own
+not contain line breaks; with the component's state it must fit the 255
+characters of a sequence condition. Each entry takes two actions after
+RemoveFiles, which the package's directories share, so about 40 entries
+fit (fewer with hundreds of directories; the builder says when not). The properties keep the security their own
 settings give them (`secure`, `configurable`). Unlike `purge`, the folder may be the install dir
 or any folder the property names. That is the point of the feature, and
 also its risk: `INSTALLDIR=D:\Tools` on the command line makes the

@@ -1,38 +1,54 @@
 package builder
 
 import (
+	"fmt"
 	"slices"
-	"strings"
+	"strconv"
 
 	"github.com/jkroepke/msi-builder/internal/cadll"
+	"github.com/jkroepke/msi-builder/internal/sequence"
 	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
-// removeFolders lists the removeFolders entries in the BuilderRemoveFolders
-// property for the immediate action of the same name, which checks each
-// folder and hands the accepted ones to the deferred, rollback and commit
-// actions after it (specification section 17.10): the deferred one moves
-// each folder by handle into a private backup folder, the rollback one
-// moves it back, the commit one deletes it without following junctions.
+// removeFolders adds the deferred, rollback and commit actions of the
+// removeFolders entries (specification section 17.10): the deferred one
+// checks each folder and moves it by handle into a private backup folder,
+// the rollback one moves it back, the commit one deletes it without
+// following junctions. Their data comes from type-51 actions the engine
+// runs right before them, never from an action that runs as the
+// installing user, who could change it.
 func (b *build) removeFolders() error {
-	var lines []string
+	// Condition and property of each entry, in turn.
+	var entries []string
 
 	// The properties are not made secure: an administrator's values reach
 	// the server anyway (PROP-01), and a secure folder property would let
 	// a standard user's command line steer every other use of it in an
 	// elevated session, where the DLL removes nothing.
-	for _, comp := range b.cfg.Components {
-		for _, entry := range comp.RemoveFolders {
+	for i, comp := range b.cfg.Components {
+		for index, entry := range comp.RemoveFolders {
 			_, packageDir := b.dirs[entry.Property]
-			lines = append(lines, cadll.RemoveFoldersEntry(removeFolderCondition(comp.ID, entry, packageDir), entry.Property))
+			cond := removeFolderCondition(comp.ID, entry, packageDir)
+
+			// The condition goes into InstallExecuteSequence.Condition.
+			if len(cond) > maxTargetLength {
+				b.errorf(fmt.Sprintf("%s.removeFolders[%d].condition", comp.Path(i), index),
+					"the condition with the component's state is %d characters, InstallExecuteSequence.Condition holds %d",
+					len(cond), maxTargetLength)
+			}
+
+			entries = append(entries, cond, entry.Property)
 		}
 	}
 
-	if len(lines) == 0 || !b.useRunDLL() {
+	if len(entries) == 0 || !b.useRunDLL() {
 		return nil
 	}
 
-	for _, name := range []string{cadll.RemoveFolders, cadll.RemoveFoldersUndo, cadll.RemoveFoldersExec, cadll.RemoveFoldersCommit, cadll.RemoveFoldersPackage} {
+	for _, name := range []string{
+		cadll.RemoveFoldersUndo, cadll.RemoveFoldersExec, cadll.RemoveFoldersCommit,
+		cadll.RemoveFoldersData, cadll.RemoveFoldersCount, cadll.RemoveFoldersScope,
+	} {
 		if _, ok := b.cfg.Properties[name]; ok {
 			b.errorf("properties."+name, "the property %s is reserved for removeFolders", name)
 
@@ -40,12 +56,26 @@ func (b *build) removeFolders() error {
 		}
 	}
 
-	b.properties[cadll.RemoveFolders] = strings.Join(lines, "\n")
+	b.removeFoldersActions()
+	b.removeFoldersData(entries)
 
-	// The action checks the folder against the package's directories by
-	// path, so that a property holding the install dir is no way around
-	// the REMOVE~="ALL" rule for folders of the package.
-	var dirs []string
+	return nil
+}
+
+// removeFoldersFixed returns the lines of the removal data that every
+// install has: the standard folders, which the DLL refuses, and the
+// package's directories, which it checks by path, so that a property
+// holding the install dir is no way around the REMOVE~="ALL" rule for
+// folders of the package.
+func (b *build) removeFoldersFixed() []string {
+	standard := cadll.RemoveFoldersStandard()
+	fixed := make([]string, 0, len(standard)+len(b.dirs))
+
+	for _, name := range standard {
+		fixed = append(fixed, cadll.RemoveFoldersStandardLine(name))
+	}
+
+	dirs := make([]string, 0, len(b.dirs))
 
 	for id, dir := range b.dirs {
 		if !dir.standard && dir.long != "" {
@@ -54,31 +84,125 @@ func (b *build) removeFolders() error {
 	}
 
 	slices.Sort(dirs)
-	b.properties[cadll.RemoveFoldersPackage] = strings.Join(dirs, "\n")
 
-	b.removeFoldersActions()
-
-	return nil
-}
-
-// removeFoldersActions schedules the immediate action right after
-// RemoveFiles, when the component states and the directories' paths are
-// known and the engine's own files are gone, and the rollback, deferred and
-// commit actions after it; each of those runs when the immediate one gave
-// it data.
-func (b *build) removeFoldersActions() {
-	actions := []*actionInfo{
-		{name: cadll.RemoveFolders, typ: caDLL, source: cadll.Key, target: cadll.RemoveFolders},
-		{name: cadll.RemoveFoldersUndo, typ: caDLL | caRollback | caNoImpersonate | caHideTarget, source: cadll.Key, target: cadll.RemoveFoldersExec},
-		{name: cadll.RemoveFoldersExec, typ: caDLL | caDeferred | caNoImpersonate | caHideTarget, source: cadll.Key, target: cadll.RemoveFoldersExec},
-		{name: cadll.RemoveFoldersCommit, typ: caDLL | caCommit | caNoImpersonate | caHideTarget, source: cadll.Key, target: cadll.RemoveFoldersExec},
+	for _, id := range dirs {
+		fixed = append(fixed, cadll.RemoveFoldersPackageLine(id))
 	}
 
-	// The data names the backup folder; keep it out of the log. Its
-	// safety does not rest on that: the DLL checks the folder's owner and
-	// access list before it uses it.
+	return fixed
+}
+
+// removeFoldersData builds the data of the deferred actions with type-51
+// actions right before them, so that no action that runs as the user comes
+// between: a reset of the count and of the scope, the fixed lines, of
+// which the first setter resets the data, then two actions per entry under
+// its condition, one that appends the entry with its folder formatted by
+// the engine and one that counts it, then the data of each deferred
+// action. The count lets the DLL find a line break that a formatted value
+// added. entries alternate condition and property.
+func (b *build) removeFoldersData(entries []string) {
+	type setter struct{ name, property, cond, target string }
+
+	fixed := b.removeFoldersFixed()
+	scope := "[" + cadll.RemoveFoldersScope + "]"
+	data := scope + "[ProductCode][" + cadll.RemoveFoldersCount + "][" + cadll.RemoveFoldersData + "]"
+	setters := []setter{
+		{"BuilderRemoveFoldersResetCount", cadll.RemoveFoldersCount, "", ":"},
+		{"BuilderRemoveFoldersKeep", cadll.RemoveFoldersScope, "", string(cadll.RemoveFoldersKeep)},
+		{"BuilderRemoveFoldersAll", cadll.RemoveFoldersScope, condRemoveAll, string(cadll.RemoveFoldersAll)},
+	}
+
+	// The first setter resets the data to a line with the number of fixed
+	// lines, which the builder writes, so the DLL can count them; it and
+	// the others append as many fixed lines as fit the 255 characters of
+	// CustomAction.Target (ICE03).
+	appendData := "[" + cadll.RemoveFoldersData + "]"
+	target, parts := "\nn"+strconv.Itoa(len(fixed)), 0
+	flush := func() {
+		parts++
+		setters = append(setters, setter{"BuilderRemoveFoldersFixed" + strconv.Itoa(parts), cadll.RemoveFoldersData, "", target})
+		target = appendData
+	}
+
+	for _, line := range fixed {
+		if len(target)+1+len(line) > maxTargetLength {
+			flush()
+		}
+
+		target += "\n" + line
+	}
+
+	flush()
+
+	for i := 0; i < len(entries); i += 2 {
+		cond, property := entries[i], entries[i+1]
+		id := generatedID("", strconv.Itoa(i/2), property)
+		setters = append(setters,
+			setter{"BuilderRemoveFoldersEntry" + id, cadll.RemoveFoldersData, cond, appendData + "\n" + cadll.RemoveFoldersEntry(property)},
+			setter{"BuilderRemoveFoldersCount" + id, cadll.RemoveFoldersCount, cond, "[" + cadll.RemoveFoldersCount + "]#"},
+		)
+	}
+
+	// With rollback disabled the installer runs no commit action, so the
+	// deferred action then deletes at once.
+	setters = append(setters,
+		setter{"BuilderRemoveFoldersSetUndo", cadll.RemoveFoldersUndo, "", string(cadll.RemoveFoldersRollback) + data},
+		setter{"BuilderRemoveFoldersSetExec", cadll.RemoveFoldersExec, "", string(cadll.RemoveFoldersMove) + data},
+		setter{"BuilderRemoveFoldersSetDelete", cadll.RemoveFoldersExec, "RollbackDisabled", string(cadll.RemoveFoldersDelete) + data},
+		setter{"BuilderRemoveFoldersSetCommit", cadll.RemoveFoldersCommit, "", string(cadll.RemoveFoldersFinish) + data},
+	)
+
+	for _, s := range setters {
+		b.addAction(&actionInfo{name: s.name, typ: caSetProperty, source: s.property, target: s.target})
+		b.schedule(seqInstallExecute, s.name, s.cond, cadll.RemoveFoldersUndo, "", 0)
+		b.removeFolderActions = append(b.removeFolderActions, s.name)
+	}
+
+	b.removeFolderEntries, b.removeFolderDirs = len(entries)/2, len(fixed)-len(cadll.RemoveFoldersStandard())
+}
+
+// checkRemoveFoldersRoom reports removeFolders actions that do not fit
+// between RemoveFiles and the next numbered action, such as RemoveFolders
+// (3600), before numbering fails with a less helpful error: two per entry
+// and one per few fixed lines, of which every directory of the package
+// adds one, plus the three deferred actions.
+func (b *build) checkRemoveFoldersRoom() {
+	actions := b.schedules[seqInstallExecute]
+	if len(b.removeFolderActions) == 0 {
+		return
+	}
+
+	if _, err := sequence.Number(actions); err == nil {
+		return
+	}
+
+	ours := make(map[string]bool, len(b.removeFolderActions)+3)
+	for _, name := range b.removeFolderActions {
+		ours[name] = true
+	}
+
 	for _, name := range []string{cadll.RemoveFoldersUndo, cadll.RemoveFoldersExec, cadll.RemoveFoldersCommit} {
-		b.hidden[name] = true
+		ours[name] = true
+	}
+
+	if _, err := sequence.Number(slices.DeleteFunc(slices.Clone(actions), func(a sequence.Action) bool { return ours[a.Name] })); err != nil {
+		return // the numbering error is not the folder removal's
+	}
+
+	b.errorf("components", "removeFolders takes %d actions after %s (two per entry for %d entries, the lines of the "+
+		"standard folders and of the package's %d directories, and three deferred ones), which do not fit before the next "+
+		"numbered action; remove entries or directories", len(ours), actRemoveFiles, b.removeFolderEntries, b.removeFolderDirs)
+}
+
+// removeFoldersActions schedules the rollback, deferred and commit actions
+// right after RemoveFiles, when the component states and the directories'
+// paths are known and the engine's own files are gone. They run when an
+// entry's condition holds, so that its setter counted it.
+func (b *build) removeFoldersActions() {
+	actions := []*actionInfo{
+		{name: cadll.RemoveFoldersUndo, typ: caDLL | caRollback | caNoImpersonate, source: cadll.Key, target: cadll.RemoveFoldersExec},
+		{name: cadll.RemoveFoldersExec, typ: caDLL | caDeferred | caNoImpersonate, source: cadll.Key, target: cadll.RemoveFoldersExec},
+		{name: cadll.RemoveFoldersCommit, typ: caDLL | caCommit | caNoImpersonate, source: cadll.Key, target: cadll.RemoveFoldersExec},
 	}
 
 	b.standardAt(seqInstallExecute, actRemoveFiles)
@@ -87,13 +211,7 @@ func (b *build) removeFoldersActions() {
 
 	for _, action := range actions {
 		b.addAction(action)
-
-		cond := action.name
-		if action.name == cadll.RemoveFolders {
-			cond = ""
-		}
-
-		b.schedule(seqInstallExecute, action.name, cond, "", after, 0)
+		b.schedule(seqInstallExecute, action.name, cadll.RemoveFoldersCount+`<>":"`, "", after, 0)
 		after = action.name
 	}
 }

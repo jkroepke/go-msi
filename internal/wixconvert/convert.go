@@ -143,6 +143,7 @@ type converter struct {
 	// newerClaimed is the property that detects newer versions.
 	newerClaimed string
 	icons        []*elem
+	closeApps    []*elem
 	defines      [][2]string
 	// defined are the define values with earlier defines filled in.
 	defined     map[string]string
@@ -487,12 +488,14 @@ func (c *converter) walkElem(elm *elem, within scope) bool {
 	return false
 }
 
-func (c *converter) walkExtension(e *elem) {
+func (c *converter) walkExtension(elm *elem) {
 	switch {
-	case e.ns == nsUI && e.name == "WixUI":
-		c.wixUI = e
+	case elm.ns == nsUI && elm.name == "WixUI":
+		c.wixUI = elm
+	case elm.qname() == elemCloseApp:
+		c.closeApps = append(c.closeApps, elm)
 	default:
-		c.todof(nil, "", e.line, "<%s> has no counterpart", e.qname())
+		c.todof(nil, "", elm.line, "<%s> has no counterpart", elm.qname())
 	}
 }
 
