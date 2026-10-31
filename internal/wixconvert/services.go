@@ -894,15 +894,17 @@ func (c *converter) placeTypes() {
 // typeIconNote notes a ProgId whose icon is in another file than the one
 // it opens: iconIndex only picks an icon of the file the type goes on.
 func (c *converter) typeIconNote(pending pendingType, file *fileRef) {
-	icon := pending.e.attr("Icon")
-	if icon == "" || icon == file.key {
+	icon := strings.TrimSpace(c.literal(pending.e.attr("Icon")))
+	if icon == "" || icon == file.key || icon == strings.TrimSpace(c.literal(file.key)) {
 		return
 	}
 
 	pending.out.del("iconIndex")
 
 	progID := pending.e.attr("Id")
-	if !slices.ContainsFunc(c.files, func(f *fileRef) bool { return f.key == icon }) {
+	isFile := slices.ContainsFunc(c.files, func(f *fileRef) bool { return f.key == icon })
+
+	if !isFile && slices.ContainsFunc(c.icons, func(e *elem) bool { return e.attr("Id") == icon }) {
 		c.todof(pending.out, "", pending.e.line, "the ProgId %s takes its icon from the <Icon> %s, which only advertised "+
 			"ProgIds use; install the icon as a file and add the DefaultIcon key HKCR\\%s\\DefaultIcon as a registry value "+
 			"naming it", progID, icon, progID)
@@ -910,9 +912,14 @@ func (c *converter) typeIconNote(pending pendingType, file *fileRef) {
 		return
 	}
 
-	c.todof(pending.out, "", pending.e.line, "the ProgId %s takes its icon from %s, not from the file it opens; "+
+	where := ""
+	if !isFile {
+		where = " (a file this source does not define)"
+	}
+
+	c.todof(pending.out, "", pending.e.line, "the ProgId %s takes its icon from %s%s, not from the file it opens; "+
 		"iconIndex only picks an icon of that file, so add the DefaultIcon key as a registry value "+
-		"(HKCR\\%s\\DefaultIcon = [#%s],%s)", progID, icon, progID, icon, c.iconIndexText(pending.e))
+		"(HKCR\\%s\\DefaultIcon = [#%s],%s)", progID, icon, where, progID, icon, c.iconIndexText(pending.e))
 }
 
 // iconIndexText returns a ProgId's icon index, 0 when it gives none.

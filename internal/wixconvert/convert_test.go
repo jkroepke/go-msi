@@ -1794,6 +1794,7 @@ func TestConvertLocalActionRefAndIcon(t *testing.T) {
 	t.Parallel()
 
 	src := `<?define Idx="2"?>
+<?define IconFile="hello.exe"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
     <MajorUpgrade DowngradeErrorMessage="newer" />
@@ -1810,6 +1811,12 @@ func TestConvertLocalActionRefAndIcon(t *testing.T) {
           </ProgId>
           <ProgId Id="Example.Var" Description="Var icon" Icon="hello.exe" IconIndex="$(var.Idx)">
             <Extension Id="hellovar"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+          <ProgId Id="Example.Defined" Description="Defined icon" Icon="$(var.IconFile)" IconIndex="1">
+            <Extension Id="hellodef"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+          <ProgId Id="Example.Elsewhere" Description="Icon elsewhere" Icon="other.dll">
+            <Extension Id="helloels"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
           </ProgId>
           <ProgId Id="Example.Table" Description="Icon table" Icon="App.ico">
             <Extension Id="hellotab"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
@@ -1841,7 +1848,8 @@ func TestConvertLocalActionRefAndIcon(t *testing.T) {
 
 	for _, want := range []string{
 		"the ProgId Example.Doc takes its icon from doc.ico", `HKCR\Example.Doc\DefaultIcon = [#doc.ico],0`,
-		"progId: Example.Own\n", "iconIndex: 0\n", "iconIndex: 2\n",
+		"progId: Example.Own\n", "iconIndex: 0\n", "iconIndex: 2\n", "iconIndex: 1\n",
+		"the ProgId Example.Elsewhere takes its icon from other.dll (a file this source does not define), not from the file it opens",
 		"the ProgId Example.Table takes its icon from the <Icon> App.ico, which only advertised ProgIds use",
 	} {
 		if !strings.Contains(out, want) {
@@ -1849,8 +1857,8 @@ func TestConvertLocalActionRefAndIcon(t *testing.T) {
 		}
 	}
 
-	if strings.Count(out, "iconIndex:") != 2 {
-		t.Errorf("want iconIndex only on Example.Own and Example.Var:\n%s", out)
+	if strings.Count(out, "iconIndex:") != 3 {
+		t.Errorf("want iconIndex only on Example.Own, Example.Var and Example.Defined:\n%s", out)
 	}
 
 	cfg, err := config.Parse(res.YAML, config.Options{})
