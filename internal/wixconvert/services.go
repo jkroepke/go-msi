@@ -848,7 +848,7 @@ func (cc *compConv) iconIndex(elm *elem, fileType *omap) {
 
 	text := strings.TrimSpace(cc.c.literal(elm.attr("IconIndex")))
 
-	n, err := strconv.Atoi(text)
+	index, err := strconv.Atoi(text)
 	if err != nil {
 		cc.c.todof(fileType, "", elm.line, "the ProgId %s has the icon index %q, which is no number; set iconIndex by hand",
 			elm.attr("Id"), text)
@@ -856,7 +856,7 @@ func (cc *compConv) iconIndex(elm *elem, fileType *omap) {
 		return
 	}
 
-	fileType.set("iconIndex", n)
+	fileType.set("iconIndex", index)
 }
 
 // pendingType is a ProgId that goes onto the file its verbs start, once
