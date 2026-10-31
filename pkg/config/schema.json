@@ -2846,6 +2846,20 @@
           "properties": {
             "guid": {
               "$ref": "#/$defs/guid"
+            },
+            "keyPath": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "file",
+                    "directory"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/var"
+                }
+              ],
+              "description": "What the component's key path is. file (default): the result is the folder of the key file; directory: the result is the key path folder itself. For a component of this package the builder knows it."
             }
           },
           "required": [

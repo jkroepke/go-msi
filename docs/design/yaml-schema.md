@@ -515,8 +515,9 @@ values, and so do machine environment variables, HKLM and HKU
 `removeRegistry` entries, and file types and HKMU or HKCR removals outside
 a `perUser` package. A firewall carrier in the profile
 gets the value. A `component` search for the GUID of a component whose
-key path becomes the value finds the registry value after the upgrade, not the file
-(not tested). In a per-machine install the desktop and Start menu folders
+key path becomes the value is expected to find nothing, not the file (not
+tested for this HKCU value; an HKLM registry key path found nothing with
+either type, SEARCH-08). In a per-machine install the desktop and Start menu folders
 are the all-users ones; the value still goes to the installing user's
 HKCU, as ICE38 asks. A dual package's install dir is under Program Files in the
 package, so its components keep their key files; components in profile
@@ -1815,7 +1816,8 @@ folder (SEARCH-04).
 | | `minSize`, `maxSize` | Inclusive bounds in bytes, up to 2147483647 |
 | | `minDate`, `maxDate` | Inclusive bounds on the modification date, `YYYY-MM-DD` from 1980-01-01 to 2043-12-31: `minDate` starts at 00:00:00 and `maxDate` ends at 23:59:58, since the engine compares the time of day too (SEARCH-05). Whether it compares local time or UTC is not tested |
 | | `languages` | Language IDs the file's version resource must list; compared only when the file's version equals `minVersion` |
-| `component` | `guid` | The component code of an installed component, of this or another product. Returns the folder of its key file |
+| `component` | `guid` | The component code of an installed component, of this or another product. Returns the folder of its key file, or the folder itself for a component keyed on its folder (SEARCH-08) |
+| | `keyPath` | `file` (default) or `directory`: what the component's key path is. The engine returns the folder's parent for a folder key path searched as `file` (SEARCH-08), and nothing for a file key path searched as `directory` (SEARCH-05), so it must match. For a component of this package the builder sets it from the component, and a `keyPath` that contradicts it is an error. A component of this package keyed on a registry value (also one with only shortcuts) gets a warning, and `keyPath` on it is an error: the search found nothing for an HKLM registry key path with either type (SEARCH-08; HKCU not tested) |
 
 The engine finds a file whose version equals `MinVersion` only when
 `Languages` lists the file's languages, even for a language-neutral file
@@ -1842,8 +1844,9 @@ standard folder gets a warning: if that property is empty, the path is
 relative and the engine searches every fixed drive. The standard folder
 properties are set before `AppSearch` (`[WindowsFolder]` and
 `[ProgramFiles64Folder]` work, SEARCH-05). A component search finds components
-whose key path is a file; a component with a registry or folder key path
-was not tested.
+whose key path is a file (SEARCH-05) and, with the locator type of a folder
+key path, those keyed on their folder (`keyPath`, SEARCH-08); it found nothing
+for an HKLM registry key path (SEARCH-08; HKCU not tested).
 
 The precedence is: a value from the command line, then the first search
 that finds something, then `value`. Search *n* fills `<NAME>_FOUND`
