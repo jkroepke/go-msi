@@ -4,7 +4,7 @@
   and 2026-10-31
 - Test: `TestMsiexecGrantNullDACLChild` in
   `internal/builder/nativetest/nulldacl_windows_test.go`
-- Runs: 41149480758 (PR #173, commit 865d419, the test as merged); earlier
+- Runs: 41149480758 (PR #173, commit 865d419, the test in this PR); earlier
   probes 41144458040 (folder only, commit b32a5a5) and 41146150151 (folder,
   file and a folder written with `D:AINO_ACCESS_CONTROL`, commit 0dae6f1)
 
@@ -27,10 +27,12 @@ Run 41149480758:
 | uninstall | — | — | `D:NO_ACCESS_CONTROL` |
 
 - Microsoft's rules ("Automatic Propagation of Inheritable ACEs") predict
-  `D:AI(A;OICIID;0x1200a9;;;BG)` on the NULL-DACL children after the grant
-  and an empty `D:AI` after the rollback. Neither appeared, while the
-  inheriting sibling got the ACE and lost it again, so the grant did
-  propagate.
+  an inherited-only DACL on the NULL-DACL children after the grant
+  (`D:AI(A;OICIID;0x1200a9;;;BG)` on `open`, `D:AI(A;ID;0x1200a9;;;BG)` on
+  `open.txt`) and an empty `D:AI` after the rollback. Neither appeared. The
+  inheriting sibling got the ACE on the install, so the grant propagates,
+  and did not have it after the rollback; the run does not read it between
+  the grant and the rollback of the failed install.
 - Run 41146150151: `D:AINO_ACCESS_CONTROL` written with `SetFileSecurityW`
   read back as `D:NO_ACCESS_CONTROL`, so a NULL DACL marked auto-inherited
   was not produced; the variant was dropped from the test.
