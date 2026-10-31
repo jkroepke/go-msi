@@ -795,13 +795,17 @@ static void pump(MSIHANDLE install, output *o)
         // A zero-length write by the child reads as zero bytes; only a broken
         // pipe is the end.
         o->len += got;
+        // Every read counts at least one byte: a writer that keeps
+        // writing zero bytes never fills the pipe and would never end the
+        // loop otherwise.
         if (exited && GetTickCount64() >= deadline) {
-            late += got;
+            late += got + 1;
         }
         emitLines(install, o, scanFrom);
         // A child that writes without line ends completes no line and times
-        // out no wait, so the poll runs on the clock here as well.
-        if (!exited && !o->cancelled && GetTickCount64() - lastPoll >= CANCEL_POLL_MS) {
+        // out no wait, so the poll runs on the clock here as well, also
+        // while a backlog is read after the child exited.
+        if (!o->cancelled && GetTickCount64() - lastPoll >= CANCEL_POLL_MS) {
             lastPoll = GetTickCount64();
             if (cancelled(install)) {
                 o->cancelled = 1;
@@ -3530,6 +3534,12 @@ static int sameFile(const WCHAR *image, const WCHAR *path, const FILE_ID_INFO_ *
 {
     if (wieqi(image, path)) {
         return 1;
+    }
+    // A program on a network share is not opened for a local file: an
+    // unreachable share would stall the action. A junction cannot lead to
+    // one.
+    if (image[0] == '\\' && image[1] == '\\' && !(path[0] == '\\' && path[1] == '\\')) {
+        return 0;
     }
     FILE_ID_INFO_ got;
     if (!have || !fileId(image, &got) || got.volume != want->volume) {

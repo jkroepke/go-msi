@@ -4,6 +4,7 @@ package nativetest_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -96,6 +97,13 @@ func TestMsiexecClosesAliases(t *testing.T) {
 
 	// Give the helpers a moment to be running before the uninstall lists them.
 	time.Sleep(time.Second)
+
+	// The image path each copy reports: a match by text alone found a
+	// copy only when this equals the installed path.
+	for name, proc := range procs {
+		image, _ := powershell(fmt.Sprintf("(Get-Process -Id %d).Path", proc.cmd.Process.Pid))
+		t.Logf("CLOSE-02: the copy started by the %s reports %s (installed: %s, same text: %t)", name, image, exe, strings.EqualFold(image, exe))
+	}
 
 	log := filepath.Join(dir, "uninstall.log")
 	code := msiexecCode(t, log, "/x", path)
