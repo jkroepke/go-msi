@@ -52,6 +52,7 @@ flowchart LR
     condition["condition<br/>grammar check"]
     sequence["sequence<br/>before/after numbering"]
     config["config<br/>YAML (PR #2)"] --> condition
+    config --> sequence
 ```
 
 | Package | Responsibility | Spec | Depends on |
@@ -232,13 +233,28 @@ reports syntax errors with positions. No evaluation.
 
 ```go
 type Action struct { Name string; Condition string; Sequence int; Before, After string }
+type Error struct { Action, Other, Reason string; Cycle []string }
 func Number(actions []Action) ([]Numbered, error)
+func LookupStandard(name string) (Standard, bool)
+func Always(table string) []string
 ```
 
-Standard actions are fixed nodes at the default sequence numbers of §9.2;
-custom actions chain before or after an anchor and are expanded next to it
-(§11.7). A chain that reaches another fixed number, a cycle, a missing anchor
-and a number outside 1…32767 are errors. The builder then checks ICE77
+Standard actions are fixed nodes at the default sequence numbers of §9.2
+(`standard.go` holds them and the actions every product gets, for the
+builder and for `config.Validate`); custom actions chain before or after an
+anchor and are expanded next to it (§11.7). A chain that reaches another
+fixed number, a cycle, a missing anchor and a number outside 1…32767 are
+errors. `Number` walks each fixed node's chain once into one result slice,
+so time and memory are linear in the number of actions; the nodes no fixed
+node reaches lead into a cycle, which is reported by an action on it with
+the cycle's path. Every error is an `*Error` naming the action whose
+placement fails (and the other one involved), so that `config.Validate`
+(`pkg/config/schedules.go`) and the builder report it as a diagnostic at
+that action's YAML placement. Validate numbers each sequence with the custom
+actions, the run actions' data actions, the always-present standard actions
+and the anchored ones; the builder's own actions only lengthen chains, so
+an error there is an error in the build too, and the build reports the
+collisions with actions only it adds. The builder then checks ICE77
 (deferred actions inside InstallInitialize…InstallFinalize), ICE63 as the
 engine applies it (RemoveExistingProducts anywhere from after
 FindRelatedProducts up to InstallInitialize, right after InstallExecute or
