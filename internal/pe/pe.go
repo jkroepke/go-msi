@@ -130,35 +130,52 @@ func (im *image) read(rva, size uint32) ([]byte, error) {
 		return nil, fmt.Errorf("pe: RVA %#x is not in any section", rva)
 	}
 
-	off := int64(sec.rawPointer) + int64(rva-sec.virtualAddress)
+	// Only the first SizeOfRawData bytes of a section come from the file;
+	// the loader fills the rest of its VirtualSize with zeros. Bytes past
+	// the raw data belong to whatever follows in the file, so they are
+	// never read: that part of the range reads as zeros, as when Windows
+	// maps the image.
+	rel := uint64(rva - sec.virtualAddress)
+	fileBacked := uint64(0)
+
+	if rel < uint64(sec.rawSize) {
+		fileBacked = min(uint64(size), uint64(sec.rawSize)-rel)
+	}
+
+	off := int64(sec.rawPointer) + int64(rel) //nolint:gosec // both fit in 33 bits
 
 	// Grow the buffer while reading instead of allocating size up front: a
 	// corrupt header can claim gigabytes that the file does not hold, and
 	// the read then fails at the real end.
-	buf, err := io.ReadAll(io.NewSectionReader(im.r, off, int64(size)))
+	buf, err := io.ReadAll(io.NewSectionReader(im.r, off, int64(fileBacked)))
 	if err != nil {
 		return nil, fmt.Errorf("pe: reading RVA %#x: %w", rva, err)
 	}
 
-	if uint64(len(buf)) != uint64(size) {
+	if uint64(len(buf)) != fileBacked {
 		return nil, fmt.Errorf("pe: reading RVA %#x: %w", rva, io.ErrUnexpectedEOF)
 	}
 
-	return buf, nil
+	// The zero tail is at most what the section's VirtualSize covers, and
+	// every caller reads a bounded record (at most about 1 MiB).
+	return append(buf, make([]byte, uint64(size)-fileBacked)...), nil
 }
 
-// resources is the resource directory: size bytes at rva. Its records are
-// read one at a time, so that memory does not grow with the resources of
-// the file (icons, manifests, embedded payloads) that are not the version.
+// resources is the resource directory at rva. Its records are read one at
+// a time, so that memory does not grow with the resources of the file
+// (icons, manifests, embedded payloads) that are not the version. The
+// directory's declared size does not bound them: Windows reads a record
+// wherever the image holds it, so each one is checked against the section
+// that backs it instead.
 type resources struct {
-	img       *image
-	rva, size uint32
+	img *image
+	rva uint32
 }
 
 // read returns size bytes at offset off of the resource directory.
 func (r *resources) read(off, size uint32) ([]byte, error) {
 	// Compare in 64 bits: a corrupt offset near 4 GiB would wrap the sum.
-	if uint64(off)+uint64(size) > uint64(r.size) || uint64(r.rva)+uint64(off) > math.MaxUint32 {
+	if uint64(r.rva)+uint64(off)+uint64(size) > math.MaxUint32 {
 		return nil, errors.New("pe: resource directory out of range")
 	}
 
@@ -207,7 +224,10 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 
 	info.HasChecksum = order.Uint32(opt[64:]) != 0
 
-	if dirOff+8*3 > optSize {
+	// NumberOfRvaAndSizes precedes the data directories. Windows reads only
+	// the slots it declares: with fewer than three there is no resource
+	// directory, whatever bytes follow in the optional header.
+	if order.Uint32(opt[dirOff-4:]) < 3 || dirOff+8*3 > optSize {
 		return info, nil // no resource directory
 	}
 
@@ -235,11 +255,9 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 		return info, nil
 	}
 
-	if _, ok := img.section(resRVA, resourceSize); !ok {
-		return nil, fmt.Errorf("pe: resource directory at RVA %#x is not in any section", resRVA)
-	}
-
-	if err := parseVersion(&resources{img: img, rva: resRVA, size: resourceSize}, info); err != nil {
+	// The declared size is not a bound: Windows finds the version through
+	// the records it reads, and each of those must lie in a section's data.
+	if err := parseVersion(&resources{img: img, rva: resRVA}, info); err != nil {
 		return nil, err
 	}
 
@@ -355,16 +373,30 @@ func parseVersionInfo(data []byte, info *Info) error { //nolint:cyclop // one pa
 	length := int(order.Uint16(data))
 	valueLen := int(order.Uint16(data[2:]))
 
+	// wType 0 is binary data, as VS_FIXEDFILEINFO is; Windows refuses a
+	// root block that claims text.
+	if wType := order.Uint16(data[4:]); wType != 0 {
+		return fmt.Errorf("pe: version resource type %d is not binary", wType)
+	}
+
 	if length > len(data) {
 		length = len(data)
 	}
 
-	key, off := utf16At(data, 6)
+	// Every key is read within its own block: a missing terminator must not
+	// pull in the bytes that follow.
+	key, off := utf16At(data[:length], 6)
 	if key != "VS_VERSION_INFO" {
 		return fmt.Errorf("pe: version resource key %q", key)
 	}
 
 	off = align4(off)
+
+	// The value must lie inside the block it belongs to: Windows refuses
+	// one that runs past it, so it must not count as a version here.
+	if off+valueLen > length {
+		return fmt.Errorf("pe: version value of %d bytes runs past the %d-byte block", valueLen, length)
+	}
 
 	if valueLen >= 52 && off+52 <= length && order.Uint32(data[off:]) == 0xFEEF04BD {
 		format := func(ms, ls uint32) string {
@@ -385,10 +417,11 @@ func parseVersionInfo(data []byte, info *Info) error { //nolint:cyclop // one pa
 			break
 		}
 
-		blockKey, koff := utf16At(data, off+6)
+		block := data[off : off+blockLen]
+		blockKey, koff := utf16At(block, 6)
 
 		if blockKey == "VarFileInfo" {
-			parseVarFileInfo(data[off:off+blockLen], align4(koff-off), info)
+			parseVarFileInfo(block, align4(koff), info)
 		}
 
 		off = align4(off + blockLen)
@@ -408,13 +441,18 @@ func parseVarFileInfo(data []byte, off int, info *Info) {
 			return
 		}
 
-		key, koff := utf16At(data, off+6)
+		// The Var block ends at off+varLen: its key and value are read
+		// within it, never from the Var that follows.
+		end := off + varLen
+
+		key, koff := utf16At(data[:end], off+6)
 		koff = align4(koff)
 
 		if key == "Translation" {
 			seen := make(map[int]bool)
+			valueEnd := min(koff+valueLen, end)
 
-			for p := koff; p+4 <= koff+valueLen && p+4 <= len(data); p += 4 {
+			for p := koff; p+4 <= valueEnd; p += 4 {
 				lang := int(order.Uint16(data[p:]))
 				if !seen[lang] {
 					seen[lang] = true

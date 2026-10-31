@@ -7,6 +7,7 @@ import (
 	"io"
 	"slices"
 	"testing"
+	"unicode/utf16"
 
 	"github.com/jkroepke/msi-builder/internal/testpe"
 )
@@ -132,8 +133,6 @@ func TestCorruptSizes(t *testing.T) {
 		"version data size huge":     {testDataEntry + 4, 0x7FFFFFFF},
 		"version data RVA wraps":     {testDataEntry, 0xFFFFFFF0},
 		"version data RVA elsewhere": {testDataEntry, 0x1000},
-		"resource directory wraps":   {testResourceDir + 4, 0xFFFFF000},
-		"resource directory huge":    {testResourceDir + 4, 0x7FFFFFFF},
 		"directory entry wraps int":  {testRootEntry, 0x80000000 | 0x7FFFFFF8},
 		"directory entry past end":   {testRootEntry, 0x80000000 | 0x10000},
 	}
@@ -235,5 +234,135 @@ func TestLargeResourceRange(t *testing.T) {
 
 	if rdr.read > 64<<10 {
 		t.Errorf("read %d bytes of a %d-byte resource directory", rdr.read, size)
+	}
+}
+
+// TestResourceBeyondRawData clears the SizeOfRawData of the resource
+// section. Its VirtualSize still covers the directory, but the loader maps
+// zeros there, so the version bytes that stay in the file must not be read.
+func TestResourceBeyondRawData(t *testing.T) {
+	t.Parallel()
+
+	info, err := Parse(bytes.NewReader(corruptImage(t, testRsrcSection+16, 0)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if info.HasVersion || info.FileVersion != "" || info.Language() != "" {
+		t.Errorf("read past the section's raw data: %+v", info)
+	}
+}
+
+// TestTranslationBoundedByVar shrinks the Translation Var block to one
+// language while its value length still claims two. The second language
+// lies outside the block and must not be reported.
+func TestTranslationBoundedByVar(t *testing.T) {
+	t.Parallel()
+
+	data := testpe.Build(testpe.Options{FileVersion: "1.2.3.4", Languages: []int{1033, 1031}})
+
+	translation := blockOffset(t, data, "Translation")
+	if binary.LittleEndian.Uint16(data[translation+2:]) != 8 {
+		t.Fatal("Translation value length is not two languages")
+	}
+
+	// Header 6, key 24 with terminator, padded to 32, one language: 36.
+	binary.LittleEndian.PutUint16(data[translation:], 36)
+
+	info, err := Parse(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if info.Language() != "1033" {
+		t.Errorf("language %q, want 1033", info.Language())
+	}
+}
+
+// TestOversizedResourceDirectory declares a resource directory far larger
+// than its section. Windows still reads the version through the records it
+// visits, which all lie in the section, so the parser must too.
+func TestOversizedResourceDirectory(t *testing.T) {
+	t.Parallel()
+
+	for name, size := range map[string]uint32{"wraps": 0xFFFFF000, "huge": 0x7FFFFFFF} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			info, err := Parse(bytes.NewReader(corruptImage(t, testResourceDir+4, size)))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if info.FileVersion != "1.2.3.4" || info.Language() != "1033" {
+				t.Errorf("%+v", info)
+			}
+		})
+	}
+}
+
+// TestNoResourceSlot declares fewer data directories than the resource
+// slot needs. Windows ignores the slot's bytes, so there is no version.
+func TestNoResourceSlot(t *testing.T) {
+	t.Parallel()
+
+	for _, count := range []uint32{0, 2} {
+		info, err := Parse(bytes.NewReader(corruptImage(t, testResourceDir-20, count)))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if info.HasVersion || info.FileVersion != "" {
+			t.Errorf("NumberOfRvaAndSizes %d: version read from an undeclared slot: %+v", count, info)
+		}
+	}
+}
+
+// blockOffset returns the file offset of the version block whose key is
+// key: its 6-byte header precedes the UTF-16 key.
+func blockOffset(t *testing.T, data []byte, key string) int {
+	t.Helper()
+
+	units := utf16.Encode([]rune(key))
+	encoded := make([]byte, 0, 2*len(units))
+
+	for _, u := range units {
+		encoded = binary.LittleEndian.AppendUint16(encoded, u)
+	}
+
+	off := bytes.Index(data, encoded) - 6
+	if off < 0 {
+		t.Fatalf("version block %q not found", key)
+	}
+
+	return off
+}
+
+// TestInvalidVersionHeader corrupts the VS_VERSIONINFO header in ways
+// Windows refuses. The parser must not report a version, so the builder's
+// unversioned-executable check still applies.
+func TestInvalidVersionHeader(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		field int
+		value uint16
+	}{
+		"value runs past the block": {2, 0xFFFF},
+		"text type":                 {4, 1},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			data := testpe.Build(testpe.Options{FileVersion: "1.2.3.4", Languages: []int{1033}})
+			binary.LittleEndian.PutUint16(data[blockOffset(t, data, "VS_VERSION_INFO")+tc.field:], tc.value)
+
+			info, err := Parse(bytes.NewReader(data))
+			if err == nil && info.HasVersion {
+				t.Errorf("invalid header accepted: %+v", info)
+			}
+		})
 	}
 }
