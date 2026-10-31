@@ -607,10 +607,10 @@ func parseVarFileInfo(data []byte, off int, info *Info) {
 
 			var langs []int
 
-			// A length that is not a multiple of 4 still counts its last,
-			// partial entry when the block holds all of it: lengths 5 to 7
-			// gave two languages on Windows (FILE-14).
-			for p := koff; p < koff+valueLen && p+4 <= end; p += 4 {
+			// An entry counts once its language word fits the value
+			// length: lengths 6 and 7 gave two languages on Windows, 4 and
+			// 5 one (FILE-14).
+			for p := koff; p+2 <= koff+valueLen; p += 4 {
 				lang := int(order.Uint16(data[p:]))
 				if !seen[lang] {
 					seen[lang] = true

@@ -691,12 +691,12 @@ func partialTranslation(t *testing.T, n uint16) []byte {
 	return data
 }
 
-// TestPartialTranslation counts a partial last Translation entry, as
-// Windows did for value lengths 5 to 7 (FILE-14).
+// TestPartialTranslation counts a partial last Translation entry once its
+// language word fits, as Windows did for value lengths 4 to 7 (FILE-14).
 func TestPartialTranslation(t *testing.T) {
 	t.Parallel()
 
-	for n, want := range map[uint16]string{4: "1033", 5: "1031,1033", 7: "1031,1033", 8: "1031,1033"} {
+	for n, want := range map[uint16]string{4: "1033", 5: "1033", 6: "1031,1033", 7: "1031,1033", 8: "1031,1033"} {
 		info, err := Parse(bytes.NewReader(partialTranslation(t, n)))
 		if err != nil || info.Language() != want {
 			t.Errorf("value length %d: %+v %v, want %q", n, info, err, want)
