@@ -1344,7 +1344,7 @@
         },
         "conditions": {
           "type": "array",
-          "description": "Levels that replace the feature's level when their condition is true (Condition table). The builder adds NOT Installed, so they apply to first installs; at an upgrade a feature keeps the old version's state unless a condition disables it or the old version had disabled it. Windows applies them also when ADDLOCAL is set.",
+          "description": "Levels that replace the feature's level when their condition is true (Condition table). The builder adds NOT Installed, so they apply to first installs; a condition that enables a disabled feature also holds at removals and repairs, so the uninstall removes the feature. At an upgrade a feature keeps the old version's state unless a condition or its own disabled level leaves it out, or the old version had disabled it. Windows applies them also when ADDLOCAL is set.",
           "items": {
             "$ref": "#/$defs/featureCondition"
           }

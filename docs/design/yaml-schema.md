@@ -583,7 +583,7 @@ features:
     title: windows_exporter ${VERSION}
     description: The binary and configuration files for windows_exporter
     default: on                # on | off | disabled
-    conditions:                # level changes at a first install
+    conditions:                # level changes, mostly at a first install
       - { condition: NOT VersionNT64, default: disabled }
     display: expanded          # expanded | collapsed | hidden
     directory: APPLICATIONFOLDER
@@ -610,7 +610,7 @@ features:
   or with `ADDLOCAL`, and `disabled` is `level: 0`. A higher `INSTALLLEVEL`
   also installs `off` features. Set `default` or `level`, not both; `level`
   is for packages that use more than these three levels.
-- `level: 0` disables a feature; `ADDLOCAL=ALL` cannot turn it on.
+- `level: 0` disables a feature; `ADDLOCAL=ALL` cannot turn it on unless one of its `conditions` is true.
 - `conditions` are `Condition` table rows: each entry has a `condition`
   and the `default` (`on`, `off`, `disabled`) or `level` that replaces the
   feature's level when the condition is true. Two entries of one feature
@@ -621,17 +621,29 @@ features:
   builder writes each row as `NOT Installed AND (<condition>)`: the engine
   evaluates the rows at every run, also with `ADDLOCAL` and at the
   uninstall, and a feature that a row disables when the product is removed
-  keeps its files (INST-05). The conditions therefore
-  decide first installs and, in part, major upgrades; a feature disabled at the
-  first install can be added later with `ADDLOCAL`. A major upgrade
+  keeps its files (INST-05). A row that enables a feature whose own level
+  is 0 (`default: disabled`) is written as
+  `(Installed AND (REMOVE OR REINSTALL)) OR (<condition>)` instead: with
+  the first-install guard the feature fell back to level 0 at
+  `msiexec /x`, which left it, its files and the product installed and
+  still returned 0 (reported from a real-world port on SERVER2025; the
+  fix is INST-06). The maintenance term covers removals (`/x`, `REMOVE`,
+  the old product's removal in a major upgrade) and repairs only, so
+  `ADDLOCAL` in a later run still needs the condition. A package built
+  before this change keeps the feature at its uninstall and at the old
+  product's removal in a major upgrade (inferred, not tested). The conditions therefore
+  decide first installs and, in part, major upgrades, removals and
+  repairs; a feature that a condition disabled at the first install can be
+  added later with `ADDLOCAL`, while a `default: disabled` feature still
+  needs its condition. A major upgrade
   without the property drops a feature whose `disabled` condition is then
   true (`ASSOC <> 1`), and the old version's copy is removed. A feature that is off by default and has no
   `disabled` condition was kept by an upgrade when the old version had
   installed it, and stayed absent when the old version had left it out,
   even with its condition true; one that the old version had disabled
   followed its condition. A condition with `default: off` was not tested
-  in an upgrade. A condition cannot use `Installed`, which the guard
-  makes always false.
+  in an upgrade. A condition cannot use `Installed`, which the builder
+  adds itself.
   When several conditions are true, the higher level won (INST-05).
 - Every component is in at least one feature (ICE21). A component used by
   two features is defined once in `components` and named by ID in both.

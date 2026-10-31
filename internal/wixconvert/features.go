@@ -366,7 +366,7 @@ func conditionalLevelProblem(level, cond string) string {
 	}
 
 	if slices.Contains(condition.Properties(cond), "Installed") {
-		return "Installed is always false there, because msi-builder applies feature conditions to first installs only"
+		return "msi-builder adds the Installed checks of feature conditions itself (NOT Installed for first installs, INST-05/INST-06)"
 	}
 
 	if strings.Contains(cond, "${") {
