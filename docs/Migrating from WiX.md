@@ -695,7 +695,8 @@ condition that `upgrade.downgrade: error` (the default) writes itself, so it
 cannot also be a `launchConditions` entry: its message is
 `upgrade.downgradeMessage`, and `convert` moves it there. Any other
 condition, such as `NOT NEWERVERSIONDETECTED OR Installed`, stays a launch
-condition, and so does every condition when downgrades are allowed.
+condition, and so does every condition when downgrades are allowed or when
+the property belongs to another product's `Upgrade` row.
 
 ## Custom actions
 

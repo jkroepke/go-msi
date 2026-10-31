@@ -799,6 +799,22 @@ func TestConvertDowngradeLaunchCondition(t *testing.T) {
 			[]string{"downgradeMessage: x", `its message "newer" is left out`},
 			[]string{"launchConditions"},
 		},
+		"MajorUpgrade without a message": {
+			`<MajorUpgrade AllowSameVersion="yes" />
+    <Launch Condition="NOT WIX_DOWNGRADE_DETECTED" Message="from launch" />`,
+			[]string{"downgradeMessage: from launch"},
+			[]string{"launchConditions", "is left out"},
+		},
+		"property of another product": {
+			`<MajorUpgrade DowngradeErrorMessage="mu" />
+    <Upgrade Id="11111111-2222-3333-4444-555555555555">
+      <UpgradeVersion Minimum="0.0.0" OnlyDetect="yes" Property="OTHERFOUND" />
+    </Upgrade>
+    <Launch Condition="NOT OTHERFOUND" Message="other" />
+    <Launch Condition="NOT WIX_DOWNGRADE_DETECTED" Message="mu" />`,
+			[]string{"condition: NOT OTHERFOUND", "downgradeMessage: mu"},
+			[]string{"condition: NOT WIX_DOWNGRADE_DETECTED"},
+		},
 		"no upgrade elements": {
 			`<Launch Condition="NOT NEWERVERSIONDETECTED" Message="newer" />`,
 			[]string{"downgradeMessage: newer", "with upgrade: false, add it back to launchConditions"},
@@ -861,6 +877,32 @@ func TestConvertDowngradeLaunchCondition(t *testing.T) {
 				t.Errorf("the converted file does not validate: %v\n%s", err, yaml)
 			}
 		})
+	}
+}
+
+// TestConvertRelatedNewerCondition checks that a launch condition on a
+// property that another product's Upgrade row sets stays a launch condition:
+// it refuses that product, not a newer version of this one.
+func TestConvertRelatedNewerCondition(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.2.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <Upgrade Id="11111111-2222-3333-4444-555555555555">
+      <UpgradeVersion Minimum="0.0.0" OnlyDetect="yes" Property="NEWERVERSIONDETECTED" />
+    </Upgrade>
+    <Launch Condition="NOT NEWERVERSIONDETECTED" Message="The other product is installed." />
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	yaml := string(res.YAML)
+	if !strings.Contains(yaml, "condition: NOT NEWERVERSIONDETECTED") || strings.Contains(yaml, "downgradeMessage") {
+		t.Errorf("the launch condition of the other product was folded:\n%s", yaml)
 	}
 }
 

@@ -863,6 +863,23 @@ func (c *converter) emitLaunchConditions() {
 	}
 }
 
+// relatedProperty reports whether an upgrade.related row sets prop: a launch
+// condition on it refuses that product, not a newer version of this one.
+func (c *converter) relatedProperty(upgrade *omap, prop string) bool {
+	related, ok := upgrade.get("related").([]any)
+	if !ok {
+		return false
+	}
+
+	for _, entry := range related {
+		if row, ok := entry.(*omap); ok && c.literal(row.str("property")) == prop {
+			return true
+		}
+	}
+
+	return false
+}
+
 // downgradeCondition folds a launch condition that refuses newer versions
 // into upgrade.downgradeMessage and reports whether it did. downgrade: error
 // writes that launch condition itself, and the LaunchCondition table keys on
@@ -873,7 +890,8 @@ func (c *converter) downgradeCondition(cond string, elm *elem) bool {
 		return false
 	}
 
-	if cond != "NOT "+cmp.Or(upgrade.str("newerProperty"), config.DefaultNewerProperty) {
+	newer := c.literal(cmp.Or(upgrade.str("newerProperty"), config.DefaultNewerProperty))
+	if cond != "NOT "+newer || c.relatedProperty(upgrade, newer) {
 		return false
 	}
 
