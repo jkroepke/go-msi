@@ -147,8 +147,10 @@ func (b *build) grantActions() {
 // condition, one that appends the grant with its account and object
 // formatted by the engine and one that counts it, then the data of each
 // deferred action. The count lets the DLL find a line break that a
-// formatted value added. A removal only hands the commit action the
-// forgetting of the remembered accounts, so a failed removal keeps them.
+// formatted value added. The head line ends with a marker in a per-user
+// install, whose accounts are remembered in that user's hive. A
+// removal only hands the commit action the forgetting of the remembered
+// accounts, with that head line, so a failed removal keeps them.
 func (b *build) grantData() {
 	data := "[" + cadll.GrantCount + "][" + cadll.GrantData + "]"
 
@@ -158,6 +160,9 @@ func (b *build) grantData() {
 		{"BuilderGrantReset", cadll.GrantData, condNotInstalled, string(cadll.GrantInstall) + "[ProductCode]"},
 		{"BuilderGrantResetMaintenance", cadll.GrantData, "Installed", string(cadll.GrantMaintenance) + "[ProductCode]"},
 		{"BuilderGrantResetCount", cadll.GrantCount, "", ":"},
+		// A per-user install remembers the accounts in the hive of the
+		// engine's UserSID, which the DLL reads itself.
+		{"BuilderGrantUser", cadll.GrantData, condPerUser, "[" + cadll.GrantData + "]" + string(cadll.GrantUser)},
 	}
 
 	for i, grant := range b.grants {
@@ -185,7 +190,7 @@ func (b *build) grantData() {
 		setter{"BuilderGrantSetExec", cadll.GrantExec, "", "+" + data},
 		setter{"BuilderGrantSetRollback", cadll.GrantRollback, "", "-" + data},
 		setter{"BuilderGrantSetCommit", cadll.GrantCommit, "", "c" + data},
-		setter{"BuilderGrantForget", cadll.GrantCommit, condRemoveAll, string(cadll.GrantForget) + "[ProductCode]"},
+		setter{"BuilderGrantForget", cadll.GrantCommit, condRemoveAll, string(cadll.GrantForget) + "[" + cadll.GrantData + "]"},
 	)
 
 	for _, s := range setters {

@@ -255,7 +255,7 @@ func TestMsiexecGrants(t *testing.T) {
 	grantGuests(t, existing)
 
 	dir := t.TempDir()
-	path := buildConfig(t, dir, "grant", grantConfig, map[string][]byte{
+	path, res := buildConfigResult(t, dir, "grant", grantConfig, map[string][]byte{
 		"app.exe": testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}}),
 	})
 
@@ -379,6 +379,10 @@ func TestMsiexecGrants(t *testing.T) {
 	if got := serviceSDDL(t, "MsiBuilderGrantSvc"); got != installed["service"] {
 		t.Errorf("service after a failed repair: %s, want %s", got, installed["service"])
 	}
+
+	// ALLUSERS="" on a repair cannot make LocalSystem take the account from
+	// a key in the user's hive (SEC-05).
+	repairWithPlantedAccount(t, dir, path, res.ProductCode, data)
 
 	msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
 

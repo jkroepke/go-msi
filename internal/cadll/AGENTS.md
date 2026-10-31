@@ -95,10 +95,27 @@ the root `AGENTS.md` first.
   `HKCU\Software\msi-builder\GrantRollback\<ProductCode>` (the LocalSystem
   hive) before it writes the DACL, so the rollback takes away only those;
   never make the rollback revoke the authored mask, which strips rights an
-  object had before a failed repair or upgrade. An account from a property
+  object had before a failed repair or upgrade. Next to the mask (`REG_DWORD`
+  `<n>`) it records the account's SID (`REG_BINARY` `<n>s`), and the
+  rollback revokes from that SID and never works the account out again: in
+  a per-user maintenance install that would read the remembered account
+  from a key the user can write. An account from a property
   is remembered by the commit action (lines whose template has `[`,
   `HKLM\SOFTWARE\msi-builder\GrantAccounts\<ProductCode>`, value named
-  after the template), because `msiexec /fa` and Apps & Features
+  after the template; in a per-user install the head line ends with `|`,
+  the DLL reads `UserSID` itself (the engine's value, which an action that
+  changes the session property cannot change, FILE-12; never format it into
+  the data) and the key is `HKEY_USERS\<SID>\Software\msi-builder\GrantAccounts\<ProductCode>`:
+  the context the engine registered the product in (`MsiGetProductInfoExW`,
+  `State`) overrides the marker, unless the product is registered both per
+  machine and for the user, in a maintenance install (registered
+  nowhere or a failed query: no remembered account) and in the commit of a
+  first install (the marker only when registered nowhere), because a user
+  may pass `ALLUSERS` to an elevated repair; only the removal's commit,
+  after the product was unregistered, goes by the marker;
+  never use `HKCU` there, which is LocalSystem's hive when an elevated
+  per-user install runs the action as LocalSystem, and never fall back to
+  HKLM, which users who install the same product per user would share), because `msiexec /fa` and Apps & Features
   repairs run without the first install's command line properties (observed
   on the CI runner, SEC-02). Wide strings in this part
   are `u"..."` literals, which clang types as `unsigned short` arrays.
