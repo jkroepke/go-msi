@@ -373,3 +373,57 @@ func TestWriteToSourceErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestWriteRejectsInvalidUTF8Names checks that the writer refuses a name it
+// would flag as UTF-8 although it is not, which no reader could decode.
+func TestWriteRejectsInvalidUTF8Names(t *testing.T) {
+	t.Parallel()
+
+	if _, err := Write([]File{{Name: "\x8c", Data: []byte("a")}}, Options{}); err == nil {
+		t.Error("a name that is not valid UTF-8 was written")
+	}
+}
+
+// TestMSZIPEmptyBlocks checks blocks with cbUncomp 0: an empty final block
+// reads, a block without BFINAL or with data does not.
+func TestMSZIPEmptyBlocks(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		payload []byte
+		ok      bool
+	}{
+		{"empty final block", []byte{'C', 'K', 1, 0, 0, 0xFF, 0xFF}, true},
+		{"empty block without BFINAL", []byte{'C', 'K', 0, 0, 0, 0xFF, 0xFF}, false},
+		{"block with data", mszipPayload(t, "x"), false},
+	} {
+		raw := RawCabinet([]RawFolder{
+			{Type: MSZIP, Blocks: []RawBlock{{Payload: tc.payload, Uncomp: 0}}},
+		}, []RawFile{{Name: []byte("a"), Attr: AttrArchive}})
+
+		_, readErr := Read(raw)
+		_, walkErr := walkAll(raw)
+
+		if (readErr == nil) != tc.ok || (walkErr == nil) != tc.ok {
+			t.Errorf("%s: Read %v, Walk %v; want success %v", tc.name, readErr, walkErr, tc.ok)
+		}
+	}
+}
+
+// TestWalkChecksBlocksVisitSkipped checks that Walk reads and verifies the
+// blocks of a file whose visit function does not read it.
+func TestWalkChecksBlocksVisitSkipped(t *testing.T) {
+	t.Parallel()
+
+	data := bytes.Repeat([]byte{'y'}, blockSize+10)
+	raw := RawCabinet([]RawFolder{{Type: None, Blocks: []RawBlock{
+		{Payload: data[:blockSize], Uncomp: blockSize},
+		{Payload: data[blockSize:], Uncomp: 10, BadSum: true},
+	}}}, []RawFile{{Name: []byte("a"), Size: 1, Attr: AttrArchive}})
+
+	err := Walk(bytes.NewReader(raw), int64(len(raw)), func(File, io.Reader) error { return nil })
+	if err == nil {
+		t.Error("Walk accepted a corrupt block when visit read nothing")
+	}
+}

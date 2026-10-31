@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jkroepke/msi-builder/internal/codepage"
 	"github.com/jkroepke/msi-builder/internal/lzx"
@@ -317,6 +318,12 @@ func checkEntries(entries []Entry) (int64, error) {
 
 		if strings.IndexByte(ent.Name, 0) >= 0 {
 			return 0, fmt.Errorf("cab: file %d: name %q contains NUL", i, ent.Name)
+		}
+
+		// A name with a byte of 0x80 or above is written with the UTF-8
+		// attribute, which readers decode as UTF-8.
+		if !utf8.ValidString(ent.Name) {
+			return 0, fmt.Errorf("cab: file %d: name %q is not valid UTF-8", i, ent.Name)
 		}
 
 		if ent.Size < 0 {
@@ -1002,10 +1009,12 @@ func parseHeader(src io.ReaderAt, size int64) (*header, error) { //nolint:cyclop
 // LegacyCodePage is the code page the reader decodes a name in when its
 // UTF-8 attribute (0x80) is not set: Windows-1252, the ANSI code page of a
 // Western European Windows. makecab.exe stores such names in the ANSI code
-// page of the machine that wrote the cabinet, and expand.exe reads them in
-// the ANSI code page of the machine that extracts it, so a cabinet carries no
-// code page of its own; a reader has to pick one. The writer never needs it:
-// it sets 0x80 on every name with a byte of 0x80 or above.
+// page of the machine that wrote the cabinet, and a cabinet records no code
+// page, so a reader has to pick one; that expand.exe uses the ANSI code page
+// of the extracting machine is assumed, not verified. The writer never needs
+// it: it sets 0x80 on every name with a byte of 0x80 or above. A decoded
+// legacy name can be longer than 255 bytes in UTF-8, and then cannot be
+// written to a cabinet again.
 const LegacyCodePage = codepage.Windows1252
 
 // decodeName converts a CFFILE szName to UTF-8: a name with the UTF-8

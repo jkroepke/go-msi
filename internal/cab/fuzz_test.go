@@ -70,6 +70,7 @@ func FuzzRoundTrip(f *testing.F) {
 	f.Add("x", bytes.Repeat([]byte{0}, 40000), "y", []byte("zz"), false, uint16(1))
 	f.Add("ü", []byte("a"), "z", []byte("b"), true, uint16(0))
 	f.Add("a", []byte("a"), "b", []byte("b"), false, uint16(0xFFFF))
+	f.Add("\x8c", []byte("a"), "b", []byte("b"), true, uint16(0x20))
 
 	when := time.Date(2026, 1, 2, 3, 4, 6, 0, time.UTC)
 
