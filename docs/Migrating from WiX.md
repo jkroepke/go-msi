@@ -101,6 +101,7 @@ package:
   platform: x64            # wix build -arch x64
 
 upgrade:
+  allowSameVersion: false  # WiX's AllowSameVersionUpgrades="no" default
   downgradeMessage: A newer version of [ProductName] is already installed.
 
 installDir:
@@ -164,7 +165,7 @@ msi-builder does the same by default:
 | `SetDirectory` | `customActions[].setDirectory` |
 | `Feature` | `features` |
 | `Component` | `components` |
-| `File` | `components[].files` |
+| `File` | `components[].files`; a File without `Source` takes the `FileSource` of its Directory |
 | Heat harvesting, `Files` (v5) | A folder `source` ending in `/` |
 | `CreateFolder` | `components[].createFolder` |
 | `RemoveFile`, `RemoveFolder` | `components[].removeFiles` |
@@ -183,6 +184,7 @@ msi-builder does the same by default:
 | `util:PermissionEx` | `permissions.grant`, `folderPermissions.grant`; on a registry key, `permissions.sddl` |
 | `Property` | `properties` |
 | `RegistrySearch`, `DirectorySearch`, `FileSearch`, `ComponentSearch` | `properties.<NAME>.search` |
+| `ProductSearch UpgradeCode` | an `upgrade.related` row with `onlyDetect: true` that sets the property |
 | `Launch` (v3 `Condition` under `Product`) | `launchConditions` |
 | `CustomAction`, `SetProperty`, `Custom` | `customActions` |
 | `InstallExecuteSequence`, `InstallUISequence` | `customActions[].schedule` |
@@ -238,7 +240,7 @@ icons:
 
 upgrade:
   removeOld: afterInstallValidate   # MajorUpgrade Schedule
-  allowSameVersion: true            # the default
+  allowSameVersion: true            # AllowSameVersionUpgrades="yes"
   downgradeMessage: A newer version of [ProductName] is already installed.
   related:                          # Upgrade / UpgradeVersion
     - upgradeCode: 513044d7-fae5-4715-984a-14f911d06fcc
@@ -258,6 +260,10 @@ upgrade:
   never removes a newer version. `downgrade: allow` and `downgrade: ignore`
   install the older version next to the newer one.
 - `IgnoreRemoveFailure="yes"` is `ignoreRemoveFailure: true`.
+- WiX's `AllowSameVersionUpgrades` defaults to `no`, msi-builder's
+  `allowSameVersion` to `true`. convert writes `allowSameVersion: false` for
+  every `MajorUpgrade` without `AllowSameVersionUpgrades="yes"` or
+  `AllowDowngrades="yes"`, so the same version is still not taken as an upgrade.
 - A hand-made major upgrade without `MajorUpgrade`, an `UpgradeVersion` of
   the package's own `UpgradeCode` with a `Minimum` below this version and a
   `Maximum` at it, with `RemoveExistingProducts` scheduled, is `minVersion`
@@ -808,6 +814,14 @@ ui:
 (seen in a real-world port, also with `/qn`). msi-builder installs per
 user to `%LOCALAPPDATA%\Programs\<folder>`. A per-user msi-builder upgrade of
 such an installation should therefore move the files there.
+
+Per machine, `WixUI_Advanced` installs to
+`[ProgramFilesFolder][ApplicationFolderName]`, also with `/qn` (seen in real-world
+packages), or to the value of an action that sets `WixPerMachineFolder`. It
+does not use the name of the install folder's Directory. convert takes
+`installDir.name` and `parent` from that folder. In a 64-bit package
+`ProgramFilesFolder` is `Program Files (x86)`, and convert adds a note to keep
+it for installed versions or switch to `ProgramFiles64Folder`.
 
 The wizard pages are msi-builder's own, with its own bitmaps. It has no
 setup type page (Typical, Custom, Complete) like `WixUI_Mondo`, and dialogs

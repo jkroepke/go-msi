@@ -469,6 +469,26 @@ func (cc *compConv) file(elm *elem) { //nolint:cyclop // a flat list of independ
 	cc.out.add("files", file)
 }
 
+// dirSource returns the source of a File without Source: the FileSource
+// that applies to its component joined with its name. Without one, WiX
+// finds it through its bind paths.
+func (cc *compConv) dirSource(file *omap, elm *elem, name string) string {
+	conv := cc.c
+
+	if src := cc.cp.files; src.path != "" && name != "" {
+		if src.joined {
+			conv.todof(file, "", elm.line, "the File has no Source; convert joined the FileSource of an outer folder "+
+				"with the folder names below it, check the path")
+		}
+
+		return src.path + "/" + name
+	}
+
+	conv.todof(file, "", elm.line, "the File has no Source; WiX finds %q through its bind paths, set the path", name)
+
+	return name
+}
+
 // fileSource sets the file's source and name and returns both.
 func (cc *compConv) fileSource(file *omap, elm *elem) (string, string) {
 	conv := cc.c
@@ -480,8 +500,7 @@ func (cc *compConv) fileSource(file *omap, elm *elem) (string, string) {
 
 	name := conv.value(elm, "Name")
 	if src == "" {
-		src = name
-		conv.todof(file, "", elm.line, "the File has no Source; WiX finds %q through its bind paths, set the path", name)
+		src = cc.dirSource(file, elm, name)
 	}
 
 	if strings.Contains(src, "!(bindpath.") {
