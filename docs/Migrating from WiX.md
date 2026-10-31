@@ -141,7 +141,7 @@ msi-builder does the same by default:
 | `KeyPath="yes"` on the first file, or on the component | The first file of a component, else its first registry value, else its folder; `keyPath` names another one |
 | `Guid="*"` | Component GUIDs are generated from the upgrade code and stable names |
 | `ProductCode="*"` (v3 `Product Id="*"`) | Generated from the upgrade code, the version, the platform and the inputs: an unchanged rebuild keeps it, any change gives a new one |
-| `ComponentGroup`, `ComponentGroupRef`, `ComponentRef`, `FeatureRef` | Features list their components; without `features` every component is in one feature. Convert keeps a feature with any Id other than `MainFeature`, so `ADDLOCAL` and the feature states of an upgrade from the WiX package still name it |
+| `ComponentGroup`, `ComponentGroupRef`, `ComponentRef`, `FeatureRef` | Features list their components; without `features` every component is in one feature. Convert keeps a feature with any ID other than `MainFeature`, so `ADDLOCAL` and the feature states of an upgrade from the WiX package still name it |
 | `ServiceControl` for the package's own service | Started on install, stopped on install and uninstall, deleted on uninstall, with `Wait="yes"` |
 | `RemoveFolder` and an HKCU `RegistryValue` key path next to a Start menu shortcut | Written for every shortcut and profile folder |
 | Short names (`ShortName`) | Generated |
