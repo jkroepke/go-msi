@@ -320,11 +320,6 @@ func findEntry(res *resources, dir, wantID uint32) (uint32, bool, error) {
 	return 0, false, nil
 }
 
-// maxVersionLanguages caps the language entries of the version resource
-// that are compared: real files hold one, and each costs a read of up to
-// 64 KiB.
-const maxVersionLanguages = 64
-
 func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	const (
 		rtVersion = 16
@@ -343,44 +338,85 @@ func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pas
 		return err
 	}
 
-	langs, err := idEntries(res, nameDir&0x7FFFFFFF, maxVersionLanguages)
+	langs, err := idEntries(res, nameDir&0x7FFFFFFF, 0)
 	if err != nil {
 		return err
 	}
 
-	// Windows picks the language entry by the user's UI language, so a file
-	// whose entries disagree has a version that depends on the machine
-	// (FILE-14: English 9.8.7.6 won over German 1.2.3.4 on an English
-	// system). Such a file is refused, which the builder reports like an
-	// unversioned one, instead of picking one entry.
-	var first *Info
+	// Windows picks the language entry by the user's UI language. The
+	// entry used here is the one an English system picks: language-neutral
+	// (0), then en-US (1033), then the first. Its languages are reported.
+	// Entries whose fixed versions differ make File.Version depend on the
+	// machine (FILE-14: English 9.8.7.6 won over German 1.2.3.4 on an
+	// English system), so such a file is refused, which the builder reports
+	// like an unversioned one; entries that only list other translations
+	// are accepted. Entries sharing version data are read once, so a
+	// directory of many entries costs one read per distinct block.
+	pick, ok := pickLanguage(langs)
+	if !ok {
+		return nil
+	}
+
+	if err := versionEntry(res, pick, info); err != nil {
+		return err
+	}
+
+	seen := make(map[uint32]bool)
 
 	for i := 0; i+8 <= len(langs); i += 8 {
 		dataEntry := binary.LittleEndian.Uint32(langs[i+4:])
-		if dataEntry&0x80000000 != 0 {
-			return errors.New("pe: version resource language entry is a directory")
+		if dataEntry == pick || dataEntry&0x80000000 != 0 {
+			continue
 		}
 
-		cur := &Info{}
-		if err := versionEntry(res, dataEntry, cur); err != nil {
-			return err
+		rva, err := res.read(dataEntry, 4)
+		if err != nil || seen[binary.LittleEndian.Uint32(rva)] {
+			continue
 		}
 
-		if first == nil {
-			first = cur
-		} else if cur.FileVersion != first.FileVersion || cur.ProductVersion != first.ProductVersion ||
-			cur.HasVersion != first.HasVersion || !slices.Equal(cur.Languages, first.Languages) {
-			return fmt.Errorf("pe: version resource languages disagree (%s %s and %s %s)",
-				first.FileVersion, first.Language(), cur.FileVersion, cur.Language())
-		}
-	}
+		seen[binary.LittleEndian.Uint32(rva)] = true
 
-	if first != nil {
-		info.FileVersion, info.ProductVersion = first.FileVersion, first.ProductVersion
-		info.HasVersion, info.Languages = first.HasVersion, first.Languages
+		other := &Info{}
+		if versionEntry(res, dataEntry, other) != nil || !other.HasVersion {
+			continue
+		}
+
+		if info.HasVersion && (other.FileVersion != info.FileVersion || other.ProductVersion != info.ProductVersion) {
+			return fmt.Errorf("pe: version resource languages disagree (%s and %s)", info.FileVersion, other.FileVersion)
+		}
 	}
 
 	return nil
+}
+
+// pickLanguage returns the data entry of the language entry an English
+// system uses: language-neutral (0), then 1033, then the first one that
+// is no directory.
+func pickLanguage(langs []byte) (uint32, bool) {
+	order := binary.LittleEndian
+	best, rank := uint32(0), 3
+
+	for i := 0; i+8 <= len(langs); i += 8 {
+		lang, target := order.Uint32(langs[i:]), order.Uint32(langs[i+4:])
+		if target&0x80000000 != 0 {
+			continue
+		}
+
+		cur := 2
+
+		switch lang {
+		case 0:
+			cur = 0
+		case 1033:
+			cur = 1
+		}
+
+		if cur < rank {
+			best, rank = target, cur
+		}
+	}
+
+	return best, rank < 3
 }
 
 // versionEntry reads one language's version resource into info.

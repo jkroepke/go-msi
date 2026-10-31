@@ -504,7 +504,7 @@ type resEntry struct {
 func versionResources(t *testing.T, entries []resEntry) []byte {
 	t.Helper()
 
-	const area = 0x1000 // the section's raw size: 0x200 plus the padding
+	const area = 0x4000 // the section's raw size: 0x200 plus the padding
 
 	data := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Padding: area - 0x200})
 	order := binary.LittleEndian
@@ -616,6 +616,7 @@ func versionResources(t *testing.T, entries []resEntry) []byte {
 
 	clear(data[testRsrcRaw : testRsrcRaw+area])
 	copy(data[testRsrcRaw:], rsrc)
+	order.PutUint32(data[0x80+24+56:], 0x2000+area) // SizeOfImage
 	order.PutUint32(data[testRsrcSection+8:], area)
 	order.PutUint32(data[testRsrcSection+16:], area)
 	order.PutUint32(data[testResourceDir+4:], uint32(len(rsrc))) //nolint:gosec // small
@@ -644,6 +645,15 @@ func TestVersionResourceSelection(t *testing.T) {
 			entries: []resEntry{{1, 1031, "1.2.3.4", []int{1031, 1033}, nil}, {1, 1033, "1.2.3.4", []int{1031, 1033}, nil}},
 			version: "1.2.3.4", lang: "1033,1031",
 		},
+		"same version, own translations": {
+			entries: []resEntry{{1, 1031, "1.2.3.4", []int{1031}, nil}, {1, 1033, "1.2.3.4", []int{1033}, nil}},
+			version: "1.2.3.4", lang: "1033",
+		},
+		"neutral entry first": {
+			entries: []resEntry{{1, 0, "1.2.3.4", []int{1031}, nil}, {1, 1033, "1.2.3.4", []int{1033}, nil}},
+			version: "1.2.3.4", lang: "1031",
+		},
+		"65 languages": {entries: manyLanguages(65), version: "1.2.3.4", lang: "1033"},
 		"two languages disagree": {
 			entries: []resEntry{{1, 1031, "1.2.3.4", []int{1031}, nil}, {1, 1033, "9.8.7.6", []int{1033}, nil}},
 			fails:   true,
@@ -789,4 +799,15 @@ func TestNamedEntryPartition(t *testing.T) {
 			t.Errorf("directory at %d: entry counted as named matched by ID: %+v", dir, info)
 		}
 	}
+}
+
+// manyLanguages returns n language entries of version 1.2.3.4, each
+// listing 1033.
+func manyLanguages(n int) []resEntry {
+	entries := make([]resEntry, 0, n)
+	for i := range n {
+		entries = append(entries, resEntry{1, uint32(1024 + i), "1.2.3.4", []int{1033}, nil})
+	}
+
+	return entries
 }
