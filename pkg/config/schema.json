@@ -137,7 +137,7 @@
             "string",
             "number"
           ],
-          "description": "major.minor; Page Count is major × 100 + minor.",
+          "description": "major.minor, or a major alone such as 5 for 5.0; Page Count is major × 100 + minor.",
           "default": "5.0"
         },
         "codepage": {
@@ -2860,6 +2860,20 @@
           "properties": {
             "guid": {
               "$ref": "#/$defs/guid"
+            },
+            "keyPath": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "file",
+                    "directory"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/var"
+                }
+              ],
+              "description": "What the component's key path is. file (default): the result is the folder of the key file; directory: the result is the key path folder itself. For a component of this package the builder knows it."
             }
           },
           "required": [

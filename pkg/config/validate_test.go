@@ -277,6 +277,14 @@ func TestValidate(t *testing.T) {
 			pkg(`{platform: x64, installerVersion: "+5.0"}`) + appComponent,
 			sevError, "package.installerVersion", "major.minor",
 		},
+		"installer version major above 99": {
+			pkg(`{platform: x64, installerVersion: "100.0"}`) + appComponent,
+			sevError, "package.installerVersion", "highest Windows Installer version",
+		},
+		"installer version as Page Count": {
+			pkg(`{platform: x64, installerVersion: 500}`) + appComponent,
+			sevError, "package.installerVersion", "not the Page Count: write 5.0",
+		},
 		"arm64 below 5.0": {
 			pkg(`{platform: arm64, installerVersion: "4.5"}`) + appComponent,
 			sevError, "package.installerVersion", "at least 5.0",
@@ -1768,7 +1776,7 @@ func TestPageCount(t *testing.T) {
 		{"4.5", 405},
 		{"2.0", 200},
 		{"05.00", 500},
-		// The schema allows a number, and as a number 5 and 5.0 are the same.
+		// The schema allows a number, and an unquoted 5 reaches the field as "5".
 		{"5", 500},
 	} {
 		if got, err := config.PageCount(tc.version); err != nil || got != tc.want {
@@ -1780,11 +1788,28 @@ func TestPageCount(t *testing.T) {
 		"", ".", "5.", ".5", "5.0.0", "5.100", "a.b", "v5.0", " 5.0", "5.0 ",
 		// Digits only, as in ParseVersion: strconv.Atoi also takes a sign.
 		"+5.0", "-5.0", "5.-0", "5.+0", "+5", "-0",
-		// major × 100 would wrap around to 500.
-		"4611686018427387909.0",
+		// The major is at most 99, so major × 100 cannot wrap around to 500.
+		"100.0", "100", "4611686018427387909.0",
 	} {
 		if got, err := config.PageCount(bad); err == nil {
 			t.Errorf("PageCount(%q) = %d, want an error", bad, got)
+		}
+	}
+
+	for version, want := range map[string]string{
+		"+5.0":                   "digits only",
+		"5.":                     "digits only",
+		"5.100":                  "minor above 99",
+		"5.99999999999999999999": "minor above 99",
+		"100.0":                  "highest Windows Installer version",
+		"99999999999999999999":   "highest Windows Installer version",
+		"501":                    "highest Windows Installer version",
+		"600":                    "highest Windows Installer version",
+		"500":                    "not the Page Count: write 5.0",
+		"450":                    "write 4.50",
+	} {
+		if _, err := config.PageCount(version); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("PageCount(%q) error = %v, want it to mention %q", version, err, want)
 		}
 	}
 }

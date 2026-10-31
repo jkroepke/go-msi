@@ -62,25 +62,51 @@ func ParseVersion(text string) (Version, error) {
 
 // PageCount converts installerVersion ("5.0", "4.5") into the Summary
 // Information Page Count (major × 100 + minor). A major alone ("5") is
-// major.0: the schema allows installerVersion as a number, and as a number
-// 5 and 5.0 are the same.
+// major.0: the schema allows installerVersion as a number, and an unquoted
+// 5 reaches the field as "5". The text is not read as a number otherwise:
+// "4.10" is 410 and "4.50" is 450.
 func PageCount(installerVersion string) (int, error) {
 	major, minor, ok := strings.Cut(installerVersion, ".")
 	if !ok {
 		minor = "0"
 	}
 
-	majorNum, err1 := strconv.Atoi(major)
-	minorNum, err2 := strconv.Atoi(minor)
-
 	// Digits only, as in ParseVersion: Atoi also takes a sign, and "+5" or
-	// "-0" would pass. The major limit keeps major × 100 from wrapping around.
-	if err1 != nil || err2 != nil || strings.Trim(major, "0123456789") != "" ||
-		strings.Trim(minor, "0123456789") != "" || majorNum > 99 || minorNum > 99 {
-		return 0, fmt.Errorf("installer version %q must be major.minor", installerVersion)
+	// "-0" would pass.
+	if !isDigits(major) || !isDigits(minor) {
+		return 0, fmt.Errorf("installer version %q must be major.minor or a major alone, digits only", installerVersion)
+	}
+
+	// Both fields are digits now, so an Atoi error is a value out of range.
+	minorNum, err := strconv.Atoi(minor)
+	if err != nil || minorNum > 99 {
+		return 0, fmt.Errorf("installer version %q has a minor above 99", installerVersion)
+	}
+
+	// The major limit keeps major × 100 from wrapping around.
+	majorNum, err := strconv.Atoi(major)
+	if err != nil || majorNum > 99 {
+		return 0, majorAboveLimit(installerVersion, majorNum, err == nil && !ok)
 	}
 
 	return majorNum*100 + minorNum, nil
+}
+
+// isDigits reports whether text is one or more ASCII digits.
+func isDigits(text string) bool {
+	return text != "" && strings.Trim(text, "0123456789") == ""
+}
+
+// majorAboveLimit explains an installerVersion major above 99. A bare number
+// up to 500 (asPageCount) reads like the Page Count itself, so the error
+// names the major.minor it stands for.
+func majorAboveLimit(installerVersion string, major int, asPageCount bool) error {
+	if asPageCount && major <= MaxPageCount {
+		return fmt.Errorf("installer version %q is above 5.0; it is major.minor, not the Page Count: write %d.%d",
+			installerVersion, major/100, major%100)
+	}
+
+	return fmt.Errorf("installer version %q is above 5.0, the highest Windows Installer version", installerVersion)
 }
 
 // MinPageCount is the lowest Page Count msi-builder writes for a platform. x64
