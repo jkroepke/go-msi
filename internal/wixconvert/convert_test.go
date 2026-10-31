@@ -1762,3 +1762,44 @@ func TestConvertComponentSearchKeyPath(t *testing.T) {
 		t.Errorf("keyPath: directory is not under OTHER_DIR:\n%s", res.YAML)
 	}
 }
+
+// TestConvertElevatedActionScopes checks the scope convert gives actions
+// without impersonation in a dual package (CA-09): none for an immediate
+// action, which never runs elevated, and none but a note for one that
+// also runs outside the execute sequence, where a scope is refused.
+func TestConvertElevatedActionScopes(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301" Scope="perUserOrMachine">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <CustomAction Id="Immediate" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]a.exe&quot;" Impersonate="no" Return="ignore" />
+    <CustomAction Id="AdminToo" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]a.exe&quot;" Execute="deferred" Impersonate="no" />
+    <InstallExecuteSequence>
+      <Custom Action="Immediate" After="InstallFiles" Condition="NOT Installed" />
+      <Custom Action="AdminToo" After="InstallFiles" />
+    </InstallExecuteSequence>
+    <AdminExecuteSequence>
+      <Custom Action="AdminToo" After="InstallFiles" />
+    </AdminExecuteSequence>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	yaml := string(res.YAML)
+	if strings.Contains(yaml, "    scope: perMachine\n") {
+		t.Errorf("an action got scope: perMachine:\n%s", yaml)
+	}
+
+	if !strings.Contains(yaml, "AdminToo runs without impersonation outside the execute sequence") {
+		t.Errorf("no note for AdminToo:\n%s", yaml)
+	}
+
+	if !strings.Contains(yaml, "condition: NOT Installed") {
+		t.Errorf("the immediate action lost its condition:\n%s", yaml)
+	}
+}

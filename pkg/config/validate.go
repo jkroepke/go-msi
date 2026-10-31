@@ -2270,7 +2270,7 @@ func (v *validator) actionRun(cfg *Config, actionPath string, action *CustomActi
 	// scope keeps it out of per-user installs (CA-09).
 	if !*action.Impersonate && cfg.Package.Scope.MayBePerUser() && action.Scope != ScopePerMachine {
 		hint := ""
-		if cfg.Package.Scope.Dual() {
+		if cfg.Package.Scope.Dual() && !slices.ContainsFunc(action.Schedule, func(p Placement) bool { return p.Sequence != sequenceExecute }) {
 			hint = "; add scope: perMachine to run it only in per-machine installs"
 		}
 

@@ -490,6 +490,17 @@ func TestValidate(t *testing.T) {
 `,
 			sevError, "customActions[0].impersonate", "add scope: perMachine",
 		},
+		"dual scope elevated admin action": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + `customActions:
+  - id: Machine
+    exec: {command: '"[System64Folder]cmd.exe" /c ver', directory: INSTALLDIR}
+    execute: deferred
+    impersonate: false
+    return: check
+    schedule: [{sequence: adminExecute, before: InstallFinalize}]
+`,
+			sevError, "customActions[0].impersonate", "(ICE105)",
+		},
 		"dual scope elevated perUser action": {
 			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + `customActions:
   - id: Machine

@@ -89,7 +89,7 @@ customActions:
       command: '"[INSTALLFOLDER]hello.exe" --elevated-user'
       directory: INSTALLFOLDER
     execute: deferred
-    # TODO(line 38): ElevatedUser runs only per user, where an action without impersonation runs as the installing user (CA-09), so it runs impersonated
+    # TODO(line 38): ElevatedUser runs only per user; in the per-user installs CA-09 tested, a standard user's and an administrator's, an action without impersonation ran as the installing user, so it runs impersonated; a per-user install elevated by policy (AlwaysInstallElevated) was not tested
     scope: perUser
     return: check
     schedule:

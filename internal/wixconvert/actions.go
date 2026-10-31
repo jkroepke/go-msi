@@ -218,37 +218,50 @@ func (c *converter) emitActions() {
 // of them names the same one. A condition that only names the scope goes,
 // since the builder writes it.
 func (c *converter) actionScope(action *omap, custom *elem) {
+	if !c.dualScope() {
+		return
+	}
+
 	placements := schedulePlacements(action)
-	if !c.dualScope() || !inExecuteOnly(placements) {
+	// Only a deferred, rollback or commit action can run elevated.
+	elevated := custom.no("Impersonate") && action.str("execute") != ""
+
+	if !inExecuteOnly(placements) {
+		if elevated {
+			c.todof(action, "impersonate", custom.line, "%s runs without impersonation outside the execute sequence; in a %s "+
+				"package msi-builder runs such an action only with scope: perMachine, which needs the execute sequence: "+
+				"move the other placements into an action of their own", custom.attr("Id"), c.scope)
+		}
+
 		return
 	}
 
 	scope := c.namedScope(placements)
-	elevated := custom.no("Impersonate")
 
 	switch {
 	case scope != "" && (!elevated || scope == scopeMachine):
-		for _, placement := range placements {
-			placement.del("condition")
-		}
-
+		dropConditions(placements)
 		action.set("scope", scope)
 	case scope == scopeUser:
-		// Elevated, but only per user, where it ran as the installing
-		// user anyway (CA-09).
-		for _, placement := range placements {
-			placement.del("condition")
-		}
-
+		dropConditions(placements)
 		action.del("impersonate")
 		action.set("scope", scope)
-		c.todof(action, "scope", custom.line, "%s runs only per user, where an action without impersonation runs as the "+
-			"installing user (CA-09), so it runs impersonated", custom.attr("Id"))
+		c.todof(action, "scope", custom.line, "%s runs only per user; in the per-user installs CA-09 tested, a standard "+
+			"user's and an administrator's, an action without impersonation ran as the installing user, so it runs "+
+			"impersonated; a per-user install elevated by policy (AlwaysInstallElevated) was not tested", custom.attr("Id"))
 	case elevated:
 		action.set("scope", scopeMachine)
 		c.todof(action, "scope", custom.line, "msi-builder runs an action without impersonation in a %s package only in "+
 			"per-machine installs (CA-09), so it adds ALLUSERS=1 to the schedule; check that %s still runs when it should",
 			c.scope, custom.attr("Id"))
+	}
+}
+
+// dropConditions removes the conditions of placements whose context the
+// action's scope now names.
+func dropConditions(placements []*omap) {
+	for _, placement := range placements {
+		placement.del("condition")
 	}
 }
 
