@@ -140,9 +140,9 @@ func EncodeName(name string) ([]uint16, error) {
 	return units, nil
 }
 
-// cased reports whether Windows upper-cases a unit differently from Compare:
-// a non-ASCII BMP character with a case mapping, such as U+00E9 or the
-// fullwidth U+FF41. Surrogate units are never upper-cased (MS-CFB 2.6.4).
+// cased reports whether Windows may upper-case a unit differently from
+// Compare: a non-ASCII BMP character with a case mapping or a case folding
+// partner, such as U+00E9, the fullwidth U+FF41 or U+FB05. Surrogate units are never upper-cased (MS-CFB 2.6.4).
 func cased(unit uint16) bool {
 	if unit <= 0x7F || (unit >= 0xD800 && unit <= 0xDFFF) {
 		return false
@@ -150,7 +150,10 @@ func cased(unit uint16) bool {
 
 	r := rune(unit)
 
-	return unicode.ToUpper(r) != r || unicode.ToLower(r) != r
+	// A unit in a case folding orbit, such as U+FB05, counts too: the
+	// reader folds whole orbits, so the writer must not emit two names it
+	// would read as one.
+	return unicode.ToUpper(r) != r || unicode.ToLower(r) != r || unicode.SimpleFold(r) != r
 }
 
 func upper(u uint16) uint16 {

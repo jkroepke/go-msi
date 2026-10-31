@@ -231,6 +231,14 @@ func TestUnicodeCaseDuplicate(t *testing.T) {
 		wantError(t, pair[0]+"/"+pair[1], rename(pair[0], pair[1]), "duplicate name")
 	}
 
+	// Units without a case mapping that still share a folding orbit are
+	// refused by the writer, so it never writes a file the reader rejects.
+	for _, name := range []string{"a\uFB05", "a\uFB06", "\u0390", "\u1FD3", "\u03B0", "\u1FE3"} {
+		if _, err := Write([]Stream{{Name: name}}, Options{}); err == nil || !strings.Contains(err.Error(), "cased character") {
+			t.Errorf("Write %q: %v, want an error about a cased character", name, err)
+		}
+	}
+
 	for _, pair := range [][2]string{
 		{"Ébcd", "Ábcd"},
 		{"\U00010400cd", "\U00010428cd"}, // Deseret: a surrogate pair each, not folded
