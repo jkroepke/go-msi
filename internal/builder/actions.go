@@ -677,6 +677,9 @@ func (b *build) sequenceError(table string, err error) {
 // placementPath returns the YAML path of the placement that schedules action
 // in table: that of a custom action, or of the run action whose data action
 // it is; "" for any other action.
+// An action generated from a service argument gets the index it has in
+// cfg.CustomActions; config.Validate, which knows its origin, reports the
+// conflicts it can take part in first.
 func (b *build) placementPath(table, action string) string {
 	if action == "" {
 		return ""

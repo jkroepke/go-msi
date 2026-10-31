@@ -240,3 +240,24 @@ func TestLinearMemory(t *testing.T) { //nolint:paralleltest // measures allocati
 		t.Errorf("16000 actions allocate %d bytes", large)
 	}
 }
+
+// A long tail hanging off a cycle is walked once: the cycle is found from
+// the tail's first action and named by its members.
+func TestCycleBehindLongTail(t *testing.T) {
+	t.Parallel()
+
+	actions := make([]Action, 0, 20002)
+
+	for i := range 20000 {
+		actions = append(actions, Action{Name: fmt.Sprintf("T%d", i), Before: fmt.Sprintf("T%d", i+1)})
+	}
+
+	actions = append(actions, Action{Name: "T20000", Before: "T20001"}, Action{Name: "T20001", Before: "T20000"})
+
+	_, err := Number(actions)
+
+	var serr *Error
+	if !errors.As(err, &serr) || strings.Join(serr.Cycle, " ") != "T20000 T20001 T20000" {
+		t.Errorf("%v", err)
+	}
+}

@@ -36,7 +36,7 @@ func (v *validator) schedules(cfg *Config) {
 
 	for _, name := range slices.Sorted(maps.Keys(sequenceTables)) {
 		table := sequenceTables[name]
-		actions, paths, dups := scheduleOf(cfg, name)
+		actions, paths, dups := scheduleOf(cfg, byID, name)
 		v.diags = append(v.diags, dups...)
 
 		v.unscheduledAnchors(byID, name, actions, paths)
@@ -78,7 +78,8 @@ func (v *validator) unscheduledAnchors(byID map[string]*CustomAction, name strin
 // scheduleOf returns the actions of one sequence, the YAML path of the
 // placement behind each custom action, as described at schedules, and an
 // error for each further placement of an action in the same sequence.
-func scheduleOf(cfg *Config, name string) ([]sequence.Action, map[string]string, Diagnostics) { //nolint:cyclop // a flat filter over the placements
+//nolint:cyclop // a flat filter over the placements
+func scheduleOf(cfg *Config, byID map[string]*CustomAction, name string) ([]sequence.Action, map[string]string, Diagnostics) {
 	var actions []sequence.Action
 
 	paths := make(map[string]string)
@@ -89,7 +90,8 @@ func scheduleOf(cfg *Config, name string) ([]sequence.Action, map[string]string,
 	)
 
 	for i, action := range cfg.CustomActions {
-		if action.ID == "" {
+		// A second action with the same id is reported by actionID.
+		if action.ID == "" || byID[action.ID] != action {
 			continue
 		}
 
