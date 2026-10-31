@@ -878,13 +878,7 @@ func (c *converter) existenceCheck(propOut *omap, elm, kid *elem, outer *omap) {
 	case elm.is("RegistrySearch") && outer.mapAt("registry") != nil && elm.attr("Type") == keyDirectory:
 		// type: directory already returns the folder only if it exists.
 	case elm.is("RegistrySearch") && outer.mapAt("registry") != nil && slices.Contains([]string{"", "raw"}, elm.attr("Type")):
-		// Below a raw registry search, Windows Installer returns the folder
-		// that holds the path in the value, whether it exists or not
-		// (SEARCH-09).
-		c.todof(propOut, "", kid.line, "the DirectorySearch without Path below a raw RegistrySearch returns the folder that "+
-			"holds the path in the value, without checking that it exists; convert kept the value itself, so check whether "+
-			"it names that folder, or use type: directory to get the folder only if it exists; if only whether the property is "+
-			"set matters, the raw value is enough")
+		c.rawFolderNote(propOut, kid)
 	case elm.is("DirectorySearch"), hasNestedSearch(kid):
 		// A search nested in the folder only finds something if the folder
 		// exists, so it is the existence check.
@@ -893,6 +887,26 @@ func (c *converter) existenceCheck(propOut *omap, elm, kid *elem, outer *omap) {
 			"properties.search has no such check, so convert left it out and the property is set even if the folder is missing",
 			elm.qname())
 	}
+}
+
+// rawFolderNote notes a DirectorySearch without Path below a raw
+// RegistrySearch. Windows Installer then returns the folder that holds
+// the path in the value, whether it exists or not (SEARCH-09).
+func (c *converter) rawFolderNote(propOut *omap, kid *elem) {
+	if hasNestedSearch(kid) {
+		// The builder searches below a registry search as a directory
+		// search: in the folder the value names, if it exists.
+		c.todof(propOut, "", kid.line, "the DirectorySearch without Path below a raw RegistrySearch stands for the folder "+
+			"that holds the path in the value; convert searches below the folder the value names instead, so check that "+
+			"the value names the folder to search in")
+
+		return
+	}
+
+	c.todof(propOut, "", kid.line, "the DirectorySearch without Path below a raw RegistrySearch returns the folder that "+
+		"holds the path in the value, without checking that it exists; convert kept the value itself, so check whether "+
+		"it names that folder, or use type: directory to get the folder only if it exists; for a value that is a path, "+
+		"the property is set whenever the value exists, so if only that matters, the raw value is enough")
 }
 
 // hasNestedSearch reports whether a search is nested in elm.
