@@ -248,6 +248,13 @@ go test ./... -shuffle=on -race
   before the install changes the DACL `MsiLockPermissionsEx` gives the key
   (a created parent gets the protected DACL and the key inherits it;
   SEC-02 flaked with a shared `HKLM\SOFTWARE\MsiBuilderTest` parent).
+- `Get-Acl` leaves a NULL DACL out of its `Sddl` (`O:LAG:…` with no `D:`),
+  so it cannot tell no DACL from a missing read. Tests that need to see one
+  read the DACL with `GetFileSecurityW` and
+  `ConvertSecurityDescriptorToStringSecurityDescriptorW`
+  (`D:NO_ACCESS_CONTROL`), and write one with `SetFileSecurityW`, which
+  stores the descriptor without inheritance but drops an `AI` flag
+  (`fileDACL` and `setSecurity` in `nulldacl_windows_test.go`, SEC-04).
 - Wizard changes need a full-UI run: `/qn` never shows a dialog, so dialog
   bugs (wrong event names, missing ErrorIcon) only appear with the full UI.
   `internal/builder/nativetest/fullui_windows_test.go` drives msiexec through
