@@ -824,7 +824,7 @@ func TestConvertDowngradeLaunchCondition(t *testing.T) {
 			`<?define M = "m1" ?>
     <MajorUpgrade DowngradeErrorMessage="$(var.M)" />
     <Launch Condition="NOT WIX_DOWNGRADE_DETECTED" Message="m1" />`,
-			[]string{"downgradeMessage: ${M}"},
+			[]string{"downgradeMessage: '{{ .M }}'"},
 			[]string{"launchConditions", "is left out"},
 		},
 		"two folded launch conditions": {
@@ -837,7 +837,7 @@ func TestConvertDowngradeLaunchCondition(t *testing.T) {
 		"undefined preprocessor variable": {
 			`<MajorUpgrade DowngradeErrorMessage="x" />
     <Launch Condition="NOT $(var.NP)" Message="newer" />`,
-			[]string{"condition: NOT ${NP}", "if NOT ${NP} is the property"},
+			[]string{"condition: NOT {{ .NP }}", `if NOT {{ "{{" }} .NP }} is the property`},
 			nil,
 		},
 		"no upgrade elements": {
@@ -2215,14 +2215,14 @@ func TestConvertTypeTextsAndURLLaunch(t *testing.T) {
 		"progId: Hello.Project\n", "description: Hello Project File\n", "extension: hlo\n",
 		`Verb Command="Open in [CHANGING]" holds formatted text convert cannot fill in`,
 		`the launch checkbox (action OpenSite: powershell Start-Process https://example.com) "Open the website" starts no file`,
-		"progId: Hello.Pub\n", "contentType: application/x-${AppName}\n", `ProgId Description="[PUB] [%USERNAME] by Example" holds formatted text`,
+		"progId: Hello.Pub\n", "contentType: application/x-{{ .AppName }}\n", `ProgId Description="[PUB] [%USERNAME] by Example" holds formatted text`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the YAML lacks %q:\n%s", want, out)
 		}
 	}
 
-	if strings.Contains(out, "launch:") || strings.Contains(out, "application/x-${AppName}\" holds") {
+	if strings.Contains(out, "launch:") || strings.Contains(out, "application/x-{{ .AppName }}\" holds") {
 		t.Errorf("ui.launch without a file, or a TODO on a filled-in text:\n%s", out)
 	}
 

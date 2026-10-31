@@ -7,12 +7,12 @@ vars:
 product:
   name: ScopeProbe
   manufacturer: MsiSpecProbe
-  version: ${VERSION}
+  version: "{{ .VERSION }}"
   upgradeCode: 6a0d7f52-2c1e-4b8e-9d33-51f4a0c7e912
 
 package:
   platform: x64
-  scope: ${SCOPE}
+  scope: "{{ .SCOPE }}"
 
 ui:
   enabled: false
