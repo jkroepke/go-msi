@@ -406,8 +406,9 @@ func (c *converter) emitMajor(upgrade *omap, major *elem) {
 	}
 
 	// WiX leaves the same version out of the upgrade unless asked;
-	// msi-builder's default takes it in.
-	if !major.yes("AllowSameVersionUpgrades") {
+	// msi-builder's default takes it in. With AllowDowngrades WiX's row
+	// has no upper bound, so the same version is upgraded too.
+	if !major.yes("AllowSameVersionUpgrades") && !major.yes("AllowDowngrades") {
 		upgrade.set("allowSameVersion", false)
 	}
 

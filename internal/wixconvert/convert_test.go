@@ -2087,3 +2087,33 @@ func TestConvertProductSearch(t *testing.T) {
 		t.Errorf("the converted file does not validate: %v\n%s", err, out)
 	}
 }
+
+func TestConvertSameVersionUpgrades(t *testing.T) {
+	t.Parallel()
+
+	for attrs, want := range map[string]bool{
+		``:                               true,
+		`AllowSameVersionUpgrades="yes"`: false,
+		`AllowDowngrades="yes"`:          false,
+		`AllowSameVersionUpgrades="no"`:  true,
+	} {
+		src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade ` + attrs + ` DowngradeErrorMessage="newer" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello"><Component><File Source="hello.exe" /></Component></Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /></Feature>
+  </Package>
+</Wix>`
+
+		res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if got := strings.Contains(string(res.YAML), "allowSameVersion: false"); got != want {
+			t.Errorf("%s: allowSameVersion: false written = %v, want %v:\n%s", attrs, got, want, res.YAML)
+		}
+	}
+}

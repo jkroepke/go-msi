@@ -39,7 +39,6 @@ upgrade:
   # TODO(line 15): WiX generated the Guid of manual.pdf, hello.yaml; msi-builder generates other codes, and removing the old version after installing this one deletes their files on the first upgrade from the WiX package. Run msi-builder convert again with --msi and the package WiX built, or set each guid from msi-builder inspect --table Component
   removeOld: afterInstallExecute
   downgrade: allow
-  allowSameVersion: false
   downgradeMessage: A newer version of Hello is already installed.
   ignoreRemoveFailure: true
   related:

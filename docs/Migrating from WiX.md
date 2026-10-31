@@ -262,8 +262,8 @@ upgrade:
 - `IgnoreRemoveFailure="yes"` is `ignoreRemoveFailure: true`.
 - WiX's `AllowSameVersionUpgrades` defaults to `no`, msi-builder's
   `allowSameVersion` to `true`. convert writes `allowSameVersion: false` for
-  every `MajorUpgrade` without `AllowSameVersionUpgrades="yes"`, so the same
-  version is still not taken as an upgrade.
+  every `MajorUpgrade` without `AllowSameVersionUpgrades="yes"` or
+  `AllowDowngrades="yes"`, so the same version is still not taken as an upgrade.
 - A hand-made major upgrade without `MajorUpgrade`, an `UpgradeVersion` of
   the package's own `UpgradeCode` with a `Minimum` below this version and a
   `Maximum` at it, with `RemoveExistingProducts` scheduled, is `minVersion`
