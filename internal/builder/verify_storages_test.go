@@ -1,6 +1,7 @@
 package builder //nolint:testpackage // the tests reach the unexported comparison
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -12,14 +13,18 @@ import (
 func TestCompareStorages(t *testing.T) {
 	t.Parallel()
 
-	storage := func(name string, clsid byte, sizes ...int64) cfb.Storage {
+	storage := func(name string, clsid byte, sizes ...int) cfb.Storage {
 		out := cfb.Storage{Name: name, CLSID: [16]byte{clsid}}
 		for i, size := range sizes {
-			out.Streams = append(out.Streams, cfb.Source{Name: string(rune('A' + i)), Size: size})
+			stream := cfb.Stream{Name: string(rune('A' + i)), Data: bytes.Repeat([]byte{'x'}, size)}
+			out.Streams = append(out.Streams, stream.Source())
 		}
 
 		return out
 	}
+
+	changed := storage("1031", 1, 10, 20)
+	changed.Streams[1] = cfb.Stream{Name: "B", Data: bytes.Repeat([]byte{'y'}, 20)}.Source()
 
 	want := []cfb.Storage{storage("1031", 1, 10, 20)}
 
@@ -37,6 +42,7 @@ func TestCompareStorages(t *testing.T) {
 		"CLSID":        {[]cfb.Storage{storage("1031", 2, 10, 20)}, "CLSID"},
 		"stream size":  {[]cfb.Storage{storage("1031", 1, 10, 21)}, "stream"},
 		"stream count": {[]cfb.Storage{storage("1031", 1, 10)}, "1 streams"},
+		"content":      {[]cfb.Storage{changed}, "other bytes"},
 	} {
 		if err := compareStorages(want, tc.got); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: %v, want an error with %q", name, err, tc.want)

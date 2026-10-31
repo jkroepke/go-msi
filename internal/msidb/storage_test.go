@@ -7,6 +7,7 @@ import (
 	"maps"
 	"strings"
 	"testing"
+	"unicode/utf16"
 
 	"github.com/jkroepke/msi-builder/internal/cfb"
 )
@@ -278,5 +279,55 @@ func TestStreamNameCollision(t *testing.T) {
 
 	if _, err := Unmarshal(bad); err == nil || !strings.Contains(err.Error(), "both decode to") {
 		t.Errorf("Unmarshal with colliding names: %v, want a refusal", err)
+	}
+}
+
+// TestLoneSurrogateNameRefused checks that a stored name holding a lone
+// surrogate, which reads as U+FFFD, fails instead of being written back
+// under another name.
+func TestLoneSurrogateNameRefused(t *testing.T) {
+	t.Parallel()
+
+	for _, inStorage := range []bool{false, true} {
+		database := propertyDB([]any{"ProductName", "Example"})
+		extra := cfb.Stream{Name: "Zq", Data: []byte("x")}
+
+		if inStorage {
+			database.Storages = []cfb.Storage{{Name: "1031", CLSID: cfb.CLSIDTransform, Streams: []cfb.Source{extra.Source()}}}
+		} else {
+			database.Streams = []cfb.Stream{extra}
+		}
+
+		var buf bytes.Buffer
+		if _, err := database.MarshalTo(&buf, Options{CFBVersion: 3}); err != nil {
+			t.Fatal(err)
+		}
+
+		data := buf.Bytes()
+		dir := int(binary.LittleEndian.Uint32(data[0x30:])+1) * 512
+
+		encoded := "Zq"
+		if !inStorage {
+			encoded, _ = EncodeStreamName("Zq", false)
+		}
+
+		patched := false
+
+		for off := dir; off+128 <= len(data); off += 128 {
+			name := data[off : off+2*len([]rune(encoded))]
+			if string(name) == string(utf16le(utf16.Encode([]rune(encoded)))) {
+				binary.LittleEndian.PutUint16(data[off:], 0xD800) // a lone high surrogate
+
+				patched = true
+			}
+		}
+
+		if !patched {
+			t.Fatal("entry not found")
+		}
+
+		if _, err := Unmarshal(data); err == nil || !strings.Contains(err.Error(), "round-trip") {
+			t.Errorf("in storage %v: Unmarshal with a lone surrogate name: %v, want a refusal", inStorage, err)
+		}
 	}
 }

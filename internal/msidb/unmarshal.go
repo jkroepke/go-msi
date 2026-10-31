@@ -1,12 +1,14 @@
 package msidb
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"slices"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/jkroepke/msi-builder/internal/cfb"
 	"github.com/jkroepke/msi-builder/internal/codepage"
@@ -59,6 +61,26 @@ func streamData(file *cfb.File, name string) ([]byte, error) {
 	return data, nil
 }
 
+// exactName refuses an entry whose stored name does not survive as a Go
+// string, such as one with a lone surrogate, which reads as U+FFFD and
+// would be written back under another name.
+func exactName(ent *cfb.Entry) error {
+	if !bytes.Equal(utf16le(utf16.Encode([]rune(ent.Name))), ent.RawName) {
+		return fmt.Errorf("msidb: entry name %q holds UTF-16 units that do not round-trip", ent.Name)
+	}
+
+	return nil
+}
+
+func utf16le(units []uint16) []byte {
+	out := make([]byte, 0, 2*len(units))
+	for _, u := range units {
+		out = binary.LittleEndian.AppendUint16(out, u)
+	}
+
+	return out
+}
+
 // decodeStorages returns the root-level storages, such as embedded language
 // transforms (MSISPEC section 7.6), with readers over their streams, so that
 // MarshalTo writes them back. A storage inside a storage has no place in
@@ -79,37 +101,55 @@ func decodeStorages(file *cfb.File) ([]cfb.Storage, error) {
 			continue
 		}
 
+		if err := exactName(ent); err != nil {
+			return nil, err
+		}
+
 		storage := cfb.Storage{Name: ent.Name, CLSID: ent.CLSID}
 
 		for _, child := range children[ent.SID] {
-			if child.Type != 2 {
-				return nil, fmt.Errorf("msidb: storage %q holds storage %q; nested storages are not supported", ent.Name, child.Name)
+			stream, err := storageStream(file, ent, child)
+			if err != nil {
+				return nil, err
 			}
 
-			// Check the chain now, so that a broken stream fails here
-			// and not in a later MarshalTo.
-			if _, err := file.EntryReader(child); err != nil {
-				return nil, fmt.Errorf("msidb: storage %q: %w", ent.Name, err)
-			}
-
-			storage.Streams = append(storage.Streams, cfb.Source{
-				Name: child.Name,
-				Size: int64(child.Size), //nolint:gosec // checked against the file size
-				Open: func() (io.ReadCloser, error) {
-					reader, err := file.EntryReader(child)
-					if err != nil {
-						return nil, fmt.Errorf("msidb: storage %q: %w", ent.Name, err)
-					}
-
-					return io.NopCloser(reader), nil
-				},
-			})
+			storage.Streams = append(storage.Streams, stream)
 		}
 
 		storages = append(storages, storage)
 	}
 
 	return storages, nil
+}
+
+// storageStream returns a stream of a storage with a reader over the file.
+func storageStream(file *cfb.File, storage, child *cfb.Entry) (cfb.Source, error) {
+	if child.Type != 2 {
+		return cfb.Source{}, fmt.Errorf("msidb: storage %q holds storage %q; nested storages are not supported", storage.Name, child.Name)
+	}
+
+	if err := exactName(child); err != nil {
+		return cfb.Source{}, err
+	}
+
+	// Check the chain now, so that a broken stream fails here and not in
+	// a later MarshalTo.
+	if _, err := file.EntryReader(child); err != nil {
+		return cfb.Source{}, fmt.Errorf("msidb: storage %q: %w", storage.Name, err)
+	}
+
+	return cfb.Source{
+		Name: child.Name,
+		Size: int64(child.Size), //nolint:gosec // checked against the file size
+		Open: func() (io.ReadCloser, error) {
+			reader, err := file.EntryReader(child)
+			if err != nil {
+				return nil, fmt.Errorf("msidb: storage %q: %w", storage.Name, err)
+			}
+
+			return io.NopCloser(reader), nil
+		},
+	}, nil
 }
 
 func decodeFile(file *cfb.File, loadAll bool) (*Database, error) { //nolint:maintidx,cyclop,gocyclo,gocognit // one pass over the format
@@ -139,6 +179,10 @@ func decodeFile(file *cfb.File, loadAll bool) (*Database, error) { //nolint:main
 	for _, ent := range file.Entries {
 		if ent.Type != 2 || ent.Parent != 0 {
 			continue
+		}
+
+		if err := exactName(ent); err != nil {
+			return nil, err
 		}
 
 		name, isTable := DecodeStreamName(ent.Name)
