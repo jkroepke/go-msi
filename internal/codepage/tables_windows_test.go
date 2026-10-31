@@ -3,7 +3,6 @@ package codepage //nolint:testpackage // the tests compare the unexported tables
 import (
 	"bytes"
 	"compress/flate"
-	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -216,15 +215,6 @@ func TestWindowsTables(t *testing.T) {
 			}
 
 			compareTables(t, codePage, native, embedded)
-
-			// TEMPORARY transport of the dump through the CI log; removed
-			// once the tables are committed.
-			if t.Failed() && os.Getenv("GITHUB_ACTIONS") == "true" {
-				dumped := base64.StdEncoding.EncodeToString(compress(t, native.marshal()))
-				for i := 0; i < len(dumped); i += 3000 {
-					t.Logf("CPTABLE %d %d %s", codePage, i, dumped[i:min(i+3000, len(dumped))])
-				}
-			}
 		})
 	}
 }
