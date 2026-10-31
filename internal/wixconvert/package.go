@@ -806,6 +806,14 @@ func (c *converter) searchKind(propOut *omap, elm *elem) (string, *omap) {
 	case elm.is("ComponentSearch"):
 		found.set("guid", c.value(elm, "Guid"))
 
+		// The engine returns the parent of a folder key path unless the
+		// locator says directory (SEARCH-08). For a component of the
+		// package msi-builder derives it from its own key path, which may
+		// differ from WiX's (an HKCU one in the profile), so it is left out.
+		if strings.EqualFold(elm.attr("Type"), "directory") && !c.ownComponentGUID(c.value(elm, "Guid")) {
+			found.set("keyPath", "directory")
+		}
+
 		return "component", found
 	}
 
@@ -1009,4 +1017,31 @@ func comments(e *elem) []string {
 // lowerFirst turns a WiX attribute name into the msi-builder key.
 func lowerFirst(s string) string {
 	return strings.ToLower(s[:1]) + s[1:]
+}
+
+// ownComponentGUID reports whether guid is the Guid of a component in the
+// source.
+func (c *converter) ownComponentGUID(guid string) bool {
+	norm := func(s string) string { return strings.ToUpper(strings.Trim(s, "{}")) }
+	want := norm(guid)
+
+	for _, cp := range c.comps {
+		if norm(cp.e.attr("Guid")) == want || norm(c.value(cp.e, "Guid")) == want {
+			return true
+		}
+	}
+
+	// With --msi a generated code is pinned from the built package, by the
+	// component's Id. A row of a merge module or extension is not the
+	// source's; an Id-less row pinned by key path is left out too, which at
+	// worst makes the builder reject a contradicting keyPath.
+	if c.built != nil {
+		for _, row := range c.built.Components {
+			if norm(row.Code) == want && c.compByID[row.ID] != nil {
+				return true
+			}
+		}
+	}
+
+	return false
 }
