@@ -222,7 +222,8 @@ func TestMsiexecInstallsLargePackage(t *testing.T) {
 
 	files := make([]probeFile, 0, 3)
 
-	for i, size := range []int64{1 << 30, 1 << 30, 900 << 20} {
+	// Sizes differ, so that no file is a copy of another (CAB-14).
+	for i, size := range []int64{1 << 30, 1<<30 + 4096, 900 << 20} {
 		files = append(files, probeFile{
 			name: fmt.Sprintf("big%d.bin", i),
 			size: size,
