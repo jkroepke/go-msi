@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/jkroepke/msi-builder/internal/cfb"
 	"github.com/jkroepke/msi-builder/internal/summary"
@@ -182,6 +183,11 @@ func TypeFromWord(word uint16) (Type, error) {
 	}
 
 	return typ, nil
+}
+
+// nameUnits is the length of a name in UTF-16 units.
+func nameUnits(name string) int {
+	return len(utf16.Encode([]rune(name)))
 }
 
 // check refuses a type that ParseType would not return, such as one built
@@ -385,7 +391,9 @@ func (t *Table) Validate() error {
 // canonical Go values (nil, string, int or []byte) that the encoders expect.
 // The caller's rows are left as they are.
 func (t *Table) normalized() (*Table, error) { //nolint:cyclop,gocognit // one pass over the format; splitting would scatter it
-	if t.Name == "" || len(t.Name) > MaxTableName {
+	// The limits count characters as msi.dll stores them, UTF-16 units,
+	// not UTF-8 bytes: an 11-character Japanese name is 33 bytes.
+	if t.Name == "" || nameUnits(t.Name) > MaxTableName {
 		return nil, fmt.Errorf("msidb: table name %q must be 1 to %d characters", t.Name, MaxTableName)
 	}
 
@@ -401,7 +409,7 @@ func (t *Table) normalized() (*Table, error) { //nolint:cyclop,gocognit // one p
 	seen := make(map[string]bool)
 
 	for i, col := range t.Columns {
-		if col.Name == "" || len(col.Name) > maxColumnName {
+		if col.Name == "" || nameUnits(col.Name) > maxColumnName {
 			return nil, fmt.Errorf("msidb: table %s: column %d has an invalid name %q", t.Name, i+1, col.Name)
 		}
 

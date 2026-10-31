@@ -468,3 +468,38 @@ func TestAddProblemCutsWholeRunes(t *testing.T) {
 		}
 	}
 }
+
+// TestUnicodeNameLimits checks that table and column name limits count
+// characters (UTF-16 units), not UTF-8 bytes: msi.dll creates and commits
+// an 11-character Japanese table name (reported by a review's native probe).
+func TestUnicodeNameLimits(t *testing.T) {
+	t.Parallel()
+
+	table := strings.Repeat("表", 11) // 33 UTF-8 bytes
+	column := strings.Repeat("列", 30) // 90 UTF-8 bytes
+	tbl := &Table{Name: table, Columns: []Column{Col(column, "s72", true)}, Rows: [][]any{{"x"}}}
+
+	raw, err := (&Database{Codepage: 65001, Tables: []*Table{tbl}}).Marshal(Options{})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	back, err := Unmarshal(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := back.Table(table); got == nil || got.Columns[0].Name != column {
+		t.Errorf("table %q did not read back", table)
+	}
+
+	// The limits still hold in characters.
+	for name, bad := range map[string]*Table{
+		"table":  {Name: strings.Repeat("表", MaxTableName+1), Columns: []Column{Col("K", "s72", true)}},
+		"column": {Name: "T", Columns: []Column{Col(strings.Repeat("列", maxColumnName+1), "s72", true)}},
+	} {
+		if _, err := (&Database{Codepage: 65001, Tables: []*Table{bad}}).Marshal(Options{}); err == nil {
+			t.Errorf("%s name over the limit accepted", name)
+		}
+	}
+}
