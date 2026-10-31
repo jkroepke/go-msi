@@ -130,7 +130,7 @@ func EncodeName(name string) ([]uint16, error) {
 			return nil, fmt.Errorf("cfb: name %q contains %q", name, rune(unit))
 		}
 
-		if cased(unit) {
+		if Cased(rune(unit)) {
 			// Compare only knows the ASCII case folding; MSI names never
 			// need more.
 			return nil, fmt.Errorf("cfb: name %q contains the cased character %q", name, rune(unit))
@@ -140,21 +140,32 @@ func EncodeName(name string) ([]uint16, error) {
 	return units, nil
 }
 
-// cased reports whether Windows may upper-case a unit differently from
-// Compare: a non-ASCII BMP character with a case mapping or a case folding
-// partner, such as U+00E9, the fullwidth U+FF41 or U+FB05. Surrogate units are never upper-cased (MS-CFB 2.6.4).
-func cased(unit uint16) bool {
-	if unit <= 0x7F || (unit >= 0xD800 && unit <= 0xDFFF) {
+// Cased reports whether a name must not hold r: a non-ASCII BMP character
+// with a case mapping, such as U+00E9 or the fullwidth U+FF41, or one that
+// shares a case folding orbit with another character without a mapping,
+// such as U+FB05 and U+FB06. The reader folds whole orbits, so two names
+// with such a pair would be written as two siblings and read as one. U+00DF
+// stays allowed: its only partner, U+1E9E, has a mapping and is refused.
+// Surrogate units are never upper-cased (MS-CFB 2.6.4).
+func Cased(r rune) bool {
+	if r <= 0x7F || r > 0xFFFF || (r >= 0xD800 && r <= 0xDFFF) {
 		return false
 	}
 
-	r := rune(unit)
+	if hasCaseMapping(r) {
+		return true
+	}
 
-	// A unit in a case folding orbit, such as U+FB05, counts too: the
-	// reader folds whole orbits, so the writer must not emit two names it
-	// would read as one.
-	return unicode.ToUpper(r) != r || unicode.ToLower(r) != r || unicode.SimpleFold(r) != r
+	for other := unicode.SimpleFold(r); other != r; other = unicode.SimpleFold(other) {
+		if other > 0x7F && other <= 0xFFFF && !hasCaseMapping(other) {
+			return true
+		}
+	}
+
+	return false
 }
+
+func hasCaseMapping(r rune) bool { return unicode.ToUpper(r) != r || unicode.ToLower(r) != r }
 
 func upper(u uint16) uint16 {
 	if u >= 'a' && u <= 'z' {

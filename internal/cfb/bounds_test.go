@@ -239,6 +239,10 @@ func TestUnicodeCaseDuplicate(t *testing.T) {
 		}
 	}
 
+	if _, err := Write([]Stream{{Name: "Straße"}}, Options{}); err != nil {
+		t.Errorf("Write ß, whose only folding partner has a mapping: %v", err)
+	}
+
 	for _, pair := range [][2]string{
 		{"Ébcd", "Ábcd"},
 		{"\U00010400cd", "\U00010428cd"}, // Deseret: a surrogate pair each, not folded
