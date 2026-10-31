@@ -488,9 +488,12 @@ upgrade:
 ```
 
 An older version is not upgraded: it stays installed next to the new one,
-with its own entry in Apps & Features, and both share the files they have in
-common until the last of them is uninstalled. To make users uninstall it
-first instead, detect it and stop the install with a message:
+with its own entry in Apps & Features. When both versions were built by
+msi-builder into the same folder, they share their files, and uninstalling
+one keeps what the other still uses. A version built by another tool into
+the same folder is a problem: uninstalling either one can delete files the
+other needs. To make users uninstall an older version first, detect it and
+stop the install with a message:
 
 ```yaml
 upgrade:
@@ -504,6 +507,9 @@ launchConditions:
   - condition: NOT OLDVERSIONFOUND
     message: Please uninstall versions before 0.18.0 first.
 ```
+
+With `includeMin: false`, version 0.18.0 itself is not upgraded either, so
+add `includeMax: true` to the `related` entry to detect it too.
 
 ### Delete program data on uninstall
 

@@ -764,7 +764,11 @@ components:
 				t.Fatal(err)
 			}
 
+			seen := map[any]int{}
+
 			for _, row := range rows(t, database, "Upgrade") {
+				seen[row[6]]++
+
 				switch row[6] {
 				case "OLDERVERSIONBEINGUPGRADED":
 					if row[1] != tc.min || row[2] != "1.2.0" || fmt.Sprint(row[4]) != strconv.Itoa(tc.attrs) {
@@ -777,6 +781,10 @@ components:
 				default:
 					t.Errorf("unexpected Upgrade row %v", row)
 				}
+			}
+
+			if seen["OLDERVERSIONBEINGUPGRADED"] != 1 || seen["NEWERVERSIONDETECTED"] != 1 {
+				t.Errorf("Upgrade rows by property: %v, want one removing and one detection row", seen)
 			}
 		})
 	}

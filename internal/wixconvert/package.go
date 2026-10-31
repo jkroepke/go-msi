@@ -1,6 +1,7 @@
 package wixconvert
 
 import (
+	"cmp"
 	"slices"
 	"strconv"
 	"strings"
@@ -395,11 +396,11 @@ func (c *converter) ownUpgradeRow(upgrade *omap, kid *elem) bool {
 		// The detection of newer versions, which msi-builder writes
 		// itself; keep the property conditions test.
 		c.newerProperty(upgrade, kid.attr("Property"), kid.line)
+	case c.floorRow(upgrade, kid):
+		// A hand-made major upgrade with a version floor.
 	case majorUpgradeProperty[kid.attr("Property")]:
 		c.todof(upgrade, "", kid.line, "the UpgradeVersion property %s is one msi-builder sets for its own major upgrade; "+
 			"check the conditions that test it", kid.attr("Property"))
-	case c.floorRow(upgrade, kid):
-		// A hand-made major upgrade with a version floor.
 	case !kid.yes("OnlyDetect"):
 		c.todof(upgrade, "", kid.line, "an UpgradeVersion for the package's own UpgradeCode (versions %s to %s) is a hand-made major upgrade; "+
 			"msi-builder writes its own, which removes every older version and never a newer one (downgrade: allow installs "+
@@ -416,7 +417,8 @@ func (c *converter) ownUpgradeRow(upgrade *omap, kid *elem) bool {
 // UpgradeCode with a Minimum, from that version up to this one, into
 // upgrade.minVersion and reports whether it did. The row takes the place
 // of msi-builder's own, so it needs no MajorUpgrade next to it and nothing
-// msi-builder's row cannot express (UPG-13).
+// msi-builder's row cannot express (UPG-13). An inclusive minimum of 0.0.0
+// is no floor and becomes the standard row.
 func (c *converter) floorRow(upgrade *omap, kid *elem) bool {
 	if !c.isFloorRow(kid) {
 		return false
@@ -427,10 +429,17 @@ func (c *converter) floorRow(upgrade *omap, kid *elem) bool {
 	// WiX's UpgradeVersion includes the minimum and excludes the maximum
 	// by default, and sets the MigrateFeatures bit only when asked.
 	upgrade.set("allowSameVersion", kid.yes("IncludeMaximum"))
-	upgrade.set("minVersion", c.value(kid, "Minimum"))
 
-	if kid.no("IncludeMinimum") {
-		upgrade.set("includeMin", false)
+	if !noFloor(kid) {
+		upgrade.set("minVersion", c.value(kid, "Minimum"))
+
+		if kid.no("IncludeMinimum") {
+			upgrade.set("includeMin", false)
+		}
+
+		c.todof(upgrade, "minVersion", kid.line, "an older version than %s stays installed next to this one; "+
+			"msi-builder also refuses to install over a newer version (downgrade: ignore installs next to it)",
+			c.value(kid, "Minimum"))
 	}
 
 	if !kid.yes("MigrateFeatures") {
@@ -445,23 +454,52 @@ func (c *converter) floorRow(upgrade *omap, kid *elem) bool {
 		upgrade.set("property", prop)
 	}
 
-	c.todof(upgrade, "minVersion", kid.line, "an older version than %s stays installed next to this one; "+
-		"msi-builder also refuses to install over a newer version (downgrade: ignore installs next to it)",
-		orAny(c.value(kid, "Minimum")))
-
 	return true
 }
 
 // isFloorRow reports whether an UpgradeVersion of the package's own
-// UpgradeCode is the first hand-made major upgrade with a Minimum, up to
-// this version, in a package without MajorUpgrade.
+// UpgradeCode is the first hand-made major upgrade with a Minimum below
+// this version, up to this version, in a package without MajorUpgrade.
 func (c *converter) isFloorRow(kid *elem) bool {
-	if c.major != nil || c.floorSeen || kid.yes("OnlyDetect") || !kid.has("Minimum") || !kid.has("Property") {
+	if c.major != nil || c.floorSeen || kid.yes("OnlyDetect") || !kid.has("Minimum") || !kid.has("Property") ||
+		newerDetection[kid.attr("Property")] {
 		return false
 	}
 
-	return kid.attr("Maximum") == c.pkg.attr("Version") &&
-		!slices.ContainsFunc([]string{"Language", "ExcludeLanguages", "RemoveFeatures"}, kid.has)
+	version := c.pkg.attr("Version")
+	if kid.attr("Maximum") != version || !belowVersion(kid.attr("Minimum"), version) {
+		return false
+	}
+
+	return !slices.ContainsFunc([]string{"Language", "ExcludeLanguages", "RemoveFeatures"}, kid.has)
+}
+
+// noFloor reports whether a Minimum lets every older version through: an
+// inclusive 0.0.0.
+func noFloor(kid *elem) bool {
+	floor, err := config.ParseVersion(kid.attr("Minimum"))
+
+	return err == nil && floor == config.Version{Fields: floor.Fields} && !kid.no("IncludeMinimum")
+}
+
+// newerDetection are the properties that detect newer versions, which a
+// removing row cannot take.
+var newerDetection = map[string]bool{ //nolint:gochecknoglobals // lookup table
+	config.DefaultNewerProperty: true, "WIX_DOWNGRADE_DETECTED": true,
+}
+
+// belowVersion reports whether minimum is below version in the first three
+// fields, as FindRelatedProducts compares them. Values that are not
+// versions, such as WiX variables, count as below unless they are equal.
+func belowVersion(minimum, version string) bool {
+	low, errLow := config.ParseVersion(minimum)
+	high, errHigh := config.ParseVersion(version)
+
+	if errLow != nil || errHigh != nil {
+		return minimum != version
+	}
+
+	return cmp.Or(cmp.Compare(low.Major, high.Major), cmp.Compare(low.Minor, high.Minor), cmp.Compare(low.Build, high.Build)) < 0
 }
 
 // emitRelated converts the UpgradeVersion rows of an Upgrade element. For

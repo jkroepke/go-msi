@@ -595,6 +595,27 @@ func TestConvertUpgradeFloor(t *testing.T) {
 			[]string{"allowSameVersion: true", "minVersion: 0.18.0", "includeMin: false", "property: PREVIOUSFOUND", "older version than 0.18.0"},
 			[]string{handMade, "migrateFeatures", "property: WIX_UPGRADE_DETECTED"},
 		},
+		"default property": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="OLDERVERSIONBEINGUPGRADED" />
+    </Upgrade>`,
+			[]string{"allowSameVersion: false", "minVersion: 0.18.0", "migrateFeatures: false"},
+			[]string{handMade, "includeMin", "property: OLDERVERSIONBEINGUPGRADED"},
+		},
+		"no floor": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.0.0" Maximum="1.2.0" Property="PREVIOUSFOUND" />
+    </Upgrade>`,
+			[]string{"allowSameVersion: false", "property: PREVIOUSFOUND"},
+			[]string{handMade, "minVersion", "older version than"},
+		},
+		"minimum at this version": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="1.2.0" Maximum="1.2.0" IncludeMaximum="yes" Property="PREVIOUSFOUND" />
+    </Upgrade>`,
+			[]string{handMade},
+			[]string{"minVersion"},
+		},
 		"maximum below this version": {
 			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
       <UpgradeVersion Minimum="0.18.0" Maximum="1.0.0" Property="PREVIOUSFOUND" />
@@ -652,6 +673,15 @@ func TestConvertUpgradeFloor(t *testing.T) {
 				if strings.Contains(yaml, not) {
 					t.Errorf("the YAML has %q:\n%s", not, yaml)
 				}
+			}
+
+			cfg, err := config.Parse(res.YAML, config.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if err := config.Validate(cfg).Err(); err != nil {
+				t.Errorf("the converted file does not validate: %v\n%s", err, yaml)
 			}
 		})
 	}
