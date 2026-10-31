@@ -992,3 +992,127 @@ func TestConvertBuiltCodes6432Folder(t *testing.T) {
 		t.Errorf("no note on the missing folder: %v", res.Notes)
 	}
 }
+
+// TestConvertCloseApplication checks the util:CloseApplication cases that
+// cannot become files[].close: a target that is no program, one a Files
+// glob may install, and the Property a closing element also sets.
+func TestConvertCloseApplication(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" />
+    </StandardDirectory>
+    <ComponentGroup Id="Harvested" Directory="INSTALLFOLDER">
+      <Files Include="dist\**" />
+    </ComponentGroup>
+    <ComponentGroup Id="Own" Directory="INSTALLFOLDER">
+      <Component>
+        <File Source="hello.exe" />
+        <File Source="hello.com" />
+      </Component>
+    </ComponentGroup>
+    <Feature Id="Main"><ComponentGroupRef Id="Harvested" /><ComponentGroupRef Id="Own" /></Feature>
+    <util:CloseApplication Target="hello.com" CloseMessage="yes" />
+    <util:CloseApplication Target="example.exe" CloseMessage="yes" />
+    <util:CloseApplication Target="hello.exe" CloseMessage="yes" Property="HELLORUNNING" PromptToContinue="yes" />
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"closes hello.com, which is no program ending in .exe",
+		"closes example.exe, which is no single file of this package; when a Files glob (line 7) installs it",
+		"also sets the property HELLORUNNING while hello.exe in INSTALLFOLDER runs",
+		"the attributes RebootPrompt, PromptToContinue of <util:CloseApplication> map to it only roughly or not at all",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if got := strings.Count(out, "close:"); got != 1 {
+		t.Errorf("the YAML closes %d files, want only hello.exe:\n%s", got, out)
+	}
+}
+
+// TestConvertCloseApplicationV3Src checks that a v3 File with the
+// deprecated src attribute is found by its installed name.
+func TestConvertCloseApplicationV3Src(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+  <Product Id="*" Name="Hello" Language="1033" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <Package InstallerVersion="500" Compressed="yes" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="Hello">
+          <Component Id="C" Guid="*">
+            <File Id="hello" src="bin\hello.exe" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+    <Feature Id="Main"><ComponentRef Id="C" /></Feature>
+    <util:CloseApplication Id="x" Target="hello.exe" CloseMessage="yes">NOT Installed</util:CloseApplication>
+  </Product>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(res.YAML), "close: {terminate: false}") {
+		t.Errorf("hello.exe is not closed:\n%s", res.YAML)
+	}
+}
+
+// TestConvertCloseApplicationUndefinedVar checks that variables defined
+// only on the WiX command line, in the Target or before the file name in
+// the Source, still close the file, and that files of one source in
+// several folders each get their notes.
+func TestConvertCloseApplicationUndefinedVar(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component>
+          <File Source="bin\$(var.ExeName)" />
+          <File Source="$(var.App.TargetDir)hello.exe" />
+        </Component>
+        <Directory Id="X86" Name="x86">
+          <Component>
+            <File Source="$(var.App.TargetDir)hello.exe" />
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <util:CloseApplication Target="$(var.ExeName)" CloseMessage="yes" />
+    <util:CloseApplication Target="hello.exe" CloseMessage="yes" Timeout="10" />
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	if got := strings.Count(out, "close: {terminate: false}"); got != 3 {
+		t.Errorf("the YAML closes %d files, want 3:\n%s", got, out)
+	}
+
+	// Both copies of hello.exe get every note, told apart by their folder.
+	if got := strings.Count(out, "the attributes RebootPrompt, Timeout of"); got != 2 {
+		t.Errorf("the YAML notes Timeout on %d files, want 2:\n%s", got, out)
+	}
+}

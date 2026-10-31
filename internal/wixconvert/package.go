@@ -59,6 +59,7 @@ func (c *converter) emit() {
 	c.emitUpgrade()
 	c.emitDirs(tree)
 	c.emitComponents(tree)
+	c.emitCloseApps()
 	c.emitFeatures()
 	c.emitProperties()
 	c.emitLaunchConditions()
