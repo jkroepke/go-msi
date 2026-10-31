@@ -2214,6 +2214,26 @@ func TestConvertActionSystemFolder(t *testing.T) {
 		t.Errorf("the converted file does not validate: %v\n%s", err, out)
 	}
 
+	elevated := strings.Replace(src, `Execute="deferred"`, `Execute="deferred" Impersonate="no"`, 1)
+	for name, doc := range map[string]string{
+		"per-user elevated": elevated,
+		"dual":              strings.Replace(elevated, `Scope="perUser"`, `Scope="perUserOrMachine"`, 1),
+	} {
+		res, err := wixconvert.Convert(strings.NewReader(doc), wixconvert.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		cfg, err := config.Parse(res.YAML, config.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := config.Validate(cfg).Err(); err != nil || strings.Contains(string(res.YAML), "directory: SystemFolder") {
+			t.Errorf("%s: want a valid file without the directory: %v\n%s", name, err, res.YAML)
+		}
+	}
+
 	async := strings.Replace(src, `Return="check"`, `Return="asyncNoWait"`, 1)
 
 	res, err = wixconvert.Convert(strings.NewReader(async), wixconvert.Options{})

@@ -1184,7 +1184,13 @@ func (c *converter) actionFlags(action *omap, custom *elem, program bool) { //no
 
 	// Impersonation only matters for actions in the script: an immediate
 	// action always runs as the installing user.
-	if custom.no("Impersonate") && action.str("execute") != "" {
+	switch {
+	case !custom.no("Impersonate") || action.str("execute") == "":
+	case c.scope == scopeUser:
+		c.todof(action, "execute", custom.line, "%s ran without impersonation, which a per-user package cannot (ICE105), so it "+
+			"runs impersonated; in the per-user installs CA-09 tested such an action ran as the installing user anyway",
+			custom.attr("Id"))
+	default:
 		action.set("impersonate", false)
 	}
 

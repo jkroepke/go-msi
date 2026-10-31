@@ -513,6 +513,15 @@ func TestValidate(t *testing.T) {
 `,
 			sevError, "customActions[0].impersonate", "a perUser action runs impersonated",
 		},
+		"per-machine action with scope": {
+			base + appComponent + `customActions:
+  - id: Set
+    setProperty: {name: A, value: b}
+    scope: perMachine
+    schedule: [{sequence: execute, after: CostFinalize}]
+`,
+			sevError, "customActions[0].scope", "only a perUserOrMachine or perMachineOrUser package",
+		},
 		"per-user elevated action with scope": {
 			pkg(`{platform: x64, scope: perUser}`) + appComponent + `customActions:
   - id: Machine
