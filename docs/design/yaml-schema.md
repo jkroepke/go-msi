@@ -626,16 +626,16 @@ features:
   `(Installed AND (REMOVE OR REINSTALL)) OR (<condition>)` instead: with
   the first-install guard the feature fell back to level 0 at
   `msiexec /x`, which left it, its files and the product installed and
-  still returned 0 (reported from a real-world port on SERVER2025; the
-  fix is INST-06). The maintenance term covers removals (`/x`, `REMOVE`,
-  the old product's removal in a major upgrade) and repairs only, so
-  `ADDLOCAL` in a later run still needs the condition. A package built
-  before this change keeps the feature at its uninstall and at the old
-  product's removal in a major upgrade (inferred, not tested). The conditions therefore
-  decide first installs and, in part, major upgrades, removals and
-  repairs; a feature that a condition disabled at the first install can be
-  added later with `ADDLOCAL`, while a `default: disabled` feature still
-  needs its condition. A major upgrade
+  still returned 0 (reported from a real-world port on SERVER2025;
+  the fix is confirmed by INST-06). The maintenance term covers removals
+  (`/x`, `REMOVE`, the old product's removal in a major upgrade) and
+  repairs only, so `ADDLOCAL` in a later run still needs the condition.
+  A package built before this change keeps the feature at its uninstall
+  and at the old product's removal in a major upgrade (inferred, not
+  tested). The conditions therefore decide first installs and, in part,
+  major upgrades, removals and repairs; a feature that a condition
+  disabled at the first install can be added later with `ADDLOCAL`,
+  while a `default: disabled` feature still needs its condition. A major upgrade
   without the property drops a feature whose `disabled` condition is then
   true (`ASSOC <> 1`), and the old version's copy is removed. A feature that is off by default and has no
   `disabled` condition was kept by an upgrade when the old version had
