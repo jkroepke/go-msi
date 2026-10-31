@@ -46,7 +46,8 @@ versioning after 1.0.
   streams, binary streams; `MarshalTo` writes a package, `Unmarshal`/`Decode`
   read one.
 - [`internal/cfb`](internal/cfb): Compound File Binary v3/v4 writer and lazy reader.
-- [`internal/cab`](internal/cab): cabinet writer and reader, one folder per cabinet,
+- [`internal/cab`](internal/cab): cabinet writer and reader, one folder per cabinet
+  plus one per file whose bytes identical files share (`Entry.Copy`),
   stored, MSZIP or LZX blocks, plus an `fs.FS` view. The LZX encoder and
   decoder are [`internal/lzx`](internal/lzx), written from [MS-PATCH] and
   [MS-CAB] only.

@@ -211,6 +211,7 @@ Silent-failure cases a producer has to guard against itself:
 | CAB-09 | Partial | [ci](msitest/results/CAB-09/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40940932552: cabinet.dll's FDI extracts a cabinet of 65535 entries, and the writer refuses 65536; FCI and smart-cabbed duplicates not run |
 | CAB-10 | Confirmed (external) | [results](#packages-above-2-gb-cab-10-cab-13); embedded variant not run |
 | CAB-13 | Confirmed | [results](#packages-above-2-gb-cab-10-cab-13) |
+| CAB-14 | Pending | [results](#shared-cabinet-data-cab-14) |
 | CAB-11 | Not run | msi-rs regression case; test a candidate writer |
 | CAB-12 | Not run | msi-rs regression case; test a candidate writer |
 | MSZIP-01 | Confirmed | [wrong history](msitest/results/MSZIP-01/go-wrongdict/log.md): 69170 of 102400 bytes differ, exit 0 |
@@ -844,6 +845,31 @@ in `internal/builder/nativetest/media_windows_test.go`.
   install needed one.
 - Not run: Windows Server 2016, a single file near 0x7FFF8000 bytes, LZX or
   MSZIP at this size, an install from a network share.
+
+## Shared cabinet data (CAB-14)
+
+Experiment run on 2026-10-31 by the `windows-latest` CI runner (Windows
+Server 2025) for the cabinet sharing change (workflow run 41237366216,
+commit 574447a, a temporary test that was then removed): cabinet.dll's FDI
+extracted cabinets of four files in one folder, an 8 MiB and two 1 MiB
+random files and a 1 MiB placeholder whose `CFFILE` was then patched to
+the `cbFile` and `uoffFolderStart` of one of the 1 MiB files. The read
+callback counted the cabinet bytes FDI read (11.5 MB for the unpatched
+cabinets).
+
+| Layout (CFFILE order) | Extra bytes read, stored / MSZIP / LZX:21 / LZX:18 | Files correct |
+|---|---|---|
+| copy right after its original, both at the start, then 8 MiB and 1 MiB | 1.05 MB each | yes |
+| 8 MiB, original, copy, 1 MiB | 9.44 MB each | yes |
+| original, 8 MiB, copy, 1 MiB | 9.44 MB each | yes |
+| 8 MiB, 1 MiB, original, copy | 9.44 MB each | yes |
+
+- FDI accepts records that share bytes in every compression type.
+- A copy behind the decoded position makes FDI decode the folder again
+  from its start; when a file follows the copy, FDI also decodes everything
+  up to that file again, even though the copy was at the start of the
+  folder. msi-builder therefore gives the shared file a folder of its own
+  and starts a new folder after a copy (MSISPEC section 5).
 
 ## Signed external cabinets (SIG-08, SIG-09)
 

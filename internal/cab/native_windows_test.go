@@ -1221,3 +1221,51 @@ func TestNativeFDIMaxFiles(t *testing.T) { //nolint:paralleltest // the FDI call
 		t.Error("cab.Write accepted 65536 files")
 	}
 }
+
+// TestNativeFDIExtractsCopies checks that cabinet.dll extracts cabinets
+// whose copies point back at a shared entry's folder (Entry.Copy, CAB-14),
+// with every copy's own name, date and attributes, and that going back for
+// a copy reads only the shared folder again.
+func TestNativeFDIExtractsCopies(t *testing.T) { //nolint:paralleltest // the FDI callbacks share one package state
+	if testing.Short() {
+		t.Skip("native tests run without -short")
+	}
+
+	for _, opts := range []cab.Options{{Compression: cab.None}, {Compression: cab.MSZIP}, {Compression: cab.LZX}, {Compression: cab.LZX, Window: 15}} {
+		files, ents := copyFiles()
+		raw := writeEntries(t, ents, opts)
+
+		got, err := fdiExtract(t, raw)
+		if err != nil {
+			t.Fatalf("compression %d window %d: cabinet.dll: %v", opts.Compression, opts.Window, err)
+		}
+
+		if len(got) != len(files) {
+			t.Fatalf("compression %d: FDI extracted %d files, want %d", opts.Compression, len(got), len(files))
+		}
+
+		for i, want := range files {
+			attr := want.Attributes
+			if attr == 0 {
+				attr = cab.AttrArchive
+			}
+
+			date, clock := cab.DOSTime(want.Time)
+			if got[i].Name != want.Name || !bytes.Equal(got[i].Data, want.Data) || got[i].Date != date || got[i].Time != clock || got[i].Attribs != attr {
+				t.Errorf("compression %d: file %d is %s (%d bytes, %#x %#x, %#x), want %s (%d bytes, %#x %#x, %#x)", opts.Compression, i,
+					got[i].Name, len(got[i].Data), got[i].Date, got[i].Time, got[i].Attribs, want.Name, len(want.Data), date, clock, attr)
+			}
+		}
+
+		// The shared folder is the second; two copies read it again.
+		folders := 36 + 8
+		shared := int64(binary.LittleEndian.Uint32(raw[folders+16:]) - binary.LittleEndian.Uint32(raw[folders+8:]))
+
+		t.Logf("CAB-14 compression %d window %d: cabinet of %d bytes, shared folder %d bytes, cabinet.dll read %d bytes",
+			opts.Compression, opts.Window, len(raw), shared, lastRead)
+
+		if lastRead > int64(len(raw))+2*shared+256<<10 {
+			t.Errorf("compression %d: cabinet.dll read %d bytes of a %d-byte cabinet whose shared folder has %d", opts.Compression, lastRead, len(raw), shared)
+		}
+	}
+}
