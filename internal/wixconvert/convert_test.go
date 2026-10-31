@@ -1555,8 +1555,9 @@ func TestConvertBuiltCodesRegistryKeyPath(t *testing.T) {
 
 // TestConvertComponentSearchKeyPath checks that a ComponentSearch with
 // Type="directory" gets keyPath: directory only for another product's
-// component: for one of the source, also one whose code --msi pins, the
-// builder derives the type itself (SEARCH-08).
+// component, also one the --msi package holds from a merge module: for one
+// of the source, also one whose code --msi pins, the builder derives the
+// type itself (SEARCH-08).
 func TestConvertComponentSearchKeyPath(t *testing.T) {
 	t.Parallel()
 
@@ -1577,6 +1578,8 @@ func TestConvertComponentSearchKeyPath(t *testing.T) {
 		Name: "hello.msi",
 		Components: []wixconvert.BuiltComponent{
 			{ID: "Folder", Code: "{00000000-0000-4000-8000-0000000000AA}", Directory: "INSTALLFOLDER"},
+			// A merge module's component is not the source's.
+			{ID: "MergedFolder.1A2B", Code: "{00000000-0000-4000-8000-0000000000BB}", Directory: "INSTALLFOLDER"},
 		},
 	}
 

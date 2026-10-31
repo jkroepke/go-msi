@@ -995,10 +995,13 @@ func (c *converter) ownComponentGUID(guid string) bool {
 		}
 	}
 
-	// With --msi a generated code is pinned from the built package.
+	// With --msi a generated code is pinned from the built package, by the
+	// component's Id. A row of a merge module or extension is not the
+	// source's; an Id-less row pinned by key path is left out too, which at
+	// worst makes the builder reject a contradicting keyPath.
 	if c.built != nil {
 		for _, row := range c.built.Components {
-			if norm(row.Code) == want {
+			if norm(row.Code) == want && c.compByID[row.ID] != nil {
 				return true
 			}
 		}
