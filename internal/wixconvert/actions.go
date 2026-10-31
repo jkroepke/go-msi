@@ -1182,7 +1182,9 @@ func (c *converter) actionFlags(action *omap, custom *elem, program bool) { //no
 		c.todof(action, "", custom.line, "Execute=%q has no counterpart", execute)
 	}
 
-	if custom.no("Impersonate") {
+	// Impersonation only matters for actions in the script: an immediate
+	// action always runs as the installing user.
+	if custom.no("Impersonate") && action.str("execute") != "" {
 		action.set("impersonate", false)
 	}
 

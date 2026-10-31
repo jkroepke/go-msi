@@ -2316,7 +2316,7 @@ func (v *validator) actionRun(cfg *Config, actionPath string, action *CustomActi
 
 	// A dual package may run an action without impersonation when its
 	// scope keeps it out of per-user installs (CA-09).
-	if !*action.Impersonate && cfg.Package.Scope.MayBePerUser() && action.Scope != ScopePerMachine {
+	if !*action.Impersonate && inScript && cfg.Package.Scope.MayBePerUser() && action.Scope != ScopePerMachine {
 		v.elevatedAction(cfg, actionPath, action, inScript)
 	}
 

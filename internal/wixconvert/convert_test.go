@@ -2167,8 +2167,8 @@ func TestConvertElevatedActionScopes(t *testing.T) {
 		t.Errorf("want the move note for AdminToo only and the cannot-run note for AdminOnly:\n%s", yaml)
 	}
 
-	if !strings.Contains(yaml, "condition: NOT Installed") {
-		t.Errorf("the immediate action lost its condition:\n%s", yaml)
+	if !strings.Contains(yaml, "condition: NOT Installed") || strings.Count(yaml, "impersonate: false") != 3 {
+		t.Errorf("want the immediate action with its condition and without impersonate: false:\n%s", yaml)
 	}
 }
 
