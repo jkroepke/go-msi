@@ -224,10 +224,12 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 
 	info.HasChecksum = order.Uint32(opt[64:]) != 0
 
-	// NumberOfRvaAndSizes precedes the data directories. Windows reads only
+	// NumberOfRvaAndSizes precedes the data directories; the length check
+	// comes first, since a PE32+ header of 96 to 111 bytes does not hold it.
+	// Windows reads only
 	// the slots it declares: with fewer than three there is no resource
 	// directory, whatever bytes follow in the optional header.
-	if order.Uint32(opt[dirOff-4:]) < 3 || dirOff+8*3 > optSize {
+	if dirOff+8*3 > optSize || order.Uint32(opt[dirOff-4:]) < 3 {
 		return info, nil // no resource directory
 	}
 
@@ -448,11 +450,12 @@ func parseVarFileInfo(data []byte, off int, info *Info) {
 		key, koff := utf16At(data[:end], off+6)
 		koff = align4(koff)
 
-		if key == "Translation" {
+		// A value that runs past its Var is invalid as a whole: Windows
+		// then reports no languages, not the ones that fit (FILE-14).
+		if key == "Translation" && koff+valueLen <= end {
 			seen := make(map[int]bool)
-			valueEnd := min(koff+valueLen, end)
 
-			for p := koff; p+4 <= valueEnd; p += 4 {
+			for p := koff; p+4 <= koff+valueLen; p += 4 {
 				lang := int(order.Uint16(data[p:]))
 				if !seen[lang] {
 					seen[lang] = true

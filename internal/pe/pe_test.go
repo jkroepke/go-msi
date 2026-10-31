@@ -254,8 +254,8 @@ func TestResourceBeyondRawData(t *testing.T) {
 }
 
 // TestTranslationBoundedByVar shrinks the Translation Var block to one
-// language while its value length still claims two. The second language
-// lies outside the block and must not be reported.
+// language while its value length still claims two. The value runs past
+// the block, so no language is reported, as by MsiGetFileVersionW.
 func TestTranslationBoundedByVar(t *testing.T) {
 	t.Parallel()
 
@@ -274,8 +274,8 @@ func TestTranslationBoundedByVar(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if info.Language() != "1033" {
-		t.Errorf("language %q, want 1033", info.Language())
+	if info.FileVersion != "1.2.3.4" || info.Language() != "" {
+		t.Errorf("version %q language %q, want 1.2.3.4 and none", info.FileVersion, info.Language())
 	}
 }
 
@@ -364,5 +364,21 @@ func TestInvalidVersionHeader(t *testing.T) {
 				t.Errorf("invalid header accepted: %+v", info)
 			}
 		})
+	}
+}
+
+// TestShortOptionalHeader declares a PE32+ optional header long enough for
+// the checksum but too short for NumberOfRvaAndSizes and the directories.
+func TestShortOptionalHeader(t *testing.T) {
+	t.Parallel()
+
+	for _, size := range []uint16{96, 100, 111} {
+		data := testpe.Build(testpe.Options{FileVersion: "1.2.3.4"})
+		binary.LittleEndian.PutUint16(data[0x80+4+16:], size) // SizeOfOptionalHeader
+
+		info, err := Parse(bytes.NewReader(data))
+		if err == nil && info.HasVersion {
+			t.Errorf("size %d: version read without a resource directory: %+v", size, info)
+		}
 	}
 }

@@ -45,7 +45,7 @@ func msiFileVersion(t *testing.T, path string) (string, string, bool) {
 	switch syscall.Errno(ret) { //nolint:exhaustive // the other codes fail the test
 	case 0:
 		return syscall.UTF16ToString(ver), syscall.UTF16ToString(lang), true
-	case syscall.Errno(1006): // ERROR_FILE_INVALID: no version resource
+	case syscall.Errno(1006), syscall.Errno(13): // ERROR_FILE_INVALID, ERROR_INVALID_DATA: no version
 		return "", "", false
 	default:
 		t.Fatalf("MsiGetFileVersionW: %v", syscall.Errno(ret))
@@ -71,6 +71,20 @@ func TestMsiGetFileVersionAgrees(t *testing.T) {
 		return data
 	}
 
+	// cutTranslation ends the resource section's raw data after the first
+	// of two languages, inside VirtualSize: Windows either zero-fills the
+	// rest or refuses it, and Parse must do the same.
+	cutTranslation := func(t *testing.T) []byte {
+		t.Helper()
+
+		data := testpe.Build(testpe.Options{FileVersion: "1.2.3.4", Languages: []int{1033, 1031}})
+		// Header 6, key 24 padded to 32, then the first language.
+		cut := blockOffset(t, data, "Translation") + 36 - testRsrcRaw
+		binary.LittleEndian.PutUint32(data[testRsrcSection+16:], uint32(cut)) //nolint:gosec // a few hundred bytes
+
+		return data
+	}
+
 	versionHeader := func(field int, value uint16) func(*testing.T) []byte {
 		return func(t *testing.T) []byte {
 			t.Helper()
@@ -79,6 +93,12 @@ func TestMsiGetFileVersionAgrees(t *testing.T) {
 			binary.LittleEndian.PutUint16(data[blockOffset(t, data, "VS_VERSION_INFO")+field:], value)
 
 			return data
+		}
+	}
+
+	langs := func(languages ...int) func(*testing.T) []byte {
+		return func(*testing.T) []byte {
+			return testpe.Build(testpe.Options{FileVersion: "1.2.3.4", Languages: languages})
 		}
 	}
 
@@ -94,10 +114,16 @@ func TestMsiGetFileVersionAgrees(t *testing.T) {
 		"well formed": func(*testing.T) []byte {
 			return testpe.Build(testpe.Options{FileVersion: "1.2.3.4", ProductVersion: "1.2.0.0", Languages: []int{1033, 1031}})
 		},
+		// The order in which Windows lists the languages (FILE-14).
+		"languages 1031,1033":           langs(1031, 1033),
+		"languages 1033,1031,2057":      langs(1033, 1031, 2057),
+		"languages 2057,1033,1031":      langs(2057, 1033, 1031),
+		"languages 1033,1033,1031":      langs(1033, 1033, 1031),
 		"no translations":               func(*testing.T) []byte { return testpe.Build(testpe.Options{FileVersion: "0.32.0.5"}) },
 		"no version resource":           func(*testing.T) []byte { return testpe.Build(testpe.Options{}) },
 		"resource section raw size 0":   patch(testRsrcSection+16, 0),
 		"translation past its Var":      shrinkTranslation,
+		"raw data ends in Translation":  cutTranslation,
 		"NumberOfRvaAndSizes 0":         patch(testResourceDir-20, 0),
 		"NumberOfRvaAndSizes 2":         patch(testResourceDir-20, 2),
 		"wValueLength 65535":            versionHeader(2, 0xFFFF),
