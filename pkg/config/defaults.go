@@ -222,10 +222,21 @@ func defaultComponentShortcut(shortcut *Shortcut, product *Product) {
 	}
 }
 
+// defaultIncludeMin makes upgrade.minVersion inclusive, only when it is
+// set, so that the automatic ProductCode of a configuration without one
+// stays the same.
+func defaultIncludeMin(upg *Upgrade) {
+	if upg.MinVersion != "" && upg.IncludeMin == nil {
+		upg.IncludeMin = new(true)
+	}
+}
+
 func defaultUpgrade(upg *Upgrade) {
 	if upg.AllowSameVersion == nil {
 		upg.AllowSameVersion = new(true)
 	}
+
+	defaultIncludeMin(upg)
 
 	if upg.Downgrade == "" {
 		upg.Downgrade = "error"

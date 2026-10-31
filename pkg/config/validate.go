@@ -332,6 +332,7 @@ func (v *validator) upgrade(cfg *Config) { //nolint:cyclop // a flat list of ind
 	}
 
 	v.oneOf("upgrade.downgrade", upg.Downgrade, "error", "allow", "ignore")
+	v.upgradeMin(cfg.Product.Version, upg)
 	v.oneOf("upgrade.removeOld", upg.RemoveOld,
 		"afterInstallValidate", "afterInstallInitialize", "afterInstallExecute", "afterInstallFinalize")
 
@@ -384,6 +385,47 @@ func (v *validator) upgrade(cfg *Config) { //nolint:cyclop // a flat list of ind
 
 		actionProperty(relPath+".property", rel.Property)
 	}
+}
+
+// upgradeMin checks upgrade.minVersion, the floor of the row that removes
+// older versions. FindRelatedProducts compares three fields (section 8.10),
+// so a floor that is not below this version in them removes nothing.
+func (v *validator) upgradeMin(productVersion string, upg *Upgrade) {
+	if upg.MinVersion == "" {
+		if upg.IncludeMin != nil {
+			v.warnf("upgrade.includeMin", "includeMin has no effect without minVersion")
+		}
+
+		return
+	}
+
+	floor, err := ParseVersion(upg.MinVersion)
+	if err != nil {
+		v.errorf("upgrade.minVersion", "%v", err)
+
+		return
+	}
+
+	if floor.Fields == 4 {
+		v.warnf("upgrade.minVersion", "Windows Installer compares only the first three fields; the fourth is ignored")
+	}
+
+	version, err := ParseVersion(productVersion)
+	if err != nil {
+		return // product.version reports it
+	}
+
+	if compareVersion3(floor, version) >= 0 {
+		v.errorf("upgrade.minVersion", "%s must be below product.version %s in the first three fields, "+
+			"otherwise the upgrade removes no older version", upg.MinVersion, productVersion)
+	}
+}
+
+// compareVersion3 compares the first three fields, as FindRelatedProducts
+// does.
+func compareVersion3(left, right Version) int {
+	return cmp.Or(cmp.Compare(left.Major, right.Major), cmp.Compare(left.Minor, right.Minor),
+		cmp.Compare(left.Build, right.Build))
 }
 
 func (v *validator) directories(cfg *Config, known *refs) { //nolint:cyclop,gocognit // a flat list of independent checks

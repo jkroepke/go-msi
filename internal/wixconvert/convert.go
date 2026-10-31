@@ -169,6 +169,9 @@ type converter struct {
 	removeLine    int
 	uiLine        int
 	v3            bool
+	// floorSeen is set once a hand-made major upgrade became
+	// upgrade.minVersion.
+	floorSeen bool
 }
 
 type dir struct {

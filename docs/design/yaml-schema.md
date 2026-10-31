@@ -342,6 +342,8 @@ and a standard user's install was tested with an HKLM value only.
 ```yaml
 upgrade:
   allowSameVersion: true          # maximum inclusive (default true)
+  minVersion: 0.18.0              # oldest version removed (default: none, every older one)
+  includeMin: true                # minVersion inclusive (default true)
   downgrade: error                # error | allow | ignore
   downgradeMessage: A later version of [ProductName] is already installed. Setup will now exit.
   removeOld: afterInstallInitialize
@@ -363,6 +365,23 @@ upgrade:
 policy, and `upgrade: false` means no Upgrade rows at all. The builder
 writes the two standard rows: one removes versions up to this one
 (inclusive when `allowSameVersion`), and one detects newer versions.
+
+`minVersion` is the VersionMin of the removing row, inclusive unless
+`includeMin: false`. An installed version below it is not removed and stays
+registered next to the new one (observed, UPG-13). Two msi-builder
+packages with generated codes and the same key path locations share their
+components, so uninstalling the new one leaves the shared files in place
+(observed, UPG-13, with the same file in both versions; a file the newer
+version replaced presumably stays in its newer version, not tested); a version built by another tool into the same
+folder has other component codes, and uninstalling either product
+presumably deletes files the other needs (inferred, not tested; section
+8.10). A package that must not install next to such a
+version detects it with a `related` row of its own upgrade code
+(`maxVersion` at the floor, `includeMax: true` when `includeMin: false`,
+`onlyDetect: true`) and a launch condition on that row's property, which
+fails the install with 1603 and leaves the old version alone (observed,
+UPG-13). The floor must be below `product.version` in the first three
+fields, since Windows Installer compares only those.
 
 `downgrade: error` adds a launch condition on `newerProperty`; `ignore`
 detects newer versions but installs side by side; `allow` drops the

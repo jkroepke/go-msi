@@ -576,6 +576,170 @@ func TestConvertRemoveFolderExDirectory(t *testing.T) {
 	}
 }
 
+// TestConvertUpgradeFloor checks that a hand-made major upgrade of the
+// package's own UpgradeCode with a Minimum becomes upgrade.minVersion, and
+// that the rows it cannot express keep their TODO (UPG-13).
+func TestConvertUpgradeFloor(t *testing.T) {
+	t.Parallel()
+
+	const (
+		handMade = "is a hand-made major upgrade"
+		removal  = `<InstallExecuteSequence><RemoveExistingProducts After="InstallValidate" /></InstallExecuteSequence>`
+		noNewer  = "does not detect newer versions"
+	)
+
+	for name, tc := range map[string]struct {
+		rows, sequence string
+		want, not      []string
+	}{
+		"floor": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" IncludeMinimum="no" Maximum="1.2.0" IncludeMaximum="yes" MigrateFeatures="yes" Property="PREVIOUSFOUND" />
+    </Upgrade>
+    <Property Id="PREVIOUSFOUND" Secure="yes" />`,
+			removal,
+			[]string{"allowSameVersion: true", "minVersion: 0.18.0", "includeMin: false", "property: PREVIOUSFOUND", "up to and including 0.18.0", noNewer},
+			[]string{handMade, "migrateFeatures", "property: WIX_UPGRADE_DETECTED"},
+		},
+		"default property": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="OLDERVERSIONBEINGUPGRADED" />
+      <UpgradeVersion Minimum="1.2.0" IncludeMinimum="no" OnlyDetect="yes" Property="NEWERVERSIONDETECTED" />
+    </Upgrade>
+    <Property Id="OLDERVERSIONBEINGUPGRADED" Secure="yes" />
+    <Property Id="NEWERVERSIONDETECTED" Secure="yes" />`,
+			removal,
+			[]string{"allowSameVersion: false", "minVersion: 0.18.0", "migrateFeatures: false"},
+			[]string{handMade, "includeMin", "property: OLDERVERSIONBEINGUPGRADED"},
+		},
+		"no floor": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.0.0" Maximum="1.2.0" Property="PREVIOUSFOUND" />
+    </Upgrade>`,
+			removal,
+			[]string{"allowSameVersion: false", "property: PREVIOUSFOUND", noNewer},
+			[]string{handMade, "minVersion: ", "older version than"},
+		},
+		"minimum at this version": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="1.2.0" Maximum="1.2.0" IncludeMaximum="yes" Property="PREVIOUSFOUND" />
+    </Upgrade>`,
+			removal,
+			[]string{handMade},
+			[]string{"minVersion: "},
+		},
+		"own newer detection": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="PREVIOUSFOUND" />
+      <UpgradeVersion Minimum="1.2.0" IncludeMinimum="no" OnlyDetect="yes" Property="NEWERFOUND" />
+    </Upgrade>`,
+			removal,
+			[]string{"minVersion: 0.18.0", "newerProperty: NEWERFOUND"},
+			[]string{handMade, noNewer},
+		},
+		"own inclusive newer detection": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="PREVIOUSFOUND" />
+      <UpgradeVersion Minimum="1.2.0" OnlyDetect="yes" Property="NEWERFOUND" />
+    </Upgrade>`,
+			removal,
+			[]string{"minVersion: 0.18.0", "property: NEWERFOUND"},
+			[]string{handMade, noNewer},
+		},
+		"newer detection of another product": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="PREVIOUSFOUND" />
+    </Upgrade>
+    <Upgrade Id="11111111-2222-3333-4444-555555555555">
+      <UpgradeVersion Minimum="1.2.0" IncludeMinimum="no" OnlyDetect="yes" Property="OTHERFOUND" />
+    </Upgrade>`,
+			removal,
+			[]string{"minVersion: 0.18.0", "older version than 0.18.0", noNewer},
+			[]string{handMade},
+		},
+		"without RemoveExistingProducts": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="PREVIOUSFOUND" />
+    </Upgrade>`,
+			"",
+			[]string{handMade},
+			[]string{"minVersion: "},
+		},
+		"maximum below this version": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" Maximum="1.0.0" Property="PREVIOUSFOUND" />
+    </Upgrade>`,
+			removal,
+			[]string{handMade},
+			[]string{"minVersion: "},
+		},
+		"next to a MajorUpgrade": {
+			`<MajorUpgrade DowngradeErrorMessage="newer" />
+    <Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="PREVIOUSFOUND" />
+    </Upgrade>`,
+			removal,
+			[]string{handMade},
+			[]string{"minVersion: "},
+		},
+		"language": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Language="1033" Property="PREVIOUSFOUND" />
+    </Upgrade>`,
+			removal,
+			[]string{handMade},
+			[]string{"minVersion: "},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.2.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    ` + tc.rows + `
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" />
+    </StandardDirectory>
+    <Feature Id="Main">
+      <Component Directory="INSTALLFOLDER">
+        <File Source="hello.exe" />
+      </Component>
+    </Feature>
+    <SetProperty Id="X" Value="1" After="AppSearch" Condition="WIX_UPGRADE_DETECTED" Sequence="execute" />
+    ` + tc.sequence + `
+  </Package>
+</Wix>`
+
+			res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			yaml := string(res.YAML)
+			for _, want := range tc.want {
+				if !strings.Contains(yaml, want) {
+					t.Errorf("the YAML lacks %q:\n%s", want, yaml)
+				}
+			}
+
+			for _, not := range tc.not {
+				if strings.Contains(yaml, not) {
+					t.Errorf("the YAML has %q:\n%s", not, yaml)
+				}
+			}
+
+			cfg, err := config.Parse(res.YAML, config.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if err := config.Validate(cfg).Err(); err != nil {
+				t.Errorf("the converted file does not validate: %v\n%s", err, yaml)
+			}
+		})
+	}
+}
+
 // TestConvertRemoveFolderExBothOwnFolder checks that On="both" on the
 // component's own fixed folder keeps its uninstall half as purge.
 func TestConvertRemoveFolderExBothOwnFolder(t *testing.T) {

@@ -95,7 +95,8 @@ func TestValidateAccepted(t *testing.T) {
 	}
 
 	for name, doc := range map[string]string{
-		"close true": base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: app.exe, close: true}\n", 1),
+		"upgrade minVersion": strings.Replace(base, "upgrade: {}", "upgrade: {minVersion: 0.18.0, includeMin: false}", 1) + appComponent,
+		"close true":         base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: app.exe, close: true}\n", 1),
 		"close mapping": base + strings.Replace(appComponent, "      - source: app.exe\n",
 			"      - {source: app.exe, close: {timeout: 0s, terminate: false}}\n", 1),
 		"close upper-case extension": base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: App.EXE, close: {timeout: 5m}}\n", 1),
@@ -1007,6 +1008,26 @@ func TestValidate(t *testing.T) {
 		"upgrade property in properties": {
 			base + appComponent + "properties: {OLDERVERSIONBEINGUPGRADED: x}\n",
 			sevError, "upgrade.property", "ICE61",
+		},
+		"upgrade minVersion not a version": {
+			strings.Replace(base, "upgrade: {}", "upgrade: {minVersion: 1.x}", 1) + appComponent,
+			sevError, "upgrade.minVersion", "not a number",
+		},
+		"upgrade minVersion at product version": {
+			strings.Replace(base, "upgrade: {}", "upgrade: {minVersion: 1.0.0.5}", 1) + appComponent,
+			sevError, "upgrade.minVersion", "below product.version",
+		},
+		"upgrade minVersion above product version": {
+			strings.Replace(base, "upgrade: {}", "upgrade: {minVersion: 2.0.0}", 1) + appComponent,
+			sevError, "upgrade.minVersion", "below product.version",
+		},
+		"upgrade minVersion fourth field": {
+			strings.Replace(base, "upgrade: {}", "upgrade: {minVersion: 0.9.0.1}", 1) + appComponent,
+			sevWarning, "upgrade.minVersion", "fourth is ignored",
+		},
+		"upgrade includeMin without minVersion": {
+			strings.Replace(base, "upgrade: {}", "upgrade: {includeMin: false}", 1) + appComponent,
+			sevWarning, "upgrade.includeMin", "without minVersion",
 		},
 		"removeOld window": {
 			strings.Replace(base, "upgrade: {}", "upgrade: {removeOld: afterStartServices}", 1) + appComponent,

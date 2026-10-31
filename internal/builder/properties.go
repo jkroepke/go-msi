@@ -154,14 +154,19 @@ func (b *build) upgrade() error { //nolint:cyclop // one pass over the format; s
 	tbl := b.table("Upgrade")
 	version := b.cfg.Product.Version
 
-	// Older (and, with allowSameVersion, equal) versions are removed.
+	// Older (and, with allowSameVersion, equal) versions are removed,
+	// down to minVersion; an older one stays side by side (UPG-13).
 	attrs := removeAttributes(upg)
 
 	if *upg.AllowSameVersion {
 		attrs |= upgradeVersionMaxInclusive
 	}
 
-	tbl.Add(b.upgradeCode, nil, version, nil, attrs, nil, upg.Property)
+	if upg.MinVersion != "" && upg.IncludeMin != nil && *upg.IncludeMin {
+		attrs |= upgradeVersionMinInclusive
+	}
+
+	tbl.Add(b.upgradeCode, nullable(upg.MinVersion), version, nil, attrs, nil, upg.Property)
 	b.secure[upg.Property] = true
 
 	if upg.Downgrade != "allow" {

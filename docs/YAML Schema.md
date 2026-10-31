@@ -476,6 +476,42 @@ The old version then stays installed next to the new one, and its own
 uninstall will still fail the same way. Use this only when an old release is
 known to fail on uninstall.
 
+### Leave versions older than a release alone
+
+An upgrade removes every older version. When the versions before some
+release were built differently, for example with another folder, and must
+not be upgraded, `minVersion` sets the oldest version the upgrade removes:
+
+```yaml
+upgrade:
+  minVersion: 0.18.0     # removes 0.18.0 and later; includeMin: false removes only later ones
+```
+
+An older version is not upgraded: it stays installed next to the new one.
+When both versions were built by msi-builder into the same folder, they
+share their files: uninstalling the new one leaves them in place, but a file
+the new version replaced is likely left in its newer version (not tested).
+A version built by another tool into the same folder is likely a problem:
+uninstalling either one can delete files the other needs (not tested). To
+make users uninstall an older version first, detect it and stop the install
+with a message:
+
+```yaml
+upgrade:
+  minVersion: 0.18.0
+  related:
+    - upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301   # your own product.upgradeCode
+      maxVersion: 0.18.0
+      onlyDetect: true
+      property: OLDVERSIONFOUND
+launchConditions:
+  - condition: NOT OLDVERSIONFOUND
+    message: Please uninstall versions before 0.18.0 first.
+```
+
+With `includeMin: false`, version 0.18.0 itself is not upgraded either, so
+add `includeMax: true` to the `related` entry to detect it too.
+
 ### Delete program data on uninstall
 
 `purge` deletes a folder with everything the program wrote into it when the

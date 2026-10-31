@@ -721,6 +721,75 @@ components:
 	}
 }
 
+// TestUpgradeMinVersion checks that upgrade.minVersion is the VersionMin
+// of the row that removes older versions, inclusive unless includeMin is
+// false, and leaves the detection of newer versions alone (UPG-13).
+func TestUpgradeMinVersion(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+
+	for _, tc := range []struct {
+		upgrade string
+		min     any
+		attrs   int
+	}{
+		{"{}", nil, 1 | 512},
+		{"{minVersion: 0.18.0}", "0.18.0", 1 | 256 | 512},
+		{"{minVersion: 0.18.0, includeMin: false, allowSameVersion: false}", "0.18.0", 1},
+	} {
+		t.Run(tc.upgrade, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			cfg, err := config.Parse([]byte(`schema: msi-builder/v1
+product: { name: Hello, manufacturer: Example, version: 1.2.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+upgrade: `+tc.upgrade+`
+components:
+  - files: [{ source: hello.exe }]
+`), config.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			cfg.BaseDir = dir
+
+			database, err := msidb.Unmarshal(mustBuild(t, cfg).Package)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			seen := map[any]int{}
+
+			for _, row := range rows(t, database, "Upgrade") {
+				seen[row[6]]++
+
+				switch row[6] {
+				case "OLDERVERSIONBEINGUPGRADED":
+					if row[1] != tc.min || row[2] != "1.2.0" || fmt.Sprint(row[4]) != strconv.Itoa(tc.attrs) {
+						t.Errorf("removing row %v, want VersionMin %v, VersionMax 1.2.0, attributes %d", row, tc.min, tc.attrs)
+					}
+				case "NEWERVERSIONDETECTED":
+					if row[1] != "1.2.0" || row[2] != nil || fmt.Sprint(row[4]) != "2" {
+						t.Errorf("detection row %v", row)
+					}
+				default:
+					t.Errorf("unexpected Upgrade row %v", row)
+				}
+			}
+
+			if seen["OLDERVERSIONBEINGUPGRADED"] != 1 || seen["NEWERVERSIONDETECTED"] != 1 {
+				t.Errorf("Upgrade rows by property: %v, want one removing and one detection row", seen)
+			}
+		})
+	}
+}
+
 // TestFeatureDisplay checks the Feature.Display parity the selection tree
 // relies on: even values show a feature collapsed, odd values expanded and 0
 // hides it, whatever the display state of the features before it.
