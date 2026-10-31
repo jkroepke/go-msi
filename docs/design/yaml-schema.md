@@ -171,8 +171,8 @@ Templates are opt-in, and only the flag turns them on, because:
 - YAML errors in a template refer to lines of the rendered text, not of the
   file.
 
-A plain file whose YAML does not parse and that holds `{{` gets a hint to
-pass `--template`. The template's data maps each `--var` to its value
+A plain file that holds `{{` and whose YAML does not parse or decode gets a
+hint to pass `--template`. The template's data maps each `--var` to its value
 (`{{ .ARCH }}`); a name that is not set is an error. The functions are Go's
 built-in ones and five more, with no third-party library:
 

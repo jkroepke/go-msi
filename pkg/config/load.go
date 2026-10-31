@@ -56,26 +56,41 @@ func Parse(data []byte, opts Options) (*Config, error) {
 
 	cfg, err := parseRendered(data, opts)
 
+	var lined *lineError
+
 	switch {
 	case err == nil:
 		return cfg, nil
+	case !errors.As(err, &lined):
+		return nil, err
 	case opts.Template:
-		// Lines in YAML and substitution errors are those of the output.
-		return nil, fmt.Errorf("%w (lines of the rendered file; print it with msi-builder render)", err)
-	case bytes.Contains(data, []byte("{{")):
+		// The lines are those of the rendered text.
+		return nil, fmt.Errorf("%w (lines of the rendered file; print it with msi-builder render)", lined.err)
+	case lined.yaml && bytes.Contains(data, []byte("{{")):
 		// Template syntax in a plain file either fails as YAML or, as a
 		// flow mapping, fails to decode.
-		return nil, fmt.Errorf("%w (the file contains {{: pass --template to render Go template syntax)", err)
+		return nil, fmt.Errorf("%w (the file contains {{: pass --template to render Go template syntax)", lined.err)
 	default:
-		return nil, err
+		return nil, lined.err
 	}
 }
+
+// lineError marks an error that names a line of the parsed text: a YAML
+// error (yaml) or a substitution error.
+type lineError struct {
+	err  error
+	yaml bool
+}
+
+func (e *lineError) Error() string { return e.err.Error() }
+
+func (e *lineError) Unwrap() error { return e.err }
 
 // parseRendered is Parse after rendering.
 func parseRendered(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
 	var doc yaml.Node
 	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, err //nolint:wrapcheck // yaml errors carry the line
+		return nil, &lineError{err: err, yaml: true}
 	}
 
 	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
@@ -105,7 +120,7 @@ func parseRendered(data []byte, opts Options) (*Config, error) { //nolint:cyclop
 	}
 
 	if len(errs) > 0 {
-		return nil, errors.Join(errs...)
+		return nil, &lineError{err: errors.Join(errs...)}
 	}
 
 	encoded, err := yaml.Marshal(&doc)
@@ -118,7 +133,7 @@ func parseRendered(data []byte, opts Options) (*Config, error) { //nolint:cyclop
 
 	cfg := &Config{}
 	if err := dec.Decode(cfg); err != nil {
-		return nil, err //nolint:wrapcheck // yaml errors carry the line
+		return nil, &lineError{err: err, yaml: true}
 	}
 
 	if cfg.Schema == legacySchemaV1 {

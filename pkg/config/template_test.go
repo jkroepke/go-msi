@@ -155,6 +155,11 @@ func TestTemplateErrors(t *testing.T) {
 			opts: config.Options{},
 			want: "pass --template",
 		},
+		"two defaults": {
+			doc:  "x: {{ var \"X\" \"a\" \"b\" }}\n",
+			opts: config.Options{Template: true},
+			want: "at most one default",
+		},
 		"rendered yaml": {
 			doc:  "schema: msi-builder/v1\n{{ \"a: [\" }}\n",
 			opts: config.Options{Template: true},
@@ -236,5 +241,24 @@ func TestTemplateLoad(t *testing.T) {
 	_, err := config.Load(path, config.Options{Template: true})
 	if err == nil || !strings.HasPrefix(err.Error(), path+": template: line 1:6: at <.X>:") {
 		t.Errorf("got %v", err)
+	}
+}
+
+// TestTemplateHints checks which errors get a hint.
+func TestTemplateHints(t *testing.T) {
+	t.Parallel()
+
+	// A {{ in a plain file that parses does not cause an undefined ${V}.
+	doc := strings.Replace(base, "manufacturer: Example", `manufacturer: "{{x}} ${V}"`, 1) + appComponent
+
+	_, err := config.Parse([]byte(doc), config.Options{})
+	if err == nil || strings.Contains(err.Error(), "--template") {
+		t.Errorf("plain file: got %v", err)
+	}
+
+	// An error without a line gets no note about rendered lines.
+	_, err = config.Parse([]byte("schema: x\n"), config.Options{Template: true})
+	if err == nil || strings.Contains(err.Error(), "rendered file") {
+		t.Errorf("schema: got %v", err)
 	}
 }

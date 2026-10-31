@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jkroepke/msi-builder/internal/testpe"
 )
 
 const templateYAML = `schema: msi-builder/v1
@@ -55,6 +57,16 @@ func TestTemplateFlag(t *testing.T) {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("render output %q lacks %q", stdout.String(), want)
 		}
+	}
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	if err := os.WriteFile(filepath.Join(filepath.Dir(yaml), "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(filepath.Dir(yaml), "out.msi")
+	if code := run([]string{"build", "--template", "--var", "VERSION=1.0.0", "-o", out, yaml}, &stdout, &stderr); code != 0 {
+		t.Errorf("build --template: exit %d, stderr %q", code, stderr.String())
 	}
 
 	stderr.Reset()
