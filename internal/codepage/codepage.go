@@ -126,17 +126,17 @@ func (t *table) decodeBytes(data []byte, codePage int) (string, error) {
 
 		switch unit {
 		case unmapped:
-			return "", fmt.Errorf("codepage: invalid byte %#02x for code page %d", data[pos], codePage)
+			return "", fmt.Errorf("codepage: invalid byte %#04x for code page %d", data[pos], codePage)
 		case leadByte:
 			if pos+1 == len(data) {
-				return "", fmt.Errorf("codepage: lead byte %#02x at the end of the text in code page %d", data[pos], codePage)
+				return "", fmt.Errorf("codepage: lead byte %#04x at the end of the text in code page %d", data[pos], codePage)
 			}
 
 			pos++
 
 			unit = t.double[data[pos-1]][data[pos]]
 			if unit == unmapped {
-				return "", fmt.Errorf("codepage: invalid bytes %#02x %#02x for code page %d", data[pos-1], data[pos], codePage)
+				return "", fmt.Errorf("codepage: invalid bytes %#04x %#04x for code page %d", data[pos-1], data[pos], codePage)
 			}
 		}
 

@@ -88,9 +88,17 @@ func TestWindowsVectors(t *testing.T) {
 		}
 	}
 
-	// Windows reads both NEC and IBM rows of CP932 and writes the NEC one.
-	if got, err := codepage.Decode([]byte{0xFA, 0x5C}, 932); err != nil || got != "\u7E8A" {
-		t.Errorf("Decode(fa 5c, 932) = %+q, %v; want U+7E8A", got, err)
+	// CP932 has U+7E8A twice: in the NEC-selected IBM rows (ED 40) and in
+	// the IBM rows (FA 5C). Windows reads both and writes FA 5C, while
+	// generic Shift-JIS tables write ED 40.
+	for _, data := range [][]byte{{0xED, 0x40}, {0xFA, 0x5C}} {
+		if got, err := codepage.Decode(data, 932); err != nil || got != "\u7E8A" {
+			t.Errorf("Decode(% x, 932) = %+q, %v; want U+7E8A", data, got, err)
+		}
+	}
+
+	if got, err := codepage.Encode("\u7E8A", 932); err != nil || string(got) != "\xFA\x5C" {
+		t.Errorf("Encode(U+7E8A, 932) = % x, %v; want fa 5c", got, err)
 	}
 
 	// Windows has no mapping for these, so the bytes a generic table

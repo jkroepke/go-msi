@@ -128,6 +128,10 @@ func parseTable(data []byte) (*table, error) {
 	tab.encode = tab.inverse()
 
 	for i := 0; i < len(values); i += 2 {
+		if !tab.validSequence(values[i+1]) {
+			return nil, errTable
+		}
+
 		tab.encode[values[i]] = values[i+1]
 	}
 
@@ -190,5 +194,18 @@ func fillInverse(enc []uint16, base uint16, row []uint16) {
 		if unit != unmapped && enc[unit] == unmapped {
 			enc[unit] = base | uint16(trail)
 		}
+	}
+}
+
+// validSequence reports whether an override is unmapped, a single byte that
+// is not a lead byte, or a lead byte with a trail byte.
+func (t *table) validSequence(seq uint16) bool {
+	switch {
+	case seq == unmapped:
+		return true
+	case seq <= 0xFF:
+		return t.single[seq] != leadByte && t.single[seq] != unmapped
+	default:
+		return t.single[seq>>8] == leadByte
 	}
 }
