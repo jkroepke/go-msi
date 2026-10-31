@@ -30,7 +30,6 @@ properties:
     search:
       component:
         guid: '{8C3D4E5F-6071-4C9D-AEBF-2A3B4C5D6E7F}'
-        keyPath: directory
   # The folder of the companion product's main program.
   COMPANION_DIR:
     search:

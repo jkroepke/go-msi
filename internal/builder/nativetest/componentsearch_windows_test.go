@@ -100,7 +100,7 @@ func TestMsiexecComponentSearchFolder(t *testing.T) {
 		_ = exec.CommandContext(ctx, "msiexec", "/x", base, "/qn").Run()
 		_ = os.RemoveAll(parent)
 		_ = os.RemoveAll(baseDir)
-		_ = exec.CommandContext(ctx, "reg.exe", "delete", `HKLM\SOFTWARE\MsiBuilderTest`, "/f", "/reg:64").Run()
+		_ = exec.CommandContext(ctx, "reg.exe", "delete", `HKLM\SOFTWARE\MsiBuilderTest\CompSearch`, "/f", "/reg:64").Run()
 	}
 	cleanup()
 	t.Cleanup(cleanup)
