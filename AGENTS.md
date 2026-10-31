@@ -49,7 +49,14 @@ versioning after 1.0.
 - [`internal/cab`](internal/cab): cabinet writer and reader, one folder per cabinet,
   stored, MSZIP or LZX blocks, plus an `fs.FS` view. The LZX encoder and
   decoder are [`internal/lzx`](internal/lzx), written from [MS-PATCH] and
-  [MS-CAB] only.
+  [MS-CAB] only. Streams the LZX encoder never writes (blocks off frame
+  boundaries, odd stored blocks mid-stream, chosen repeated offsets, E8
+  sizes, bad trees) are crafted block by block in `internal/lzx/decode_test.go`;
+  `TestWindowsFixtures` keeps them in `internal/lzx/testdata/windows`
+  (regenerate with `MSI_BUILDER_UPDATE_SNAPSHOTS=1`) and
+  `TestNativeFDICraftedLZX` compares cabinet.dll with the reader on them.
+  Values the readers take from the data are 32-bit unsigned: compare them in
+  64 bits, and CI runs internal/lzx and internal/cab as `GOARCH=386`.
 - [`internal/summary`](internal/summary): the summary information stream.
 - [`pkg/sign`](pkg/sign): Authenticode signing and verification of packages
   and of cabinets written with a signature reserve (spec chapter 12), written
