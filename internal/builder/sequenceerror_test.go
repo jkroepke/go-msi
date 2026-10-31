@@ -96,7 +96,8 @@ func TestSequenceErrorGeneratedAction(t *testing.T) {
 // When both colliding actions are the builder's, the error goes to the
 // user placement in either chain: the close action before InstallValidate
 // runs into the firewall address setters after CostFinalize, behind 397
-// user actions.
+// user actions. An action before CostFinalize, on the other side of the
+// anchor, is not blamed.
 func TestSequenceErrorBuilderActions(t *testing.T) {
 	t.Parallel()
 
@@ -105,6 +106,11 @@ func TestSequenceErrorBuilderActions(t *testing.T) {
 	cfg.Upgrade.Disabled = true
 	cfg.Components[0].Files[0].Close = &config.Close{}
 	cfg.Features[0].Firewall = []*config.FirewallRule{{Name: "fw", Program: "[#hello.exe]", Protocol: "tcp", Port: "80", RemoteAddresses: "[FWIP]"}}
+
+	cfg.CustomActions = append(cfg.CustomActions, &config.CustomAction{
+		ID: "Early", SetProperty: &config.SetProperty{Name: "EARLY", Value: "x"},
+		Schedule: []config.Placement{{Sequence: "execute", Before: "CostFinalize"}},
+	})
 
 	for i := range 397 {
 		cfg.CustomActions = append(cfg.CustomActions, &config.CustomAction{
@@ -119,7 +125,7 @@ func TestSequenceErrorBuilderActions(t *testing.T) {
 	}
 
 	for _, d := range res.Diagnostics {
-		if d.Severity == config.SeverityError && d.Path == "customActions[0].schedule[0]" && strings.Contains(d.Message, "overlap") {
+		if d.Severity == config.SeverityError && d.Path == "customActions[1].schedule[0]" && strings.Contains(d.Message, "overlap") {
 			return
 		}
 	}

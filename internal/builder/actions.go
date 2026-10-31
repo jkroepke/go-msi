@@ -684,11 +684,14 @@ func (b *build) sequenceError(table string, err error) {
 // same action, trying the actions in turn; "" when no chain has one.
 func (b *build) chainPlacement(table string, actions ...string) string {
 	anchors := make(map[string]string, len(b.schedules[table]))
+	before := make(map[string]bool, len(b.schedules[table]))
+
 	for _, a := range b.schedules[table] {
 		anchors[a.Name] = a.Before + a.After
+		before[a.Name] = a.Before != ""
 	}
 
-	chains := &chainRoots{anchors: anchors, roots: make(map[string]string, len(anchors))}
+	chains := &chainRoots{anchors: anchors, before: before, roots: make(map[string]string, len(anchors))}
 
 	user := make(map[string]bool, len(b.cfg.CustomActions))
 	for _, custom := range b.cfg.CustomActions {
@@ -719,11 +722,14 @@ func (b *build) chainPlacement(table string, actions ...string) string {
 // chainRoots finds the action that ends each chain of anchors.
 type chainRoots struct {
 	anchors map[string]string
+	before  map[string]bool
 	roots   map[string]string
 }
 
-// root follows the anchors to the action that ends the chain; each name is
-// resolved once, and a cycle ends where it closes.
+// root names the chain of an action: the action its anchors end at, and
+// whether the chain runs before or after it, since the two sides take
+// different numbers. Each name is resolved once, and a cycle ends where it
+// closes. An action with no anchor is its own chain.
 func (c *chainRoots) root(name string) string {
 	seen := make(map[string]bool)
 
@@ -736,15 +742,22 @@ func (c *chainRoots) root(name string) string {
 		cur = c.anchors[cur]
 	}
 
-	if r := c.roots[cur]; r != "" {
-		cur = r
+	key := cur
+
+	switch {
+	case c.roots[cur] != "":
+		key = c.roots[cur]
+	case len(path) > 0 && c.before[path[len(path)-1]]:
+		key = cur + " before"
+	case len(path) > 0:
+		key = cur + " after"
 	}
 
 	for _, n := range path {
-		c.roots[n] = cur
+		c.roots[n] = key
 	}
 
-	return cur
+	return key
 }
 
 // placementPath returns the YAML path of the placement that schedules action
@@ -752,7 +765,8 @@ func (c *chainRoots) root(name string) string {
 // it is; "" for any other action.
 // An action generated from a service argument gets the index it has in
 // cfg.CustomActions; config.Validate, which knows its origin, reports the
-// conflicts it can take part in first.
+// conflicts it can take part in first, and only a conflict the build alone
+// sees could reach one through chainPlacement.
 func (b *build) placementPath(table, action string) string {
 	if action == "" {
 		return ""
