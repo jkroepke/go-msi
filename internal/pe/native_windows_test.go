@@ -226,17 +226,31 @@ func TestMsiGetFileVersionAgrees(t *testing.T) {
 func TestMsiGetFileVersionDisagreeingLanguages(t *testing.T) {
 	t.Parallel()
 
-	data := versionResources(t, []resEntry{{1, 1031, "1.2.3.4", []int{1031}, nil}, {1, 1033, "9.8.7.6", []int{1033}, nil}})
-
-	path := filepath.Join(t.TempDir(), "disagree.exe")
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
+	tests := map[string][]resEntry{
+		"versions differ": {{1, 1031, "1.2.3.4", []int{1031}, nil}, {1, 1033, "9.8.7.6", []int{1033}, nil}},
+		"other language unreadable": {
+			{1, 1031, "", nil, binaryRoot(t, blobOf(t, testpe.Options{FileVersion: "1.2.3.4", Languages: []int{1031}}))},
+			{1, 1033, "1.2.3.4", []int{1033}, nil},
+		},
 	}
 
-	ver, lang, ok := msiFileVersion(t, path)
-	t.Logf("Windows: ok=%v version %q language %q", ok, ver, lang)
+	for name, entries := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	if info, err := Parse(bytes.NewReader(data)); err == nil {
-		t.Errorf("Parse accepted disagreeing languages: %+v", info)
+			data := versionResources(t, entries)
+
+			path := filepath.Join(t.TempDir(), "disagree.exe")
+			if err := os.WriteFile(path, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			ver, lang, ok := msiFileVersion(t, path)
+			t.Logf("Windows: ok=%v version %q language %q", ok, ver, lang)
+
+			if info, err := Parse(bytes.NewReader(data)); err == nil {
+				t.Errorf("Parse accepted language entries a German system may read differently: %+v", info)
+			}
+		})
 	}
 }

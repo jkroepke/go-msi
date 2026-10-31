@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"slices"
+	"strings"
 	"testing"
 	"unicode/utf16"
 
@@ -504,9 +505,6 @@ type resEntry struct {
 func versionResources(t *testing.T, entries []resEntry) []byte {
 	t.Helper()
 
-	const area = 0x4000 // the section's raw size: 0x200 plus the padding
-
-	data := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Padding: area - 0x200})
 	order := binary.LittleEndian
 
 	slices.SortFunc(entries, func(a, b resEntry) int {
@@ -621,15 +619,15 @@ func versionResources(t *testing.T, entries []resEntry) []byte {
 		}
 	}
 
-	if len(rsrc) > area {
-		t.Fatalf("resources of %d bytes do not fit", len(rsrc))
-	}
+	// The section's raw size: 0x200 plus the padding, at least 0x4000.
+	area := max(0x4000, (len(rsrc)+0x1FF)&^0x1FF)
+	data := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Padding: area - 0x200})
 
 	clear(data[testRsrcRaw : testRsrcRaw+area])
 	copy(data[testRsrcRaw:], rsrc)
-	order.PutUint32(data[0x80+24+56:], 0x2000+area) // SizeOfImage
-	order.PutUint32(data[testRsrcSection+8:], area)
-	order.PutUint32(data[testRsrcSection+16:], area)
+	order.PutUint32(data[0x80+24+56:], 0x2000+uint32(area))      //nolint:gosec // small
+	order.PutUint32(data[testRsrcSection+8:], uint32(area))      //nolint:gosec // small
+	order.PutUint32(data[testRsrcSection+16:], uint32(area))     //nolint:gosec // small
 	order.PutUint32(data[testResourceDir+4:], uint32(len(rsrc))) //nolint:gosec // small
 
 	return data
@@ -645,7 +643,8 @@ func TestVersionResourceSelection(t *testing.T) {
 		entries []resEntry
 		version string
 		lang    string
-		fails   bool
+		// fails is a part of the expected error; "" expects none.
+		fails string
 	}{
 		"ID 0 and ID 1": {
 			entries: []resEntry{{0, 1033, "1.2.3.4", []int{1033}, nil}, {1, 1033, "9.8.7.6", []int{1033}, nil}},
@@ -672,10 +671,18 @@ func TestVersionResourceSelection(t *testing.T) {
 			},
 			version: "1.2.3.4", lang: "1033,1031",
 		},
-		"too much version data": {entries: hungryLanguages(300), fails: true},
+		"version data within the budget": {entries: hungryLanguages(t, 255), version: "1.2.3.4", lang: "1033"},
+		"too much version data":          {entries: hungryLanguages(t, 257), fails: "too much data"},
+		"other language unreadable": {
+			entries: []resEntry{
+				{1, 1031, "", nil, binaryRoot(t, blobOf(t, testpe.Options{FileVersion: "1.2.3.4", Languages: []int{1031}}))},
+				{1, 1033, "1.2.3.4", []int{1033}, nil},
+			},
+			fails: "not binary",
+		},
 		"two languages disagree": {
 			entries: []resEntry{{1, 1031, "1.2.3.4", []int{1031}, nil}, {1, 1033, "9.8.7.6", []int{1033}, nil}},
-			fails:   true,
+			fails:   "disagree",
 		},
 	}
 
@@ -686,9 +693,9 @@ func TestVersionResourceSelection(t *testing.T) {
 			info, err := Parse(bytes.NewReader(versionResources(t, tc.entries)))
 
 			switch {
-			case tc.fails:
-				if err == nil {
-					t.Errorf("disagreeing languages accepted: %+v", info)
+			case tc.fails != "":
+				if err == nil || !strings.Contains(err.Error(), tc.fails) {
+					t.Errorf("got %+v, %v; want an error with %q", info, err, tc.fails)
 				}
 			case err != nil:
 				t.Fatal(err)
@@ -842,16 +849,85 @@ func blobOf(t *testing.T, opts testpe.Options) []byte {
 	return img[start : start+int(binary.LittleEndian.Uint32(img[testDataEntry+4:]))]
 }
 
-// hungryLanguages returns a valid neutral entry plus n entries whose
-// distinct 6-byte blocks each claim a wLength of 65535, the most data a
-// file can make the parser read per entry.
-func hungryLanguages(n int) []resEntry {
-	entries := make([]resEntry, 0, 1+n)
-	entries = append(entries, resEntry{1, 0, "1.2.3.4", []int{1033}, nil})
+// hungryLanguages returns count language entries with distinct, valid version
+// blocks of 65532 bytes each, near the largest a block can be, so the
+// parser reads all of them: 256 such blocks fit maxVersionData, 257 do not.
+func hungryLanguages(t *testing.T, count int) []resEntry {
+	t.Helper()
 
-	for i := range n {
-		entries = append(entries, resEntry{1, uint32(1024 + i), "", nil, []byte{0xFF, 0xFF, 0, 0, byte(i), byte(i >> 8)}})
+	const size = 0xFFFC
+
+	base := blobOf(t, testpe.Options{FileVersion: "1.2.3.4", Languages: []int{1033}})
+	entries := make([]resEntry, 0, count)
+
+	for i := range count {
+		blob := make([]byte, size)
+		copy(blob, base)
+		binary.LittleEndian.PutUint16(blob, size)
+		// Distinct padding keeps versionResources from sharing the blocks.
+		binary.LittleEndian.PutUint16(blob[size-2:], uint16(i))
+
+		entries = append(entries, resEntry{1, uint32(1024 + i), "", nil, blob})
 	}
 
 	return entries
+}
+
+// binaryRoot returns a copy of a version block whose root claims text
+// (wType 1), which Windows refuses.
+func binaryRoot(t *testing.T, blob []byte) []byte {
+	t.Helper()
+
+	blob = slices.Clone(blob)
+	binary.LittleEndian.PutUint16(blob[4:], 1)
+
+	return blob
+}
+
+// TestManySectionsAndEntries refuses a file whose language entries times
+// sections pass maxEntryScans: each entry costs a few section scans, and
+// 65535 of both took 21 s to parse before the bound.
+func TestManySectionsAndEntries(t *testing.T) {
+	t.Parallel()
+
+	const sections = 0xFFFF // plus the header pseudo-section
+
+	tests := map[string]struct {
+		entries int
+		fails   bool
+	}{
+		"within the bound": {entries: maxEntryScans / (sections + 1)},
+		"past the bound":   {entries: maxEntryScans/(sections+1) + 1, fails: true},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			entries := make([]resEntry, tc.entries)
+			for i := range entries {
+				entries[i] = resEntry{1, uint32(i), "1.2.3.4", []int{1033}, nil}
+			}
+
+			// The section table grows over the raw data: the sections past
+			// the first two read as garbage or zeros, which no lookup
+			// matches before the real ones.
+			data := versionResources(t, entries)
+			data = append(data, make([]byte, testSectionTable+40*sections)...)
+			binary.LittleEndian.PutUint16(data[0x80+6:], sections)
+
+			info, err := Parse(bytes.NewReader(data))
+
+			switch {
+			case tc.fails:
+				if err == nil || !strings.Contains(err.Error(), "too many language entries") {
+					t.Errorf("got %+v, %v; want too many language entries", info, err)
+				}
+			case err != nil:
+				t.Fatal(err)
+			case info.FileVersion != "1.2.3.4":
+				t.Errorf("version %q, want 1.2.3.4", info.FileVersion)
+			}
+		})
+	}
 }

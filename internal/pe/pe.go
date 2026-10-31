@@ -324,6 +324,11 @@ func findEntry(res *resources, dir, wantID uint32) (uint32, bool, error) {
 // real file holds.
 const maxVersionData = 256 * 0xFFFF
 
+// maxEntryScans bounds the language entries times the sections each
+// lookup scans: each entry costs a few lookups, and a hostile file can
+// hold 65535 of both. Real files stay far below it (expected).
+const maxEntryScans = 1 << 26
+
 func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	const (
 		rtVersion = 16
@@ -367,6 +372,10 @@ func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pas
 		return err
 	}
 
+	if (len(langs)/8)*len(res.img.sections) > maxEntryScans {
+		return errors.New("pe: version resource has too many language entries for its sections")
+	}
+
 	var all []int
 
 	// seen holds the version data RVAs already read; budget bounds the
@@ -381,9 +390,11 @@ func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pas
 			continue
 		}
 
+		// An entry Windows may pick on another machine must be readable
+		// too, as must agreeing versions (expected; not observed).
 		entry, err := res.read(dataEntry, 4)
 		if err != nil {
-			continue
+			return err
 		}
 
 		dataRVA := binary.LittleEndian.Uint32(entry)
@@ -393,7 +404,7 @@ func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pas
 
 		head, err := res.img.read(dataRVA, 2)
 		if err != nil {
-			continue
+			return err
 		}
 
 		if budget -= int(binary.LittleEndian.Uint16(head)); budget < 0 {
@@ -401,8 +412,12 @@ func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pas
 		}
 
 		other := &Info{}
-		if versionEntry(res, dataEntry, other) != nil || !other.HasVersion {
-			continue
+		if err := versionEntry(res, dataEntry, other); err != nil {
+			return err
+		}
+
+		if !other.HasVersion {
+			return errors.New("pe: a version resource language has no fixed file info")
 		}
 
 		seen[dataRVA] = true
@@ -417,7 +432,8 @@ func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pas
 	}
 
 	// MsiGetFileVersionW lists the languages last first: stored
-	// 1033,1031,2057 came back as 2057,1031,1033 (FILE-14).
+	// 1033,1031,2057 came back as 2057,1031,1033 (FILE-14). The picked
+	// entry's own languages are among all.
 	info.Languages = nil
 
 	dup := make(map[int]bool)
@@ -563,8 +579,8 @@ func parseVersionInfo(data []byte, info *Info) error { //nolint:cyclop // one pa
 		return fmt.Errorf("pe: version resource type %d is not binary", wType)
 	}
 
-	// versionData already refused a wLength past the resource data
-	// (FILE-14); this guards other callers.
+	// versionData passes exactly wLength bytes; this keeps the slicing
+	// below safe on its own.
 	if length > len(data) || length < 6 {
 		return fmt.Errorf("pe: version block length %d does not fit its %d bytes", length, len(data))
 	}
@@ -646,22 +662,17 @@ func parseVarFileInfo(data []byte, off int, info *Info) {
 		// Only the first Translation counts: Windows ignored a second one
 		// (FILE-14).
 		if key == "Translation" {
-			seen := make(map[int]bool)
-
 			var langs []int
 
 			// An entry counts once its language word fits the value
-			// length: lengths 6 and 7 gave two languages on Windows, 4 and
-			// 5 one (FILE-14).
+			// length: lengths 6 and 7 gave two languages on Windows, 5
+			// one (FILE-14).
 			for p := koff; p+2 <= koff+valueLen; p += 4 {
-				lang := int(order.Uint16(data[p:]))
-				if !seen[lang] {
-					seen[lang] = true
-					langs = append(langs, lang)
-				}
+				langs = append(langs, int(order.Uint16(data[p:])))
 			}
 
-			// In stored order; parseVersion reverses the combined list.
+			// In stored order; parseVersion removes duplicates and
+			// reverses the combined list.
 			info.Languages = langs
 
 			return
