@@ -1031,6 +1031,13 @@ func decodeName(raw []byte, attr uint16) (string, error) {
 		return "", fmt.Errorf("cab: file name %q: %w", raw, err)
 	}
 
+	// No byte of a single-byte code page decodes to U+FFFD, so one in the
+	// name is a byte the code page leaves undefined (0x81, 0x8D, 0x8F, 0x90
+	// and 0x9D in 1252). Refuse it rather than merge distinct names.
+	if codePage != codepage.UTF8 && strings.ContainsRune(name, utf8.RuneError) {
+		return "", fmt.Errorf("cab: file name %q: a byte is undefined in code page %d", raw, codePage)
+	}
+
 	return name, nil
 }
 

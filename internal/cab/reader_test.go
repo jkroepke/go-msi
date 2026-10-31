@@ -215,6 +215,14 @@ func TestLegacyNames(t *testing.T) {
 		t.Error("a name flagged UTF-8 with invalid UTF-8 was accepted")
 	}
 
+	// 0x81 and 0x8D are undefined in code page 1252; decoding them to one
+	// replacement character would merge distinct names.
+	for _, raw := range []string{"a\x81", "a\x8D"} {
+		if files, err := Read(cabinet(raw, AttrArchive)); err == nil {
+			t.Errorf("Read(%q) = %q, want an error for a byte undefined in code page 1252", raw, files[0].Name)
+		}
+	}
+
 	// The writer marks a non-ASCII name as UTF-8, so it reads back as is.
 	out, err := Write([]File{{Name: "résumé", Data: []byte("x")}}, Options{})
 	if err != nil {
@@ -412,7 +420,8 @@ func TestMSZIPEmptyBlocks(t *testing.T) {
 }
 
 // TestWalkChecksBlocksVisitSkipped checks that Walk reads and verifies the
-// blocks of a file whose visit function does not read it.
+// blocks of a file whose visit function does not read it, here a corrupt
+// block inside the file.
 func TestWalkChecksBlocksVisitSkipped(t *testing.T) {
 	t.Parallel()
 
@@ -420,7 +429,7 @@ func TestWalkChecksBlocksVisitSkipped(t *testing.T) {
 	raw := RawCabinet([]RawFolder{{Type: None, Blocks: []RawBlock{
 		{Payload: data[:blockSize], Uncomp: blockSize},
 		{Payload: data[blockSize:], Uncomp: 10, BadSum: true},
-	}}}, []RawFile{{Name: []byte("a"), Size: 1, Attr: AttrArchive}})
+	}}}, []RawFile{{Name: []byte("a"), Size: blockSize + 10, Attr: AttrArchive}})
 
 	err := Walk(bytes.NewReader(raw), int64(len(raw)), func(File, io.Reader) error { return nil })
 	if err == nil {
