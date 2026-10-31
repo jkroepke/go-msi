@@ -345,8 +345,13 @@ action of a `run` action). Only a `perMachine` action may have
 `impersonate: false`, so an action that changes the machine as LocalSystem
 is left out of every per-user install, also one that an administrator
 runs elevated, and a standard user's per-user install needs no elevation
-for it (CA-09). A scoped action runs in the execute sequences only: in the
-UI sequence the scope page sets `ALLUSERS` back to 2.
+for it (CA-09). A scoped action runs in the execute sequence only: in the
+UI sequence the scope page sets `ALLUSERS` back to 2, and an administrative
+install has no context. ICE105 reads only the action's type, so in a
+`perUserOrMachine` package it warns about a `perMachine` action without
+impersonation although the condition keeps it out of per-user installs,
+and the builder passes that warning on; it is silent in a
+`perMachineOrUser` package (CA-09).
 
 ```yaml
 customActions:

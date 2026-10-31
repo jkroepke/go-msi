@@ -268,9 +268,10 @@ func TestNonAdminContextActions(t *testing.T) {
 }
 
 // TestICEContextActions runs the full ICE suite, ICE105 included, against
-// the CA-09 package of both dual scopes and logs what ICE105 reports about
-// the elevated action that runs only per machine. The validator allows it
-// on the strength of this test.
+// the CA-09 package of both dual scopes. ICE105 reads only the
+// CustomAction type: it warns about the elevated action in a package that
+// starts per user, with or without the ALLUSERS=1 condition, and reports
+// nothing in one that starts per machine (CA-09).
 //
 //nolint:paralleltest // msi.dll's external UI handler is process-wide
 func TestICEContextActions(t *testing.T) {
@@ -285,6 +286,8 @@ func TestICEContextActions(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			warnings := 0
+
 			for _, finding := range findings {
 				if finding.ICE != "ICE105" || finding.Type == ice.Info {
 					continue
@@ -292,9 +295,20 @@ func TestICEContextActions(t *testing.T) {
 
 				t.Logf("CA-09 %s unconditioned=%v: %s", scope, unconditioned, finding)
 
-				if !unconditioned && (finding.Type == ice.Error || finding.Type == ice.Failure) {
-					t.Errorf("%s: ICE105 error for a perMachine action: %s", scope, finding)
+				if finding.Type != ice.Warning || finding.Table != "CustomAction" {
+					t.Errorf("%s: unexpected ICE105 finding %s", scope, finding)
 				}
+
+				warnings++
+			}
+
+			want := 0
+			if scope == "perUserOrMachine" {
+				want = 1
+			}
+
+			if warnings != want {
+				t.Errorf("%s unconditioned=%v: %d ICE105 warnings, want %d", scope, unconditioned, warnings, want)
 			}
 
 			if !unconditioned {

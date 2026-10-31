@@ -2044,6 +2044,13 @@ func (v *validator) actionScope(actionPath string, action *CustomAction) {
 			"in one context; a %s package runs everything %s", v.scope, v.scope)
 	}
 
+	// ICE105 reads only the CustomAction type: it warns about an action
+	// without impersonation in a package that starts per user although the
+	// condition keeps the action out of per-user installs (CA-09).
+	if action.Scope == ScopePerMachine && v.scope == ScopePerUserOrMachine && action.Impersonate != nil && !*action.Impersonate {
+		v.warnf(actionPath+".scope", "ICE105 warns about this action without impersonation, although it runs only per machine")
+	}
+
 	for j, placement := range action.Schedule {
 		if placement.Sequence != sequenceExecute {
 			v.errorf(fmt.Sprintf("%s.schedule[%d].sequence", actionPath, j),

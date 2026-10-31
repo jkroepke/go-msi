@@ -161,7 +161,7 @@ func TestValidateAccepted(t *testing.T) {
 			"fields: {OPT: {label: Stufe, options: {b: '&Hoch'}}, NAME: null}}}}, fr: {dialogs: {ExtraDlg: null}}}\n",
 		// A dual package runs an action without impersonation per machine
 		// only (CA-09).
-		"dual scope elevated action": pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + `customActions:
+		"dual scope elevated action": pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + `customActions:
   - id: Machine
     exec: {command: '"[System64Folder]cmd.exe" /c ver', directory: INSTALLDIR}
     execute: deferred
@@ -516,6 +516,18 @@ func TestValidate(t *testing.T) {
     schedule: [{sequence: adminExecute, after: CostFinalize}]
 `,
 			sevError, "customActions[0].schedule[0].sequence", "only in the execute sequence",
+		},
+		"elevated action in a per-user-first package": {
+			pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + `customActions:
+  - id: Machine
+    exec: {command: '"[System64Folder]cmd.exe" /c ver', directory: INSTALLDIR}
+    execute: deferred
+    impersonate: false
+    scope: perMachine
+    return: check
+    schedule: [{sequence: execute, before: InstallFinalize}]
+`,
+			sevWarning, "customActions[0].scope", "ICE105 warns",
 		},
 		"action scope dual": {
 			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + `customActions:
