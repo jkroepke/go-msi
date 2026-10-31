@@ -205,6 +205,7 @@ WiX preprocessor variables become `${NAME}` variables:
 | `<?define Port = 8080 ?>` | `vars:` at the top of the file |
 | `!(bind.FileVersion.hello.exe)` | Pass the version as a variable |
 | `<?if $(var.Arch) = arm64 ?>`, `<?foreach?>` | `{{ if eq .Arch "arm64" }}`, `{{ range split ";" .Langs }}` with `--template` (see [YAML Schema](YAML%20Schema.md#parts-that-depend-on-the-build)) |
+| `<?ifdef Debug ?>` | `{{ if has "Debug" }}` with `--template`; `{{ if .Debug }}` is an error when `Debug` is not set |
 | `<?ifndef Version?><?error?>` | Nothing: an undefined `${Version}` or `{{ .Version }}` is an error |
 | `<?include?>` | Not available; merge the file in, or generate the YAML file in your build |
 

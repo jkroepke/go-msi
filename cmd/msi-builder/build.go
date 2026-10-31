@@ -116,8 +116,9 @@ func newRenderCmd() *cobra.Command {
 		Short: "Print a template file as build and validate --template read it",
 		Long: `Render runs msi.yaml through Go's text/template, as build and validate do
 with --template, and prints the YAML that comes out. ${NAME} references are
-left as they are. The line numbers of a YAML error with --template are lines
-of this output.`,
+left as they are, and quote writes ${ as $${, which build turns back into
+${. The line numbers of a YAML error with --template are lines of this
+output.`,
 		Example:           "  msi-builder render --var ARCH=arm64 msi.yaml",
 		Args:              exactlyOne("msi.yaml"),
 		ValidArgsFunction: fileArg("yaml", "yml"),
@@ -142,6 +143,11 @@ of this output.`,
 	cmd.Flags().Var(load.vars, "var", `set a variable read as {{ .NAME }} and ${NAME}; repeatable`)
 	cmd.Flags().BoolVar(&load.env, "env", false, "let environment variables fill template variables")
 	mustComplete(cmd.RegisterFlagCompletionFunc("var", cobra.NoFileCompletions))
+
+	// render always renders; --template is accepted so that a build
+	// command line can be reused.
+	cmd.Flags().BoolVar(&load.template, "template", true, "ignored: render always renders")
+	mustComplete(cmd.Flags().MarkHidden("template"))
 
 	return cmd
 }

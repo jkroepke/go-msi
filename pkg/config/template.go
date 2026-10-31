@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"strings"
 	"text/template"
@@ -60,15 +61,16 @@ func Render(data []byte, opts Options) ([]byte, error) {
 		docLeft: maxSubstituted, varsLeft: maxSubstituted, errs: &errs,
 	}
 
-	tmpl, err := template.New("msi.yaml").Option("missingkey=error").Funcs(templateFuncs(res.resolve)).Parse(string(data))
+	tmpl, err := template.New("msi.yaml").Option("missingkey=error").Funcs(templateFuncs(res.resolve, opts)).Parse(string(data))
 	if err != nil {
-		return nil, fmt.Errorf("template: %w", templateErr(err))
+		return nil, fmt.Errorf("template: %w", templateErr(err, opts))
 	}
 
-	// {{ .NAME }} reads a map, so the names the template uses are looked
-	// up first; a name that is not set stays out and fails as missing.
-	values := make(map[string]string)
+	values := templateValues(opts, vars, lines)
 
+	// Environment variables cannot be listed, so the names the template
+	// uses are looked up too; a name that is not set stays out of the map
+	// and fails as missing.
 	for _, tree := range tmpl.Templates() {
 		if tree.Tree != nil {
 			fieldNames(tree.Root, func(name string) {
@@ -88,34 +90,72 @@ func Render(data []byte, opts Options) ([]byte, error) {
 	case errors.Is(err, errRenderedTooLarge):
 		return nil, fmt.Errorf("template: %w", errRenderedTooLarge)
 	case err != nil:
-		return nil, fmt.Errorf("template: %w", templateErr(err))
+		return nil, fmt.Errorf("template: %w", templateErr(err, opts))
 	}
 
 	return out.Bytes(), nil
 }
 
-// varsKey finds the vars key at the top level of a raw file.
-var varsKey = regexp.MustCompile(`(?m)^vars:`)
+// templateValues returns the data of a template: every --var and every
+// entry of vars that resolves without an error, so {{ index . "NAME" }} and
+// {{ $.NAME }} see them too. A broken entry is left out here and reported
+// where the template uses it, as ${NAME} reports it.
+func templateValues(opts Options, vars map[string]string, lines map[string]int) map[string]string {
+	var scratch []error
+
+	res := &resolver{
+		opts: opts, vars: vars, lines: lines, resolved: make(map[string]string),
+		docLeft: maxSubstituted, varsLeft: maxSubstituted, errs: &scratch,
+	}
+
+	values := make(map[string]string, len(opts.Vars)+len(vars))
+
+	for name := range vars {
+		before := len(scratch)
+		if value, ok := res.resolve(name); ok && len(scratch) == before {
+			values[name] = value
+		}
+	}
+
+	maps.Copy(values, opts.Vars)
+
+	return values
+}
+
+// varsKey finds the vars key at the top level of a raw file, also quoted
+// or after a byte order mark.
+var varsKey = regexp.MustCompile(`(?m)^(?:\x{FEFF})?(?:vars|"vars"|'vars')[ \t]*:`)
+
+// varsBeforeRendering starts the errors about the vars block of a template.
+const varsBeforeRendering = "with --template the vars block is read before rendering"
 
 // templateVars reads the vars block of a template before it is rendered:
 // the lines from "vars:" up to the next line that starts in column one.
 func templateVars(data []byte) (map[string]string, map[string]int, error) {
-	loc := varsKey.FindIndex(data)
-	if loc == nil {
+	found := varsKey.FindAllIndex(data, -1)
+
+	switch len(found) {
+	case 0:
 		return make(map[string]string), make(map[string]int), nil
+	case 1:
+	default:
+		return nil, nil, fmt.Errorf("vars: lines %d and %d both start with vars:; %s, so there must be one, outside any {{ if }} or comment",
+			lineOf(data, found[0][0]), lineOf(data, found[1][0]), varsBeforeRendering)
 	}
 
+	loc := found[0]
 	block := data[loc[0]:blockEnd(data, loc[1])]
-	if bytes.Contains(block, []byte("{{")) {
-		return nil, nil, errors.New("vars: with --template the vars block is read before rendering and must not use template syntax")
+
+	if i := bytes.Index(block, []byte("{{")); i >= 0 {
+		return nil, nil, fmt.Errorf("line %d: vars: %s and must not hold {{, also not in a comment", lineOf(data, loc[0]+i), varsBeforeRendering)
 	}
 
 	// Leading newlines keep the line numbers of the file.
-	text := append(bytes.Repeat([]byte("\n"), bytes.Count(data[:loc[0]], []byte("\n"))), block...)
+	text := append(bytes.Repeat([]byte("\n"), lineOf(data, loc[0])-1), block...)
 
 	var doc yaml.Node
 	if err := yaml.Unmarshal(text, &doc); err != nil {
-		return nil, nil, fmt.Errorf("vars: %w (with --template the vars block is read on its own before rendering)", err)
+		return nil, nil, fmt.Errorf("vars: %w (%s on its own, so anchors defined outside it are not visible)", err, varsBeforeRendering)
 	}
 
 	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
@@ -125,9 +165,14 @@ func templateVars(data []byte) (map[string]string, map[string]int, error) {
 	return fileVars(doc.Content[0])
 }
 
+// lineOf returns the line of data that offset pos is on, counted from 1.
+func lineOf(data []byte, pos int) int {
+	return bytes.Count(data[:pos], []byte("\n")) + 1
+}
+
 // blockEnd returns where the top-level block that goes on at pos ends: at
-// the next line that starts in column one with neither space, tab nor
-// comment, or at the end of data.
+// the next line that starts in column one with neither space, tab, comment
+// nor the end of a flow collection, or at the end of data.
 func blockEnd(data []byte, pos int) int {
 	for {
 		next := bytes.IndexByte(data[pos:], '\n')
@@ -136,7 +181,7 @@ func blockEnd(data []byte, pos int) int {
 		}
 
 		pos += next + 1
-		if pos < len(data) && !strings.ContainsRune(" \t#\r\n", rune(data[pos])) {
+		if pos < len(data) && !strings.ContainsRune(" \t#\r\n}]", rune(data[pos])) {
 			return pos
 		}
 	}
@@ -166,6 +211,10 @@ func fieldNames(node parse.Node, use func(string)) { //nolint:cyclop // one case
 		}
 	case *parse.FieldNode:
 		use(node.Ident[0])
+	case *parse.VariableNode:
+		if node.Ident[0] == "$" && len(node.Ident) > 1 {
+			use(node.Ident[1])
+		}
 	case *parse.ChainNode:
 		fieldNames(node.Node, use)
 	case *parse.IfNode:
@@ -186,7 +235,7 @@ func branchNames(node *parse.BranchNode, use func(string)) {
 }
 
 // templateFuncs returns the functions Render adds to Go's built-in ones.
-func templateFuncs(lookup func(string) (string, bool)) template.FuncMap {
+func templateFuncs(lookup func(string) (string, bool), opts Options) template.FuncMap {
 	return template.FuncMap{
 		"var": func(name string, def ...string) (string, error) {
 			if v, ok := lookup(name); ok {
@@ -195,7 +244,7 @@ func templateFuncs(lookup func(string) (string, bool)) template.FuncMap {
 
 			switch len(def) {
 			case 0:
-				return "", notSet(name)
+				return "", notSet(name, opts)
 			case 1:
 				return def[0], nil
 			default:
@@ -230,8 +279,12 @@ func templateFuncs(lookup func(string) (string, bool)) template.FuncMap {
 }
 
 // notSet is the error for a variable that is not set.
-func notSet(name string) error {
-	return fmt.Errorf("variable %s is not set; pass --var %s=VALUE or add it to vars", name, name)
+func notSet(name string, opts Options) error {
+	if opts.LookupEnv == nil {
+		return fmt.Errorf("variable %s is not set; pass --var %s=VALUE, add it to vars, or pass --env to read it from the environment", name, name)
+	}
+
+	return fmt.Errorf("variable %s is not set; pass --var %s=VALUE, set it in the environment or add it to vars", name, name)
 }
 
 // quote writes value as a double-quoted YAML string. ${ becomes $${, which
@@ -285,13 +338,14 @@ var missingKey = regexp.MustCompile(`map has no entry for key "([^"]*)"`)
 // message, which Load already names, and says how to set a missing
 // variable, so an error reads "template: line 3:5: at <.ARCH>: variable
 // ARCH is not set; ...".
-func templateErr(err error) error {
+func templateErr(err error, opts Options) error {
 	msg := strings.TrimPrefix(err.Error(), "template: ")
 	msg = strings.TrimPrefix(msg, "msi.yaml:")
 	msg = strings.Replace(msg, `executing "msi.yaml" at `, "at ", 1)
+	msg = strings.ReplaceAll(msg, "started at msi.yaml:", "started at line ")
 
 	if m := missingKey.FindStringSubmatch(msg); m != nil {
-		msg = strings.Replace(msg, m[0], notSet(m[1]).Error(), 1)
+		msg = strings.Replace(msg, m[0], notSet(m[1], opts).Error(), 1)
 	}
 
 	if line, rest, ok := strings.Cut(msg, ":"); ok && line != "" && strings.Trim(line, "0123456789") == "" {

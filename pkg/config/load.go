@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -72,14 +73,44 @@ func parseHint(err error, data []byte, template bool) error {
 	case !errors.As(err, &lined):
 		return err
 	case template && !lined.reencoded:
-		return fmt.Errorf("%w (lines of the rendered file; print it with msi-builder render)", lined.err)
-	case !template && lined.yaml && bytes.Contains(data, []byte("{{")):
-		// Template syntax in a plain file either fails as YAML or, as a
-		// flow mapping, fails to decode.
-		return fmt.Errorf("%w (the file contains {{: pass --template to render Go template syntax)", lined.err)
+		return fmt.Errorf("%w (lines of the rendered file; print it with msi-builder render and the same --var and --env flags)", lined.err)
+	case template || !lined.yaml:
+		return lined.err
+	default:
+		return plainHint(lined, data)
+	}
+}
+
+// plainHint adds the --template hint to a YAML error of a plain file that
+// may come from template syntax.
+func plainHint(lined *lineError, data []byte) error {
+	switch {
+	case !lined.reencoded && templateOnLine(data, lined.err):
+		return fmt.Errorf("%w (the line holds {{: pass --template to render Go template syntax)", lined.err)
+	case lined.reencoded && bytes.Contains(data, []byte("{{")):
+		// Template syntax such as {{ .X }} is a flow mapping to YAML and
+		// fails to decode; the line of such an error is not the file's.
+		return fmt.Errorf("%w (if {{ }} in the file is template syntax, pass --template)", lined.err)
 	default:
 		return lined.err
 	}
+}
+
+// yamlLine matches the line that a YAML syntax error names.
+var yamlLine = regexp.MustCompile(`^yaml: line (\d+):`)
+
+// templateOnLine reports whether the line that a YAML syntax error names
+// holds "{{".
+func templateOnLine(data []byte, err error) bool {
+	m := yamlLine.FindStringSubmatch(err.Error())
+	if m == nil {
+		return false
+	}
+
+	n, _ := strconv.Atoi(m[1])
+	lines := bytes.Split(data, []byte("\n"))
+
+	return n >= 1 && n <= len(lines) && bytes.Contains(lines[n-1], []byte("{{"))
 }
 
 // lineError marks an error that names a line: a YAML error (yaml) or a

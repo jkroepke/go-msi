@@ -178,8 +178,14 @@ A template finds variables as `${NAME}` does: from `--var`, then from the
 environment with `--env`, then from `vars`. `{{ .ARCH }}` reads one and is
 an error when it is not set, with a message that names `--var` and `vars`.
 `vars` is read from the raw file before rendering: the block runs from the
-top-level `vars:` line to the next line that starts in column one, it may
-not hold template syntax, and its values may use `${NAME}` as usual. The
+top-level `vars:` line to the next line that starts in column one (other
+than a comment or the `}` or `]` that closes a flow collection). The file
+may have only one such line, so a `vars:` inside `{{ if }}` or a template
+comment is an error; the block may not hold `{{`, also not in a comment,
+and anchors defined outside it are not visible. Its values may use
+`${NAME}` as usual. All `--var` values and the `vars` entries are the
+template's data, so `{{ $.NAME }}` and `{{ index . "NAME" }}` work too;
+environment variables are added for the names the template uses. The
 functions are Go's built-in ones and five more, with no third-party library:
 
 | Function | Result |
@@ -191,8 +197,8 @@ functions are Go's built-in ones and five more, with no third-party library:
 | `split SEP S` | The parts of `S` between each `SEP`, for `{{ range split ";" .LANGS }}`; an empty `S` has none, and an empty `SEP` is an error |
 
 The rendered text then goes through `${NAME}` substitution as described
-above, so a `${…}` that a template writes is replaced too; `quote` escapes
-it. YAML syntax errors and `${NAME}` errors name a line of the rendered
+above, so a `${…}` that a template writes is replaced too, also one in a
+variable's value written with `{{ .NAME }}`; `quote` escapes it. YAML syntax errors and `${NAME}` errors name a line of the rendered
 text, which `msi-builder render` prints; template errors name a line of the
 file. An unknown key or a wrong type is reported with the line of the
 document as the decoder re-reads it, with or without a template. A template

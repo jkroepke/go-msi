@@ -4,8 +4,9 @@ Print a template file as build and validate --template read it
 
 Render runs msi.yaml through Go's text/template, as build and validate do
 with --template, and prints the YAML that comes out. ${NAME} references are
-left as they are. The line numbers of a YAML error with --template are lines
-of this output.
+left as they are, and quote writes ${ as $${, which build turns back into
+${. The line numbers of a YAML error with --template are lines of this
+output.
 
 ## Usage
 

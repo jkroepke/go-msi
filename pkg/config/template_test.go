@@ -108,7 +108,7 @@ func TestTemplateErrors(t *testing.T) {
 		"missing key": {
 			doc:  templated,
 			opts: config.Options{Vars: map[string]string{"VERSION": "1"}, Template: true},
-			want: `template: line 8:15: at <.ARCH>: variable ARCH is not set; pass --var ARCH=VALUE or add it to vars`,
+			want: `template: line 8:15: at <.ARCH>: variable ARCH is not set; pass --var ARCH=VALUE, add it to vars, or pass --env to read it from the environment`,
 		},
 		"var without default": {
 			doc:  "schema: msi-builder/v1\nx: {{ var \"NOPE\" }}\n",
@@ -158,7 +158,22 @@ func TestTemplateErrors(t *testing.T) {
 		"template in vars": {
 			doc:  "vars:\n  A: {{ .B }}\nx: 1\n",
 			opts: config.Options{Template: true},
-			want: "must not use template syntax",
+			want: "line 2: vars: with --template the vars block is read before rendering and must not hold {{",
+		},
+		"two vars blocks": {
+			doc:  "{{ if has \"X\" }}\nvars:\n  A: one\n{{ else }}\nvars:\n  A: two\n{{ end }}\n",
+			opts: config.Options{Template: true},
+			want: "vars: lines 2 and 5 both start with vars:",
+		},
+		"anchor outside vars": {
+			doc:  "base: &b {A: x}\nvars:\n  <<: *b\n",
+			opts: config.Options{Template: true},
+			want: "anchors defined outside it are not visible",
+		},
+		"env not passed": {
+			doc:  "x: {{ var \"X\" }}\n",
+			opts: config.Options{LookupEnv: func(string) (string, bool) { return "", false }, Template: true},
+			want: "set it in the environment or add it to vars",
 		},
 		"vars cycle": {
 			doc:  "x: {{ .A }}\nvars:\n  A: ${B}\n  B: ${A}\n",
@@ -284,7 +299,7 @@ vars:
   NAME: Acme ${ARCH}
 
   EMPTY: ""
-x: {{ .ARCH }} {{ var "NAME" }} {{ has "EMPTY" }} {{ has "NOPE" }} ${NAME}
+x: {{ .ARCH }} {{ var "NAME" }} {{ has "EMPTY" }} {{ has "NOPE" }} ${NAME}{{ range split ";" "a" }} {{ $.ARCH }} {{ index $ "NAME" }}{{ end }}
 `
 	env := func(name string) (string, bool) {
 		if name == "NAME" {
@@ -298,9 +313,9 @@ x: {{ .ARCH }} {{ var "NAME" }} {{ has "EMPTY" }} {{ has "NOPE" }} ${NAME}
 		opts config.Options
 		want string
 	}{
-		{config.Options{}, "x: x64 Acme x64 true false ${NAME}\n"},
-		{config.Options{Vars: map[string]string{"ARCH": "arm64"}}, "x: arm64 Acme arm64 true false ${NAME}\n"},
-		{config.Options{LookupEnv: env}, "x: x64 env true false ${NAME}\n"},
+		{config.Options{}, "x: x64 Acme x64 true false ${NAME} x64 Acme x64\n"},
+		{config.Options{Vars: map[string]string{"ARCH": "arm64"}}, "x: arm64 Acme arm64 true false ${NAME} arm64 Acme arm64\n"},
+		{config.Options{LookupEnv: env}, "x: x64 env true false ${NAME} x64 env\n"},
 	} {
 		out, err := config.Render([]byte(doc), test.opts)
 		if err != nil {
@@ -321,5 +336,50 @@ func TestTemplateDecodeError(t *testing.T) {
 	_, err := config.Parse([]byte(base+appComponent+"\n\n# c\nbogus: {{ 1 }}\n"), config.Options{Template: true})
 	if err == nil || !strings.Contains(err.Error(), "bogus") || strings.Contains(err.Error(), "rendered file") {
 		t.Errorf("got %v", err)
+	}
+}
+
+// TestTemplateVarsForms checks vars blocks the plain parser reads too.
+func TestTemplateVarsForms(t *testing.T) {
+	t.Parallel()
+
+	for name, doc := range map[string]string{
+		"bom":       "\ufeffvars:\n  A: b\nx: {{ .A }}\n",
+		"quoted":    "\"vars\" :\n  A: b\nx: {{ .A }}\n",
+		"flow":      "vars: {A: b}\nx: {{ .A }}\n",
+		"multiline": "vars: {\n  A: b\n}\nx: {{ .A }}\n",
+		"crlf":      "vars:\r\n  A: b\r\n# c\r\nx: {{ .A }}\r\n",
+	} {
+		out, err := config.Render([]byte(doc), config.Options{})
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+
+			continue
+		}
+
+		if !strings.Contains(string(out), "x: b") {
+			t.Errorf("%s: got %q", name, out)
+		}
+	}
+}
+
+// TestTemplateHintScope checks that the --template hint names only lines
+// that hold template syntax.
+func TestTemplateHintScope(t *testing.T) {
+	t.Parallel()
+
+	quoted := strings.Replace(base, "manufacturer: Example", `manufacturer: "{{x}}"`, 1) + appComponent
+
+	for name, test := range map[string]struct {
+		doc, want, not string
+	}{
+		"syntax on the line": {doc: "schema: msi-builder/v1\n{{ if }}\n", want: "the line holds {{"},
+		"syntax elsewhere":   {doc: quoted + "x: [\n", not: "--template"},
+		"decode":             {doc: quoted + "unknownKey: x\n", want: "if {{ }} in the file is template syntax"},
+	} {
+		_, err := config.Parse([]byte(test.doc), config.Options{})
+		if err == nil || (test.want != "" && !strings.Contains(err.Error(), test.want)) || (test.not != "" && strings.Contains(err.Error(), test.not)) {
+			t.Errorf("%s: got %v", name, err)
+		}
 	}
 }

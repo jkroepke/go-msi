@@ -103,9 +103,13 @@ environment with `--env`, or from `vars:`, and fails when it is not set.
 `{{ var "ARCH" "x64" }}` falls back to `x64` instead, `{{ has "ARCH" }}`
 tests whether it is set, `{{ range split ";" .LANGS }}` loops over a list,
 and `{{ quote ... }}` writes any value as a YAML string. The `vars:` block
-itself cannot use template syntax, because it is read before rendering.
-`{{- ` and ` -}}` remove the line break next to them, which keeps the YAML
-indentation intact. A YAML or `${NAME}` error names a line of the rendered
+is read before rendering, so the file has one, outside any `{{ if }}`, and
+it holds no `{{` and no anchor from elsewhere in the file. The rendered file
+then goes through `${NAME}` substitution, so a value that holds `${` is
+expanded once more unless it is written with `quote`. Put `{{- if ... }}`,
+`{{- else }}` and `{{- end }}` at the start of their own line: `{{-`
+removes the line break before it, and the YAML indentation stays intact.
+Avoid `-}}`, which also removes the next line's indentation. A YAML or `${NAME}` error names a line of the rendered
 file, which `msi-builder render` prints; a template error names a line of
 the file itself. A template is code: only build templates from a source you
 trust. Without `--template`, `{{` is plain text. The details are in the
