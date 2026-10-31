@@ -263,7 +263,8 @@ func Unmarshal(data []byte) ([]Property, error) { //nolint:cyclop,gocognit // on
 	sec := int(rawSec)
 	rawSize, rawCount := order.Uint32(data[sec:]), order.Uint32(data[sec+4:])
 
-	if uint64(rawSize) > uint64(len(data)-sec) || (rawCount > 0 && (rawSize < 8 || uint64(rawCount) > uint64(rawSize-8)/8)) { //nolint:gosec // sec <= len(data)-8 was checked
+	room := uint64(len(data) - sec) //nolint:gosec // sec <= len(data)-8 was checked
+	if uint64(rawSize) > room || (rawCount > 0 && (rawSize < 8 || uint64(rawCount) > uint64(rawSize-8)/8)) {
 		return nil, errors.New("summary: section size or count out of range")
 	}
 
