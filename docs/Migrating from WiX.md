@@ -416,8 +416,13 @@ features:
           - source: docs/manual.pdf
 ```
 
-msi-builder adds `NOT Installed` to each condition, because a feature
+msi-builder adds `NOT Installed` to most conditions, because a feature
 that its condition disables when the product is removed keeps its files.
+A condition that enables a feature whose own level is 0
+(`default: disabled`, WiX `Level="0"` with a higher conditional level)
+also holds at removals and repairs, because the uninstall leaves a
+level-0 feature alone (INST-06). `ADDLOCAL` in a later run still needs
+the condition.
 A condition cannot test feature or component states, nor `Installed`; `convert` leaves such levels as a `# TODO`.
 
 `AllowAbsent` and `ConfigurableDirectory` are `allowAbsent` and
@@ -692,6 +697,19 @@ and `convert` leaves `keyPath` out. One thing works differently: in WiX, a searc
 overwrites a value given on the command line. In msi-builder the command
 line wins, and the search result is used only when the property is still
 empty.
+
+A `Launch` whose condition is exactly `NOT <newer property>`, such as
+`NOT NEWERVERSIONDETECTED` next to a hand-made `Upgrade`, is the launch
+condition that `upgrade.downgrade: error` (the default) writes itself, so it
+cannot also be a `launchConditions` entry: its message is
+`upgrade.downgradeMessage`, and `convert` moves it there. When the
+`MajorUpgrade` has a `DowngradeErrorMessage`, that message stays, and when
+the two messages differ a `# TODO` names the one left out. When the file has
+no upgrade elements at all, a `# TODO` reminds you to add the launch
+condition back if you set `upgrade: false`. Any other condition, such as
+`NOT NEWERVERSIONDETECTED OR Installed`, stays a launch condition, and so
+does every condition when downgrades are allowed or when the property
+belongs to another product's `Upgrade` row.
 
 ## Custom actions
 

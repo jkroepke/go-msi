@@ -854,12 +854,98 @@ func (c *converter) fileSearch(elm *elem, found *omap) {
 
 func (c *converter) emitLaunchConditions() {
 	for _, elm := range c.launches {
-		cond := c.value(elm, "Condition")
+		raw := elm.attr("Condition")
 		if elm.is("Condition") { // v3: the condition is the text
-			cond = c.expand(elm, strings.TrimSpace(elm.text))
+			raw = strings.TrimSpace(elm.text)
 		}
 
-		c.out.add("launchConditions", newMap().set("condition", cond).set("message", c.value(elm, "Message")))
+		// The fold compares the condition as the package gets it, with
+		// the defines filled in.
+		if c.downgradeCondition(c.literal(raw), elm) {
+			continue
+		}
+
+		cond := c.expand(elm, raw)
+		entry := newMap().set("condition", cond).set("message", c.value(elm, "Message"))
+
+		// A variable without a define may be the newer property.
+		if literal := c.literal(raw); c.out.mapAt("upgrade").str("downgrade") == "" && strings.HasPrefix(literal, "NOT ") &&
+			preprocessorVar.FindString(literal) == strings.TrimPrefix(literal, "NOT ") {
+			c.todof(entry, "condition", elm.line, "if %s is the property that detects newer versions, drop this entry and "+
+				"set upgrade.downgradeMessage to its message: downgrade: error writes this launch condition itself", cond)
+		}
+
+		c.out.add("launchConditions", entry)
+	}
+}
+
+// relatedProperty reports whether an upgrade.related row sets prop: a launch
+// condition on it refuses that product, not a newer version of this one.
+func (c *converter) relatedProperty(upgrade *omap, prop string) bool {
+	related, ok := upgrade.get("related").([]any)
+	if !ok {
+		return false
+	}
+
+	for _, entry := range related {
+		if row, ok := entry.(*omap); ok && c.literal(row.str("property")) == prop {
+			return true
+		}
+	}
+
+	return false
+}
+
+// downgradeCondition folds a launch condition that refuses newer versions
+// into upgrade.downgradeMessage and reports whether it did. downgrade: error
+// writes that launch condition itself, and the LaunchCondition table keys on
+// the condition, so the package cannot hold both.
+func (c *converter) downgradeCondition(cond string, elm *elem) bool {
+	upgrade := c.out.mapAt("upgrade")
+	if upgrade == nil || upgrade.str("downgrade") != "" {
+		return false
+	}
+
+	newer := c.literal(cmp.Or(upgrade.str("newerProperty"), config.DefaultNewerProperty))
+	if cond != "NOT "+newer || c.relatedProperty(upgrade, newer) {
+		return false
+	}
+
+	c.foldMessage(upgrade, cond, elm)
+
+	return true
+}
+
+// foldMessage keeps the message of a folded launch condition in
+// upgrade.downgradeMessage, or notes it when another message is there.
+func (c *converter) foldMessage(upgrade *omap, cond string, elm *elem) {
+	msg := c.value(elm, "Message")
+
+	switch {
+	case c.downgradeFrom == nil && c.major != nil && c.major.has("DowngradeErrorMessage"):
+		c.downgradeFrom = c.major
+	case c.downgradeFrom == nil:
+		c.downgradeFrom = elm
+
+		upgrade.set("downgradeMessage", msg)
+
+		if c.major == nil && len(c.upgrades) == 0 {
+			c.todof(upgrade, "downgradeMessage", elm.line, "the launch condition %s became upgrade.downgradeMessage; "+
+				"with upgrade: false, add it back to launchConditions", cond)
+		}
+
+		return
+	}
+
+	from, attr, source := c.downgradeFrom, "Message", "the Launch on line "+strconv.Itoa(c.downgradeFrom.line)
+	if from == c.major {
+		attr, source = "DowngradeErrorMessage", "the MajorUpgrade's DowngradeErrorMessage"
+	}
+
+	// The messages compare like the condition, with the defines filled in.
+	if c.literal(from.attr(attr)) != c.literal(elm.attr("Message")) {
+		c.todof(upgrade, "downgradeMessage", elm.line, "the launch condition %s is the one downgrade: error writes; "+
+			"its message %q is left out for %s", cond, msg, source)
 	}
 }
 

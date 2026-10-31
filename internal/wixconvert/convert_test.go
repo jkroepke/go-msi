@@ -740,6 +740,216 @@ func TestConvertUpgradeFloor(t *testing.T) {
 	}
 }
 
+// TestConvertDowngradeLaunchCondition checks that a launch condition equal to
+// the one downgrade: error writes becomes upgrade.downgradeMessage: the
+// LaunchCondition table keys on the condition, so the package cannot hold it
+// twice.
+func TestConvertDowngradeLaunchCondition(t *testing.T) {
+	t.Parallel()
+
+	const handMade = `<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="OLDERVERSIONBEINGUPGRADED" />
+      <UpgradeVersion Minimum="1.2.0" IncludeMinimum="no" OnlyDetect="yes" Property="NEWERVERSIONDETECTED" />
+    </Upgrade>
+    <InstallExecuteSequence><RemoveExistingProducts After="InstallValidate" /></InstallExecuteSequence>`
+
+	for name, tc := range map[string]struct {
+		rows      string
+		want, not []string
+	}{
+		"hand-made upgrade": {
+			handMade + `
+    <Launch Condition="NOT NEWERVERSIONDETECTED" Message="A newer Hello is installed." />
+    <Launch Condition="VersionNT64" Message="64-bit only." />`,
+			[]string{"downgradeMessage: A newer Hello is installed.", "condition: VersionNT64"},
+			[]string{"condition: NOT NEWERVERSIONDETECTED"},
+		},
+		"own newer property": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="PREVIOUSFOUND" />
+      <UpgradeVersion Minimum="1.2.0" IncludeMinimum="no" OnlyDetect="yes" Property="NEWERFOUND" />
+    </Upgrade>
+    <InstallExecuteSequence><RemoveExistingProducts After="InstallValidate" /></InstallExecuteSequence>
+    <Launch Condition="NOT NEWERFOUND" Message="newer" />`,
+			[]string{"newerProperty: NEWERFOUND", "downgradeMessage: newer"},
+			[]string{"launchConditions"},
+		},
+		"MajorUpgrade message wins": {
+			`<MajorUpgrade DowngradeErrorMessage="from MajorUpgrade" />
+    <Launch Condition="NOT WIX_DOWNGRADE_DETECTED" Message="from Launch" />`,
+			[]string{"newerProperty: WIX_DOWNGRADE_DETECTED", "downgradeMessage: from MajorUpgrade", `its message "from Launch" is left out`},
+			[]string{"launchConditions"},
+		},
+		"same message": {
+			`<MajorUpgrade DowngradeErrorMessage="newer" />
+    <Launch Condition="NOT WIX_DOWNGRADE_DETECTED" Message="newer" />`,
+			[]string{"downgradeMessage: newer"},
+			[]string{"launchConditions", "is left out"},
+		},
+		"downgrades allowed": {
+			`<MajorUpgrade AllowDowngrades="yes" />
+    <Launch Condition="NOT NEWERVERSIONDETECTED" Message="newer" />`,
+			[]string{"downgrade: allow", "condition: NOT NEWERVERSIONDETECTED"},
+			[]string{"downgradeMessage"},
+		},
+		"preprocessor variable": {
+			`<?define NP = "NEWERVERSIONDETECTED" ?>
+    <MajorUpgrade DowngradeErrorMessage="x" />
+    <Launch Condition="NOT $(var.NP)" Message="newer" />`,
+			[]string{"downgradeMessage: x", `its message "newer" is left out`},
+			[]string{"launchConditions"},
+		},
+		"MajorUpgrade without a message": {
+			`<MajorUpgrade AllowSameVersion="yes" />
+    <Launch Condition="NOT WIX_DOWNGRADE_DETECTED" Message="from launch" />`,
+			[]string{"downgradeMessage: from launch"},
+			[]string{"launchConditions", "is left out"},
+		},
+		"property of another product": {
+			`<MajorUpgrade DowngradeErrorMessage="mu" />
+    <Upgrade Id="11111111-2222-3333-4444-555555555555">
+      <UpgradeVersion Minimum="0.0.0" OnlyDetect="yes" Property="OTHERFOUND" />
+    </Upgrade>
+    <Launch Condition="NOT OTHERFOUND" Message="other" />
+    <Launch Condition="NOT WIX_DOWNGRADE_DETECTED" Message="mu" />`,
+			[]string{"condition: NOT OTHERFOUND", "downgradeMessage: mu"},
+			[]string{"condition: NOT WIX_DOWNGRADE_DETECTED"},
+		},
+		"preprocessor variable in the messages": {
+			`<?define M = "m1" ?>
+    <MajorUpgrade DowngradeErrorMessage="$(var.M)" />
+    <Launch Condition="NOT WIX_DOWNGRADE_DETECTED" Message="m1" />`,
+			[]string{"downgradeMessage: ${M}"},
+			[]string{"launchConditions", "is left out"},
+		},
+		"two folded launch conditions": {
+			`<?define NP = "NEWERVERSIONDETECTED" ?>
+    <Launch Condition="NOT NEWERVERSIONDETECTED" Message="a" />
+    <Launch Condition="NOT $(var.NP)" Message="b" />`,
+			[]string{"downgradeMessage: a", `its message "b" is left out for the Launch on line`},
+			[]string{"launchConditions:", "MajorUpgrade's"},
+		},
+		"undefined preprocessor variable": {
+			`<MajorUpgrade DowngradeErrorMessage="x" />
+    <Launch Condition="NOT $(var.NP)" Message="newer" />`,
+			[]string{"condition: NOT ${NP}", "if NOT ${NP} is the property"},
+			nil,
+		},
+		"no upgrade elements": {
+			`<Launch Condition="NOT NEWERVERSIONDETECTED" Message="newer" />`,
+			[]string{"downgradeMessage: newer", "with upgrade: false, add it back to launchConditions"},
+			[]string{"launchConditions:"},
+		},
+		"not exactly the block": {
+			handMade + `
+    <Launch Condition="NOT NEWERVERSIONDETECTED OR Installed" Message="newer" />`,
+			[]string{"condition: NOT NEWERVERSIONDETECTED OR Installed"},
+			[]string{"downgradeMessage"},
+		},
+		"other property": {
+			handMade + `
+    <Launch Condition="NOT OTHERFOUND" Message="other" />`,
+			[]string{"condition: NOT OTHERFOUND"},
+			[]string{"downgradeMessage"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.2.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    ` + tc.rows + `
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" />
+    </StandardDirectory>
+    <Feature Id="Main">
+      <Component Directory="INSTALLFOLDER">
+        <File Source="hello.exe" />
+      </Component>
+    </Feature>
+  </Package>
+</Wix>`
+
+			res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			yaml := string(res.YAML)
+			for _, want := range tc.want {
+				if !strings.Contains(yaml, want) {
+					t.Errorf("the YAML lacks %q:\n%s", want, yaml)
+				}
+			}
+
+			for _, not := range tc.not {
+				if strings.Contains(yaml, not) {
+					t.Errorf("the YAML has %q:\n%s", not, yaml)
+				}
+			}
+
+			cfg, err := config.Parse(res.YAML, config.Options{Vars: map[string]string{"NP": "OTHERFOUND"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if err := config.Validate(cfg).Err(); err != nil {
+				t.Errorf("the converted file does not validate: %v\n%s", err, yaml)
+			}
+		})
+	}
+}
+
+// TestConvertRelatedNewerCondition checks that a launch condition on a
+// property that another product's Upgrade row sets stays a launch condition:
+// it refuses that product, not a newer version of this one.
+func TestConvertRelatedNewerCondition(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.2.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <Upgrade Id="11111111-2222-3333-4444-555555555555">
+      <UpgradeVersion Minimum="0.0.0" OnlyDetect="yes" Property="NEWERVERSIONDETECTED" />
+    </Upgrade>
+    <Launch Condition="NOT NEWERVERSIONDETECTED" Message="The other product is installed." />
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	yaml := string(res.YAML)
+	if !strings.Contains(yaml, "condition: NOT NEWERVERSIONDETECTED") || strings.Contains(yaml, "downgradeMessage") {
+		t.Errorf("the launch condition of the other product was folded:\n%s", yaml)
+	}
+}
+
+// TestConvertV3DowngradeCondition checks that a v3 Condition element under
+// Product that repeats the downgrade block becomes upgrade.downgradeMessage.
+func TestConvertV3DowngradeCondition(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <Package InstallScope="perMachine" Platform="x64" />
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <Condition Message="newer"> NOT WIX_DOWNGRADE_DETECTED </Condition>
+  </Product>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	yaml := string(res.YAML)
+	if !strings.Contains(yaml, "downgradeMessage: newer") || strings.Contains(yaml, "launchConditions") {
+		t.Errorf("the condition was not folded into downgradeMessage:\n%s", yaml)
+	}
+}
+
 // TestConvertRemoveFolderExBothOwnFolder checks that On="both" on the
 // component's own fixed folder keeps its uninstall half as purge.
 func TestConvertRemoveFolderExBothOwnFolder(t *testing.T) {
