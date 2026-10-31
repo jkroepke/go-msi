@@ -1,6 +1,7 @@
 package wixconvert
 
 import (
+	"fmt"
 	"maps"
 	"regexp"
 	"slices"
@@ -180,7 +181,7 @@ func (c *converter) emitActions() {
 		reanchor(actionID, byAction[actionID])
 		action.set("schedule", byAction[actionID])
 		delete(byAction, actionID)
-		c.extensionAnchors(action, custom)
+		c.extensionAnchors(action, custom, byAction)
 		c.out.add("customActions", action)
 	}
 
@@ -196,7 +197,7 @@ func (c *converter) emitActions() {
 		c.setProgress(action, id, progress)
 		action.set("schedule", append(schedule, byAction[id]...))
 		delete(byAction, id)
-		c.extensionAnchors(action, setter)
+		c.extensionAnchors(action, setter, byAction)
 		c.out.add("customActions", action)
 	}
 
@@ -284,23 +285,35 @@ func (c *converter) setProgress(action *omap, actionID string, texts map[string]
 var extensionAction = regexp.MustCompile(`^Wix[0-9]*[A-Z]`)
 
 // extensionAnchors notes placements anchored on a WiX extension's action,
-// which the msi-builder package does not have.
-func (c *converter) extensionAnchors(action *omap, custom *elem) {
+// which the msi-builder package does not have. When the source schedules
+// that action itself, such as an override before InstallValidate, the
+// placement takes its place; else convert falls back to fallbackAnchor.
+func (c *converter) extensionAnchors(action *omap, custom *elem, byAction map[string][]any) {
 	schedule, ok := action.get("schedule").([]any)
 	if !ok {
 		return
 	}
 
-	for _, entry := range schedule {
+	for i, entry := range schedule {
 		placement, ok := entry.(*omap)
 		if !ok {
 			continue
 		}
 
-		for _, key := range []string{"before", "after"} {
+		for _, key := range []string{keyBefore, keyAfter} {
 			anchor := placement.str(key)
 			if !extensionAction.MatchString(anchor) || c.actions[anchor] != nil {
 				continue
+			}
+
+			if own := extensionPlacement(anchor, placement.str("sequence"), byAction); own != nil {
+				schedule[i] = moveAnchor(placement, own)
+
+				c.todof(action, "schedule", custom.line, "%s is an action of a WiX extension, which the msi-builder package "+
+					"does not have; convert placed this action where the source schedules %s, %s, check that place",
+					anchor, anchor, anchorText(own))
+
+				break
 			}
 
 			// Keeping before or after keeps the order of the actions
@@ -312,6 +325,38 @@ func (c *converter) extensionAnchors(action *omap, custom *elem) {
 				"does not have; convert placed this action %s %s, check that place", anchor, key, target)
 		}
 	}
+}
+
+// extensionPlacement returns the placement the source gives a WiX
+// extension's action, also as an override, in a sequence, when it is next
+// to an action that is no extension's, or nil.
+func extensionPlacement(anchor, sequence string, byAction map[string][]any) *omap {
+	for _, id := range []string{anchor, "override " + anchor} {
+		for _, entry := range byAction[id] {
+			own, ok := entry.(*omap)
+			if !ok || own.str("sequence") != sequence {
+				continue
+			}
+
+			next := own.str(keyBefore) + own.str(keyAfter)
+			if next != "" && !extensionAction.MatchString(next) || own.get("at") != nil && next == "" {
+				return own
+			}
+		}
+	}
+
+	return nil
+}
+
+// anchorText describes a placement's place, such as "before InstallValidate".
+func anchorText(placement *omap) string {
+	for _, key := range []string{keyBefore, keyAfter} {
+		if name := placement.str(key); name != "" {
+			return key + " " + name
+		}
+	}
+
+	return fmt.Sprintf("at %v", placement.get("at"))
 }
 
 // skipAction reports whether a custom action is left out of

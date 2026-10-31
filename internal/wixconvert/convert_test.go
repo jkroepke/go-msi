@@ -1552,3 +1552,60 @@ func TestConvertBuiltCodesRegistryKeyPath(t *testing.T) {
 		}
 	}
 }
+
+// TestConvertRealWorldBatch checks the fixes from a real-world rerun: a
+// bind variable in a Directory name, ALLUSERS=2 with and without
+// MSIINSTALLPERUSER, a ResetPeriodInDays above the limit and an action
+// anchored on a WiX extension's action that the source schedules itself.
+func TestConvertRealWorldBatch(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301" InstallerVersion="200">
+    <Property Id="ALLUSERS" Value="2" />
+    %s
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="!(bind.Property.ProductName)">
+        <Component>
+          <File Source="hello.exe" />
+          <ServiceInstall Name="Hello" Start="auto" Type="ownProcess" ErrorControl="normal">
+            <util:ServiceConfig ResetPeriodInDays="49710" FirstFailureActionType="restart" SecondFailureActionType="none" ThirdFailureActionType="none" />
+          </ServiceInstall>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <CustomAction Id="FailRunning" Error="Close Hello first." />
+    <InstallExecuteSequence>
+      <Custom Action="override Wix4CloseApplications_X64" Before="InstallValidate" />
+      <Custom Action="FailRunning" After="Wix4CloseApplications_X64" Condition="HELLORUNNING" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>`
+
+	for perUser, scope := range map[string]string{"": "perMachineOrUser", "1": "perUserOrMachine"} {
+		prop := ""
+		if perUser != "" {
+			prop = `<Property Id="MSIINSTALLPERUSER" Value="` + perUser + `" />`
+		}
+
+		res, err := wixconvert.Convert(strings.NewReader(fmt.Sprintf(src, prop)), wixconvert.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		out := string(res.YAML)
+		for _, want := range []string{
+			"scope: " + scope, `installerVersion: "5.0"`, "  name: Hello\n",
+			"resetAfterDays: 24855", "ResetPeriodInDays=49710 is above 24855 days",
+			"{sequence: execute, before: InstallValidate, condition: HELLORUNNING}",
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("MSIINSTALLPERUSER=%q: the YAML lacks %q:\n%s", perUser, want, out)
+			}
+		}
+
+		if strings.Contains(out, "MSIINSTALLPERUSER:") || strings.Contains(out, "!(bind") {
+			t.Errorf("MSIINSTALLPERUSER=%q: the YAML keeps MSIINSTALLPERUSER or a bind variable:\n%s", perUser, out)
+		}
+	}
+}
