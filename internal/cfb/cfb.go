@@ -240,7 +240,7 @@ func readSource(src Source) ([]byte, error) {
 		return nil, fmt.Errorf("cfb: stream %q: %w", src.Name, err)
 	}
 
-	data, err := readAtMost(reader, src.Size+1)
+	data, err := io.ReadAll(io.LimitReader(&progressReader{reader: reader}, src.Size+1))
 	if cerr := reader.Close(); err == nil {
 		err = cerr
 	}
@@ -256,38 +256,32 @@ func readSource(src Source) ([]byte, error) {
 	return data, nil
 }
 
-// readAtMost reads up to limit bytes, until io.EOF. Unlike io.ReadAll it
-// gives up with io.ErrNoProgress after maxEmptyReads reads in a row that
-// return neither a byte nor an error.
-func readAtMost(reader io.Reader, limit int64) ([]byte, error) {
-	data := make([]byte, 0, min(limit, miniCutoff+1))
-	buf := make([]byte, min(limit, miniCutoff+1))
-	empty := 0
+// progressReader fails with io.ErrNoProgress after maxEmptyReads reads in
+// a row that return neither a byte nor an error. io.Reader allows such
+// reads, but io.ReadAll and io.Copy into most writers loop on them for ever.
+type progressReader struct {
+	reader io.Reader
+	empty  int
+}
 
-	for int64(len(data)) < limit {
-		count, err := reader.Read(buf[:min(int64(len(buf)), limit-int64(len(data)))])
-		data = append(data, buf[:count]...)
+func (p *progressReader) Read(buf []byte) (int, error) {
+	count, err := p.reader.Read(buf)
+	if count > 0 || err != nil || len(buf) == 0 {
+		p.empty = 0
 
-		switch {
-		case errors.Is(err, io.EOF):
-			return data, nil
-		case err != nil:
-			return data, fmt.Errorf("read: %w", err)
-		case count > 0:
-			empty = 0
-		default:
-			empty++
-			if empty >= maxEmptyReads {
-				return data, io.ErrNoProgress
-			}
-		}
+		return count, err //nolint:wrapcheck // the caller wraps it with the stream name
 	}
 
-	return data, nil
+	p.empty++
+	if p.empty >= maxEmptyReads {
+		return 0, io.ErrNoProgress
+	}
+
+	return 0, nil
 }
 
 // maxEmptyReads is how many reads in a row may return neither a byte nor
-// an error before probeEnd gives up, as bufio does.
+// an error before progressReader and probeEnd give up, as bufio does.
 const maxEmptyReads = 100
 
 // errLonger is the error of a source with bytes past its declared size.
@@ -358,7 +352,7 @@ func (s *sectorWriter) copyFrom(src Source) error {
 		return fmt.Errorf("cfb: stream %q: %w", src.Name, err)
 	}
 
-	copied, err := io.Copy(s.w, io.LimitReader(reader, src.Size))
+	copied, err := io.Copy(s.w, io.LimitReader(&progressReader{reader: reader}, src.Size))
 	s.pos += copied
 
 	if err != nil {

@@ -193,7 +193,7 @@ func TestNativeCaseAliasesCFB10(t *testing.T) {
 
 	streams := []cfb.Stream{{Name: "Xbcd", Data: []byte("first")}, {Name: "Ybcd", Data: []byte("second")}}
 
-	for _, pair := range [][2]string{{"Ébcd", "ébcd"}, {"Ÿbcd", "ÿbcd"}, {"Σbcd", "ςbcd"}, {"Ａbcd", "ａbcd"}, {"Ibcd", "ıbcd"}} {
+	for _, pair := range [][2]string{{"Ébcd", "ébcd"}, {"ÿbcd", "Ÿbcd"}, {"Σbcd", "ςbcd"}, {"Ａbcd", "ａbcd"}, {"Ibcd", "ıbcd"}} {
 		raw := renamed(t, streams, []string{"Xbcd", "Ybcd"}, pair[:])
 
 		if _, err := cfb.Read(raw); err == nil || !strings.Contains(err.Error(), "duplicate name") {
@@ -321,8 +321,8 @@ func TestNativeHeaderCountsCFB12(t *testing.T) {
 		}
 
 		// Without small streams there is no MiniFAT. A count without a
-		// start, which the reader rejects, and FREESECT as the start,
-		// which it accepts, are only logged.
+		// start is rejected by the reader and asserted; FREESECT as the
+		// start, which it accepts, is only logged.
 		large, err := cfb.Write([]cfb.Stream{{Name: "s", Data: make([]byte, 5000)}}, cfb.Options{Version: version})
 		if err != nil {
 			t.Fatal(err)
@@ -338,6 +338,11 @@ func TestNativeHeaderCountsCFB12(t *testing.T) {
 			_, readErr := cfb.Read(bad)
 			got, status := nativeStreams(t, writeFile(t, "counts.cfb", bad), "s")
 			t.Logf("CFB-12 v%d %s: StgOpenStorage 0x%08X, OpenStream %d bytes, cfb.Read %v", version, name, status, len(got["s"]), readErr)
+
+			// The reader rejects a count without a start; Windows must too.
+			if strings.HasPrefix(name, "MiniFAT count") && status == 0 {
+				t.Errorf("CFB-12 v%d %s: Windows opened the file the reader rejects", version, name)
+			}
 		}
 	}
 }

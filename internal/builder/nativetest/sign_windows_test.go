@@ -745,7 +745,7 @@ func TestSignatureNameTerminatorCFB11(t *testing.T) {
 		t.Errorf("CFB-11: WinVerifyTrust = %#x, want TRUST_E_NOSIGNATURE", got)
 	}
 
-	if _, err := sign.Verify(bad); err == nil {
-		t.Error("CFB-11: sign.Verify accepted a signature stream whose name has no terminator")
+	if _, err := sign.Verify(bad); err == nil || !strings.Contains(err.Error(), "terminator") {
+		t.Errorf("CFB-11: sign.Verify = %v, want an error about the name terminator", err)
 	}
 }

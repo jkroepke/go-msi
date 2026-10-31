@@ -225,8 +225,8 @@ func TestUnicodeCaseDuplicate(t *testing.T) {
 		{"Kbcd", "Kbcd"}, // KELVIN SIGN folds to K
 		{"Σbcd", "ςbcd"}, // final sigma
 		{"ǅbcd", "ǆbcd"}, // title case
-		{"Ａbcd", "ａbcd"},
-		{"ıbcd", "Ibcd"}, // dotless i: upper case I, but alone in its fold orbit // fullwidth
+		{"Ａbcd", "ａbcd"}, // fullwidth
+		{"ıbcd", "Ibcd"}, // dotless i: upper case I, but alone in its fold orbit
 	} {
 		wantError(t, pair[0]+"/"+pair[1], rename(pair[0], pair[1]), "duplicate name")
 	}
@@ -273,12 +273,12 @@ func TestHeaderCounts(t *testing.T) {
 		parse(t, bad) // FREESECT as an absent start, as before
 
 		bad = bytes.Clone(small)
-		put32(bad, 0x28, 0)
-
 		if version == 4 {
+			put32(bad, 0x28, 0)
 			wantError(t, "v4 without directory sectors", bad, "0 directory sectors")
 		} else {
-			parse(t, bad) // v3 writes 0 there
+			put32(bad, 0x28, 7)
+			parse(t, bad) // v3 ignores the field, which it writes as 0
 		}
 	}
 }
@@ -343,6 +343,18 @@ func TestSourcePauseAtSize(t *testing.T) {
 
 	if _, err := WriteTo(io.Discard, source(&stalled{data: make([]byte, miniCutoff)}), Options{}); !errors.Is(err, io.ErrNoProgress) {
 		t.Errorf("no end: %v, want io.ErrNoProgress", err)
+	}
+
+	// A stall before the declared size, after a stream that flushed the
+	// buffer, so that io.Copy hands the copy to the destination's ReadFrom.
+	stall := []Source{
+		Stream{Name: "a", Data: make([]byte, 120*512)}.Source(),
+		{Name: "b", Size: 10000, Open: func() (io.ReadCloser, error) {
+			return io.NopCloser(&stalled{data: make([]byte, 5000)}), nil
+		}},
+	}
+	if _, err := WriteTo(&bytes.Buffer{}, stall, Options{}); !errors.Is(err, io.ErrNoProgress) {
+		t.Errorf("stall before the size: %v, want io.ErrNoProgress", err)
 	}
 
 	// Small and empty sources are read into memory, by another path.
