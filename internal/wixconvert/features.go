@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jkroepke/msi-builder/internal/condition"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // addFeature indexes a Feature where it sits: in a feature, in a feature
@@ -161,24 +162,31 @@ func (c *converter) needFeatures() bool {
 		return len(c.features) > 0
 	}
 
+	// An upgrade from the WiX package and ADDLOCAL name the feature by
+	// its Id, so a feature other than msi-builder's own keeps it.
 	first := c.features[0].e
-	if len(c.features[0].kids) > 0 {
+	if len(c.features[0].kids) > 0 || first.attr("Id") != config.DefaultFeatureID {
 		return true
 	}
 
-	if slices.ContainsFunc([]string{"Title", "Description", "Display", "AllowAbsent", "Absent"}, first.has) {
-		return true
+	return !c.plainFeature(first)
+}
+
+// plainFeature reports whether a feature sets nothing that msi-builder's
+// default feature does not: no title or other attribute, level 1, and the
+// install folder, if any, as its configurable folder.
+func (c *converter) plainFeature(elm *elem) bool {
+	if slices.ContainsFunc([]string{"Title", "Description", "Display", "AllowAbsent", "Absent"}, elm.has) {
+		return false
 	}
 
-	if l := first.attr("Level"); l != "" && l != "1" {
-		return true
+	if l := elm.attr("Level"); l != "" && l != "1" {
+		return false
 	}
 
-	if d := first.attr("ConfigurableDirectory"); d != "" && (c.installDir == nil || d != c.installDir.id) {
-		return true
-	}
+	d := elm.attr("ConfigurableDirectory")
 
-	return false
+	return d == "" || c.installDir != nil && d == c.installDir.id
 }
 
 func (c *converter) emitFeatures() {

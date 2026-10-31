@@ -1117,7 +1117,7 @@ func TestConvertKeyFileIDs(t *testing.T) {
         <Component><File Source="` + long + `" /></Component>
       </Directory>
     </StandardDirectory>
-    <Feature Id="Main"><ComponentRef Id="hello.exe" /></Feature>
+    <Feature Id="MainFeature"><ComponentRef Id="hello.exe" /></Feature>
   </Package>
 </Wix>`
 
@@ -1549,6 +1549,169 @@ func TestConvertBuiltCodesRegistryKeyPath(t *testing.T) {
 	for _, unwanted := range []string{"-000000000003}", "-000000000004}", "-000000000005}"} {
 		if strings.Contains(out, unwanted) {
 			t.Errorf("the YAML has %s:\n%s", unwanted, out)
+		}
+	}
+}
+
+// TestConvertRealWorldBatch checks the fixes from a real-world rerun: a
+// bind variable in a Directory name, ALLUSERS=2 with and without
+// MSIINSTALLPERUSER, a ResetPeriodInDays above the limit and an action
+// anchored on a WiX extension's action that the source schedules itself.
+func TestConvertRealWorldBatch(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301" InstallerVersion="200">
+    <Property Id="ALLUSERS" Value="2" />
+    %s
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="!(bind.Property.ProductName)">
+        <Component>
+          <File Source="hello.exe" />
+          <ServiceInstall Name="Hello" Start="auto" Type="ownProcess" ErrorControl="normal">
+            <util:ServiceConfig ResetPeriodInDays="49710" FirstFailureActionType="restart" SecondFailureActionType="none" ThirdFailureActionType="none" />
+          </ServiceInstall>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <CustomAction Id="FailRunning" Error="Close Hello first." />
+    <InstallExecuteSequence>
+      <Custom Action="override Wix4CloseApplications_X64" Before="InstallValidate" />
+      <Custom Action="FailRunning" After="Wix4CloseApplications_X64" Condition="HELLORUNNING" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>`
+
+	for perUser, scope := range map[string]string{"": "perMachineOrUser", "1": "perUserOrMachine"} {
+		prop := ""
+		if perUser != "" {
+			prop = `<Property Id="MSIINSTALLPERUSER" Value="` + perUser + `" />`
+		}
+
+		res, err := wixconvert.Convert(strings.NewReader(fmt.Sprintf(src, prop)), wixconvert.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		out := string(res.YAML)
+		for _, want := range []string{
+			"scope: " + scope, `installerVersion: "5.0"`, "  name: Hello\n",
+			"resetAfterDays: 24855", "ResetPeriodInDays=49710 is above 24855 days",
+			"{sequence: execute, before: InstallValidate, condition: HELLORUNNING}",
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("MSIINSTALLPERUSER=%q: the YAML lacks %q:\n%s", perUser, want, out)
+			}
+		}
+
+		if strings.Contains(out, "MSIINSTALLPERUSER:") || strings.Contains(out, "!(bind") {
+			t.Errorf("MSIINSTALLPERUSER=%q: the YAML keeps MSIINSTALLPERUSER or a bind variable:\n%s", perUser, out)
+		}
+	}
+}
+
+// TestConvertLoneFeature checks that a lone feature with only an Id keeps
+// it, so that ADDLOCAL and the feature states of an upgrade from the WiX
+// package still name it.
+func TestConvertLoneFeature(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <FeatureRef Id="Main" />
+  </Package>
+  <Fragment><Feature Id="Main"><ComponentGroupRef Id="Group" /></Feature></Fragment>
+  <Fragment>
+    <ComponentGroup Id="Group" Directory="INSTALLFOLDER">
+      <Component Id="Settings"><RegistryValue Root="HKLM" Key="SOFTWARE\Example\Hello" Name="A" Value="1" Type="string" /></Component>
+    </ComponentGroup>
+    <StandardDirectory Id="ProgramFiles64Folder"><Directory Id="INSTALLFOLDER" Name="Hello" /></StandardDirectory>
+  </Fragment>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if want := "features:\n  - id: Main\n    components: [Settings]\n"; !strings.Contains(string(res.YAML), want) {
+		t.Errorf("the YAML lacks %q:\n%s", want, res.YAML)
+	}
+}
+
+// TestConvertExtensionAnchorSides checks that actions on both sides of a
+// WiX extension's action keep their order, and that a WixVariable later in
+// the file fills in a folder name.
+func TestConvertExtensionAnchorSides(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="!(wix.FolderName)">
+        <Component><File Source="hello.exe" /></Component>
+      </Directory>
+    </StandardDirectory>
+    <CustomAction Id="Pre" Error="Pre" />
+    <CustomAction Id="Post" Error="Post" />
+    <InstallExecuteSequence>
+      <Custom Action="override Wix4CloseApplications_X64" Before="InstallValidate" />
+      <Custom Action="Pre" Before="Wix4CloseApplications_X64" Condition="A" />
+      <Custom Action="Post" After="Wix4CloseApplications_X64" Condition="B" />
+    </InstallExecuteSequence>
+    <WixVariable Id="FolderName" Value="Hello" />
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"{sequence: execute, before: CostFinalize, condition: A}",
+		"{sequence: execute, after: CostFinalize, condition: B}",
+		"installDir:\n  id: INSTALLFOLDER\n  name: Hello\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestConvertExtensionAnchorSetter checks that a SetProperty on the near
+// side of a WiX extension's action keeps an action on its far side behind
+// it.
+func TestConvertExtensionAnchorSetter(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component><File Source="hello.exe" /></Component>
+      </Directory>
+    </StandardDirectory>
+    <SetProperty Id="PREP" Value="1" Before="Wix4CloseApplications_X64" Sequence="execute" />
+    <CustomAction Id="Post" Property="POSTP" Value="[PREP]" />
+    <InstallExecuteSequence>
+      <Custom Action="override Wix4CloseApplications_X64" Before="LaunchConditions" />
+      <Custom Action="Post" After="Wix4CloseApplications_X64" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{"{sequence: execute, before: CostFinalize}", "{sequence: execute, after: CostFinalize}"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
 		}
 	}
 }

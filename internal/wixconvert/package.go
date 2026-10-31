@@ -165,8 +165,13 @@ func (c *converter) emitPackage() { //nolint:cyclop // a flat list of independen
 		ver = c.value(c.summary, "InstallerVersion")
 	}
 
-	if n, err := strconv.Atoi(ver); err == nil {
-		pkgOut.set("installerVersion", strconv.Itoa(n/100)+"."+strconv.Itoa(n%100))
+	if version, err := strconv.Atoi(ver); err == nil {
+		// A dual scope needs MSIINSTALLPERUSER, which 5.0 brought.
+		if c.dualScope() && version < dualInstallerVersion {
+			version = dualInstallerVersion
+		}
+
+		pkgOut.set("installerVersion", strconv.Itoa(version/100)+"."+strconv.Itoa(version%100))
 	}
 
 	cp := c.value(c.pkg, "Codepage")
@@ -221,14 +226,34 @@ func (c *converter) allUsers(pkgOut *omap, scope string) (string, bool) {
 
 		switch c.value(elm, "Value") {
 		case "2":
-			c.todof(pkgOut, "scope", elm.line,
-				"ALLUSERS=2 lets the user choose the scope; use scope perUserOrMachine or perMachineOrUser, which need installerVersion 5.0")
+			// MSIINSTALLPERUSER=1 makes the per-user install the default;
+			// a dual scope writes both properties itself.
+			scope = scopeMachineOrUser
+			if c.propertyValue(propInstallPerUser) == "1" {
+				scope = scopeUserOrMachine
+			}
+
+			c.todof(pkgOut, "scope", elm.line, "ALLUSERS=2 became scope %s, which lets the user choose the scope and "+
+				"sets ALLUSERS and MSIINSTALLPERUSER itself; it needs installerVersion 5.0", scope)
 		case "":
 			scope = scopeUser
 		}
 	}
 
 	return scope, found
+}
+
+// propertyValue returns the Value of the last Property with an Id.
+func (c *converter) propertyValue(id string) string {
+	value := ""
+
+	for _, elm := range c.properties {
+		if elm.attr("Id") == id {
+			value = c.value(elm, "Value")
+		}
+	}
+
+	return value
 }
 
 // perUserNote notes a WiX v3 package that sets no scope at all.
@@ -375,6 +400,12 @@ const (
 	scopeMachineOrUser = "perMachineOrUser"
 	// propAllUsers is the property that selects the scope.
 	propAllUsers = "ALLUSERS"
+	// propInstallPerUser picks the per-user install of an ALLUSERS=2
+	// package.
+	propInstallPerUser = "MSIINSTALLPERUSER"
+	// dualInstallerVersion is Windows Installer 5.0, the first with
+	// MSIINSTALLPERUSER.
+	dualInstallerVersion = 500
 	// propPerMachineFolder is WixUI_Advanced's per-machine install folder.
 	propPerMachineFolder = "WixPerMachineFolder"
 )
@@ -616,12 +647,17 @@ func (c *converter) allText() string {
 }
 
 // skippedProperties are properties that other keys express.
-func skippedProperty(id string) bool {
-	if _, ok := arpKeys[id]; ok {
+func (c *converter) skippedProperty(propID string) bool {
+	// A dual scope sets MSIINSTALLPERUSER itself.
+	if propID == propInstallPerUser && c.dualScope() {
 		return true
 	}
 
-	switch id {
+	if _, ok := arpKeys[propID]; ok {
+		return true
+	}
+
+	switch propID {
 	case propAllUsers, "WixShellExecTarget", "QtExecCmdLine", "QtExec64CmdLine", "WixQuietExecCmdLine", "WixQuietExec64CmdLine", "WIXUI_INSTALLDIR",
 		"WIXUI_EXITDIALOGOPTIONALCHECKBOX", "WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT", "WIXUI_EXITDIALOGOPTIONALTEXT":
 		return true
@@ -637,7 +673,7 @@ func (c *converter) emitProperties() {
 
 	for _, elm := range c.properties {
 		propID := elm.attr("Id")
-		if skippedProperty(propID) || upgradeOnly(elm, upgradeProps) {
+		if c.skippedProperty(propID) || upgradeOnly(elm, upgradeProps) {
 			continue
 		}
 

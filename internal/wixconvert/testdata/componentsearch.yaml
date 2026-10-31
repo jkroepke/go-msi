@@ -14,6 +14,9 @@ upgrade:
 installDir:
   id: INSTALLFOLDER
   name: Hello
+features:
+  - id: Complete
+    components: [MainExecutable, InstallFolder]
 components:
   - id: MainExecutable
     guid: '{7B2C3D4E-5F60-4B8C-9DAE-1F2A3B4C5D6E}'

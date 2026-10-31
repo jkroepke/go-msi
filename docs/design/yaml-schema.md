@@ -243,7 +243,7 @@ them braced and upper case.
 |---|---|---|---|
 | `platform` | enum | required | `x86`, `x64`, `arm64` (aliases `intel`, `amd64`, `aarch64`), any case |
 | `scope` | enum | `perMachine` | `perMachine` (`ALLUSERS=1`), `perUser` (no `ALLUSERS`), or a dual scope that lets the user choose at install time: `perUserOrMachine` (`ALLUSERS=2`, `MSIINSTALLPERUSER=1`, per user unless the user chooses all users) or `perMachineOrUser` (`ALLUSERS=2`, per machine unless the user chooses per user); see "Install scope" below |
-| `installerVersion` | string | `"5.0"` | Page Count = major × 100 + minor. x86: 1.0 to 5.0, x64: 2.0 to 5.0, arm64: 5.0 |
+| `installerVersion` | string | `"5.0"` | Page Count = major × 100 + minor; a major alone, such as `5`, is 5.0. x86: 1.0 to 5.0, x64: 2.0 to 5.0, arm64: 5.0 |
 | `codepage` | int | `1252` | Database code page, section 2.3 |
 | `compression` | enum | `lzx` | `lzx` (LZX with a 2 MB window), `lzx:15` … `lzx:21` (a window of 2^N bytes), `mszip` or `none` (stored blocks) |
 | `cabinet` | string | `<name>.cab` | Name of the first cabinet; further cabinets insert their number before the extension (`Hello2.cab`, `Hello3.cab`). Embedded, it is a stream name of at most 62 characters (fewer outside `0-9A-Za-z._`). ICE03 wants an identifier (letters, digits, `_` and `.`, not starting with a digit), so the default keeps only those characters of `<name>`, and an explicit name that is no identifier warns. The default is `product.cab` when that is no identifier, cannot be a stream name or `<name>` has non-ASCII characters. Beside the package (`embedCabinets: false`) it is a plain filename and need not be a stream name |
@@ -627,16 +627,16 @@ features:
   `(Installed AND (REMOVE OR REINSTALL)) OR (<condition>)` instead: with
   the first-install guard the feature fell back to level 0 at
   `msiexec /x`, which left it, its files and the product installed and
-  still returned 0 (reported from a real-world port on SERVER2025; the
-  fix is INST-06). The maintenance term covers removals (`/x`, `REMOVE`,
-  the old product's removal in a major upgrade) and repairs only, so
-  `ADDLOCAL` in a later run still needs the condition. A package built
-  before this change keeps the feature at its uninstall and at the old
-  product's removal in a major upgrade (inferred, not tested). The conditions therefore
-  decide first installs and, in part, major upgrades, removals and
-  repairs; a feature that a condition disabled at the first install can be
-  added later with `ADDLOCAL`, while a `default: disabled` feature still
-  needs its condition. A major upgrade
+  still returned 0 (reported from a real-world port on SERVER2025;
+  the fix is confirmed by INST-06). The maintenance term covers removals
+  (`/x`, `REMOVE`, the old product's removal in a major upgrade) and
+  repairs only, so `ADDLOCAL` in a later run still needs the condition.
+  A package built before this change keeps the feature at its uninstall
+  and at the old product's removal in a major upgrade (inferred, not
+  tested). The conditions therefore decide first installs and, in part,
+  major upgrades, removals and repairs; a feature that a condition
+  disabled at the first install can be added later with `ADDLOCAL`,
+  while a `default: disabled` feature still needs its condition. A major upgrade
   without the property drops a feature whose `disabled` condition is then
   true (`ASSOC <> 1`), and the old version's copy is removed. A feature that is off by default and has no
   `disabled` condition was kept by an upgrade when the old version had

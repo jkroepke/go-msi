@@ -2,6 +2,7 @@ package wixconvert
 
 import (
 	"cmp"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -112,8 +113,16 @@ func (cc *compConv) serviceChild(svc *omap, kid *elem) { //nolint:cyclop // one 
 func (c *converter) recovery(svc *omap, elm *elem) {
 	recovery := newMap()
 
-	if n, err := strconv.Atoi(elm.attr("ResetPeriodInDays")); err == nil {
-		recovery.set("resetAfterDays", n)
+	if days, err := strconv.Atoi(elm.attr("ResetPeriodInDays")); err == nil {
+		// The reset period is a count of seconds that msi-builder keeps
+		// within a signed 32-bit number.
+		if maxDays := math.MaxInt32 / (24 * 60 * 60); days > maxDays {
+			c.todof(recovery, "resetAfterDays", elm.line, "ResetPeriodInDays=%d is above %d days, the most resetAfterDays takes; "+
+				"convert set %d", days, maxDays, maxDays)
+			days = maxDays
+		}
+
+		recovery.set("resetAfterDays", days)
 	}
 
 	var actions []string
@@ -328,6 +337,8 @@ func (cc *compConv) ownControl(svc *omap, elm *elem) {
 	set("stopOnUninstall", stopUninstall, true)
 	set("deleteOnUninstall", removeUninstall, true)
 
+	// Without Wait, WiX leaves the column null, which waits like 1 by the
+	// ServiceControl table documentation, so wait keeps its default true.
 	if elm.no("Wait") {
 		ctl.set("wait", false)
 	}

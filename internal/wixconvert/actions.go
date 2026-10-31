@@ -161,6 +161,8 @@ func (c *converter) scheduleReboot(entry *elem) {
 
 func (c *converter) emitActions() {
 	byAction := c.placements()
+	sides := c.extensionSides(byAction)
+
 	c.quietExecCommands()
 	reanchor := c.reanchor(byAction)
 	progress := c.progress()
@@ -180,7 +182,7 @@ func (c *converter) emitActions() {
 		reanchor(actionID, byAction[actionID])
 		action.set("schedule", byAction[actionID])
 		delete(byAction, actionID)
-		c.extensionAnchors(action, custom)
+		c.extensionAnchors(action, custom, byAction, sides)
 		c.out.add("customActions", action)
 	}
 
@@ -196,7 +198,7 @@ func (c *converter) emitActions() {
 		c.setProgress(action, id, progress)
 		action.set("schedule", append(schedule, byAction[id]...))
 		delete(byAction, id)
-		c.extensionAnchors(action, setter)
+		c.extensionAnchors(action, setter, byAction, sides)
 		c.out.add("customActions", action)
 	}
 
@@ -284,23 +286,41 @@ func (c *converter) setProgress(action *omap, actionID string, texts map[string]
 var extensionAction = regexp.MustCompile(`^Wix[0-9]*[A-Z]`)
 
 // extensionAnchors notes placements anchored on a WiX extension's action,
-// which the msi-builder package does not have.
-func (c *converter) extensionAnchors(action *omap, custom *elem) {
+// which the msi-builder package does not have. When the source schedules
+// that action itself, such as an override before InstallValidate, the
+// placement takes its place; else convert falls back to fallbackAnchor.
+func (c *converter) extensionAnchors(action *omap, custom *elem, byAction map[string][]any, sides map[anchorSide]bool) {
 	schedule, ok := action.get("schedule").([]any)
 	if !ok {
 		return
 	}
 
-	for _, entry := range schedule {
+	for i, entry := range schedule {
 		placement, ok := entry.(*omap)
 		if !ok {
 			continue
 		}
 
-		for _, key := range []string{"before", "after"} {
+		for _, key := range []string{keyBefore, keyAfter} {
 			anchor := placement.str(key)
 			if !extensionAction.MatchString(anchor) || c.actions[anchor] != nil {
 				continue
+			}
+
+			// The source's own place of the extension action keeps the
+			// order only for an action on its far side, such as one after
+			// an action that runs before InstallValidate, and only when no
+			// action is on its near side, which the fallback would place.
+			seq := placement.str("sequence")
+			if own := extensionPlacement(anchor, seq, byAction); own != nil && own.str(key) == "" &&
+				!sides[anchorSide{anchor, seq, otherSide(key)}] {
+				schedule[i] = moveAnchor(placement, own)
+
+				c.todof(action, "schedule", custom.line, "%s is an action of a WiX extension, which the msi-builder package "+
+					"does not have; convert placed this action where the source schedules %s, %s, check that place",
+					anchor, anchor, anchorText(own))
+
+				break
 			}
 
 			// Keeping before or after keeps the order of the actions
@@ -312,6 +332,81 @@ func (c *converter) extensionAnchors(action *omap, custom *elem) {
 				"does not have; convert placed this action %s %s, check that place", anchor, key, target)
 		}
 	}
+}
+
+// anchorSide is a side of an anchor in a sequence: before or after it.
+type anchorSide struct{ anchor, sequence, key string }
+
+// extensionSides returns the sides of the WiX extension actions that the
+// source schedules actions on: Custom entries and SetProperty or
+// SetDirectory elements, counted in every sequence a setter may run in.
+func (c *converter) extensionSides(byAction map[string][]any) map[anchorSide]bool {
+	sides := make(map[anchorSide]bool)
+
+	for _, setter := range c.setters {
+		for _, key := range []string{keyBefore, keyAfter} {
+			if anchor := setter.attr(strings.ToUpper(key[:1]) + key[1:]); extensionAction.MatchString(anchor) {
+				for _, seq := range sequenceNames {
+					sides[anchorSide{anchor, seq, key}] = true
+				}
+			}
+		}
+	}
+
+	for _, schedule := range byAction {
+		for _, entry := range schedule {
+			placement, ok := entry.(*omap)
+			if !ok {
+				continue
+			}
+
+			for _, key := range []string{keyBefore, keyAfter} {
+				if anchor := placement.str(key); extensionAction.MatchString(anchor) {
+					sides[anchorSide{anchor, placement.str("sequence"), key}] = true
+				}
+			}
+		}
+	}
+
+	return sides
+}
+
+// otherSide returns after for before and before for after.
+func otherSide(key string) string {
+	if key == keyBefore {
+		return keyAfter
+	}
+
+	return keyBefore
+}
+
+// extensionPlacement returns the placement the source gives a WiX
+// extension's action, also as an override, in a sequence, when it is next
+// to an action that is no extension's, or nil.
+func extensionPlacement(anchor, sequence string, byAction map[string][]any) *omap {
+	for _, id := range []string{anchor, "override " + anchor} {
+		for _, entry := range byAction[id] {
+			own, ok := entry.(*omap)
+			if !ok || own.str("sequence") != sequence {
+				continue
+			}
+
+			if next := own.str(keyBefore) + own.str(keyAfter); next != "" && !extensionAction.MatchString(next) {
+				return own
+			}
+		}
+	}
+
+	return nil
+}
+
+// anchorText describes a placement's place, such as "before InstallValidate".
+func anchorText(placement *omap) string {
+	if name := placement.str(keyBefore); name != "" {
+		return keyBefore + " " + name
+	}
+
+	return keyAfter + " " + placement.str(keyAfter)
 }
 
 // skipAction reports whether a custom action is left out of
