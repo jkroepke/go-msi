@@ -23,6 +23,9 @@ directories:
         children:
           - id: DataDir
             name: data
+features:
+  - id: Complete
+    components: [HelloExe, Data]
 components:
   - id: HelloExe
     files:
