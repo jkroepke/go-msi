@@ -3,6 +3,7 @@ package codepage //nolint:testpackage // the tests compare the unexported tables
 import (
 	"bytes"
 	"compress/flate"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -212,6 +213,15 @@ func TestWindowsTables(t *testing.T) {
 			}
 
 			compareTables(t, codePage, native, embedded)
+
+			// TEMPORARY transport of the dump through the CI log; removed
+			// once the tables are committed.
+			if t.Failed() && os.Getenv("GITHUB_ACTIONS") == "true" {
+				dumped := base64.StdEncoding.EncodeToString(compress(t, native.marshal()))
+				for i := 0; i < len(dumped); i += 3000 {
+					t.Logf("CPTABLE %d %d %s", codePage, i, dumped[i:min(i+3000, len(dumped))])
+				}
+			}
 		})
 	}
 }
@@ -219,9 +229,18 @@ func TestWindowsTables(t *testing.T) {
 func compareTables(t *testing.T, codePage int, native, embedded *table) {
 	t.Helper()
 
+	errs := 0
+	report := func(format string, args ...any) {
+		if errs++; errs <= 20 {
+			t.Errorf(format, args...)
+		} else {
+			t.Fail()
+		}
+	}
+
 	for first := range 256 {
 		if native.single[first] != embedded.single[first] {
-			t.Errorf("code page %d byte %02x: Windows %04x, table %04x", codePage, first, native.single[first], embedded.single[first])
+			report("code page %d byte %02x: Windows %04x, table %04x", codePage, first, native.single[first], embedded.single[first])
 		}
 
 		if native.double[first] == nil || embedded.double[first] == nil {
@@ -230,7 +249,7 @@ func compareTables(t *testing.T, codePage int, native, embedded *table) {
 
 		for trail := range 256 {
 			if native.double[first][trail] != embedded.double[first][trail] {
-				t.Errorf("code page %d bytes %02x %02x: Windows %04x, table %04x",
+				report("code page %d bytes %02x %02x: Windows %04x, table %04x",
 					codePage, first, trail, native.double[first][trail], embedded.double[first][trail])
 			}
 		}
@@ -238,7 +257,7 @@ func compareTables(t *testing.T, codePage int, native, embedded *table) {
 
 	for code := range native.encode {
 		if native.encode[code] != embedded.encode[code] {
-			t.Errorf("code page %d U+%04X: Windows %04x, table %04x", codePage, code, native.encode[code], embedded.encode[code])
+			report("code page %d U+%04X: Windows %04x, table %04x", codePage, code, native.encode[code], embedded.encode[code])
 		}
 	}
 }
@@ -253,18 +272,25 @@ func TestWindowsDecodePairs(t *testing.T) {
 		t.Run(strconv.Itoa(codePage), func(t *testing.T) {
 			t.Parallel()
 
+			errs := 0
+
 			for first := range 256 {
-				checkDecode(t, codePage, []byte{byte(first)})
+				errs += checkDecode(t, codePage, []byte{byte(first)})
 
 				for second := range 256 {
-					checkDecode(t, codePage, []byte{byte(first), byte(second)})
+					errs += checkDecode(t, codePage, []byte{byte(first), byte(second)})
+				}
+
+				if errs > 20 {
+					t.Fatal("too many differences")
 				}
 			}
 		})
 	}
 }
 
-func checkDecode(t *testing.T, codePage int, data []byte) {
+// checkDecode returns 1 when Decode and Windows disagree on data.
+func checkDecode(t *testing.T, codePage int, data []byte) int {
 	t.Helper()
 
 	want, ok := nativeDecode(codePage, data)
@@ -272,10 +298,14 @@ func checkDecode(t *testing.T, codePage int, data []byte) {
 
 	switch {
 	case ok && err != nil:
-		t.Errorf("code page %d % x: Windows reads %q, Decode fails: %v", codePage, data, want, err)
+		t.Errorf("code page %d % x: Windows reads %+q, Decode fails: %v", codePage, data, want, err)
 	case !ok && err == nil:
-		t.Errorf("code page %d % x: Windows refuses it, Decode returns %q", codePage, data, got)
+		t.Errorf("code page %d % x: Windows refuses it, Decode returns %+q", codePage, data, got)
 	case ok && got != want:
-		t.Errorf("code page %d % x: Windows reads %q, Decode returns %q", codePage, data, want, got)
+		t.Errorf("code page %d % x: Windows reads %+q, Decode returns %+q", codePage, data, want, got)
+	default:
+		return 0
 	}
+
+	return 1
 }
