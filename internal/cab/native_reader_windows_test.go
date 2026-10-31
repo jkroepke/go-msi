@@ -108,6 +108,12 @@ func TestNativeReadMakecabLegacyName(t *testing.T) { //nolint:paralleltest // ma
 
 	acp, _, _ := syscall.NewLazyDLL("kernel32.dll").NewProc("GetACP").Call()
 	if int(acp) != cab.LegacyCodePage {
+		// The CI runners use 1252; a skip there would leave the spec's
+		// statement unobserved while the run stays green.
+		if os.Getenv("GITHUB_ACTIONS") == "true" {
+			t.Fatalf("the CI runner's ANSI code page is %d, not %d", acp, cab.LegacyCodePage)
+		}
+
 		t.Skipf("the ANSI code page is %d, not %d", acp, cab.LegacyCodePage)
 	}
 
