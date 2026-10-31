@@ -73,6 +73,38 @@ file sets defaults, and a default may use other variables
 (`NAME: Acme ${ARCH}`); `--var` and `--env` values replace it. `[INSTALLDIR]` and other names in brackets are not
 variables: Windows Installer fills them in at install time.
 
+### Parts that depend on the build
+
+When a part of the file depends on the build, such as a file only the arm64
+package installs, pass `--template`: the file is then a Go
+[text/template](https://pkg.go.dev/text/template) that is rendered before it
+is read.
+
+```text
+package:
+  platform: {{ var "ARCH" "x64" }}
+components:
+  - files:
+      - source: hello.exe
+{{- if eq (var "ARCH" "x64") "arm64" }}
+      - source: hello-arm64.dll
+{{- end }}
+```
+
+```shell
+msi-builder build --template --var ARCH=arm64 --var VERSION=1.4.0 msi.yaml
+msi-builder render --var ARCH=arm64 msi.yaml   # print the rendered YAML
+```
+
+`{{ .ARCH }}` reads `--var ARCH=...` and fails when it is not set;
+`{{ var "ARCH" "x64" }}` also reads the environment with `--env` and falls
+back to `x64`. `{{ has "ARCH" }}` tests whether it is set, and
+`{{ quote ... }}` writes any value as a YAML string. The template does not see
+`vars:`, and `${NAME}` is replaced after rendering as usual. A YAML error
+names a line of the rendered file, which `msi-builder render` prints.
+Without `--template`, `{{` is plain text. The details are in the
+[design document](design/yaml-schema.md#311-templates).
+
 ## Recipes
 
 ### Install several files and folders

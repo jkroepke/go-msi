@@ -29,6 +29,11 @@ versioning after 1.0.
   passes. A folder source's `guids` pin the codes of single files.
   Replaced components stay in `Config.folders`, so the second pass still
   reports problems at their YAML path.
+  `Options.Template` (CLI `--template`, opt-in only) runs the file through
+  `text/template` before YAML parsing (`template.go`, `Render`, also behind
+  `msi-builder render`); YAML errors then name lines of the rendered text,
+  and template examples in the docs are fenced as `text` because the guide
+  tests parse every `yaml` block.
 - [`pkg/builder`](pkg/builder): the public `Build`, `Options`, `Result` and
   `File`. It converts to and from `internal/builder` and adds nothing else;
   `Options` and `File` mirror the internal structs field by field so that a

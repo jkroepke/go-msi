@@ -157,6 +157,50 @@ package:
   platform: ${ARCH}
 ```
 
+### 3.1.1 Templates
+
+With `--template` (`Options.Template` in Go), the file is run through Go's
+`text/template` before it is parsed as YAML, for what WiX does with
+`<?if?>` and `<?foreach?>`: parts of the file that depend on the build.
+Templates are opt-in, and only the flag turns them on, because:
+
+- a `{{` that a plain file already holds (in a description, a formatted
+  string or a registry value) would change meaning;
+- a template is not valid YAML, so editors cannot check it against the
+  schema;
+- YAML errors in a template refer to lines of the rendered text, not of the
+  file.
+
+A plain file whose YAML does not parse and that holds `{{` gets a hint to
+pass `--template`. The template's data maps each `--var` to its value
+(`{{ .ARCH }}`); a name that is not set is an error. The functions are Go's
+built-in ones and five more, with no third-party library:
+
+| Function | Result |
+|---|---|
+| `var "NAME"` / `var "NAME" "default"` | The variable from `--var`, then from the environment with `--env`, else the default; without a default an unset variable is an error |
+| `has "NAME"` | Whether `var "NAME"` finds a value |
+| `quote S` | `S` as a double-quoted YAML string, so any value arrives as given |
+| `indent N S` | `S` with every line after the first indented by `N` spaces |
+| `split SEP S` | The parts of `S` between each `SEP`, for `{{ range split ";" (var "LANGS") }}`; an empty `S` has none |
+
+The template does not see `vars`: the block is YAML that only exists after
+rendering. `${NAME}` references pass through the template unchanged and are
+replaced afterwards as described above. A template may write at most
+16 MiB. `msi-builder render` prints the rendered file, so the line of a YAML
+error can be found in it.
+
+```text
+package:
+  platform: {{ var "ARCH" "x64" }}
+components:
+  - files:
+      - source: hello.exe
+{{- if eq (var "ARCH" "x64") "arm64" }}
+      - source: hello-arm64.dll
+{{- end }}
+```
+
 ### 3.2 Editor support
 
 [`pkg/config/schema.json`](../../pkg/config/schema.json) is a JSON Schema of this

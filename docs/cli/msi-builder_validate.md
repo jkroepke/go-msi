@@ -24,6 +24,7 @@ msi-builder validate [flags] msi.yaml
 ```text
       --env              let environment variables fill ${NAME} references
   -h, --help             help for validate
+      --template         render the file with Go text/template before parsing it
       --var NAME=VALUE   set a variable referenced as ${NAME}; repeatable
 ```
 

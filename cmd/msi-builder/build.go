@@ -36,29 +36,35 @@ func (v vars) Set(s string) error {
 
 // loadFlags are the flags shared by build and validate.
 type loadFlags struct {
-	vars vars
-	env  bool
+	vars     vars
+	env      bool
+	template bool
 }
 
 func (l *loadFlags) register(cmd *cobra.Command) {
 	l.vars = make(vars)
 	cmd.Flags().Var(l.vars, "var", "set a variable referenced as ${NAME}; repeatable")
 	cmd.Flags().BoolVar(&l.env, "env", false, "let environment variables fill ${NAME} references")
+	cmd.Flags().BoolVar(&l.template, "template", false, "render the file with Go text/template before parsing it")
 	mustComplete(cmd.RegisterFlagCompletionFunc("var", cobra.NoFileCompletions))
 }
 
 func (l *loadFlags) load(path string) (*config.Config, error) {
-	opts := config.Options{Vars: l.vars}
-	if l.env {
-		opts.LookupEnv = os.LookupEnv
-	}
-
-	cfg, err := config.Load(path, opts)
+	cfg, err := config.Load(path, l.options())
 	if err != nil {
 		return nil, fmt.Errorf("load: %w", err)
 	}
 
 	return cfg, nil
+}
+
+func (l *loadFlags) options() config.Options {
+	opts := config.Options{Vars: l.vars, Template: l.template}
+	if l.env {
+		opts.LookupEnv = os.LookupEnv
+	}
+
+	return opts
 }
 
 func printDiagnostics(w io.Writer, ds config.Diagnostics) {
@@ -98,6 +104,44 @@ exit code is 1 when there is an error.`,
 	}
 
 	load.register(cmd)
+
+	return cmd
+}
+
+func newRenderCmd() *cobra.Command {
+	var load loadFlags
+
+	cmd := &cobra.Command{
+		Use:   "render [flags] msi.yaml",
+		Short: "Print a template file as build and validate --template read it",
+		Long: `Render runs msi.yaml through Go's text/template, as build and validate do
+with --template, and prints the YAML that comes out. ${NAME} references are
+left as they are. The line numbers of a YAML error with --template are lines
+of this output.`,
+		Example:           "  msi-builder render --var ARCH=arm64 msi.yaml",
+		Args:              exactlyOne("msi.yaml"),
+		ValidArgsFunction: fileArg("yaml", "yml"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			data, err := os.ReadFile(args[0])
+			if err != nil {
+				return err //nolint:wrapcheck // the error names the file
+			}
+
+			out, err := config.Render(data, load.options())
+			if err != nil {
+				return fmt.Errorf("%s: %w", args[0], err)
+			}
+
+			_, err = cmd.OutOrStdout().Write(out)
+
+			return err //nolint:wrapcheck // writing to stdout
+		},
+	}
+
+	load.vars = make(vars)
+	cmd.Flags().Var(load.vars, "var", `set a variable read as {{ .NAME }} or {{ var "NAME" }}; repeatable`)
+	cmd.Flags().BoolVar(&load.env, "env", false, `let {{ var "NAME" }} read environment variables`)
+	mustComplete(cmd.RegisterFlagCompletionFunc("var", cobra.NoFileCompletions))
 
 	return cmd
 }

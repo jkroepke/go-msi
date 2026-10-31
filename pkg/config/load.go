@@ -20,6 +20,9 @@ type Options struct {
 	Vars map[string]string
 	// LookupEnv, when set, is consulted after Vars and before the file's vars.
 	LookupEnv func(string) (string, bool)
+	// Template runs the document through Go's text/template before it is
+	// parsed as YAML; see Render.
+	Template bool
 }
 
 // Load reads, parses and defaults the file at path. It does not validate;
@@ -42,9 +45,18 @@ func Load(path string, opts Options) (*Config, error) {
 
 // Parse parses a YAML document, substitutes variables and applies defaults.
 func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
+	if opts.Template {
+		rendered, err := Render(data, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		data = rendered
+	}
+
 	var doc yaml.Node
 	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, err //nolint:wrapcheck // yaml errors carry the line
+		return nil, yamlErr(err, data, opts.Template)
 	}
 
 	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
@@ -110,6 +122,20 @@ func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one 
 	ApplyDefaults(cfg)
 
 	return cfg, nil
+}
+
+// yamlErr adds a hint to a YAML syntax error: with a template its lines are
+// those of the rendered text, and without one a "{{" may be template syntax
+// written in a file that was not rendered.
+func yamlErr(err error, data []byte, template bool) error {
+	switch {
+	case template:
+		return fmt.Errorf("%w (lines of the rendered file; print it with msi-builder render)", err)
+	case bytes.Contains(data, []byte("{{")):
+		return fmt.Errorf("%w (the file contains {{: pass --template to render Go template syntax)", err)
+	default:
+		return err
+	}
 }
 
 // fileVars returns the file's vars and the line of each value. A value

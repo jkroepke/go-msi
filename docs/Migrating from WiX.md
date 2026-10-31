@@ -204,7 +204,9 @@ WiX preprocessor variables become `${NAME}` variables:
 | `$(env.VERSION)` | `${VERSION}` with `--env` |
 | `<?define Port = 8080 ?>` | `vars:` at the top of the file |
 | `!(bind.FileVersion.hello.exe)` | Pass the version as a variable |
-| `<?if?>`, `<?include?>` | Not available; use component `condition`s, or generate the YAML file in your build |
+| `<?if $(var.Arch) = arm64 ?>`, `<?foreach?>` | `{{ if eq .Arch "arm64" }}`, `{{ range split ";" .Langs }}` with `--template` (see [YAML Schema](YAML%20Schema.md#parts-that-depend-on-the-build)) |
+| `<?ifndef Version?><?error?>` | Nothing: an undefined `${Version}` or `{{ .Version }}` is an error |
+| `<?include?>` | Not available; merge the file in, or generate the YAML file in your build |
 
 `[INSTALLFOLDER]`, `[#hello.exe]` and other names in brackets work as they
 do in WiX: Windows Installer fills them in at install time.

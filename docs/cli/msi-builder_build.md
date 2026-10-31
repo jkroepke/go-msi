@@ -39,6 +39,7 @@ msi-builder build [flags] msi.yaml
       --pfx string             sign with the key and certificates in this PKCS #12 file
   -q, --quiet                  print nothing on success
       --skip-verify            do not read the finished package back
+      --template               render the file with Go text/template before parsing it
       --timestamp-url string   RFC 3161 time-stamping authority
       --url string             more-information link of the signature
       --var NAME=VALUE         set a variable referenced as ${NAME}; repeatable
