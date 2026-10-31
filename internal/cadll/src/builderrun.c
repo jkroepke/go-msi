@@ -1105,6 +1105,7 @@ static const WCHAR accountsKey[] = u"SOFTWARE\\msi-builder\\GrantAccounts\\";
 static const WCHAR userAccountsKey[] = u"\\Software\\msi-builder\\GrantAccounts\\";
 static const WCHAR propUserSid[] = u"UserSID";
 static const WCHAR msgRegFailed[] = u"the product's registration cannot be read";
+static const WCHAR msgRegNone[] = u"the product is not registered";
 static const WCHAR msgRegNowhere[] = u"the product is not registered yet; the install's scope decides";
 static const WCHAR msgRegMachine[] = u"the product is registered per machine";
 static const WCHAR msgRegUser[] = u"the product is registered for the user";
@@ -1806,7 +1807,7 @@ __declspec(dllexport) UINT WINAPI BuilderGrant(MSIHANDLE install)
         context = registeredContexts(product, user && validSid(user) ? user : 0);
         HeapFree(heap, 0, user);
         if (op == 'c') {
-            logft(install, tmplGrant, context < 0 ? msgRegFailed : context == 0 ? msgRegNowhere : context == CONTEXT_MACHINE ? msgRegMachine : context == CONTEXT_USERUNMANAGED ? msgRegUser : msgRegBoth, 0, 0);
+            logft(install, tmplGrant, context < 0 ? msgRegFailed : context == 0 ? (again ? msgRegNone : msgRegNowhere) : context == CONTEXT_MACHINE ? msgRegMachine : context == CONTEXT_USERUNMANAGED ? msgRegUser : msgRegBoth, 0, 0);
         }
         if (context > 0 && context != (CONTEXT_MACHINE | CONTEXT_USERUNMANAGED) && op != 'x') {
             perUser = context == CONTEXT_USERUNMANAGED;
