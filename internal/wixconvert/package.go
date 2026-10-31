@@ -507,8 +507,7 @@ func (c *converter) detectsNewer() bool {
 		}
 
 		for _, kid := range upgradeElem.kids {
-			if kid.is("UpgradeVersion") && kid.yes("OnlyDetect") && kid.no("IncludeMinimum") &&
-				kid.attr("Minimum") == c.pkg.attr("Version") && !kid.has("Maximum") {
+			if kid.is("UpgradeVersion") && kid.yes("OnlyDetect") && kid.attr("Minimum") == c.pkg.attr("Version") && !kid.has("Maximum") {
 				return true
 			}
 		}

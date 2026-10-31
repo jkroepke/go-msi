@@ -259,8 +259,8 @@ upgrade:
   install the older version next to the newer one.
 - `IgnoreRemoveFailure="yes"` is `ignoreRemoveFailure: true`.
 - A hand-made major upgrade without `MajorUpgrade`, an `UpgradeVersion` of
-  the package's own `UpgradeCode` with a `Minimum` and `Maximum` at this
-  version, with `RemoveExistingProducts` scheduled, is `minVersion`
+  the package's own `UpgradeCode` with a `Minimum` below this version and a
+  `Maximum` at it, with `RemoveExistingProducts` scheduled, is `minVersion`
   (`IncludeMinimum="no"` is `includeMin: false`); `convert` writes it. A
   version below the minimum stays installed next to the new one.
 - A WiX v3 `<Product>` whose `<Package>` has no `InstallScope` leaves

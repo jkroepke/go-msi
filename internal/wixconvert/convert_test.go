@@ -637,6 +637,15 @@ func TestConvertUpgradeFloor(t *testing.T) {
 			[]string{"minVersion: 0.18.0", "newerProperty: NEWERFOUND"},
 			[]string{handMade, noNewer},
 		},
+		"own inclusive newer detection": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="PREVIOUSFOUND" />
+      <UpgradeVersion Minimum="1.2.0" OnlyDetect="yes" Property="NEWERFOUND" />
+    </Upgrade>`,
+			removal,
+			[]string{"minVersion: 0.18.0", "property: NEWERFOUND"},
+			[]string{handMade, noNewer},
+		},
 		"newer detection of another product": {
 			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
       <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="PREVIOUSFOUND" />
