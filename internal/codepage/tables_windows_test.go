@@ -122,9 +122,12 @@ func dump(t *testing.T, codePage int) *table {
 			t.Fatalf("code page %d: U+%04X encodes to % x", codePage, code, seq)
 		}
 
-		// WC_NO_BEST_FIT_CHARS promises a round trip; the builder relies on it.
+		// Even with WC_NO_BEST_FIT_CHARS, Windows writes some private-use
+		// characters as bytes that MB_ERR_INVALID_CHARS refuses (CP874
+		// U+F8C1 as DB). Decode refuses those bytes, so Encode must not
+		// write them: only round trips count.
 		if back, ok := nativeDecode(codePage, seq); !ok || back != string(rune(code)) {
-			t.Fatalf("code page %d: U+%04X encodes to % x, which decodes to %q", codePage, code, seq, back)
+			tab.encode[code] = unmapped
 		}
 	}
 
