@@ -124,11 +124,13 @@ func fileDACL(t *testing.T, path string) string {
 }
 
 // TestMsiexecGrantNullDACLChild checks what an inheriting folder grant does
-// to a subfolder without a DACL (a NULL DACL, which gives everyone full
-// access) when the install succeeds and when it is rolled back (SEC-03).
-// Microsoft documents that such a child gets a DACL with only the inherited
-// ACE when the parent gains an inheritable ACE, and an empty DACL, which
-// gives no one access, when the ACE is removed again.
+// to a folder and a file without a DACL (a NULL DACL, which gives everyone
+// full access) in that folder, when the install succeeds, when it is rolled
+// back and on uninstall (SEC-03). Microsoft documents that such a child gets
+// a DACL with only the inherited ACE when the parent gains an inheritable
+// ACE, and an empty DACL, which gives no one access, when the ACE is removed
+// again. On Windows Server 2025 both keep their NULL DACL throughout, so the
+// grant needs no protection for them.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestMsiexecGrantNullDACLChild(t *testing.T) {
@@ -139,19 +141,16 @@ func TestMsiexecGrantNullDACLChild(t *testing.T) {
 	root := filepath.Join(os.Getenv("ProgramData"), "MsiBuilderSec03")
 	existing := filepath.Join(root, "existing")
 
-	// Children without a DACL: a folder and a file as SetFileSecurityW
-	// leaves them, and a folder whose descriptor says its DACL follows the
-	// automatic inheritance model (SE_DACL_AUTO_INHERITED, AI).
+	// Children without a DACL, a folder and a file. SetFileSecurityW drops
+	// an AI flag (D:AINO_ACCESS_CONTROL reads back as D:NO_ACCESS_CONTROL,
+	// SEC-03), so a NULL DACL marked auto-inherited is not covered.
 	children := []struct{ name, sddl string }{
 		{"open", "D:NO_ACCESS_CONTROL"},
-		{"open-ai", "D:AINO_ACCESS_CONTROL"},
 		{"open.txt", "D:NO_ACCESS_CONTROL"},
 	}
 
-	for _, child := range children[:2] {
-		if err := os.MkdirAll(filepath.Join(existing, child.name), 0o750); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.MkdirAll(filepath.Join(existing, "open"), 0o750); err != nil {
+		t.Fatal(err)
 	}
 
 	// The test's own objects also keep the folder when the package is
