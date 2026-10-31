@@ -883,7 +883,8 @@ func (c *converter) existenceCheck(propOut *omap, elm, kid *elem, outer *omap) {
 		// (SEARCH-09).
 		c.todof(propOut, "", kid.line, "the DirectorySearch without Path below a raw RegistrySearch returns the folder that "+
 			"holds the path in the value, without checking that it exists; convert kept the value itself, so check whether "+
-			"it names that folder, or use type: directory to get the folder only if it exists")
+			"it names that folder, or use type: directory to get the folder only if it exists; if only whether the property is "+
+			"set matters, the raw value is enough")
 	case elm.is("DirectorySearch"), hasNestedSearch(kid):
 		// A search nested in the folder only finds something if the folder
 		// exists, so it is the existence check.
