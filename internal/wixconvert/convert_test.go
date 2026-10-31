@@ -93,6 +93,11 @@ func TestConvertNotes(t *testing.T) {
     <CustomAction Id="Init" Directory="INSTALLFOLDER" ExeCommand="[INSTALLFOLDER]tool.exe /s" Execute="deferred" Return="check" />
     <CustomAction Id="Old" Directory="INSTALLFOLDER" ExeCommand="[OLD_UNINSTALL] /S" Execute="deferred" Return="check" />
     <CustomAction Id="Quoted" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]tool.exe&quot; /s" Execute="deferred" Return="check" />
+    <InstallExecuteSequence>
+      <Custom Action="Init" After="InstallFiles" />
+      <Custom Action="Old" After="Init" />
+      <Custom Action="Quoted" After="Old" />
+    </InstallExecuteSequence>
   </Package>
 </Wix>`
 
@@ -1713,6 +1718,156 @@ func TestConvertExtensionAnchorSetter(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("the YAML lacks %q:\n%s", want, out)
 		}
+	}
+}
+
+// TestConvertUnscheduledActions checks that a custom action no sequence
+// schedules is left out with a note, naming the DoAction control event that
+// runs it, and that a WixUI element inside UI picks the wizard.
+func TestConvertUnscheduledActions(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component><File Source="hello.exe" /></Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /></Feature>
+    <CustomAction Id="Check" Property="CHECKED" Value="1" />
+    <CustomAction Id="Never" Property="NEVER" Value="1" />
+    <UI>
+      <ui:WixUI Id="WixUI_FeatureTree" />
+      <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="DoAction" Value="Check" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="Readme" Condition="SHOWREADME" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="Launch" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1" />
+    </UI>
+    <Binary Id="Tools" SourceFile="tools.dll" />
+    <CustomAction Id="Readme" BinaryRef="Tools" DllEntry="ShowReadme" />
+    <CustomAction Id="Launch" FileRef="hello.exe" ExeCommand="" Return="asyncNoWait" />
+    <CustomAction Id="Adv" Property="ADV" Value="1" />
+    <AdvertiseExecuteSequence><Custom Action="Adv" After="CostFinalize" /></AdvertiseExecuteSequence>
+    <Binary Id="Shared" SourceFile="shared.dll" />
+    <CustomAction Id="Used" BinaryRef="Shared" DllEntry="Run" Execute="deferred" Impersonate="no" />
+    <CustomAction Id="Unused" BinaryRef="Shared" DllEntry="Other" />
+    <InstallExecuteSequence><Custom Action="Used" Before="InstallFinalize" /></InstallExecuteSequence>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"the action Check runs only from the DoAction control event of the dialog LicenseAgreementDlg (line 14)",
+		"no sequence schedules the action Never, so it never runs; convert left it out",
+		"the action Readme runs only from the DoAction control event of the dialog ExitDialog (line 15), which has no " +
+			"counterpart; convert left it out; drop the binary Tools from binaries unless something else uses it",
+		"only <AdvertiseExecuteSequence> (line 22), which has no counterpart, schedules the action Adv; convert left it out",
+		"no sequence schedules the action Unused, so it never runs; convert left it out\n",
+		"  enabled: true\n", "  chooseFeatures: true\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if strings.Contains(out, "id: Never") || strings.Contains(out, "id: Unused") {
+		t.Errorf("the YAML keeps an unscheduled action:\n%s", out)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, out)
+	}
+}
+
+func TestConvertLocalActionRefAndIcon(t *testing.T) {
+	t.Parallel()
+
+	src := `<?define Idx="2"?>
+<?define IconFile="hello.exe"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <Icon Id="App.ico" SourceFile="app.ico" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component>
+          <File Source="hello.exe" />
+          <ProgId Id="Example.Doc" Description="Hello document" Icon="doc.ico">
+            <Extension Id="hello"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+          <ProgId Id="Example.Own" Description="Own icon" Icon="hello.exe">
+            <Extension Id="hellown"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+          <ProgId Id="Example.Var" Description="Var icon" Icon="hello.exe" IconIndex="$(var.Idx)">
+            <Extension Id="hellovar"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+          <ProgId Id="Example.Defined" Description="Defined icon" Icon="$(var.IconFile)" IconIndex="1">
+            <Extension Id="hellodef"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+          <ProgId Id="Example.Elsewhere" Description="Icon elsewhere" Icon="other.dll">
+            <Extension Id="helloels"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+          <ProgId Id="Example.Table" Description="Icon table" Icon="App.ico">
+            <Extension Id="hellotab"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+        </Component>
+        <Component><File Source="doc.ico" /></Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /><ComponentRef Id="doc.ico" /></Feature>
+    <CustomActionRef Id="SaveDir" />
+    <CustomActionRef Id="SetFoo" />
+  </Package>
+  <Fragment>
+    <SetProperty Id="FOO" Action="SetFoo" Value="bar" Before="CostFinalize" Sequence="execute" />
+    <CustomAction Id="SaveDir" Property="SAVED" Value="[INSTALLFOLDER]" />
+    <InstallExecuteSequence><Custom Action="SaveDir" Before="InstallFinalize" /></InstallExecuteSequence>
+  </Fragment>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	if strings.Contains(out, "comes from a WiX extension") {
+		t.Errorf("a locally defined action is noted as an extension's:\n%s", out)
+	}
+
+	for _, want := range []string{
+		"the ProgId Example.Doc takes its icon from doc.ico", `HKCR\Example.Doc\DefaultIcon = [#doc.ico],0`,
+		"progId: Example.Own\n", "iconIndex: 0\n", "iconIndex: 2\n", "iconIndex: 1\n",
+		"the ProgId Example.Elsewhere takes its icon from other.dll (a file this source does not define), not from the file it opens",
+		"the ProgId Example.Table takes its icon from the <Icon> App.ico, which only advertised ProgIds use",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if strings.Count(out, "iconIndex:") != 3 {
+		t.Errorf("want iconIndex only on Example.Own, Example.Var and Example.Defined:\n%s", out)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, out)
 	}
 }
 
