@@ -324,6 +324,10 @@ func (c *converter) index() error {
 	c.pkg = packages[0]
 	c.v3 = c.pkg.is("Product")
 
+	// WiX fills in !(wix.X) at bind time, so a folder name the walk
+	// expands may use a WixVariable that comes later in the file.
+	c.collectWixVars(c.doc.root)
+
 	for _, e := range c.doc.root.kids {
 		switch {
 		case e == c.pkg, e.is("Fragment"):
@@ -697,6 +701,17 @@ func (c *converter) addMember(within scope, entry member) {
 		within.featureGroup.members = append(within.featureGroup.members, entry)
 	case within.group != nil:
 		within.group.members = append(within.group.members, entry)
+	}
+}
+
+// collectWixVars records the WixVariables below elm.
+func (c *converter) collectWixVars(elm *elem) {
+	for _, kid := range elm.kids {
+		if kid.is("WixVariable") {
+			c.wixVars[kid.attr("Id")] = kid.attr("Value")
+		}
+
+		c.collectWixVars(kid)
 	}
 }
 

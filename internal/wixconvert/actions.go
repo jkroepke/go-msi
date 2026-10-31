@@ -1,7 +1,6 @@
 package wixconvert
 
 import (
-	"fmt"
 	"maps"
 	"regexp"
 	"slices"
@@ -306,7 +305,10 @@ func (c *converter) extensionAnchors(action *omap, custom *elem, byAction map[st
 				continue
 			}
 
-			if own := extensionPlacement(anchor, placement.str("sequence"), byAction); own != nil {
+			// The source's own place of the extension action keeps the
+			// order only for an action on its far side, such as one after
+			// an action that runs before InstallValidate.
+			if own := extensionPlacement(anchor, placement.str("sequence"), byAction); own != nil && own.str(key) == "" {
 				schedule[i] = moveAnchor(placement, own)
 
 				c.todof(action, "schedule", custom.line, "%s is an action of a WiX extension, which the msi-builder package "+
@@ -338,8 +340,7 @@ func extensionPlacement(anchor, sequence string, byAction map[string][]any) *oma
 				continue
 			}
 
-			next := own.str(keyBefore) + own.str(keyAfter)
-			if next != "" && !extensionAction.MatchString(next) || own.get("at") != nil && next == "" {
+			if next := own.str(keyBefore) + own.str(keyAfter); next != "" && !extensionAction.MatchString(next) {
 				return own
 			}
 		}
@@ -350,13 +351,11 @@ func extensionPlacement(anchor, sequence string, byAction map[string][]any) *oma
 
 // anchorText describes a placement's place, such as "before InstallValidate".
 func anchorText(placement *omap) string {
-	for _, key := range []string{keyBefore, keyAfter} {
-		if name := placement.str(key); name != "" {
-			return key + " " + name
-		}
+	if name := placement.str(keyBefore); name != "" {
+		return keyBefore + " " + name
 	}
 
-	return fmt.Sprintf("at %v", placement.get("at"))
+	return keyAfter + " " + placement.str(keyAfter)
 }
 
 // skipAction reports whether a custom action is left out of

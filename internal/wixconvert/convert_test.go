@@ -1639,3 +1639,44 @@ func TestConvertLoneFeature(t *testing.T) {
 		t.Errorf("the YAML lacks %q:\n%s", want, res.YAML)
 	}
 }
+
+// TestConvertExtensionAnchorSides checks that actions on both sides of a
+// WiX extension's action keep their order, and that a WixVariable later in
+// the file fills in a folder name.
+func TestConvertExtensionAnchorSides(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="!(wix.FolderName)">
+        <Component><File Source="hello.exe" /></Component>
+      </Directory>
+    </StandardDirectory>
+    <CustomAction Id="Pre" Error="Pre" />
+    <CustomAction Id="Post" Error="Post" />
+    <InstallExecuteSequence>
+      <Custom Action="override Wix4CloseApplications_X64" Before="InstallValidate" />
+      <Custom Action="Pre" Before="Wix4CloseApplications_X64" Condition="A" />
+      <Custom Action="Post" After="Wix4CloseApplications_X64" Condition="B" />
+    </InstallExecuteSequence>
+    <WixVariable Id="FolderName" Value="Hello" />
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"{sequence: execute, before: CostFinalize, condition: A}",
+		"{sequence: execute, before: InstallValidate, condition: B}",
+		"installDir:\n  id: INSTALLFOLDER\n  name: Hello\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+}
