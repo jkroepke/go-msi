@@ -1867,6 +1867,11 @@ Conditions are parsed with the grammar of specification section 8.8 at build
 time, because a launch condition that does not parse is ignored by the
 engine.
 
+The condition is the table's primary key, so two entries with the same
+condition are an error, and so is `NOT <upgrade.newerProperty>` while
+`upgrade.downgrade` is `error`, which writes that launch condition itself:
+set `upgrade.downgradeMessage` instead.
+
 ### 4.9 `customActions`
 
 ```yaml

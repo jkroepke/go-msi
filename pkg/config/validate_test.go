@@ -96,7 +96,12 @@ func TestValidateAccepted(t *testing.T) {
 
 	for name, doc := range map[string]string{
 		"upgrade minVersion": strings.Replace(base, "upgrade: {}", "upgrade: {minVersion: 0.18.0, includeMin: false}", 1) + appComponent,
-		"close true":         base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: app.exe, close: true}\n", 1),
+		// No row of its own unless downgrade is error.
+		"newer launch condition with downgrade allow": strings.Replace(base, "upgrade: {}", "upgrade: {downgrade: allow}", 1) + appComponent +
+			"launchConditions: [{condition: NOT NEWERVERSIONDETECTED, message: newer}]\n",
+		"newer launch condition with downgrade ignore": strings.Replace(base, "upgrade: {}", "upgrade: {downgrade: ignore}", 1) + appComponent +
+			"launchConditions: [{condition: NOT NEWERVERSIONDETECTED, message: newer}]\n",
+		"close true": base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: app.exe, close: true}\n", 1),
 		"close mapping": base + strings.Replace(appComponent, "      - source: app.exe\n",
 			"      - {source: app.exe, close: {timeout: 0s, terminate: false}}\n", 1),
 		"close upper-case extension": base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: App.EXE, close: {timeout: 5m}}\n", 1),
@@ -180,6 +185,21 @@ func TestValidate(t *testing.T) {
 		path string
 		msg  string
 	}{
+		// The condition is the LaunchCondition table's primary key.
+		"launch condition of downgrade error": {
+			base + appComponent + "launchConditions: [{condition: NOT NEWERVERSIONDETECTED, message: newer}]\n",
+			sevError, "launchConditions[0].condition", "upgrade.downgrade: error already adds",
+		},
+		"launch condition of own newer property": {
+			strings.Replace(base, "upgrade: {}", "upgrade: {newerProperty: NEWERFOUND}", 1) + appComponent +
+				"launchConditions: [{condition: NOT NEWERFOUND, message: newer}]\n",
+			sevError, "launchConditions[0].condition", "set upgrade.downgradeMessage",
+		},
+		"duplicate launch condition": {
+			base + appComponent +
+				"launchConditions: [{condition: VersionNT64, message: a}, {condition: VersionNT64, message: b}]\n",
+			sevError, "launchConditions[1].condition", "already used by launchConditions[0]",
+		},
 		// INST-05: Condition rows.
 		"feature condition without level": {
 			strings.Replace(base, "    components: [App]\n", "    components: [App]\n    conditions:\n      - condition: X = 1\n", 1) + appComponent,

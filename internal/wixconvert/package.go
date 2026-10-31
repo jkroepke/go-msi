@@ -851,8 +851,39 @@ func (c *converter) emitLaunchConditions() {
 			cond = c.expand(elm, strings.TrimSpace(elm.text))
 		}
 
+		if c.downgradeCondition(cond, elm) {
+			continue
+		}
+
 		c.out.add("launchConditions", newMap().set("condition", cond).set("message", c.value(elm, "Message")))
 	}
+}
+
+// downgradeCondition folds a launch condition that refuses newer versions
+// into upgrade.downgradeMessage and reports whether it did. downgrade: error
+// writes that launch condition itself, and the LaunchCondition table keys on
+// the condition, so the package cannot hold both.
+func (c *converter) downgradeCondition(cond string, elm *elem) bool {
+	upgrade := c.out.mapAt("upgrade")
+	if upgrade == nil || upgrade.str("downgrade") != "" {
+		return false
+	}
+
+	if cond != "NOT "+cmp.Or(upgrade.str("newerProperty"), config.DefaultNewerProperty) {
+		return false
+	}
+
+	msg := c.value(elm, "Message")
+
+	switch upgrade.str("downgradeMessage") {
+	case "", msg:
+		upgrade.set("downgradeMessage", msg)
+	default:
+		c.todof(upgrade, "downgradeMessage", elm.line, "the launch condition %s is the one downgrade: error writes; "+
+			"its message %q is left out for the MajorUpgrade's DowngradeErrorMessage", cond, msg)
+	}
+
+	return true
 }
 
 // emitFiles writes icons and binaries.
