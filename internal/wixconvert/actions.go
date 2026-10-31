@@ -178,8 +178,15 @@ func (c *converter) emitActions() {
 			continue
 		}
 
-		c.setProgress(action, actionID, progress)
 		reanchor(actionID, byAction[actionID])
+
+		if len(byAction[actionID]) == 0 {
+			c.unscheduledAction(custom)
+
+			continue
+		}
+
+		c.setProgress(action, actionID, progress)
 		action.set("schedule", byAction[actionID])
 		delete(byAction, actionID)
 		c.extensionAnchors(action, custom, byAction, sides)
@@ -407,6 +414,27 @@ func anchorText(placement *omap) string {
 	}
 
 	return keyAfter + " " + placement.str(keyAfter)
+}
+
+// unscheduledAction notes a custom action that no sequence schedules,
+// which msi-builder refuses: one that only a DoAction control event runs,
+// or one that never runs.
+func (c *converter) unscheduledAction(custom *elem) {
+	actionID := custom.attr("Id")
+
+	if publish := c.doActions[actionID]; publish != nil {
+		where := "a dialog"
+		if dialog := publish.attr("Dialog"); dialog != "" {
+			where = "the dialog " + dialog
+		}
+
+		c.todof(nil, "", custom.line, "the action %s runs only from the DoAction control event of %s (line %d), which has "+
+			"no counterpart; convert left it out", actionID, where, publish.line)
+
+		return
+	}
+
+	c.todof(nil, "", custom.line, "no sequence schedules the action %s, so it never runs; convert left it out", actionID)
 }
 
 // skipAction reports whether a custom action is left out of

@@ -16,6 +16,8 @@ func (c *converter) walkUI(e *elem) { //nolint:cyclop // one case per kind of UI
 			c.uiRef(kid)
 		case kid.is("Publish") && kid.attr("Event") == "DoAction" && kid.attr("Dialog") == "ExitDialog":
 			c.launchAction = kid.attr("Value")
+		case kid.ns == nsUI && kid.name == "WixUI":
+			c.wixUI = kid
 		case kid.is("Publish") && kid.attr("Event") == "NewDialog":
 			c.uiNav = append(c.uiNav, kid)
 		case kid.is("Property"):
@@ -25,11 +27,27 @@ func (c *converter) walkUI(e *elem) { //nolint:cyclop // one case per kind of UI
 		case kid.is("ProgressText"):
 			c.progressTexts = append(c.progressTexts, kid)
 		case kid.is("Dialog"):
+			c.noteDoActions(kid)
 			c.todof(nil, "", kid.line, "the hand-built dialog %s cannot be converted; ui.dialogs lays out text, password, checkbox and choice fields",
 				kid.attr("Id"))
 		default:
+			c.noteDoActions(kid)
 			c.todof(nil, "", kid.line, "<%s> in <UI> customizes the WiX dialogs and cannot be converted", kid.qname())
 		}
+	}
+}
+
+// noteDoActions records the DoAction control events in or below elm by
+// the action they run.
+func (c *converter) noteDoActions(elm *elem) {
+	if elm.is("Publish") && elm.attr("Event") == "DoAction" {
+		if publish := c.doActions[elm.attr("Value")]; publish == nil {
+			c.doActions[elm.attr("Value")] = elm
+		}
+	}
+
+	for _, kid := range elm.kids {
+		c.noteDoActions(kid)
 	}
 }
 

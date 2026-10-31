@@ -125,7 +125,9 @@ type converter struct {
 	// scope is the package's install scope, as package.scope names it.
 	scope        string
 	launchAction string
-	properties   []*elem
+	// doActions are the DoAction control events by the action they run.
+	doActions  map[string]*elem
+	properties []*elem
 	// progressTexts are the ProgressText elements, which become the
 	// progress key of the action they name.
 	progressTexts []*elem
@@ -259,6 +261,7 @@ func newConverter(doc *document) *converter {
 		wixVars:       make(map[string]string),
 		firewallNames: make(map[string]int),
 		renames:       make(map[string]string),
+		doActions:     make(map[string]*elem),
 		needDirs:      make(map[string]bool),
 		usedVars:      make(map[string]bool),
 		usedErrors:    make(map[*elem]bool),

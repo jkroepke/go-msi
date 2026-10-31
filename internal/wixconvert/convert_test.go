@@ -93,6 +93,11 @@ func TestConvertNotes(t *testing.T) {
     <CustomAction Id="Init" Directory="INSTALLFOLDER" ExeCommand="[INSTALLFOLDER]tool.exe /s" Execute="deferred" Return="check" />
     <CustomAction Id="Old" Directory="INSTALLFOLDER" ExeCommand="[OLD_UNINSTALL] /S" Execute="deferred" Return="check" />
     <CustomAction Id="Quoted" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]tool.exe&quot; /s" Execute="deferred" Return="check" />
+    <InstallExecuteSequence>
+      <Custom Action="Init" After="InstallFiles" />
+      <Custom Action="Old" After="Init" />
+      <Custom Action="Quoted" After="Old" />
+    </InstallExecuteSequence>
   </Package>
 </Wix>`
 
@@ -1713,5 +1718,59 @@ func TestConvertExtensionAnchorSetter(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("the YAML lacks %q:\n%s", want, out)
 		}
+	}
+}
+
+// TestConvertUnscheduledActions checks that a custom action no sequence
+// schedules is left out with a note, naming the DoAction control event that
+// runs it, and that a WixUI element inside UI picks the wizard.
+func TestConvertUnscheduledActions(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component><File Source="hello.exe" /></Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /></Feature>
+    <CustomAction Id="Check" Property="CHECKED" Value="1" />
+    <CustomAction Id="Never" Property="NEVER" Value="1" />
+    <UI>
+      <ui:WixUI Id="WixUI_FeatureTree" />
+      <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="DoAction" Value="Check" />
+    </UI>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"the action Check runs only from the DoAction control event of the dialog LicenseAgreementDlg (line 14)",
+		"no sequence schedules the action Never, so it never runs; convert left it out",
+		"  enabled: true\n", "  chooseFeatures: true\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if strings.Contains(out, "customActions:") {
+		t.Errorf("the YAML keeps an unscheduled action:\n%s", out)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, out)
 	}
 }
