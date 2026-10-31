@@ -1508,7 +1508,7 @@ func (w *walker) leave() error {
 	}
 
 	if _, err := io.Copy(io.Discard, w.stream); err != nil {
-		return fmt.Errorf("cab: folder %d after its files: %w", w.current, err)
+		return fmt.Errorf("cab: verifying the rest of the folder: %w", err)
 	}
 
 	w.verified[w.current] = true
@@ -1530,7 +1530,7 @@ func (w *walker) verifyRest() error {
 
 		stream := &folderReader{blocks: newBlockReader(w.src, w.size, idx, info)}
 		if _, err := io.Copy(io.Discard, stream); err != nil {
-			return fmt.Errorf("cab: folder %d: %w", idx, err)
+			return fmt.Errorf("cab: verifying a folder no file uses: %w", err)
 		}
 	}
 

@@ -436,3 +436,37 @@ func TestWalkChecksBlocksVisitSkipped(t *testing.T) {
 		t.Error("Walk accepted a corrupt block when visit read nothing")
 	}
 }
+
+// TestWalkChecksTailOnFolderSwitch checks that Walk verifies the blocks after
+// a folder's last file when it moves on to another folder, not only at the
+// end of the cabinet.
+func TestWalkChecksTailOnFolderSwitch(t *testing.T) {
+	t.Parallel()
+
+	data := bytes.Repeat([]byte{'z'}, blockSize+4)
+	raw := RawCabinet([]RawFolder{
+		{Type: None, Blocks: []RawBlock{
+			{Payload: data[:blockSize], Uncomp: blockSize},
+			{Payload: data[blockSize:], Uncomp: 4, BadSum: true},
+		}},
+		{Type: None, Blocks: []RawBlock{{Payload: []byte("next"), Uncomp: 4}}},
+	}, []RawFile{
+		{Name: []byte("a"), Size: 4, Folder: 0, Attr: AttrArchive},
+		{Name: []byte("x"), Size: 4, Folder: 1, Attr: AttrArchive},
+	})
+
+	var visited []string
+
+	err := Walk(bytes.NewReader(raw), int64(len(raw)), func(file File, _ io.Reader) error {
+		visited = append(visited, file.Name)
+
+		return nil
+	})
+	if err == nil {
+		t.Fatal("Walk accepted a corrupt block after the last file of the first folder")
+	}
+
+	if len(visited) != 1 {
+		t.Errorf("Walk visited %q before failing, want only the first folder's file", visited)
+	}
+}
