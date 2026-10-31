@@ -5,3 +5,4 @@
 /coverage.out
 /examples/*/hello.exe
 /examples/*/windows_exporter.exe
+/.local/
