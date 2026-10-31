@@ -2017,6 +2017,12 @@ func (v *validator) customActions(cfg *Config, known *refs) {
 	v.runDataIDs(cfg)
 }
 
+// executeOnly reports whether every placement is in the execute sequence,
+// the only one where an action may have a scope.
+func executeOnly(schedule []Placement) bool {
+	return !slices.ContainsFunc(schedule, func(p Placement) bool { return p.Sequence != sequenceExecute })
+}
+
 // actionFolder rejects a standard folder that ICE105 forbids as an action's
 // working directory: the builder adds a Directory row for it, whatever the
 // action's scope. ICE105 warns about that row in perUserOrMachine and is
@@ -2279,7 +2285,7 @@ func (v *validator) actionRun(cfg *Config, actionPath string, action *CustomActi
 	// scope keeps it out of per-user installs (CA-09).
 	if !*action.Impersonate && cfg.Package.Scope.MayBePerUser() && action.Scope != ScopePerMachine {
 		hint := ""
-		if cfg.Package.Scope.Dual() && !slices.ContainsFunc(action.Schedule, func(p Placement) bool { return p.Sequence != sequenceExecute }) {
+		if cfg.Package.Scope.Dual() && inScript && action.Scope == "" && executeOnly(action.Schedule) {
 			hint = "; add scope: perMachine to run it only in per-machine installs"
 		}
 

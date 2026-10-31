@@ -217,8 +217,14 @@ func TestMsiexecContextActions(t *testing.T) { //nolint:paralleltest // msiexec 
 			msiexecQuiet(t, log, append([]string{"/i", path}, tc.args...)...)
 
 			text := readLog(log)
+			got := readContextActions(text)
 			t.Logf("CA-09 unconditioned elevated action, administrator's per-user install of %s: ALLUSERS %q, ran as %+v",
-				tc.scope, serverProperties(text)["ALLUSERS"], readContextActions(text))
+				tc.scope, serverProperties(text)["ALLUSERS"], got)
+
+			// The impersonated action shows the installing account.
+			if got.machine == "" || got.machine != got.both {
+				t.Errorf("ran as %+v; want the action without impersonation to run as the installing user, like the impersonated one", got)
+			}
 		})
 	}
 }
@@ -256,16 +262,16 @@ func TestNonAdminContextActions(t *testing.T) {
 
 			t.Logf("CA-09 %s as %s: exit %d, ALLUSERS %q, ran as %+v", tc.name, user.name, code, serverProperties(text)["ALLUSERS"], got)
 
-			if tc.unconditioned {
-				return
-			}
-
 			if code != 0 {
 				t.Fatalf("msiexec /i returned %d\n%s", code, text)
 			}
 
 			account := strings.ToLower(user.name)
-			if got.machine != "" || !strings.HasSuffix(got.user, `\`+account) || !strings.HasSuffix(got.both, `\`+account) {
+			if tc.unconditioned {
+				if !strings.HasSuffix(got.machine, `\`+account) {
+					t.Errorf("ran as %+v; want the action without impersonation to run as %s", got, user.name)
+				}
+			} else if got.machine != "" || !strings.HasSuffix(got.user, `\`+account) || !strings.HasSuffix(got.both, `\`+account) {
 				t.Errorf("ran as %+v; want the perMachine action not run and the others as %s", got, user.name)
 			}
 
@@ -328,9 +334,10 @@ func TestICEContextActions(t *testing.T) {
 }
 
 // TestICEActionFolder adds the Directory row that an action's working
-// directory System64Folder brings to the CA-09 package of both dual scopes
-// and logs what ICE105 reports about it, for the validator's refusal of
-// such folders as action directories in dual packages.
+// directory System64Folder brings to the CA-09 package of both dual scopes:
+// ICE105 warns about it in a package that starts per user and is silent in
+// one that starts per machine, as for the elevated action (CA-09). The
+// validator refuses such folders as action directories in both scopes.
 //
 //nolint:paralleltest // msi.dll's external UI handler is process-wide
 func TestICEActionFolder(t *testing.T) {
@@ -348,10 +355,29 @@ func TestICEActionFolder(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		folderWarnings := 0
+
 		for _, finding := range findings {
 			if finding.ICE == "ICE105" && finding.Type != ice.Info {
 				t.Logf("CA-09 %s with a System64Folder Directory row: %s", scope, finding)
+
+				if finding.Table == "Directory" {
+					if finding.Type != ice.Warning {
+						t.Errorf("%s: ICE105 %s, want a warning", scope, finding)
+					}
+
+					folderWarnings++
+				}
 			}
+		}
+
+		want := 0
+		if scope == "perUserOrMachine" {
+			want = 1
+		}
+
+		if folderWarnings != want {
+			t.Errorf("%s: %d ICE105 findings on the Directory table, want %d", scope, folderWarnings, want)
 		}
 	}
 }

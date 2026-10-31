@@ -2120,8 +2120,9 @@ func TestConvertSameVersionUpgrades(t *testing.T) {
 
 // TestConvertElevatedActionScopes checks the scope convert gives actions
 // without impersonation in a dual package (CA-09): none for an immediate
-// action, which never runs elevated, and none but a note for one that
-// also runs outside the execute sequence, where a scope is refused.
+// action, which never runs elevated, none but a note for one that also
+// runs outside the execute sequence, where a scope is refused, and
+// perMachine with a note for one whose condition tests ALLUSERS itself.
 func TestConvertElevatedActionScopes(t *testing.T) {
 	t.Parallel()
 
@@ -2130,8 +2131,10 @@ func TestConvertElevatedActionScopes(t *testing.T) {
     <MajorUpgrade DowngradeErrorMessage="newer" />
     <CustomAction Id="Immediate" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]a.exe&quot;" Impersonate="no" Return="ignore" />
     <CustomAction Id="AdminToo" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]a.exe&quot;" Execute="deferred" Impersonate="no" />
+    <CustomAction Id="UserOnly" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]a.exe&quot;" Execute="deferred" Impersonate="no" />
     <InstallExecuteSequence>
       <Custom Action="Immediate" After="InstallFiles" Condition="NOT Installed" />
+      <Custom Action="UserOnly" After="InstallFiles" Condition="NOT ALLUSERS AND NOT Installed" />
       <Custom Action="AdminToo" After="InstallFiles" />
     </InstallExecuteSequence>
     <AdminExecuteSequence>
@@ -2146,8 +2149,12 @@ func TestConvertElevatedActionScopes(t *testing.T) {
 	}
 
 	yaml := string(res.YAML)
-	if strings.Contains(yaml, "    scope: perMachine\n") {
-		t.Errorf("an action got scope: perMachine:\n%s", yaml)
+	if strings.Count(yaml, "    scope: perMachine\n") != 1 {
+		t.Errorf("want scope: perMachine for UserOnly only:\n%s", yaml)
+	}
+
+	if !strings.Contains(yaml, "a condition of UserOnly tests ALLUSERS itself") {
+		t.Errorf("no note for the ALLUSERS test in UserOnly's condition:\n%s", yaml)
 	}
 
 	if !strings.Contains(yaml, "AdminToo runs without impersonation outside the execute sequence") {

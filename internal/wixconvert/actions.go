@@ -264,11 +264,30 @@ func (c *converter) actionScope(action *omap, custom *elem) {
 			"user's and an administrator's, an action without impersonation ran as the installing user, so it runs "+
 			"impersonated; a per-user install elevated by policy (AlwaysInstallElevated) was not tested", custom.attr("Id"))
 	case elevated:
-		action.set("scope", scopeMachine)
-		c.todof(action, "scope", custom.line, "msi-builder runs an action without impersonation in a %s package only in "+
-			"per-machine installs (CA-09), so it adds ALLUSERS=1 to the schedule; check that %s still runs when it should",
-			c.scope, custom.attr("Id"))
+		c.machineScope(action, custom, placements)
 	}
+}
+
+// machineScope gives an action without impersonation scope: perMachine,
+// with a note that names a condition testing ALLUSERS itself.
+func (c *converter) machineScope(action *omap, custom *elem, placements []*omap) {
+	action.set("scope", scopeMachine)
+
+	note := "check that %[2]s still runs when it should"
+	if testsAllUsers(placements) {
+		note = "a condition of %[2]s tests ALLUSERS itself: one that holds only per user now never holds, so move " +
+			"that schedule into an impersonated action with scope: perUser"
+	}
+
+	c.todof(action, "scope", custom.line, "msi-builder runs an action without impersonation in a %[1]s package only in "+
+		"per-machine installs (CA-09), so it adds ALLUSERS=1 to the schedule; "+note, c.scope, custom.attr("Id"))
+}
+
+// testsAllUsers reports whether a placement's condition names ALLUSERS.
+func testsAllUsers(placements []*omap) bool {
+	return slices.ContainsFunc(placements, func(placement *omap) bool {
+		return strings.Contains(strings.ToUpper(placement.str("condition")), "ALLUSERS")
+	})
 }
 
 // dropConditions removes the conditions of placements whose context the
