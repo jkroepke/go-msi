@@ -56,7 +56,19 @@ Skipping action: BuilderGrantUser (condition is false)
 So in a maintenance install of a per-machine product the per-user marker
 never reached the DLL here, and the DLL's own check of the registered
 context (`MsiGetProductInfoExW`) is defence in depth that this run did not
-need. Whether the commit of a first install already finds the product
-registered is not shown by these runs, since the marker falls back to the
-same hive; the commit action now logs which context it found (`BuilderGrant:
-the product is registered …`).
+need.
+
+CI run 41148675668 (commit 3c89b07, native job 124379949900) ran the final
+DLL, whose commit action logs the context it found. The commit of the
+standard user's first install (head line `i`) already finds the product
+registered, and in the per-machine `ALLUSERS=""` repair (head line `m`) it
+finds the machine registration:
+
+```text
+BuilderGrant: the product is registered for the user
+Property(S): BuilderGrantCommit = c:#i{04529B4C-5A16-54A8-917D-6501647BA7F7}|
+...
+BuilderGrant: the product is registered per machine
+Property(S): ALLUSERS = 1
+Property(S): BuilderGrantCommit = c:######m{7C09CC9A-6052-58BE-90EE-B7534D6CB666}
+```
