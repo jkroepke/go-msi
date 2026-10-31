@@ -951,7 +951,7 @@ type pendingType struct {
 }
 
 func (c *converter) placeTypes() {
-	placed := make(map[string]pendingType)
+	placed := make(map[string]placedType)
 
 	for _, pending := range c.pendingTypes {
 		var file *fileRef
@@ -968,19 +968,26 @@ func (c *converter) placeTypes() {
 			continue
 		}
 
-		if first, ok := placed[pending.out.str("progId")]; ok {
-			c.mergeType(first, pending)
+		progID := strings.ToLower(pending.out.str("progId"))
+		if first, ok := placed[progID]; ok {
+			c.mergeType(first, pending, file)
 
 			continue
 		}
 
-		placed[pending.out.str("progId")] = pending
+		placed[progID] = placedType{pending: pending, file: file}
 
 		file.out.add("fileTypes", pending.out)
 		c.typeIconNote(pending, file)
 		c.typeFeatureNote(pending, file)
 		c.typeConditionNote(pending, file)
 	}
+}
+
+// placedType is a ProgId placed on the file it opens.
+type placedType struct {
+	file    *fileRef
+	pending pendingType
 }
 
 // typeConditionNote notes a ProgId whose component has a condition that the
@@ -1021,27 +1028,93 @@ func typeExtensions(fileType *omap) []*omap {
 // mergeType adds the extensions of a second declaration of a ProgId to
 // the first one: msi-builder registers each ProgId once. WiX writes each
 // declaration into its own component, so a condition of that component
-// no longer applies.
-func (c *converter) mergeType(first, again pendingType) {
+// no longer applies. A second declaration that opens another file is
+// left out.
+func (c *converter) mergeType(first placedType, again pendingType, file *fileRef) {
+	if file != first.file {
+		c.todof(first.pending.out, "", again.e.line, "the ProgId %s is declared again for the file %s; msi-builder registers a ProgId "+
+			"once, so convert left that declaration out, add its extensions to a ProgId of its own", again.e.attr("Id"), file.key)
+		first.pending.out.head = append(first.pending.out.head, commentsOf(again.out, nil)...)
+
+		return
+	}
+
 	seen := make(map[string]bool)
 
-	for _, entry := range typeExtensions(first.out) {
+	for _, entry := range typeExtensions(first.pending.out) {
 		seen[strings.ToLower(entry.str("extension"))] = true
 	}
 
+	merged := make(map[*omap]bool)
+
 	for _, entry := range typeExtensions(again.out) {
 		if !seen[strings.ToLower(entry.str("extension"))] {
-			first.out.add("extensions", entry)
+			seen[strings.ToLower(entry.str("extension"))] = true
+			merged[entry] = true
+
+			first.pending.out.add("extensions", entry)
 		}
 	}
 
 	note := ""
-	if again.comp != first.comp {
+	if again.comp != file.comp && c.componentDiffers(file.comp, again.comp) {
 		note = "; it installs with the file now, so the condition and features of the component that declared it again no longer apply"
 	}
 
-	c.todof(first.out, "", again.e.line, "the ProgId %s is declared again; convert merged its extensions into this file type "+
+	c.todof(first.pending.out, "", again.e.line, "the ProgId %s is declared again; convert merged its extensions into this file type "+
 		"and kept the description and verbs of the first one%s", again.e.attr("Id"), note)
+
+	// The notes of the second declaration stay in the YAML, except those
+	// of the extensions that moved over with their own notes.
+	first.pending.out.head = append(first.pending.out.head, commentsOf(again.out, merged)...)
+}
+
+// componentDiffers reports whether the second component has a condition
+// or features that the first one does not share.
+func (c *converter) componentDiffers(first, again *comp) bool {
+	if again.out == nil {
+		return false
+	}
+
+	if cond := again.out.str("condition"); cond != "" && (first.out == nil || first.out.str("condition") != cond) {
+		return true
+	}
+
+	return !slices.Equal(c.featureIDs(first), c.featureIDs(again))
+}
+
+// commentsOf returns the comment lines of mapping and of the mappings in it,
+// leaving out the mappings in skip.
+func commentsOf(mapping *omap, skip map[*omap]bool) []string {
+	if mapping == nil || skip[mapping] {
+		return nil
+	}
+
+	lines := slices.Clone(mapping.head)
+
+	for _, key := range mapping.keys {
+		lines = append(lines, mapping.comments[key]...)
+		lines = append(lines, commentsIn(mapping.values[key], skip)...)
+	}
+
+	return lines
+}
+
+func commentsIn(value any, skip map[*omap]bool) []string {
+	switch typed := value.(type) {
+	case *omap:
+		return commentsOf(typed, skip)
+	case []any:
+		var lines []string
+
+		for _, item := range typed {
+			lines = append(lines, commentsIn(item, skip)...)
+		}
+
+		return lines
+	}
+
+	return nil
 }
 
 // typeIconNote notes a ProgId whose icon is in another file than the one

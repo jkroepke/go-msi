@@ -2299,3 +2299,87 @@ func TestConvertSharedProgIDAndExistenceSearch(t *testing.T) {
 		t.Errorf("the converted file does not validate: %v\n%s", err, out)
 	}
 }
+
+func TestConvertProgIDOtherFileAndSearchTypes(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <Property Id="TOOLFILE">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\Example\Tool" Name="File" Type="file">
+        <DirectorySearch Depth="2" />
+      </RegistrySearch>
+    </Property>
+    <Property Id="TOOLDIR">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\Example\Tool" Name="Dir" Type="raw">
+        <DirectorySearch Depth="3"><FileSearch Name="tool.exe" /></DirectorySearch>
+      </RegistrySearch>
+    </Property>
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component>
+          <File Id="app" Source="hello.exe" />
+          <ProgId Id="Example.Doc" Description="Doc">
+            <Extension Id="hld"><Verb Id="open" TargetFile="app" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+        </Component>
+        <Component>
+          <File Id="viewer" Source="viewer.exe" />
+          <ProgId Id="Example.Doc" Description="Doc">
+            <Extension Id="hlv"><Verb Id="open" TargetFile="viewer" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+        </Component>
+        <Component Id="same1">
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Example\S1" Value="1" KeyPath="yes" />
+          <ProgId Id="Example.Same" Description="Same">
+            <Extension Id="hls"><Verb Id="open" TargetFile="app" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+        </Component>
+        <Component Id="same2">
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Example\S2" Value="1" KeyPath="yes" />
+          <ProgId Id="Example.Same" Description="Same">
+            <Extension Id="hls"><MIME ContentType="text/plain" /><Verb Id="open" TargetFile="app" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello">
+      <ComponentRef Id="app" /><ComponentRef Id="viewer" /><ComponentRef Id="same1" /><ComponentRef Id="same2" />
+    </Feature>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"the ProgId Example.Doc is declared again for the file viewer",
+		"the ProgId Example.Same is declared again",
+		"<MIME> in an Extension has no counterpart",
+		`the DirectorySearch without Path has Depth="3"`,
+		"only checks that the folder the outer RegistrySearch finds exists",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if strings.Contains(out, "extension: hlv") || strings.Count(out, "extension: hls") != 1 ||
+		strings.Count(out, "only checks that the folder") != 1 || strings.Count(out, "type: directory") != 1 ||
+		strings.Contains(out, "condition and features of the component") || strings.Contains(out, `Depth="2"`) {
+		t.Errorf("want hlv left out, one hls, one existence note and one directory type:\n%s", out)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, out)
+	}
+}
