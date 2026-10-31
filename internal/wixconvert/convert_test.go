@@ -2243,7 +2243,7 @@ func TestConvertSharedProgIDAndExistenceSearch(t *testing.T) {
   <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
     <MajorUpgrade DowngradeErrorMessage="newer" />
     <Property Id="TOOLDIR">
-      <RegistrySearch Root="HKLM" Key="SOFTWARE\Example\Tool" Name="Path" Type="raw">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\Example\Tool" Name="Path" Type="directory">
         <DirectorySearch />
       </RegistrySearch>
     </Property>
@@ -2361,6 +2361,7 @@ func TestConvertProgIDOtherFileAndSearchTypes(t *testing.T) {
 		"the ProgId Example.Same is declared again",
 		"<MIME> in an Extension has no counterpart",
 		`the DirectorySearch without Path has Depth="3"`,
+		"the DirectorySearch without Path below a raw RegistrySearch returns the folder that holds the path in the value",
 		"only checks that the folder the outer RegistrySearch finds exists",
 	} {
 		if !strings.Contains(out, want) {
@@ -2369,9 +2370,9 @@ func TestConvertProgIDOtherFileAndSearchTypes(t *testing.T) {
 	}
 
 	if strings.Contains(out, "extension: hlv") || strings.Count(out, "extension: hls") != 1 ||
-		strings.Count(out, "only checks that the folder") != 1 || strings.Count(out, "type: directory") != 1 ||
+		strings.Count(out, "only checks that the folder") != 1 || strings.Contains(out, "    type: directory\n") ||
 		strings.Contains(out, "condition and features of the component") || strings.Contains(out, `Depth="2"`) {
-		t.Errorf("want hlv left out, one hls, one existence note and one directory type:\n%s", out)
+		t.Errorf("want hlv left out, one hls, one existence note and no directory type:\n%s", out)
 	}
 
 	cfg, err := config.Parse(res.YAML, config.Options{})

@@ -843,9 +843,8 @@ func (c *converter) search(propOut *omap, elm *elem) *omap {
 
 // nestedSearch returns the search nested in elm with outer as its under
 // search, or outer. A DirectorySearch without Path below another search
-// checks that the folder the outer one finds exists: below a RegistrySearch
-// that is a registry search of type directory, which returns the folder
-// only if it exists (SEARCH-07); below a DirectorySearch it is that folder.
+// stands for the folder the outer one finds; existenceCheck says what it
+// checks.
 func (c *converter) nestedSearch(propOut *omap, elm *elem, outer *omap) *omap {
 	for _, kid := range elm.kids {
 		if kid.is("DirectorySearch") && strings.TrimSpace(kid.attr("Path")) == "" {
@@ -871,11 +870,20 @@ func (c *converter) nestedSearch(propOut *omap, elm *elem, outer *omap) *omap {
 }
 
 // existenceCheck converts a DirectorySearch without Path below the search
-// elm, whose converted form is outer.
+// elm, whose converted form is outer. Below a registry search of type
+// directory, which returns the folder only if it exists (SEARCH-07,
+// SEARCH-09), it adds nothing.
 func (c *converter) existenceCheck(propOut *omap, elm, kid *elem, outer *omap) {
 	switch {
-	case elm.is("RegistrySearch") && outer.mapAt("registry") != nil && slices.Contains([]string{"", "raw", keyDirectory}, elm.attr("Type")):
-		outer.mapAt("registry").set("type", "directory")
+	case elm.is("RegistrySearch") && outer.mapAt("registry") != nil && elm.attr("Type") == keyDirectory:
+		// type: directory already returns the folder only if it exists.
+	case elm.is("RegistrySearch") && outer.mapAt("registry") != nil && slices.Contains([]string{"", "raw"}, elm.attr("Type")):
+		// Below a raw registry search, Windows Installer returns the folder
+		// that holds the path in the value, whether it exists or not
+		// (SEARCH-09).
+		c.todof(propOut, "", kid.line, "the DirectorySearch without Path below a raw RegistrySearch returns the folder that "+
+			"holds the path in the value, without checking that it exists; convert kept the value itself, so check whether "+
+			"it names that folder, or use type: directory to get the folder only if it exists")
 	case elm.is("DirectorySearch"), hasNestedSearch(kid):
 		// A search nested in the folder only finds something if the folder
 		// exists, so it is the existence check.
