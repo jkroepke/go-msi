@@ -858,8 +858,16 @@ func (c *converter) emitLaunchConditions() {
 		}
 
 		cond := c.expand(elm, raw)
+		entry := newMap().set("condition", cond).set("message", c.value(elm, "Message"))
 
-		c.out.add("launchConditions", newMap().set("condition", cond).set("message", c.value(elm, "Message")))
+		// A variable without a define may be the newer property.
+		if literal := c.literal(raw); c.out.mapAt("upgrade").str("downgrade") == "" && strings.HasPrefix(literal, "NOT ") &&
+			preprocessorVar.FindString(literal) == strings.TrimPrefix(literal, "NOT ") {
+			c.todof(entry, "condition", elm.line, "if %s is the property that detects newer versions, drop this entry and "+
+				"set upgrade.downgradeMessage to its message: downgrade: error writes this launch condition itself", cond)
+		}
+
+		c.out.add("launchConditions", entry)
 	}
 }
 
@@ -895,22 +903,42 @@ func (c *converter) downgradeCondition(cond string, elm *elem) bool {
 		return false
 	}
 
-	msg := c.value(elm, "Message")
-
-	if c.major == nil && len(c.upgrades) == 0 {
-		c.todof(upgrade, "downgradeMessage", elm.line, "the launch condition %s became upgrade.downgradeMessage; "+
-			"with upgrade: false, add it back to launchConditions", cond)
-	}
-
-	switch upgrade.str("downgradeMessage") {
-	case "", msg:
-		upgrade.set("downgradeMessage", msg)
-	default:
-		c.todof(upgrade, "downgradeMessage", elm.line, "the launch condition %s is the one downgrade: error writes; "+
-			"its message %q is left out for the MajorUpgrade's DowngradeErrorMessage", cond, msg)
-	}
+	c.foldMessage(upgrade, cond, elm)
 
 	return true
+}
+
+// foldMessage keeps the message of a folded launch condition in
+// upgrade.downgradeMessage, or notes it when another message is there.
+func (c *converter) foldMessage(upgrade *omap, cond string, elm *elem) {
+	msg := c.value(elm, "Message")
+
+	switch {
+	case c.downgradeFrom == nil && c.major != nil && c.major.has("DowngradeErrorMessage"):
+		c.downgradeFrom = c.major
+	case c.downgradeFrom == nil:
+		c.downgradeFrom = elm
+
+		upgrade.set("downgradeMessage", msg)
+
+		if c.major == nil && len(c.upgrades) == 0 {
+			c.todof(upgrade, "downgradeMessage", elm.line, "the launch condition %s became upgrade.downgradeMessage; "+
+				"with upgrade: false, add it back to launchConditions", cond)
+		}
+
+		return
+	}
+
+	from, attr, source := c.downgradeFrom, "Message", "the Launch on line "+strconv.Itoa(c.downgradeFrom.line)
+	if from == c.major {
+		attr, source = "DowngradeErrorMessage", "the MajorUpgrade's DowngradeErrorMessage"
+	}
+
+	// The messages compare like the condition, with the defines filled in.
+	if c.literal(from.attr(attr)) != c.literal(elm.attr("Message")) {
+		c.todof(upgrade, "downgradeMessage", elm.line, "the launch condition %s is the one downgrade: error writes; "+
+			"its message %q is left out for %s", cond, msg, source)
+	}
 }
 
 // emitFiles writes icons and binaries.

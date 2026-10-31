@@ -815,6 +815,26 @@ func TestConvertDowngradeLaunchCondition(t *testing.T) {
 			[]string{"condition: NOT OTHERFOUND", "downgradeMessage: mu"},
 			[]string{"condition: NOT WIX_DOWNGRADE_DETECTED"},
 		},
+		"preprocessor variable in the messages": {
+			`<?define M = "m1" ?>
+    <MajorUpgrade DowngradeErrorMessage="$(var.M)" />
+    <Launch Condition="NOT WIX_DOWNGRADE_DETECTED" Message="m1" />`,
+			[]string{"downgradeMessage: ${M}"},
+			[]string{"launchConditions", "is left out"},
+		},
+		"two folded launch conditions": {
+			`<?define NP = "NEWERVERSIONDETECTED" ?>
+    <Launch Condition="NOT NEWERVERSIONDETECTED" Message="a" />
+    <Launch Condition="NOT $(var.NP)" Message="b" />`,
+			[]string{"downgradeMessage: a", `its message "b" is left out for the Launch on line`},
+			[]string{"launchConditions:", "MajorUpgrade's"},
+		},
+		"undefined preprocessor variable": {
+			`<MajorUpgrade DowngradeErrorMessage="x" />
+    <Launch Condition="NOT $(var.NP)" Message="newer" />`,
+			[]string{"condition: NOT ${NP}", "if NOT ${NP} is the property"},
+			nil,
+		},
 		"no upgrade elements": {
 			`<Launch Condition="NOT NEWERVERSIONDETECTED" Message="newer" />`,
 			[]string{"downgradeMessage: newer", "with upgrade: false, add it back to launchConditions"},
@@ -868,7 +888,7 @@ func TestConvertDowngradeLaunchCondition(t *testing.T) {
 				}
 			}
 
-			cfg, err := config.Parse(res.YAML, config.Options{})
+			cfg, err := config.Parse(res.YAML, config.Options{Vars: map[string]string{"NP": "OTHERFOUND"}})
 			if err != nil {
 				t.Fatal(err)
 			}

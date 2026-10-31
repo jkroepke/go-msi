@@ -142,9 +142,12 @@ type converter struct {
 	firewallNames map[string]int
 	// newerClaimed is the property that detects newer versions.
 	newerClaimed string
-	icons        []*elem
-	closeApps    []*elem
-	defines      [][2]string
+	// downgradeFrom is the element whose message became
+	// upgrade.downgradeMessage: the MajorUpgrade or a folded launch condition.
+	downgradeFrom *elem
+	icons         []*elem
+	closeApps     []*elem
+	defines       [][2]string
 	// defined are the define values with earlier defines filled in.
 	defined     map[string]string
 	sequences   []*elem
