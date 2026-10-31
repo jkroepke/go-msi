@@ -416,7 +416,7 @@ features:
           - source: docs/manual.pdf
 ```
 
-msi-builder adds `NOT Installed` to each condition, because a feature
+msi-builder adds `NOT Installed` to most conditions, because a feature
 that its condition disables when the product is removed keeps its files.
 A condition that enables a feature whose own level is 0
 (`default: disabled`, WiX `Level="0"` with a higher conditional level)

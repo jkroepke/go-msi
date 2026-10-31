@@ -166,6 +166,14 @@ func TestMsiexecFeatureConditions(t *testing.T) {
 			{"uninstall", false, []string{"/x"}, nil, ""},
 		},
 		{
+			// INST-06: a change run without EXTRA, REMOVE or REINSTALL
+			// puts Extra back to level 0; it must keep its installed
+			// state, so that the uninstall still removes it.
+			{"install EXTRA=1", false, []string{"EXTRA=1"}, []string{app, extra}, ""},
+			{"add with ASSOC=1 ADDLOCAL=Assoc", false, []string{"ASSOC=1", "ADDLOCAL=Assoc"}, []string{app, assoc, extra}, ""},
+			{"uninstall", false, []string{"/x"}, nil, ""},
+		},
+		{
 			// INST-06: the old product's removal during an upgrade reaches
 			// Extra too; the new product follows its row.
 			{"install v1 EXTRA=1", false, []string{"EXTRA=1"}, []string{app, extra}, ""},
