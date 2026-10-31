@@ -29,6 +29,9 @@ components:
   - id: AppReg
     guid: 1a2b3c4d-0000-4000-8000-00000000000c
     registry: [{ id: Marker, root: HKLM, key: 'SOFTWARE\Example', name: Marker, value: x }]
+  - id: Links
+    guid: 1a2b3c4d-0000-4000-8000-00000000000d
+    shortcuts: [{ name: Example, directory: ProgramMenuFolder, url: 'https://example.com' }]
 `
 
 // TestComponentSearchKeyPath checks CompLocator.Type: 0 for a component of
@@ -114,6 +117,17 @@ func TestComponentSearchKeyPathMismatch(t *testing.T) {
 			name:  "registry key path",
 			props: "  P: { search: { component: { guid: 1a2b3c4d-0000-4000-8000-00000000000c } } }\n",
 			want:  "properties.P.search.component.guid: component AppReg of this package has a registry key path",
+		},
+		{
+			name:  "registry key path with keyPath",
+			props: "  P: { search: { component: { guid: 1a2b3c4d-0000-4000-8000-00000000000c, keyPath: directory } } }\n",
+			want:  "properties.P.search.component.keyPath: component AppReg of this package has a registry key path, not directory",
+			fails: true,
+		},
+		{
+			name:  "shortcuts only",
+			props: "  P: { search: { component: { guid: 1a2b3c4d-0000-4000-8000-00000000000d } } }\n",
+			want:  "properties.P.search.component.guid: component Links of this package has a registry key path",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

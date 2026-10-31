@@ -451,9 +451,15 @@ func (b *build) componentLocatorType(path, guid, keyPath string) int {
 	if compID, own := b.guids[guid]; own {
 		info := b.components[compID]
 
-		if info.attributes&compRegistryKeyPath != 0 {
-			b.warnf(path+".guid", "component %s of this package has a registry key path, so the search finds no folder "+
-				"of it (SEARCH-08); search a component keyed on a file or its folder", compID)
+		// A shortcuts-only component is keyed on its HKCU value
+		// (shortcuts.go), which info does not record.
+		if info.attributes&compRegistryKeyPath != 0 || shortcutsOnly(info.cfg) {
+			if keyPath != "" {
+				b.errorf(path+".keyPath", "component %s of this package has a registry key path, not %s", compID, keyPath)
+			} else {
+				b.warnf(path+".guid", "component %s of this package has a registry key path, which is not a folder; "+
+					"search a component keyed on a file or on its folder", compID)
+			}
 
 			return locatorFile
 		}
