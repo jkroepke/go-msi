@@ -211,7 +211,7 @@ Silent-failure cases a producer has to guard against itself:
 | CAB-09 | Partial | [ci](msitest/results/CAB-09/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40940932552: cabinet.dll's FDI extracts a cabinet of 65535 entries, and the writer refuses 65536; FCI and smart-cabbed duplicates not run |
 | CAB-10 | Confirmed (external) | [results](#packages-above-2-gb-cab-10-cab-13); embedded variant not run |
 | CAB-13 | Confirmed | [results](#packages-above-2-gb-cab-10-cab-13) |
-| CAB-14 | Pending | [results](#shared-cabinet-data-cab-14) |
+| CAB-14 | Not run | tests added, awaiting a Windows CI run; [preliminary experiment](#shared-cabinet-data-cab-14) |
 | CAB-11 | Not run | msi-rs regression case; test a candidate writer |
 | CAB-12 | Not run | msi-rs regression case; test a candidate writer |
 | MSZIP-01 | Confirmed | [wrong history](msitest/results/MSZIP-01/go-wrongdict/log.md): 69170 of 102400 bytes differ, exit 0 |
@@ -848,7 +848,7 @@ in `internal/builder/nativetest/media_windows_test.go`.
 
 ## Shared cabinet data (CAB-14)
 
-CAB-14 itself is pending. The preliminary experiment below, which is not
+CAB-14 itself has not run yet. The preliminary experiment below, which is not
 CAB-14, chose its layout.
 
 Preliminary experiment run on 2026-10-31 by the `windows-latest` CI runner (Windows
