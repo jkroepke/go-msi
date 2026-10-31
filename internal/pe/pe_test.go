@@ -495,6 +495,7 @@ type resEntry struct {
 	id, lang  uint32
 	version   string
 	languages []int
+	blob      []byte // VS_VERSIONINFO bytes to use instead of building them
 }
 
 // versionResources builds an image whose resource section holds the given
@@ -565,8 +566,14 @@ func versionResources(t *testing.T, entries []resEntry) []byte {
 
 	blobs := make([][]byte, 0, len(entries))
 
-	for _, e := range entries {
-		img := testpe.Build(testpe.Options{FileVersion: e.version, Languages: e.languages})
+	for _, entry := range entries {
+		if entry.blob != nil {
+			blobs = append(blobs, entry.blob)
+
+			continue
+		}
+
+		img := testpe.Build(testpe.Options{FileVersion: entry.version, Languages: entry.languages})
 		start := blockOffset(t, img, "VS_VERSION_INFO")
 		blobs = append(blobs, img[start:start+int(order.Uint32(img[testDataEntry+4:]))])
 	}
@@ -629,16 +636,16 @@ func TestVersionResourceSelection(t *testing.T) {
 		fails   bool
 	}{
 		"ID 0 and ID 1": {
-			entries: []resEntry{{0, 1033, "1.2.3.4", []int{1033}}, {1, 1033, "9.8.7.6", []int{1033}}},
+			entries: []resEntry{{0, 1033, "1.2.3.4", []int{1033}, nil}, {1, 1033, "9.8.7.6", []int{1033}, nil}},
 			version: "9.8.7.6", lang: "1033",
 		},
-		"ID 2 only": {entries: []resEntry{{2, 1033, "1.2.3.4", []int{1033}}}},
+		"ID 2 only": {entries: []resEntry{{2, 1033, "1.2.3.4", []int{1033}, nil}}},
 		"two languages agree": {
-			entries: []resEntry{{1, 1031, "1.2.3.4", []int{1031, 1033}}, {1, 1033, "1.2.3.4", []int{1031, 1033}}},
+			entries: []resEntry{{1, 1031, "1.2.3.4", []int{1031, 1033}, nil}, {1, 1033, "1.2.3.4", []int{1031, 1033}, nil}},
 			version: "1.2.3.4", lang: "1033,1031",
 		},
 		"two languages disagree": {
-			entries: []resEntry{{1, 1031, "1.2.3.4", []int{1031}}, {1, 1033, "9.8.7.6", []int{1033}}},
+			entries: []resEntry{{1, 1031, "1.2.3.4", []int{1031}, nil}, {1, 1033, "9.8.7.6", []int{1033}, nil}},
 			fails:   true,
 		},
 	}
@@ -683,6 +690,103 @@ func TestPartialTranslation(t *testing.T) {
 		info, err := Parse(bytes.NewReader(partialTranslation(t, n)))
 		if err != nil || info.Language() != want {
 			t.Errorf("value length %d: %+v %v, want %q", n, info, err, want)
+		}
+	}
+}
+
+// twoTranslations returns a VS_VERSIONINFO for 1.2.3.4 with a Translation
+// of 1033 followed by a second one of 1031: a second Var in the same
+// VarFileInfo, or a second VarFileInfo block.
+func twoTranslations(t *testing.T, sameBlock bool) []byte {
+	t.Helper()
+
+	order := binary.LittleEndian
+	img := testpe.Build(testpe.Options{FileVersion: "1.2.3.4", Languages: []int{1033}})
+	start := blockOffset(t, img, "VS_VERSION_INFO")
+	blob := slices.Clone(img[start : start+int(order.Uint32(img[testDataEntry+4:]))])
+
+	vfi := blockOffset(t, blob, "VarFileInfo")
+	vfiLen := int(order.Uint16(blob[vfi:]))
+	tr := blockOffset(t, blob, "Translation")
+	trLen := int(order.Uint16(blob[tr:]))
+
+	var extra []byte
+	if sameBlock {
+		extra = slices.Clone(blob[tr : tr+trLen])
+	} else {
+		extra = slices.Clone(blob[vfi : vfi+vfiLen])
+	}
+
+	// The copied block's last 4 bytes are its only language.
+	order.PutUint16(extra[len(extra)-4:], 1031)
+
+	if sameBlock {
+		order.PutUint16(blob[vfi:], uint16(vfiLen+len(extra))) //nolint:gosec // small
+	}
+
+	blob = append(blob, extra...)
+	order.PutUint16(blob, uint16(len(blob))) //nolint:gosec // small
+
+	return blob
+}
+
+// TestFirstTranslationOnly takes the languages of the first Translation
+// in the first VarFileInfo, as Windows did (FILE-14).
+func TestFirstTranslationOnly(t *testing.T) {
+	t.Parallel()
+
+	for _, sameBlock := range []bool{true, false} {
+		data := versionResources(t, []resEntry{{id: 1, lang: 1033, blob: twoTranslations(t, sameBlock)}})
+
+		info, err := Parse(bytes.NewReader(data))
+		if err != nil || info.FileVersion != "1.2.3.4" || info.Language() != "1033" {
+			t.Errorf("same block %v: %+v %v, want 1.2.3.4 and 1033", sameBlock, info, err)
+		}
+	}
+}
+
+// headerResources moves the resource directory and the version data of a
+// testpe image into its header area, at RVA and file offset 0x200.
+func headerResources(t *testing.T) []byte {
+	t.Helper()
+
+	order := binary.LittleEndian
+	data := testpe.Build(testpe.Options{FileVersion: "1.2.3.4", Languages: []int{1033}})
+	size := int(order.Uint32(data[testResourceDir+4:]))
+
+	if !bytes.Equal(data[0x200:0x400], make([]byte, 0x200)) || size > 0x200 {
+		t.Fatal("header area 0x200-0x400 is not free")
+	}
+
+	copy(data[0x200:], data[testRsrcRaw:testRsrcRaw+size])
+	order.PutUint32(data[0x200+72:], 0x200+88) // data entry RVA
+	order.PutUint32(data[testResourceDir:], 0x200)
+
+	return data
+}
+
+// TestResourcesInHeaders reads a version resource that lies in the
+// headers, which Windows maps at RVA 0 (FILE-14).
+func TestResourcesInHeaders(t *testing.T) {
+	t.Parallel()
+
+	info, err := Parse(bytes.NewReader(headerResources(t)))
+	if err != nil || info.FileVersion != "1.2.3.4" || info.Language() != "1033" {
+		t.Errorf("%+v %v", info, err)
+	}
+}
+
+// TestNamedEntryPartition counts a directory's only entry as named at each
+// level of the version resource: it is then never matched by its ID, so
+// there is no version, as on Windows (FILE-14).
+func TestNamedEntryPartition(t *testing.T) {
+	t.Parallel()
+
+	for _, dir := range []int{0, 24, 48} {
+		// NumberOfNamedEntries 1, NumberOfIdEntries 0.
+		info, err := Parse(bytes.NewReader(corruptImage(t, testRsrcRaw+dir+12, 1)))
+		if err == nil && info.HasVersion {
+			t.Errorf("directory at %d: entry counted as named matched by ID: %+v", dir, info)
 		}
 	}
 }

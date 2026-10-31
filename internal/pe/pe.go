@@ -260,6 +260,12 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 		})
 	}
 
+	// The headers are mapped at RVA 0 up to SizeOfHeaders, and Windows read
+	// a version resource placed there (FILE-14). They come after the
+	// sections, which win where a corrupt header overlaps them.
+	headers := order.Uint32(opt[60:])
+	img.sections = append(img.sections, section{virtualSize: headers, rawSize: headers})
+
 	// The size is not checked at all: Windows read the version through a
 	// directory declared with size 0 (FILE-14).
 	if resRVA == 0 {
@@ -275,29 +281,39 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 	return info, nil
 }
 
-// findEntry returns the offset of a resource directory entry's target. With
-// id < 0 the first entry is taken.
-func findEntry(res *resources, dir uint32, wantID int) (uint32, bool, error) {
+// idEntries returns the numeric-ID entries of the resource directory at
+// dir: the named entries come first and are skipped, so an entry counted
+// as named is never matched by its ID, as on Windows (FILE-14).
+func idEntries(res *resources, dir uint32, limit int) ([]byte, error) {
 	head, err := res.read(dir, 16)
+	if err != nil {
+		return nil, err
+	}
+
+	named := uint32(binary.LittleEndian.Uint16(head[12:]))
+	ids := int(binary.LittleEndian.Uint16(head[14:]))
+
+	if limit > 0 && ids > limit {
+		return nil, fmt.Errorf("pe: %d resource directory entries", ids)
+	}
+
+	// At most 65535 entries of 8 bytes: 512 KiB.
+	return res.read(dir+16+8*named, 8*uint32(ids)) //nolint:gosec // ids < 65536
+}
+
+// findEntry returns the offset of the target of the numeric-ID entry id in
+// the resource directory at dir.
+func findEntry(res *resources, dir, wantID uint32) (uint32, bool, error) {
+	entries, err := idEntries(res, dir, 0)
 	if err != nil {
 		return 0, false, err
 	}
 
 	order := binary.LittleEndian
-	count := uint32(order.Uint16(head[12:])) + uint32(order.Uint16(head[14:]))
 
-	// At most 2 x 65535 entries of 8 bytes: about 1 MiB.
-	entries, err := res.read(dir+16, 8*count)
-	if err != nil {
-		return 0, false, err
-	}
-
-	for i := range count {
-		name := order.Uint32(entries[8*i:])
-		off := order.Uint32(entries[8*i+4:])
-
-		if wantID < 0 || (name&0x80000000 == 0 && int(name) == wantID) {
-			return off, true, nil
+	for i := 0; i+8 <= len(entries); i += 8 {
+		if order.Uint32(entries[i:]) == wantID {
+			return order.Uint32(entries[i+4:]), true, nil
 		}
 	}
 
@@ -327,16 +343,9 @@ func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pas
 		return err
 	}
 
-	langDir := nameDir & 0x7FFFFFFF
-
-	head, err := res.read(langDir, 16)
+	langs, err := idEntries(res, nameDir&0x7FFFFFFF, maxVersionLanguages)
 	if err != nil {
 		return err
-	}
-
-	count := int(binary.LittleEndian.Uint16(head[12:])) + int(binary.LittleEndian.Uint16(head[14:]))
-	if count > maxVersionLanguages {
-		return fmt.Errorf("pe: %d version resource languages", count)
 	}
 
 	// Windows picks the language entry by the user's UI language, so a file
@@ -346,13 +355,8 @@ func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pas
 	// unversioned one, instead of picking one entry.
 	var first *Info
 
-	for i := range count {
-		entry, err := res.read(langDir+16+8*uint32(i), 8)
-		if err != nil {
-			return err
-		}
-
-		dataEntry := binary.LittleEndian.Uint32(entry[4:])
+	for i := 0; i+8 <= len(langs); i += 8 {
+		dataEntry := binary.LittleEndian.Uint32(langs[i+4:])
 		if dataEntry&0x80000000 != 0 {
 			return errors.New("pe: version resource language entry is a directory")
 		}
@@ -519,8 +523,11 @@ func parseVersionInfo(data []byte, info *Info) error { //nolint:cyclop // one pa
 		block := data[off : off+blockLen]
 		blockKey, koff := utf16At(block, 6)
 
+		// Only the first VarFileInfo counts, as on Windows (FILE-14).
 		if blockKey == "VarFileInfo" {
 			parseVarFileInfo(block, align4(koff), info)
+
+			break
 		}
 
 		off = align4(off + blockLen)
@@ -549,7 +556,13 @@ func parseVarFileInfo(data []byte, off int, info *Info) {
 
 		// A value that runs past its Var is invalid as a whole: Windows
 		// then reports no languages, not the ones that fit (FILE-14).
-		if key == "Translation" && koff+valueLen <= end {
+		if key == "Translation" && koff+valueLen > end {
+			return
+		}
+
+		// Only the first Translation counts: Windows ignored a second one
+		// (FILE-14).
+		if key == "Translation" {
 			seen := make(map[int]bool)
 
 			var langs []int
@@ -568,7 +581,9 @@ func parseVarFileInfo(data []byte, off int, info *Info) {
 			// MsiGetFileVersionW lists the languages last first: stored
 			// 1033,1031,2057 came back as 2057,1031,1033 (FILE-14).
 			slices.Reverse(langs)
-			info.Languages = append(info.Languages, langs...)
+			info.Languages = langs
+
+			return
 		}
 
 		off = align4(off + varLen)
