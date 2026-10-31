@@ -505,3 +505,47 @@ func TestUnicodeNameLimits(t *testing.T) {
 		}
 	}
 }
+
+// TestNullKeyBinaryStreamName checks that a NULL key segment is empty in a
+// binary stream name, "T." and not "T.<nil>", which msi.dll cannot read.
+func TestNullKeyBinaryStreamName(t *testing.T) {
+	t.Parallel()
+
+	if got := BinaryStreamName("T", []any{nil}); got != "T." {
+		t.Errorf("BinaryStreamName with a NULL key = %q, want %q", got, "T.")
+	}
+
+	tbl := &Table{Name: "T", Columns: []Column{Col("K", "S72", true), Col("Data", "V0", false)}, Rows: [][]any{{nil, []byte("payload")}}}
+
+	raw, err := (&Database{Codepage: 1252, Tables: []*Table{tbl}}).Marshal(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	back, err := Unmarshal(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(back.Problems) != 0 {
+		t.Errorf("problems: %v", back.Problems)
+	}
+
+	if _, ok := back.Stream("T."); ok {
+		t.Error("the binary stream was left over as an extra stream")
+	}
+
+	if got, ok := back.Table("T").Rows[0][1].([]byte); !ok || string(got) != "payload" {
+		t.Errorf("binary cell %v, want the payload", back.Table("T").Rows[0][1])
+	}
+
+	file, err := cfb.Read(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	encoded, _ := EncodeStreamName("T.", false)
+	if _, ok := file.Stream(encoded); !ok {
+		t.Error("no stream named T.")
+	}
+}
