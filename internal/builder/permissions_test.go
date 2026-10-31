@@ -2,6 +2,9 @@ package builder_test
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -338,6 +341,15 @@ func TestPermissionGrantErrors(t *testing.T) {
 		"pipe in account": {func(c *config.Component) {
 			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "a|b", Rights: config.StringList{"read"}}}}
 		}, "cannot contain |"},
+		"nested reference in account": {func(c *config.Component) {
+			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "[[WHICH]]", Rights: config.StringList{"read"}}}}
+		}, "[[B]]"},
+		"escape inside a reference": {func(c *config.Component) {
+			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: `[SVC_ACCOUN[\T]]`, Rights: config.StringList{"read"}}}}
+		}, "[[B]]"},
+		"inner reference in account": {func(c *config.Component) {
+			c.Files[0].Permissions = &config.Permissions{Grant: []*config.Grant{{Account: "[SVC_[WHICH]]", Rights: config.StringList{"read"}}}}
+		}, "[[B]]"},
 		"line break in condition": {func(c *config.Component) {
 			c.Files[0].Permissions = &config.Permissions{Condition: "A=1\nOR B=1", Grant: []*config.Grant{{Account: "NS", Rights: config.StringList{"read"}}}}
 		}, "line breaks"},
@@ -373,4 +385,197 @@ func TestPermissionGrantErrors(t *testing.T) {
 			t.Errorf("err %v, diagnostics %s", err, res.Diagnostics)
 		}
 	})
+}
+
+// TestGrantPropertiesNotSecure checks that the properties a grant's account
+// or folder comes from are not secure unless the configuration says so
+// (specification section 17.7), with a warning when one is secure without a
+// wizard page that needs it and when the wizard or a configurable directory
+// loses a value that is not.
+func TestGrantPropertiesNotSecure(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+
+	const src = `schema: msi-builder/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64, scope: %s }
+installDir: { name: Hello }
+properties:
+  OTHER: {}
+%s
+components:
+  - files:
+      - source: hello.exe
+        permissions: { grant: [{ account: '.\[SVC_ACCOUNT]', rights: read }] }
+%s`
+
+	const folderGrant = `  - directory: INSTALLDIR/data
+    createFolder: true
+    folderPermissions: { grant: [{ account: NS, rights: modify, inherit: false }] }
+`
+
+	const dialog = "  dialogs:\n    - { id: AccountDlg, title: Account, after: WelcomeDlg, fields: [{ property: SVC_ACCOUNT, label: Account }] }\n"
+
+	for _, tc := range []struct {
+		name, scope, props, extra string
+		secure, notSecure         []string
+		warnings                  []string
+	}{
+		{
+			name: "default", scope: "perMachine", props: "  SVC_ACCOUNT: {}", extra: folderGrant,
+			secure: []string{"OTHER"}, notSecure: []string{"SVC_ACCOUNT", "INSTALLDIR"},
+		},
+		{
+			name: "file grant only", scope: "perMachine", props: "  SVC_ACCOUNT: {}",
+			secure: []string{"OTHER"}, notSecure: []string{"SVC_ACCOUNT", "INSTALLDIR"},
+		},
+		{
+			name: "explicit", scope: "perMachine", props: "  SVC_ACCOUNT: { secure: true }\n  INSTALLDIR: { secure: true }", extra: folderGrant,
+			secure:   []string{"OTHER", "SVC_ACCOUNT", "INSTALLDIR"},
+			warnings: []string{"properties.SVC_ACCOUNT.secure", "properties.INSTALLDIR.secure"},
+		},
+		{
+			name: "explicit for the wizard", scope: "perMachine", props: "  SVC_ACCOUNT: { secure: true }",
+			extra:  folderGrant + "ui:\n  enabled: true\n" + dialog,
+			secure: []string{"OTHER", "SVC_ACCOUNT"},
+		},
+		{
+			name: "search", scope: "perMachine", props: `  SVC_ACCOUNT: { search: { registry: { root: HKLM, key: SOFTWARE\Example, name: Account } } }`,
+			secure:   []string{"OTHER", "SVC_ACCOUNT"},
+			warnings: []string{"properties.SVC_ACCOUNT.search"},
+		},
+		{
+			name: "wizard", scope: "perMachine", props: "  SVC_ACCOUNT: {}",
+			extra:     folderGrant + "ui:\n  enabled: true\n  chooseDirectory: true\n" + dialog,
+			secure:    []string{"OTHER"},
+			notSecure: []string{"SVC_ACCOUNT", "INSTALLDIR"},
+			warnings:  []string{"properties.SVC_ACCOUNT:", "installDir:"},
+		},
+		{
+			name: "feature tree", scope: "perMachine", props: "  SVC_ACCOUNT: {}",
+			extra:     "ui:\n  enabled: true\n  chooseFeatures: true\n",
+			secure:    []string{"OTHER"},
+			notSecure: []string{"SVC_ACCOUNT", "INSTALLDIR"},
+			warnings:  []string{"installDir:"},
+		},
+		{
+			name: "configurable folder", scope: "perMachine", props: "  SVC_ACCOUNT: {}",
+			extra: "  - directory: DATADIR\n    createFolder: true\n" +
+				"    folderPermissions: { grant: [{ account: NS, rights: modify, inherit: false }] }\n" +
+				"directories:\n  - id: CommonAppDataFolder\n    children: [{ id: DATADIR, name: HelloData, configurable: true }]\n",
+			secure:    []string{"OTHER"},
+			notSecure: []string{"SVC_ACCOUNT", "DATADIR"},
+			warnings:  []string{"directories:"},
+		},
+		{
+			name: "set by an action", scope: "perMachine", props: "  SVC_ACCOUNT: {}\n  ACCOUNT_SOURCE: {}\n  DATA_ROOT: {}",
+			extra: folderGrant + "customActions:\n" +
+				"  - { id: SetAccount, setProperty: { name: SVC_ACCOUNT, value: '[ACCOUNT_SOURCE]' }, schedule: [{ sequence: execute, after: CostFinalize }] }\n" +
+				"  - { id: SetData, setDirectory: { directory: INSTALLDIR, value: '[DATA_ROOT]x' }, schedule: [{ sequence: execute, after: CostFinalize }] }\n",
+			secure:    []string{"OTHER"},
+			notSecure: []string{"SVC_ACCOUNT", "ACCOUNT_SOURCE", "DATA_ROOT", "INSTALLDIR"},
+		},
+		{
+			name: "dual scope", scope: "perUserOrMachine", props: "  SVC_ACCOUNT: { secure: true }",
+			secure:   []string{"OTHER", "SVC_ACCOUNT"},
+			warnings: []string{"properties.SVC_ACCOUNT.secure"},
+		},
+		{
+			name: "per user", scope: "perUser", props: "  SVC_ACCOUNT: {}",
+			secure: []string{"OTHER", "SVC_ACCOUNT"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			cfg, err := config.Parse(fmt.Appendf(nil, src, tc.scope, tc.props, tc.extra), config.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			cfg.BaseDir = dir
+			res := mustBuild(t, cfg)
+
+			value := fmt.Sprint(cell(t, res.Database, "Property", "Value", func(r []any) bool { return r[0] == "SecureCustomProperties" }))
+			secure := strings.Split(value, ";")
+
+			for _, name := range tc.secure {
+				if !slices.Contains(secure, name) {
+					t.Errorf("SecureCustomProperties %q lacks %s", value, name)
+				}
+			}
+
+			for _, name := range tc.notSecure {
+				if slices.Contains(secure, name) {
+					t.Errorf("SecureCustomProperties %q has %s", value, name)
+				}
+			}
+
+			var grantWarnings []string
+
+			for _, diag := range res.Diagnostics {
+				if strings.Contains(diag.Message, "permission grant") {
+					grantWarnings = append(grantWarnings, diag.Path+": "+diag.Message)
+				}
+			}
+
+			if len(grantWarnings) != len(tc.warnings) {
+				t.Errorf("grant warnings %q, want %d", grantWarnings, len(tc.warnings))
+			}
+
+			for _, want := range tc.warnings {
+				if !slices.ContainsFunc(grantWarnings, func(w string) bool { return strings.HasPrefix(w, want) }) {
+					t.Errorf("no warning at %s in %q", want, grantWarnings)
+				}
+			}
+		})
+	}
+}
+
+// TestGrantSetActionNestedReference checks that a set action whose target a
+// grant's account comes from cannot use a nested reference, whose property
+// the builder cannot keep out of SecureCustomProperties.
+func TestGrantSetActionNestedReference(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+
+	if err := os.WriteFile(filepath.Join(dir, "hello.exe"), exe, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Parse([]byte(`schema: msi-builder/v1
+product: { name: Hello, manufacturer: Example, version: 1.0.0, upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301 }
+package: { platform: x64 }
+properties:
+  SVC_ACCOUNT: {}
+  WHICH: { value: OTHER }
+  OTHER: {}
+components:
+  - files:
+      - source: hello.exe
+        permissions: { grant: [{ account: '[SVC_ACCOUNT]', rights: read }] }
+customActions:
+  - { id: SetAccount, setProperty: { name: SVC_ACCOUNT, value: '[[WHICH]]' }, schedule: [{ sequence: execute, after: CostFinalize }] }
+  - { id: SetFromEnv, setProperty: { name: SVC_ACCOUNT, value: '[[%ACCT]]' }, schedule: [{ sequence: execute, after: CostFinalize }] }
+`), config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.BaseDir = dir
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	diags := fmt.Sprint(res.Diagnostics)
+
+	if err == nil || !strings.Contains(diags, "customActions[0].setProperty.value") || !strings.Contains(diags, "customActions[1].setProperty.value") {
+		t.Errorf("err %v, diagnostics %s", err, res.Diagnostics)
+	}
 }

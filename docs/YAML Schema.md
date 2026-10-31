@@ -183,7 +183,10 @@ The rights apply to the subfolders and files too. Files and services take
 `grant` in their `permissions` block. The account can also be a property,
 `account: '[SERVICE_ACCOUNT]'`; the account is remembered, so a repair
 from Apps & Features grants to it again, but a major upgrade needs it on
-its command line again. To replace the permissions
+its command line again. In a per-machine package such a property is not
+secure, so a standard user's command line does not set it (SEC-03),
+only an administrator's; a wizard field for it needs `secure: true` in
+`properties`. To replace the permissions
 instead of adding to them, write an SDDL string in `sddl`.
 
 ### Add the program to PATH
