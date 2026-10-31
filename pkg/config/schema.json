@@ -1732,7 +1732,7 @@
                     },
                     "description": {
                       "type": "string",
-                      "description": "The type's name in Explorer."
+                      "description": "The type's name in Explorer, written as it is: [PROPERTY] references are not formatted."
                     },
                     "iconIndex": {
                       "type": "integer",

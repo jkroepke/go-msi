@@ -174,7 +174,7 @@ msi-builder does the same by default:
 | `RemoveRegistryKey`, `RemoveRegistryValue` | `components[].removeRegistry` |
 | `Environment` | `components[].environment` |
 | `Shortcut`, `util:InternetShortcut` | `files[].shortcuts`, `components[].shortcuts` |
-| `ProgId`, `Extension`, `Verb` | `files[].fileTypes`; an icon from another file than the one the type opens becomes a note to add the DefaultIcon registry value |
+| `ProgId`, `Extension`, `Verb` | `files[].fileTypes`; an icon from another file than the one the type opens becomes a note to add the DefaultIcon registry value. msi-builder writes file type texts as they are, so convert fills in `[PROPERTY]` references to properties that nothing in the source changes, assuming none is set on the command line |
 | `util:CloseApplication` | `files[].close` on the program's file; it matches the installed path, not the filename, and ends the program only with `TerminateProcess` (`terminate: false` otherwise). One that only sets its `Property` has no counterpart |
 | `ServiceInstall`, `ServiceConfig`, `util:ServiceConfig` | `components[].services` |
 | `ServiceControl` for another service | `components[].serviceControl` |
@@ -501,6 +501,9 @@ when the component is installed. `RemoveRegistryKey` with
 removed, and the install does not create it. A `type: key` entry with
 `removeOnUninstall: true` deletes the key at uninstall too, but also
 creates it at install.
+A `RegistryKey` with `ForceDeleteOnUninstall="yes"` and no values, also none in
+nested keys, only deletes the key, so convert writes it as such a
+`removeRegistry` entry.
 
 ## Environment variables
 

@@ -463,7 +463,8 @@ func (c *Close) Terminates() bool {
 type FileType struct {
 	// ProgID is the programmatic identifier, such as Acme.Document.1.
 	ProgID string `yaml:"progId"`
-	// Description is the type's name in Explorer.
+	// Description is the type's name in Explorer, written as it is:
+	// [PROPERTY] references are not formatted.
 	Description string `yaml:"description"`
 	// IconIndex picks an icon resource of the file for DefaultIcon; nil
 	// writes no DefaultIcon.
