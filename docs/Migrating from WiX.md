@@ -262,8 +262,7 @@ upgrade:
   the package's own `UpgradeCode` with a `Minimum` and `Maximum` at this
   version, with `RemoveExistingProducts` scheduled, is `minVersion`
   (`IncludeMinimum="no"` is `includeMin: false`); `convert` writes it. A
-  version below the minimum is expected to stay installed next to the new
-  one.
+  version below the minimum stays installed next to the new one.
 - A WiX v3 `<Product>` whose `<Package>` has no `InstallScope` leaves
   `ALLUSERS` unset, so Windows Installer registers it for the installing
   user only, even when it installs into Program Files. A `perMachine`

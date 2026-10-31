@@ -595,7 +595,8 @@ func TestConvertUpgradeFloor(t *testing.T) {
 		"floor": {
 			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
       <UpgradeVersion Minimum="0.18.0" IncludeMinimum="no" Maximum="1.2.0" IncludeMaximum="yes" MigrateFeatures="yes" Property="PREVIOUSFOUND" />
-    </Upgrade>`,
+    </Upgrade>
+    <Property Id="PREVIOUSFOUND" Secure="yes" />`,
 			removal,
 			[]string{"allowSameVersion: true", "minVersion: 0.18.0", "includeMin: false", "property: PREVIOUSFOUND", "older version than 0.18.0", noNewer},
 			[]string{handMade, "migrateFeatures", "property: WIX_UPGRADE_DETECTED"},

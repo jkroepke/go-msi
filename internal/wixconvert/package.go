@@ -621,9 +621,17 @@ func skippedProperty(id string) bool {
 func (c *converter) emitProperties() {
 	props := c.out.child("properties")
 
+	upgradeProps := c.upgradeProperties()
+
 	for _, elm := range c.properties {
 		propID := elm.attr("Id")
 		if skippedProperty(propID) {
+			continue
+		}
+
+		// msi-builder declares and secures the properties of its upgrade
+		// rows itself, and one in properties fails ICE61.
+		if upgradeProps[propID] && !elm.has("Value") && len(elm.kids) == 0 {
 			continue
 		}
 
@@ -654,6 +662,31 @@ func (c *converter) emitProperties() {
 			propOut.head = nil
 		}
 	}
+}
+
+// upgradeProperties are the properties that the converted upgrade rows
+// set.
+func (c *converter) upgradeProperties() map[string]bool {
+	props := make(map[string]bool)
+
+	upgrade := c.out.mapAt("upgrade")
+	if upgrade == nil {
+		return props
+	}
+
+	props[upgrade.str("property")] = true
+	props[upgrade.str("newerProperty")] = true
+
+	related, _ := upgrade.get("related").([]any)
+	for _, row := range related {
+		if rowMap, ok := row.(*omap); ok {
+			props[rowMap.str("property")] = true
+		}
+	}
+
+	delete(props, "")
+
+	return props
 }
 
 func (c *converter) emitSearches(propOut *omap, prop *elem) {

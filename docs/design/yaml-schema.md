@@ -367,18 +367,18 @@ writes the two standard rows: one removes versions up to this one
 (inclusive when `allowSameVersion`), and one detects newer versions.
 
 `minVersion` is the VersionMin of the removing row, inclusive unless
-`includeMin: false`. An installed version below it is not removed and is
-expected to stay registered next to the new one (UPG-13). Two msi-builder
+`includeMin: false`. An installed version below it is not removed and stays
+registered next to the new one (observed, UPG-13). Two msi-builder
 packages with generated codes and the same key path locations share their
 components, so uninstalling one keeps the files the other still uses
-(expected, UPG-13); a version built by another tool into the same folder has
+(observed, UPG-13); a version built by another tool into the same folder has
 other component codes, and uninstalling either product can delete files the
 other needs (section 8.10). A package that must not install next to such a
 version detects it with a `related` row of its own upgrade code
 (`maxVersion` at the floor, `includeMax: true` when `includeMin: false`,
-`onlyDetect: true`) and a launch condition on that row's property, which is
-expected to fail the install with 1603 and leave the old version alone
-(UPG-13). The floor must be below `product.version` in the first three
+`onlyDetect: true`) and a launch condition on that row's property, which
+fails the install with 1603 and leaves the old version alone (observed,
+UPG-13). The floor must be below `product.version` in the first three
 fields, since Windows Installer compares only those.
 
 `downgrade: error` adds a launch condition on `newerProperty`; `ignore`
