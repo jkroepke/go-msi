@@ -129,8 +129,9 @@ func (c *converter) advancedNotes(wizard *omap, line int) {
 // overrides WixPerMachineFolder.
 func (c *converter) advancedFolder(line int) {
 	inst := c.out.mapAt("installDir")
-	if inst == nil || inst.get("name") == nil {
-		// An install folder inside directories keeps its place there.
+	if inst == nil || inst.get("name") == nil || c.scope == scopeUser {
+		// An install folder inside directories keeps its place there, and
+		// a per-user package never uses the per-machine folder.
 		return
 	}
 

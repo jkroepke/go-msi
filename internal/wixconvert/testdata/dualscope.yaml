@@ -17,6 +17,7 @@ package:
   platform: x64
   scope: perUserOrMachine
 upgrade:
+  allowSameVersion: false
   downgradeMessage: newer
 installDir:
   id: INSTALLFOLDER

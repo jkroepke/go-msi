@@ -743,7 +743,9 @@ func (c *converter) addComp(elm *elem, within scope) {
 
 	if sub := c.expand(elm, elm.attr("Subdirectory")); sub != "" {
 		comp.dir = c.subdir(comp.dir, sub, elm.line)
-		comp.files = comp.files.below(strings.ReplaceAll(sub, `\`, "/"))
+		for _, part := range strings.FieldsFunc(sub, func(r rune) bool { return r == '\\' || r == '/' }) {
+			comp.files = comp.files.below(part)
+		}
 	}
 
 	c.comps = append(c.comps, comp)

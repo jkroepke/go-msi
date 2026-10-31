@@ -329,19 +329,33 @@ func productSearch(elm *elem) bool {
 	return elm.is("ProductSearch") && elm.has("UpgradeCode") && !elm.has("Guid")
 }
 
+// productSearchOnly reports whether a Property only holds ProductSearch
+// elements by UpgradeCode: it becomes their upgrade.related rows. One with
+// a Value or another search stays a property, which no upgrade row may set
+// (ICE61), so its ProductSearch stays a TODO.
+func productSearchOnly(prop *elem) bool {
+	return !prop.has("Value") && len(prop.kids) > 0 &&
+		!slices.ContainsFunc(prop.kids, func(kid *elem) bool { return !productSearch(kid) })
+}
+
 // emitProductSearches turns the ProductSearch elements by UpgradeCode into
 // upgrade.related onlyDetect rows that set their property.
 func (c *converter) emitProductSearches(upgrade *omap) {
 	for _, prop := range c.properties {
-		for _, kid := range prop.kids {
-			if !productSearch(kid) {
-				continue
-			}
+		if !productSearchOnly(prop) {
+			continue
+		}
 
+		for _, kid := range prop.kids {
 			row := newMap()
 			row.set("upgradeCode", c.value(kid, "UpgradeCode"))
 			row.set("minVersion", c.value(kid, "Minimum"))
 			row.set("maxVersion", c.value(kid, "Maximum"))
+
+			if !kid.has("Minimum") && !kid.has("Maximum") {
+				// An Upgrade row needs a version; this one finds every version.
+				row.set("minVersion", "0.0.0")
+			}
 
 			if kid.no("IncludeMinimum") {
 				row.set("includeMin", false)
@@ -385,21 +399,16 @@ func (c *converter) newerProperty(upgrade *omap, prop string, line int) {
 
 // emitMajor converts a MajorUpgrade element.
 func (c *converter) emitMajor(upgrade *omap, major *elem) {
-	switch schedule := major.attr("Schedule"); schedule {
-	case "", "afterInstallValidate":
-		// WiX's default; msi-builder's afterInstallInitialize also
-		// removes the old version first, inside the transaction.
-		if schedule != "" {
-			upgrade.set("removeOld", schedule)
-		}
-	case "afterInstallInitialize", "afterInstallExecute", "afterInstallFinalize":
-		upgrade.set("removeOld", schedule)
-	default:
-		c.todof(upgrade, "", major.line, "MajorUpgrade Schedule=%q has no counterpart", schedule)
-	}
+	c.majorSchedule(upgrade, major)
 
 	if major.yes("AllowDowngrades") {
 		upgrade.set("downgrade", "allow")
+	}
+
+	// WiX leaves the same version out of the upgrade unless asked;
+	// msi-builder's default takes it in.
+	if !major.yes("AllowSameVersionUpgrades") {
+		upgrade.set("allowSameVersion", false)
 	}
 
 	if major.yes("Disallow") {
@@ -418,6 +427,22 @@ func (c *converter) emitMajor(upgrade *omap, major *elem) {
 
 	if major.has("RemoveFeatures") {
 		c.todof(upgrade, "", major.line, "MajorUpgrade RemoveFeatures has no counterpart")
+	}
+}
+
+// majorSchedule converts the MajorUpgrade Schedule to upgrade.removeOld.
+func (c *converter) majorSchedule(upgrade *omap, major *elem) {
+	switch schedule := major.attr("Schedule"); schedule {
+	case "", "afterInstallValidate":
+		// WiX's default; msi-builder's afterInstallInitialize also
+		// removes the old version first, inside the transaction.
+		if schedule != "" {
+			upgrade.set("removeOld", schedule)
+		}
+	case "afterInstallInitialize", "afterInstallExecute", "afterInstallFinalize":
+		upgrade.set("removeOld", schedule)
+	default:
+		c.todof(upgrade, "", major.line, "MajorUpgrade Schedule=%q has no counterpart", schedule)
 	}
 }
 
@@ -752,7 +777,7 @@ func (c *converter) emitProperties() {
 // upgrade row sets: msi-builder declares and secures those itself, and one
 // in properties fails ICE61.
 func upgradeOnly(elm *elem, upgradeProps map[string]bool) bool {
-	return upgradeProps[elm.attr("Id")] && !elm.has("Value") && !slices.ContainsFunc(elm.kids, func(kid *elem) bool { return !productSearch(kid) })
+	return upgradeProps[elm.attr("Id")] && (!elm.has("Value") && len(elm.kids) == 0 || productSearchOnly(elm))
 }
 
 // upgradeProperties are the properties that the converted upgrade rows
@@ -845,9 +870,6 @@ func (c *converter) searchKind(propOut *omap, elm *elem) (string, *omap) {
 		c.fileSearch(elm, found)
 
 		return "file", found
-	case productSearch(elm):
-		// emitProductSearches made it an upgrade.related row.
-		return "", nil
 	case elm.is("ComponentSearch"):
 		found.set("guid", c.value(elm, "Guid"))
 

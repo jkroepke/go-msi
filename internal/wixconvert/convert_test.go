@@ -805,7 +805,7 @@ func TestConvertDowngradeLaunchCondition(t *testing.T) {
 			[]string{"launchConditions"},
 		},
 		"MajorUpgrade without a message": {
-			`<MajorUpgrade AllowSameVersion="yes" />
+			`<MajorUpgrade AllowSameVersionUpgrades="yes" />
     <Launch Condition="NOT WIX_DOWNGRADE_DETECTED" Message="from launch" />`,
 			[]string{"downgradeMessage: from launch"},
 			[]string{"launchConditions", "is left out"},
@@ -1974,6 +1974,29 @@ func TestConvertFileSource(t *testing.T) {
 func TestConvertAdvancedFolder(t *testing.T) {
 	t.Parallel()
 
+	perUser := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301" Scope="perUser">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <Property Id="ApplicationFolderName" Value="Example Corp\Hello" />
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="APPLICATIONFOLDER" Name="Hello">
+        <Component><File Source="hello.exe" /></Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /></Feature>
+    <ui:WixUI Id="WixUI_Advanced" />
+  </Package>
+</Wix>`
+
+	user, err := wixconvert.Convert(strings.NewReader(perUser), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if out := string(user.YAML); strings.Contains(out, "name: Example Corp") || strings.Contains(out, "ProgramFilesFolder") {
+		t.Errorf("a per-user package took the per-machine folder:\n%s", out)
+	}
+
 	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
   <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301" Scope="perUserOrMachine">
     <MajorUpgrade DowngradeErrorMessage="newer" />
@@ -2023,6 +2046,8 @@ func TestConvertProductSearch(t *testing.T) {
       <ProductSearch UpgradeCode="{6f2504e0-4f89-41d3-9a0c-0305e82c3302}" Maximum="2.0.0" IncludeMaximum="yes" />
     </Property>
     <Property Id="BYCODE"><ProductSearch Guid="{7f2504e0-4f89-41d3-9a0c-0305e82c3303}" /></Property>
+    <Property Id="ANYTOOL"><ProductSearch UpgradeCode="{8f2504e0-4f89-41d3-9a0c-0305e82c3304}" /></Property>
+    <Property Id="WITHVALUE" Value="none"><ProductSearch UpgradeCode="{9f2504e0-4f89-41d3-9a0c-0305e82c3305}" /></Property>
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Hello">
         <Component><File Source="hello.exe" /></Component>
@@ -2041,13 +2066,15 @@ func TestConvertProductSearch(t *testing.T) {
 	for _, want := range []string{
 		"upgradeCode: '{6f2504e0-4f89-41d3-9a0c-0305e82c3302}'", "maxVersion: 2.0.0", "includeMax: true",
 		"onlyDetect: true", "property: OLDTOOL", "<ProductSearch> has no counterpart in properties.search",
+		"minVersion: 0.0.0", "property: ANYTOOL", "WITHVALUE: none", "allowSameVersion: false",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the YAML lacks %q:\n%s", want, out)
 		}
 	}
 
-	if strings.Count(out, "<ProductSearch> has no counterpart") != 1 || strings.Contains(out, "OLDTOOL:") {
+	if strings.Count(out, "<ProductSearch> has no counterpart") != 2 || strings.Contains(out, "OLDTOOL:") ||
+		strings.Contains(out, "9f2504e0") {
 		t.Errorf("want OLDTOOL only as a related row:\n%s", out)
 	}
 

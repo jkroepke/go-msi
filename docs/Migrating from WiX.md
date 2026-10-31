@@ -101,6 +101,7 @@ package:
   platform: x64            # wix build -arch x64
 
 upgrade:
+  allowSameVersion: false  # WiX's AllowSameVersionUpgrades="no" default
   downgradeMessage: A newer version of [ProductName] is already installed.
 
 installDir:
@@ -239,7 +240,7 @@ icons:
 
 upgrade:
   removeOld: afterInstallValidate   # MajorUpgrade Schedule
-  allowSameVersion: true            # the default
+  allowSameVersion: true            # AllowSameVersionUpgrades="yes"
   downgradeMessage: A newer version of [ProductName] is already installed.
   related:                          # Upgrade / UpgradeVersion
     - upgradeCode: 513044d7-fae5-4715-984a-14f911d06fcc
@@ -259,6 +260,10 @@ upgrade:
   never removes a newer version. `downgrade: allow` and `downgrade: ignore`
   install the older version next to the newer one.
 - `IgnoreRemoveFailure="yes"` is `ignoreRemoveFailure: true`.
+- WiX's `AllowSameVersionUpgrades` defaults to `no`, msi-builder's
+  `allowSameVersion` to `true`. convert writes `allowSameVersion: false` for
+  every `MajorUpgrade` without `AllowSameVersionUpgrades="yes"`, so the same
+  version is still not taken as an upgrade.
 - A hand-made major upgrade without `MajorUpgrade`, an `UpgradeVersion` of
   the package's own `UpgradeCode` with a `Minimum` below this version and a
   `Maximum` at it, with `RemoveExistingProducts` scheduled, is `minVersion`
