@@ -2021,10 +2021,17 @@ func (v *validator) customActions(cfg *Config, known *refs) {
 // working directory: the builder adds a Directory row for it, which fails
 // ICE105 whatever the action's scope.
 func (v *validator) actionFolder(field, dir string) {
-	if v.scope.MayBePerUser() && ice105Folders[dir] {
-		v.errorf(field, "%s cannot have the folder %s, which the action's directory adds (ICE105); "+
-			"use INSTALLDIR or leave the directory out, and name the program as [%s]program.exe", v.perUserPackage(), dir, dir)
+	if !v.scope.MayBePerUser() || !ice105Folders[dir] {
+		return
 	}
+
+	use := "use INSTALLDIR"
+	if strings.HasSuffix(field, ".run.directory") {
+		use = "use INSTALLDIR or leave the directory out"
+	}
+
+	v.errorf(field, "%s cannot have the folder %s, which the action's directory adds (ICE105); "+
+		"%s, and name the program as [%s]program.exe", v.perUserPackage(), dir, use, dir)
 }
 
 // actionScope checks a custom action's scope: perMachine or perUser, only

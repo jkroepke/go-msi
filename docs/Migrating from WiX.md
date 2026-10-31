@@ -728,7 +728,7 @@ element in a sequence becomes a `schedule` placement of that entry:
 | `Error` | `error` |
 | `Execute`, `Impersonate`, `Return`, `HideTarget` | `execute`, `impersonate`, `return`, `hideTarget` |
 | `Impersonate="no"` on a deferred action in a dual-scope package | `impersonate: false` with `scope: perMachine`: the action runs only in per-machine installs (CA-09); one whose conditions all say `NOT ALLUSERS` becomes an impersonated `scope: perUser` action, since CA-09 saw a per-user install run it as the installing user anyway |
-| A `Custom` condition of only `ALLUSERS=1` or `NOT ALLUSERS` in a dual-scope package | `scope: perMachine` or `scope: perUser` |
+| A `Custom` condition of only `ALLUSERS=1` or `NOT ALLUSERS` in a dual-scope package, on every placement and all in `InstallExecuteSequence` | `scope: perMachine` or `scope: perUser`; otherwise the condition stays |
 | `ProgressText` for the action (in `UI`) | `progress`; a `Template` has no counterpart |
 
 | WiX `Custom` | `schedule` entry |
