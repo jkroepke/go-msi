@@ -129,5 +129,12 @@ func Decode(data []byte, codePage int) (string, error) {
 		return "", fmt.Errorf("codepage: invalid bytes for code page %d", codePage)
 	}
 
+	// Text the encoder cannot write back would fail only in a later
+	// Marshal, such as 950 0x8862, which x/text reads as a letter with a
+	// combining mark.
+	if _, err := enc.NewEncoder().Bytes(out); err != nil {
+		return "", fmt.Errorf("codepage: bytes for code page %d decode to text it cannot encode", codePage)
+	}
+
 	return string(out), nil
 }

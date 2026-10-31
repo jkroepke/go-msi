@@ -75,6 +75,7 @@ func TestDecodeMalformed(t *testing.T) {
 		{[]byte{0xFF}, 949},           // no character
 		{[]byte{0xA4}, 950},           // a lead byte alone
 		{[]byte{0xEF, 0xBF}, 65001},   // a truncated UTF-8 sequence
+		{[]byte{0x88, 0x62}, 950},     // read as Ê with U+0304, which 950 cannot write
 		{[]byte{0x81, 0x30}, 936},     // a GB18030 four-byte prefix, not GBK
 	} {
 		if got, err := codepage.Decode(tc.data, tc.cp); err == nil {

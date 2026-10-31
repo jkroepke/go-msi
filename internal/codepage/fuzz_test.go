@@ -31,7 +31,7 @@ func FuzzRoundTrip(f *testing.F) {
 }
 
 // FuzzDecode reads arbitrary bytes: whatever Decode accepts holds no U+FFFD
-// for an ANSI code page, and text that encodes decodes back to itself.
+// for an ANSI code page, encodes, and decodes back to itself from there.
 func FuzzDecode(f *testing.F) {
 	for _, cp := range []int{0, 1252, 1251, 932, 936, 949, 950, 65001} {
 		f.Add([]byte("Hello \x81\x93\xfa\xa4"), cp)
@@ -49,7 +49,7 @@ func FuzzDecode(f *testing.F) {
 
 		raw, err := codepage.Encode(text, codePage)
 		if err != nil {
-			return
+			t.Fatalf("code page %d: % x decodes to %q, which does not encode: %v", codePage, data, text, err)
 		}
 
 		if back, err := codepage.Decode(raw, codePage); err != nil || back != text {
