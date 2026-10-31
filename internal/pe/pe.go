@@ -304,38 +304,110 @@ func findEntry(res *resources, dir uint32, wantID int) (uint32, bool, error) {
 	return 0, false, nil
 }
 
+// maxVersionLanguages caps the language entries of the version resource
+// that are compared: real files hold one, and each costs a read of up to
+// 64 KiB.
+const maxVersionLanguages = 64
+
 func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pass over the format; splitting would scatter it
-	const rtVersion = 16
+	const (
+		rtVersion = 16
+		// vsVersionInfo is the resource ID Windows reads the version from
+		// (VS_VERSION_INFO); another ID is never used (FILE-14).
+		vsVersionInfo = 1
+	)
 
 	typeDir, ok, err := findEntry(res, 0, rtVersion)
 	if err != nil || !ok || typeDir&0x80000000 == 0 {
 		return err
 	}
 
-	nameDir, ok, err := findEntry(res, typeDir&0x7FFFFFFF, -1)
+	nameDir, ok, err := findEntry(res, typeDir&0x7FFFFFFF, vsVersionInfo)
 	if err != nil || !ok || nameDir&0x80000000 == 0 {
 		return err
 	}
 
-	dataEntry, ok, err := findEntry(res, nameDir&0x7FFFFFFF, -1)
-	if err != nil || !ok || dataEntry&0x80000000 != 0 {
-		return err
-	}
+	langDir := nameDir & 0x7FFFFFFF
 
-	data, err := versionData(res, dataEntry)
+	head, err := res.read(langDir, 16)
 	if err != nil {
 		return err
 	}
 
-	return parseVersionInfo(data, info)
+	count := int(binary.LittleEndian.Uint16(head[12:])) + int(binary.LittleEndian.Uint16(head[14:]))
+	if count > maxVersionLanguages {
+		return fmt.Errorf("pe: %d version resource languages", count)
+	}
+
+	// Windows picks the language entry by the user's UI language, so a file
+	// whose entries disagree has a version that depends on the machine
+	// (FILE-14: English 9.8.7.6 won over German 1.2.3.4 on an English
+	// system). Such a file is refused, which the builder reports like an
+	// unversioned one, instead of picking one entry.
+	var first *Info
+
+	for i := range count {
+		entry, err := res.read(langDir+16+8*uint32(i), 8)
+		if err != nil {
+			return err
+		}
+
+		dataEntry := binary.LittleEndian.Uint32(entry[4:])
+		if dataEntry&0x80000000 != 0 {
+			return errors.New("pe: version resource language entry is a directory")
+		}
+
+		cur := &Info{}
+		if err := versionEntry(res, dataEntry, cur); err != nil {
+			return err
+		}
+
+		if first == nil {
+			first = cur
+		} else if cur.FileVersion != first.FileVersion || cur.ProductVersion != first.ProductVersion ||
+			cur.HasVersion != first.HasVersion || !slices.Equal(cur.Languages, first.Languages) {
+			return fmt.Errorf("pe: version resource languages disagree (%s %s and %s %s)",
+				first.FileVersion, first.Language(), cur.FileVersion, cur.Language())
+		}
+	}
+
+	if first != nil {
+		info.FileVersion, info.ProductVersion = first.FileVersion, first.ProductVersion
+		info.HasVersion, info.Languages = first.HasVersion, first.Languages
+	}
+
+	return nil
+}
+
+// versionEntry reads one language's version resource into info.
+func versionEntry(res *resources, dataEntry uint32, info *Info) error {
+	data, rawStart, err := versionData(res, dataEntry)
+	if err != nil {
+		return err
+	}
+
+	if err := parseVersionInfo(data, info); err != nil {
+		return err
+	}
+
+	// Windows reported the version but no languages when the version data
+	// started at or past the section's SizeOfRawData, inside the part that
+	// rounding to FileAlignment adds: raw sizes 1 to 0x58 with the data at
+	// 0x58 gave no languages, 0x60 and up gave all of them (FILE-14).
+	if !rawStart {
+		info.Languages = nil
+	}
+
+	return nil
 }
 
 // versionData reads the version resource that the data entry at offset
-// dataEntry of the resource directory describes.
-func versionData(res *resources, dataEntry uint32) ([]byte, error) {
+// dataEntry of the resource directory describes. rawStart reports whether
+// the data starts within its section's unrounded SizeOfRawData.
+func versionData(res *resources, dataEntry uint32) ([]byte, bool, error) {
 	entry, err := res.read(dataEntry, 16)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	le := binary.LittleEndian
@@ -346,20 +418,27 @@ func versionData(res *resources, dataEntry uint32) ([]byte, error) {
 	// lie in a section; the declared size only has to hold it. Windows read
 	// a version whose data entry claimed more than its section (FILE-14).
 	if dataSize < 6 {
-		return nil, errors.New("pe: version resource too short")
+		return nil, false, errors.New("pe: version resource too short")
 	}
 
 	head, err := res.img.read(dataRVA, 2)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	length := uint32(le.Uint16(head))
 	if length > dataSize {
-		return nil, fmt.Errorf("pe: version block of %d bytes is longer than its %d-byte resource", length, dataSize)
+		return nil, false, fmt.Errorf("pe: version block of %d bytes is longer than its %d-byte resource", length, dataSize)
 	}
 
-	return res.img.read(dataRVA, length)
+	data, err := res.img.read(dataRVA, length)
+	if err != nil {
+		return nil, false, err
+	}
+
+	sec, _ := res.img.section(dataRVA, length)
+
+	return data, dataRVA-sec.virtualAddress < sec.rawSize, nil
 }
 
 func utf16At(b []byte, off int) (string, int) {
@@ -475,7 +554,10 @@ func parseVarFileInfo(data []byte, off int, info *Info) {
 
 			var langs []int
 
-			for p := koff; p+4 <= koff+valueLen; p += 4 {
+			// A length that is not a multiple of 4 still counts its last,
+			// partial entry when the block holds all of it: lengths 5 to 7
+			// gave two languages on Windows (FILE-14).
+			for p := koff; p < koff+valueLen && p+4 <= end; p += 4 {
 				lang := int(order.Uint16(data[p:]))
 				if !seen[lang] {
 					seen[lang] = true

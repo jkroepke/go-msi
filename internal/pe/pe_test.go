@@ -239,18 +239,22 @@ func TestLargeResourceRange(t *testing.T) {
 }
 
 // TestRawDataRoundedToFileAlignment ends the resource section's raw data
-// one byte in. Windows rounds SizeOfRawData up to FileAlignment (0x200
-// here), which covers the whole resource, so the version is still read.
+// before and right after the start of the version data (at 0x58). Windows
+// rounds SizeOfRawData up to FileAlignment (0x200 here), so the version is
+// read either way, but it drops the languages when the data starts past
+// the unrounded raw size (FILE-14).
 func TestRawDataRoundedToFileAlignment(t *testing.T) {
 	t.Parallel()
 
-	info, err := Parse(bytes.NewReader(corruptImage(t, testRsrcSection+16, 1)))
-	if err != nil {
-		t.Fatal(err)
-	}
+	for raw, lang := range map[uint32]string{1: "", 0x58: "", 0x60: "1033", 0x200: "1033"} {
+		info, err := Parse(bytes.NewReader(corruptImage(t, testRsrcSection+16, raw)))
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	if info.FileVersion != "1.2.3.4" || info.Language() != "1033" {
-		t.Errorf("%+v", info)
+		if info.FileVersion != "1.2.3.4" || info.Language() != lang {
+			t.Errorf("raw size %#x: %+v, want language %q", raw, info, lang)
+		}
 	}
 }
 
@@ -483,5 +487,202 @@ func TestOversizedVersionData(t *testing.T) {
 				t.Errorf("%+v", info)
 			}
 		})
+	}
+}
+
+// resEntry is one RT_VERSION resource for versionResources.
+type resEntry struct {
+	id, lang  uint32
+	version   string
+	languages []int
+}
+
+// versionResources builds an image whose resource section holds the given
+// RT_VERSION resources, sorted by ID and then language as a resource
+// compiler writes them.
+func versionResources(t *testing.T, entries []resEntry) []byte {
+	t.Helper()
+
+	const area = 0x1000 // the section's raw size: 0x200 plus the padding
+
+	data := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Padding: area - 0x200})
+	order := binary.LittleEndian
+
+	slices.SortFunc(entries, func(a, b resEntry) int {
+		if a.id != b.id {
+			return int(a.id) - int(b.id)
+		}
+
+		return int(a.lang) - int(b.lang)
+	})
+
+	var ids []uint32
+	for _, e := range entries {
+		if len(ids) == 0 || ids[len(ids)-1] != e.id {
+			ids = append(ids, e.id)
+		}
+	}
+
+	dirHead := func(n int) []byte {
+		d := make([]byte, 16)
+		order.PutUint16(d[14:], uint16(n)) //nolint:gosec // a few entries
+
+		return d
+	}
+
+	// Layout: root, name directory, one language directory per ID, the
+	// data entries, then the data.
+	rootLen := 16 + 8
+	nameLen := 16 + 8*len(ids)
+	langOff := make(map[uint32]int)
+	off := rootLen + nameLen
+
+	for _, id := range ids {
+		langOff[id] = off
+		count := 0
+
+		for _, e := range entries {
+			if e.id == id {
+				count++
+			}
+		}
+
+		off += 16 + 8*count
+	}
+
+	entryOff := off
+	dataOff := entryOff + 16*len(entries)
+
+	rsrc := dirHead(1)
+	rsrc = order.AppendUint32(rsrc, 16)
+	rsrc = order.AppendUint32(rsrc, 0x80000000|uint32(rootLen))
+	rsrc = append(rsrc, dirHead(len(ids))...)
+
+	for _, id := range ids {
+		rsrc = order.AppendUint32(rsrc, id)
+		rsrc = order.AppendUint32(rsrc, 0x80000000|uint32(langOff[id])) //nolint:gosec // small
+	}
+
+	blobs := make([][]byte, 0, len(entries))
+
+	for _, e := range entries {
+		img := testpe.Build(testpe.Options{FileVersion: e.version, Languages: e.languages})
+		start := blockOffset(t, img, "VS_VERSION_INFO")
+		blobs = append(blobs, img[start:start+int(order.Uint32(img[testDataEntry+4:]))])
+	}
+
+	for _, id := range ids {
+		var langs []int
+
+		for i, e := range entries {
+			if e.id == id {
+				langs = append(langs, i)
+			}
+		}
+
+		rsrc = append(rsrc, dirHead(len(langs))...)
+		for _, i := range langs {
+			rsrc = order.AppendUint32(rsrc, entries[i].lang)
+			rsrc = order.AppendUint32(rsrc, uint32(entryOff+16*i)) //nolint:gosec // small
+		}
+	}
+
+	pos := dataOff
+
+	for _, b := range blobs {
+		rsrc = order.AppendUint32(rsrc, 0x2000+uint32(pos)) //nolint:gosec // small
+		rsrc = order.AppendUint32(rsrc, uint32(len(b)))     //nolint:gosec // small
+		rsrc = append(rsrc, make([]byte, 8)...)
+		pos = align4(pos + len(b))
+	}
+
+	for _, b := range blobs {
+		rsrc = append(rsrc, b...)
+		for len(rsrc)%4 != 0 {
+			rsrc = append(rsrc, 0)
+		}
+	}
+
+	if len(rsrc) > area {
+		t.Fatalf("resources of %d bytes do not fit", len(rsrc))
+	}
+
+	clear(data[testRsrcRaw : testRsrcRaw+area])
+	copy(data[testRsrcRaw:], rsrc)
+	order.PutUint32(data[testRsrcSection+8:], area)
+	order.PutUint32(data[testRsrcSection+16:], area)
+	order.PutUint32(data[testResourceDir+4:], uint32(len(rsrc))) //nolint:gosec // small
+
+	return data
+}
+
+// TestVersionResourceSelection reads RT_VERSION ID 1 only, and refuses
+// language entries that disagree, since Windows picks one by the user's
+// UI language (FILE-14).
+func TestVersionResourceSelection(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		entries []resEntry
+		version string
+		lang    string
+		fails   bool
+	}{
+		"ID 0 and ID 1": {
+			entries: []resEntry{{0, 1033, "1.2.3.4", []int{1033}}, {1, 1033, "9.8.7.6", []int{1033}}},
+			version: "9.8.7.6", lang: "1033",
+		},
+		"ID 2 only": {entries: []resEntry{{2, 1033, "1.2.3.4", []int{1033}}}},
+		"two languages agree": {
+			entries: []resEntry{{1, 1031, "1.2.3.4", []int{1031, 1033}}, {1, 1033, "1.2.3.4", []int{1031, 1033}}},
+			version: "1.2.3.4", lang: "1033,1031",
+		},
+		"two languages disagree": {
+			entries: []resEntry{{1, 1031, "1.2.3.4", []int{1031}}, {1, 1033, "9.8.7.6", []int{1033}}},
+			fails:   true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			info, err := Parse(bytes.NewReader(versionResources(t, tc.entries)))
+
+			switch {
+			case tc.fails:
+				if err == nil {
+					t.Errorf("disagreeing languages accepted: %+v", info)
+				}
+			case err != nil:
+				t.Fatal(err)
+			case info.FileVersion != tc.version || info.Language() != tc.lang:
+				t.Errorf("version %q language %q, want %q %q", info.FileVersion, info.Language(), tc.version, tc.lang)
+			}
+		})
+	}
+}
+
+// partialTranslation sets the Translation value length of a two-language
+// image to n bytes, inside its Var block.
+func partialTranslation(t *testing.T, n uint16) []byte {
+	t.Helper()
+
+	data := testpe.Build(testpe.Options{FileVersion: "1.2.3.4", Languages: []int{1033, 1031}})
+	binary.LittleEndian.PutUint16(data[blockOffset(t, data, "Translation")+2:], n)
+
+	return data
+}
+
+// TestPartialTranslation counts a partial last Translation entry, as
+// Windows did for value lengths 5 to 7 (FILE-14).
+func TestPartialTranslation(t *testing.T) {
+	t.Parallel()
+
+	for n, want := range map[uint16]string{4: "1033", 5: "1031,1033", 7: "1031,1033", 8: "1031,1033"} {
+		info, err := Parse(bytes.NewReader(partialTranslation(t, n)))
+		if err != nil || info.Language() != want {
+			t.Errorf("value length %d: %+v %v, want %q", n, info, err, want)
+		}
 	}
 }

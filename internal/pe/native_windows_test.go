@@ -110,6 +110,22 @@ func TestMsiGetFileVersionAgrees(t *testing.T) {
 		}
 	}
 
+	translationLen := func(n uint16) func(*testing.T) []byte {
+		return func(t *testing.T) []byte {
+			t.Helper()
+
+			return partialTranslation(t, n)
+		}
+	}
+
+	resources := func(entries ...resEntry) func(*testing.T) []byte {
+		return func(t *testing.T) []byte {
+			t.Helper()
+
+			return versionResources(t, entries)
+		}
+	}
+
 	patch := func(off int, value uint32) func(*testing.T) []byte {
 		return func(t *testing.T) []byte {
 			t.Helper()
@@ -123,29 +139,37 @@ func TestMsiGetFileVersionAgrees(t *testing.T) {
 			return testpe.Build(testpe.Options{FileVersion: "1.2.3.4", ProductVersion: "1.2.0.0", Languages: []int{1033, 1031}})
 		},
 		// The order in which Windows lists the languages (FILE-14).
-		"languages 1031,1033":           langs(1031, 1033),
-		"languages 1033,1031,2057":      langs(1033, 1031, 2057),
-		"languages 2057,1033,1031":      langs(2057, 1033, 1031),
-		"languages 1033,1033,1031":      langs(1033, 1033, 1031),
-		"languages 1033,1031,1033":      langs(1033, 1031, 1033),
-		"no translations":               func(*testing.T) []byte { return testpe.Build(testpe.Options{FileVersion: "0.32.0.5"}) },
-		"no version resource":           func(*testing.T) []byte { return testpe.Build(testpe.Options{}) },
-		"resource section raw size 0":   patch(testRsrcSection+16, 0),
-		"translation past its Var":      shrinkTranslation,
-		"raw data ends in Translation":  cutTranslation,
-		"record past rounded raw data":  moved(0x200),
-		"record inside raw data":        moved(0x400),
-		"resource section raw size 1":   patch(testRsrcSection+16, 1),
-		"NumberOfRvaAndSizes 0":         patch(testResourceDir-20, 0),
-		"NumberOfRvaAndSizes 2":         patch(testResourceDir-20, 2),
-		"wValueLength 65535":            versionHeader(2, 0xFFFF),
-		"root wType text":               versionHeader(4, 1),
-		"wLength 65535":                 versionHeader(0, 0xFFFF),
-		"version data size 512":         patch(testDataEntry+4, 512),
-		"version data size short":       patch(testDataEntry+4, 0x20),
-		"resource directory size 0":     patch(testResourceDir+4, 0),
-		"resource directory size huge":  patch(testResourceDir+4, 0x7FFFFFFF),
-		"resource directory size wraps": patch(testResourceDir+4, 0xFFFFF000),
+		"languages 1031,1033":            langs(1031, 1033),
+		"languages 1033,1031,2057":       langs(1033, 1031, 2057),
+		"languages 2057,1033,1031":       langs(2057, 1033, 1031),
+		"languages 1033,1033,1031":       langs(1033, 1033, 1031),
+		"languages 1033,1031,1033":       langs(1033, 1031, 1033),
+		"no translations":                func(*testing.T) []byte { return testpe.Build(testpe.Options{FileVersion: "0.32.0.5"}) },
+		"no version resource":            func(*testing.T) []byte { return testpe.Build(testpe.Options{}) },
+		"resource section raw size 0":    patch(testRsrcSection+16, 0),
+		"translation past its Var":       shrinkTranslation,
+		"raw data ends in Translation":   cutTranslation,
+		"record past rounded raw data":   moved(0x200),
+		"record inside raw data":         moved(0x400),
+		"resource section raw size 0x58": patch(testRsrcSection+16, 0x58),
+		"resource section raw size 0x60": patch(testRsrcSection+16, 0x60),
+		"Translation length 5":           translationLen(5),
+		"Translation length 6":           translationLen(6),
+		"Translation length 7":           translationLen(7),
+		"version IDs 0 and 1":            resources(resEntry{0, 1033, "1.2.3.4", []int{1033}}, resEntry{1, 1033, "9.8.7.6", []int{1033}}),
+		"version ID 2 only":              resources(resEntry{2, 1033, "1.2.3.4", []int{1033}}),
+		"two languages agree":            resources(resEntry{1, 1031, "1.2.3.4", []int{1031, 1033}}, resEntry{1, 1033, "1.2.3.4", []int{1031, 1033}}),
+		"resource section raw size 1":    patch(testRsrcSection+16, 1),
+		"NumberOfRvaAndSizes 0":          patch(testResourceDir-20, 0),
+		"NumberOfRvaAndSizes 2":          patch(testResourceDir-20, 2),
+		"wValueLength 65535":             versionHeader(2, 0xFFFF),
+		"root wType text":                versionHeader(4, 1),
+		"wLength 65535":                  versionHeader(0, 0xFFFF),
+		"version data size 512":          patch(testDataEntry+4, 512),
+		"version data size short":        patch(testDataEntry+4, 0x20),
+		"resource directory size 0":      patch(testResourceDir+4, 0),
+		"resource directory size huge":   patch(testResourceDir+4, 0x7FFFFFFF),
+		"resource directory size wraps":  patch(testResourceDir+4, 0xFFFFF000),
 	}
 
 	dir := t.TempDir()
@@ -180,5 +204,26 @@ func TestMsiGetFileVersionAgrees(t *testing.T) {
 				t.Errorf("Parse: %q %q, MsiGetFileVersionW: %q %q", info.FileVersion, info.Language(), wantVer, wantLang)
 			}
 		})
+	}
+}
+
+// TestMsiGetFileVersionDisagreeingLanguages records which of two language
+// entries with different versions Windows reports; Parse refuses the file
+// (FILE-14).
+func TestMsiGetFileVersionDisagreeingLanguages(t *testing.T) {
+	t.Parallel()
+
+	data := versionResources(t, []resEntry{{1, 1031, "1.2.3.4", []int{1031}}, {1, 1033, "9.8.7.6", []int{1033}}})
+
+	path := filepath.Join(t.TempDir(), "disagree.exe")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ver, lang, ok := msiFileVersion(t, path)
+	t.Logf("Windows: ok=%v version %q language %q", ok, ver, lang)
+
+	if info, err := Parse(bytes.NewReader(data)); err == nil {
+		t.Errorf("Parse accepted disagreeing languages: %+v", info)
 	}
 }
