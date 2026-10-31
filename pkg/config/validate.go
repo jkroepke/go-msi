@@ -662,10 +662,12 @@ func (v *validator) featureDefault(featurePath string, feature *Feature) {
 func (v *validator) featureConditions(featurePath string, feature *Feature) {
 	levels := make(map[int]bool)
 
+	base := feature.baseLevel()
+
 	for i, cond := range feature.Conditions {
 		condPath := fmt.Sprintf("%s.conditions[%d]", featurePath, i)
 
-		v.featureCondition(condPath, cond)
+		v.featureCondition(condPath, cond, base)
 
 		if !v.featureConditionLevel(condPath, cond) {
 			continue
@@ -711,7 +713,7 @@ func (v *validator) featureConditionLevel(condPath string, cond *FeatureConditio
 // engine evaluates the Condition table before it reads installed states
 // and sets action states, so such a term is always false (documented, not
 // tested).
-func (v *validator) featureCondition(field string, cond *FeatureCondition) {
+func (v *validator) featureCondition(field string, cond *FeatureCondition, base int) {
 	field += ".condition"
 
 	if !v.required(field, strings.TrimSpace(cond.Condition)) {
@@ -730,12 +732,12 @@ func (v *validator) featureCondition(field string, cond *FeatureCondition) {
 	}
 
 	if slices.Contains(condition.Properties(cond.Condition), "Installed") {
-		v.errorf(field, "uses Installed, which is always false here: the builder applies feature conditions "+
-			"to first installs only (NOT Installed, INST-05)")
+		v.errorf(field, "uses Installed, which the builder adds itself: most rows apply to first installs only "+
+			"(NOT Installed, INST-05); one that enables a disabled feature also to removals and repairs (INST-06)")
 	}
 
-	if full := cond.FullCondition(); len(full) > maxComponentCondition {
-		v.errorf(field, "with the first-install check the builder adds, the condition is %d characters; "+
+	if full := cond.FullCondition(base); len(full) > maxComponentCondition {
+		v.errorf(field, "with the installed-state check the builder adds, the condition is %d characters; "+
 			"Condition.Condition holds %d", len(full), maxComponentCondition)
 	}
 }
