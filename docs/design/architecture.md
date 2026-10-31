@@ -57,7 +57,7 @@ flowchart LR
 | Package | Responsibility | Spec | Depends on |
 |---|---|---|---|
 | `internal/cfb` | Compound File Binary v3/v4 writer and reader: sectors, FAT, DIFAT, mini stream, red-black directory tree, name comparison | §2 | stdlib |
-| `internal/cab` | Cabinet writer and reader: one folder per cabinet, stored, MSZIP blocks with carried DEFLATE history or LZX frames (`internal/lzx`), checksums on every block | §5 | stdlib (`compress/flate`), `internal/lzx` |
+| `internal/cab` | Cabinet writer and reader: one folder per cabinet unless identical files share bytes (the shared file and the file after it or after a copy start new folders), stored, MSZIP blocks with carried DEFLATE history or LZX frames (`internal/lzx`), checksums on every block | §5 | stdlib (`compress/flate`), `internal/lzx` |
 | `internal/summary` | `\u0005SummaryInformation` property-set writer and reader (PIDs 1–19, VT_I2/I4/LPSTR/FILETIME) | §4 | `internal/codepage` |
 | `internal/msidb` | The database: column types, typed rows, stream-name encoding, string pool with code pages, catalog, column-major table streams, binary streams, embedded streams; plus a reader that decodes a package back into tables | §3 | `cfb`, `summary`, `internal/codepage` (`golang.org/x/text`) |
 | `internal/schema` | Column definitions and `_Validation` metadata of every standard table the builder can write | §6 | `msidb` |
@@ -147,6 +147,9 @@ func Entries(fsys fs.FS) ([]Entry, error)
 
 - One folder, blocks of 32768 bytes, history carried across blocks, the
   stored fallback, "CK" prefix, checksum on every block (MSZIP-01, CAB-04).
+- A file whose bytes later entries share (`Entry.Copy`: identical files of
+  at least 32768 bytes, section 5) gets a folder of its own, and the entry
+  after a copy starts a new one (CAB-14).
 - Dates in UTC from the given instant, default 1980-01-01.
 - Limits: 65535 files, 0x7FFFFFFF bytes, name ≤ 255 bytes.
 - Test vectors: A.4 checksum and the 118-byte stored cabinet; a three-block

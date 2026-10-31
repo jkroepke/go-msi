@@ -2117,3 +2117,269 @@ func TestConvertSameVersionUpgrades(t *testing.T) {
 		}
 	}
 }
+
+func TestConvertForceDeleteKey(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component>
+          <File Source="hello.exe" />
+          <RegistryKey Root="HKLM" Key="SOFTWARE\Example\Stale" ForceDeleteOnUninstall="yes" />
+          <RemoveRegistryKey Root="HKLM" Key="SOFTWARE\Example\Stale" Action="removeOnUninstall" />
+          <RegistryKey Root="HKLM" Key="SOFTWARE\Example\Hello" ForceDeleteOnUninstall="yes">
+            <RegistryKey Key="Sub"><RegistryValue Name="v" Value="1" /></RegistryKey>
+          </RegistryKey>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /></Feature>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"removeRegistry:\n", `key: SOFTWARE\Example\Stale`, "on: uninstall", "removeOnUninstall: true",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if strings.Count(out, "type: key") != 1 || strings.Count(out, `SOFTWARE\Example\Stale`) != 1 {
+		t.Errorf("want a key entry only for SOFTWARE\\Example\\Hello and one removal of Stale:\n%s", out)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, out)
+	}
+}
+
+func TestConvertTypeTextsAndURLLaunch(t *testing.T) {
+	t.Parallel()
+
+	src := `<?define AppName="Hello"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <Property Id="APPNAME" Value="$(var.AppName)" />
+    <Property Id="SOFTWARE" Value="Hello" />
+    <Property Id="EXT" Value="hlo" />
+    <Property Id="CHANGING" Value="a" />
+    <Property Id="PUB" Value="x" />
+    <SetProperty Id="CHANGING" Value="b" Before="CostFinalize" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component>
+          <File Source="hello.exe" />
+          <ProgId Id="[ProductName].Pub" Description="[PUB] [%USERNAME] by [Manufacturer]">
+            <Extension Id="hlopub"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+          <ProgId Id="[SOFTWARE].Project" Description="[SOFTWARE] Project File">
+            <Extension Id="[EXT]" ContentType="application/x-[APPNAME]"><Verb Id="open" Command="Open in [CHANGING]" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /></Feature>
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Open the website" />
+    <CustomAction Id="OpenSite" Directory="INSTALLFOLDER" ExeCommand="powershell Start-Process https://example.com" Return="asyncNoWait" />
+    <UI>
+      <ui:WixUI Id="WixUI_Minimal" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="OpenSite" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1" />
+      <Publish Dialog="ExitDialog" Control="Finish" Property="PUB" Value="z" />
+    </UI>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"progId: Hello.Project\n", "description: Hello Project File\n", "extension: hlo\n",
+		`Verb Command="Open in [CHANGING]" holds formatted text convert cannot fill in`,
+		`the launch checkbox (action OpenSite: powershell Start-Process https://example.com) "Open the website" starts no file`,
+		"progId: Hello.Pub\n", "contentType: application/x-${AppName}\n", `ProgId Description="[PUB] [%USERNAME] by Example" holds formatted text`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if strings.Contains(out, "launch:") || strings.Contains(out, "application/x-${AppName}\" holds") {
+		t.Errorf("ui.launch without a file, or a TODO on a filled-in text:\n%s", out)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, out)
+	}
+}
+
+func TestConvertSharedProgIDAndExistenceSearch(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <Property Id="TOOLDIR">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\Example\Tool" Name="Path" Type="raw">
+        <DirectorySearch />
+      </RegistrySearch>
+    </Property>
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component><File Id="app" Source="hello.exe" /></Component>
+        <Component Id="cmpA" Condition="ASSOC=&quot;1&quot;">
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Example\A" Value="1" KeyPath="yes" />
+          <ProgId Id="Example.Shared" Description="Shared">
+            <Extension Id="hla"><Verb Id="open" TargetFile="app" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+        </Component>
+        <Component Id="cmpB" Condition="ASSOC=&quot;1&quot;">
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Example\B" Value="1" KeyPath="yes" />
+          <ProgId Id="Example.Shared" Description="Shared">
+            <Extension Id="hlb"><Verb Id="open" TargetFile="app" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="app" /><ComponentRef Id="cmpA" /><ComponentRef Id="cmpB" /></Feature>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"extension: hla\n", "extension: hlb\n", "the ProgId Example.Shared is declared again",
+		"so the condition and features of the component that declared it again no longer apply",
+		`was in a component with the condition ASSOC="1"`,
+		"type: directory\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if strings.Count(out, "progId: Example.Shared") != 1 || strings.Contains(out, "directory:") ||
+		strings.Contains(out, "DirectorySearch without Path") {
+		t.Errorf("want one Example.Shared file type and no directory search:\n%s", out)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, out)
+	}
+}
+
+func TestConvertProgIDOtherFileAndSearchTypes(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <Property Id="TOOLFILE">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\Example\Tool" Name="File" Type="file">
+        <DirectorySearch Depth="2" />
+      </RegistrySearch>
+    </Property>
+    <Property Id="TOOLDIR">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\Example\Tool" Name="Dir" Type="raw">
+        <DirectorySearch Depth="3"><FileSearch Name="tool.exe" /></DirectorySearch>
+      </RegistrySearch>
+    </Property>
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component>
+          <File Id="app" Source="hello.exe" />
+          <ProgId Id="Example.Doc" Description="Doc">
+            <Extension Id="hld"><Verb Id="open" TargetFile="app" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+        </Component>
+        <Component>
+          <File Id="viewer" Source="viewer.exe" />
+          <ProgId Id="Example.Doc" Description="Doc">
+            <Extension Id="hlv"><Verb Id="open" TargetFile="viewer" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+        </Component>
+        <Component Id="same1">
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Example\S1" Value="1" KeyPath="yes" />
+          <ProgId Id="Example.Same" Description="Same">
+            <Extension Id="hls"><Verb Id="open" TargetFile="app" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+        </Component>
+        <Component Id="same2">
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Example\S2" Value="1" KeyPath="yes" />
+          <ProgId Id="Example.Same" Description="Same">
+            <Extension Id="hls"><MIME ContentType="text/plain" /><Verb Id="open" TargetFile="app" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello">
+      <ComponentRef Id="app" /><ComponentRef Id="viewer" /><ComponentRef Id="same1" /><ComponentRef Id="same2" />
+    </Feature>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"the ProgId Example.Doc is declared again for the file viewer",
+		"the ProgId Example.Same is declared again",
+		"<MIME> in an Extension has no counterpart",
+		`the DirectorySearch without Path has Depth="3"`,
+		"only checks that the folder the outer RegistrySearch finds exists",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if strings.Contains(out, "extension: hlv") || strings.Count(out, "extension: hls") != 1 ||
+		strings.Count(out, "only checks that the folder") != 1 || strings.Count(out, "type: directory") != 1 ||
+		strings.Contains(out, "condition and features of the component") || strings.Contains(out, `Depth="2"`) {
+		t.Errorf("want hlv left out, one hls, one existence note and one directory type:\n%s", out)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, out)
+	}
+}

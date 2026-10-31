@@ -174,7 +174,7 @@ msi-builder does the same by default:
 | `RemoveRegistryKey`, `RemoveRegistryValue` | `components[].removeRegistry` |
 | `Environment` | `components[].environment` |
 | `Shortcut`, `util:InternetShortcut` | `files[].shortcuts`, `components[].shortcuts` |
-| `ProgId`, `Extension`, `Verb` | `files[].fileTypes`; an icon from another file than the one the type opens becomes a note to add the DefaultIcon registry value |
+| `ProgId`, `Extension`, `Verb` | `files[].fileTypes`; an icon from another file than the one the type opens becomes a note to add the DefaultIcon registry value. msi-builder writes file type texts as they are, so convert fills in `[PROPERTY]` references to properties that nothing in the source changes, assuming none is set on the command line. msi-builder registers each ProgId once: convert merges the extensions of a ProgId declared again for the same file into the first one, and leaves a declaration for another file out with a note |
 | `util:CloseApplication` | `files[].close` on the program's file; it matches the installed path, not the filename, and ends the program only with `TerminateProcess` (`terminate: false` otherwise). One that only sets its `Property` has no counterpart |
 | `ServiceInstall`, `ServiceConfig`, `util:ServiceConfig` | `components[].services` |
 | `ServiceControl` for another service | `components[].serviceControl` |
@@ -183,7 +183,7 @@ msi-builder does the same by default:
 | `PermissionEx` (SDDL), `Permission` | `permissions.sddl`, `folderPermissions.sddl` |
 | `util:PermissionEx` | `permissions.grant`, `folderPermissions.grant`; on a registry key, `permissions.sddl` |
 | `Property` | `properties` |
-| `RegistrySearch`, `DirectorySearch`, `FileSearch`, `ComponentSearch` | `properties.<NAME>.search` |
+| `RegistrySearch`, `DirectorySearch`, `FileSearch`, `ComponentSearch` | `properties.<NAME>.search`; a `DirectorySearch` without `Path` in a `RegistrySearch` checks that the folder exists and becomes `type: directory` on the registry search |
 | `ProductSearch UpgradeCode` | an `upgrade.related` row with `onlyDetect: true` that sets the property |
 | `Launch` (v3 `Condition` under `Product`) | `launchConditions` |
 | `CustomAction`, `SetProperty`, `Custom` | `customActions` |
@@ -501,6 +501,9 @@ when the component is installed. `RemoveRegistryKey` with
 removed, and the install does not create it. A `type: key` entry with
 `removeOnUninstall: true` deletes the key at uninstall too, but also
 creates it at install.
+A `RegistryKey` with `ForceDeleteOnUninstall="yes"` and no values, also none in
+nested keys, only deletes the key, so convert writes it as such a
+`removeRegistry` entry.
 
 ## Environment variables
 
