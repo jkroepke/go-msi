@@ -1680,3 +1680,38 @@ func TestConvertExtensionAnchorSides(t *testing.T) {
 		}
 	}
 }
+
+// TestConvertExtensionAnchorSetter checks that a SetProperty on the near
+// side of a WiX extension's action keeps an action on its far side behind
+// it.
+func TestConvertExtensionAnchorSetter(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component><File Source="hello.exe" /></Component>
+      </Directory>
+    </StandardDirectory>
+    <SetProperty Id="PREP" Value="1" Before="Wix4CloseApplications_X64" Sequence="execute" />
+    <CustomAction Id="Post" Property="POSTP" Value="[PREP]" />
+    <InstallExecuteSequence>
+      <Custom Action="override Wix4CloseApplications_X64" Before="LaunchConditions" />
+      <Custom Action="Post" After="Wix4CloseApplications_X64" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{"{sequence: execute, before: CostFinalize}", "{sequence: execute, after: CostFinalize}"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+}

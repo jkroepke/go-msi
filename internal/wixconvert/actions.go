@@ -161,7 +161,7 @@ func (c *converter) scheduleReboot(entry *elem) {
 
 func (c *converter) emitActions() {
 	byAction := c.placements()
-	sides := extensionSides(byAction)
+	sides := c.extensionSides(byAction)
 
 	c.quietExecCommands()
 	reanchor := c.reanchor(byAction)
@@ -338,9 +338,20 @@ func (c *converter) extensionAnchors(action *omap, custom *elem, byAction map[st
 type anchorSide struct{ anchor, sequence, key string }
 
 // extensionSides returns the sides of the WiX extension actions that the
-// source schedules actions on.
-func extensionSides(byAction map[string][]any) map[anchorSide]bool {
+// source schedules actions on: Custom entries and SetProperty or
+// SetDirectory elements, counted in every sequence a setter may run in.
+func (c *converter) extensionSides(byAction map[string][]any) map[anchorSide]bool {
 	sides := make(map[anchorSide]bool)
+
+	for _, setter := range c.setters {
+		for _, key := range []string{keyBefore, keyAfter} {
+			if anchor := setter.attr(strings.ToUpper(key[:1]) + key[1:]); extensionAction.MatchString(anchor) {
+				for _, seq := range sequenceNames {
+					sides[anchorSide{anchor, seq, key}] = true
+				}
+			}
+		}
+	}
 
 	for _, schedule := range byAction {
 		for _, entry := range schedule {
