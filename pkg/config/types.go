@@ -109,10 +109,13 @@ type Summary struct {
 
 // Upgrade is the major-upgrade policy. ApplyDefaults turns a nil *Upgrade
 // into the standard policy; "upgrade: false" sets Disabled, which writes no
-// Upgrade rows.
+// Upgrade rows. MinVersion is the oldest version the major upgrade removes;
+// an older one stays installed side by side (UPG-13).
 type Upgrade struct { //nolint:govet // field order is the YAML key order
 	Disabled            bool             `yaml:"-"`
 	AllowSameVersion    *bool            `yaml:"allowSameVersion"`
+	MinVersion          string           `yaml:"minVersion"`
+	IncludeMin          *bool            `yaml:"includeMin"`
 	Downgrade           string           `yaml:"downgrade"`
 	DowngradeMessage    string           `yaml:"downgradeMessage"`
 	RemoveOld           string           `yaml:"removeOld"`

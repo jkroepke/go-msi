@@ -1,6 +1,7 @@
 package wixconvert
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -282,7 +283,9 @@ func (c *converter) emitUpgrade() {
 	}
 
 	text := c.allText()
-	if strings.Contains(text, "WIX_UPGRADE_DETECTED") {
+	// Without a MajorUpgrade WiX never sets WIX_UPGRADE_DETECTED, so a
+	// hand-made row keeps its own property.
+	if strings.Contains(text, "WIX_UPGRADE_DETECTED") && !c.floorSeen {
 		upgrade.set("property", "WIX_UPGRADE_DETECTED")
 	}
 
@@ -395,6 +398,8 @@ func (c *converter) ownUpgradeRow(upgrade *omap, kid *elem) bool {
 	case majorUpgradeProperty[kid.attr("Property")]:
 		c.todof(upgrade, "", kid.line, "the UpgradeVersion property %s is one msi-builder sets for its own major upgrade; "+
 			"check the conditions that test it", kid.attr("Property"))
+	case c.floorRow(upgrade, kid):
+		// A hand-made major upgrade with a version floor.
 	case !kid.yes("OnlyDetect"):
 		c.todof(upgrade, "", kid.line, "an UpgradeVersion for the package's own UpgradeCode (versions %s to %s) is a hand-made major upgrade; "+
 			"msi-builder writes its own, which removes every older version and never a newer one (downgrade: allow installs "+
@@ -405,6 +410,58 @@ func (c *converter) ownUpgradeRow(upgrade *omap, kid *elem) bool {
 	}
 
 	return true
+}
+
+// floorRow converts a hand-made major upgrade of the package's own
+// UpgradeCode with a Minimum, from that version up to this one, into
+// upgrade.minVersion and reports whether it did. The row takes the place
+// of msi-builder's own, so it needs no MajorUpgrade next to it and nothing
+// msi-builder's row cannot express (UPG-13).
+func (c *converter) floorRow(upgrade *omap, kid *elem) bool {
+	if !c.isFloorRow(kid) {
+		return false
+	}
+
+	c.floorSeen = true
+
+	// WiX's UpgradeVersion includes the minimum and excludes the maximum
+	// by default, and sets the MigrateFeatures bit only when asked.
+	upgrade.set("allowSameVersion", kid.yes("IncludeMaximum"))
+	upgrade.set("minVersion", c.value(kid, "Minimum"))
+
+	if kid.no("IncludeMinimum") {
+		upgrade.set("includeMin", false)
+	}
+
+	if !kid.yes("MigrateFeatures") {
+		upgrade.set("migrateFeatures", false)
+	}
+
+	if kid.yes("IgnoreRemoveFailure") {
+		upgrade.set("ignoreRemoveFailure", true)
+	}
+
+	if prop := kid.attr("Property"); prop != config.DefaultUpgradeProperty {
+		upgrade.set("property", prop)
+	}
+
+	c.todof(upgrade, "minVersion", kid.line, "an older version than %s stays installed next to this one; "+
+		"msi-builder also refuses to install over a newer version (downgrade: ignore installs next to it)",
+		orAny(c.value(kid, "Minimum")))
+
+	return true
+}
+
+// isFloorRow reports whether an UpgradeVersion of the package's own
+// UpgradeCode is the first hand-made major upgrade with a Minimum, up to
+// this version, in a package without MajorUpgrade.
+func (c *converter) isFloorRow(kid *elem) bool {
+	if c.major != nil || c.floorSeen || kid.yes("OnlyDetect") || !kid.has("Minimum") || !kid.has("Property") {
+		return false
+	}
+
+	return kid.attr("Maximum") == c.pkg.attr("Version") &&
+		!slices.ContainsFunc([]string{"Language", "ExcludeLanguages", "RemoveFeatures"}, kid.has)
 }
 
 // emitRelated converts the UpgradeVersion rows of an Upgrade element. For

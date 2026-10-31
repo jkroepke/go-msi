@@ -258,6 +258,11 @@ upgrade:
   never removes a newer version. `downgrade: allow` and `downgrade: ignore`
   install the older version next to the newer one.
 - `IgnoreRemoveFailure="yes"` is `ignoreRemoveFailure: true`.
+- A hand-made major upgrade without `MajorUpgrade`, an `UpgradeVersion` of
+  the package's own `UpgradeCode` with a `Minimum` and `Maximum` at this
+  version, is `minVersion` (`IncludeMinimum="no"` is `includeMin: false`);
+  `convert` writes it. A version below the minimum stays installed next to
+  the new one.
 - A WiX v3 `<Product>` whose `<Package>` has no `InstallScope` leaves
   `ALLUSERS` unset, so Windows Installer registers it for the installing
   user only, even when it installs into Program Files. A `perMachine`

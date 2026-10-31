@@ -227,6 +227,12 @@ func defaultUpgrade(upg *Upgrade) {
 		upg.AllowSameVersion = new(true)
 	}
 
+	// Only with a minimum, so that the automatic ProductCode of a
+	// configuration without one stays the same.
+	if upg.MinVersion != "" && upg.IncludeMin == nil {
+		upg.IncludeMin = new(true)
+	}
+
 	if upg.Downgrade == "" {
 		upg.Downgrade = "error"
 	}

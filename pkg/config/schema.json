@@ -212,6 +212,14 @@
               "$ref": "#/$defs/bool",
               "default": true
             },
+            "minVersion": {
+              "$ref": "#/$defs/version",
+              "description": "Oldest version the major upgrade removes; older versions stay installed side by side."
+            },
+            "includeMin": {
+              "$ref": "#/$defs/bool",
+              "default": true
+            },
             "downgrade": {
               "anyOf": [
                 {
