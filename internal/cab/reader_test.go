@@ -215,9 +215,9 @@ func TestLegacyNames(t *testing.T) {
 		t.Error("a name flagged UTF-8 with invalid UTF-8 was accepted")
 	}
 
-	// 0x81 and 0x8D are undefined in code page 1252; decoding them to one
+	// These five bytes are undefined in code page 1252; decoding them to one
 	// replacement character would merge distinct names.
-	for _, raw := range []string{"a\x81", "a\x8D"} {
+	for _, raw := range []string{"a\x81", "a\x8D", "a\x8F", "a\x90", "a\x9D"} {
 		if files, err := Read(cabinet(raw, AttrArchive)); err == nil {
 			t.Errorf("Read(%q) = %q, want an error for a byte undefined in code page 1252", raw, files[0].Name)
 		}

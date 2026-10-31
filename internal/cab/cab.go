@@ -687,6 +687,10 @@ type concat struct {
 }
 
 func (c *concat) Read(buf []byte) (int, error) {
+	if len(buf) == 0 {
+		return 0, nil
+	}
+
 	for empty := 0; ; {
 		if err := c.advance(); err != nil {
 			return 0, err
