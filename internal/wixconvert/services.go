@@ -788,8 +788,8 @@ func (cc *compConv) progID(elm *elem) { //nolint:cyclop // a flat list of indepe
 	fileType.set("progId", conv.value(elm, "Id"))
 	fileType.set("description", conv.value(elm, "Description"))
 
-	if n, err := strconv.Atoi(elm.attr("IconIndex")); err == nil && elm.has("Icon") {
-		fileType.set("iconIndex", n)
+	if elm.has("Icon") {
+		cc.iconIndex(elm, fileType)
 	}
 
 	target := ""
@@ -837,6 +837,28 @@ func (cc *compConv) progID(elm *elem) { //nolint:cyclop // a flat list of indepe
 	conv.pendingTypes = append(conv.pendingTypes, pendingType{e: elm, comp: cc.cp, target: target, out: fileType, parent: cc.out})
 }
 
+// iconIndex sets a ProgId's icon index. Without an IconIndex, DefaultIcon
+// names the file alone, which Windows reads as its first icon.
+func (cc *compConv) iconIndex(elm *elem, fileType *omap) {
+	if !elm.has("IconIndex") {
+		fileType.set("iconIndex", 0)
+
+		return
+	}
+
+	text := strings.TrimSpace(cc.c.literal(elm.attr("IconIndex")))
+
+	index, err := strconv.Atoi(text)
+	if err != nil {
+		cc.c.todof(fileType, "", elm.line, "the ProgId %s has the icon index %q, which is no number; set iconIndex by hand",
+			elm.attr("Id"), text)
+
+		return
+	}
+
+	fileType.set("iconIndex", index)
+}
+
 // pendingType is a ProgId that goes onto the file its verbs start, once
 // every file is known.
 type pendingType struct {
@@ -864,8 +886,49 @@ func (c *converter) placeTypes() {
 		}
 
 		file.out.add("fileTypes", pending.out)
+		c.typeIconNote(pending, file)
 		c.typeFeatureNote(pending, file)
 	}
+}
+
+// typeIconNote notes a ProgId whose icon is in another file than the one
+// it opens: iconIndex only picks an icon of the file the type goes on.
+func (c *converter) typeIconNote(pending pendingType, file *fileRef) {
+	icon := strings.TrimSpace(c.literal(pending.e.attr("Icon")))
+	if icon == "" || icon == file.key || icon == strings.TrimSpace(c.literal(file.key)) {
+		return
+	}
+
+	pending.out.del("iconIndex")
+
+	progID := pending.e.attr("Id")
+	isFile := slices.ContainsFunc(c.files, func(f *fileRef) bool { return f.key == icon })
+
+	if !isFile && slices.ContainsFunc(c.icons, func(e *elem) bool { return e.attr("Id") == icon }) {
+		c.todof(pending.out, "", pending.e.line, "the ProgId %s takes its icon from the <Icon> %s, which only advertised "+
+			"ProgIds use; install the icon as a file and add the DefaultIcon key HKCR\\%s\\DefaultIcon as a registry value "+
+			"naming it", progID, icon, progID)
+
+		return
+	}
+
+	where := ""
+	if !isFile {
+		where = " (a file this source does not define)"
+	}
+
+	c.todof(pending.out, "", pending.e.line, "the ProgId %s takes its icon from %s%s, not from the file it opens; "+
+		"iconIndex only picks an icon of that file, so add the DefaultIcon key as a registry value "+
+		"(HKCR\\%s\\DefaultIcon = [#%s],%s)", progID, icon, where, progID, icon, c.iconIndexText(pending.e))
+}
+
+// iconIndexText returns a ProgId's icon index, 0 when it gives none.
+func (c *converter) iconIndexText(elm *elem) string {
+	if elm.has("IconIndex") {
+		return strings.TrimSpace(c.literal(elm.attr("IconIndex")))
+	}
+
+	return "0"
 }
 
 // typeFeatureNote notes a ProgId whose component is in other features than

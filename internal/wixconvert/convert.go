@@ -125,7 +125,12 @@ type converter struct {
 	// scope is the package's install scope, as package.scope names it.
 	scope        string
 	launchAction string
-	properties   []*elem
+	// doActions are the DoAction control events by the action they run.
+	doActions map[string]*elem
+	// otherSequences are the sequences without a counterpart, such as
+	// AdvertiseExecuteSequence, that schedule an action, by action.
+	otherSequences map[string]*elem
+	properties     []*elem
 	// progressTexts are the ProgressText elements, which become the
 	// progress key of the action they name.
 	progressTexts []*elem
@@ -249,21 +254,23 @@ type featureGroup struct {
 
 func newConverter(doc *document) *converter {
 	return &converter{
-		doc:           doc,
-		dirs:          make(map[string]*dir),
-		compByID:      make(map[string]*comp),
-		groups:        make(map[string]*group),
-		featureByID:   make(map[string]*feature),
-		featureGrps:   make(map[string]*featureGroup),
-		actions:       make(map[string]*elem),
-		wixVars:       make(map[string]string),
-		firewallNames: make(map[string]int),
-		renames:       make(map[string]string),
-		needDirs:      make(map[string]bool),
-		usedVars:      make(map[string]bool),
-		usedErrors:    make(map[*elem]bool),
-		out:           newMap(),
-		structure:     structureHandlers(),
+		doc:            doc,
+		dirs:           make(map[string]*dir),
+		compByID:       make(map[string]*comp),
+		groups:         make(map[string]*group),
+		featureByID:    make(map[string]*feature),
+		featureGrps:    make(map[string]*featureGroup),
+		actions:        make(map[string]*elem),
+		wixVars:        make(map[string]string),
+		firewallNames:  make(map[string]int),
+		renames:        make(map[string]string),
+		doActions:      make(map[string]*elem),
+		otherSequences: make(map[string]*elem),
+		needDirs:       make(map[string]bool),
+		usedVars:       make(map[string]bool),
+		usedErrors:     make(map[*elem]bool),
+		out:            newMap(),
+		structure:      structureHandlers(),
 	}
 }
 
