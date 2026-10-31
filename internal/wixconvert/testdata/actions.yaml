@@ -19,6 +19,9 @@ installDir:
   name: Hello
   # util:RemoveFolderEx needs the install dir chosen at install time; remember searches for it.
   remember: true
+features:
+  - id: Complete
+    components: [HelloExe, HelloSvcControl, HelloSvcRestart, HelloSvcLite, Tray, RnD, ConsoleLink]
 components:
   - id: HelloExe
     directory: bin

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jkroepke/msi-builder/internal/condition"
+	"github.com/jkroepke/msi-builder/pkg/config"
 )
 
 // addFeature indexes a Feature where it sits: in a feature, in a feature
@@ -161,8 +162,10 @@ func (c *converter) needFeatures() bool {
 		return len(c.features) > 0
 	}
 
+	// An upgrade from the WiX package and ADDLOCAL name the feature by
+	// its Id, so a feature other than msi-builder's own keeps it.
 	first := c.features[0].e
-	if len(c.features[0].kids) > 0 {
+	if len(c.features[0].kids) > 0 || first.attr("Id") != config.DefaultFeatureID {
 		return true
 	}
 
