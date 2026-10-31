@@ -179,7 +179,7 @@ product: { name: MsiBuilderGrant, manufacturer: msi-builder tests, version: 1.0.
 package: { platform: x64, compression: none }
 installDir: { name: MsiBuilderGrant }
 properties:
-  SVC_ACCOUNT: { secure: true }
+  SVC_ACCOUNT: {}
   FAILNOW: { secure: true }
 components:
   - files:
