@@ -594,16 +594,27 @@ func versionResources(t *testing.T, entries []resEntry) []byte {
 		}
 	}
 
+	// Identical blobs are stored once, and their data entries share it.
 	pos := dataOff
+	offsets := make(map[string]int)
 
-	for _, b := range blobs {
-		rsrc = order.AppendUint32(rsrc, 0x2000+uint32(pos)) //nolint:gosec // small
-		rsrc = order.AppendUint32(rsrc, uint32(len(b)))     //nolint:gosec // small
+	var unique [][]byte
+
+	for _, blob := range blobs {
+		off, ok := offsets[string(blob)]
+		if !ok {
+			off = pos
+			offsets[string(blob)] = off
+			unique = append(unique, blob)
+			pos = align4(pos + len(blob))
+		}
+
+		rsrc = order.AppendUint32(rsrc, 0x2000+uint32(off)) //nolint:gosec // small
+		rsrc = order.AppendUint32(rsrc, uint32(len(blob)))  //nolint:gosec // small
 		rsrc = append(rsrc, make([]byte, 8)...)
-		pos = align4(pos + len(b))
 	}
 
-	for _, b := range blobs {
+	for _, b := range unique {
 		rsrc = append(rsrc, b...)
 		for len(rsrc)%4 != 0 {
 			rsrc = append(rsrc, 0)
@@ -654,6 +665,14 @@ func TestVersionResourceSelection(t *testing.T) {
 			version: "1.2.3.4", lang: "1033,1031",
 		},
 		"65 languages": {entries: manyLanguages(65), version: "1.2.3.4", lang: "1033"},
+		"product versions differ": {
+			entries: []resEntry{
+				{1, 1031, "", nil, blobOf(t, testpe.Options{FileVersion: "1.2.3.4", ProductVersion: "1.0.0.0", Languages: []int{1031}})},
+				{1, 1033, "", nil, blobOf(t, testpe.Options{FileVersion: "1.2.3.4", ProductVersion: "2.0.0.0", Languages: []int{1033}})},
+			},
+			version: "1.2.3.4", lang: "1033,1031",
+		},
+		"too much version data": {entries: hungryLanguages(300), fails: true},
 		"two languages disagree": {
 			entries: []resEntry{{1, 1031, "1.2.3.4", []int{1031}, nil}, {1, 1033, "9.8.7.6", []int{1033}, nil}},
 			fails:   true,
@@ -808,6 +827,30 @@ func manyLanguages(n int) []resEntry {
 	entries := make([]resEntry, 0, n)
 	for i := range n {
 		entries = append(entries, resEntry{1, uint32(1024 + i), "1.2.3.4", []int{1033}, nil})
+	}
+
+	return entries
+}
+
+// blobOf returns the VS_VERSIONINFO bytes testpe writes for opts.
+func blobOf(t *testing.T, opts testpe.Options) []byte {
+	t.Helper()
+
+	img := testpe.Build(opts)
+	start := blockOffset(t, img, "VS_VERSION_INFO")
+
+	return img[start : start+int(binary.LittleEndian.Uint32(img[testDataEntry+4:]))]
+}
+
+// hungryLanguages returns a valid neutral entry plus n entries whose
+// distinct 6-byte blocks each claim a wLength of 65535, the most data a
+// file can make the parser read per entry.
+func hungryLanguages(n int) []resEntry {
+	entries := make([]resEntry, 0, 1+n)
+	entries = append(entries, resEntry{1, 0, "1.2.3.4", []int{1033}, nil})
+
+	for i := range n {
+		entries = append(entries, resEntry{1, uint32(1024 + i), "", nil, []byte{0xFF, 0xFF, 0, 0, byte(i), byte(i >> 8)}})
 	}
 
 	return entries

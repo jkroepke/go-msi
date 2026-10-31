@@ -164,7 +164,7 @@ func (im *image) read(rva, size uint32) ([]byte, error) {
 	}
 
 	// The zero tail is at most what the section's VirtualSize covers, and
-	// every caller reads a bounded record (at most about 1 MiB).
+	// every caller reads a bounded record (at most 512 KiB).
 	return append(buf, make([]byte, uint64(size)-fileBacked)...), nil
 }
 
@@ -233,9 +233,9 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 
 	// NumberOfRvaAndSizes precedes the data directories; the length check
 	// comes first, since a PE32+ header of 96 to 111 bytes does not hold it.
-	// Windows reads only
-	// the slots it declares: with fewer than three there is no resource
-	// directory, whatever bytes follow in the optional header.
+	// Windows reads only the slots it declares: with fewer than three there
+	// is no resource directory, whatever bytes follow in the optional
+	// header.
 	if dirOff+8*3 > optSize || order.Uint32(opt[dirOff-4:]) < 3 {
 		return info, nil // no resource directory
 	}
@@ -263,8 +263,9 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 	}
 
 	// The headers are mapped at RVA 0 up to SizeOfHeaders, and Windows read
-	// a version resource placed there, without languages (FILE-14). They come after the
-	// sections, which win where a corrupt header overlaps them.
+	// a version resource placed there, without languages (FILE-14). They
+	// come after the sections, which win where a corrupt header overlaps
+	// them.
 	headers := order.Uint32(opt[60:])
 	img.sections = append(img.sections, section{virtualSize: headers, rawSize: headers, headers: true})
 
@@ -286,7 +287,7 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 // idEntries returns the numeric-ID entries of the resource directory at
 // dir: the named entries come first and are skipped, so an entry counted
 // as named is never matched by its ID, as on Windows (FILE-14).
-func idEntries(res *resources, dir uint32, limit int) ([]byte, error) {
+func idEntries(res *resources, dir uint32) ([]byte, error) {
 	head, err := res.read(dir, 16)
 	if err != nil {
 		return nil, err
@@ -295,10 +296,6 @@ func idEntries(res *resources, dir uint32, limit int) ([]byte, error) {
 	named := uint32(binary.LittleEndian.Uint16(head[12:]))
 	ids := int(binary.LittleEndian.Uint16(head[14:]))
 
-	if limit > 0 && ids > limit {
-		return nil, fmt.Errorf("pe: %d resource directory entries", ids)
-	}
-
 	// At most 65535 entries of 8 bytes: 512 KiB.
 	return res.read(dir+16+8*named, 8*uint32(ids)) //nolint:gosec // ids < 65536
 }
@@ -306,7 +303,7 @@ func idEntries(res *resources, dir uint32, limit int) ([]byte, error) {
 // findEntry returns the offset of the target of the numeric-ID entry id in
 // the resource directory at dir.
 func findEntry(res *resources, dir, wantID uint32) (uint32, bool, error) {
-	entries, err := idEntries(res, dir, 0)
+	entries, err := idEntries(res, dir)
 	if err != nil {
 		return 0, false, err
 	}
@@ -321,6 +318,11 @@ func findEntry(res *resources, dir, wantID uint32) (uint32, bool, error) {
 
 	return 0, false, nil
 }
+
+// maxVersionData bounds the version data read across all language entries
+// of RT_VERSION ID 1: 256 blocks of the largest size, far above what a
+// real file holds.
+const maxVersionData = 256 * 0xFFFF
 
 func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	const (
@@ -340,7 +342,7 @@ func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pas
 		return err
 	}
 
-	langs, err := idEntries(res, nameDir&0x7FFFFFFF, 0)
+	langs, err := idEntries(res, nameDir&0x7FFFFFFF)
 	if err != nil {
 		return err
 	}
@@ -367,7 +369,11 @@ func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pas
 
 	var all []int
 
+	// seen holds the version data RVAs already read; budget bounds the
+	// bytes read for all entries, since up to 65535 of them can each
+	// claim a 64 KiB block.
 	seen := make(map[uint32]bool)
+	budget := maxVersionData
 
 	for i := 0; i+8 <= len(langs); i += 8 {
 		dataEntry := binary.LittleEndian.Uint32(langs[i+4:])
@@ -375,19 +381,35 @@ func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pas
 			continue
 		}
 
-		rva, err := res.read(dataEntry, 4)
-		if err != nil || seen[binary.LittleEndian.Uint32(rva)] {
+		entry, err := res.read(dataEntry, 4)
+		if err != nil {
 			continue
 		}
 
-		seen[binary.LittleEndian.Uint32(rva)] = true
+		dataRVA := binary.LittleEndian.Uint32(entry)
+		if seen[dataRVA] {
+			continue
+		}
+
+		head, err := res.img.read(dataRVA, 2)
+		if err != nil {
+			continue
+		}
+
+		if budget -= int(binary.LittleEndian.Uint16(head)); budget < 0 {
+			return errors.New("pe: version resource language entries hold too much data")
+		}
 
 		other := &Info{}
 		if versionEntry(res, dataEntry, other) != nil || !other.HasVersion {
 			continue
 		}
 
-		if info.HasVersion && (other.FileVersion != info.FileVersion || other.ProductVersion != info.ProductVersion) {
+		seen[dataRVA] = true
+
+		// Only File.Version must agree: MsiGetFileVersionW reports no
+		// product version.
+		if info.HasVersion && other.FileVersion != info.FileVersion {
 			return fmt.Errorf("pe: version resource languages disagree (%s and %s)", info.FileVersion, other.FileVersion)
 		}
 
@@ -541,8 +563,8 @@ func parseVersionInfo(data []byte, info *Info) error { //nolint:cyclop // one pa
 		return fmt.Errorf("pe: version resource type %d is not binary", wType)
 	}
 
-	// A block longer than its data is truncated: Windows refuses it
-	// (FILE-14).
+	// versionData already refused a wLength past the resource data
+	// (FILE-14); this guards other callers.
 	if length > len(data) || length < 6 {
 		return fmt.Errorf("pe: version block length %d does not fit its %d bytes", length, len(data))
 	}
