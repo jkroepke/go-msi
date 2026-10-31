@@ -370,8 +370,9 @@ writes the two standard rows: one removes versions up to this one
 `includeMin: false`. An installed version below it is not removed and stays
 registered next to the new one (observed, UPG-13). Two msi-builder
 packages with generated codes and the same key path locations share their
-components, so uninstalling the new one keeps the files the old one still
-uses (observed, UPG-13); a version built by another tool into the same
+components, so uninstalling the new one leaves the shared files in place
+(observed, UPG-13, with the same file in both versions; a file the newer
+version replaced presumably stays in its newer version, not tested); a version built by another tool into the same
 folder has other component codes, and uninstalling either product
 presumably deletes files the other needs (inferred, not tested; section
 8.10). A package that must not install next to such a

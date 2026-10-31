@@ -488,12 +488,13 @@ upgrade:
 ```
 
 An older version is not upgraded: it stays installed next to the new one.
-When both versions were built by
-msi-builder into the same folder, they share their files, so uninstalling
-the new one keeps what the old one still uses. A version built by another
-tool into the same folder is likely a problem: uninstalling either one can
-delete files the other needs (not tested). To make users uninstall an older version first, detect it and
-stop the install with a message:
+When both versions were built by msi-builder into the same folder, they
+share their files: uninstalling the new one leaves them in place, but a file
+the new version replaced is likely left in its newer version (not tested).
+A version built by another tool into the same folder is likely a problem:
+uninstalling either one can delete files the other needs (not tested). To
+make users uninstall an older version first, detect it and stop the install
+with a message:
 
 ```yaml
 upgrade:

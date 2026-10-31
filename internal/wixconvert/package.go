@@ -443,7 +443,9 @@ func (c *converter) floorRow(upgrade *omap, kid *elem) bool {
 			older = "a version up to and including %s stays installed next to this one"
 		}
 
-		c.todof(upgrade, "minVersion", kid.line, older, c.value(kid, "Minimum"))
+		c.todof(upgrade, "minVersion", kid.line, older+"; a WiX-built one keeps its own component codes unless they are "+
+			"pinned (convert --msi or guid), so uninstalling either product may delete files the other uses. To refuse it "+
+			"instead, detect it with a related onlyDetect row and a launch condition", c.value(kid, "Minimum"))
 	}
 
 	if !c.detectsNewer() {
