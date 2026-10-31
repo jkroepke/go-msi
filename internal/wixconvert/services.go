@@ -951,6 +951,8 @@ type pendingType struct {
 }
 
 func (c *converter) placeTypes() {
+	placed := make(map[string]pendingType)
+
 	for _, pending := range c.pendingTypes {
 		var file *fileRef
 
@@ -966,10 +968,80 @@ func (c *converter) placeTypes() {
 			continue
 		}
 
+		if first, ok := placed[pending.out.str("progId")]; ok {
+			c.mergeType(first, pending)
+
+			continue
+		}
+
+		placed[pending.out.str("progId")] = pending
+
 		file.out.add("fileTypes", pending.out)
 		c.typeIconNote(pending, file)
 		c.typeFeatureNote(pending, file)
+		c.typeConditionNote(pending, file)
 	}
+}
+
+// typeConditionNote notes a ProgId whose component has a condition that the
+// component of the file it opens does not share: the file type now
+// installs with the file.
+func (c *converter) typeConditionNote(pending pendingType, file *fileRef) {
+	if pending.comp == file.comp || pending.comp.out == nil {
+		return
+	}
+
+	cond := pending.comp.out.str("condition")
+	if cond == "" || file.comp.out != nil && file.comp.out.str("condition") == cond {
+		return
+	}
+
+	c.todof(pending.out, "", pending.e.line, "the ProgId %s was in a component with the condition %s; msi-builder installs "+
+		"file types with their file, so that condition no longer applies to it", pending.e.attr("Id"), cond)
+}
+
+// typeExtensions returns the extensions of a converted file type.
+func typeExtensions(fileType *omap) []*omap {
+	list, ok := fileType.get("extensions").([]any)
+	if !ok {
+		return nil
+	}
+
+	var exts []*omap
+
+	for _, item := range list {
+		if entry, ok := item.(*omap); ok {
+			exts = append(exts, entry)
+		}
+	}
+
+	return exts
+}
+
+// mergeType adds the extensions of a second declaration of a ProgId to
+// the first one: msi-builder registers each ProgId once. WiX writes each
+// declaration into its own component, so a condition of that component
+// no longer applies.
+func (c *converter) mergeType(first, again pendingType) {
+	seen := make(map[string]bool)
+
+	for _, entry := range typeExtensions(first.out) {
+		seen[strings.ToLower(entry.str("extension"))] = true
+	}
+
+	for _, entry := range typeExtensions(again.out) {
+		if !seen[strings.ToLower(entry.str("extension"))] {
+			first.out.add("extensions", entry)
+		}
+	}
+
+	note := ""
+	if again.comp != first.comp {
+		note = "; it installs with the file now, so the condition and features of the component that declared it again no longer apply"
+	}
+
+	c.todof(first.out, "", again.e.line, "the ProgId %s is declared again; convert merged its extensions into this file type "+
+		"and kept the description and verbs of the first one%s", again.e.attr("Id"), note)
 }
 
 // typeIconNote notes a ProgId whose icon is in another file than the one
