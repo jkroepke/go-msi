@@ -4,6 +4,7 @@ package cab_test
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -15,9 +16,10 @@ import (
 )
 
 // readLZXFixture reads a stream crafted by internal/lzx's TestWindowsFixtures:
-// the window as one byte, the uncompressed size and data, the frame count,
-// then each frame's length and bytes, little-endian 32-bit.
-func readLZXFixture(t *testing.T, path string) (int, []byte, [][]byte) {
+// the window as one byte, the uncompressed size, the SHA-256 of the
+// uncompressed data, the frame count, then each frame's length and bytes;
+// numbers are little-endian 32-bit.
+func readLZXFixture(t *testing.T, path string) (int, int, [sha256.Size]byte, [][]byte) {
 	t.Helper()
 
 	raw, err := os.ReadFile(path)
@@ -26,30 +28,25 @@ func readLZXFixture(t *testing.T, path string) (int, []byte, [][]byte) {
 	}
 
 	window := int(raw[0])
-	raw = raw[1:]
+	size := int(binary.LittleEndian.Uint32(raw[1:]))
+	sum := [sha256.Size]byte(raw[5 : 5+sha256.Size])
+	raw = raw[5+sha256.Size:]
 
-	next := func() []byte {
-		size := binary.LittleEndian.Uint32(raw)
-		out := raw[4 : 4+size]
-		raw = raw[4+size:]
-
-		return out
-	}
-
-	data := next()
 	count := binary.LittleEndian.Uint32(raw)
 	raw = raw[4:]
 
 	frames := make([][]byte, count)
 	for i := range frames {
-		frames[i] = next()
+		length := binary.LittleEndian.Uint32(raw)
+		frames[i] = raw[4 : 4+length]
+		raw = raw[4+length:]
 	}
 
-	return window, data, frames
+	return window, size, sum, frames
 }
 
 // lzxCabinet wraps LZX frames into a cabinet of one folder and one file.
-func lzxCabinet(window int, data []byte, frames [][]byte) []byte {
+func lzxCabinet(window, size int, frames [][]byte) []byte {
 	const name = "data.bin"
 
 	headerSize := 36 + 8
@@ -70,7 +67,7 @@ func lzxCabinet(window int, data []byte, frames [][]byte) []byte {
 	out = binary.LittleEndian.AppendUint32(out, uint32(headerSize+fileSize))
 	out = binary.LittleEndian.AppendUint16(out, uint16(len(frames)))               //nolint:gosec // small
 	out = binary.LittleEndian.AppendUint16(out, uint16(cab.LZX)|uint16(window)<<8) //nolint:gosec // 15 to 21
-	out = binary.LittleEndian.AppendUint32(out, uint32(len(data)))                 //nolint:gosec // small
+	out = binary.LittleEndian.AppendUint32(out, uint32(size))                      //nolint:gosec // small
 	out = binary.LittleEndian.AppendUint32(out, 0)                                 // uoffFolderStart
 	out = binary.LittleEndian.AppendUint16(out, 0)                                 // iFolder
 	out = binary.LittleEndian.AppendUint16(out, 0x5821)                            // 2024-01-01
@@ -79,12 +76,12 @@ func lzxCabinet(window int, data []byte, frames [][]byte) []byte {
 	out = append(out, name+"\x00"...)
 
 	for i, frame := range frames {
-		size := min(lzxFrameSize, len(data)-i*lzxFrameSize)
+		frameSize := min(lzxFrameSize, size-i*lzxFrameSize)
 
 		var rec [8]byte
 
 		binary.LittleEndian.PutUint16(rec[4:], uint16(len(frame))) //nolint:gosec // at most 38912
-		binary.LittleEndian.PutUint16(rec[6:], uint16(size))       //nolint:gosec // at most 32768
+		binary.LittleEndian.PutUint16(rec[6:], uint16(frameSize))  //nolint:gosec // at most 32768
 		binary.LittleEndian.PutUint32(rec[:], cab.Checksum(frame, 0)^binary.LittleEndian.Uint32(rec[4:]))
 
 		out = append(out, rec[:]...)
@@ -116,8 +113,8 @@ func TestNativeFDICraftedLZX(t *testing.T) { //nolint:paralleltest // the FDI ca
 
 	for _, path := range paths { //nolint:paralleltest // shared FDI state
 		t.Run(strings.TrimSuffix(filepath.Base(path), ".lzx"), func(t *testing.T) {
-			window, data, frames := readLZXFixture(t, path)
-			raw := lzxCabinet(window, data, frames)
+			window, size, sum, frames := readLZXFixture(t, path)
+			raw := lzxCabinet(window, size, frames)
 
 			got, err := fdiExtract(t, raw)
 
@@ -139,8 +136,8 @@ func TestNativeFDICraftedLZX(t *testing.T) { //nolint:paralleltest // the FDI ca
 				t.Fatalf("cabinet.dll: %v", err)
 			}
 
-			if len(got) != 1 || !bytes.Equal(got[0].Data, data) {
-				t.Fatal(describeExtract("cabinet.dll", got, data))
+			if len(got) != 1 || len(got[0].Data) != size || sha256.Sum256(got[0].Data) != sum {
+				t.Fatal(describeExtract(got, size))
 			}
 
 			files, err := cab.Read(raw)
@@ -148,19 +145,19 @@ func TestNativeFDICraftedLZX(t *testing.T) { //nolint:paralleltest // the FDI ca
 				t.Fatalf("cab.Read: %v", err)
 			}
 
-			if len(files) != 1 || !bytes.Equal(files[0].Data, data) {
+			if len(files) != 1 || !bytes.Equal(files[0].Data, got[0].Data) {
 				t.Fatal("cab.Read differs from cabinet.dll")
 			}
 
-			t.Logf("%s: cabinet.dll and cab.Read extract the same %d bytes", filepath.Base(path), len(data))
+			t.Logf("%s: cabinet.dll and cab.Read extract the same %d bytes", filepath.Base(path), size)
 		})
 	}
 }
 
-func describeExtract(who string, got []extracted, want []byte) string {
+func describeExtract(got []extracted, size int) string {
 	if len(got) != 1 {
-		return fmt.Sprintf("%s extracted %d files, want 1", who, len(got))
+		return fmt.Sprintf("cabinet.dll extracted %d files, want 1", len(got))
 	}
 
-	return fmt.Sprintf("%s wrote %d bytes, want %d; data differs at %d", who, len(got[0].Data), len(want), firstDiff(got[0].Data, want))
+	return fmt.Sprintf("cabinet.dll wrote %d bytes, want %d with the fixture's SHA-256", len(got[0].Data), size)
 }

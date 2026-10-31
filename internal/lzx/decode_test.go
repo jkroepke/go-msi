@@ -2,6 +2,7 @@ package lzx //nolint:testpackage // the tests write blocks through the unexporte
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -18,7 +20,8 @@ import (
 type crafted struct {
 	w      *writer
 	frames [][]byte
-	data   []byte // the uncompressed stream
+	data   []byte        // the uncompressed stream
+	lens   map[int]uint8 // the next verbatim block's length tree, nil for all zero
 }
 
 func newCrafted(window int) *crafted {
@@ -48,16 +51,16 @@ func (c *crafted) advance(n int) {
 	}
 }
 
-// verbatim writes a verbatim block whose main tree holds the symbols low
-// and high with one bit each, then the codes: 0 for low, 1 for high. out is
+// verbatim writes a verbatim block whose main tree holds the symbols 'A'
+// and high with one bit each, then the codes: 0 for 'A', 1 for high. out is
 // what the block decodes to.
-func (c *crafted) verbatim(low, high int, codes []uint32, out []byte) {
+func (c *crafted) verbatim(high int, codes []uint32, out []byte) {
 	bits := make([]uint, len(codes))
 	for i := range bits {
 		bits[i] = 1
 	}
 
-	c.verbatimTree(map[int]uint8{low: 1, high: 1}, codes, bits, out)
+	c.verbatimTree(map[int]uint8{'A': 1, high: 1}, codes, bits, out)
 }
 
 // verbatimTree writes a verbatim block with the main tree's path lengths
@@ -73,7 +76,14 @@ func (c *crafted) verbatimTree(lens map[int]uint8, codes []uint32, bits []uint, 
 
 	c.w.writeTree(mainLens[:numChars], c.w.prevMain[:numChars])
 	c.w.writeTree(mainLens[numChars:], c.w.prevMain[numChars:])
-	c.w.writeTree(make([]uint8, numLengths), c.w.prevLen)
+
+	lenLens := make([]uint8, numLengths)
+	for sym, length := range c.lens {
+		lenLens[sym] = length
+	}
+
+	c.w.writeTree(lenLens, c.w.prevLen)
+	copy(c.w.prevLen, lenLens)
 	copy(c.w.prevMain, mainLens)
 
 	for i, code := range codes {
@@ -139,9 +149,9 @@ func pattern(size int) []byte {
 // opens the second frame.
 func storedPadNextFrame() *crafted {
 	stream := newCrafted(15)
-	stream.verbatim('A', 'B', []uint32{0}, []byte("A"))
+	stream.verbatim('B', []uint32{0}, []byte("A"))
 	stream.stored(initialRep(), pattern(FrameSize-1))
-	stream.verbatim('A', 'B', []uint32{1}, []byte("B"))
+	stream.verbatim('B', []uint32{1}, []byte("B"))
 
 	return stream
 }
@@ -165,7 +175,7 @@ func repeatedOffsetMatch(window, size int, offset uint32) *crafted {
 
 	match := all[size:]
 
-	stream.verbatim('A', numChars, []uint32{1}, match) // main symbol 256: R0, length 2
+	stream.verbatim(numChars, []uint32{1}, match) // main symbol 256: R0, length 2
 
 	return stream
 }
@@ -221,6 +231,34 @@ func TestDecoderRejectsIncompleteWord(t *testing.T) {
 	}
 }
 
+// incompleteLengthTree is a verbatim block with a complete main tree and a
+// length tree of the path lengths 1 and 2.
+func incompleteLengthTree() *crafted {
+	stream := newCrafted(15)
+	stream.lens = map[int]uint8{0: 1, 1: 2}
+	stream.verbatim('B', []uint32{0}, []byte("A"))
+
+	return stream
+}
+
+// storedPadVariants are odd stored blocks around the case of
+// storedPadNextFrame: one that ends inside a frame and is followed by a
+// compressed block in the same frame, and one that spans three frames and
+// ends at the third one's end.
+func storedPadVariants() map[string]*crafted {
+	inside := newCrafted(15)
+	inside.verbatim('B', []uint32{0}, []byte("A"))
+	inside.stored(initialRep(), pattern(101))
+	inside.verbatim('B', []uint32{1, 0}, []byte("BA"))
+
+	spanning := newCrafted(15)
+	spanning.verbatim('B', []uint32{0}, []byte("A"))
+	spanning.stored(initialRep(), pattern(3*FrameSize-1))
+	spanning.verbatim('B', []uint32{1}, []byte("B"))
+
+	return map[string]*crafted{"inside a frame": inside, "over three frames": spanning}
+}
+
 // TestDecoderStoredPadNextFrame: cabinet.dll reads the pad byte of an odd
 // stored block that ends at a frame's end from the next frame.
 func TestDecoderStoredPadNextFrame(t *testing.T) {
@@ -236,6 +274,13 @@ func TestDecoderStoredPadNextFrame(t *testing.T) {
 	got, err := decodeCrafted(15, frames, len(stream.data))
 	if err != nil || !bytes.Equal(got, stream.data) {
 		t.Fatalf("decoded %d bytes, %v; differs at %d", len(got), err, firstDiff(got, stream.data))
+	}
+
+	for name, variant := range storedPadVariants() {
+		got, err := decodeCrafted(15, variant.finish(), len(variant.data))
+		if err != nil || !bytes.Equal(got, variant.data) {
+			t.Errorf("%s: decoded %d bytes, %v; differs at %d", name, len(got), err, firstDiff(got, variant.data))
+		}
 	}
 
 	// The pad byte left in the first frame instead puts the second
@@ -370,6 +415,12 @@ func TestDecoderRejectsIncompleteTree(t *testing.T) {
 	if got, err := decodeCrafted(15, stream.finish(), len(stream.data)); !errors.Is(err, errBadTree) {
 		t.Fatalf("decoded % x, %v; want %v", got, err, errBadTree)
 	}
+
+	stream = incompleteLengthTree()
+
+	if got, err := decodeCrafted(15, stream.finish(), len(stream.data)); !errors.Is(err, errBadTree) {
+		t.Fatalf("length tree: decoded % x, %v; want %v", got, err, errBadTree)
+	}
 }
 
 // TestWindowsFixtures keeps the streams in testdata/windows in step with the
@@ -383,7 +434,17 @@ func TestWindowsFixtures(t *testing.T) {
 		"stored-pad-next-frame":  storedPadNextFrame(),
 		"e8-size-2gib":           e8LargeSize(),
 		"reject-incomplete-tree": incompleteTree(),
+		// The decoder rejects these; whether cabinet.dll does is what the
+		// native test finds out.
+		"reject-incomplete-length-tree": incompleteLengthTree(),
+		"reject-offset-beyond-window":   repeatedOffsetMatch(15, 1<<15, 1<<15+1),
+		"reject-offset-beyond-history":  repeatedOffsetMatch(15, 4, 5),
 	}
+
+	for name, stream := range storedPadVariants() {
+		fixtures["stored-pad-"+strings.ReplaceAll(name, " ", "-")] = stream
+	}
+
 	for _, less := range []int{0, 1, 2, 3} {
 		fixtures[fmt.Sprintf("repeated-offset-window-less-%d", less)] = repeatedOffsetMatch(15, 1<<15, uint32(1<<15-less)) //nolint:gosec // below 2^15
 	}
@@ -412,12 +473,15 @@ func TestWindowsFixtures(t *testing.T) {
 }
 
 // encodeFixture lays out a fixture: the window as one byte, the
-// uncompressed size and data, the frame count, then each frame's length and
-// bytes, all little-endian 32-bit. internal/cab reads the same layout.
+// uncompressed size, the SHA-256 of the uncompressed data, the frame count,
+// then each frame's length and bytes; numbers are little-endian 32-bit.
+// internal/cab reads the same layout.
 func encodeFixture(window int, frames [][]byte, data []byte) []byte {
+	sum := sha256.Sum256(data)
+
 	out := []byte{byte(window)}                                    //nolint:gosec // 15 to 21
 	out = binary.LittleEndian.AppendUint32(out, uint32(len(data))) //nolint:gosec // test sizes
-	out = append(out, data...)
+	out = append(out, sum[:]...)
 	out = binary.LittleEndian.AppendUint32(out, uint32(len(frames))) //nolint:gosec // test sizes
 
 	for _, frame := range frames {
