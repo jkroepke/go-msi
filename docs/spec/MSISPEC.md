@@ -367,6 +367,9 @@ Files are stored in LZX- or MSZIP-compressed Microsoft cabinets, embedded as dat
 - Blocks hold exactly 32768 uncompressed bytes; a folder's last block holds 1–32768. An empty folder has `cCFData = 0`; never write `cbUncomp = 0`.
 - `date = ((year − 1980) << 9) | (month << 5) | day`, `time = (hour << 11) | (minute << 5) | (second >> 1)`, clamped to 0x0021/0x0000 … 0xFF9F/0xBF7D.
 - `attribs`: 0x01 read-only, 0x02 hidden, 0x04 system, 0x20 archive; never 0x40 (execute); 0x80 (UTF-8 name) only when a name byte is ≥ 0x80.
+- A name without 0x80 is in an ANSI code page that the cabinet does not record: `makecab.exe` writes it in the ANSI code page of the writing machine (`café.txt` as `63 61 66 E9 …` on code page 1252) and `expand.exe` reads it in the ANSI code page of the extracting machine. msi-builder's reader decodes such names as Windows-1252 (`cab.LegacyCodePage`), which matches `expand.exe` on a Western European system (`TestNativeReadMakecabLegacyName`), and refuses a name with 0x80 that is not valid UTF-8.
+- Readers bound the file records by the `coffCabStart` of folders with `cCFData` > 0 only; an empty folder's offset is unused, and FDI extracts a cabinet whose empty folder has offset 0 (`TestNativeFDIEmptyFolderOffset`).
+- A streaming reader verifies every block of a folder, also those after its last file, so that a corrupt or truncated block cannot pass because no file needed its bytes.
 - `typeCompress` low nibble: 0 none, 1 MSZIP, 2 Quantum, 3 LZX (window 15–21 in bits 8–12). Writers use 3 (LZX, window 21 by default), 1 or 0; real packages used 0x0001 and 0x1503.
 - Readers of other toolchains' packages MUST handle cabinet sets: flags 0x1/0x2 with the previous/next cabinet names, and `iFolder` 0xFFFD–0xFFFF for files continued across cabinets. Retail packages built by other toolchains use them with external LZX cabinets (reported); a reader that lacks them MUST fail with a clear message instead of extracting part of the set.
 
@@ -391,7 +394,7 @@ Each `ab` is `43 4B` ("CK") plus a raw RFC 1951 stream. Its last block has BFINA
 - Use a fresh writer per block, because `Reset` re-applies the original dictionary. Blocks may be compressed in parallel with identical output.
 - msi-builder uses `compress/flate` from the standard library, not a third-party encoder (section 16, "Decisions not adopted").
 - Levels 0 and −2 ignore the dictionary, which is legal. A tested Go 1.27.3 encoder ends each stream with an empty fixed-Huffman final block, which is valid.
-- Decode with `flate.NewReaderDict(ab[2:], last 32768 bytes of history)` and `io.ReadFull` of `cbUncomp` bytes. <!-- codespell:ignore flate -->
+- Decode with `flate.NewReaderDict(ab[2:], last 32768 bytes of history)` and `io.ReadFull` of `cbUncomp` bytes, then check that the stream ends there: a stream that yields more than `cbUncomp` bytes, or has no block with BFINAL = 1, is corrupt, and `cabinet.dll` FDI refuses both (`TestNativeFDIRejectsBadMSZIPStreams`). <!-- codespell:ignore flate -->
 - A wrong history shows up as scattered wrong bytes in otherwise plausible files, or as "invalid chunk" errors in later blocks; an extractor regression did both on a real package (reported). Test decoding on a folder of more than two blocks with matches that reach back across block boundaries, and compare every extracted file with its source.
 
 ### LZX

@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jkroepke/msi-builder/internal/codepage"
 	"github.com/jkroepke/msi-builder/internal/lzx"
 	"github.com/jkroepke/msi-builder/internal/spool"
 )
@@ -661,38 +662,38 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 	return written, nil
 }
 
+// maxEmptyReads is how many reads in a row may return no bytes and no error
+// before concat gives up with io.ErrNoProgress, as bufio does.
+const maxEmptyReads = 100
+
 // concat reads the entries back to back, checking that each delivers its
 // declared size.
 type concat struct {
-	cur     io.ReadCloser
+	cur io.ReadCloser
+	// err is a source error that came with bytes; it is returned by the next
+	// Read, so that a caller filling its buffer with those bytes cannot drop
+	// it.
+	err     error
 	entries []Entry
 	left    int64
 	index   int
 }
 
 func (c *concat) Read(buf []byte) (int, error) {
-	for {
-		if c.cur == nil {
-			if c.index >= len(c.entries) {
-				return 0, io.EOF
-			}
-
-			if err := c.open(); err != nil {
-				return 0, err
-			}
-		}
-
-		if c.left == 0 {
-			if err := c.finish(); err != nil {
-				return 0, err
-			}
-
-			continue
+	for empty := 0; ; {
+		if err := c.advance(); err != nil {
+			return 0, err
 		}
 
 		read, err := c.readCurrent(buf)
 		if err != nil || read > 0 || c.left == 0 {
 			return read, err
+		}
+
+		if empty++; empty >= maxEmptyReads {
+			c.err = fmt.Errorf("%s: %w", c.entries[c.index].Name, io.ErrNoProgress)
+
+			return 0, c.err
 		}
 	}
 }
@@ -713,6 +714,31 @@ func (c *concat) Close() error {
 	return nil
 }
 
+// advance opens the next entry with bytes left, finishing the entries that
+// have delivered their size. It returns io.EOF after the last entry and
+// keeps any other error in c.err.
+func (c *concat) advance() error {
+	for c.err == nil {
+		if c.cur == nil {
+			if c.index >= len(c.entries) {
+				return io.EOF
+			}
+
+			c.err = c.open()
+
+			continue
+		}
+
+		if c.left > 0 {
+			return nil
+		}
+
+		c.err = c.finish()
+	}
+
+	return c.err
+}
+
 // readCurrent reads from the current entry, which must have bytes left.
 func (c *concat) readCurrent(buf []byte) (int, error) {
 	read, err := c.cur.Read(buf[:min(int64(len(buf)), c.left)])
@@ -720,14 +746,22 @@ func (c *concat) readCurrent(buf []byte) (int, error) {
 
 	switch {
 	case errors.Is(err, io.EOF) && c.left > 0:
-		return read, fmt.Errorf("%s: %d bytes short of its declared size", c.entries[c.index].Name, c.left)
+		c.err = fmt.Errorf("%s: %d bytes short of its declared size", c.entries[c.index].Name, c.left)
 	case errors.Is(err, io.EOF):
 		return read, nil
 	case err != nil:
-		return read, fmt.Errorf("%s: %w", c.entries[c.index].Name, err)
+		c.err = fmt.Errorf("%s: %w", c.entries[c.index].Name, err)
+	default:
+		return read, nil
 	}
 
-	return read, nil
+	// The bytes that came with the error are delivered first; the error
+	// stays in c.err for every later Read.
+	if read > 0 {
+		return read, nil
+	}
+
+	return 0, c.err
 }
 
 // open starts the current entry.
@@ -744,14 +778,28 @@ func (c *concat) open() error {
 	return nil
 }
 
-// finish checks that the current entry has no bytes beyond its size and
-// closes it.
+// finish checks that the current entry ends at its size, which only io.EOF
+// tells: io.Reader allows a read of no bytes and no error at any time. It then
+// closes the entry.
 func (c *concat) finish() error {
 	name := c.entries[c.index].Name
 
-	var probe [1]byte
+	var (
+		probe [1]byte
+		extra int
+		err   error
+	)
 
-	extra, err := c.cur.Read(probe[:])
+	for range maxEmptyReads {
+		if extra, err = c.cur.Read(probe[:]); extra > 0 || err != nil {
+			break
+		}
+	}
+
+	if extra == 0 && err == nil {
+		err = io.ErrNoProgress
+	}
+
 	if extra > 0 {
 		_ = c.Close()
 
@@ -889,7 +937,12 @@ func parseHeader(src io.ReaderAt, size int64) (*header, error) { //nolint:cyclop
 			window: int(order.Uint16(fo[6:]) >> 8 & 0x1F),
 		}
 		hdr.folders = append(hdr.folders, info)
-		dataStart = min(dataStart, info.start)
+
+		// A folder without blocks has no data, and its offset is unused
+		// (FDI extracts a cabinet whose empty folder has offset 0).
+		if info.blocks > 0 {
+			dataStart = min(dataStart, info.start)
+		}
 	}
 
 	if dataStart < coffFiles {
@@ -917,11 +970,18 @@ func parseHeader(src io.ReaderAt, size int64) (*header, error) { //nolint:cyclop
 			return nil, errors.New("cab: unterminated file name")
 		}
 
+		attr := order.Uint16(filesRaw[pos+14:])
+
+		name, err := decodeName(filesRaw[pos+fileEntrySize:pos+fileEntrySize+end], attr)
+		if err != nil {
+			return nil, err
+		}
+
 		rec := fileRecord{
 			file: File{
-				Name:       string(filesRaw[pos+fileEntrySize : pos+fileEntrySize+end]),
+				Name:       name,
 				Time:       ParseDOSTime(order.Uint16(filesRaw[pos+10:]), order.Uint16(filesRaw[pos+12:])),
-				Attributes: order.Uint16(filesRaw[pos+14:]) &^ attrUTF8Name,
+				Attributes: attr &^ attrUTF8Name,
 			},
 			size:   int64(order.Uint32(filesRaw[pos:])),
 			offset: int64(order.Uint32(filesRaw[pos+4:])),
@@ -937,6 +997,32 @@ func parseHeader(src io.ReaderAt, size int64) (*header, error) { //nolint:cyclop
 	}
 
 	return hdr, nil
+}
+
+// LegacyCodePage is the code page the reader decodes a name in when its
+// UTF-8 attribute (0x80) is not set: Windows-1252, the ANSI code page of a
+// Western European Windows. makecab.exe stores such names in the ANSI code
+// page of the machine that wrote the cabinet, and expand.exe reads them in
+// the ANSI code page of the machine that extracts it, so a cabinet carries no
+// code page of its own; a reader has to pick one. The writer never needs it:
+// it sets 0x80 on every name with a byte of 0x80 or above.
+const LegacyCodePage = codepage.Windows1252
+
+// decodeName converts a CFFILE szName to UTF-8: a name with the UTF-8
+// attribute must be valid UTF-8, and any other name is read in
+// LegacyCodePage.
+func decodeName(raw []byte, attr uint16) (string, error) {
+	codePage := LegacyCodePage
+	if attr&attrUTF8Name != 0 {
+		codePage = codepage.UTF8
+	}
+
+	name, err := codepage.Decode(raw, codePage)
+	if err != nil {
+		return "", fmt.Errorf("cab: file name %q: %w", raw, err)
+	}
+
+	return name, nil
 }
 
 // blockReader decodes the CFDATA records of one folder in order. Each call to
@@ -1068,11 +1154,7 @@ func (b *blockReader) decode(payload, out []byte) error {
 			return b.errorf("missing CK signature")
 		}
 
-		inflater := flate.NewReaderDict(bytes.NewReader(payload[2:]), b.hist)
-
-		if _, err := io.ReadFull(inflater, out); err != nil {
-			return b.errorf("%v", err)
-		}
+		return b.decodeMSZIP(payload[2:], out)
 	case LZX:
 		return b.decodeLZX(payload, out)
 	default:
@@ -1080,6 +1162,31 @@ func (b *blockReader) decode(payload, out []byte) error {
 	}
 
 	return nil
+}
+
+// decodeMSZIP inflates one MSZIP block into out. The DEFLATE stream must
+// produce exactly len(out) bytes and end with its final block: a stream that
+// decodes to more bytes than cbUncomp, or lacks its final block, is corrupt
+// (FDI rejects both).
+func (b *blockReader) decodeMSZIP(stream, out []byte) error {
+	inflater := flate.NewReaderDict(bytes.NewReader(stream), b.hist)
+
+	if _, err := io.ReadFull(inflater, out); err != nil {
+		return b.errorf("%v", err)
+	}
+
+	var probe [1]byte
+
+	switch extra, err := inflater.Read(probe[:]); {
+	case extra > 0:
+		return b.errorf("DEFLATE stream holds more than %d bytes", len(out))
+	case errors.Is(err, io.EOF):
+		return nil
+	case err == nil:
+		return b.errorf("DEFLATE stream does not end after %d bytes", len(out))
+	default:
+		return b.errorf("%v", err)
+	}
 }
 
 // decodeLZX decodes the next frame of the folder's LZX stream.
@@ -1186,39 +1293,54 @@ func Walk(src io.ReaderAt, size int64, visit func(File, io.Reader) error) error 
 	}
 
 	for folderIdx, info := range hdr.folders {
-		stream := &folderReader{blocks: newBlockReader(src, size, folderIdx, info)}
-
-		var pos int64
-
-		for _, rec := range hdr.files {
-			if rec.folder != folderIdx {
-				continue
-			}
-
-			if rec.offset < pos {
-				return fmt.Errorf("cab: file %q overlaps the file before it; use Read", rec.file.Name)
-			}
-
-			if _, err := io.CopyN(io.Discard, stream, rec.offset-pos); err != nil {
-				return fmt.Errorf("cab: file %q: %w", rec.file.Name, err)
-			}
-
-			limited := io.LimitReader(stream, rec.size)
-
-			if err := visit(rec.file, limited); err != nil {
-				return err
-			}
-
-			if _, err := io.Copy(io.Discard, limited); err != nil {
-				return fmt.Errorf("cab: file %q: %w", rec.file.Name, err)
-			}
-
-			if limited.(*io.LimitedReader).N > 0 { //nolint:forcetypeassert // io.LimitReader returns *io.LimitedReader
-				return fmt.Errorf("cab: file %q extends past its folder", rec.file.Name)
-			}
-
-			pos = rec.offset + rec.size
+		if err := walkFolder(src, size, hdr, folderIdx, info, visit); err != nil {
+			return err
 		}
+	}
+
+	return nil
+}
+
+// walkFolder serves the files of one folder to visit and then reads the
+// folder's remaining blocks, so that a corrupt or truncated block after the
+// last file fails Walk as it fails Read.
+func walkFolder(src io.ReaderAt, size int64, hdr *header, folderIdx int, info folderInfo, visit func(File, io.Reader) error) error {
+	stream := &folderReader{blocks: newBlockReader(src, size, folderIdx, info)}
+
+	var pos int64
+
+	for _, rec := range hdr.files {
+		if rec.folder != folderIdx {
+			continue
+		}
+
+		if rec.offset < pos {
+			return fmt.Errorf("cab: file %q overlaps the file before it; use Read", rec.file.Name)
+		}
+
+		if _, err := io.CopyN(io.Discard, stream, rec.offset-pos); err != nil {
+			return fmt.Errorf("cab: file %q: %w", rec.file.Name, err)
+		}
+
+		limited := io.LimitReader(stream, rec.size)
+
+		if err := visit(rec.file, limited); err != nil {
+			return err
+		}
+
+		if _, err := io.Copy(io.Discard, limited); err != nil {
+			return fmt.Errorf("cab: file %q: %w", rec.file.Name, err)
+		}
+
+		if limited.(*io.LimitedReader).N > 0 { //nolint:forcetypeassert // io.LimitReader returns *io.LimitedReader
+			return fmt.Errorf("cab: file %q extends past its folder", rec.file.Name)
+		}
+
+		pos = rec.offset + rec.size
+	}
+
+	if _, err := io.Copy(io.Discard, stream); err != nil {
+		return fmt.Errorf("cab: after the last file of folder %d: %w", folderIdx, err)
 	}
 
 	return nil
