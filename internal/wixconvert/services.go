@@ -788,7 +788,14 @@ func (cc *compConv) progID(elm *elem) { //nolint:cyclop // a flat list of indepe
 	fileType.set("progId", conv.value(elm, "Id"))
 	fileType.set("description", conv.value(elm, "Description"))
 
-	if n, err := strconv.Atoi(elm.attr("IconIndex")); err == nil && elm.has("Icon") {
+	if elm.has("Icon") {
+		// Without an IconIndex, DefaultIcon names the file alone, which
+		// Windows reads as its first icon.
+		n, err := strconv.Atoi(elm.attr("IconIndex"))
+		if err != nil {
+			n = 0
+		}
+
 		fileType.set("iconIndex", n)
 	}
 
@@ -864,8 +871,32 @@ func (c *converter) placeTypes() {
 		}
 
 		file.out.add("fileTypes", pending.out)
+		c.typeIconNote(pending, file)
 		c.typeFeatureNote(pending, file)
 	}
+}
+
+// typeIconNote notes a ProgId whose icon is in another file than the one
+// it opens: iconIndex only picks an icon of the file the type goes on.
+func (c *converter) typeIconNote(pending pendingType, file *fileRef) {
+	icon := pending.e.attr("Icon")
+	if icon == "" || icon == file.key {
+		return
+	}
+
+	pending.out.del("iconIndex")
+	c.todof(pending.out, "", pending.e.line, "the ProgId %s takes its icon from %s, not from the file it opens; "+
+		"iconIndex only picks an icon of that file, so add the DefaultIcon key as a registry value "+
+		"(HKCR\\%s\\DefaultIcon = [#%s],%s)", pending.e.attr("Id"), icon, pending.e.attr("Id"), icon, iconIndexText(pending.e))
+}
+
+// iconIndexText returns a ProgId's icon index, 0 when it gives none.
+func iconIndexText(elm *elem) string {
+	if elm.has("IconIndex") {
+		return elm.attr("IconIndex")
+	}
+
+	return "0"
 }
 
 // typeFeatureNote notes a ProgId whose component is in other features than

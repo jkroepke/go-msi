@@ -1774,3 +1774,65 @@ func TestConvertUnscheduledActions(t *testing.T) {
 		t.Errorf("the converted file does not validate: %v\n%s", err, out)
 	}
 }
+
+func TestConvertLocalActionRefAndIcon(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component>
+          <File Source="hello.exe" />
+          <ProgId Id="Example.Doc" Description="Hello document" Icon="doc.ico">
+            <Extension Id="hello"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+          <ProgId Id="Example.Own" Description="Own icon" Icon="hello.exe">
+            <Extension Id="hellown"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+        </Component>
+        <Component><File Source="doc.ico" /></Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /><ComponentRef Id="doc.ico" /></Feature>
+    <CustomActionRef Id="SaveDir" />
+  </Package>
+  <Fragment>
+    <CustomAction Id="SaveDir" Property="SAVED" Value="[INSTALLFOLDER]" />
+    <InstallExecuteSequence><Custom Action="SaveDir" Before="InstallFinalize" /></InstallExecuteSequence>
+  </Fragment>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	if strings.Contains(out, "SaveDir comes from a WiX extension") {
+		t.Errorf("a locally defined action is noted as an extension's:\n%s", out)
+	}
+
+	for _, want := range []string{
+		"the ProgId Example.Doc takes its icon from doc.ico", `HKCR\Example.Doc\DefaultIcon = [#doc.ico],0`,
+		"progId: Example.Own\n", "iconIndex: 0\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if strings.Count(out, "iconIndex:") != 1 {
+		t.Errorf("want iconIndex only on Example.Own:\n%s", out)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, out)
+	}
+}

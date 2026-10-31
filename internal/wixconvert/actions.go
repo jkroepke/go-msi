@@ -1071,12 +1071,15 @@ func (c *converter) setter(setter *elem) (*omap, []any) {
 	return action, schedule
 }
 
-// emitActionRefs notes references to actions of WiX extensions.
+// emitActionRefs notes references to actions of WiX extensions. A
+// reference to an action that the file defines itself, such as one in a
+// Fragment, needs nothing: the action converts with its definition.
 func (c *converter) emitActionRefs() {
 	for _, ref := range c.actionRefs {
 		refID := ref.attr("Id")
 
 		switch {
+		case c.actions[refID] != nil:
 		case strings.Contains(refID, "BroadcastEnvironmentChange"):
 			c.todof(nil, "", ref.line,
 				"drop %s: Windows Installer announces environment changes itself", refID)
