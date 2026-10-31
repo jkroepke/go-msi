@@ -1552,3 +1552,47 @@ func TestConvertBuiltCodesRegistryKeyPath(t *testing.T) {
 		}
 	}
 }
+
+// TestConvertComponentSearchKeyPath checks that a ComponentSearch with
+// Type="directory" gets keyPath: directory only for another product's
+// component: for one of the source, also one whose code --msi pins, the
+// builder derives the type itself (SEARCH-08).
+func TestConvertComponentSearchKeyPath(t *testing.T) {
+	t.Parallel()
+
+	const src = `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component Id="Folder" Guid="*"><CreateFolder /></Component>
+      </Directory>
+    </StandardDirectory>
+    <Property Id="OWN_DIR"><ComponentSearch Id="OwnSearch" Guid="{00000000-0000-4000-8000-0000000000aa}" Type="directory" /></Property>
+    <Property Id="OTHER_DIR"><ComponentSearch Id="OtherSearch" Guid="{00000000-0000-4000-8000-0000000000bb}" Type="directory" /></Property>
+  </Package>
+</Wix>
+`
+
+	built := &wixconvert.BuiltPackage{
+		Name: "hello.msi",
+		Components: []wixconvert.BuiltComponent{
+			{ID: "Folder", Code: "{00000000-0000-4000-8000-0000000000AA}", Directory: "INSTALLFOLDER"},
+		},
+	}
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{Built: built})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := strings.Count(string(res.YAML), "keyPath: directory"); got != 1 {
+		t.Fatalf("keyPath: directory appears %d times, want once (OTHER_DIR):\n%s", got, res.YAML)
+	}
+
+	// The properties keep the source order, so the one keyPath follows
+	// OTHER_DIR, which follows OWN_DIR.
+	text := string(res.YAML)
+	if own, other, key := strings.Index(text, "OWN_DIR:"), strings.Index(text, "OTHER_DIR:"), strings.Index(text, "keyPath: directory"); own < 0 || other < own || key < other {
+		t.Errorf("keyPath: directory is not under OTHER_DIR:\n%s", res.YAML)
+	}
+}

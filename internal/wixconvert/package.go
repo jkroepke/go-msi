@@ -995,5 +995,14 @@ func (c *converter) ownComponentGUID(guid string) bool {
 		}
 	}
 
+	// With --msi a generated code is pinned from the built package.
+	if c.built != nil {
+		for _, row := range c.built.Components {
+			if norm(row.Code) == want {
+				return true
+			}
+		}
+	}
+
 	return false
 }

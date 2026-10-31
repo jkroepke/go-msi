@@ -473,7 +473,7 @@ func (b *build) ownKeyPathKind(path, compID, keyPath string) string {
 			return config.SearchFile
 		}
 
-		b.warnf(path+".guid", "component %s of this package has a registry key path, for which the search finds nothing (SEARCH-08); "+
+		b.warnf(path+".guid", "component %s of this package has a registry key path, which is no folder (an HKLM one found nothing, SEARCH-08); "+
 			"search a component keyed on a file or on its folder", compID)
 
 		return config.SearchFile
