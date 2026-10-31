@@ -687,9 +687,9 @@ components:
       - { root: HKLM, key: Software\Example Corp\Hello, name: Path, value: '[INSTALLDIR]' }
 ```
 
-A custom action that must run as LocalSystem, which only an all-users
-install can do, gets `scope: perMachine` too; a per-user install leaves it
-out:
+A custom action that runs as LocalSystem (`impersonate: false`) needs
+`scope: perMachine` too: it then runs only when the user installs for all
+users, and every per-user install leaves it out, an administrator's too:
 
 ```yaml
 package:

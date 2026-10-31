@@ -2017,10 +2017,21 @@ func (v *validator) customActions(cfg *Config, known *refs) {
 	v.runDataIDs(cfg)
 }
 
+// actionFolder rejects a standard folder that ICE105 forbids as an action's
+// working directory: the builder adds a Directory row for it, which fails
+// ICE105 whatever the action's scope.
+func (v *validator) actionFolder(field, dir string) {
+	if v.forbiddenFolder(dir) {
+		v.errorf(field, "%s cannot have the folder %s, which the action's directory adds (ICE105); "+
+			"use INSTALLDIR or leave the directory out, and name the program as [%s]program.exe", v.perUserPackage(), dir, dir)
+	}
+}
+
 // actionScope checks a custom action's scope: perMachine or perUser, only
-// in a dual package, and only for the execute sequences, which run after
-// the engine has fixed ALLUSERS for the context (INST-02). In a UI sequence
-// ALLUSERS is 2 again once the scope page has run.
+// in a dual package, and only in the execute sequence, which runs after the
+// engine has fixed ALLUSERS for the context (INST-02). In the UI sequence
+// ALLUSERS is 2 again once the scope page has run, and an administrative
+// install has no per-user or per-machine context.
 func (v *validator) actionScope(actionPath string, action *CustomAction) {
 	if action.Scope == "" {
 		return
@@ -2034,9 +2045,10 @@ func (v *validator) actionScope(actionPath string, action *CustomAction) {
 	}
 
 	for j, placement := range action.Schedule {
-		if placement.Sequence == "ui" || placement.Sequence == sequenceAdminUI {
+		if placement.Sequence != sequenceExecute {
 			v.errorf(fmt.Sprintf("%s.schedule[%d].sequence", actionPath, j),
-				"an action with a scope runs only in execute sequences: the scope page sets ALLUSERS back to 2 in the UI sequence")
+				"an action with a scope runs only in the execute sequence: the scope page sets ALLUSERS back to 2 in the UI "+
+				"sequence, and an administrative install has no context")
 		}
 	}
 }
@@ -2153,6 +2165,8 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 		if action.Exec.Directory != targetDir && known.dirs[action.Exec.Directory] == nil && !standardFolders[action.Exec.Directory] {
 			v.errorf(actionPath+".exec.directory", "directory %q is not defined", action.Exec.Directory)
 		}
+
+		v.actionFolder(actionPath+".exec.directory", action.Exec.Directory)
 	case action.ExecProperty != nil:
 		v.required(actionPath+".execProperty.property", action.ExecProperty.Property)
 	case action.DLL != nil:
@@ -2172,6 +2186,8 @@ func (v *validator) actionKind(cfg *Config, actionPath string, action *CustomAct
 		if dir := action.Run.Directory; dir != "" && dir != targetDir && known.dirs[dir] == nil && !standardFolders[dir] {
 			v.errorf(actionPath+".run.directory", "directory %q is not defined", dir)
 		}
+
+		v.actionFolder(actionPath+".run.directory", action.Run.Directory)
 
 		if action.Return == "asyncNoWait" {
 			v.errorf(actionPath+".return", "run actions cannot use asyncNoWait; the DLL waits for the command")

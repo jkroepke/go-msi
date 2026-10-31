@@ -10,6 +10,7 @@ import (
 
 	"github.com/jkroepke/msi-builder/internal/ice"
 	"github.com/jkroepke/msi-builder/internal/msidb"
+	"github.com/jkroepke/msi-builder/internal/summary"
 	"github.com/jkroepke/msi-builder/internal/testpe"
 )
 
@@ -109,6 +110,22 @@ func buildContextActions(t *testing.T, dir, scope string, unconditioned bool) st
 
 	if changed != 2 {
 		t.Fatalf("changed %d sequence rows, want 2", changed)
+	}
+
+	// A package code of its own, so that the edited package is never taken
+	// for the cached conditioned one; the product code stays, and an
+	// install over a leftover fails with 1638 instead.
+	revised := false
+
+	for i := range database.Summary {
+		if database.Summary[i].ID == summary.PIDRevision {
+			database.Summary[i].Value = "{0C9A7E21-4B3D-4F58-9E16-D2A85B7C3F40}"
+			revised = true
+		}
+	}
+
+	if !revised {
+		t.Fatal("the package has no revision number")
 	}
 
 	data, err := database.Marshal(msidb.Options{})

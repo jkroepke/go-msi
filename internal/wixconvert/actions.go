@@ -218,11 +218,11 @@ func (c *converter) emitActions() {
 // of them names the same one. A condition that only names the scope goes,
 // since the builder writes it.
 func (c *converter) actionScope(action *omap, custom *elem) {
-	if !c.dualScope() {
+	placements := schedulePlacements(action)
+	if !c.dualScope() || !inExecuteOnly(placements) {
 		return
 	}
 
-	placements := schedulePlacements(action)
 	scope := c.namedScope(placements)
 	elevated := custom.no("Impersonate")
 
@@ -235,12 +235,22 @@ func (c *converter) actionScope(action *omap, custom *elem) {
 		action.set("scope", scope)
 	case elevated:
 		action.set("scope", scopeMachine)
+		c.todof(action, "scope", custom.line, "msi-builder runs an action without impersonation in a %s package only in "+
+			"per-machine installs (CA-09), so it adds ALLUSERS=1 to the schedule; check that %s still runs when it should",
+			c.scope, custom.attr("Id"))
+	}
+}
 
-		if !mentionsAllUsers(placements) {
-			c.todof(action, "scope", custom.line, "msi-builder runs an action without impersonation in a %s package only in "+
-				"per-machine installs (CA-09); the WiX package ran %s in per-user installs too", c.scope, custom.attr("Id"))
+// inExecuteOnly reports whether every placement is in the execute
+// sequence, the only one where an action may have a scope.
+func inExecuteOnly(placements []*omap) bool {
+	for _, placement := range placements {
+		if placement.str("sequence") != seqExecute {
+			return false
 		}
 	}
+
+	return true
 }
 
 // schedulePlacements returns the placements of an action's schedule.
@@ -276,19 +286,6 @@ func (c *converter) namedScope(placements []*omap) string {
 	}
 
 	return scope
-}
-
-// mentionsAllUsers reports whether every placement has a condition that
-// tests ALLUSERS, so that the action may have been meant for one context
-// already.
-func mentionsAllUsers(placements []*omap) bool {
-	for _, placement := range placements {
-		if !strings.Contains(strings.ToUpper(placement.str("condition")), "ALLUSERS") {
-			return false
-		}
-	}
-
-	return len(placements) > 0
 }
 
 // leftoverProgress notes the progress texts that no converted action took:

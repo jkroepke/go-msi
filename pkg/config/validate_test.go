@@ -163,7 +163,7 @@ func TestValidateAccepted(t *testing.T) {
 		// only (CA-09).
 		"dual scope elevated action": pkg(`{platform: x64, scope: perUserOrMachine}`) + appComponent + `customActions:
   - id: Machine
-    exec: {command: '"[System64Folder]cmd.exe" /c ver', directory: System64Folder}
+    exec: {command: '"[System64Folder]cmd.exe" /c ver', directory: INSTALLDIR}
     execute: deferred
     impersonate: false
     scope: perMachine
@@ -464,7 +464,7 @@ func TestValidate(t *testing.T) {
 		"dual scope elevated action without scope": {
 			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + `customActions:
   - id: Machine
-    exec: {command: '"[System64Folder]cmd.exe" /c ver', directory: System64Folder}
+    exec: {command: '"[System64Folder]cmd.exe" /c ver', directory: INSTALLDIR}
     execute: deferred
     impersonate: false
     return: check
@@ -475,7 +475,7 @@ func TestValidate(t *testing.T) {
 		"dual scope elevated perUser action": {
 			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + `customActions:
   - id: Machine
-    exec: {command: '"[System64Folder]cmd.exe" /c ver', directory: System64Folder}
+    exec: {command: '"[System64Folder]cmd.exe" /c ver', directory: INSTALLDIR}
     execute: deferred
     impersonate: false
     scope: perUser
@@ -487,7 +487,7 @@ func TestValidate(t *testing.T) {
 		"per-user elevated action with scope": {
 			pkg(`{platform: x64, scope: perUser}`) + appComponent + `customActions:
   - id: Machine
-    exec: {command: '"[System64Folder]cmd.exe" /c ver', directory: System64Folder}
+    exec: {command: '"[System64Folder]cmd.exe" /c ver', directory: INSTALLDIR}
     execute: deferred
     impersonate: false
     scope: perMachine
@@ -495,6 +495,27 @@ func TestValidate(t *testing.T) {
     schedule: [{sequence: execute, before: InstallFinalize}]
 `,
 			sevError, "customActions[0].scope", "only a perUserOrMachine or perMachineOrUser package",
+		},
+		"dual scope action in the system folder": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + `customActions:
+  - id: Machine
+    exec: {command: '"[System64Folder]cmd.exe" /c ver', directory: System64Folder}
+    execute: deferred
+    impersonate: false
+    scope: perMachine
+    return: check
+    schedule: [{sequence: execute, before: InstallFinalize}]
+`,
+			sevError, "customActions[0].exec.directory", "System64Folder",
+		},
+		"action scope in the admin execute sequence": {
+			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + `customActions:
+  - id: Set
+    setProperty: {name: A, value: b}
+    scope: perUser
+    schedule: [{sequence: adminExecute, after: CostFinalize}]
+`,
+			sevError, "customActions[0].schedule[0].sequence", "only in the execute sequence",
 		},
 		"action scope dual": {
 			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + `customActions:
@@ -512,7 +533,7 @@ func TestValidate(t *testing.T) {
     scope: perMachine
     schedule: [{sequence: execute, after: CostFinalize}, {sequence: ui, after: CostFinalize}]
 `,
-			sevError, "customActions[0].schedule[1].sequence", "only in execute sequences",
+			sevError, "customActions[0].schedule[1].sequence", "only in the execute sequence",
 		},
 		"standard action name": {
 			base + appComponent + `customActions:
