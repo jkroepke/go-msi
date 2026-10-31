@@ -120,10 +120,12 @@ func Decode(data []byte, codePage int) (string, error) {
 	}
 
 	// The x/text decoders turn malformed or unmapped bytes into U+FFFD
-	// without an error. Such text would not survive a round trip, so it
-	// must encode back to exactly the bytes read.
-	back, err := enc.NewEncoder().Bytes(out)
-	if err != nil || !bytes.Equal(back, data) {
+	// without an error. No ANSI code page can encode U+FFFD, so one in
+	// the result always stands for bytes that were lost. A byte-for-byte
+	// round trip would be too strict: Windows code pages map some
+	// characters from two byte sequences (932 NEC duplicates, 936 0xA2E3
+	// and 0x80) and encode them back to one of them.
+	if bytes.ContainsRune(out, utf8.RuneError) {
 		return "", fmt.Errorf("codepage: invalid bytes for code page %d", codePage)
 	}
 
