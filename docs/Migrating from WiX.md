@@ -694,8 +694,8 @@ A `Launch` whose condition is exactly `NOT <newer property>`, such as
 condition that `upgrade.downgrade: error` (the default) writes itself, so it
 cannot also be a `launchConditions` entry: its message is
 `upgrade.downgradeMessage`, and `convert` moves it there. When the
-`MajorUpgrade` has a `DowngradeErrorMessage`, that message stays and a TODO
-names the one left out; when the file has no upgrade elements at all, a TODO
+`MajorUpgrade` has a `DowngradeErrorMessage`, that message stays, and when
+the two messages differ a TODO names the one left out; when the file has no upgrade elements at all, a TODO
 reminds you to add the launch condition back if you set `upgrade: false`. Any other
 condition, such as `NOT NEWERVERSIONDETECTED OR Installed`, stays a launch
 condition, and so does every condition when downgrades are allowed or when
