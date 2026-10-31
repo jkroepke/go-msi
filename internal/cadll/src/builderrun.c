@@ -780,7 +780,7 @@ static void pump(MSIHANDLE install, output *o)
                     GetOverlappedResult(o->pipe, &ov, &got, 1);
                     eof = 1;
                     done = 1;
-                } else if (!exited && !o->cancelled) {
+                } else if (!o->cancelled) {
                     lastPoll = GetTickCount64();
                     if (cancelled(install)) {
                         o->cancelled = 1;
@@ -3538,7 +3538,7 @@ static int sameFile(const WCHAR *image, const WCHAR *path, const FILE_ID_INFO_ *
     // A program on a network share is not opened for a local file: an
     // unreachable share would stall the action. A junction cannot lead to
     // one.
-    if (image[0] == '\\' && image[1] == '\\' && !(path[0] == '\\' && path[1] == '\\')) {
+    if (image[0] == '\\' && image[1] == '\\' && image[2] != '?' && image[2] != '.' && !(path[0] == '\\' && path[1] == '\\')) {
         return 0;
     }
     FILE_ID_INFO_ got;

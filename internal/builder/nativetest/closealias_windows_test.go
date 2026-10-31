@@ -4,7 +4,6 @@ package nativetest_test
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"syscall"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 // closeAliasConfig installs one program that the deferred close action
@@ -43,6 +43,28 @@ func shortPath(t *testing.T, path string) string {
 	}
 
 	return syscall.UTF16ToString(buf[:n])
+}
+
+// imagePath returns what QueryFullProcessImageNameW, which the DLL
+// compares, reports for a process, or the error text.
+func imagePath(pid int) string {
+	const queryLimited = 0x1000 // PROCESS_QUERY_LIMITED_INFORMATION
+
+	process, err := syscall.OpenProcess(queryLimited, false, uint32(pid)) //nolint:gosec // a process ID fits
+	if err != nil {
+		return err.Error()
+	}
+	defer syscall.CloseHandle(process) //nolint:errcheck // nothing to do on failure
+
+	buf := make([]uint16, syscall.MAX_LONG_PATH)
+	size := uint32(syscall.MAX_LONG_PATH)
+
+	query := syscall.NewLazyDLL("kernel32.dll").NewProc("QueryFullProcessImageNameW")
+	if r, _, err := query.Call(uintptr(process), 0, uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size))); r == 0 {
+		return err.Error()
+	}
+
+	return syscall.UTF16ToString(buf[:size])
 }
 
 // TestMsiexecClosesAliases checks CLOSE-02: a copy of a package program
@@ -101,7 +123,7 @@ func TestMsiexecClosesAliases(t *testing.T) {
 	// The image path each copy reports: a match by text alone found a
 	// copy only when this equals the installed path.
 	for name, proc := range procs {
-		image, _ := powershell(fmt.Sprintf("(Get-Process -Id %d).Path", proc.cmd.Process.Pid))
+		image := imagePath(proc.cmd.Process.Pid)
 		t.Logf("CLOSE-02: the copy started by the %s reports %s (installed: %s, same text: %t)", name, image, exe, strings.EqualFold(image, exe))
 	}
 
