@@ -310,6 +310,11 @@ func (c *converter) uiLaunch(wizard *omap) {
 	if p := props["WIXUI_EXITDIALOGOPTIONALCHECKBOX"]; p == nil || c.value(p, "Value") != "1" {
 		launch.set("checked", false)
 	}
+
+	if launch.get("file") == nil {
+		// ui.launch needs a file; the TODO says what the checkbox did.
+		wizard.del("launch")
+	}
 }
 
 // launchFile sets the file the finish page launches: the WixShellExecTarget
@@ -321,7 +326,8 @@ func (c *converter) launchFile(wizard, launch *omap, target *elem) {
 		if m := fileTarget.FindStringSubmatch(v); m != nil {
 			launch.set("file", m[1])
 		} else {
-			c.todof(wizard, "launch", target.line, "WixShellExecTarget=%q: launch.file names a file of the package", v)
+			c.todof(wizard, "", target.line, "WixShellExecTarget=%q: ui.launch.file names a file of the package, so the launch "+
+				"checkbox was left out", v)
 		}
 	case custom != nil && custom.attr("FileRef")+custom.attr("FileKey") != "":
 		// The finish button runs a file of the package.
@@ -329,7 +335,8 @@ func (c *converter) launchFile(wizard, launch *omap, target *elem) {
 
 		launch.set("arguments", c.value(custom, "ExeCommand"))
 	default:
-		c.todof(wizard, "launch", 0, "the launch checkbox starts no file of the package that convert can tell; set launch.file")
+		c.todof(wizard, "", 0, "the launch checkbox starts no file of the package that convert can tell, so it was left out; "+
+			"ui.launch.file starts a file of the package")
 	}
 }
 
