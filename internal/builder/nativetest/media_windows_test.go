@@ -284,7 +284,8 @@ func freeBytes(t *testing.T, dir string) int64 {
 // share their cabinet bytes (CAB-14): a.bin, c.bin and e.bin hold the same
 // 300000 bytes and f.bin and g.bin other ones, with stored files between
 // them, so that every copy points back at a folder before the one the
-// extraction is in. MSZIP and LZX, embedded and beside the package.
+// extraction is in, and the empty h.bin after the last copy makes an empty
+// last folder. MSZIP and LZX, embedded and beside the package.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestMsiexecInstallsSharedData(t *testing.T) {
@@ -313,6 +314,8 @@ func TestMsiexecInstallsSharedData(t *testing.T) {
 		{name: "e.bin", size: 300000, data: same},
 		{name: "f.bin", size: 70000, data: other},
 		{name: "g.bin", size: 70000, data: other},
+		// After the last copy, an empty file is an empty last folder.
+		{name: "h.bin", size: 0, data: content(5, 0)},
 	}
 
 	var stored int64

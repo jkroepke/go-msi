@@ -158,15 +158,15 @@ func TestIdenticalFilesShareData(t *testing.T) {
 	}
 }
 
-// TestSharedDataCabinetLimits builds the shared configuration with MSZIP
-// and LZX under a range of cabinet limits and checks that no cabinet
+// TestSharedDataCabinetLimits builds the shared configuration stored, with
+// MSZIP and with LZX under a range of cabinet limits and checks that no cabinet
 // exceeds its limit: the split must count every folder sharing adds.
 func TestSharedDataCabinetLimits(t *testing.T) {
 	t.Parallel()
 
 	cfg, inputs := sharedConfig(t)
 
-	for _, compression := range []string{"mszip", "lzx", "lzx:15"} {
+	for _, compression := range []string{"none", "mszip", "lzx", "lzx:15"} {
 		cfg.Package.Compression = compression
 
 		for limit := int64(100000); limit <= 400000; limit += 7919 {

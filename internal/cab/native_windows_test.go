@@ -1233,6 +1233,10 @@ func TestNativeFDIExtractsCopies(t *testing.T) { //nolint:paralleltest // the FD
 
 	for _, opts := range []cab.Options{{Compression: cab.None}, {Compression: cab.MSZIP}, {Compression: cab.LZX}, {Compression: cab.LZX, Window: 15}} {
 		files, ents := copyFiles()
+
+		// An empty file after the last copy is an empty last folder.
+		files = append(files, cab.File{Name: "empty", Time: files[0].Time})
+		ents = append(ents, entries(files[len(files)-1:])...)
 		raw := writeEntries(t, ents, opts)
 
 		got, err := fdiExtract(t, raw)
