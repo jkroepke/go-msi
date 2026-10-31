@@ -81,9 +81,14 @@ type fdiState struct {
 	next    uintptr
 	files   []extracted
 	erf     *[3]int32 // erfOper, erfType, fError
+	// read counts the bytes FDI read from the cabinet.
+	read int64
 }
 
 var state *fdiState //nolint:gochecknoglobals // FDI callbacks have no user pointer
+
+// lastRead is the read count of the last fdiExtract.
+var lastRead int64 //nolint:gochecknoglobals // see state
 
 // fdiNotification mirrors FDINOTIFICATION on 64-bit Windows.
 type fdiNotification struct {
@@ -162,6 +167,10 @@ var (
 
 			got := copy(unsafe.Slice(buf, n), file.data[file.pos:])
 			file.pos += got
+
+			if file.out == nil {
+				state.read += int64(got)
+			}
 
 			return uintptr(got)
 		})
@@ -275,7 +284,7 @@ func fdiExtract(t *testing.T, raw []byte) ([]extracted, error) {
 	t.Helper()
 
 	state = &fdiState{cabinet: raw, handles: make(map[uintptr]*memFile), next: 1, erf: new([3]int32)}
-	defer func() { state = nil }()
+	defer func() { lastRead = state.read; state = nil }()
 
 	hfdi, _, _ := pFDICreate.Call(cbAlloc, cbFree, cbOpen, cbRead, cbWrite, cbClose, cbSeek,
 		^uintptr(0) /* cpuUNKNOWN */, uintptr(unsafe.Pointer(state.erf)))
