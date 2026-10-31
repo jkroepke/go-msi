@@ -861,8 +861,8 @@ func (cc *compConv) iconIndex(elm *elem, fileType *omap) {
 
 // typeText returns an attribute of a ProgId, Extension or Verb with the
 // properties it references filled in when they have a constant value:
-// msi-builder writes these texts as they are, and WiX formats them. A
-// reference it cannot fill in gets a TODO.
+// msi-builder writes these texts as they are, and WiX formats them. Other
+// formatted text left over gets a TODO.
 func (c *converter) typeText(out *omap, elm *elem, attr string) string {
 	text := bracketRef.ReplaceAllStringFunc(c.value(elm, attr), func(ref string) string {
 		if value, ok := c.constProperty(ref[1 : len(ref)-1]); ok {
@@ -872,17 +872,28 @@ func (c *converter) typeText(out *omap, elm *elem, attr string) string {
 		return ref
 	})
 
-	if bracketRef.MatchString(text) {
-		c.todof(out, "", elm.line, "%s %s=%q references a property that has no constant value; msi-builder writes "+
-			"file type texts as they are, so write the text out", elm.name, attr, text)
+	if strings.ContainsAny(text, "[]{}") {
+		c.todof(out, "", elm.line, "%s %s=%q holds formatted text convert cannot fill in (a property without a constant "+
+			"value, or another reference); msi-builder writes file type texts as they are, so write the text out",
+			elm.name, attr, text)
 	}
 
 	return text
 }
 
 // constProperty returns the value of a property that a Property element
-// sets and nothing else changes.
+// or the package sets and nothing in the source changes. A public one could
+// still come from the command line; convert assumes it does not.
 func (c *converter) constProperty(name string) (string, bool) {
+	switch name {
+	case "ProductName":
+		return c.expandVars(c.pkg, c.pkg.attr("Name")), c.pkg.has("Name")
+	case "Manufacturer":
+		return c.expandVars(c.pkg, c.pkg.attr("Manufacturer")), c.pkg.has("Manufacturer")
+	case "ProductVersion":
+		return c.expandVars(c.pkg, c.pkg.attr("Version")), c.pkg.has("Version")
+	}
+
 	var found *elem
 
 	for _, prop := range c.properties {
@@ -891,14 +902,33 @@ func (c *converter) constProperty(name string) (string, bool) {
 		}
 	}
 
-	if found == nil || !found.has("Value") || len(found.kids) > 0 ||
-		slices.ContainsFunc(c.commandSources(), func(src commandSource) bool { return src.property == name }) {
+	if found == nil || !found.has("Value") || len(found.kids) > 0 || c.propertyChanged(name) {
 		return "", false
 	}
 
 	value := c.value(found, "Value")
 
-	return value, !bracketRef.MatchString(value)
+	return value, !strings.ContainsAny(value, "[]{}")
+}
+
+// propertyChanged reports whether an action, a SetProperty, a Publish
+// event or a dialog control sets the property.
+func (c *converter) propertyChanged(name string) bool {
+	if slices.ContainsFunc(c.commandSources(), func(src commandSource) bool { return src.property == name }) {
+		return true
+	}
+
+	var changed func(elm *elem) bool
+
+	changed = func(elm *elem) bool {
+		if (elm.is("Publish") || elm.is("Control")) && elm.attr(attrProperty) == name {
+			return true
+		}
+
+		return slices.ContainsFunc(elm.kids, changed)
+	}
+
+	return changed(c.doc.root)
 }
 
 // pendingType is a ProgId that goes onto the file its verbs start, once

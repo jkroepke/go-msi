@@ -4,6 +4,7 @@ import (
 	"maps"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -300,12 +301,13 @@ func (c *converter) uiLaunch(wizard *omap) {
 	}
 
 	launch := wizard.child("launch")
-
-	c.launchFile(wizard, launch, target)
+	launch.order("file", "arguments", "text", "checked")
 
 	if p := props["WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT"]; p != nil {
 		launch.set("text", c.value(p, "Value"))
 	}
+
+	c.launchFile(wizard, launch, target)
 
 	if p := props["WIXUI_EXITDIALOGOPTIONALCHECKBOX"]; p == nil || c.value(p, "Value") != "1" {
 		launch.set("checked", false)
@@ -335,8 +337,22 @@ func (c *converter) launchFile(wizard, launch *omap, target *elem) {
 
 		launch.set("arguments", c.value(custom, "ExeCommand"))
 	default:
-		c.todof(wizard, "", 0, "the launch checkbox starts no file of the package that convert can tell, so it was left out; "+
-			"ui.launch.file starts a file of the package")
+		what := "the launch checkbox"
+		if custom != nil {
+			what += " (action " + custom.attr("Id")
+			if cmd := c.value(custom, "ExeCommand"); cmd != "" {
+				what += ": " + cmd
+			}
+
+			what += ")"
+		}
+
+		if text := launch.str("text"); text != "" {
+			what += " " + strconv.Quote(text)
+		}
+
+		c.todof(wizard, "", 0, "%s starts no file of the package that convert can tell, so it was left out; "+
+			"ui.launch.file starts a file of the package", what)
 	}
 }
 

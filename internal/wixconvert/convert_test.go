@@ -2129,6 +2129,7 @@ func TestConvertForceDeleteKey(t *testing.T) {
         <Component>
           <File Source="hello.exe" />
           <RegistryKey Root="HKLM" Key="SOFTWARE\Example\Stale" ForceDeleteOnUninstall="yes" />
+          <RemoveRegistryKey Root="HKLM" Key="SOFTWARE\Example\Stale" Action="removeOnUninstall" />
           <RegistryKey Root="HKLM" Key="SOFTWARE\Example\Hello" ForceDeleteOnUninstall="yes">
             <RegistryKey Key="Sub"><RegistryValue Name="v" Value="1" /></RegistryKey>
           </RegistryKey>
@@ -2153,8 +2154,8 @@ func TestConvertForceDeleteKey(t *testing.T) {
 		}
 	}
 
-	if strings.Count(out, "type: key") != 1 {
-		t.Errorf("want a key entry only for SOFTWARE\\Example\\Hello:\n%s", out)
+	if strings.Count(out, "type: key") != 1 || strings.Count(out, `SOFTWARE\Example\Stale`) != 1 {
+		t.Errorf("want a key entry only for SOFTWARE\\Example\\Hello and one removal of Stale:\n%s", out)
 	}
 
 	cfg, err := config.Parse(res.YAML, config.Options{})
@@ -2176,11 +2177,15 @@ func TestConvertTypeTextsAndURLLaunch(t *testing.T) {
     <Property Id="SOFTWARE" Value="Hello" />
     <Property Id="EXT" Value="hlo" />
     <Property Id="CHANGING" Value="a" />
+    <Property Id="PUB" Value="x" />
     <SetProperty Id="CHANGING" Value="b" Before="CostFinalize" />
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Hello">
         <Component>
           <File Source="hello.exe" />
+          <ProgId Id="[ProductName].Pub" Description="[PUB] [%USERNAME] by [Manufacturer]">
+            <Extension Id="hlopub"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
           <ProgId Id="[SOFTWARE].Project" Description="[SOFTWARE] Project File">
             <Extension Id="[EXT]"><Verb Id="open" Command="Open in [CHANGING]" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
           </ProgId>
@@ -2193,6 +2198,7 @@ func TestConvertTypeTextsAndURLLaunch(t *testing.T) {
     <UI>
       <ui:WixUI Id="WixUI_Minimal" />
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="OpenSite" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1" />
+      <Publish Dialog="ExitDialog" Control="Finish" Property="PUB" Value="z" />
     </UI>
   </Package>
 </Wix>`
@@ -2205,8 +2211,9 @@ func TestConvertTypeTextsAndURLLaunch(t *testing.T) {
 	out := string(res.YAML)
 	for _, want := range []string{
 		"progId: Hello.Project\n", "description: Hello Project File\n", "extension: hlo\n",
-		`Verb Command="Open in [CHANGING]" references a property that has no constant value`,
-		"the launch checkbox starts no file of the package that convert can tell, so it was left out",
+		`Verb Command="Open in [CHANGING]" holds formatted text convert cannot fill in`,
+		`the launch checkbox (action OpenSite: powershell Start-Process https://example.com) "Open the website" starts no file`,
+		"progId: Hello.Pub\n", `ProgId Description="[PUB] [%USERNAME] by Example" holds formatted text`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the YAML lacks %q:\n%s", want, out)
