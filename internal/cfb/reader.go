@@ -679,7 +679,7 @@ func checkHeader(raw []byte) (int, uint16, error) {
 // checkCounts rejects header sector counts that contradict the chains they
 // describe: a MiniFAT start without MiniFAT sectors or sectors without a
 // start, and a v4 header without directory sectors. Windows refuses such a
-// file (StgOpenStorage 0x80030109, CFB-12), so following the chain anyway
+// file (StgOpenStorage 0x80030109 for a count of 0, CFB-12), so following the chain anyway
 // would show content that Windows never reads.
 func checkCounts(raw []byte, major int) error {
 	order := binary.LittleEndian
@@ -914,18 +914,30 @@ func foldName(name string) string {
 	return string(utf16.Decode(units))
 }
 
-// foldUnit returns the lowest BMP unit in the simple case folding orbit of
-// unit. Surrogates are never folded.
+// foldUnit returns the lowest BMP unit in the simple case folding orbits of
+// unit and of its upper case. The upper case joins U+0131 (dotless i),
+// whose orbit holds only itself, to I. Surrogates are never folded.
 func foldUnit(unit uint16) uint16 {
 	if unit >= 0xD800 && unit <= 0xDFFF {
 		return unit
 	}
 
-	lowest := rune(unit)
+	lowest := lowestInOrbit(rune(unit))
+	if up := unicode.ToUpper(rune(unit)); up <= 0xFFFF {
+		lowest = min(lowest, lowestInOrbit(up))
+	}
 
-	for r := unicode.SimpleFold(lowest); r != rune(unit); r = unicode.SimpleFold(r) {
+	return uint16(lowest) //nolint:gosec // a BMP rune
+}
+
+// lowestInOrbit returns the lowest rune in the simple case folding orbit of
+// start.
+func lowestInOrbit(start rune) rune {
+	lowest := start
+
+	for r := unicode.SimpleFold(start); r != start; r = unicode.SimpleFold(r) {
 		lowest = min(lowest, r)
 	}
 
-	return uint16(lowest) //nolint:gosec // at most unit, which is a uint16
+	return lowest
 }

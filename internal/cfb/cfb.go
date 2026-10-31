@@ -240,7 +240,7 @@ func readSource(src Source) ([]byte, error) {
 		return nil, fmt.Errorf("cfb: stream %q: %w", src.Name, err)
 	}
 
-	data, err := io.ReadAll(io.LimitReader(reader, src.Size+1))
+	data, err := readAtMost(reader, src.Size+1)
 	if cerr := reader.Close(); err == nil {
 		err = cerr
 	}
@@ -251,6 +251,36 @@ func readSource(src Source) ([]byte, error) {
 
 	if int64(len(data)) != src.Size {
 		return nil, fmt.Errorf("cfb: stream %q delivered %d bytes, declared %d", src.Name, len(data), src.Size)
+	}
+
+	return data, nil
+}
+
+// readAtMost reads up to limit bytes, until io.EOF. Unlike io.ReadAll it
+// gives up with io.ErrNoProgress after maxEmptyReads reads in a row that
+// return neither a byte nor an error.
+func readAtMost(reader io.Reader, limit int64) ([]byte, error) {
+	data := make([]byte, 0, min(limit, miniCutoff+1))
+	buf := make([]byte, min(limit, miniCutoff+1))
+	empty := 0
+
+	for int64(len(data)) < limit {
+		count, err := reader.Read(buf[:min(int64(len(buf)), limit-int64(len(data)))])
+		data = append(data, buf[:count]...)
+
+		switch {
+		case errors.Is(err, io.EOF):
+			return data, nil
+		case err != nil:
+			return data, fmt.Errorf("read: %w", err)
+		case count > 0:
+			empty = 0
+		default:
+			empty++
+			if empty >= maxEmptyReads {
+				return data, io.ErrNoProgress
+			}
+		}
 	}
 
 	return data, nil

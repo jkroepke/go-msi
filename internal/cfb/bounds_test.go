@@ -225,7 +225,8 @@ func TestUnicodeCaseDuplicate(t *testing.T) {
 		{"Kbcd", "Kbcd"}, // KELVIN SIGN folds to K
 		{"Σbcd", "ςbcd"}, // final sigma
 		{"ǅbcd", "ǆbcd"}, // title case
-		{"Ａbcd", "ａbcd"}, // fullwidth
+		{"Ａbcd", "ａbcd"},
+		{"ıbcd", "Ibcd"}, // dotless i: upper case I, but alone in its fold orbit // fullwidth
 	} {
 		wantError(t, pair[0]+"/"+pair[1], rename(pair[0], pair[1]), "duplicate name")
 	}
@@ -342,6 +343,24 @@ func TestSourcePauseAtSize(t *testing.T) {
 
 	if _, err := WriteTo(io.Discard, source(&stalled{data: make([]byte, miniCutoff)}), Options{}); !errors.Is(err, io.ErrNoProgress) {
 		t.Errorf("no end: %v, want io.ErrNoProgress", err)
+	}
+
+	// Small and empty sources are read into memory, by another path.
+	for _, size := range []int64{0, 10} {
+		src := []Source{{Name: "S", Size: size, Open: func() (io.ReadCloser, error) {
+			return io.NopCloser(&stalled{data: make([]byte, size)}), nil
+		}}}
+
+		if _, err := WriteTo(io.Discard, src, Options{}); !errors.Is(err, io.ErrNoProgress) {
+			t.Errorf("no end, size %d: %v, want io.ErrNoProgress", size, err)
+		}
+	}
+
+	small := []Source{{Name: "S", Size: 10, Open: func() (io.ReadCloser, error) {
+		return io.NopCloser(&pausing{data: make([]byte, 11), pause: 10}), nil
+	}}}
+	if _, err := WriteTo(io.Discard, small, Options{}); err == nil || !strings.Contains(err.Error(), "delivered 11 bytes") {
+		t.Errorf("small source, pause at the size: %v, want an error about 11 bytes", err)
 	}
 }
 
