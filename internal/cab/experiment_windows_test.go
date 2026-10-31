@@ -97,4 +97,6 @@ func TestExperimentSharedOffsets(t *testing.T) { //nolint:paralleltest // shared
 				binary.LittleEndian.Uint32(raw[recs[layout.copyOf]+4:]), ok)
 		}
 	}
+
+	t.Error("EXPERIMENT REPORT (temporary failure to show the log)")
 }
