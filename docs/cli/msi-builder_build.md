@@ -30,7 +30,7 @@ msi-builder build [flags] msi.yaml
       --cert string            sign with this PEM certificate chain (signing certificate first)
       --cfb int                compound file version, 3 (512-byte sectors) or 4 (4096-byte sectors) (default 4)
       --description string     program name shown in the UAC prompt
-      --env                    let environment variables fill ${NAME} references, and var and has with --template
+      --env                    let environment variables fill ${NAME} references and, with --template, template variables
       --hash string            signature digest: sha256, sha384, sha512 or sha1 (default "sha256")
   -h, --help                   help for build
       --key string             PEM private key for --cert

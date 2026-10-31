@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
+	"regexp"
 	"strings"
 	"text/template"
+	"text/template/parse"
+	"unicode"
 	"unicode/utf8"
+
+	"go.yaml.in/yaml/v3"
 )
 
 // maxRendered caps the text a template writes. Without it a template such
@@ -24,13 +28,13 @@ const maxIndent = 1024
 var errRenderedTooLarge = fmt.Errorf("the template writes more than %d bytes", maxRendered)
 
 // Render runs a document through Go's text/template, as Parse does when
-// Options.Template is set. The template's data maps each Options.Vars name
-// to its value, so {{ .ARCH }} reads --var ARCH=...; a name that is not set
-// is an error. The functions are:
+// Options.Template is set. Variables are found as ${NAME} finds them: in
+// Vars, then through LookupEnv, then in the file's vars block. {{ .NAME }}
+// reads one and fails when it is not set. The functions are:
 //
-//   - var NAME [DEFAULT]: the variable from Vars, then from LookupEnv, else
-//     DEFAULT; without a DEFAULT an unset variable is an error.
-//   - has NAME: whether var NAME finds a value.
+//   - var NAME [DEFAULT]: the variable, else DEFAULT; without a DEFAULT an
+//     unset variable is an error.
+//   - has NAME: whether the variable is set.
 //   - quote S: S as a double-quoted YAML string, with ${ written as $${ so
 //     that the ${NAME} substitution after rendering leaves it as it is.
 //   - indent N S: S with every line after the first indented by N spaces.
@@ -38,34 +42,151 @@ var errRenderedTooLarge = fmt.Errorf("the template writes more than %d bytes", m
 //     such as --var LANGS=en;de; an empty S has no parts, and SEP must not
 //     be empty.
 //
-// The rendered text then goes through ${NAME} substitution like any file.
-//
-// The file's vars block is not seen by the template: it is YAML that only
-// exists after rendering. ${NAME} references pass through unchanged. The
-// output is capped at 16 MiB, but a template is code: like a build script,
-// only render files you trust, as a loop that writes nothing is not bounded.
+// The vars block is read from the raw text before rendering, so it must not
+// use template syntax. The rendered text then goes through ${NAME}
+// substitution like any file. The output is capped at 16 MiB, but a
+// template is code: like a build script, only render files you trust, as a
+// loop that writes nothing is not bounded.
 func Render(data []byte, opts Options) ([]byte, error) {
-	tmpl, err := template.New("msi.yaml").Option("missingkey=error").Funcs(templateFuncs(opts)).Parse(string(data))
+	vars, lines, err := templateVars(data)
+	if err != nil {
+		return nil, err
+	}
+
+	var errs []error
+
+	res := &resolver{
+		opts: opts, vars: vars, lines: lines, resolved: make(map[string]string),
+		docLeft: maxSubstituted, varsLeft: maxSubstituted, errs: &errs,
+	}
+
+	tmpl, err := template.New("msi.yaml").Option("missingkey=error").Funcs(templateFuncs(res.resolve)).Parse(string(data))
 	if err != nil {
 		return nil, fmt.Errorf("template: %w", templateErr(err))
 	}
 
-	out := &limitedBuffer{left: maxRendered}
-	if err := tmpl.Execute(out, maps.Clone(opts.Vars)); err != nil {
-		if errors.Is(err, errRenderedTooLarge) {
-			return nil, fmt.Errorf("template: %w", errRenderedTooLarge)
-		}
+	// {{ .NAME }} reads a map, so the names the template uses are looked
+	// up first; a name that is not set stays out and fails as missing.
+	values := make(map[string]string)
 
+	for _, tree := range tmpl.Templates() {
+		if tree.Tree != nil {
+			fieldNames(tree.Root, func(name string) {
+				if value, ok := res.resolve(name); ok {
+					values[name] = value
+				}
+			})
+		}
+	}
+
+	out := &limitedBuffer{left: maxRendered}
+	err = tmpl.Execute(out, values)
+
+	switch {
+	case len(errs) > 0:
+		return nil, errors.Join(errs...)
+	case errors.Is(err, errRenderedTooLarge):
+		return nil, fmt.Errorf("template: %w", errRenderedTooLarge)
+	case err != nil:
 		return nil, fmt.Errorf("template: %w", templateErr(err))
 	}
 
 	return out.Bytes(), nil
 }
 
-// templateFuncs returns the functions Render adds to Go's built-in ones.
-func templateFuncs(opts Options) template.FuncMap {
-	lookup := opts.lookup
+// varsKey finds the vars key at the top level of a raw file.
+var varsKey = regexp.MustCompile(`(?m)^vars:`)
 
+// templateVars reads the vars block of a template before it is rendered:
+// the lines from "vars:" up to the next line that starts in column one.
+func templateVars(data []byte) (map[string]string, map[string]int, error) {
+	loc := varsKey.FindIndex(data)
+	if loc == nil {
+		return make(map[string]string), make(map[string]int), nil
+	}
+
+	block := data[loc[0]:blockEnd(data, loc[1])]
+	if bytes.Contains(block, []byte("{{")) {
+		return nil, nil, errors.New("vars: with --template the vars block is read before rendering and must not use template syntax")
+	}
+
+	// Leading newlines keep the line numbers of the file.
+	text := append(bytes.Repeat([]byte("\n"), bytes.Count(data[:loc[0]], []byte("\n"))), block...)
+
+	var doc yaml.Node
+	if err := yaml.Unmarshal(text, &doc); err != nil {
+		return nil, nil, fmt.Errorf("vars: %w (with --template the vars block is read on its own before rendering)", err)
+	}
+
+	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil, nil, errors.New("vars: the block is not a mapping")
+	}
+
+	return fileVars(doc.Content[0])
+}
+
+// blockEnd returns where the top-level block that goes on at pos ends: at
+// the next line that starts in column one with neither space, tab nor
+// comment, or at the end of data.
+func blockEnd(data []byte, pos int) int {
+	for {
+		next := bytes.IndexByte(data[pos:], '\n')
+		if next < 0 {
+			return len(data)
+		}
+
+		pos += next + 1
+		if pos < len(data) && !strings.ContainsRune(" \t#\r\n", rune(data[pos])) {
+			return pos
+		}
+	}
+}
+
+// fieldNames calls use with the first name of every field reference such
+// as .NAME below node.
+func fieldNames(node parse.Node, use func(string)) { //nolint:cyclop // one case per node type
+	switch node := node.(type) {
+	case *parse.ListNode:
+		if node != nil {
+			for _, kid := range node.Nodes {
+				fieldNames(kid, use)
+			}
+		}
+	case *parse.ActionNode:
+		fieldNames(node.Pipe, use)
+	case *parse.PipeNode:
+		if node != nil {
+			for _, cmd := range node.Cmds {
+				fieldNames(cmd, use)
+			}
+		}
+	case *parse.CommandNode:
+		for _, arg := range node.Args {
+			fieldNames(arg, use)
+		}
+	case *parse.FieldNode:
+		use(node.Ident[0])
+	case *parse.ChainNode:
+		fieldNames(node.Node, use)
+	case *parse.IfNode:
+		branchNames(&node.BranchNode, use)
+	case *parse.RangeNode:
+		branchNames(&node.BranchNode, use)
+	case *parse.WithNode:
+		branchNames(&node.BranchNode, use)
+	case *parse.TemplateNode:
+		fieldNames(node.Pipe, use)
+	}
+}
+
+func branchNames(node *parse.BranchNode, use func(string)) {
+	fieldNames(node.Pipe, use)
+	fieldNames(node.List, use)
+	fieldNames(node.ElseList, use)
+}
+
+// templateFuncs returns the functions Render adds to Go's built-in ones.
+func templateFuncs(lookup func(string) (string, bool)) template.FuncMap {
 	return template.FuncMap{
 		"var": func(name string, def ...string) (string, error) {
 			if v, ok := lookup(name); ok {
@@ -74,7 +195,7 @@ func templateFuncs(opts Options) template.FuncMap {
 
 			switch len(def) {
 			case 0:
-				return "", fmt.Errorf("variable %s is not set", name)
+				return "", notSet(name)
 			case 1:
 				return def[0], nil
 			default:
@@ -108,6 +229,11 @@ func templateFuncs(opts Options) template.FuncMap {
 	}
 }
 
+// notSet is the error for a variable that is not set.
+func notSet(name string) error {
+	return fmt.Errorf("variable %s is not set; pass --var %s=VALUE or add it to vars", name, name)
+}
+
 // quote writes value as a double-quoted YAML string. ${ becomes $${, which
 // the ${NAME} substitution after rendering turns back into ${.
 func quote(value string) (string, error) {
@@ -127,29 +253,46 @@ func quote(value string) (string, error) {
 		return "", err //nolint:wrapcheck // encoding a string does not fail
 	}
 
-	return strings.TrimSuffix(buf.String(), "\n"), nil
-}
+	// JSON leaves characters raw that YAML does not allow in a file.
+	var out strings.Builder
 
-// lookup finds a variable for a template: from Vars, then from LookupEnv.
-func (o Options) lookup(name string) (string, bool) {
-	if v, ok := o.Vars[name]; ok {
-		return v, true
+	for _, r := range strings.TrimSuffix(buf.String(), "\n") {
+		if unicode.Is(yamlPrintable, r) {
+			out.WriteRune(r)
+		} else {
+			fmt.Fprintf(&out, `\u%04X`, r)
+		}
 	}
 
-	if o.LookupEnv != nil {
-		return o.LookupEnv(name)
-	}
-
-	return "", false
+	return out.String(), nil
 }
+
+// yamlPrintable holds the characters YAML allows unescaped in a file
+// (YAML 1.2, production c-printable).
+var yamlPrintable = &unicode.RangeTable{ //nolint:gochecknoglobals // lookup table
+	R16: []unicode.Range16{
+		{Lo: 0x09, Hi: 0x0A, Stride: 1}, {Lo: 0x0D, Hi: 0x0D, Stride: 1},
+		{Lo: 0x20, Hi: 0x7E, Stride: 1}, {Lo: 0x85, Hi: 0x85, Stride: 1},
+		{Lo: 0xA0, Hi: 0xD7FF, Stride: 1}, {Lo: 0xE000, Hi: 0xFFFD, Stride: 1},
+	},
+	R32: []unicode.Range32{{Lo: 0x10000, Hi: 0x10FFFF, Stride: 1}},
+}
+
+// missingKey matches text/template's error for a name the data lacks.
+var missingKey = regexp.MustCompile(`map has no entry for key "([^"]*)"`)
 
 // templateErr drops the template name that text/template puts in every
-// message, which Load already names, so an error reads
-// "template: line 3:5: at <.ARCH>: ...".
+// message, which Load already names, and says how to set a missing
+// variable, so an error reads "template: line 3:5: at <.ARCH>: variable
+// ARCH is not set; ...".
 func templateErr(err error) error {
 	msg := strings.TrimPrefix(err.Error(), "template: ")
 	msg = strings.TrimPrefix(msg, "msi.yaml:")
 	msg = strings.Replace(msg, `executing "msi.yaml" at `, "at ", 1)
+
+	if m := missingKey.FindStringSubmatch(msg); m != nil {
+		msg = strings.Replace(msg, m[0], notSet(m[1]).Error(), 1)
+	}
 
 	if line, rest, ok := strings.Cut(msg, ":"); ok && line != "" && strings.Trim(line, "0123456789") == "" {
 		return fmt.Errorf("line %s:%s", line, rest)

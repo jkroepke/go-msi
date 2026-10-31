@@ -11,17 +11,19 @@ import (
 )
 
 const templateYAML = `schema: msi-builder/v1
+vars:
+  ARCH: x64
 product:
   name: Hello
   manufacturer: Example
   version: ${VERSION}
   upgradeCode: 3f2504e0-4f89-41d3-9a0c-0305e82c3301
 package:
-  platform: {{ var "ARCH" "x64" }}
+  platform: {{ .ARCH }}
 components:
   - files:
       - source: hello.exe
-{{- if eq (var "ARCH" "x64") "arm64" }}
+{{- if eq .ARCH "arm64" }}
       - source: hello-arm64.dll
 {{- end }}
 `

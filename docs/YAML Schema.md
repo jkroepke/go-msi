@@ -81,12 +81,14 @@ package installs, pass `--template`: the file is then a Go
 is read.
 
 ```text
+vars:
+  ARCH: x64            # the default; --var ARCH=arm64 replaces it
 package:
-  platform: {{ var "ARCH" "x64" }}
+  platform: {{ .ARCH }}
 components:
   - files:
       - source: hello.exe
-{{- if eq (var "ARCH" "x64") "arm64" }}
+{{- if eq .ARCH "arm64" }}
       - source: hello-arm64.dll
 {{- end }}
 ```
@@ -96,14 +98,17 @@ msi-builder build --template --var ARCH=arm64 --var VERSION=1.4.0 msi.yaml
 msi-builder render --var ARCH=arm64 msi.yaml   # print the rendered YAML
 ```
 
-`{{ .ARCH }}` reads `--var ARCH=...` and fails when it is not set;
-`{{ var "ARCH" "x64" }}` also reads the environment with `--env` and falls
-back to `x64`. `{{ has "ARCH" }}` tests whether it is set, and
-`{{ quote ... }}` writes any value as a YAML string. The template does not see
-`vars:`, and `${NAME}` is replaced after rendering as usual. A YAML or
-`${NAME}` error names a line of the rendered file, which `msi-builder render`
-prints; a template error names a line of the file itself. A template is code: only build templates from a source you trust.
-Without `--template`, `{{` is plain text. The details are in the
+`{{ .ARCH }}` finds a variable as `${ARCH}` does: from `--var`, from the
+environment with `--env`, or from `vars:`, and fails when it is not set.
+`{{ var "ARCH" "x64" }}` falls back to `x64` instead, `{{ has "ARCH" }}`
+tests whether it is set, `{{ range split ";" .LANGS }}` loops over a list,
+and `{{ quote ... }}` writes any value as a YAML string. The `vars:` block
+itself cannot use template syntax, because it is read before rendering.
+`{{- ` and ` -}}` remove the line break next to them, which keeps the YAML
+indentation intact. A YAML or `${NAME}` error names a line of the rendered
+file, which `msi-builder render` prints; a template error names a line of
+the file itself. A template is code: only build templates from a source you
+trust. Without `--template`, `{{` is plain text. The details are in the
 [design document](design/yaml-schema.md#311-templates).
 
 ## Recipes

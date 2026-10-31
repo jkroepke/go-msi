@@ -55,31 +55,40 @@ func Parse(data []byte, opts Options) (*Config, error) {
 	}
 
 	cfg, err := parseRendered(data, opts)
+	if err != nil {
+		return nil, parseHint(err, data, opts.Template)
+	}
 
+	return cfg, nil
+}
+
+// parseHint adds a hint to an error that names a line: with a template the
+// lines are those of the rendered text, and in a plain file a "{{" may be
+// template syntax written without --template.
+func parseHint(err error, data []byte, template bool) error {
 	var lined *lineError
 
 	switch {
-	case err == nil:
-		return cfg, nil
 	case !errors.As(err, &lined):
-		return nil, err
-	case opts.Template:
-		// The lines are those of the rendered text.
-		return nil, fmt.Errorf("%w (lines of the rendered file; print it with msi-builder render)", lined.err)
-	case lined.yaml && bytes.Contains(data, []byte("{{")):
+		return err
+	case template && !lined.reencoded:
+		return fmt.Errorf("%w (lines of the rendered file; print it with msi-builder render)", lined.err)
+	case !template && lined.yaml && bytes.Contains(data, []byte("{{")):
 		// Template syntax in a plain file either fails as YAML or, as a
 		// flow mapping, fails to decode.
-		return nil, fmt.Errorf("%w (the file contains {{: pass --template to render Go template syntax)", lined.err)
+		return fmt.Errorf("%w (the file contains {{: pass --template to render Go template syntax)", lined.err)
 	default:
-		return nil, lined.err
+		return lined.err
 	}
 }
 
-// lineError marks an error that names a line of the parsed text: a YAML
-// error (yaml) or a substitution error.
+// lineError marks an error that names a line: a YAML error (yaml) or a
+// substitution error. A decode error's lines are those of the re-encoded
+// document (reencoded).
 type lineError struct {
-	err  error
-	yaml bool
+	err       error
+	yaml      bool
+	reencoded bool
 }
 
 func (e *lineError) Error() string { return e.err.Error() }
@@ -132,8 +141,10 @@ func parseRendered(data []byte, opts Options) (*Config, error) { //nolint:cyclop
 	dec.KnownFields(true)
 
 	cfg := &Config{}
+	// The decoder reads the re-encoded document, so its lines are not those
+	// of the file; with a template it gets no note about rendered lines.
 	if err := dec.Decode(cfg); err != nil {
-		return nil, &lineError{err: err, yaml: true}
+		return nil, &lineError{err: err, yaml: true, reencoded: true}
 	}
 
 	if cfg.Schema == legacySchemaV1 {

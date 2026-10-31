@@ -172,34 +172,43 @@ Templates are opt-in, and only the flag turns them on, because:
   file.
 
 A plain file that holds `{{` and whose YAML does not parse or decode gets a
-hint to pass `--template`. The template's data maps each `--var` to its value
-(`{{ .ARCH }}`); a name that is not set is an error. The functions are Go's
-built-in ones and five more, with no third-party library:
+hint to pass `--template`.
+
+A template finds variables as `${NAME}` does: from `--var`, then from the
+environment with `--env`, then from `vars`. `{{ .ARCH }}` reads one and is
+an error when it is not set, with a message that names `--var` and `vars`.
+`vars` is read from the raw file before rendering: the block runs from the
+top-level `vars:` line to the next line that starts in column one, it may
+not hold template syntax, and its values may use `${NAME}` as usual. The
+functions are Go's built-in ones and five more, with no third-party library:
 
 | Function | Result |
 |---|---|
-| `var "NAME"` / `var "NAME" "default"` | The variable from `--var`, then from the environment with `--env`, else the default; without a default an unset variable is an error |
-| `has "NAME"` | Whether `var "NAME"` finds a value |
-| `quote S` | `S` as a double-quoted YAML string, with `${` written as `$${`, so any value arrives as given |
+| `var "NAME"` / `var "NAME" "default"` | The variable, else the default; without a default an unset variable is an error |
+| `has "NAME"` | Whether the variable is set |
+| `quote S` | `S` as a double-quoted YAML string, with `${` written as `$${` and characters YAML does not allow escaped, so any value arrives as given |
 | `indent N S` | `S` with every line after the first indented by `N` spaces |
-| `split SEP S` | The parts of `S` between each `SEP`, for `{{ range split ";" (var "LANGS") }}`; an empty `S` has none, and an empty `SEP` is an error |
+| `split SEP S` | The parts of `S` between each `SEP`, for `{{ range split ";" .LANGS }}`; an empty `S` has none, and an empty `SEP` is an error |
 
-The template does not see `vars`: the block is YAML that only exists after
-rendering. The rendered text then goes through `${NAME}` substitution as
-described above, so a `${…}` that a template writes is replaced too; `quote`
-escapes it. Every error with a line after rendering (YAML, substitution,
-unknown keys) names a line of the rendered text, which `msi-builder render`
-prints. A template may write at most 16 MiB, but that does not bound the
-time or memory it takes: a template is code, so render only files from a
-source you trust, as you would run a build script.
+The rendered text then goes through `${NAME}` substitution as described
+above, so a `${…}` that a template writes is replaced too; `quote` escapes
+it. YAML syntax errors and `${NAME}` errors name a line of the rendered
+text, which `msi-builder render` prints; template errors name a line of the
+file. An unknown key or a wrong type is reported with the line of the
+document as the decoder re-reads it, with or without a template. A template
+may write at most 16 MiB, but that does not bound the time or memory it
+takes: a template is code, so render only files from a source you trust, as
+you would run a build script.
 
 ```text
+vars:
+  ARCH: x64
 package:
-  platform: {{ var "ARCH" "x64" }}
+  platform: {{ .ARCH }}
 components:
   - files:
       - source: hello.exe
-{{- if eq (var "ARCH" "x64") "arm64" }}
+{{- if eq .ARCH "arm64" }}
       - source: hello-arm64.dll
 {{- end }}
 ```

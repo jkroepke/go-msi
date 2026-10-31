@@ -22,9 +22,9 @@ msi-builder render [flags] msi.yaml
 ## Flags
 
 ```text
-      --env              let {{ var "NAME" }} read environment variables
+      --env              let environment variables fill template variables
   -h, --help             help for render
-      --var NAME=VALUE   set a variable read as {{ .NAME }} or {{ var "NAME" }}; repeatable
+      --var NAME=VALUE   set a variable read as {{ .NAME }} and ${NAME}; repeatable
 ```
 
 ## See also

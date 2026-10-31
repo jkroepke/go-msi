@@ -108,7 +108,7 @@ func TestTemplateErrors(t *testing.T) {
 		"missing key": {
 			doc:  templated,
 			opts: config.Options{Vars: map[string]string{"VERSION": "1"}, Template: true},
-			want: `template: line 8:15: at <.ARCH>: map has no entry for key "ARCH"`,
+			want: `template: line 8:15: at <.ARCH>: variable ARCH is not set; pass --var ARCH=VALUE or add it to vars`,
 		},
 		"var without default": {
 			doc:  "schema: msi-builder/v1\nx: {{ var \"NOPE\" }}\n",
@@ -138,7 +138,7 @@ func TestTemplateErrors(t *testing.T) {
 		"nil vars": {
 			doc:  "x: {{ .X }}\n",
 			opts: config.Options{Template: true},
-			want: `map has no entry for key "X"`,
+			want: "variable X is not set",
 		},
 		"empty separator": {
 			doc:  "x: {{ split \"\" \"abc\" }}\n",
@@ -154,6 +154,16 @@ func TestTemplateErrors(t *testing.T) {
 			doc:  "schema: msi-builder/v1\nproduct:\n  name: {{ .ARCH }}\n",
 			opts: config.Options{},
 			want: "pass --template",
+		},
+		"template in vars": {
+			doc:  "vars:\n  A: {{ .B }}\nx: 1\n",
+			opts: config.Options{Template: true},
+			want: "must not use template syntax",
+		},
+		"vars cycle": {
+			doc:  "x: {{ .A }}\nvars:\n  A: ${B}\n  B: ${A}\n",
+			opts: config.Options{Template: true},
+			want: "line 4: vars.B: ${A} -> ${B} -> ${A} is a cycle",
 		},
 		"two defaults": {
 			doc:  "x: {{ var \"X\" \"a\" \"b\" }}\n",
@@ -260,5 +270,56 @@ func TestTemplateHints(t *testing.T) {
 	_, err = config.Parse([]byte("schema: x\n"), config.Options{Template: true})
 	if err == nil || strings.Contains(err.Error(), "rendered file") {
 		t.Errorf("schema: got %v", err)
+	}
+}
+
+// TestTemplateVars checks that templates find variables as ${NAME} does:
+// --var, then the environment, then the file's vars.
+func TestTemplateVars(t *testing.T) {
+	t.Parallel()
+
+	doc := `# comment
+vars:
+  ARCH: x64
+  NAME: Acme ${ARCH}
+
+  EMPTY: ""
+x: {{ .ARCH }} {{ var "NAME" }} {{ has "EMPTY" }} {{ has "NOPE" }} ${NAME}
+`
+	env := func(name string) (string, bool) {
+		if name == "NAME" {
+			return "env", true
+		}
+
+		return "", false
+	}
+
+	for _, test := range []struct {
+		opts config.Options
+		want string
+	}{
+		{config.Options{}, "x: x64 Acme x64 true false ${NAME}\n"},
+		{config.Options{Vars: map[string]string{"ARCH": "arm64"}}, "x: arm64 Acme arm64 true false ${NAME}\n"},
+		{config.Options{LookupEnv: env}, "x: x64 env true false ${NAME}\n"},
+	} {
+		out, err := config.Render([]byte(doc), test.opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if got := string(out[strings.Index(string(out), "x: "):]); got != test.want {
+			t.Errorf("got %q, want %q", got, test.want)
+		}
+	}
+}
+
+// TestTemplateDecodeError checks that an unknown key, whose line is that of
+// the re-encoded document, gets no note about rendered lines.
+func TestTemplateDecodeError(t *testing.T) {
+	t.Parallel()
+
+	_, err := config.Parse([]byte(base+appComponent+"\n\n# c\nbogus: {{ 1 }}\n"), config.Options{Template: true})
+	if err == nil || !strings.Contains(err.Error(), "bogus") || strings.Contains(err.Error(), "rendered file") {
+		t.Errorf("got %v", err)
 	}
 }
