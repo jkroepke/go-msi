@@ -2171,3 +2171,57 @@ func TestConvertElevatedActionScopes(t *testing.T) {
 		t.Errorf("the immediate action lost its condition:\n%s", yaml)
 	}
 }
+
+// TestConvertActionSystemFolder checks that a run action of a per-user
+// package loses a working directory that ICE105 rejects, with a note, so
+// that the converted file validates, and that an exec action keeps it with
+// a note.
+func TestConvertActionSystemFolder(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301" Scope="perUser">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component><File Source="hello.exe" /></Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /></Feature>
+    <CustomAction Id="Ver" Directory="SystemFolder" ExeCommand="&quot;[SystemFolder]cmd.exe&quot; /c ver" Execute="deferred" Return="check" />
+    <InstallExecuteSequence>
+      <Custom Action="Ver" After="InstallFiles" Condition="NOT Installed" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	if strings.Contains(out, "directory: SystemFolder") || !strings.Contains(out, "Ver ran in SystemFolder") {
+		t.Errorf("want the run action without its directory and with a note:\n%s", out)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, out)
+	}
+
+	async := strings.Replace(src, `Return="check"`, `Return="asyncNoWait"`, 1)
+
+	res, err = wixconvert.Convert(strings.NewReader(async), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if out := string(res.YAML); !strings.Contains(out, "directory: SystemFolder") || !strings.Contains(out, "Ver runs in SystemFolder") {
+		t.Errorf("want the exec action to keep its directory with a note:\n%s", out)
+	}
+}

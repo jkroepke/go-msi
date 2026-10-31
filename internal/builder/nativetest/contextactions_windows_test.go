@@ -347,7 +347,7 @@ func TestICEActionFolder(t *testing.T) {
 		path := editPackage(t, buildContextActions(t, t.TempDir(), scope, false), func(t *testing.T, database *msidb.Database) {
 			t.Helper()
 
-			database.Table("Directory").Add("System64Folder", "TARGETDIR", ".")
+			database.Table("Directory").Add("System64Folder", "TARGETDIR", "System64")
 		})
 
 		findings, err := ice.Run(path, cub)

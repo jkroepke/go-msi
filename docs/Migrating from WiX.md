@@ -735,6 +735,7 @@ element in a sequence becomes a `schedule` placement of that entry:
 | `Execute`, `Impersonate`, `Return`, `HideTarget` | `execute`, `impersonate`, `return`, `hideTarget` |
 | `Impersonate="no"` on a deferred action in a dual-scope package | `impersonate: false` with `scope: perMachine`: the action runs only in per-machine installs (CA-09); one whose conditions all say `NOT ALLUSERS` becomes an impersonated `scope: perUser` action, since CA-09 saw a per-user install run it as the installing user anyway; one whose condition tests `ALLUSERS` among other terms keeps it and gets `scope: perMachine` with a note, since a per-user test then never holds |
 | A `Custom` condition that only names the context (such as `ALLUSERS=1`, `ALLUSERS`, `NOT ALLUSERS` or `ALLUSERS=""`) in a dual-scope package, on every placement and all in `InstallExecuteSequence` | `scope: perMachine` or `scope: perUser`; otherwise the condition stays |
+| `CustomAction Directory` naming a folder ICE105 rejects (`SystemFolder`, `WindowsFolder`, `TempFolder`, …) in a per-user or dual-scope package | A `run` action runs without a working directory and an `exec` action keeps it, both with a note: msi-builder refuses these folders as an action's directory there |
 | `ProgressText` for the action (in `UI`) | `progress`; a `Template` has no counterpart |
 
 | WiX `Custom` | `schedule` entry |

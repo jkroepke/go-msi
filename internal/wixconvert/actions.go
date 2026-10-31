@@ -1048,6 +1048,35 @@ func (c *converter) action(custom *elem) *omap {
 	return action
 }
 
+// ice105Folders are the standard folders whose Directory row ICE105
+// rejects in a package that may install per user; msi-builder refuses them
+// as an action's working directory there (section 8.2, CA-09).
+var ice105Folders = map[string]bool{ //nolint:gochecknoglobals // lookup table
+	"AdminToolsFolder": true, "CommonAppDataFolder": true, "FontsFolder": true, "System16Folder": true,
+	"System64Folder": true, "SystemFolder": true, "TempFolder": true, "WindowsFolder": true, "WindowsVolume": true,
+}
+
+// actionFolder handles a working directory that ICE105 rejects in a
+// per-user or dual package: a run action leaves it out, an exec action
+// keeps it with a note. It reports whether it left the directory out.
+func (c *converter) actionFolder(action *omap, custom *elem, dir string) bool {
+	if !ice105Folders[dir] || c.scope != scopeUser && !c.dualScope() {
+		return false
+	}
+
+	if runKey(custom) == "run" {
+		c.todof(action, "run", custom.line, "%s ran in %s, which msi-builder refuses as a working directory in a %s package "+
+			"(ICE105), so it runs without one; check that the command does not rely on it", custom.attr("Id"), dir, c.scope)
+
+		return true
+	}
+
+	c.todof(action, "exec", custom.line, "%s runs in %s, which msi-builder refuses as a working directory in a %s package "+
+		"(ICE105): use INSTALLDIR", custom.attr("Id"), dir, c.scope)
+
+	return false
+}
+
 // runKey returns the kind a program action becomes: run, or exec for one
 // WiX does not wait for, since the run DLL waits for its command and run
 // refuses asyncNoWait.
@@ -1095,7 +1124,12 @@ func (c *converter) programKind(action *omap, custom *elem) bool { //nolint:cycl
 	case file != "" && custom.has("ExeCommand"):
 		action.set(runKey(custom), newMap().set("command", strings.TrimSpace(`"[#`+file+`]" `+exe)))
 	case custom.has(attrDirectory) && custom.has("ExeCommand"):
-		action.set(runKey(custom), newMap().set("command", exe).set("directory", c.dirRef(custom.attr(attrDirectory))))
+		program := newMap().set("command", exe)
+		action.set(runKey(custom), program)
+
+		if dir := c.dirRef(custom.attr(attrDirectory)); !c.actionFolder(action, custom, dir) {
+			program.set("directory", dir)
+		}
 
 		c.quoteNote(action, runKey(custom), custom.line, exe)
 	case custom.has(attrProperty) && custom.has("ExeCommand"):
