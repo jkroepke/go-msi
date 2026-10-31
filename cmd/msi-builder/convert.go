@@ -34,7 +34,8 @@ becomes a "# TODO" comment in the YAML file and a line on stderr.
 
 With --msi and the package WiX built from the source file, every component
 whose Guid WiX generated (Guid="*" or none) keeps the ComponentId it has in
-that package, when convert finds it there by its ID or its key file, and
+that package, when convert finds it there by its ID, its key file or its registry key
+path, and
 each file a WiX Files glob harvested keeps its code in the guids of the
 folder source the glob became; the others get a "# TODO" comment. Without
 them, msi-builder generates other component codes, and
@@ -152,7 +153,7 @@ func writeNew(path string, data []byte, force bool) error {
 }
 
 // builtPackage reads the components of a package, the long names of their
-// key files and the folders.
+// key files or their registry key paths, and the folders.
 func builtPackage(path string) (*wixconvert.BuiltPackage, error) {
 	database, closePackage, err := openPackage(path)
 	if err != nil {
@@ -166,19 +167,7 @@ func builtPackage(path string) (*wixconvert.BuiltPackage, error) {
 		return nil, fmt.Errorf("%s has no Component table", path)
 	}
 
-	names := make(map[string]string)
-
-	if files := database.Table("File"); files != nil {
-		key, name := files.Column("File"), files.Column("FileName")
-		for _, row := range files.Rows {
-			long := cellString(row, name)
-			if _, after, ok := strings.Cut(long, "|"); ok {
-				long = after
-			}
-
-			names[cellString(row, key)] = long
-		}
-	}
+	names, registry := builtFileNames(database), builtRegistry(database)
 
 	cols := []int{
 		components.Column("Component"), components.Column("ComponentId"),
@@ -197,14 +186,64 @@ func builtPackage(path string) (*wixconvert.BuiltPackage, error) {
 
 		// Bits 4 and 32: the key path is a registry value or an ODBC
 		// data source, not a file.
-		if attributes, ok := cellInt(row, cols[3]); ok && attributes&(4|32) == 0 {
+		attributes, ok := cellInt(row, cols[3])
+
+		switch {
+		case ok && attributes&(4|32) == 0:
 			comp.KeyFile = names[cellString(row, cols[4])]
+		case ok && attributes&4 != 0:
+			comp.KeyRegistry = registry[cellString(row, cols[4])]
 		}
 
 		pkg.Components = append(pkg.Components, comp)
 	}
 
 	return pkg, nil
+}
+
+// builtFileNames reads the long name of each file by its key.
+func builtFileNames(database *msidb.Database) map[string]string {
+	names := make(map[string]string)
+
+	files := database.Table("File")
+	if files == nil {
+		return names
+	}
+
+	key, name := files.Column("File"), files.Column("FileName")
+	for _, row := range files.Rows {
+		long := cellString(row, name)
+		if _, after, ok := strings.Cut(long, "|"); ok {
+			long = after
+		}
+
+		names[cellString(row, key)] = long
+	}
+
+	return names
+}
+
+// builtRegistry reads the Registry table: the Root, Key and Name of each
+// row by its key.
+func builtRegistry(database *msidb.Database) map[string]*wixconvert.BuiltRegistry {
+	table := database.Table("Registry")
+	if table == nil {
+		return nil
+	}
+
+	key, root, regKey, name := table.Column("Registry"), table.Column("Root"), table.Column("Key"), table.Column("Name")
+	rows := make(map[string]*wixconvert.BuiltRegistry, len(table.Rows))
+
+	for _, row := range table.Rows {
+		code, ok := cellInt(row, root)
+		if !ok {
+			continue
+		}
+
+		rows[cellString(row, key)] = &wixconvert.BuiltRegistry{Root: code, Key: cellString(row, regKey), Name: cellString(row, name)}
+	}
+
+	return rows
 }
 
 // builtDirectories reads the Directory table: the ID, the parent and the

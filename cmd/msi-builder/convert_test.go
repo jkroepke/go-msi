@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jkroepke/msi-builder/internal/wixconvert"
 )
 
 func TestConvert(t *testing.T) {
@@ -102,6 +104,9 @@ components:
     files: [{ source: settings.txt }]
     registry: [{ id: SettingsKey, root: HKLM, key: 'SOFTWARE\Example\Hello', name: Level, value: '1' }]
     keyPath: SettingsKey
+  - id: regPath
+    guid: 8c3e1f5a-7b2d-4e9c-a6f0-1d4b7e2c9a53
+    registry: [{ id: regPath, root: HKLM, key: 'SOFTWARE\Example\Hello', name: Path, value: '[INSTALLFOLDER]' }]
 `
 	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
@@ -117,6 +122,9 @@ components:
     </Component>
     <Component Id="Readme" Directory="INSTALLFOLDER">
       <File Source="readme.txt" />
+    </Component>
+    <Component Directory="INSTALLFOLDER">
+      <RegistryValue Root="HKLM" Key="SOFTWARE\Example\Hello" Name="Path" Value="[INSTALLFOLDER]" Type="string" />
     </Component>
   </Package>
 </Wix>
@@ -146,8 +154,18 @@ components:
 		keyFiles[comp.ID] = comp.KeyFile
 	}
 
-	if want := map[string]string{"Main": "hello.exe", "cmpNotes": "notes.txt", "Settings": ""}; !maps.Equal(keyFiles, want) {
+	if want := map[string]string{"Main": "hello.exe", "cmpNotes": "notes.txt", "Settings": "", "regPath": ""}; !maps.Equal(keyFiles, want) {
 		t.Errorf("key files %v, want %v", keyFiles, want)
+	}
+
+	for _, comp := range read.Components {
+		want := map[string]wixconvert.BuiltRegistry{
+			"Settings": {Root: 2, Key: `SOFTWARE\Example\Hello`, Name: "Level"},
+			"regPath":  {Root: 2, Key: `SOFTWARE\Example\Hello`, Name: "Path"},
+		}[comp.ID]
+		if got := comp.KeyRegistry; (got == nil) != (want.Key == "") || got != nil && *got != want {
+			t.Errorf("%s: key registry %+v, want %+v", comp.ID, got, want)
+		}
 	}
 
 	stdout.Reset()
@@ -161,7 +179,8 @@ components:
 	for _, want := range []string{
 		"guid: '{6D1C0A42-93B8-4E57-A2F1-0C7E5D9B3A61}'",
 		"guid: '{2B8F4E17-5A0C-4D93-B6E2-9F1A3C7D5E08}'",
-		"The guid of 2 components whose Guid WiX generated comes from hello-1.0.0.msi.",
+		"guid: '{8C3E1F5A-7B2D-4E9C-A6F0-1D4B7E2C9A53}'",
+		"The guid of 3 components whose Guid WiX generated comes from hello-1.0.0.msi.",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout.String())
@@ -180,7 +199,7 @@ components:
 		t.Fatalf("convert: exit %d: %s", code, stderr.String())
 	}
 
-	if want := wxs + ":3: TODO: WiX generated the Guid of Main, notes.txt, Readme;"; !strings.Contains(stderr.String(), want) {
+	if want := wxs + ":3: TODO: WiX generated the Guid of Main, notes.txt, Readme, the component in line 16;"; !strings.Contains(stderr.String(), want) {
 		t.Errorf("stderr %q, want %q", stderr.String(), want)
 	}
 
