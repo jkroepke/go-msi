@@ -239,11 +239,16 @@ func TestCopyErrors(t *testing.T) {
 		}
 	}
 
-	ents := []cab.Entry{{Name: "a", Size: 3, Open: open}, {Name: "b", Size: 2, Copy: 1}}
+	empty := func() (io.ReadCloser, error) { return io.NopCloser(strings.NewReader("")), nil }
 
-	var buf spool.Buffer
-	if _, err := cab.WriteTo(&buf, ents, cab.Options{}); err == nil {
-		t.Error("WriteTo accepted a copy of another size")
+	for name, ents := range map[string][]cab.Entry{
+		"another size": {{Name: "a", Size: 3, Open: open}, {Name: "b", Size: 2, Copy: 1}},
+		"empty":        {{Name: "a", Open: empty}, {Name: "b", Copy: 1}},
+	} {
+		var buf spool.Buffer
+		if _, err := cab.WriteTo(&buf, ents, cab.Options{}); err == nil {
+			t.Errorf("WriteTo accepted a copy of %s", name)
+		}
 	}
 }
 

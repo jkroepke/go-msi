@@ -124,7 +124,7 @@ type Entry struct {
 	Name string
 	Size int64
 	// Copy, when above 0, makes the entry a copy of entry Copy-1: an earlier
-	// entry that is not a copy itself and holds the same bytes, which the
+	// entry that is not a copy itself and holds the same, non-empty bytes, which the
 	// caller has checked. The copy's CFFILE record points at that entry's
 	// bytes, so they are stored once, and its Open is not called. The
 	// shared entry gets a folder of its own, and the entry after a copy
@@ -397,8 +397,8 @@ func checkEntries(entries []Entry) (int64, error) { //nolint:cyclop // one check
 		}
 
 		if ent.Copy > 0 {
-			if ent.Copy > i || entries[ent.Copy-1].Copy != 0 || entries[ent.Copy-1].Size != ent.Size {
-				return 0, fmt.Errorf("cab: file %d: Copy %d is not an earlier stored entry of the same size", i, ent.Copy)
+			if ent.Copy > i || entries[ent.Copy-1].Copy != 0 || entries[ent.Copy-1].Size != ent.Size || ent.Size == 0 {
+				return 0, fmt.Errorf("cab: file %d: Copy %d is not an earlier stored entry of the same, non-zero size", i, ent.Copy)
 			}
 
 			continue

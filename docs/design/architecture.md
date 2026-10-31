@@ -57,7 +57,7 @@ flowchart LR
 | Package | Responsibility | Spec | Depends on |
 |---|---|---|---|
 | `internal/cfb` | Compound File Binary v3/v4 writer and reader: sectors, FAT, DIFAT, mini stream, red-black directory tree, name comparison | §2 | stdlib |
-| `internal/cab` | Cabinet writer and reader: one folder per cabinet plus one per file that identical files share, stored, MSZIP blocks with carried DEFLATE history or LZX frames (`internal/lzx`), checksums on every block | §5 | stdlib (`compress/flate`), `internal/lzx` |
+| `internal/cab` | Cabinet writer and reader: one folder per cabinet unless identical files share bytes (the shared file and the file after it or after a copy start new folders), stored, MSZIP blocks with carried DEFLATE history or LZX frames (`internal/lzx`), checksums on every block | §5 | stdlib (`compress/flate`), `internal/lzx` |
 | `internal/summary` | `\u0005SummaryInformation` property-set writer and reader (PIDs 1–19, VT_I2/I4/LPSTR/FILETIME) | §4 | `internal/codepage` |
 | `internal/msidb` | The database: column types, typed rows, stream-name encoding, string pool with code pages, catalog, column-major table streams, binary streams, embedded streams; plus a reader that decodes a package back into tables | §3 | `cfb`, `summary`, `internal/codepage` (`golang.org/x/text`) |
 | `internal/schema` | Column definitions and `_Validation` metadata of every standard table the builder can write | §6 | `msidb` |

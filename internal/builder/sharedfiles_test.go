@@ -157,3 +157,33 @@ func TestIdenticalFilesShareData(t *testing.T) {
 		t.Errorf("the third cabinet has %d bytes and starts with %v, want c.bin stored", len(cabinets[2]), files)
 	}
 }
+
+// TestSharedDataCabinetLimits builds the shared configuration with MSZIP
+// and LZX under a range of cabinet limits and checks that no cabinet
+// exceeds its limit: the split must count every folder sharing adds.
+func TestSharedDataCabinetLimits(t *testing.T) {
+	t.Parallel()
+
+	cfg, inputs := sharedConfig(t)
+
+	for _, compression := range []string{"mszip", "lzx", "lzx:15"} {
+		cfg.Package.Compression = compression
+
+		for limit := int64(100000); limit <= 400000; limit += 7919 {
+			res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime, CabinetSize: limit})
+			if err != nil {
+				t.Fatalf("%s, limit %d: %v\n%s", compression, limit, err, res.Diagnostics)
+			}
+
+			cabinets := cabinetStreams(t, res.Package)
+			checkCabinetFiles(t, cabinets, inputs)
+
+			// A file above the limit alone gets a cabinet of its own.
+			for i, raw := range cabinets {
+				if files, _ := cab.Read(raw); int64(len(raw)) > limit && len(files) > 1 {
+					t.Errorf("%s, limit %d: cabinet %d has %d bytes", compression, limit, i+1, len(raw))
+				}
+			}
+		}
+	}
+}

@@ -47,7 +47,8 @@ versioning after 1.0.
   read one.
 - [`internal/cfb`](internal/cfb): Compound File Binary v3/v4 writer and lazy reader.
 - [`internal/cab`](internal/cab): cabinet writer and reader, one folder per cabinet
-  plus one per file whose bytes identical files share (`Entry.Copy`),
+  unless identical files share bytes (`Entry.Copy`: the shared file and the
+  file after it or after a copy start new folders),
   stored, MSZIP or LZX blocks, plus an `fs.FS` view. The LZX encoder and
   decoder are [`internal/lzx`](internal/lzx), written from [MS-PATCH] and
   [MS-CAB] only.
