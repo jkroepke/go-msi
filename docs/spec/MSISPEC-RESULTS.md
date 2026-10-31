@@ -211,6 +211,7 @@ Silent-failure cases a producer has to guard against itself:
 | CAB-09 | Partial | [ci](msitest/results/CAB-09/ci/log.md); GitHub `windows-latest` runner, 2026-10-29, CI run 40940932552: cabinet.dll's FDI extracts a cabinet of 65535 entries, and the writer refuses 65536; FCI and smart-cabbed duplicates not run |
 | CAB-10 | Confirmed (external) | [results](#packages-above-2-gb-cab-10-cab-13); embedded variant not run |
 | CAB-13 | Confirmed | [results](#packages-above-2-gb-cab-10-cab-13) |
+| CAB-15 | Confirmed | [ci](msitest/results/CAB-15/ci/log.md); GitHub `windows-latest` runner, 2026-10-31, CI run 41242586230: FDI refuses an MSZIP stream longer than `cbUncomp` and one without a final block, extracts a cabinet whose empty folder has offset 0, and makecab/expand.exe use code page 1252 bytes for `résumé.txt` on a 1252 machine; `cab.Read` and `cab.Walk` agree |
 | CAB-11 | Not run | msi-rs regression case; test a candidate writer |
 | CAB-12 | Not run | msi-rs regression case; test a candidate writer |
 | MSZIP-01 | Confirmed | [wrong history](msitest/results/MSZIP-01/go-wrongdict/log.md): 69170 of 102400 bytes differ, exit 0 |
