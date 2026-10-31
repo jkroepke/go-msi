@@ -16,6 +16,9 @@ func (c *converter) walkUI(e *elem) { //nolint:cyclop // one case per kind of UI
 			c.uiRef(kid)
 		case kid.is("Publish") && kid.attr("Event") == "DoAction" && kid.attr("Dialog") == "ExitDialog":
 			c.launchAction = kid.attr("Value")
+			c.noteDoActions(kid)
+		case kid.ns == nsUI && kid.name == "WixUI":
+			c.wixUI = kid
 		case kid.is("Publish") && kid.attr("Event") == "NewDialog":
 			c.uiNav = append(c.uiNav, kid)
 		case kid.is("Property"):
@@ -25,11 +28,27 @@ func (c *converter) walkUI(e *elem) { //nolint:cyclop // one case per kind of UI
 		case kid.is("ProgressText"):
 			c.progressTexts = append(c.progressTexts, kid)
 		case kid.is("Dialog"):
+			c.noteDoActions(kid)
 			c.todof(nil, "", kid.line, "the hand-built dialog %s cannot be converted; ui.dialogs lays out text, password, checkbox and choice fields",
 				kid.attr("Id"))
 		default:
+			c.noteDoActions(kid)
 			c.todof(nil, "", kid.line, "<%s> in <UI> customizes the WiX dialogs and cannot be converted", kid.qname())
 		}
+	}
+}
+
+// noteDoActions records the DoAction control events in or below elm by
+// the action they run.
+func (c *converter) noteDoActions(elm *elem) {
+	if elm.is("Publish") && elm.attr("Event") == "DoAction" {
+		if publish := c.doActions[elm.attr("Value")]; publish == nil {
+			c.doActions[elm.attr("Value")] = elm
+		}
+	}
+
+	for _, kid := range elm.kids {
+		c.noteDoActions(kid)
 	}
 }
 
@@ -82,10 +101,7 @@ func (c *converter) emitUI() {
 		// The advanced path shows the folder and the feature tree.
 		wizard.set("enabled", true).set("chooseFeatures", true).set("chooseDirectory", true)
 
-		if !c.dualScope() {
-			c.todof(wizard, "enabled", line, "WixUI_Advanced: set package.scope to perUserOrMachine or perMachineOrUser, which need "+
-				"installerVersion 5.0, for the scope page")
-		}
+		c.advancedNotes(wizard, line)
 	default:
 		wizard.set("enabled", true)
 		c.todof(wizard, "enabled", line, "the wizard %s is not a WiX standard wizard; check the ui keys", wizardID)
@@ -94,6 +110,98 @@ func (c *converter) emitUI() {
 	c.uiVariables(wizard)
 	c.uiNavigation(wizard, c.uiID())
 	c.uiLaunch(wizard)
+}
+
+// advancedNotes notes what WixUI_Advanced does that the msi-builder wizard
+// does not.
+func (c *converter) advancedNotes(wizard *omap, line int) {
+	if !c.dualScope() {
+		c.todof(wizard, "enabled", line, "WixUI_Advanced: set package.scope to perUserOrMachine or perMachineOrUser, which need "+
+			"installerVersion 5.0, for the scope page")
+	}
+
+	c.advancedFolder(line)
+}
+
+// advancedFolder moves installDir to the per-machine folder WixUI_Advanced
+// sets, also in quiet installs: [ProgramFilesFolder][ApplicationFolderName]
+// (observed on real-world packages), or the value of the one action that
+// overrides WixPerMachineFolder.
+func (c *converter) advancedFolder(line int) {
+	inst := c.out.mapAt("installDir")
+	if inst == nil || inst.get("name") == nil || c.scope == scopeUser {
+		// An install folder inside directories keeps its place there, and
+		// a per-user package never uses the per-machine folder.
+		return
+	}
+
+	value, ok := c.perMachineValue(inst, line)
+	if !ok {
+		return
+	}
+
+	parent, name, ok := c.splitFolder(value)
+	if !ok {
+		c.todof(inst, "name", line, "WixUI_Advanced installs per machine to %s; set installDir.parent and name to that folder", value)
+
+		return
+	}
+
+	if name != inst.str("name") {
+		inst.set("name", name)
+		inst.comment("name", "WixUI_Advanced installs per machine to "+value+".")
+	}
+
+	if c.defaultInstallParent(parent) {
+		inst.del("parent")
+
+		return
+	}
+
+	inst.set("parent", parent)
+
+	if parent == folderProgramFiles && c.platform != platformX86 {
+		c.todof(inst, "parent", line, "WixUI_Advanced puts this 64-bit package below Program Files (x86); keep that for "+
+			"installed versions or switch to ProgramFiles64Folder")
+	}
+}
+
+// perMachineValue returns the per-machine folder of WixUI_Advanced: its
+// default, or the value of the one action that overrides it.
+func (c *converter) perMachineValue(inst *omap, line int) (string, bool) {
+	switch sources := c.perMachineSources(); len(sources) {
+	case 0:
+		return "[" + folderProgramFiles + "][ApplicationFolderName]", true
+	case 1:
+		return sources[0].e.attr("Value"), true
+	default:
+		c.todof(inst, "name", line, "several actions set WixPerMachineFolder; set installDir.parent and name to the folder the last one sets")
+
+		return "", false
+	}
+}
+
+// splitFolder splits a folder value such as [ProgramFilesFolder]Example\Hello
+// into its standard parent folder and the names below it.
+func (c *converter) splitFolder(value string) (string, string, bool) {
+	rest, ok := strings.CutPrefix(value, "[")
+	if !ok {
+		return "", "", false
+	}
+
+	parent, rest, ok := strings.Cut(rest, "]")
+	if !ok || !isStandardFolder(parent) {
+		return "", "", false
+	}
+
+	rest = strings.ReplaceAll(rest, "[ApplicationFolderName]", c.propertyValue("ApplicationFolderName"))
+
+	name := strings.Trim(sourcePath(rest), "/")
+	if name == "" || strings.ContainsAny(name, "[]") {
+		return "", "", false
+	}
+
+	return c.stdID(parent), name, true
 }
 
 // navRow is a NewDialog Publish row: the button that opens a dialog.
