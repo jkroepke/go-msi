@@ -205,6 +205,16 @@ type Feature struct { //nolint:govet // field order is the YAML key order
 	defaultedValue int
 }
 
+// BaseLevel returns the feature's own level: Level, or the level of
+// Default when the defaults have not been applied.
+func (f *Feature) BaseLevel() int {
+	if f.Level != nil {
+		return *f.Level
+	}
+
+	return defaultLevel(f.Default)
+}
+
 // levelIsDefault reports whether Level is still the one ApplyDefaults filled
 // in.
 func (f *Feature) levelIsDefault() bool {
@@ -235,16 +245,6 @@ func (c *FeatureCondition) FullCondition(base int) string {
 	}
 
 	return "NOT Installed AND (" + c.Condition + ")"
-}
-
-// BaseLevel returns the feature's own level: Level, or the level of
-// Default when the defaults have not been applied.
-func (f *Feature) BaseLevel() int {
-	if f.Level != nil {
-		return *f.Level
-	}
-
-	return defaultLevel(f.Default)
 }
 
 // Value returns the level the condition sets: Level, or the level of
