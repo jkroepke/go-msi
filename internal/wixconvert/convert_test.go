@@ -2171,9 +2171,11 @@ func TestConvertForceDeleteKey(t *testing.T) {
 func TestConvertTypeTextsAndURLLaunch(t *testing.T) {
 	t.Parallel()
 
-	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+	src := `<?define AppName="Hello"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
   <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
     <MajorUpgrade DowngradeErrorMessage="newer" />
+    <Property Id="APPNAME" Value="$(var.AppName)" />
     <Property Id="SOFTWARE" Value="Hello" />
     <Property Id="EXT" Value="hlo" />
     <Property Id="CHANGING" Value="a" />
@@ -2187,7 +2189,7 @@ func TestConvertTypeTextsAndURLLaunch(t *testing.T) {
             <Extension Id="hlopub"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
           </ProgId>
           <ProgId Id="[SOFTWARE].Project" Description="[SOFTWARE] Project File">
-            <Extension Id="[EXT]"><Verb Id="open" Command="Open in [CHANGING]" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+            <Extension Id="[EXT]" ContentType="application/x-[APPNAME]"><Verb Id="open" Command="Open in [CHANGING]" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
           </ProgId>
         </Component>
       </Directory>
@@ -2213,15 +2215,15 @@ func TestConvertTypeTextsAndURLLaunch(t *testing.T) {
 		"progId: Hello.Project\n", "description: Hello Project File\n", "extension: hlo\n",
 		`Verb Command="Open in [CHANGING]" holds formatted text convert cannot fill in`,
 		`the launch checkbox (action OpenSite: powershell Start-Process https://example.com) "Open the website" starts no file`,
-		"progId: Hello.Pub\n", `ProgId Description="[PUB] [%USERNAME] by Example" holds formatted text`,
+		"progId: Hello.Pub\n", "contentType: application/x-${AppName}\n", `ProgId Description="[PUB] [%USERNAME] by Example" holds formatted text`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the YAML lacks %q:\n%s", want, out)
 		}
 	}
 
-	if strings.Contains(out, "launch:") {
-		t.Errorf("ui.launch without a file:\n%s", out)
+	if strings.Contains(out, "launch:") || strings.Contains(out, "application/x-${AppName}\" holds") {
+		t.Errorf("ui.launch without a file, or a TODO on a filled-in text:\n%s", out)
 	}
 
 	cfg, err := config.Parse(res.YAML, config.Options{})

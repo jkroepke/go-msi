@@ -3,6 +3,7 @@ package wixconvert
 import (
 	"cmp"
 	"math"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -872,7 +873,7 @@ func (c *converter) typeText(out *omap, elm *elem, attr string) string {
 		return ref
 	})
 
-	if strings.ContainsAny(text, "[]{}") {
+	if formattedLeft(text) {
 		c.todof(out, "", elm.line, "%s %s=%q holds formatted text convert cannot fill in (a property without a constant "+
 			"value, or another reference); msi-builder writes file type texts as they are, so write the text out",
 			elm.name, attr, text)
@@ -885,13 +886,10 @@ func (c *converter) typeText(out *omap, elm *elem, attr string) string {
 // or the package sets and nothing in the source changes. A public one could
 // still come from the command line; convert assumes it does not.
 func (c *converter) constProperty(name string) (string, bool) {
-	switch name {
-	case "ProductName":
-		return c.expandVars(c.pkg, c.pkg.attr("Name")), c.pkg.has("Name")
-	case "Manufacturer":
-		return c.expandVars(c.pkg, c.pkg.attr("Manufacturer")), c.pkg.has("Manufacturer")
-	case "ProductVersion":
-		return c.expandVars(c.pkg, c.pkg.attr("Version")), c.pkg.has("Version")
+	if attr, ok := map[string]string{"ProductName": "Name", "Manufacturer": "Manufacturer", "ProductVersion": "Version"}[name]; ok {
+		value := c.expandVars(c.pkg, c.pkg.attr(attr))
+
+		return value, c.pkg.has(attr) && !formattedLeft(value)
 	}
 
 	var found *elem
@@ -908,7 +906,18 @@ func (c *converter) constProperty(name string) (string, bool) {
 
 	value := c.value(found, "Value")
 
-	return value, !strings.ContainsAny(value, "[]{}")
+	return value, !formattedLeft(value)
+}
+
+// varRef matches a ${NAME} reference that msi-builder fills in on load.
+var varRef = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*\}`)
+
+// formattedLeft reports whether text still holds formatted text or a WiX
+// bind or localization variable once the ${NAME} references are left out.
+func formattedLeft(text string) bool {
+	text = varRef.ReplaceAllString(text, "")
+
+	return strings.ContainsAny(text, "[]{}") || strings.Contains(text, "!(")
 }
 
 // propertyChanged reports whether an action, a SetProperty, a Publish
