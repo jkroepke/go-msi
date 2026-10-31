@@ -334,6 +334,10 @@ func (db *Database) MarshalTo(dst io.Writer, opts Options) (*cfb.Layout, error) 
 		}
 	}
 
+	// Database.Summary is the only way to write the summary stream: one in
+	// Streams or Sources as well would be stored under a second name.
+	streamNames[summary.StreamName] = true
+
 	for _, stream := range db.Streams {
 		if streamNames[stream.Name] {
 			return nil, fmt.Errorf("msidb: stream %q written twice", stream.Name)

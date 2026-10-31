@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/jkroepke/msi-builder/internal/cfb"
 	"github.com/jkroepke/msi-builder/internal/codepage"
@@ -79,6 +80,37 @@ func utf16le(units []uint16) []byte {
 	}
 
 	return out
+}
+
+// Limits on Database.Problems, so that a crafted package cannot grow them
+// without bound: the number of problems kept and the length of each.
+const (
+	maxProblems      = 100
+	maxProblemLength = 256
+)
+
+// addProblem records a soft problem, cut to maxProblemLength bytes, and
+// after maxProblems of them one note that further ones were left out.
+func addProblem(database *Database, msg string) {
+	switch {
+	case len(database.Problems) > maxProblems:
+		return
+	case len(database.Problems) == maxProblems:
+		database.Problems = append(database.Problems, "further problems left out")
+
+		return
+	}
+
+	if len(msg) > maxProblemLength {
+		cut := maxProblemLength
+		for cut > 0 && !utf8.RuneStart(msg[cut]) {
+			cut--
+		}
+
+		msg = msg[:cut] + "..."
+	}
+
+	database.Problems = append(database.Problems, msg)
 }
 
 // decodeStorages returns the root-level storages, such as embedded language
@@ -326,7 +358,7 @@ func decodeFile(file *cfb.File, loadAll bool) (*Database, error) { //nolint:main
 	}
 
 	if (len(entries)-1 >= longRefThresh) != longRefs {
-		database.Problems = append(database.Problems, fmt.Sprintf("long-reference flag is %v with highest string ID %d", longRefs, len(entries)-1))
+		addProblem(database, fmt.Sprintf("long-reference flag is %v with highest string ID %d", longRefs, len(entries)-1))
 	}
 
 	str := func(ref uint32) (string, error) {
@@ -481,7 +513,7 @@ func decodeFile(file *cfb.File, loadAll bool) (*Database, error) { //nolint:main
 		}
 
 		if refs[uint32(strID)] != ent.refcount {
-			database.Problems = append(database.Problems, fmt.Sprintf("string %q has refcount %d but %d references", ent.text, ent.refcount, refs[uint32(strID)]))
+			addProblem(database, fmt.Sprintf("string %q has refcount %d but %d references", ent.text, ent.refcount, refs[uint32(strID)]))
 		}
 	}
 
@@ -560,7 +592,7 @@ func decodeRows( //nolint:cyclop,revive,gocognit // one pass over the format
 
 			if value == 0 {
 				if !col.Type.Nullable {
-					database.Problems = append(database.Problems, fmt.Sprintf("table %s row %d: NULL in non-nullable column %s", tbl.Name, rowIdx, col.Name))
+					addProblem(database, fmt.Sprintf("table %s row %d: NULL in non-nullable column %s", tbl.Name, rowIdx, col.Name))
 				}
 
 				continue
@@ -599,9 +631,17 @@ func decodeRows( //nolint:cyclop,revive,gocognit // one pass over the format
 
 			name := BinaryStreamName(tbl.Name, rows[rowIdx][:keys])
 
+			// A name no stream can have is not looked up, and the message
+			// leaves it out: key strings can be long.
+			if _, err := EncodeStreamName(name, false); err != nil {
+				addProblem(database, fmt.Sprintf("table %s row %d: the binary stream name of its key cannot be a stream name", tbl.Name, rowIdx))
+
+				continue
+			}
+
 			data, err := binaryStream(name)
 			if err != nil {
-				database.Problems = append(database.Problems, fmt.Sprintf("table %s row %d: binary stream %q %v", tbl.Name, rowIdx, name, err))
+				addProblem(database, fmt.Sprintf("table %s row %d: binary stream %q %v", tbl.Name, rowIdx, name, err))
 
 				continue
 			}
@@ -623,9 +663,9 @@ func decodeRows( //nolint:cyclop,revive,gocognit // one pass over the format
 		}
 
 		if cmp > 0 {
-			database.Problems = append(database.Problems, fmt.Sprintf("table %s: rows %d and %d are not in key order", tbl.Name, rowIdx-1, rowIdx))
+			addProblem(database, fmt.Sprintf("table %s: rows %d and %d are not in key order", tbl.Name, rowIdx-1, rowIdx))
 		} else if cmp == 0 {
-			database.Problems = append(database.Problems, fmt.Sprintf("table %s: rows %d and %d share a primary key", tbl.Name, rowIdx-1, rowIdx))
+			addProblem(database, fmt.Sprintf("table %s: rows %d and %d share a primary key", tbl.Name, rowIdx-1, rowIdx))
 		}
 	}
 

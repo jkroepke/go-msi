@@ -3,6 +3,7 @@ package msidb //nolint:testpackage // the tests reach unexported encoders
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"maps"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"unicode/utf16"
 
 	"github.com/jkroepke/msi-builder/internal/cfb"
+	"github.com/jkroepke/msi-builder/internal/summary"
 )
 
 // storageContents reads every stream of a storage, by name.
@@ -359,5 +361,92 @@ func TestOrphanTableStreamRefused(t *testing.T) {
 
 	if _, err := Unmarshal(bad); err == nil || !strings.Contains(err.Error(), "UnknownTable is not in _Tables") {
 		t.Errorf("Unmarshal with an orphan table stream: %v, want a refusal", err)
+	}
+}
+
+// TestProblemsBounded checks that rows naming missing binary streams with
+// long keys cannot grow Database.Problems without bound: each problem left
+// the whole key-derived name in its message.
+func TestProblemsBounded(t *testing.T) {
+	t.Parallel()
+
+	const rows = 300
+
+	tbl := &Table{Name: "B", Columns: []Column{Col("Name", "s0", true), Col("Data", "V0", false)}}
+	for i := range rows {
+		tbl.Add(fmt.Sprintf("%04d%s", i, strings.Repeat("k", 2000)), nil)
+	}
+
+	raw, err := (&Database{Codepage: 1252, Tables: []*Table{tbl}}).Marshal(Options{CFBVersion: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	file, err := cfb.Read(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	encoded, _ := EncodeStreamName("B", true)
+	streams := file.Streams()
+
+	for i, stream := range streams {
+		if stream.Name != encoded {
+			continue
+		}
+
+		// Column-major: the key references, then the binary column; mark
+		// every binary cell present, with no stream behind it.
+		data := bytes.Clone(stream.Data)
+		for row := range rows {
+			binary.LittleEndian.PutUint16(data[2*rows+2*row:], 1)
+		}
+
+		streams[i].Data = data
+	}
+
+	bad, err := cfb.Write(streams, cfb.Options{Version: 3, CLSID: cfb.CLSIDMSI})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	back, err := Unmarshal(bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	total := 0
+	for _, p := range back.Problems {
+		total += len(p)
+	}
+
+	if len(back.Problems) > maxProblems+1 || total > (maxProblems+1)*(maxProblemLength+3) {
+		t.Errorf("%d problems with %d bytes, want at most %d", len(back.Problems), total, maxProblems+1)
+	}
+
+	if len(back.Problems) == 0 || !strings.Contains(back.Problems[0], "cannot be a stream name") {
+		t.Errorf("first problem %q, want the impossible stream name", back.Problems[:min(1, len(back.Problems))])
+	}
+}
+
+// TestSummaryStreamReserved checks that a stream named like the summary
+// beside Database.Summary is refused: it was written under its encoded
+// name next to the literal one, and the result did not read back.
+func TestSummaryStreamReserved(t *testing.T) {
+	t.Parallel()
+
+	database := propertyDB([]any{"ProductName", "Example"})
+	database.Summary = []summary.Property{{ID: summary.PIDCodepage, Value: 1252}}
+	database.Streams = []cfb.Stream{{Name: summary.StreamName, Data: []byte("x")}}
+
+	if _, err := database.Marshal(Options{}); err == nil {
+		t.Error("Marshal accepted a summary stream in Streams")
+	}
+
+	database.Streams = nil
+	database.Sources = []cfb.Source{cfb.Stream{Name: summary.StreamName, Data: []byte("x")}.Source()}
+
+	if _, err := database.Marshal(Options{}); err == nil {
+		t.Error("Marshal accepted a summary stream in Sources")
 	}
 }
