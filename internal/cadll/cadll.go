@@ -94,26 +94,65 @@ func GrantEntry(kind byte, mask, flags uint32, template, object, account string)
 	return fmt.Sprintf("%c|%x|%x|%s|%s|%s", kind, mask, flags, template, object, account)
 }
 
-// RemoveFolders names the immediate action of folder removal, its entry
-// point and the property that lists the folders. RemoveFoldersExec is the
-// entry point of the deferred, rollback and commit actions, which are named
-// RemoveFoldersExec, RemoveFoldersUndo and RemoveFoldersCommit and take the
-// properties of the same names as CustomActionData.
+// RemoveFolders starts the log lines and the names of folder removal.
+// RemoveFoldersExec is the entry point of the deferred, rollback and commit
+// actions, which are named RemoveFoldersExec, RemoveFoldersUndo and
+// RemoveFoldersCommit and take the properties of the same names as
+// CustomActionData. The engine builds that data with type-51 actions in
+// the private properties RemoveFoldersData (the lines), RemoveFoldersCount
+// (`:` and one `#` per entry line) and RemoveFoldersScope (RemoveFoldersKeep,
+// or RemoveFoldersAll when the whole product is removed).
 const (
 	RemoveFolders       = "BuilderRemoveFolders"
 	RemoveFoldersExec   = "BuilderRemoveFoldersExec"
 	RemoveFoldersUndo   = "BuilderRemoveFoldersUndo"
 	RemoveFoldersCommit = "BuilderRemoveFoldersCommit"
-	// RemoveFoldersPackage lists the package's own directories, one per
-	// line, which a removal may reach only when the whole product goes.
-	RemoveFoldersPackage = "BuilderRemoveFoldersPackage"
+	RemoveFoldersData   = "BuilderRemoveFoldersData"
+	RemoveFoldersCount  = "BuilderRemoveFoldersCount"
+	RemoveFoldersScope  = "BuilderRemoveFoldersScope"
+
+	RemoveFoldersKeep = 'k'
+	RemoveFoldersAll  = 'a'
+
+	// RemoveFoldersRollback, RemoveFoldersMove, RemoveFoldersDelete and
+	// RemoveFoldersFinish are the operations: the rollback, the deferred
+	// move, the deferred delete with rollback disabled and the commit.
+	RemoveFoldersRollback = 'u'
+	RemoveFoldersMove     = 'm'
+	RemoveFoldersDelete   = 'd'
+	RemoveFoldersFinish   = 'c'
 )
 
-// RemoveFoldersEntry encodes one line of the BuilderRemoveFolders property:
-// the condition under which the folder is removed and the property that
-// holds it. Neither may contain a line break or U+001F.
-func RemoveFoldersEntry(condition, property string) string {
-	return condition + closeSeparator + property
+// RemoveFoldersStandard lists the standard folder properties a removal must
+// not reach: neither the folder itself nor a folder that holds it may be
+// removed, and nothing inside WindowsFolder.
+func RemoveFoldersStandard() []string {
+	return []string{
+		"WindowsVolume", "WindowsFolder", "SystemFolder", "System64Folder", "System16Folder",
+		"ProgramFilesFolder", "ProgramFiles64Folder", "CommonFilesFolder", "CommonFiles64Folder",
+		"CommonAppDataFolder", "AppDataFolder", "LocalAppDataFolder", "TempFolder",
+		"PersonalFolder", "DesktopFolder", "FavoritesFolder", "MyPicturesFolder", "TemplateFolder",
+		"ProgramMenuFolder", "StartMenuFolder", "StartupFolder", "SendToFolder", "RecentFolder",
+		"NetHoodFolder", "PrintHoodFolder", "AdminToolsFolder", "FontsFolder",
+	}
+}
+
+// RemoveFoldersEntry is the line of an entry in the removal data, which a
+// type-51 action formats: `f`, the property's name, `|` and its value.
+func RemoveFoldersEntry(property string) string {
+	return "f" + property + "|[" + property + "]"
+}
+
+// RemoveFoldersStandardLine is the line of a standard folder: `s`, its
+// name, `|` and its value.
+func RemoveFoldersStandardLine(property string) string {
+	return "s" + property + "|[" + property + "]"
+}
+
+// RemoveFoldersPackageLine is the line of a directory of the package, which
+// a removal may reach only when the whole product goes: `p` and its path.
+func RemoveFoldersPackageLine(directory string) string {
+	return "p[" + directory + "]"
 }
 
 // Closing running programs: the property the builder lists the files in,
@@ -128,8 +167,7 @@ const (
 	CloseExecSeparator = "|"
 
 	// closeSeparator separates the fields of a BuilderCloseApps line (the
-	// condition, the timeout and the path) and of a BuilderRemoveFolders
-	// line.
+	// condition, the timeout and the path).
 	closeSeparator = "\x1f"
 )
 

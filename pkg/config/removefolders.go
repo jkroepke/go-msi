@@ -7,8 +7,8 @@ import (
 	"github.com/jkroepke/msi-builder/internal/condition"
 )
 
-// removeFoldersPrefix starts the names the folder removal uses itself: the
-// property that lists the entries and those of its deferred actions.
+// removeFoldersPrefix starts the names the folder removal uses itself: its
+// type-51 and deferred actions and their properties.
 const removeFoldersPrefix = "BuilderRemoveFolders"
 
 // componentRemoveFolders checks the folders a component removes with
@@ -121,7 +121,7 @@ func rememberHint(cfg *Config, dirID string) string {
 }
 
 // removeFolderCondition checks the condition of a removeFolders entry, which
-// goes into one line of the BuilderRemoveFolders property.
+// becomes the condition of the type-51 actions that add the entry.
 func (v *validator) removeFolderCondition(field, cond string) {
 	switch {
 	case cond == "":

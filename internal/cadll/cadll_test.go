@@ -81,24 +81,26 @@ func TestBinaries(t *testing.T) {
 
 			for _, entry := range []string{
 				cadll.Entry, cadll.GrantEntryPoint, cadll.CloseEntryPoint, cadll.CloseSchedule,
-				cadll.RemoveFolders, cadll.RemoveFoldersExec,
+				cadll.RemoveFoldersExec,
 			} {
 				if !bytes.Contains(data, []byte(entry+"\x00")) {
 					t.Errorf("export %s not found", entry)
 				}
 			}
 
-			// The engine builds the grant data (spec 17.7); an action that
-			// runs as the user must not.
-			if bytes.Contains(data, []byte("BuilderGrantSchedule\x00")) {
-				t.Error("export BuilderGrantSchedule is back")
+			// The engine builds the grant and folder removal data (spec
+			// 17.7, 17.10); an action that runs as the user must not.
+			for _, gone := range []string{"BuilderGrantSchedule", cadll.RemoveFolders} {
+				if bytes.Contains(data, []byte(gone+"\x00")) {
+					t.Errorf("export %s is back", gone)
+				}
 			}
 
 			// The log template and the immediate property are UTF-16 arrays
 			// in the C source, which a rename of the Go constants misses.
 			for _, want := range []string{cadll.Entry + ": [1]", cadll.GrantEntryPoint + ": [1]", cadll.DataProperty,
 				cadll.CloseEntryPoint + ": [1]", cadll.CloseProperty,
-				cadll.RemoveFolders + ": [1]", cadll.RemoveFoldersExec, cadll.RemoveFoldersUndo, cadll.RemoveFoldersCommit,
+				cadll.RemoveFolders + ": [1]",
 			} {
 				if !bytes.Contains(data, utf16z(want)) {
 					t.Errorf("UTF-16 string %q not found", want)
