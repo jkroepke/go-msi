@@ -223,6 +223,7 @@ Silent-failure cases a producer has to guard against itself:
 | INST-02 | Confirmed | [admin](msitest/results/INST-02/admin/log.md), [non-admin](msitest/results/INST-02/nonadmin/log.md), [non-admin on CI](msitest/results/INST-02/nonadmin-ci/log.md); SERVER2025, 2026-10-29, `msitest/inst02/run.ps1`: `MSIINSTALLPERUSER` selects the context of an `ALLUSERS=2` package for admins and standard users, files, HKMU, HKCR, shortcuts and registration follow it, a standard user's per-user install needs no Word Count bit 3, a per-machine one fails with 1925; a context switch in the UI sequence leaves the client-resolved `INSTALLDIR` in the old context; a major upgrade does not cross contexts; on CI, `TestNonAdminInstallScopes` repeats the four scopes as a standard user on every run since CI run 40942811121 (exit codes, error 1925, install folder) |
 | INST-04 | Confirmed | CI runs 40966711286, 40967057615, 40969857298, 40974297757, 40976031652 and 40976459274, `TestMsiexecProfileKeyPath`, `TestICEProfileKeyPath`, `TestICEProfileHKMUKeyPath`, `TestNonAdminInstallScopes`; [details](#hkcu-key-paths-for-profile-components-inst-04) |
 | INST-05 | Confirmed | CI runs 41076138963, 41079437345, 41083409657 and 41085596960, `TestMsiexecFeatureConditions`; [details](#feature-conditions-inst-05) |
+| INST-06 | Confirmed | CI runs 41230441589 and 41230502028, `TestMsiexecFeatureConditions`; [details](#condition-enabled-disabled-features-inst-06) |
 | FILE-01 | Confirmed | [empty version, REP 1401](msitest/results/FILE-01/empty-version-rep1401/log.md) deletes the file |
 | FILE-02 | Confirmed | [log](msitest/results/FILE-02/file-hash/log.md) |
 | FILE-03 | Confirmed | [removefile-upgrade](msitest/results/FILE-03/removefile-upgrade/log.md), [purge-upgrade](msitest/results/FILE-03/purge-upgrade/log.md); `RemoveFile` `*` also runs on upgrade and leaves subfolders; the conditioned `rmdir` action removes the tree only on a real uninstall; [details](#use-case-gap-cases-upg-05-search-03-file-03-svc-03) |
@@ -1142,3 +1143,32 @@ associations.
   (presumably `MigrateFeatureStates`; the log does not show which action).
 - Not covered: rows with installed-state terms (msi-builder rejects them),
   `REMOVE=<feature>` in maintenance, Windows Server 2016.
+
+## Condition-enabled disabled features (INST-06)
+
+Run on 2026-10-31 on the `Build & Test (windows-latest, native)` job
+(Windows Server 2025 x64, elevated) of PR #177,
+`TestMsiexecFeatureConditions` ([log](msitest/results/INST-06/ci/log.md),
+passed in runs 41230441589 and 41230502028). `Extra` is
+`default: disabled` (level 0) with the row `EXTRA = 1` (level 1), written
+as `(Installed AND (REMOVE OR REINSTALL)) OR (EXTRA = 1)`. After every step
+the test also checked which product code is registered.
+
+| Step | Result |
+| --- | --- |
+| install `EXTRA=1`, delete extra.txt, `/fa` without `EXTRA` | Extra `Request: Reinstall`, extra.txt back |
+| then `msiexec /x` without `EXTRA` | Extra `Request: Absent`, no files, product unregistered |
+| install `EXTRA=1`, then `REMOVE=Extra` | only Extra removed, product stays registered |
+| install without `EXTRA`, then `/fa` | Extra stays absent |
+| then `ADDLOCAL=Extra` without `EXTRA` | Extra stays absent (`Request: Null`), exit 0 |
+| then `EXTRA=1 ADDLOCAL=Extra` | Extra installed |
+| install `EXTRA=1`, change run `ASSOC=1 ADDLOCAL=Assoc` | Extra logged `Installed: Local; Request: Null`, extra.txt kept; the next `/x` removed it and unregistered the product |
+| v1 with `EXTRA=1`, upgrade to v2 without it | v2 leaves Extra out; v1's removal logs Extra `Request: Absent`, extra.txt gone, only v2 registered |
+| v1 without Extra, upgrade to v2 with `EXTRA=1` | Extra installed |
+
+- The bug this fixes (with `NOT Installed AND (…)` the uninstall left the
+  feature and the product registered) is reported from a real-world run on
+  SERVER2025; it was not repeated on CI.
+- Not covered: the full-UI maintenance wizard, a package built before the
+  change (its own rows decide the old product's removal), Windows Server
+  2016.
