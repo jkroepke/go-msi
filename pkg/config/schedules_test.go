@@ -143,3 +143,24 @@ func TestScheduleDuplicateID(t *testing.T) {
 		t.Error(ds)
 	}
 }
+
+// Errors that other checks report are not repeated by the schedule check.
+func TestScheduleNoRepeats(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct{ doc, path, msg string }{
+		"standard action id": {
+			"customActions:\n  - id: CostFinalize\n    setProperty: {name: P, value: x}\n    schedule: [{sequence: execute, after: InstallValidate}]\n",
+			"customActions[0].id", "standard action name",
+		},
+		"termination number in execute": {
+			setProps("at: -1", "after: Set0"),
+			"customActions[0].schedule[0].at", "termination numbers",
+		},
+	} {
+		ds := validate(t, base+appComponent+test.doc)
+		if !find(ds, config.SeverityError, test.path, test.msg) || errorCount(ds) != 1 {
+			t.Errorf("%s: want one error at %s with %q: %v", name, test.path, test.msg, ds)
+		}
+	}
+}

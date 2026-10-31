@@ -260,4 +260,15 @@ func TestCycleBehindLongTail(t *testing.T) {
 	if !errors.As(err, &serr) || strings.Join(serr.Cycle, " ") != "T20000 T20001 T20000" {
 		t.Errorf("%v", err)
 	}
+
+	// A long cycle lists all its actions in Cycle, a few in the message.
+	ring := make([]Action, 0, 1000)
+	for i := range 1000 {
+		ring = append(ring, Action{Name: fmt.Sprintf("R%d", i), Before: fmt.Sprintf("R%d", (i+1)%1000)})
+	}
+
+	_, err = Number(ring)
+	if !errors.As(err, &serr) || len(serr.Cycle) != 1001 || len(err.Error()) > 200 || !strings.Contains(err.Error(), "(1000 actions)") {
+		t.Errorf("%d actions in the cycle: %v", len(serr.Cycle), err)
+	}
 }

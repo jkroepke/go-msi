@@ -668,10 +668,76 @@ func (b *build) sequenceError(table string, err error) {
 	}
 
 	if path == "" {
+		path = b.chainPlacement(table, serr.Action)
+	}
+
+	if path == "" {
 		path = "customActions"
 	}
 
 	b.errorf(path, "%s: %s", table, serr.Reason)
+}
+
+// chainPlacement returns the YAML path of the first user placement in the
+// chain of an action the builder added, the chain whose anchors end at the
+// same action; "" when the chain has none.
+func (b *build) chainPlacement(table, action string) string {
+	anchors := make(map[string]string, len(b.schedules[table]))
+	for _, a := range b.schedules[table] {
+		anchors[a.Name] = a.Before + a.After
+	}
+
+	chains := &chainRoots{anchors: anchors, roots: make(map[string]string, len(anchors))}
+
+	want := chains.root(action)
+
+	user := make(map[string]bool, len(b.cfg.CustomActions))
+	for _, custom := range b.cfg.CustomActions {
+		user[custom.ID] = true
+
+		if custom.Run != nil {
+			user[custom.ID+".Data"] = true
+		}
+	}
+
+	for _, a := range b.schedules[table] {
+		if user[a.Name] && chains.root(a.Name) == want {
+			return b.placementPath(table, a.Name)
+		}
+	}
+
+	return ""
+}
+
+// chainRoots finds the action that ends each chain of anchors.
+type chainRoots struct {
+	anchors map[string]string
+	roots   map[string]string
+}
+
+// root follows the anchors to the action that ends the chain; each name is
+// resolved once, and a cycle ends where it closes.
+func (c *chainRoots) root(name string) string {
+	seen := make(map[string]bool)
+
+	var path []string
+
+	cur := name
+	for c.anchors[cur] != "" && c.roots[cur] == "" && !seen[cur] {
+		seen[cur] = true
+		path = append(path, cur)
+		cur = c.anchors[cur]
+	}
+
+	if r := c.roots[cur]; r != "" {
+		cur = r
+	}
+
+	for _, n := range path {
+		c.roots[n] = cur
+	}
+
+	return cur
 }
 
 // placementPath returns the YAML path of the placement that schedules action

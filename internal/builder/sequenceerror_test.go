@@ -1,6 +1,7 @@
 package builder_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -53,4 +54,41 @@ func TestSequenceErrorDiagnostic(t *testing.T) {
 			t.Errorf("no error at %s with %q: %v", tc.path, tc.want, res.Diagnostics)
 		})
 	}
+}
+
+// An action the builder adds and runs into a standard action blames the
+// first user placement in its chain: 85 actions after InstallFiles plus the
+// firewall actions there reach PatchFiles (4090), which one more action is
+// anchored to.
+func TestSequenceErrorGeneratedAction(t *testing.T) {
+	t.Parallel()
+
+	exe := testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}})
+	cfg := example(t, "minimal", nil, map[string][]byte{"hello.exe": exe})
+	cfg.Features[0].Firewall = []*config.FirewallRule{{Name: "fw", Program: "[#hello.exe]", Protocol: "tcp", Port: "80"}}
+
+	for i := range 85 {
+		cfg.CustomActions = append(cfg.CustomActions, &config.CustomAction{
+			ID: fmt.Sprintf("A%d", i), SetProperty: &config.SetProperty{Name: fmt.Sprintf("PA%d", i), Value: "x"},
+			Schedule: []config.Placement{{Sequence: "execute", After: "InstallFiles"}},
+		})
+	}
+
+	cfg.CustomActions = append(cfg.CustomActions, &config.CustomAction{
+		ID: "Patch", SetProperty: &config.SetProperty{Name: "PATCH", Value: "x"},
+		Schedule: []config.Placement{{Sequence: "execute", After: "PatchFiles"}},
+	})
+
+	res, err := builder.Build(cfg, builder.Options{BuildTime: buildTime})
+	if err == nil {
+		t.Fatal("built")
+	}
+
+	for _, d := range res.Diagnostics {
+		if d.Severity == config.SeverityError && d.Path == "customActions[0].schedule[0]" && strings.Contains(d.Message, "PatchFiles already has") {
+			return
+		}
+	}
+
+	t.Errorf("no error at the chain's first placement: %v", res.Diagnostics)
 }

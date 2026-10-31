@@ -244,6 +244,10 @@ func numberBlock(chain []Numbered, item *node) error {
 	return nil
 }
 
+// maxShownCycle is the most actions a cycle error lists; Error.Cycle keeps
+// them all.
+const maxShownCycle = 10
+
 // cycle reports a cycle among the nodes that no fixed node reached. Every
 // such node leads through its anchors into a cycle, so following the anchors
 // from the first one in definition order finds one; the action reported is
@@ -275,10 +279,15 @@ func cycle(nodes map[string]*node, ordered []*node, placed []bool) error {
 
 	names = append(names, names[0])
 
+	shown := strings.Join(names, " → ")
+	if len(names) > maxShownCycle {
+		shown = strings.Join(names[:maxShownCycle-1], " → ") + fmt.Sprintf(" → … (%d actions) → %s", len(path), names[0])
+	}
+
 	return &Error{
 		Action: names[0],
 		Cycle:  names,
-		Reason: fmt.Sprintf("action %s is part of a scheduling cycle: %s", names[0], strings.Join(names, " → ")),
+		Reason: fmt.Sprintf("action %s is part of a scheduling cycle: %s", names[0], shown),
 	}
 }
 

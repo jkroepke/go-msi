@@ -78,6 +78,7 @@ func (v *validator) unscheduledAnchors(byID map[string]*CustomAction, name strin
 // scheduleOf returns the actions of one sequence, the YAML path of the
 // placement behind each custom action, as described at schedules, and an
 // error for each further placement of an action in the same sequence.
+//
 //nolint:cyclop // a flat filter over the placements
 func scheduleOf(cfg *Config, byID map[string]*CustomAction, name string) ([]sequence.Action, map[string]string, Diagnostics) {
 	var actions []sequence.Action
@@ -90,8 +91,9 @@ func scheduleOf(cfg *Config, byID map[string]*CustomAction, name string) ([]sequ
 	)
 
 	for i, action := range cfg.CustomActions {
-		// A second action with the same id is reported by actionID.
-		if action.ID == "" || byID[action.ID] != action {
+		// A second action with the same id and one named like a standard
+		// action are reported by actionID.
+		if action.ID == "" || byID[action.ID] != action || standardActions[action.ID] {
 			continue
 		}
 
@@ -143,7 +145,9 @@ func wellPlaced(place Placement) bool {
 		}
 	}
 
-	return count == 1 && place.At >= minSequenceNumber && place.At <= maxSequenceNumber
+	termination := place.Sequence == "ui" || place.Sequence == sequenceAdminUI
+
+	return count == 1 && place.At >= minSequenceNumber && place.At <= maxSequenceNumber && (place.At >= 0 || termination)
 }
 
 // withAnchors adds the standard actions every product gets and those the
