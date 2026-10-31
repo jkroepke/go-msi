@@ -142,12 +142,9 @@ type converter struct {
 	firewallNames map[string]int
 	// newerClaimed is the property that detects newer versions.
 	newerClaimed string
-	// floorSeen is set once a hand-made major upgrade became
-	// upgrade.minVersion.
-	floorSeen bool
-	icons     []*elem
-	closeApps []*elem
-	defines   [][2]string
+	icons        []*elem
+	closeApps    []*elem
+	defines      [][2]string
 	// defined are the define values with earlier defines filled in.
 	defined     map[string]string
 	sequences   []*elem
@@ -172,6 +169,9 @@ type converter struct {
 	removeLine    int
 	uiLine        int
 	v3            bool
+	// floorSeen is set once a hand-made major upgrade became
+	// upgrade.minVersion.
+	floorSeen bool
 }
 
 type dir struct {
