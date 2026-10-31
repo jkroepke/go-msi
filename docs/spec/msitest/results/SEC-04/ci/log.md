@@ -1,4 +1,4 @@
-# SEC-03: children without a DACL in a granted folder (CI)
+# SEC-04: children without a DACL in a granted folder (CI)
 
 - Runner: GitHub `windows-latest` (Windows Server 2025), elevated, 2026-10-30
   and 2026-10-31

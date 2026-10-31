@@ -25,7 +25,7 @@ var (
 )
 
 // nullDACLConfig grants Guests read access, inherited by subfolders and
-// files, on a folder that exists before the install (SEC-03).
+// files, on a folder that exists before the install (SEC-04).
 // FAILNOW=1 fails the install after the grant, so the rollback runs.
 const nullDACLConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderSec03, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 8d4c2a71-3f6e-4b58-9a1d-c7e05b2f9e63 }
@@ -126,7 +126,7 @@ func fileDACL(t *testing.T, path string) string {
 // TestMsiexecGrantNullDACLChild checks what an inheriting folder grant does
 // to a folder and a file without a DACL (a NULL DACL, which gives everyone
 // full access) in that folder, when the install succeeds, when it is rolled
-// back and on uninstall (SEC-03). Microsoft documents that such a child gets
+// back and on uninstall (SEC-04). Microsoft documents that such a child gets
 // a DACL with only the inherited ACE when the parent gains an inheritable
 // ACE, and an empty DACL, which gives no one access, when the ACE is removed
 // again. On Windows Server 2025 both keep their NULL DACL throughout, so the
@@ -143,7 +143,7 @@ func TestMsiexecGrantNullDACLChild(t *testing.T) {
 
 	// Children without a DACL, a folder and a file. SetFileSecurityW drops
 	// an AI flag (D:AINO_ACCESS_CONTROL reads back as D:NO_ACCESS_CONTROL,
-	// SEC-03), so a NULL DACL marked auto-inherited is not covered.
+	// SEC-04), so a NULL DACL marked auto-inherited is not covered.
 	children := []struct{ name, sddl string }{
 		{"open", "D:NO_ACCESS_CONTROL"},
 		{"open.txt", "D:NO_ACCESS_CONTROL"},
@@ -181,12 +181,12 @@ func TestMsiexecGrantNullDACLChild(t *testing.T) {
 		_ = os.RemoveAll(root)
 	})
 
-	t.Logf("SEC-03: parent before: %s", fileDACL(t, existing))
+	t.Logf("SEC-04: parent before: %s", fileDACL(t, existing))
 
 	before := map[string]string{}
 	for _, child := range children {
 		before[child.name] = fileDACL(t, filepath.Join(existing, child.name))
-		t.Logf("SEC-03: %s before: %s", child.name, before[child.name])
+		t.Logf("SEC-04: %s before: %s", child.name, before[child.name])
 
 		if !strings.Contains(before[child.name], "NO_ACCESS_CONTROL") {
 			t.Fatalf("%s before the install: %s, want no DACL", child.name, before[child.name])
@@ -199,7 +199,7 @@ func TestMsiexecGrantNullDACLChild(t *testing.T) {
 	}
 
 	log := readLog(filepath.Join(dir, "rollback.log"))
-	t.Logf("SEC-03: rollback log:\n%s", grepLog(log, "BuilderGrant: "))
+	t.Logf("SEC-04: rollback log:\n%s", grepLog(log, "BuilderGrant: "))
 
 	for _, want := range []string{"BuilderGrant: granted", "BuilderGrant: revoked"} {
 		if !strings.Contains(log, want) {
@@ -212,7 +212,7 @@ func TestMsiexecGrantNullDACLChild(t *testing.T) {
 
 		for _, child := range children {
 			got := fileDACL(t, filepath.Join(existing, child.name))
-			t.Logf("SEC-03: %s %s: %s", child.name, when, got)
+			t.Logf("SEC-04: %s %s: %s", child.name, when, got)
 
 			if got != before[child.name] {
 				t.Errorf("%s %s: %s, want %s as before", child.name, when, got, before[child.name])
@@ -227,7 +227,7 @@ func TestMsiexecGrantNullDACLChild(t *testing.T) {
 	reset()
 	msiexecQuiet(t, filepath.Join(dir, "install.log"), "/i", path)
 
-	t.Logf("SEC-03: parent after install: %s", fileDACL(t, existing))
+	t.Logf("SEC-04: parent after install: %s", fileDACL(t, existing))
 	requireNullDACLs("after install")
 
 	msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
