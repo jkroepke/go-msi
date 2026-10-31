@@ -959,7 +959,8 @@ of every component whose GUID changed (case UPG-11 in the spec). Keep the WiX
 GUIDs with `guid` on those components, or keep the early removal.
 `msi-builder convert --msi old.msi` does this for you: it takes the GUID
 of each component from the WiX package, by its `Id` or, for a component
-without one, by its key file, also for a shortcut component, which keeps
+without one, by its key file or its registry key path (root, key and
+value name), also for a shortcut component, which keeps
 its shortcut (a shared GUID kept the shortcut in UPG-11; with WiX's own
 key path value this is inferred), and leaves a `# TODO` on any
 component it cannot find there. Such a kept shortcut component gets

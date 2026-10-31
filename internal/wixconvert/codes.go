@@ -34,6 +34,8 @@ type BuiltDirectory struct {
 // BuiltComponent is a row of the Component table of the package WiX built
 // from the source file.
 type BuiltComponent struct {
+	// KeyRegistry is the key path registry value, or nil.
+	KeyRegistry *BuiltRegistry
 	// ID is the Component key.
 	ID string
 	// Code is the ComponentId.
@@ -43,6 +45,15 @@ type BuiltComponent struct {
 	// KeyFile is the long name of the key path file, empty when the key
 	// path is a registry value or the folder.
 	KeyFile string
+}
+
+// BuiltRegistry is a row of the Registry table of a built package.
+type BuiltRegistry struct {
+	// Key and Name are the Key and Name columns; Name is empty for the
+	// default value.
+	Key, Name string
+	// Root is the Root column: -1 for HKMU, 0 HKCR, 1 HKCU, 2 HKLM, 3 HKU.
+	Root int
 }
 
 // lateRemoval are the upgrade.removeOld values that install the new version
@@ -82,7 +93,92 @@ func (c *converter) builtComponent(comp *comp, keyFile string) *BuiltComponent {
 		}
 	}
 
-	return c.builtByKeyFile(comp, keyFile)
+	if row := c.builtByKeyFile(comp, keyFile); row != nil {
+		return row
+	}
+
+	return c.builtByRegistry(comp)
+}
+
+// registryRoots are the Root column values of the WiX registry roots.
+var registryRoots = map[string]int{"HKMU": -1, "HKCR": 0, "HKCU": 1, "HKLM": 2, "HKU": 3} //nolint:gochecknoglobals // lookup table
+
+// builtByRegistry returns the one free component of the built package
+// whose key path is a registry value of comp: its key path, when the source
+// marks one, else any of its values. WiX names a component without an Id
+// after a registry key path by a hash, which convert cannot repeat.
+func (c *converter) builtByRegistry(comp *comp) *BuiltComponent {
+	values := c.registryValues(comp.e, "", "")
+	if key := keyElem(comp.e); key != nil {
+		if !key.is("RegistryValue") {
+			return nil
+		}
+
+		values = slices.DeleteFunc(values, func(v builtValue) bool { return v.elm != key })
+	}
+
+	var found *BuiltComponent
+
+	for i := range c.built.Components {
+		row := &c.built.Components[i]
+		if !c.free(row) || row.KeyRegistry == nil || !slices.ContainsFunc(values, row.KeyRegistry.matches) {
+			continue
+		}
+
+		if found != nil {
+			return nil
+		}
+
+		found = row
+	}
+
+	return found
+}
+
+// builtValue is a RegistryValue with its Root, Key and Name as the built
+// package has them.
+type builtValue struct {
+	elm *elem
+	reg BuiltRegistry
+}
+
+// matches reports whether a registry row is the value v.
+func (r *BuiltRegistry) matches(v builtValue) bool {
+	return r.Root == v.reg.Root && strings.EqualFold(r.Key, v.reg.Key) && strings.EqualFold(r.Name, v.reg.Name)
+}
+
+// registryValues returns the RegistryValues of a component, also those in
+// a RegistryKey, with the defines in their Key and Name filled in.
+func (c *converter) registryValues(elm *elem, root, parentKey string) []builtValue {
+	var values []builtValue
+
+	for _, kid := range elm.kids {
+		if !kid.is("RegistryValue") && !kid.is("RegistryKey") {
+			continue
+		}
+
+		kidRoot := root
+		if r := kid.attr("Root"); r != "" {
+			kidRoot = r
+		}
+
+		key := c.literal(kid.attr("Key"))
+		if parentKey != "" {
+			key = joinKey(parentKey, key)
+		}
+
+		if kid.is("RegistryKey") {
+			values = append(values, c.registryValues(kid, kidRoot, key)...)
+
+			continue
+		}
+
+		if code, ok := registryRoots[strings.ToUpper(kidRoot)]; ok {
+			values = append(values, builtValue{elm: kid, reg: BuiltRegistry{Root: code, Key: key, Name: c.literal(kid.attr("Name"))}})
+		}
+	}
+
+	return values
 }
 
 // builtByKeyFile returns the one free component of the built package with
