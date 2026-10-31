@@ -652,8 +652,9 @@ func (b *build) sequences() error { //nolint:cyclop,gocognit // one pass over th
 
 // sequenceError reports a numbering error at the YAML placement of the
 // action it names, or of the other action involved when the first one is
-// not the user's (a standard action or one the builder adds). An error that
-// names neither falls back to the customActions section.
+// not the user's (a standard action or one the builder adds), else at the
+// first user placement in the chain of either action. An error that leads
+// to none falls back to the customActions section.
 func (b *build) sequenceError(table string, err error) {
 	var serr *sequence.Error
 	if !errors.As(err, &serr) {
@@ -668,7 +669,7 @@ func (b *build) sequenceError(table string, err error) {
 	}
 
 	if path == "" {
-		path = b.chainPlacement(table, serr.Action)
+		path = b.chainPlacement(table, serr.Action, serr.Other)
 	}
 
 	if path == "" {
@@ -680,16 +681,14 @@ func (b *build) sequenceError(table string, err error) {
 
 // chainPlacement returns the YAML path of the first user placement in the
 // chain of an action the builder added, the chain whose anchors end at the
-// same action; "" when the chain has none.
-func (b *build) chainPlacement(table, action string) string {
+// same action, trying the actions in turn; "" when no chain has one.
+func (b *build) chainPlacement(table string, actions ...string) string {
 	anchors := make(map[string]string, len(b.schedules[table]))
 	for _, a := range b.schedules[table] {
 		anchors[a.Name] = a.Before + a.After
 	}
 
 	chains := &chainRoots{anchors: anchors, roots: make(map[string]string, len(anchors))}
-
-	want := chains.root(action)
 
 	user := make(map[string]bool, len(b.cfg.CustomActions))
 	for _, custom := range b.cfg.CustomActions {
@@ -700,9 +699,17 @@ func (b *build) chainPlacement(table, action string) string {
 		}
 	}
 
+	first := make(map[string]string)
+
 	for _, a := range b.schedules[table] {
-		if user[a.Name] && chains.root(a.Name) == want {
-			return b.placementPath(table, a.Name)
+		if root := chains.root(a.Name); user[a.Name] && first[root] == "" {
+			first[root] = a.Name
+		}
+	}
+
+	for _, action := range actions {
+		if name := first[chains.root(action)]; action != "" && name != "" {
+			return b.placementPath(table, name)
 		}
 	}
 
