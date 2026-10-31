@@ -3,6 +3,7 @@ package wixconvert
 import (
 	"cmp"
 	"math"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -785,8 +786,8 @@ func (cc *compConv) progID(elm *elem) { //nolint:cyclop // a flat list of indepe
 
 	fileType := newMap()
 	fileType.order("progId", "description", "iconIndex", "extensions", "verbs")
-	fileType.set("progId", conv.value(elm, "Id"))
-	fileType.set("description", conv.value(elm, "Description"))
+	fileType.set("progId", conv.typeText(fileType, elm, "Id"))
+	fileType.set("description", conv.typeText(fileType, elm, "Description"))
 
 	if elm.has("Icon") {
 		cc.iconIndex(elm, fileType)
@@ -801,7 +802,7 @@ func (cc *compConv) progID(elm *elem) { //nolint:cyclop // a flat list of indepe
 			continue
 		}
 
-		x := newMap().set("extension", conv.value(ext, "Id")).set("contentType", conv.value(ext, "ContentType"))
+		x := newMap().set("extension", conv.typeText(fileType, ext, "Id")).set("contentType", conv.typeText(fileType, ext, "ContentType"))
 		fileType.add("extensions", x)
 
 		for _, verb := range ext.kids {
@@ -811,7 +812,7 @@ func (cc *compConv) progID(elm *elem) { //nolint:cyclop // a flat list of indepe
 				continue
 			}
 
-			verbOut := newMap().set("id", conv.value(verb, "Id")).set("text", conv.value(verb, "Command"))
+			verbOut := newMap().set("id", conv.value(verb, "Id")).set("text", conv.typeText(fileType, verb, "Command"))
 			if verb.has("Argument") {
 				verbOut.set("arguments", conv.value(verb, "Argument"))
 
@@ -857,6 +858,86 @@ func (cc *compConv) iconIndex(elm *elem, fileType *omap) {
 	}
 
 	fileType.set("iconIndex", index)
+}
+
+// typeText returns an attribute of a ProgId, Extension or Verb with the
+// properties it references filled in when they have a constant value:
+// msi-builder writes these texts as they are, and WiX formats them. Other
+// formatted text left over gets a TODO.
+func (c *converter) typeText(out *omap, elm *elem, attr string) string {
+	text := bracketRef.ReplaceAllStringFunc(c.value(elm, attr), func(ref string) string {
+		if value, ok := c.constProperty(ref[1 : len(ref)-1]); ok {
+			return value
+		}
+
+		return ref
+	})
+
+	if formattedLeft(text) {
+		c.todof(out, "", elm.line, "%s %s=%q holds formatted text convert cannot fill in (a property without a constant "+
+			"value, or another reference); msi-builder writes file type texts as they are, so write the text out",
+			elm.name, attr, text)
+	}
+
+	return text
+}
+
+// constProperty returns the value of a property that a Property element
+// or the package sets and nothing in the source changes. A public one could
+// still come from the command line; convert assumes it does not.
+func (c *converter) constProperty(name string) (string, bool) {
+	if attr, ok := map[string]string{"ProductName": "Name", "Manufacturer": "Manufacturer", "ProductVersion": "Version"}[name]; ok {
+		value := c.expandVars(c.pkg, c.pkg.attr(attr))
+
+		return value, c.pkg.has(attr) && !formattedLeft(value)
+	}
+
+	var found *elem
+
+	for _, prop := range c.properties {
+		if prop.attr("Id") == name {
+			found = prop
+		}
+	}
+
+	if found == nil || !found.has("Value") || len(found.kids) > 0 || c.propertyChanged(name) {
+		return "", false
+	}
+
+	value := c.value(found, "Value")
+
+	return value, !formattedLeft(value)
+}
+
+// varRef matches a ${NAME} reference that msi-builder fills in on load.
+var varRef = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*\}`)
+
+// formattedLeft reports whether text still holds formatted text or a WiX
+// bind or localization variable once the ${NAME} references are left out.
+func formattedLeft(text string) bool {
+	text = varRef.ReplaceAllString(text, "")
+
+	return strings.ContainsAny(text, "[]{}") || strings.Contains(text, "!(")
+}
+
+// propertyChanged reports whether an action, a SetProperty, a Publish
+// event or a dialog control sets the property.
+func (c *converter) propertyChanged(name string) bool {
+	if slices.ContainsFunc(c.commandSources(), func(src commandSource) bool { return src.property == name }) {
+		return true
+	}
+
+	var changed func(elm *elem) bool
+
+	changed = func(elm *elem) bool {
+		if (elm.is("Publish") || elm.is("Control")) && elm.attr(attrProperty) == name {
+			return true
+		}
+
+		return slices.ContainsFunc(elm.kids, changed)
+	}
+
+	return changed(c.doc.root)
 }
 
 // pendingType is a ProgId that goes onto the file its verbs start, once
