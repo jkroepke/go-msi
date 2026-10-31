@@ -2117,3 +2117,121 @@ func TestConvertSameVersionUpgrades(t *testing.T) {
 		}
 	}
 }
+
+func TestConvertForceDeleteKey(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component>
+          <File Source="hello.exe" />
+          <RegistryKey Root="HKLM" Key="SOFTWARE\Example\Stale" ForceDeleteOnUninstall="yes" />
+          <RemoveRegistryKey Root="HKLM" Key="SOFTWARE\Example\Stale" Action="removeOnUninstall" />
+          <RegistryKey Root="HKLM" Key="SOFTWARE\Example\Hello" ForceDeleteOnUninstall="yes">
+            <RegistryKey Key="Sub"><RegistryValue Name="v" Value="1" /></RegistryKey>
+          </RegistryKey>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /></Feature>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"removeRegistry:\n", `key: SOFTWARE\Example\Stale`, "on: uninstall", "removeOnUninstall: true",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if strings.Count(out, "type: key") != 1 || strings.Count(out, `SOFTWARE\Example\Stale`) != 1 {
+		t.Errorf("want a key entry only for SOFTWARE\\Example\\Hello and one removal of Stale:\n%s", out)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, out)
+	}
+}
+
+func TestConvertTypeTextsAndURLLaunch(t *testing.T) {
+	t.Parallel()
+
+	src := `<?define AppName="Hello"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <Property Id="APPNAME" Value="$(var.AppName)" />
+    <Property Id="SOFTWARE" Value="Hello" />
+    <Property Id="EXT" Value="hlo" />
+    <Property Id="CHANGING" Value="a" />
+    <Property Id="PUB" Value="x" />
+    <SetProperty Id="CHANGING" Value="b" Before="CostFinalize" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component>
+          <File Source="hello.exe" />
+          <ProgId Id="[ProductName].Pub" Description="[PUB] [%USERNAME] by [Manufacturer]">
+            <Extension Id="hlopub"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+          <ProgId Id="[SOFTWARE].Project" Description="[SOFTWARE] Project File">
+            <Extension Id="[EXT]" ContentType="application/x-[APPNAME]"><Verb Id="open" Command="Open in [CHANGING]" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /></Feature>
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Open the website" />
+    <CustomAction Id="OpenSite" Directory="INSTALLFOLDER" ExeCommand="powershell Start-Process https://example.com" Return="asyncNoWait" />
+    <UI>
+      <ui:WixUI Id="WixUI_Minimal" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="OpenSite" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1" />
+      <Publish Dialog="ExitDialog" Control="Finish" Property="PUB" Value="z" />
+    </UI>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"progId: Hello.Project\n", "description: Hello Project File\n", "extension: hlo\n",
+		`Verb Command="Open in [CHANGING]" holds formatted text convert cannot fill in`,
+		`the launch checkbox (action OpenSite: powershell Start-Process https://example.com) "Open the website" starts no file`,
+		"progId: Hello.Pub\n", "contentType: application/x-${AppName}\n", `ProgId Description="[PUB] [%USERNAME] by Example" holds formatted text`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if strings.Contains(out, "launch:") || strings.Contains(out, "application/x-${AppName}\" holds") {
+		t.Errorf("ui.launch without a file, or a TODO on a filled-in text:\n%s", out)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, out)
+	}
+}

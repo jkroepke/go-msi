@@ -3,6 +3,7 @@ package wixconvert
 import (
 	"path"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -558,12 +559,20 @@ func (cc *compConv) registry(elm *elem, root, parentKey string) {
 
 // forcedKey writes the key entry of a RegistryKey that is created or
 // deleted as a whole.
-func (cc *compConv) forcedKey(e *elem, root, key string) {
-	action := e.attr("Action") // WiX v3
-	forceCreate := e.yes("ForceCreateOnInstall") || action == "create" || action == "createAndRemoveOnUninstall"
-	forceDelete := e.yes("ForceDeleteOnUninstall") || action == "createAndRemoveOnUninstall"
+func (cc *compConv) forcedKey(elm *elem, root, key string) {
+	action := elm.attr("Action") // WiX v3
+	forceCreate := elm.yes("ForceCreateOnInstall") || action == "create" || action == "createAndRemoveOnUninstall"
+	forceDelete := elm.yes("ForceDeleteOnUninstall") || action == "createAndRemoveOnUninstall"
 
 	if !forceCreate && !forceDelete {
+		return
+	}
+
+	if forceDelete && !forceCreate && !hasRegistryValue(elm) {
+		// WiX writes only the "-" row: the key is deleted on uninstall
+		// but never created (REG-08). A key entry would create it.
+		cc.addRemoveRegistry(newMap().set("root", root).set("key", key).set("on", "uninstall"))
+
 		return
 	}
 
@@ -573,6 +582,14 @@ func (cc *compConv) forcedKey(e *elem, root, key string) {
 	}
 
 	cc.out.add("registry", entry)
+}
+
+// hasRegistryValue reports whether a RegistryKey writes a value, also in
+// a nested key, which creates the key on install.
+func hasRegistryValue(elm *elem) bool {
+	return slices.ContainsFunc(elm.kids, func(kid *elem) bool {
+		return kid.is("RegistryValue") || kid.is("RegistryKey") && hasRegistryValue(kid)
+	})
 }
 
 const typeMultiString = "multiString"
@@ -719,7 +736,7 @@ func (cc *compConv) removeRegistry(elm *elem) {
 		}
 
 		entry.set("name", name)
-		cc.out.add("removeRegistry", entry)
+		cc.addRemoveRegistry(entry)
 
 		return
 	}
@@ -728,7 +745,36 @@ func (cc *compConv) removeRegistry(elm *elem) {
 		entry.set("on", "uninstall")
 	}
 
+	cc.addRemoveRegistry(entry)
+}
+
+// addRemoveRegistry adds a removeRegistry entry unless the component has
+// the same one already, such as a value-less ForceDeleteOnUninstall key and
+// a RemoveRegistryKey of that key, which validate refuses twice.
+func (cc *compConv) addRemoveRegistry(entry *omap) {
+	existing, ok := cc.out.get("removeRegistry").([]any)
+	if !ok {
+		existing = nil
+	}
+
+	for _, item := range existing {
+		if other, ok := item.(*omap); ok && sameRemoval(other, entry) {
+			return
+		}
+	}
+
 	cc.out.add("removeRegistry", entry)
+}
+
+// sameRemoval reports whether two removeRegistry entries remove the same.
+func sameRemoval(one, other *omap) bool {
+	for _, key := range []string{"root", "key", "name", "on"} {
+		if !strings.EqualFold(one.str(key), other.str(key)) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (cc *compConv) environment(elm *elem) {
