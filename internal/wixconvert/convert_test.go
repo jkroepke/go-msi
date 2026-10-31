@@ -1490,3 +1490,65 @@ func TestConvertCloseApplicationUndefinedVar(t *testing.T) {
 		t.Errorf("the YAML notes Timeout on %d files, want 2:\n%s", got, out)
 	}
 }
+
+// TestConvertBuiltCodesRegistryKeyPath checks that a component without an
+// Id whose key path is a registry value is found by that value's Root, Key
+// and Name, also inside a RegistryKey, and only when one row matches.
+func TestConvertBuiltCodesRegistryKeyPath(t *testing.T) {
+	t.Parallel()
+
+	reg := func(name string) *wixconvert.BuiltRegistry {
+		return &wixconvert.BuiltRegistry{Root: 2, Key: `SOFTWARE\Example\Hello`, Name: name}
+	}
+
+	built := &wixconvert.BuiltPackage{Name: "hello.msi", Components: []wixconvert.BuiltComponent{
+		{ID: "regA", Code: "{00000000-0000-4000-8000-000000000001}", Directory: "INSTALLFOLDER", KeyRegistry: reg("A")},
+		{ID: "regB", Code: "{00000000-0000-4000-8000-000000000002}", Directory: "INSTALLFOLDER", KeyRegistry: reg("B")},
+		// Two rows with the value C: no match.
+		{ID: "regC1", Code: "{00000000-0000-4000-8000-000000000003}", Directory: "INSTALLFOLDER", KeyRegistry: reg("C")},
+		{ID: "regC2", Code: "{00000000-0000-4000-8000-000000000004}", Directory: "INSTALLFOLDER", KeyRegistry: reg("C")},
+		// HKCU, not HKLM: no match.
+		{ID: "regD", Code: "{00000000-0000-4000-8000-000000000005}", Directory: "INSTALLFOLDER",
+			KeyRegistry: &wixconvert.BuiltRegistry{Root: 1, Key: `SOFTWARE\Example\Hello`, Name: "D"}},
+	}}
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.1.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <StandardDirectory Id="ProgramFiles64Folder"><Directory Id="INSTALLFOLDER" Name="Hello" /></StandardDirectory>
+    <Feature Id="Main">
+      <Component Directory="INSTALLFOLDER">
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Example\Hello" Name="A" Value="1" Type="string" />
+      </Component>
+      <Component Directory="INSTALLFOLDER">
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Example">
+          <RegistryValue Key="hello" Name="b" Value="1" Type="string" KeyPath="yes" />
+        </RegistryKey>
+      </Component>
+      <Component Directory="INSTALLFOLDER">
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Example\Hello" Name="C" Value="1" Type="string" />
+      </Component>
+      <Component Directory="INSTALLFOLDER">
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Example\Hello" Name="D" Value="1" Type="string" />
+      </Component>
+    </Feature>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{Built: built})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{"{00000000-0000-4000-8000-000000000001}", "{00000000-0000-4000-8000-000000000002}"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %s:\n%s", want, out)
+		}
+	}
+
+	for _, unwanted := range []string{"-000000000003}", "-000000000004}", "-000000000005}"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("the YAML has %s:\n%s", unwanted, out)
+		}
+	}
+}
