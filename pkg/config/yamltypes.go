@@ -340,9 +340,9 @@ type ComponentSearch struct {
 	GUID string `yaml:"guid"`
 	// KeyPath is what the component's key path is: file (the default for
 	// another product's component), which returns the folder of the key
-	// file, or directory, which is expected to return the key path folder
-	// itself. The engine returns the parent of a folder key path for file
-	// and nothing for a file key path for directory (SEARCH-05, SEARCH-08).
+	// file, or directory, which returns the key path folder itself. The
+	// engine returns the parent of a folder key path for file and nothing
+	// for a file key path for directory (SEARCH-05, SEARCH-08).
 	// For a component of this package the builder knows it, and a value
 	// that contradicts the component is an error.
 	KeyPath string `yaml:"keyPath"`
