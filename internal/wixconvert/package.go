@@ -774,7 +774,7 @@ func (c *converter) searchKind(propOut *omap, elm *elem) (string, *omap) {
 		// locator says directory (SEARCH-08). For a component of the
 		// package msi-builder derives it from its own key path, which may
 		// differ from WiX's (an HKCU one in the profile), so it is left out.
-		if strings.EqualFold(elm.attr("Type"), "directory") && !c.ownComponentGUID(elm.attr("Guid")) {
+		if strings.EqualFold(elm.attr("Type"), "directory") && !c.ownComponentGUID(c.value(elm, "Guid")) {
 			found.set("keyPath", "directory")
 		}
 
@@ -900,10 +900,11 @@ func lowerFirst(s string) string {
 // ownComponentGUID reports whether guid is the Guid of a component in the
 // source.
 func (c *converter) ownComponentGUID(guid string) bool {
-	want := strings.ToUpper(strings.Trim(guid, "{}"))
+	norm := func(s string) string { return strings.ToUpper(strings.Trim(s, "{}")) }
+	want := norm(guid)
 
-	for _, cp := range c.compByID {
-		if strings.ToUpper(strings.Trim(cp.e.attr("Guid"), "{}")) == want {
+	for _, cp := range c.comps {
+		if norm(cp.e.attr("Guid")) == want || norm(c.value(cp.e, "Guid")) == want {
 			return true
 		}
 	}

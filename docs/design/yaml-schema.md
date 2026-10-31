@@ -1831,8 +1831,9 @@ standard folder gets a warning: if that property is empty, the path is
 relative and the engine searches every fixed drive. The standard folder
 properties are set before `AppSearch` (`[WindowsFolder]` and
 `[ProgramFiles64Folder]` work, SEARCH-05). A component search finds components
-whose key path is a file; a component with a registry or folder key path
-was not tested.
+whose key path is a file (SEARCH-05) and, with the locator type of a folder
+key path, those keyed on their folder (`keyPath`, expected, SEARCH-08); one
+with a registry key path was not tested.
 
 The precedence is: a value from the command line, then the first search
 that finds something, then `value`. Search *n* fills `<NAME>_FOUND`
