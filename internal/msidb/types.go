@@ -184,6 +184,23 @@ func TypeFromWord(word uint16) (Type, error) {
 	return typ, nil
 }
 
+// check refuses a type that ParseType would not return, such as one built
+// directly with a string width above 255, which the type word cannot hold.
+func (t Type) check() error {
+	canon, err := ParseType(t.String())
+	if err != nil {
+		return err
+	}
+
+	canon.Key = t.Key
+
+	if canon != t {
+		return fmt.Errorf("type %+v is not a valid column type (the nearest is %s)", t, canon)
+	}
+
+	return nil
+}
+
 // storageWidth is the number of bytes a cell takes in a table stream.
 func (t Type) storageWidth(longRefs bool) int {
 	switch t.Kind { //nolint:exhaustive // the default covers the remaining kinds
@@ -393,6 +410,10 @@ func (t *Table) normalized() (*Table, error) { //nolint:cyclop,gocognit // one p
 		}
 
 		seen[col.Name] = true
+
+		if err := col.Type.check(); err != nil {
+			return nil, fmt.Errorf("msidb: table %s: column %s: %w", t.Name, col.Name, err)
+		}
 
 		if col.Type.Key {
 			if i != keys {

@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 
@@ -35,7 +36,9 @@ func Unmarshal(data []byte) (*Database, error) {
 // streams, the summary and the binary streams that table cells reference,
 // and lists every other stream (such as a cabinet) in Database.Sources by
 // name with its size and a nil Open, leaving the bytes in the file for
-// cfb.File.Reader. Unmarshal loads those too.
+// cfb.File.Reader. Unmarshal loads those too. Both return the root-level
+// storages, such as embedded language transforms, in Database.Storages
+// with streams that read from the file, and refuse a storage inside one.
 func Decode(file *cfb.File) (*Database, error) {
 	return decodeFile(file, false)
 }
@@ -56,6 +59,59 @@ func streamData(file *cfb.File, name string) ([]byte, error) {
 	return data, nil
 }
 
+// decodeStorages returns the root-level storages, such as embedded language
+// transforms (MSISPEC section 7.6), with readers over their streams, so that
+// MarshalTo writes them back. A storage inside a storage has no place in
+// cfb.Storage and is refused rather than dropped.
+func decodeStorages(file *cfb.File) ([]cfb.Storage, error) {
+	children := make(map[int][]*cfb.Entry)
+
+	for _, ent := range file.Entries {
+		if ent.Parent > 0 {
+			children[ent.Parent] = append(children[ent.Parent], ent)
+		}
+	}
+
+	var storages []cfb.Storage
+
+	for _, ent := range file.Entries {
+		if ent.Type != 1 || ent.Parent != 0 {
+			continue
+		}
+
+		storage := cfb.Storage{Name: ent.Name, CLSID: ent.CLSID}
+
+		for _, child := range children[ent.SID] {
+			if child.Type != 2 {
+				return nil, fmt.Errorf("msidb: storage %q holds storage %q; nested storages are not supported", ent.Name, child.Name)
+			}
+
+			// Check the chain now, so that a broken stream fails here
+			// and not in a later MarshalTo.
+			if _, err := file.EntryReader(child); err != nil {
+				return nil, fmt.Errorf("msidb: storage %q: %w", ent.Name, err)
+			}
+
+			storage.Streams = append(storage.Streams, cfb.Source{
+				Name: child.Name,
+				Size: int64(child.Size), //nolint:gosec // checked against the file size
+				Open: func() (io.ReadCloser, error) {
+					reader, err := file.EntryReader(child)
+					if err != nil {
+						return nil, fmt.Errorf("msidb: storage %q: %w", ent.Name, err)
+					}
+
+					return io.NopCloser(reader), nil
+				},
+			})
+		}
+
+		storages = append(storages, storage)
+	}
+
+	return storages, nil
+}
+
 func decodeFile(file *cfb.File, loadAll bool) (*Database, error) { //nolint:maintidx,cyclop,gocyclo,gocognit // one pass over the format
 	if file.CLSID != cfb.CLSIDMSI {
 		return nil, fmt.Errorf("msidb: root CLSID %x is not the .msi CLSID", file.CLSID)
@@ -68,12 +124,33 @@ func decodeFile(file *cfb.File, loadAll bool) (*Database, error) { //nolint:main
 
 	var order []string
 
+	type decodedName struct {
+		name  string
+		table bool
+	}
+
+	seenNames := make(map[decodedName]string) // decoded name -> name as stored
+
+	storages, err := decodeStorages(file)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, ent := range file.Entries {
 		if ent.Type != 2 || ent.Parent != 0 {
 			continue
 		}
 
 		name, isTable := DecodeStreamName(ent.Name)
+
+		// The encoding is not canonical: an encoded and a literal name can
+		// decode alike, and the maps below would keep only one payload.
+		decoded := decodedName{name: name, table: isTable}
+		if first, dup := seenNames[decoded]; dup {
+			return nil, fmt.Errorf("msidb: streams %q and %q both decode to %q", first, ent.Name, name)
+		}
+
+		seenNames[decoded] = ent.Name
 
 		switch {
 		case isTable:
@@ -149,7 +226,7 @@ func decodeFile(file *cfb.File, loadAll bool) (*Database, error) { //nolint:main
 
 	endian := binary.LittleEndian
 	hdr := endian.Uint32(poolStream)
-	database := &Database{Codepage: int(hdr & 0x7FFFFFFF)}
+	database := &Database{Codepage: int(hdr & 0x7FFFFFFF), Storages: storages}
 	longRefs := hdr&0x80000000 != 0
 
 	if !codepage.Supported(database.Codepage) {
@@ -171,7 +248,15 @@ func decodeFile(file *cfb.File, loadAll bool) (*Database, error) { //nolint:main
 			}
 
 			ent.long = true
-			ent.length = int(endian.Uint32(poolStream[i:]))
+
+			// Compare before converting: on a 32-bit build a length of
+			// 2^31 or more turns negative as an int.
+			length := endian.Uint32(poolStream[i:])
+			if uint64(length) > uint64(len(dataStream)-pos) {
+				return nil, fmt.Errorf("msidb: string pool entry %d overruns _StringData", len(entries))
+			}
+
+			ent.length = int(length)
 			i += 4
 		}
 

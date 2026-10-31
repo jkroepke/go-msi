@@ -28,3 +28,23 @@ func FuzzRoundTrip(f *testing.F) {
 		}
 	})
 }
+
+// FuzzDecode reads arbitrary bytes: whatever Decode accepts must encode
+// back to the same bytes, so a reader never keeps text it cannot write.
+func FuzzDecode(f *testing.F) {
+	for _, cp := range []int{0, 1252, 1251, 932, 936, 949, 950, 65001} {
+		f.Add([]byte("Hello \x81\x93\xfa\xa4"), cp)
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte, codePage int) {
+		text, err := codepage.Decode(data, codePage)
+		if err != nil {
+			return
+		}
+
+		raw, err := codepage.Encode(text, codePage)
+		if err != nil || string(raw) != string(data) {
+			t.Fatalf("code page %d: % x decodes to %q, which encodes to % x (%v)", codePage, data, text, raw, err)
+		}
+	})
+}

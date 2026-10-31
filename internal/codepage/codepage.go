@@ -5,6 +5,7 @@
 package codepage
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"unicode/utf8"
@@ -115,6 +116,14 @@ func Decode(data []byte, codePage int) (string, error) {
 
 	out, err := enc.NewDecoder().Bytes(data)
 	if err != nil {
+		return "", fmt.Errorf("codepage: invalid bytes for code page %d", codePage)
+	}
+
+	// The x/text decoders turn malformed or unmapped bytes into U+FFFD
+	// without an error. Such text would not survive a round trip, so it
+	// must encode back to exactly the bytes read.
+	back, err := enc.NewEncoder().Bytes(out)
+	if err != nil || !bytes.Equal(back, data) {
 		return "", fmt.Errorf("codepage: invalid bytes for code page %d", codePage)
 	}
 
