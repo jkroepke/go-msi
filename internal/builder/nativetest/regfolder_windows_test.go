@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jkroepke/msi-builder/internal/testpe"
 	"github.com/jkroepke/msi-builder/internal/msidb"
+	"github.com/jkroepke/msi-builder/internal/testpe"
 )
 
 // regFolderKey holds the folder paths the SEARCH-09 package reads back.
@@ -20,7 +20,7 @@ const regFolderKey = `HKLM\SOFTWARE\MsiBuilderTest\RegFolder`
 // regFolderConfig searches folders named in the registry: directory
 // registry searches of a folder with and without a trailing backslash, of
 // a missing folder and of a file, and folder searches under a registry
-// search whose path the test removes afterwards (nestedPath), the form of
+// search whose path the test removes afterwards (pathlessNested), the form of
 // a path-less DirectorySearch nested in a RegistrySearch.
 const regFolderConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderRegFolder, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 6f2d4185-ae73-4092-b154-8d3e2f6a0194 }
@@ -55,8 +55,8 @@ func pathlessNested(t *testing.T, database *msidb.Database) {
 	edited := 0
 
 	for _, row := range drLocator.Rows {
-		path, _ := row[pathCol].(string)
-		if !strings.HasPrefix(path, "nested") {
+		path, ok := row[pathCol].(string)
+		if !ok || !strings.HasPrefix(path, "nested") {
 			continue
 		}
 
@@ -80,7 +80,7 @@ func pathlessNested(t *testing.T, database *msidb.Database) {
 }
 
 // TestMsiexecRegistryFolderExists checks SEARCH-09: a directory registry
-// search (RegLocator Type 0) finds a folder named in the registry only if
+// search (RegLocator Type 0, + 16 for the 64-bit view) finds a folder named in the registry only if
 // it exists, with or without a trailing backslash in the value, and a
 // path-less DrLocator under a RegLocator does the same. A file path and
 // the raw parent are recorded, not asserted.
