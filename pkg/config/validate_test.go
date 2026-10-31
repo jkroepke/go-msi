@@ -174,9 +174,8 @@ func TestValidateAccepted(t *testing.T) {
     scope: perUser
     schedule: [{sequence: execute, after: CostFinalize}]
 `,
-		// A working directory installs nothing: a per-user package keeps
-		// its action directories (CA-09 probed the Directory row in dual
-		// packages only), and a dual one refuses only the ICE105 folders.
+		// A working directory installs nothing: only the folders ICE105
+		// rejects are refused, not Program Files.
 		"per-user action in Program Files": strings.Replace(pkg(`{platform: x64, scope: perUser}`), "id: ProgramFiles64Folder", "id: LocalAppDataFolder", 1) +
 			appComponent + `customActions:
   - id: Tool
@@ -500,7 +499,7 @@ func TestValidate(t *testing.T) {
     return: check
     schedule: [{sequence: adminExecute, before: InstallFinalize}]
 `,
-			sevError, "customActions[0].impersonate", "(ICE105)",
+			sevError, "customActions[0].impersonate", "only with scope: perMachine",
 		},
 		"dual scope elevated perUser action": {
 			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + `customActions:
@@ -512,7 +511,7 @@ func TestValidate(t *testing.T) {
     return: check
     schedule: [{sequence: execute, before: InstallFinalize}]
 `,
-			sevError, "customActions[0].impersonate", "ICE105",
+			sevError, "customActions[0].impersonate", "a perUser action runs impersonated",
 		},
 		"per-user elevated action with scope": {
 			pkg(`{platform: x64, scope: perUser}`) + appComponent + `customActions:
@@ -538,18 +537,16 @@ func TestValidate(t *testing.T) {
 `,
 			sevError, "customActions[0].exec.directory", "System64Folder",
 		},
-		"dual scope action below the system folder": {
-			strings.Replace(pkg(`{platform: x64, scope: perMachineOrUser}`), "directories:\n",
-				"directories:\n  - id: SystemFolder\n    children:\n      - id: SYSSUB\n        name: Sub\n", 1) + appComponent + `customActions:
-  - id: Machine
-    run: {command: '"[System64Folder]cmd.exe" /c ver', directory: SYSSUB}
+		"per-user action in the temp folder": {
+			strings.Replace(pkg(`{platform: x64, scope: perUser}`), "id: ProgramFiles64Folder", "id: LocalAppDataFolder", 1) +
+				appComponent + `customActions:
+  - id: Tool
+    run: {command: '"[INSTALLDIR]tool.exe"', directory: TempFolder}
     execute: deferred
-    impersonate: false
-    scope: perMachine
     return: check
     schedule: [{sequence: execute, before: InstallFinalize}]
 `,
-			sevError, "customActions[0].run.directory", "SystemFolder",
+			sevError, "customActions[0].run.directory", "TempFolder, which the action's directory adds (ICE105)",
 		},
 		"action scope in the admin execute sequence": {
 			pkg(`{platform: x64, scope: perMachineOrUser}`) + appComponent + `customActions:

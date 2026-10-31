@@ -352,9 +352,9 @@ install has no context. ICE105 reads only the action's type, so in a
 impersonation although the condition keeps it out of per-user installs,
 and the builder passes that warning on; it is silent in a
 `perMachineOrUser` package (CA-09). The same holds for the Directory row
-that an action's `directory` adds, so a dual package refuses a working
-directory in or below a folder ICE105 rejects, such as `System64Folder`,
-`WindowsFolder` or `TempFolder`, as it does for components.
+that an action's `directory` adds, so a dual or per-user package refuses a
+folder ICE105 rejects, such as `System64Folder`, `WindowsFolder` or
+`TempFolder`, as an action's working directory, as it does for components.
 
 ```yaml
 customActions:
