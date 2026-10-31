@@ -345,15 +345,17 @@ func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pas
 		return err
 	}
 
-	// Windows picks the language entry by the user's UI language. The
-	// entry used here is the one an English system picks: language-neutral
-	// (0), then en-US (1033), then the first. Its languages are reported.
-	// Entries whose fixed versions differ make File.Version depend on the
-	// machine (FILE-14: English 9.8.7.6 won over German 1.2.3.4 on an
-	// English system), so such a file is refused, which the builder reports
-	// like an unversioned one; entries that only list other translations
-	// are accepted. Entries sharing version data are read once, so a
-	// directory of many entries costs one read per distinct block.
+	// Windows picks the language entry for the version by the user's UI
+	// language; the entry used here is the one an English system picks:
+	// language-neutral (0), then en-US (1033), then the first. Entries
+	// whose fixed versions differ make File.Version depend on the machine
+	// (FILE-14: English 9.8.7.6 won over German 1.2.3.4 on an English
+	// system), so such a file is refused, which the builder reports like an
+	// unversioned one. The languages are those of every entry, in directory
+	// order, without duplicates, last first: German [1031] and English
+	// [1033] gave 1033,1031 (FILE-14). Entries sharing version data are read
+	// once, so a directory of many entries costs one read per distinct
+	// block.
 	pick, ok := pickLanguage(langs)
 	if !ok {
 		return nil
@@ -363,11 +365,13 @@ func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pas
 		return err
 	}
 
+	var all []int
+
 	seen := make(map[uint32]bool)
 
 	for i := 0; i+8 <= len(langs); i += 8 {
 		dataEntry := binary.LittleEndian.Uint32(langs[i+4:])
-		if dataEntry == pick || dataEntry&0x80000000 != 0 {
+		if dataEntry&0x80000000 != 0 {
 			continue
 		}
 
@@ -386,7 +390,24 @@ func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pas
 		if info.HasVersion && (other.FileVersion != info.FileVersion || other.ProductVersion != info.ProductVersion) {
 			return fmt.Errorf("pe: version resource languages disagree (%s and %s)", info.FileVersion, other.FileVersion)
 		}
+
+		all = append(all, other.Languages...)
 	}
+
+	// MsiGetFileVersionW lists the languages last first: stored
+	// 1033,1031,2057 came back as 2057,1031,1033 (FILE-14).
+	info.Languages = nil
+
+	dup := make(map[int]bool)
+
+	for _, lang := range all {
+		if !dup[lang] {
+			dup[lang] = true
+			info.Languages = append(info.Languages, lang)
+		}
+	}
+
+	slices.Reverse(info.Languages)
 
 	return nil
 }
@@ -618,9 +639,7 @@ func parseVarFileInfo(data []byte, off int, info *Info) {
 				}
 			}
 
-			// MsiGetFileVersionW lists the languages last first: stored
-			// 1033,1031,2057 came back as 2057,1031,1033 (FILE-14).
-			slices.Reverse(langs)
+			// In stored order; parseVersion reverses the combined list.
 			info.Languages = langs
 
 			return

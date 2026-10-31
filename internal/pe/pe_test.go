@@ -647,11 +647,11 @@ func TestVersionResourceSelection(t *testing.T) {
 		},
 		"same version, own translations": {
 			entries: []resEntry{{1, 1031, "1.2.3.4", []int{1031}, nil}, {1, 1033, "1.2.3.4", []int{1033}, nil}},
-			version: "1.2.3.4", lang: "1033",
+			version: "1.2.3.4", lang: "1033,1031",
 		},
 		"neutral entry first": {
 			entries: []resEntry{{1, 0, "1.2.3.4", []int{1031}, nil}, {1, 1033, "1.2.3.4", []int{1033}, nil}},
-			version: "1.2.3.4", lang: "1031",
+			version: "1.2.3.4", lang: "1033,1031",
 		},
 		"65 languages": {entries: manyLanguages(65), version: "1.2.3.4", lang: "1033"},
 		"two languages disagree": {
