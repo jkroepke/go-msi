@@ -140,23 +140,23 @@ func EncodeName(name string) ([]uint16, error) {
 	return units, nil
 }
 
-// Cased reports whether a name must not hold r: a non-ASCII BMP character
+// Cased reports whether a name must not hold char: a non-ASCII BMP character
 // with a case mapping, such as U+00E9 or the fullwidth U+FF41, or one that
 // shares a case folding orbit with another character without a mapping,
 // such as U+FB05 and U+FB06. The reader folds whole orbits, so two names
 // with such a pair would be written as two siblings and read as one. U+00DF
 // stays allowed: its only partner, U+1E9E, has a mapping and is refused.
 // Surrogate units are never upper-cased (MS-CFB 2.6.4).
-func Cased(r rune) bool {
-	if r <= 0x7F || r > 0xFFFF || (r >= 0xD800 && r <= 0xDFFF) {
+func Cased(char rune) bool {
+	if char <= 0x7F || char > 0xFFFF || (char >= 0xD800 && char <= 0xDFFF) {
 		return false
 	}
 
-	if hasCaseMapping(r) {
+	if hasCaseMapping(char) {
 		return true
 	}
 
-	for other := unicode.SimpleFold(r); other != r; other = unicode.SimpleFold(other) {
+	for other := unicode.SimpleFold(char); other != char; other = unicode.SimpleFold(other) {
 		if other > 0x7F && other <= 0xFFFF && !hasCaseMapping(other) {
 			return true
 		}
