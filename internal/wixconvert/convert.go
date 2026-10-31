@@ -97,6 +97,21 @@ func Convert(r io.Reader, opts Options) (*Result, error) {
 	return &Result{YAML: text, Notes: notes, Vars: conv.undefinedVars()}, nil
 }
 
+// dirFileSource returns the FileSource of a Directory or DirectoryRef,
+// with its variables filled in.
+func (c *converter) dirFileSource(elm *elem) string {
+	src := elm.attr("FileSource")
+	if src == "" {
+		src = elm.attr("src")
+	}
+
+	if src == "" {
+		return ""
+	}
+
+	return strings.TrimRight(sourcePath(c.expand(elm, src)), "/")
+}
+
 // converter holds the indexed source file and the output.
 type converter struct {
 	compByID map[string]*comp
@@ -190,8 +205,11 @@ type dir struct {
 	parentID string
 	id       string
 	name     string
-	line     int
-	std      bool
+	// fileSource is the Directory's FileSource: where WiX looks for the
+	// files of the folder that have no Source.
+	fileSource string
+	line       int
+	std        bool
 	// sub marks a folder that a component's Subdirectory made.
 	sub bool
 	// generated is set when WiX gives the folder an ID of its own: one
@@ -526,10 +544,15 @@ func (c *converter) addDir(elm *elem, parentID string, standard bool) *dir {
 	}
 
 	if d, ok := c.dirs[dirID]; ok {
+		if d.fileSource == "" {
+			d.fileSource = c.dirFileSource(elm)
+		}
+
 		return d
 	}
 
 	folder := &dir{id: dirID, name: c.expand(elm, elm.attr("Name")), parentID: parentID, line: elm.line, generated: elm.attr("Id") == ""}
+	folder.fileSource = c.dirFileSource(elm)
 
 	if dirID == "TARGETDIR" || standard || isStandardFolder(dirID) {
 		folder.std, folder.name, folder.parentID = true, "", ""

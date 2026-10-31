@@ -1917,3 +1917,45 @@ func TestConvertComponentSearchKeyPath(t *testing.T) {
 		t.Errorf("keyPath: directory is not under OTHER_DIR:\n%s", res.YAML)
 	}
 }
+
+func TestConvertFileSource(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello" FileSource="dist\app\">
+        <Component><File Name="hello.exe" /></Component>
+        <Directory Id="DocDir" Name="doc">
+          <Component><File Name="readme.txt" /></Component>
+        </Directory>
+      </Directory>
+      <Directory Id="Other" Name="Other">
+        <Component><File Name="other.txt" /></Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /><ComponentRef Id="readme.txt" /><ComponentRef Id="other.txt" /></Feature>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"source: dist/app/hello.exe\n", "source: dist/app/doc/readme.txt\n",
+		"convert joined the FileSource of INSTALLFOLDER with the folder names below it",
+		`WiX finds "other.txt" through its bind paths`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if strings.Count(out, "through its bind paths") != 1 {
+		t.Errorf("want the bind path note only for other.txt:\n%s", out)
+	}
+}

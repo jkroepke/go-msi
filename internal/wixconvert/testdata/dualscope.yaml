@@ -76,6 +76,7 @@ customActions:
       - {sequence: ui, after: CostFinalize}
       - {sequence: execute, after: CostFinalize}
 ui:
+  # TODO(line 26): WixUI_Advanced: the WiX build sets the per-machine folder itself, also in quiet installs, and an x64 build was seen installing below Program Files (x86); msi-builder installs to installDir.parent, so set it to ProgramFilesFolder if installed versions must keep that folder
   enabled: true
   chooseFeatures: true
   chooseDirectory: true

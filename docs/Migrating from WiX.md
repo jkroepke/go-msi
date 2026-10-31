@@ -164,7 +164,7 @@ msi-builder does the same by default:
 | `SetDirectory` | `customActions[].setDirectory` |
 | `Feature` | `features` |
 | `Component` | `components` |
-| `File` | `components[].files` |
+| `File` | `components[].files`; a File without `Source` takes the `FileSource` of its Directory |
 | Heat harvesting, `Files` (v5) | A folder `source` ending in `/` |
 | `CreateFolder` | `components[].createFolder` |
 | `RemoveFile`, `RemoveFolder` | `components[].removeFiles` |
@@ -808,6 +808,11 @@ ui:
 (seen in a real-world port, also with `/qn`). msi-builder installs per
 user to `%LOCALAPPDATA%\Programs\<folder>`. A per-user msi-builder upgrade of
 such an installation should therefore move the files there.
+
+For a per-machine install, an x64 WiX build with `WixUI_Advanced` was
+seen landing below `Program Files (x86)`, also with `/qn`. convert notes
+this: set `installDir.parent: ProgramFilesFolder` when installed versions
+must keep that folder.
 
 The wizard pages are msi-builder's own, with its own bitmaps. It has no
 setup type page (Typical, Custom, Complete) like `WixUI_Mondo`, and dialogs

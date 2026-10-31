@@ -101,10 +101,7 @@ func (c *converter) emitUI() {
 		// The advanced path shows the folder and the feature tree.
 		wizard.set("enabled", true).set("chooseFeatures", true).set("chooseDirectory", true)
 
-		if !c.dualScope() {
-			c.todof(wizard, "enabled", line, "WixUI_Advanced: set package.scope to perUserOrMachine or perMachineOrUser, which need "+
-				"installerVersion 5.0, for the scope page")
-		}
+		c.advancedNotes(wizard, line)
 	default:
 		wizard.set("enabled", true)
 		c.todof(wizard, "enabled", line, "the wizard %s is not a WiX standard wizard; check the ui keys", wizardID)
@@ -113,6 +110,21 @@ func (c *converter) emitUI() {
 	c.uiVariables(wizard)
 	c.uiNavigation(wizard, c.uiID())
 	c.uiLaunch(wizard)
+}
+
+// advancedNotes notes what WixUI_Advanced does that the msi-builder wizard
+// does not.
+func (c *converter) advancedNotes(wizard *omap, line int) {
+	if !c.dualScope() {
+		c.todof(wizard, "enabled", line, "WixUI_Advanced: set package.scope to perUserOrMachine or perMachineOrUser, which need "+
+			"installerVersion 5.0, for the scope page")
+	}
+
+	if c.platform != platformX86 {
+		c.todof(wizard, "enabled", line, "WixUI_Advanced: the WiX build sets the per-machine folder itself, also in quiet "+
+			"installs, and an x64 build was seen installing below Program Files (x86); msi-builder installs to "+
+			"installDir.parent, so set it to ProgramFilesFolder if installed versions must keep that folder")
+	}
 }
 
 // navRow is a NewDialog Publish row: the button that opens a dialog.
