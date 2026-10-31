@@ -5,6 +5,7 @@
 package codepage
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"unicode/utf8"
@@ -116,6 +117,23 @@ func Decode(data []byte, codePage int) (string, error) {
 	out, err := enc.NewDecoder().Bytes(data)
 	if err != nil {
 		return "", fmt.Errorf("codepage: invalid bytes for code page %d", codePage)
+	}
+
+	// The x/text decoders turn malformed or unmapped bytes into U+FFFD
+	// without an error. No ANSI code page can encode U+FFFD, so one in
+	// the result always stands for bytes that were lost. A byte-for-byte
+	// round trip would be too strict: Windows code pages map some
+	// characters from two byte sequences (932 NEC duplicates, 936 0xA2E3
+	// and 0x80) and encode them back to one of them.
+	if bytes.ContainsRune(out, utf8.RuneError) {
+		return "", fmt.Errorf("codepage: invalid bytes for code page %d", codePage)
+	}
+
+	// Text the encoder cannot write back would fail only in a later
+	// Marshal, such as 950 0x8862, which x/text reads as a letter with a
+	// combining mark.
+	if _, err := enc.NewEncoder().Bytes(out); err != nil {
+		return "", fmt.Errorf("codepage: bytes for code page %d decode to text it cannot encode", codePage)
 	}
 
 	return string(out), nil

@@ -58,3 +58,47 @@ func TestErrors(t *testing.T) {
 		t.Error("Supported/IsANSI")
 	}
 }
+
+// TestDecodeMalformed checks that bytes the code page cannot map fail
+// instead of turning into U+FFFD, which the x/text decoders do silently.
+func TestDecodeMalformed(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		data []byte
+		cp   int
+	}{
+		{[]byte{0x81}, 932},           // a lead byte without its trail byte
+		{[]byte{'a', 0x81, ' '}, 932}, // a lead byte with an invalid trail byte
+		{[]byte{0x81}, 1252},          // unassigned in 1252
+		{[]byte{0x98}, 1251},          // unassigned in 1251
+		{[]byte{0xFF}, 949},           // no character
+		{[]byte{0xA4}, 950},           // a lead byte alone
+		{[]byte{0xEF, 0xBF}, 65001},   // a truncated UTF-8 sequence
+		{[]byte{0x88, 0x62}, 950},     // read as Ê with U+0304, which 950 cannot write
+		{[]byte{0x81, 0x30}, 936},     // a GB18030 four-byte prefix, not GBK
+	} {
+		if got, err := codepage.Decode(tc.data, tc.cp); err == nil {
+			t.Errorf("Decode(% x, %d) = %q, want an error", tc.data, tc.cp, got)
+		}
+	}
+
+	// Two byte sequences for one character are both read, as Windows
+	// reads them: NEC row 13 0x8790 and JIS 0x81E0 are both U+2252.
+	// So are IBM 0xFA5C and NEC-selected IBM 0xED40, both U+7E8A.
+	for want, seqs := range map[string][][]byte{
+		"\u2252": {{0x87, 0x90}, {0x81, 0xE0}},
+		"\u7E8A": {{0xFA, 0x5C}, {0xED, 0x40}},
+	} {
+		for _, data := range seqs {
+			if got, err := codepage.Decode(data, 932); err != nil || got != want {
+				t.Errorf("Decode(% x, 932) = %q, %v, want %q", data, got, err, want)
+			}
+		}
+	}
+
+	// A U+FFFD that was really written survives.
+	if got, err := codepage.Decode([]byte("a�b"), codepage.UTF8); err != nil || got != "a�b" {
+		t.Errorf("Decode of an encoded U+FFFD = %q, %v", got, err)
+	}
+}
