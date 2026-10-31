@@ -152,7 +152,7 @@ func TestMsiexecContextActions(t *testing.T) { //nolint:paralleltest // msiexec 
 		t.Skip("installing needs msiexec time and elevation")
 	}
 
-	for _, tc := range []struct { //nolint:paralleltest // msiexec runs one installation at a time
+	for _, tc := range []struct {
 		name, scope, context string
 		args                 []string
 	}{
@@ -201,18 +201,26 @@ func TestMsiexecContextActions(t *testing.T) { //nolint:paralleltest // msiexec 
 		})
 	}
 
-	t.Run("unconditioned per user", func(t *testing.T) {
-		dir := t.TempDir()
-		path := buildContextActions(t, dir, "perUserOrMachine", true)
-		t.Cleanup(func() { _, _ = runMsiexec([]string{"/x", path, "/qn"}, nil) })
+	for _, tc := range []struct { //nolint:paralleltest // msiexec runs one installation at a time
+		scope string
+		args  []string
+	}{
+		{"perUserOrMachine", nil},
+		{"perMachineOrUser", []string{"MSIINSTALLPERUSER=1"}},
+	} {
+		t.Run("unconditioned per user "+tc.scope, func(t *testing.T) {
+			dir := t.TempDir()
+			path := buildContextActions(t, dir, tc.scope, true)
+			t.Cleanup(func() { _, _ = runMsiexec([]string{"/x", path, "/qn"}, nil) })
 
-		log := filepath.Join(dir, "install.log")
-		msiexecQuiet(t, log, "/i", path)
+			log := filepath.Join(dir, "install.log")
+			msiexecQuiet(t, log, append([]string{"/i", path}, tc.args...)...)
 
-		text := readLog(log)
-		t.Logf("CA-09 unconditioned elevated action, administrator's per-user install: ALLUSERS %q, ran as %+v",
-			serverProperties(text)["ALLUSERS"], readContextActions(text))
-	})
+			text := readLog(log)
+			t.Logf("CA-09 unconditioned elevated action, administrator's per-user install of %s: ALLUSERS %q, ran as %+v",
+				tc.scope, serverProperties(text)["ALLUSERS"], readContextActions(text))
+		})
+	}
 }
 
 // TestNonAdminContextActions installs the CA-09 package per user as a
@@ -233,6 +241,7 @@ func TestNonAdminContextActions(t *testing.T) {
 		{"perUserOrMachine", "perUserOrMachine", false, nil},
 		{"perMachineOrUser to user", "perMachineOrUser", false, []string{"MSIINSTALLPERUSER=1"}},
 		{"unconditioned", "perUserOrMachine", true, nil},
+		{"unconditioned perMachineOrUser to user", "perMachineOrUser", true, []string{"MSIINSTALLPERUSER=1"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := nonAdminDir(t, "ca09-"+strings.ReplaceAll(tc.name, " ", "-"))
@@ -313,6 +322,35 @@ func TestICEContextActions(t *testing.T) {
 
 			if !unconditioned {
 				requireCleanICE(t, path, cub)
+			}
+		}
+	}
+}
+
+// TestICEActionFolder adds the Directory row that an action's working
+// directory System64Folder brings to the CA-09 package of both dual scopes
+// and logs what ICE105 reports about it, for the validator's refusal of
+// such folders as action directories in dual packages.
+//
+//nolint:paralleltest // msi.dll's external UI handler is process-wide
+func TestICEActionFolder(t *testing.T) {
+	cub := iceCube(t)
+
+	for _, scope := range []string{"perUserOrMachine", "perMachineOrUser"} {
+		path := editPackage(t, buildContextActions(t, t.TempDir(), scope, false), func(t *testing.T, database *msidb.Database) {
+			t.Helper()
+
+			database.Table("Directory").Add("System64Folder", "TARGETDIR", ".")
+		})
+
+		findings, err := ice.Run(path, cub)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, finding := range findings {
+			if finding.ICE == "ICE105" && finding.Type != ice.Info {
+				t.Logf("CA-09 %s with a System64Folder Directory row: %s", scope, finding)
 			}
 		}
 	}
