@@ -421,7 +421,7 @@ that its condition disables when the product is removed keeps its files.
 A condition that enables a feature whose own level is 0
 (`default: disabled`, WiX `Level="0"` with a higher conditional level)
 also holds at removals and repairs, because the uninstall leaves a
-level-0 feature alone (INST-06). `ADDLOCAL` in a later run still needs
+level-0 feature alone (the fix is confirmed by INST-06). `ADDLOCAL` in a later run still needs
 the condition.
 A condition cannot test feature or component states, nor `Installed`; `convert` leaves such levels as a `# TODO`.
 

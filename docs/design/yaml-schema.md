@@ -626,8 +626,8 @@ features:
   `(Installed AND (REMOVE OR REINSTALL)) OR (<condition>)` instead: with
   the first-install guard the feature fell back to level 0 at
   `msiexec /x`, which left it, its files and the product installed and
-  still returned 0 (reported from a real-world port on SERVER2025; the
-  fix is confirmed by INST-06). The maintenance term covers removals (`/x`, `REMOVE`,
+  still returned 0 (reported from a real-world port on SERVER2025;
+  the fix is confirmed by INST-06). The maintenance term covers removals (`/x`, `REMOVE`,
   the old product's removal in a major upgrade) and repairs only, so
   `ADDLOCAL` in a later run still needs the condition. A package built
   before this change keeps the feature at its uninstall and at the old

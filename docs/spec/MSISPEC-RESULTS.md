@@ -1148,7 +1148,8 @@ associations.
 
 Run on 2026-10-31 on the `Build & Test (windows-latest, native)` job
 (Windows Server 2025 x64, elevated) of PR #177,
-`TestMsiexecFeatureConditions` ([log](msitest/results/INST-06/ci/log.md),
+`TestMsiexecFeatureConditions`
+(`internal/builder/nativetest/featureconditions_windows_test.go`, [log](msitest/results/INST-06/ci/log.md),
 passed in runs 41230441589 and 41230502028). `Extra` is
 `default: disabled` (level 0) with the row `EXTRA = 1` (level 1), written
 as `(Installed AND (REMOVE OR REINSTALL)) OR (EXTRA = 1)`. After every step
