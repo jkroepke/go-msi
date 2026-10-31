@@ -183,6 +183,7 @@ msi-builder does the same by default:
 | `util:PermissionEx` | `permissions.grant`, `folderPermissions.grant`; on a registry key, `permissions.sddl` |
 | `Property` | `properties` |
 | `RegistrySearch`, `DirectorySearch`, `FileSearch`, `ComponentSearch` | `properties.<NAME>.search` |
+| `ProductSearch UpgradeCode` | an `upgrade.related` row with `onlyDetect: true` that sets the property |
 | `Launch` (v3 `Condition` under `Product`) | `launchConditions` |
 | `CustomAction`, `SetProperty`, `Custom` | `customActions` |
 | `InstallExecuteSequence`, `InstallUISequence` | `customActions[].schedule` |
@@ -809,10 +810,13 @@ ui:
 user to `%LOCALAPPDATA%\Programs\<folder>`. A per-user msi-builder upgrade of
 such an installation should therefore move the files there.
 
-For a per-machine install, an x64 WiX build with `WixUI_Advanced` was
-seen landing below `Program Files (x86)`, also with `/qn`. convert notes
-this: set `installDir.parent: ProgramFilesFolder` when installed versions
-must keep that folder.
+Per machine, `WixUI_Advanced` installs to
+`[ProgramFilesFolder][ApplicationFolderName]`, also with `/qn` (seen in real-world
+packages), or to the value of an action that sets `WixPerMachineFolder`. It
+does not use the name of the install folder's Directory. convert takes
+`installDir.name` and `parent` from that folder. In a 64-bit package
+`ProgramFilesFolder` is `Program Files (x86)`, and convert adds a TODO to keep
+it for installed versions or switch to `ProgramFiles64Folder`.
 
 The wizard pages are msi-builder's own, with its own bitmaps. It has no
 setup type page (Typical, Custom, Complete) like `WixUI_Mondo`, and dialogs

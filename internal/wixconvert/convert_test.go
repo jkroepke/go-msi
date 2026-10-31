@@ -1930,12 +1930,61 @@ func TestConvertFileSource(t *testing.T) {
         <Directory Id="DocDir" Name="doc">
           <Component><File Name="readme.txt" /></Component>
         </Directory>
+        <Directory Id="Same">
+          <Component><File Name="same.txt" /></Component>
+        </Directory>
       </Directory>
       <Directory Id="Other" Name="Other">
         <Component><File Name="other.txt" /></Component>
       </Directory>
     </StandardDirectory>
-    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /><ComponentRef Id="readme.txt" /><ComponentRef Id="other.txt" /></Feature>
+    <Feature Id="Main" Title="Hello">
+      <ComponentRef Id="hello.exe" /><ComponentRef Id="readme.txt" /><ComponentRef Id="other.txt" />
+      <ComponentRef Id="same.txt" /><ComponentRef Id="ref.txt" />
+    </Feature>
+  </Package>
+  <Fragment>
+    <DirectoryRef Id="Other" FileSource="build\out\">
+      <Component><File Name="ref.txt" /></Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"source: dist/app/hello.exe\n", "source: dist/app/doc/readme.txt\n", "source: dist/app/same.txt\n",
+		"source: build/out/ref.txt\n", "convert joined the FileSource of an outer folder with the folder names below it",
+		`WiX finds "other.txt" through its bind paths`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if strings.Count(out, "through its bind paths") != 1 || strings.Count(out, "check the path") != 1 {
+		t.Errorf("want the bind path note only for other.txt and the check note only for readme.txt:\n%s", out)
+	}
+}
+
+func TestConvertAdvancedFolder(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301" Scope="perUserOrMachine">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <Property Id="ApplicationFolderName" Value="Example Corp\Hello" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="APPLICATIONFOLDER" Name="Hello">
+        <Component><File Source="hello.exe" /></Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /></Feature>
+    <ui:WixUI Id="WixUI_Advanced" />
   </Package>
 </Wix>`
 
@@ -1946,16 +1995,68 @@ func TestConvertFileSource(t *testing.T) {
 
 	out := string(res.YAML)
 	for _, want := range []string{
-		"source: dist/app/hello.exe\n", "source: dist/app/doc/readme.txt\n",
-		"convert joined the FileSource of INSTALLFOLDER with the folder names below it",
-		`WiX finds "other.txt" through its bind paths`,
+		"name: Example Corp/Hello\n", "parent: ProgramFilesFolder\n",
+		"WixUI_Advanced puts this 64-bit package below Program Files (x86)",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the YAML lacks %q:\n%s", want, out)
 		}
 	}
 
-	if strings.Count(out, "through its bind paths") != 1 {
-		t.Errorf("want the bind path note only for other.txt:\n%s", out)
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, out)
+	}
+}
+
+func TestConvertProductSearch(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <Property Id="OLDTOOL" Secure="yes">
+      <ProductSearch UpgradeCode="{6f2504e0-4f89-41d3-9a0c-0305e82c3302}" Maximum="2.0.0" IncludeMaximum="yes" />
+    </Property>
+    <Property Id="BYCODE"><ProductSearch Guid="{7f2504e0-4f89-41d3-9a0c-0305e82c3303}" /></Property>
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component><File Source="hello.exe" /></Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /></Feature>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"upgradeCode: '{6f2504e0-4f89-41d3-9a0c-0305e82c3302}'", "maxVersion: 2.0.0", "includeMax: true",
+		"onlyDetect: true", "property: OLDTOOL", "<ProductSearch> has no counterpart in properties.search",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if strings.Count(out, "<ProductSearch> has no counterpart") != 1 || strings.Contains(out, "OLDTOOL:") {
+		t.Errorf("want OLDTOOL only as a related row:\n%s", out)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, out)
 	}
 }

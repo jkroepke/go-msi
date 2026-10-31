@@ -120,11 +120,87 @@ func (c *converter) advancedNotes(wizard *omap, line int) {
 			"installerVersion 5.0, for the scope page")
 	}
 
-	if c.platform != platformX86 {
-		c.todof(wizard, "enabled", line, "WixUI_Advanced: the WiX build sets the per-machine folder itself, also in quiet "+
-			"installs, and an x64 build was seen installing below Program Files (x86); msi-builder installs to "+
-			"installDir.parent, so set it to ProgramFilesFolder if installed versions must keep that folder")
+	c.advancedFolder(line)
+}
+
+// advancedFolder moves installDir to the per-machine folder WixUI_Advanced
+// sets, also in quiet installs: [ProgramFilesFolder][ApplicationFolderName]
+// (observed on real-world packages), or the value of the one action that
+// overrides WixPerMachineFolder.
+func (c *converter) advancedFolder(line int) {
+	inst := c.out.mapAt("installDir")
+	if inst == nil || inst.get("name") == nil {
+		// An install folder inside directories keeps its place there.
+		return
 	}
+
+	value, ok := c.perMachineValue(inst, line)
+	if !ok {
+		return
+	}
+
+	parent, name, ok := c.splitFolder(value)
+	if !ok {
+		c.todof(inst, "name", line, "WixUI_Advanced installs per machine to %s; set installDir.parent and name to that folder", value)
+
+		return
+	}
+
+	if name != inst.str("name") {
+		inst.set("name", name)
+		inst.comment("name", "WixUI_Advanced installs per machine to "+value+".")
+	}
+
+	if c.defaultInstallParent(parent) {
+		inst.del("parent")
+
+		return
+	}
+
+	inst.set("parent", parent)
+
+	if parent == folderProgramFiles && c.platform != platformX86 {
+		c.todof(inst, "parent", line, "WixUI_Advanced puts this 64-bit package below Program Files (x86); keep that for "+
+			"installed versions or switch to ProgramFiles64Folder")
+	}
+}
+
+// perMachineValue returns the per-machine folder of WixUI_Advanced: its
+// default, or the value of the one action that overrides it.
+func (c *converter) perMachineValue(inst *omap, line int) (string, bool) {
+	switch sources := c.perMachineSources(); len(sources) {
+	case 0:
+		return "[" + folderProgramFiles + "][ApplicationFolderName]", true
+	case 1:
+		return sources[0].e.attr("Value"), true
+	default:
+		c.todof(inst, "name", line, "several actions set WixPerMachineFolder; set installDir.parent and name to the folder the last one sets")
+
+		return "", false
+	}
+}
+
+// splitFolder splits a folder value such as [ProgramFilesFolder]Example\Hello
+// into its standard parent folder and the names below it.
+func (c *converter) splitFolder(value string) (string, string, bool) {
+	rest, ok := strings.CutPrefix(value, "[")
+	if !ok {
+		return "", "", false
+	}
+
+	parent, rest, ok := strings.Cut(rest, "]")
+	if !ok || !isStandardFolder(parent) {
+		return "", "", false
+	}
+
+	rest = strings.ReplaceAll(rest, "[ApplicationFolderName]", c.propertyValue("ApplicationFolderName"))
+
+	name := strings.Trim(sourcePath(rest), "/")
+	if name == "" || strings.ContainsAny(name, "[]") {
+		return "", "", false
+	}
+
+	return c.stdID(parent), name, true
 }
 
 // navRow is a NewDialog Publish row: the button that opens a dialog.

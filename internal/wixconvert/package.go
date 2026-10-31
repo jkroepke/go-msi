@@ -303,6 +303,8 @@ func (c *converter) emitUpgrade() {
 		c.emitRelated(upgrade, upgradeElem, strings.Trim(strings.ToLower(upgradeElem.attr("Id")), "{}") == upgradeCode)
 	}
 
+	c.emitProductSearches(upgrade)
+
 	if c.major == nil && len(c.upgrades) == 0 {
 		c.todof(nil, "", c.pkg.line,
 			"the WiX package has no MajorUpgrade; msi-builder adds the standard major upgrade (set upgrade: false to leave it out)")
@@ -318,6 +320,46 @@ func (c *converter) emitUpgrade() {
 
 	if strings.Contains(text, "WIX_DOWNGRADE_DETECTED") {
 		c.newerProperty(upgrade, "WIX_DOWNGRADE_DETECTED", 0)
+	}
+}
+
+// productSearch reports whether elm is a ProductSearch by UpgradeCode,
+// which WiX writes as a detect-only Upgrade row.
+func productSearch(elm *elem) bool {
+	return elm.is("ProductSearch") && elm.has("UpgradeCode") && !elm.has("Guid")
+}
+
+// emitProductSearches turns the ProductSearch elements by UpgradeCode into
+// upgrade.related onlyDetect rows that set their property.
+func (c *converter) emitProductSearches(upgrade *omap) {
+	for _, prop := range c.properties {
+		for _, kid := range prop.kids {
+			if !productSearch(kid) {
+				continue
+			}
+
+			row := newMap()
+			row.set("upgradeCode", c.value(kid, "UpgradeCode"))
+			row.set("minVersion", c.value(kid, "Minimum"))
+			row.set("maxVersion", c.value(kid, "Maximum"))
+
+			if kid.no("IncludeMinimum") {
+				row.set("includeMin", false)
+			}
+
+			if kid.yes("IncludeMaximum") {
+				row.set("includeMax", true)
+			}
+
+			row.set("onlyDetect", true)
+			row.set("property", prop.attr("Id"))
+
+			if kid.has("Language") {
+				c.todof(row, "", kid.line, "ProductSearch Language has no counterpart in upgrade.related")
+			}
+
+			upgrade.add("related", row)
+		}
 	}
 }
 
@@ -710,7 +752,7 @@ func (c *converter) emitProperties() {
 // upgrade row sets: msi-builder declares and secures those itself, and one
 // in properties fails ICE61.
 func upgradeOnly(elm *elem, upgradeProps map[string]bool) bool {
-	return upgradeProps[elm.attr("Id")] && !elm.has("Value") && len(elm.kids) == 0
+	return upgradeProps[elm.attr("Id")] && !elm.has("Value") && !slices.ContainsFunc(elm.kids, func(kid *elem) bool { return !productSearch(kid) })
 }
 
 // upgradeProperties are the properties that the converted upgrade rows
@@ -803,6 +845,9 @@ func (c *converter) searchKind(propOut *omap, elm *elem) (string, *omap) {
 		c.fileSearch(elm, found)
 
 		return "file", found
+	case productSearch(elm):
+		// emitProductSearches made it an upgrade.related row.
+		return "", nil
 	case elm.is("ComponentSearch"):
 		found.set("guid", c.value(elm, "Guid"))
 
