@@ -52,7 +52,7 @@ features:
   - id: Docs
     title: Documentation
     # TODO(line 78): the conditional level "40000" with condition "1" was not converted: the level is not a number from 0 to 32767
-    # TODO(line 79): the conditional level "2" with condition "Installed" was not converted: Installed is always false there, because msi-builder applies feature conditions to first installs only
+    # TODO(line 79): the conditional level "2" with condition "Installed" was not converted: msi-builder adds the Installed checks of feature conditions itself (NOT Installed for first installs, INST-05/INST-06)
     conditions:
       - condition: NOT INSTALLDOCS
         default: disabled

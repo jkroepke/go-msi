@@ -335,12 +335,14 @@ features:
 ```
 
 `msiexec /i hello.msi ASSOCIATE=0` leaves the associations out. The
-conditions only apply to a first install; a feature that only a condition
+conditions apply to a first install; a feature that only a condition
 enables (`default: disabled` on the feature) is still removed with the
-product. At an upgrade, a feature keeps
-the state the old version gave it, except that a condition can still
-disable it, and one the old version had disabled follows its conditions. `default: disabled` keeps a feature out even of `ADDLOCAL=ALL`;
-`off` lets the user still pick it.
+product and repaired. At an upgrade, a feature keeps
+the state the old version gave it, except that a condition or its own
+`disabled` level can still leave it out (pass the property again), and one
+the old version had disabled follows its conditions. `default: disabled`
+keeps a feature out even of `ADDLOCAL=ALL` unless one of its conditions is
+true; `off` lets the user still pick it.
 
 ### Show a setup wizard
 

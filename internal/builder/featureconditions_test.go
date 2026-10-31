@@ -60,11 +60,11 @@ features:
 
 	slices.Sort(got)
 
-	// A row that enables a disabled feature also holds after the first
-	// install, so that the uninstall removes the feature (INST-06).
+	// A row that enables a disabled feature also holds at removals and
+	// repairs, so that the uninstall removes the feature (INST-06).
 	want := []string{
 		"Assoc0NOT Installed AND (ASSOC <> 1)", "Assoc1NOT Installed AND (ASSOC = 1)", "Assoc5NOT Installed AND (VersionNT64)",
-		"Extra1Installed OR (EXTRA = 1)",
+		"Extra1(Installed AND (REMOVE OR REINSTALL)) OR (EXTRA = 1)",
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("Condition rows %q, want %q", got, want)

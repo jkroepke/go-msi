@@ -662,10 +662,12 @@ func (v *validator) featureDefault(featurePath string, feature *Feature) {
 func (v *validator) featureConditions(featurePath string, feature *Feature) {
 	levels := make(map[int]bool)
 
+	base := feature.baseLevel()
+
 	for i, cond := range feature.Conditions {
 		condPath := fmt.Sprintf("%s.conditions[%d]", featurePath, i)
 
-		v.featureCondition(condPath, cond, feature.BaseLevel())
+		v.featureCondition(condPath, cond, base)
 
 		if !v.featureConditionLevel(condPath, cond) {
 			continue
@@ -730,9 +732,8 @@ func (v *validator) featureCondition(field string, cond *FeatureCondition, base 
 	}
 
 	if slices.Contains(condition.Properties(cond.Condition), "Installed") {
-		v.errorf(field, "uses Installed, which the builder sets itself: a row that disables the feature "+
-			"applies to first installs only (NOT Installed, INST-05), and one that enables a disabled feature "+
-			"also to every later run (Installed OR, INST-06)")
+		v.errorf(field, "uses Installed, which the builder adds itself: most rows apply to first installs only "+
+			"(NOT Installed, INST-05); one that enables a disabled feature also to removals and repairs (INST-06)")
 	}
 
 	if full := cond.FullCondition(base); len(full) > maxComponentCondition {

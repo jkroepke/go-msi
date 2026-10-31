@@ -181,8 +181,9 @@ type Feature struct { //nolint:govet // field order is the YAML key order
 	// default. ApplyDefaults turns it into Level 1, 2 or 0.
 	Default string `yaml:"default"`
 	Level   *int   `yaml:"level"`
-	// Conditions replace Level when their condition is true at a first
-	// install (Condition table rows).
+	// Conditions replace Level when their condition is true (Condition
+	// table rows); see FeatureCondition.FullCondition for the runs they
+	// apply to.
 	Conditions     []*FeatureCondition `yaml:"conditions"`
 	Display        string              `yaml:"display"`
 	Directory      string              `yaml:"directory"`
@@ -205,9 +206,9 @@ type Feature struct { //nolint:govet // field order is the YAML key order
 	defaultedValue int
 }
 
-// BaseLevel returns the feature's own level: Level, or the level of
+// baseLevel returns the feature's own level: Level, or the level of
 // Default when the defaults have not been applied.
-func (f *Feature) BaseLevel() int {
+func (f *Feature) baseLevel() int {
 	if f.Level != nil {
 		return *f.Level
 	}
@@ -221,9 +222,9 @@ func (f *Feature) levelIsDefault() bool {
 	return f.Level != nil && f.Level == f.defaultedLevel && *f.Level == f.defaultedValue
 }
 
-// FeatureCondition is a level that replaces the feature's level at a first
-// install when the condition is true. The engine evaluates it in
-// CostFinalize, also when ADDLOCAL is set (INST-05).
+// FeatureCondition is a level that replaces the feature's level when the
+// condition is true. The engine evaluates it in CostFinalize at every run,
+// also when ADDLOCAL is set (INST-05); FullCondition limits the runs.
 type FeatureCondition struct { //nolint:govet // field order is the YAML key order
 	Condition string `yaml:"condition"`
 	// Default is on, off or disabled, like Feature.Default; set it or
@@ -233,15 +234,17 @@ type FeatureCondition struct { //nolint:govet // field order is the YAML key ord
 }
 
 // FullCondition returns the Condition row's condition for a feature whose
-// own level is base. A row that disables the feature applies to first
-// installs only, because a feature that is disabled (level 0) when the
-// product is removed keeps its files (INST-05). A row that enables a
-// feature whose own level is 0 also holds on every later run, because the
-// engine leaves a level-0 feature alone, so the uninstall would keep it
-// (INST-06); its maintenance runs then follow the installed state.
+// own level is base. Most rows get NOT Installed, so they decide first
+// installs only: a feature that a row disables (level 0) when the product
+// is removed keeps its files (INST-05). A row that enables a feature whose
+// own level is 0 gets Installed AND (REMOVE OR REINSTALL) instead: without
+// it, the feature falls back to level 0 at the uninstall, where the engine
+// leaves it and the product installed (INST-06). Restricting the
+// maintenance term to removals and repairs keeps ADDLOCAL in a later run
+// behind the condition, as at a first install.
 func (c *FeatureCondition) FullCondition(base int) string {
 	if base == 0 && c.Value() != 0 {
-		return "Installed OR (" + c.Condition + ")"
+		return "(Installed AND (REMOVE OR REINSTALL)) OR (" + c.Condition + ")"
 	}
 
 	return "NOT Installed AND (" + c.Condition + ")"
