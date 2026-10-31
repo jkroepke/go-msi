@@ -815,7 +815,7 @@ Per machine, `WixUI_Advanced` installs to
 packages), or to the value of an action that sets `WixPerMachineFolder`. It
 does not use the name of the install folder's Directory. convert takes
 `installDir.name` and `parent` from that folder. In a 64-bit package
-`ProgramFilesFolder` is `Program Files (x86)`, and convert adds a TODO to keep
+`ProgramFilesFolder` is `Program Files (x86)`, and convert adds a note to keep
 it for installed versions or switch to `ProgramFiles64Folder`.
 
 The wizard pages are msi-builder's own, with its own bitmaps. It has no
