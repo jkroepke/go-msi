@@ -452,9 +452,9 @@ func versionData(res *resources, dataEntry uint32) ([]byte, bool, error) {
 		return nil, false, err
 	}
 
-	le := binary.LittleEndian
-	dataRVA := le.Uint32(entry)
-	dataSize := le.Uint32(entry[4:])
+	order := binary.LittleEndian
+	dataRVA := order.Uint32(entry)
+	dataSize := order.Uint32(entry[4:])
 
 	// Only the block VS_VERSIONINFO's wLength declares is read, and it must
 	// lie in a section; the declared size only has to hold it. Windows read
@@ -468,7 +468,7 @@ func versionData(res *resources, dataEntry uint32) ([]byte, bool, error) {
 		return nil, false, err
 	}
 
-	length := uint32(le.Uint16(head))
+	length := uint32(order.Uint16(head))
 	if length > dataSize {
 		return nil, false, fmt.Errorf("pe: version block of %d bytes is longer than its %d-byte resource", length, dataSize)
 	}
