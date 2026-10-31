@@ -174,6 +174,16 @@ func TestValidateAccepted(t *testing.T) {
     scope: perUser
     schedule: [{sequence: execute, after: CostFinalize}]
 `,
+		// A working directory installs nothing: only the folders ICE105
+		// rejects are refused, not Program Files.
+		"per-user action in Program Files": strings.Replace(pkg(`{platform: x64, scope: perUser}`), "id: ProgramFiles64Folder", "id: LocalAppDataFolder", 1) +
+			appComponent + `customActions:
+  - id: Tool
+    exec: {command: '"[ProgramFiles64Folder]x\x.exe"', directory: ProgramFiles64Folder}
+    execute: deferred
+    return: check
+    schedule: [{sequence: execute, before: InstallFinalize}]
+`,
 		// Installed states and properties are fine in a component condition.
 		"installed states": base + strings.Replace(appComponent, "    files:",
 			"    condition: '!Main=3 AND ?App=3 OR START=\"&x\"'\n    services: [{name: svc, control: {startCondition: 'START=\"1\"'}}]\n    files:", 1),

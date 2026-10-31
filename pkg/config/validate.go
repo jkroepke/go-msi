@@ -2021,7 +2021,7 @@ func (v *validator) customActions(cfg *Config, known *refs) {
 // working directory: the builder adds a Directory row for it, which fails
 // ICE105 whatever the action's scope.
 func (v *validator) actionFolder(field, dir string) {
-	if v.forbiddenFolder(dir) {
+	if v.scope.MayBePerUser() && ice105Folders[dir] {
 		v.errorf(field, "%s cannot have the folder %s, which the action's directory adds (ICE105); "+
 			"use INSTALLDIR or leave the directory out, and name the program as [%s]program.exe", v.perUserPackage(), dir, dir)
 	}
@@ -2055,7 +2055,7 @@ func (v *validator) actionScope(actionPath string, action *CustomAction) {
 		if placement.Sequence != sequenceExecute {
 			v.errorf(fmt.Sprintf("%s.schedule[%d].sequence", actionPath, j),
 				"an action with a scope runs only in the execute sequence: the scope page sets ALLUSERS back to 2 in the UI "+
-				"sequence, and an administrative install has no context")
+					"sequence, and an administrative install has no context")
 		}
 	}
 }

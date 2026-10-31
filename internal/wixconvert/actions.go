@@ -233,6 +233,17 @@ func (c *converter) actionScope(action *omap, custom *elem) {
 		}
 
 		action.set("scope", scope)
+	case scope == scopeUser:
+		// Elevated, but only per user, where it ran as the installing
+		// user anyway (CA-09).
+		for _, placement := range placements {
+			placement.del("condition")
+		}
+
+		action.del("impersonate")
+		action.set("scope", scope)
+		c.todof(action, "scope", custom.line, "%s runs only per user, where an action without impersonation runs as the "+
+			"installing user (CA-09), so it runs impersonated", custom.attr("Id"))
 	case elevated:
 		action.set("scope", scopeMachine)
 		c.todof(action, "scope", custom.line, "msi-builder runs an action without impersonation in a %s package only in "+
