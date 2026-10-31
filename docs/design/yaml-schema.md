@@ -817,7 +817,7 @@ of the package only when the whole product goes (`REMOVE~="ALL"`), so
 that removing one feature keeps the files of the others; the DLL also
 compares paths and refuses, unless `REMOVE~="ALL"`, any folder that is or
 holds one of the package's directories, so a property that holds the
-install dir under another name is refused as well (confirmed by FILE-11 on a major upgrade, on the design before the checks moved into the deferred action); `install` is
+install dir under another name is refused as well (confirmed by FILE-11 on a major upgrade); `install` is
 expected to remove every time the component is installed, which includes
 a repair that reinstalls it and the new product of an upgrade (only the
 first install is tested); `both` does both. The condition is ANDed and may

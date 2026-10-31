@@ -126,8 +126,7 @@ the root `AGENTS.md` first.
   lines for the standard folders (`cadll.RemoveFoldersStandard()`),
   `p<path>` lines for the package's directories and one `f<property>|value`
   line per entry whose condition held; `parseRemoveData` fails on a line
-  count that differs (a line break in a formatted value; FILE-13, not run
-  yet) and on lines out of that order. Never put a count of fixed lines
+  count that differs (a line break in a formatted value; FILE-13) and on lines out of that order. Never put a count of fixed lines
   into a setter's target as `#`s: with many directories it outgrows the
   255 characters of ICE03. There is
   no immediate action any more: every check (`checkEntry`) runs in the
