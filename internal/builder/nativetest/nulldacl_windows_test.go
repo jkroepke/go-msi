@@ -4,6 +4,7 @@ package nativetest_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,16 +29,16 @@ var (
 // files, on a folder that exists before the install (SEC-04).
 // FAILNOW=1 fails the install after the grant, so the rollback runs.
 const nullDACLConfig = `schema: msi-builder/v1
-product: { name: MsiBuilderSec03, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 8d4c2a71-3f6e-4b58-9a1d-c7e05b2f9e63 }
+product: { name: MsiBuilderSec04, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 8d4c2a71-3f6e-4b58-9a1d-c7e05b2f9e63 }
 package: { platform: x64, compression: none }
-installDir: { name: MsiBuilderSec03 }
+installDir: { name: MsiBuilderSec04 }
 properties:
   FAILNOW: { secure: true }
 components:
   - files:
       - source: app.exe
   - id: OldFolder
-    directory: CommonAppDataFolder/MsiBuilderSec03/existing
+    directory: CommonAppDataFolder/MsiBuilderSec04/existing
     createFolder: true
     folderPermissions:
       grant: [{ account: S-1-5-32-546, rights: readExecute }]
@@ -54,32 +55,32 @@ customActions:
 // file or folder with SetFileSecurityW, which stores the descriptor as it is,
 // without the inheritance that SetNamedSecurityInfoW applies, so that a
 // folder can have an unprotected NULL DACL ("D:NO_ACCESS_CONTROL").
-func setSecurity(t *testing.T, path, sddl string) {
-	t.Helper()
-
+func setSecurity(path, sddl string) error {
 	sddlPtr, err := syscall.UTF16PtrFromString(sddl)
 	if err != nil {
-		t.Fatal(err)
+		return fmt.Errorf("sddl %q: %w", sddl, err)
 	}
 
 	pathPtr, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
-		t.Fatal(err)
+		return fmt.Errorf("path %q: %w", path, err)
 	}
 
 	var descriptor uintptr
 
 	const sddlRevision1 = 1
 	if r, _, callErr := pConvertStringSD.Call(uintptr(unsafe.Pointer(sddlPtr)), sddlRevision1, uintptr(unsafe.Pointer(&descriptor)), 0); r == 0 {
-		t.Fatalf("ConvertStringSecurityDescriptorToSecurityDescriptorW(%s): %v", sddl, callErr)
+		return fmt.Errorf("convert SDDL %s: %w", sddl, callErr)
 	}
 
 	defer pLocalFree.Call(descriptor) //nolint:errcheck // frees a local allocation
 
 	const daclSecurityInformation = 4
 	if r, _, callErr := pSetFileSecurity.Call(uintptr(unsafe.Pointer(pathPtr)), daclSecurityInformation, descriptor); r == 0 {
-		t.Fatalf("SetFileSecurityW(%s, %s): %v", path, sddl, callErr)
+		return fmt.Errorf("set the DACL of %s to %s: %w", path, sddl, callErr)
 	}
+
+	return nil
 }
 
 // fileDACL returns the DACL of a file or folder as SDDL, read with
@@ -138,60 +139,86 @@ func TestMsiexecGrantNullDACLChild(t *testing.T) {
 		t.Skip("installing needs msiexec time and elevation")
 	}
 
-	root := filepath.Join(os.Getenv("ProgramData"), "MsiBuilderSec03")
+	root := filepath.Join(os.Getenv("ProgramData"), "MsiBuilderSec04")
 	existing := filepath.Join(root, "existing")
+	open := filepath.Join(existing, "open")
+	// keep.txt inherits from the folder, so it shows that the grant
+	// propagated past the children without a DACL.
+	keep := filepath.Join(existing, "keep.txt")
 
 	// Children without a DACL, a folder and a file. SetFileSecurityW drops
 	// an AI flag (D:AINO_ACCESS_CONTROL reads back as D:NO_ACCESS_CONTROL,
 	// SEC-04), so a NULL DACL marked auto-inherited is not covered.
-	children := []struct{ name, sddl string }{
-		{"open", "D:NO_ACCESS_CONTROL"},
-		{"open.txt", "D:NO_ACCESS_CONTROL"},
-	}
+	children := []string{open, filepath.Join(existing, "open.txt")}
 
-	if err := os.MkdirAll(filepath.Join(existing, "open"), 0o750); err != nil {
-		t.Fatal(err)
-	}
-
-	// The test's own objects also keep the folder when the package is
-	// removed.
-	if err := os.WriteFile(filepath.Join(existing, "open.txt"), []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
+	// reset gives the children their NULL DACL back. The test, their
+	// owner, may always write the DACL, also over an empty one that a
+	// failed earlier run left; a child that does not exist is skipped.
 	reset := func() {
 		for _, child := range children {
-			setSecurity(t, filepath.Join(existing, child.name), child.sddl)
+			if _, err := os.Stat(child); err != nil {
+				continue
+			}
+
+			if err := setSecurity(child, "D:NO_ACCESS_CONTROL"); err != nil {
+				t.Errorf("reset: %v", err)
+			}
+		}
+	}
+
+	reset()
+
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(open, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	// The test's objects also keep the folder when the package is removed.
+	for _, file := range []string{children[1], keep} {
+		if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
 		}
 	}
 
 	reset()
 
 	dir := t.TempDir()
-	path := buildConfig(t, dir, "sec03", nullDACLConfig, map[string][]byte{
+	path := buildConfig(t, dir, "sec04", nullDACLConfig, map[string][]byte{
 		"app.exe": testpe.Build(testpe.Options{FileVersion: "1.0.0.0", Languages: []int{1033}}),
 	})
 
 	t.Cleanup(func() {
 		_ = exec.CommandContext(context.Background(), "msiexec", "/x", path, "/qn").Run()
-		// The test's objects' owner, the elevated test, may always write
-		// the DACL, also over an empty one.
+
 		reset()
 
 		_ = os.RemoveAll(root)
 	})
 
+	const guests = "(A;OICI;0x1200a9;;;BG)"
+
+	const guestsInherited = "(A;ID;0x1200a9;;;BG)"
+
 	t.Logf("SEC-04: parent before: %s", fileDACL(t, existing))
+	t.Logf("SEC-04: keep.txt before: %s", fileDACL(t, keep))
 
-	before := map[string]string{}
-	for _, child := range children {
-		before[child.name] = fileDACL(t, filepath.Join(existing, child.name))
-		t.Logf("SEC-04: %s before: %s", child.name, before[child.name])
+	requireNullDACLs := func(when string) {
+		t.Helper()
 
-		if !strings.Contains(before[child.name], "NO_ACCESS_CONTROL") {
-			t.Fatalf("%s before the install: %s, want no DACL", child.name, before[child.name])
+		for _, child := range children {
+			got := fileDACL(t, child)
+			t.Logf("SEC-04: %s %s: %s", filepath.Base(child), when, got)
+
+			if got != "D:NO_ACCESS_CONTROL" {
+				t.Errorf("%s %s: %s, want D:NO_ACCESS_CONTROL as before", filepath.Base(child), when, got)
+			}
 		}
 	}
+
+	requireNullDACLs("before")
 
 	// Rollback: the grant ran, then FailNow failed the install.
 	if code := msiexecCode(t, filepath.Join(dir, "rollback.log"), "/i", path, "FAILNOW=1"); code != 1603 {
@@ -201,33 +228,42 @@ func TestMsiexecGrantNullDACLChild(t *testing.T) {
 	log := readLog(filepath.Join(dir, "rollback.log"))
 	t.Logf("SEC-04: rollback log:\n%s", grepLog(log, "BuilderGrant: "))
 
-	for _, want := range []string{"BuilderGrant: granted", "BuilderGrant: revoked"} {
+	for _, want := range []string{"BuilderGrant: granted: " + existing, "BuilderGrant: revoked: " + existing} {
 		if !strings.Contains(log, want) {
 			t.Errorf("rollback log has no %q", want)
 		}
 	}
 
-	requireNullDACLs := func(when string) {
-		t.Helper()
+	if got := fileDACL(t, existing); strings.Contains(got, guests) {
+		t.Errorf("parent after rollback: %s, want no %s", got, guests)
+	}
 
-		for _, child := range children {
-			got := fileDACL(t, filepath.Join(existing, child.name))
-			t.Logf("SEC-04: %s %s: %s", child.name, when, got)
-
-			if got != before[child.name] {
-				t.Errorf("%s %s: %s, want %s as before", child.name, when, got, before[child.name])
-			}
-		}
+	if got := fileDACL(t, keep); strings.Contains(got, guestsInherited) {
+		t.Errorf("keep.txt after rollback: %s, want no %s", got, guestsInherited)
 	}
 
 	requireNullDACLs("after rollback")
 
-	// Install: the grant reaches the folder; the children gave everyone
-	// full access already, so they need nothing of it.
-	reset()
+	// Everyone may still write into the folder.
+	if err := os.WriteFile(filepath.Join(open, "probe.txt"), []byte("x"), 0o600); err != nil {
+		t.Errorf("writing into the folder without a DACL after the rollback: %v", err)
+	}
+
+	// Install: the grant reaches the folder and what inherits from it; the
+	// children gave everyone full access already, so they need nothing of
+	// it.
 	msiexecQuiet(t, filepath.Join(dir, "install.log"), "/i", path)
 
-	t.Logf("SEC-04: parent after install: %s", fileDACL(t, existing))
+	if got := fileDACL(t, existing); !strings.Contains(got, guests) {
+		t.Errorf("parent after install: %s, want %s", got, guests)
+	}
+
+	if got := fileDACL(t, keep); !strings.Contains(got, guestsInherited) {
+		t.Errorf("keep.txt after install: %s, want %s", got, guestsInherited)
+	} else {
+		t.Logf("SEC-04: keep.txt after install: %s", got)
+	}
+
 	requireNullDACLs("after install")
 
 	msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
