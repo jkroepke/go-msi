@@ -187,10 +187,10 @@ func TestLegacyNames(t *testing.T) {
 		want string
 		attr uint16
 	}{
-		{"dir\\caf\xE9.txt", "dir\\café.txt", AttrArchive},
+		{"dir\\r\xE9sum\xE9.txt", "dir\\résumé.txt", AttrArchive},
 		{"\x80uro", "€uro", AttrArchive},
 		{"plain.txt", "plain.txt", AttrArchive},
-		{"dir\\café.txt", "dir\\café.txt", AttrArchive | attrUTF8Name},
+		{"dir\\résumé.txt", "dir\\résumé.txt", AttrArchive | attrUTF8Name},
 	} {
 		files, err := Read(cabinet(tc.raw, tc.attr))
 		if err != nil || files[0].Name != tc.want || files[0].Attributes != AttrArchive {
@@ -211,17 +211,17 @@ func TestLegacyNames(t *testing.T) {
 		}
 	}
 
-	if _, err := Read(cabinet("caf\xE9", AttrArchive|attrUTF8Name)); err == nil {
+	if _, err := Read(cabinet("r\xE9sum\xE9", AttrArchive|attrUTF8Name)); err == nil {
 		t.Error("a name flagged UTF-8 with invalid UTF-8 was accepted")
 	}
 
 	// The writer marks a non-ASCII name as UTF-8, so it reads back as is.
-	out, err := Write([]File{{Name: "café", Data: []byte("x")}}, Options{})
+	out, err := Write([]File{{Name: "résumé", Data: []byte("x")}}, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if files, err := Read(out); err != nil || files[0].Name != "café" {
+	if files, err := Read(out); err != nil || files[0].Name != "résumé" {
 		t.Errorf("round trip: %+v, %v", files, err)
 	}
 }
@@ -368,7 +368,7 @@ func TestWriteToSourceErrors(t *testing.T) {
 			t.Errorf("compression %d: a source that stops delivering: got %v", comp, err)
 		}
 
-		if err := writeScripted(comp, 5, []readStep{{data: "hel", err: io.EOF}}); err == nil {
+		if err := writeScripted(comp, 5, []readStep{{data: "abc", err: io.EOF}}); err == nil {
 			t.Errorf("compression %d: a short source was accepted", comp)
 		}
 	}

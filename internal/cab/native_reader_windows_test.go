@@ -111,7 +111,7 @@ func TestNativeReadMakecabLegacyName(t *testing.T) { //nolint:paralleltest // ma
 		t.Skipf("the ANSI code page is %d, not %d", acp, cab.LegacyCodePage)
 	}
 
-	const name = "café.txt"
+	const name = "résumé.txt"
 
 	dir := t.TempDir()
 	// A second file makes expand.exe use the names in the cabinet.
@@ -124,7 +124,7 @@ func TestNativeReadMakecabLegacyName(t *testing.T) { //nolint:paralleltest // ma
 	// makecab reads the directive file as ANSI: é is E9 in code page 1252.
 	ddf := ".OPTION EXPLICIT\r\n.Set CabinetNameTemplate=out.cab\r\n.Set DiskDirectoryTemplate=.\r\n" +
 		".Set Cabinet=on\r\n.Set Compress=on\r\n.Set CompressionType=MSZIP\r\n" +
-		".Set RptFileName=nul\r\n.Set InfFileName=nul\r\n\"caf\xE9.txt\" caf\xE9.txt\r\nsecond.txt second.txt\r\n"
+		".Set RptFileName=nul\r\n.Set InfFileName=nul\r\n\"r\xE9sum\xE9.txt\" r\xE9sum\xE9.txt\r\nsecond.txt second.txt\r\n"
 	if err := os.WriteFile(filepath.Join(dir, "cab.ddf"), []byte(ddf), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestNativeReadMakecabLegacyName(t *testing.T) { //nolint:paralleltest // ma
 		t.Fatal(err)
 	}
 
-	if !bytes.Contains(raw, []byte("caf\xE9.txt\x00")) {
+	if !bytes.Contains(raw, []byte("r\xE9sum\xE9.txt\x00")) {
 		t.Fatal("makecab did not store the name as code page 1252 bytes")
 	}
 
