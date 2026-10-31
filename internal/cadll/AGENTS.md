@@ -169,7 +169,7 @@ the root `AGENTS.md` first.
   lists the volume root; never rely on it being secret, only on
   `openBackup`'s owner and protected-DACL check. The
   guards (drive roots, standard folder properties and their parents
-  compared by final path, profiles by token SID, the Windows folder, a
+  compared by final path, profiles by the engine's `UserSID`, the Windows folder, a
   reparse point as the folder, a junction or link above it; not a volume
   mounted in a folder above it) only ever skip an entry, and no action
   fails the installation: a cleanup must not block an uninstall. Test guards only on
