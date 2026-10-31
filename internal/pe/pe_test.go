@@ -131,8 +131,7 @@ func TestCorruptSizes(t *testing.T) {
 		off   int
 		value uint32
 	}{
-		"version data size wraps":    {testDataEntry + 4, 0xFFFFFFF8},
-		"version data size huge":     {testDataEntry + 4, 0x7FFFFFFF},
+		"version data size short":    {testDataEntry + 4, 0x20},
 		"version data RVA wraps":     {testDataEntry, 0xFFFFFFF0},
 		"version data RVA elsewhere": {testDataEntry, 0x1000},
 		"directory entry wraps int":  {testRootEntry, 0x80000000 | 0x7FFFFFF8},
@@ -366,8 +365,9 @@ func TestInvalidVersionHeader(t *testing.T) {
 		field int
 		value uint16
 	}{
-		"value runs past the block": {2, 0xFFFF},
-		"text type":                 {4, 1},
+		"value runs past the block":  {2, 0xFFFF},
+		"block longer than its data": {0, 0xFFFF},
+		"text type":                  {4, 1},
 	}
 
 	for name, tc := range tests {
@@ -451,5 +451,37 @@ func TestInvalidFileAlignment(t *testing.T) {
 	info, err := Parse(bytes.NewReader(data))
 	if err == nil && info.HasVersion {
 		t.Errorf("one raw byte gave a version: %+v", info)
+	}
+}
+
+// TestOversizedVersionData declares more version data than the section
+// holds, and a resource directory of size 0. Windows reads only the block
+// VS_VERSIONINFO declares and ignores the directory size (FILE-14).
+func TestOversizedVersionData(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		off   int
+		value uint32
+	}{
+		"version data size 512":   {testDataEntry + 4, 512},
+		"version data size huge":  {testDataEntry + 4, 0x7FFFFFFF},
+		"version data size wraps": {testDataEntry + 4, 0xFFFFFFF8},
+		"directory size 0":        {testResourceDir + 4, 0},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			info, err := Parse(bytes.NewReader(corruptImage(t, tc.off, tc.value)))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if info.FileVersion != "1.2.3.4" || info.Language() != "1033" {
+				t.Errorf("%+v", info)
+			}
+		})
 	}
 }

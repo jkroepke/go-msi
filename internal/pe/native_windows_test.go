@@ -140,6 +140,10 @@ func TestMsiGetFileVersionAgrees(t *testing.T) {
 		"NumberOfRvaAndSizes 2":         patch(testResourceDir-20, 2),
 		"wValueLength 65535":            versionHeader(2, 0xFFFF),
 		"root wType text":               versionHeader(4, 1),
+		"wLength 65535":                 versionHeader(0, 0xFFFF),
+		"version data size 512":         patch(testDataEntry+4, 512),
+		"version data size short":       patch(testDataEntry+4, 0x20),
+		"resource directory size 0":     patch(testResourceDir+4, 0),
 		"resource directory size huge":  patch(testResourceDir+4, 0x7FFFFFFF),
 		"resource directory size wraps": patch(testResourceDir+4, 0xFFFFF000),
 	}

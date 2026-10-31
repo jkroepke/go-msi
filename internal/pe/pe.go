@@ -239,7 +239,6 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 	}
 
 	resRVA := order.Uint32(opt[dirOff+8*2:])
-	resourceSize := order.Uint32(opt[dirOff+8*2+4:])
 
 	secs := make([]byte, 40*numSections)
 	if _, err := rdr.ReadAt(secs, optOff+int64(optSize)); err != nil {
@@ -261,7 +260,9 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 		})
 	}
 
-	if resRVA == 0 || resourceSize == 0 {
+	// The size is not checked at all: Windows read the version through a
+	// directory declared with size 0 (FILE-14).
+	if resRVA == 0 {
 		return info, nil
 	}
 
@@ -303,10 +304,6 @@ func findEntry(res *resources, dir uint32, wantID int) (uint32, bool, error) {
 	return 0, false, nil
 }
 
-// maxVersionInfo is the largest VS_VERSIONINFO: its length is a 16-bit
-// field, so parseVersionInfo never looks past it.
-const maxVersionInfo = 0xFFFF
-
 func parseVersion(res *resources, info *Info) error { //nolint:cyclop // one pass over the format; splitting would scatter it
 	const rtVersion = 16
 
@@ -345,13 +342,24 @@ func versionData(res *resources, dataEntry uint32) ([]byte, error) {
 	dataRVA := le.Uint32(entry)
 	dataSize := le.Uint32(entry[4:])
 
-	// The whole declared range must lie in a section, as before, but only
-	// what VS_VERSIONINFO can use is read.
-	if _, ok := res.img.section(dataRVA, dataSize); !ok {
-		return nil, fmt.Errorf("pe: RVA %#x is not in any section", dataRVA)
+	// Only the block VS_VERSIONINFO's wLength declares is read, and it must
+	// lie in a section; the declared size only has to hold it. Windows read
+	// a version whose data entry claimed more than its section (FILE-14).
+	if dataSize < 6 {
+		return nil, errors.New("pe: version resource too short")
 	}
 
-	return res.img.read(dataRVA, min(dataSize, maxVersionInfo))
+	head, err := res.img.read(dataRVA, 2)
+	if err != nil {
+		return nil, err
+	}
+
+	length := uint32(le.Uint16(head))
+	if length > dataSize {
+		return nil, fmt.Errorf("pe: version block of %d bytes is longer than its %d-byte resource", length, dataSize)
+	}
+
+	return res.img.read(dataRVA, length)
 }
 
 func utf16At(b []byte, off int) (string, int) {
@@ -389,8 +397,10 @@ func parseVersionInfo(data []byte, info *Info) error { //nolint:cyclop // one pa
 		return fmt.Errorf("pe: version resource type %d is not binary", wType)
 	}
 
-	if length > len(data) {
-		length = len(data)
+	// A block longer than its data is truncated: Windows refuses it
+	// (FILE-14).
+	if length > len(data) || length < 6 {
+		return fmt.Errorf("pe: version block length %d does not fit its %d bytes", length, len(data))
 	}
 
 	// Every key is read within its own block: a missing terminator must not
