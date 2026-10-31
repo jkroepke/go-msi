@@ -2117,3 +2117,52 @@ func TestConvertSameVersionUpgrades(t *testing.T) {
 		}
 	}
 }
+
+func TestConvertForceDeleteKey(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Hello">
+        <Component>
+          <File Source="hello.exe" />
+          <RegistryKey Root="HKLM" Key="SOFTWARE\Example\Stale" ForceDeleteOnUninstall="yes" />
+          <RegistryKey Root="HKLM" Key="SOFTWARE\Example\Hello" ForceDeleteOnUninstall="yes">
+            <RegistryKey Key="Sub"><RegistryValue Name="v" Value="1" /></RegistryKey>
+          </RegistryKey>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /></Feature>
+  </Package>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(res.YAML)
+	for _, want := range []string{
+		"removeRegistry:\n", `key: SOFTWARE\Example\Stale`, "on: uninstall", "removeOnUninstall: true",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the YAML lacks %q:\n%s", want, out)
+		}
+	}
+
+	if strings.Count(out, "type: key") != 1 {
+		t.Errorf("want a key entry only for SOFTWARE\\Example\\Hello:\n%s", out)
+	}
+
+	cfg, err := config.Parse(res.YAML, config.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.Validate(cfg).Err(); err != nil {
+		t.Errorf("the converted file does not validate: %v\n%s", err, out)
+	}
+}

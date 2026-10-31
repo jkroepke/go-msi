@@ -501,6 +501,9 @@ when the component is installed. `RemoveRegistryKey` with
 removed, and the install does not create it. A `type: key` entry with
 `removeOnUninstall: true` deletes the key at uninstall too, but also
 creates it at install.
+A `RegistryKey` with `ForceDeleteOnUninstall="yes"` and no values, also none in
+nested keys, only deletes the key, so convert writes it as such a
+`removeRegistry` entry.
 
 ## Environment variables
 

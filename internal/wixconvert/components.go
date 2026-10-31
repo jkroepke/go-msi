@@ -3,6 +3,7 @@ package wixconvert
 import (
 	"path"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -558,12 +559,20 @@ func (cc *compConv) registry(elm *elem, root, parentKey string) {
 
 // forcedKey writes the key entry of a RegistryKey that is created or
 // deleted as a whole.
-func (cc *compConv) forcedKey(e *elem, root, key string) {
-	action := e.attr("Action") // WiX v3
-	forceCreate := e.yes("ForceCreateOnInstall") || action == "create" || action == "createAndRemoveOnUninstall"
-	forceDelete := e.yes("ForceDeleteOnUninstall") || action == "createAndRemoveOnUninstall"
+func (cc *compConv) forcedKey(elm *elem, root, key string) {
+	action := elm.attr("Action") // WiX v3
+	forceCreate := elm.yes("ForceCreateOnInstall") || action == "create" || action == "createAndRemoveOnUninstall"
+	forceDelete := elm.yes("ForceDeleteOnUninstall") || action == "createAndRemoveOnUninstall"
 
 	if !forceCreate && !forceDelete {
+		return
+	}
+
+	if forceDelete && !forceCreate && !hasRegistryValue(elm) {
+		// WiX writes only the "-" row: the key is deleted on uninstall
+		// but never created (REG-08). A key entry would create it.
+		cc.out.add("removeRegistry", newMap().set("root", root).set("key", key).set("on", "uninstall"))
+
 		return
 	}
 
@@ -573,6 +582,14 @@ func (cc *compConv) forcedKey(e *elem, root, key string) {
 	}
 
 	cc.out.add("registry", entry)
+}
+
+// hasRegistryValue reports whether a RegistryKey writes a value, also in
+// a nested key, which creates the key on install.
+func hasRegistryValue(elm *elem) bool {
+	return slices.ContainsFunc(elm.kids, func(kid *elem) bool {
+		return kid.is("RegistryValue") || kid.is("RegistryKey") && hasRegistryValue(kid)
+	})
 }
 
 const typeMultiString = "multiString"
