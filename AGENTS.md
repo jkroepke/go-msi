@@ -64,9 +64,10 @@ versioning after 1.0.
   before touching it. [`internal/rights`](internal/rights) maps grant
   rights names to access masks for `pkg/config` and the builder.
 - [`internal/schema`](internal/schema), [`internal/pe`](internal/pe),
-  [`internal/condition`](internal/condition), [`internal/sequence`](internal/sequence),
+  [`internal/condition`](internal/condition), [`internal/formatted`](internal/formatted), [`internal/sequence`](internal/sequence),
   [`internal/codepage`](internal/codepage), [`internal/artwork`](internal/artwork):
   standard table definitions, PE version resources, the condition grammar,
+  checks of formatted strings,
   sequence numbering, code pages and the wizard bitmaps.
 - [`cmd/msi-builder`](cmd/msi-builder): CLI with `build`, `validate`, `inspect`, `convert`,
   `sign`, `verify`, `completion` and `version`, built on `spf13/cobra`.
@@ -206,6 +207,16 @@ go test ./... -shuffle=on -race
   non-administrator installs with 1625 unless the machine policy `DisableMsi`
   is 0, and a per-user test package needs `INSTALLDIR` under
   `LocalAppDataFolder`, or it stops with 1303 at Program Files.
+- A standard user can start a repair of a per-machine product, which the
+  server runs elevated with the user's command-line values of secure
+  properties only (SEC-03). A property that steers what
+  such an action changes (a grant's account or folder) stays out of
+  `SecureCustomProperties` (`unsecureGrantProperties`, spec 17.7);
+  `TestNonAdminGrantRepair` repairs as the standard user to check that.
+  On the CI runner such a silent repair of a package with an elevated
+  custom action fails with 1730 in `InstallInitialize` (`SECREPAIR`,
+  `MSI_LUA` credential prompt), after the property decisions are logged,
+  so read those from the log rather than from what the repair changed.
 - CI splits Windows into two runners: suite `unit` runs every package but
   `internal/builder/nativetest` under `-race`, suite `native` runs
   nativetest verbose and without `-race` (msiexec installs one package at a

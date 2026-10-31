@@ -524,7 +524,7 @@ directories:
     children:
       - id: APPLICATIONFOLDER
         name: windows_exporter
-        configurable: true       # public + Secure, can be set on the command line and in the UI
+        configurable: true       # public + Secure (not when a per-machine grant uses it), can be set on the command line and in the UI
         children:
           - id: TEXTFILEDIR
             name: textfile_inputs
@@ -1289,11 +1289,27 @@ A package with services has at most 44 grants, 19 when a service uses
 `delayedAutoStart` or `failureActionsOnNonCrashFailures`, fewer with other
 actions after `InstallServices` such as `recovery`; the builder says how
 many fit. The account and the
-folder still come from properties: a standard user who repairs a
-per-machine product can presumably set a secure property on the command
-line (not tested), so
-keep the account and directory properties of a grant `secure: false`
-unless the wizard sets them. Three actions on the embedded custom action
+folder still come from properties, and a standard user can start a
+repair of a per-machine product with their own `SVC_ACCOUNT=...` on the
+command line, which the engine passes only for a secure property (SEC-03;
+current Windows then refuses a silent repair of a package with grants
+with error 1730 unless an administrator enters credentials, older builds
+presumably do not). So the
+properties in an account and the public directories above a folder
+grant's folder, or a file grant's component directory, up to the standard
+folder (`INSTALLDIR` for `INSTALLDIR/data`) are not secure, unlike other
+public properties: an administrator's command line still reaches the
+installation, and a standard user's value is dropped (SEC-03), so a
+repair that runs grants to the remembered account. `secure:
+true` in `properties` keeps one secure, and so does a `search`; the
+builder then warns about the repair unless the wizard sets the property.
+The wizard needs `secure: true` when a dialog field, the folder page or
+the feature tree sets the account or folder, and the builder warns when
+a property the wizard sets, or a configurable directory other than the
+install dir, loses the secure status it would otherwise have. A `setProperty` or `setDirectory`
+action that sets such a property makes the properties in its value count
+too. An account, and the value of such an action, cannot use a nested
+reference (`[[NAME]]`, `[A[B]]`). Per-user packages are not affected. Three actions on the embedded custom action
 DLL apply them, after `InstallFiles` (after `InstallServices` when the
 package has services) and before `StartServices`, so a service can use its
 folder when it starts: the deferred `BuilderGrantExec` grants without
@@ -1693,7 +1709,7 @@ properties:
 | Key | Default | Notes |
 |---|---|---|
 | `value` | none | Written to the Property table; an empty value writes no row. With `search` it is set by an action after `AppSearch` instead (see below) |
-| `secure` | `true` for public names | Listed in `SecureCustomProperties` |
+| `secure` | `true` for public names, except, in per-machine and dual packages, those a permission grant's account or folder comes from | Listed in `SecureCustomProperties` |
 | `hidden` | `false` | Listed in `MsiHiddenProperties` |
 | `search` | none | Fills the property from the registry, a folder, a file or an installed component; one search or a list, see below |
 
