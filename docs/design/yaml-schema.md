@@ -515,8 +515,9 @@ values, and so do machine environment variables, HKLM and HKU
 `removeRegistry` entries, and file types and HKMU or HKCR removals outside
 a `perUser` package. A firewall carrier in the profile
 gets the value. A `component` search for the GUID of a component whose
-key path becomes the value finds the registry value after the upgrade, not the file
-(not tested). In a per-machine install the desktop and Start menu folders
+key path becomes the value is expected to find nothing, not the file (not
+tested for this HKCU value; an HKLM registry key path found nothing with
+either type, SEARCH-08). In a per-machine install the desktop and Start menu folders
 are the all-users ones; the value still goes to the installing user's
 HKCU, as ICE38 asks. A dual package's install dir is under Program Files in the
 package, so its components keep their key files; components in profile
