@@ -208,3 +208,29 @@ func TestMarshalTransformRefusesDuplicateKeys(t *testing.T) {
 		}
 	}
 }
+
+// TestMarshalTransformCompositeKeysWithNUL checks that composite keys whose
+// strings hold NULs stay distinct: ("a", "b\x00string:c") and
+// ("a\x00string:b", "c") once encoded to the same row key.
+func TestMarshalTransformCompositeKeysWithNUL(t *testing.T) {
+	t.Parallel()
+
+	cols := []Column{Col("A", "s72", true), Col("B", "s72", true), Col("V", "s72", false)}
+	base := &Database{Codepage: 1252, Tables: []*Table{{Name: "T", Columns: cols, Rows: [][]any{{"a", "b\x00string:c", "v"}}}}}
+	variant := &Database{Codepage: 1252, Tables: []*Table{{Name: "T", Columns: cols, Rows: [][]any{{"a\x00string:b", "c", "v"}}}}}
+
+	out, err := MarshalTransform(base, variant, TransformOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	file, err := cfb.Read(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	encoded, _ := EncodeStreamName("T", true)
+	if _, ok := file.Stream(encoded); !ok {
+		t.Error("the transform has no records for T, want a delete and an insert")
+	}
+}

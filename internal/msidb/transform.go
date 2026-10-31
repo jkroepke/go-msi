@@ -288,7 +288,15 @@ func sameSchema(base, variant map[string]*Table) error {
 func rowKey(tbl *Table, row []any) string {
 	var key strings.Builder
 
+	// Strings are quoted, so a key cell holding a NUL cannot imitate the
+	// separator and make two different keys equal.
 	for i := range tbl.Keys() {
+		if str, ok := row[i].(string); ok {
+			fmt.Fprintf(&key, "s%q\x00", str)
+
+			continue
+		}
+
 		fmt.Fprintf(&key, "%T:%v\x00", row[i], row[i])
 	}
 

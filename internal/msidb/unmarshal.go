@@ -449,6 +449,19 @@ func decodeFile(file *cfb.File, loadAll bool) (*Database, error) { //nolint:main
 		tbl.Columns = append(tbl.Columns, col.column)
 	}
 
+	// A table stream that _Tables does not list would be dropped without a
+	// trace on the next write (MSISPEC section 3, lossless serialization).
+	for name := range tableStreams {
+		switch name {
+		case TableStringPool, TableStringData, TableTables, TableColumns:
+			continue
+		}
+
+		if _, listed := tables[name]; !listed {
+			return nil, fmt.Errorf("msidb: table stream %s is not in _Tables", name)
+		}
+	}
+
 	for _, name := range tableOrder {
 		tbl := tables[name]
 		if len(tbl.Columns) == 0 {

@@ -331,3 +331,33 @@ func TestLoneSurrogateNameRefused(t *testing.T) {
 		}
 	}
 }
+
+// TestOrphanTableStreamRefused checks that a table stream _Tables does not
+// list fails instead of being dropped by the next Marshal.
+func TestOrphanTableStreamRefused(t *testing.T) {
+	t.Parallel()
+
+	raw, err := propertyDB([]any{"ProductName", "Example"}).Marshal(Options{CFBVersion: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	file, err := cfb.Read(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	orphan, err := EncodeStreamName("UnknownTable", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bad, err := cfb.Write(append(file.Streams(), cfb.Stream{Name: orphan, Data: []byte{1, 0}}), cfb.Options{Version: 3, CLSID: cfb.CLSIDMSI})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Unmarshal(bad); err == nil || !strings.Contains(err.Error(), "UnknownTable is not in _Tables") {
+		t.Errorf("Unmarshal with an orphan table stream: %v, want a refusal", err)
+	}
+}
