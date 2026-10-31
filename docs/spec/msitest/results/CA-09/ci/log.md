@@ -36,3 +36,23 @@ contextactions_windows_test.go:231: CA-09 unconditioned as msitest: exit 0, ALLU
 contextactions_windows_test.go:276: CA-09 perUserOrMachine unconditioned=false: ICE105 warning: 3073 contains msidbCustomActionTypeNoImpersonate execution option. This is invalid for a per user application. [CustomAction.Action]
 contextactions_windows_test.go:276: CA-09 perUserOrMachine unconditioned=true: ICE105 warning: 3073 contains msidbCustomActionTypeNoImpersonate execution option. This is invalid for a per user application. [CustomAction.Action]
 ```
+
+## CI run 41239378858 (commit e783560)
+
+The unconditioned copy now has its own package code. New subtests switch
+the unconditioned `perMachineOrUser` package to per user
+(`MSIINSTALLPERUSER=1`), as the administrator and as `msitest`, and
+`TestICEActionFolder` adds a Directory row `System64Folder` under
+`TARGETDIR` to the package and runs the ICE suite for both dual scopes.
+The other lines matched the first run.
+
+```text
+contextactions_windows_test.go:220: CA-09 unconditioned elevated action, administrator's per-user install of perUserOrMachine: ALLUSERS "", ran as {machine:runnervmdaln5\runneradmin user:runnervmdaln5\runneradmin both:runnervmdaln5\runneradmin}
+contextactions_windows_test.go:220: CA-09 unconditioned elevated action, administrator's per-user install of perMachineOrUser: ALLUSERS "", ran as {machine:runnervmdaln5\runneradmin user:runnervmdaln5\runneradmin both:runnervmdaln5\runneradmin}
+contextactions_windows_test.go:257: CA-09 unconditioned as msitest: exit 0, ALLUSERS "", ran as {machine:runnervmdaln5\msitest user:runnervmdaln5\msitest both:runnervmdaln5\msitest}
+contextactions_windows_test.go:257: CA-09 unconditioned perMachineOrUser to user as msitest: exit 0, ALLUSERS "", ran as {machine:runnervmdaln5\msitest user:runnervmdaln5\msitest both:runnervmdaln5\msitest}
+contextactions_windows_test.go:353: CA-09 perUserOrMachine with a System64Folder Directory row: ICE105 warning: 3073 contains msidbCustomActionTypeNoImpersonate execution option. This is invalid for a per user application. [CustomAction.Action]
+contextactions_windows_test.go:353: CA-09 perUserOrMachine with a System64Folder Directory row: ICE105 warning: System64Folder invalid directory for a per user application. [Directory.Directory]
+```
+
+`TestICEActionFolder` logged nothing for `perMachineOrUser`.

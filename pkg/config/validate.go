@@ -2018,8 +2018,10 @@ func (v *validator) customActions(cfg *Config, known *refs) {
 }
 
 // actionFolder rejects a standard folder that ICE105 forbids as an action's
-// working directory: the builder adds a Directory row for it, which fails
-// ICE105 whatever the action's scope.
+// working directory: the builder adds a Directory row for it, whatever the
+// action's scope. ICE105 warns about that row in perUserOrMachine and is
+// silent in perMachineOrUser (CA-09); a dual package refuses these folders
+// here in both scopes, as forbiddenFolder does for components.
 func (v *validator) actionFolder(field, dir string) {
 	if !v.scope.MayBePerUser() || !ice105Folders[dir] {
 		return
