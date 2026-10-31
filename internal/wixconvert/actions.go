@@ -161,6 +161,8 @@ func (c *converter) scheduleReboot(entry *elem) {
 
 func (c *converter) emitActions() {
 	byAction := c.placements()
+	sides := extensionSides(byAction)
+
 	c.quietExecCommands()
 	reanchor := c.reanchor(byAction)
 	progress := c.progress()
@@ -180,7 +182,7 @@ func (c *converter) emitActions() {
 		reanchor(actionID, byAction[actionID])
 		action.set("schedule", byAction[actionID])
 		delete(byAction, actionID)
-		c.extensionAnchors(action, custom, byAction)
+		c.extensionAnchors(action, custom, byAction, sides)
 		c.out.add("customActions", action)
 	}
 
@@ -196,7 +198,7 @@ func (c *converter) emitActions() {
 		c.setProgress(action, id, progress)
 		action.set("schedule", append(schedule, byAction[id]...))
 		delete(byAction, id)
-		c.extensionAnchors(action, setter, byAction)
+		c.extensionAnchors(action, setter, byAction, sides)
 		c.out.add("customActions", action)
 	}
 
@@ -287,7 +289,7 @@ var extensionAction = regexp.MustCompile(`^Wix[0-9]*[A-Z]`)
 // which the msi-builder package does not have. When the source schedules
 // that action itself, such as an override before InstallValidate, the
 // placement takes its place; else convert falls back to fallbackAnchor.
-func (c *converter) extensionAnchors(action *omap, custom *elem, byAction map[string][]any) {
+func (c *converter) extensionAnchors(action *omap, custom *elem, byAction map[string][]any, sides map[anchorSide]bool) {
 	schedule, ok := action.get("schedule").([]any)
 	if !ok {
 		return
@@ -307,8 +309,11 @@ func (c *converter) extensionAnchors(action *omap, custom *elem, byAction map[st
 
 			// The source's own place of the extension action keeps the
 			// order only for an action on its far side, such as one after
-			// an action that runs before InstallValidate.
-			if own := extensionPlacement(anchor, placement.str("sequence"), byAction); own != nil && own.str(key) == "" {
+			// an action that runs before InstallValidate, and only when no
+			// action is on its near side, which the fallback would place.
+			seq := placement.str("sequence")
+			if own := extensionPlacement(anchor, seq, byAction); own != nil && own.str(key) == "" &&
+				!sides[anchorSide{anchor, seq, otherSide(key)}] {
 				schedule[i] = moveAnchor(placement, own)
 
 				c.todof(action, "schedule", custom.line, "%s is an action of a WiX extension, which the msi-builder package "+
@@ -327,6 +332,41 @@ func (c *converter) extensionAnchors(action *omap, custom *elem, byAction map[st
 				"does not have; convert placed this action %s %s, check that place", anchor, key, target)
 		}
 	}
+}
+
+// anchorSide is a side of an anchor in a sequence: before or after it.
+type anchorSide struct{ anchor, sequence, key string }
+
+// extensionSides returns the sides of the WiX extension actions that the
+// source schedules actions on.
+func extensionSides(byAction map[string][]any) map[anchorSide]bool {
+	sides := make(map[anchorSide]bool)
+
+	for _, schedule := range byAction {
+		for _, entry := range schedule {
+			placement, ok := entry.(*omap)
+			if !ok {
+				continue
+			}
+
+			for _, key := range []string{keyBefore, keyAfter} {
+				if anchor := placement.str(key); extensionAction.MatchString(anchor) {
+					sides[anchorSide{anchor, placement.str("sequence"), key}] = true
+				}
+			}
+		}
+	}
+
+	return sides
+}
+
+// otherSide returns after for before and before for after.
+func otherSide(key string) string {
+	if key == keyBefore {
+		return keyAfter
+	}
+
+	return keyBefore
 }
 
 // extensionPlacement returns the placement the source gives a WiX

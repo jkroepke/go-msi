@@ -1672,7 +1672,7 @@ func TestConvertExtensionAnchorSides(t *testing.T) {
 	out := string(res.YAML)
 	for _, want := range []string{
 		"{sequence: execute, before: CostFinalize, condition: A}",
-		"{sequence: execute, before: InstallValidate, condition: B}",
+		"{sequence: execute, after: CostFinalize, condition: B}",
 		"installDir:\n  id: INSTALLFOLDER\n  name: Hello\n",
 	} {
 		if !strings.Contains(out, want) {
