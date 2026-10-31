@@ -3401,8 +3401,8 @@ __declspec(dllexport) UINT WINAPI BuilderRemoveFoldersExec(MSIHANDLE install)
 // user's token, so what it hands to LocalSystem must not decide which
 // processes are ended. A process matches when its image is the file: by
 // the full image path, compared without regard to case, or else by the
-// file's volume and file ID, since a process keeps the 8.3 path or the
-// junction it was started by. A copy of the program in another folder is
+// file's volume and file ID, since a process keeps the 8.3 path it was
+// started by. A copy of the program in another folder is
 // left alone. Neither action fails the install: a file that is still in use
 // goes through the engine's files-in-use handling as before. Log lines read
 // `BuilderClose: ...`.
@@ -3527,9 +3527,10 @@ static int fileId(const WCHAR *path, FILE_ID_INFO_ *id)
 
 // sameFile reports whether image, the image path of a process, is the file
 // path names: by the text first, then by the file's identity, because a
-// process keeps the path it was started by, which may be the short form or
-// lead through a junction (have is 0 when the file has no identity to
-// compare).
+// process started by the short form keeps it (CLOSE-02; one started
+// through a junction reported the resolved path there), and another link
+// to the file may name it otherwise (have is 0 when the file has no
+// identity to compare).
 static int sameFile(const WCHAR *image, const WCHAR *path, const FILE_ID_INFO_ *want, int have)
 {
     if (wieqi(image, path)) {

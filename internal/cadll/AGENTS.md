@@ -145,8 +145,9 @@ the root `AGENTS.md` first.
   `QueryFullProcessImageNameW` path equals the file's (`CompareStringOrdinal`
   without case) or, failing that, names the same file
   (`FileIdInfo`: volume serial and 128-bit ID), never by name alone, so
-  copies elsewhere survive: a process keeps the path it was started by,
-  which may be the 8.3 form or lead through a junction (CLOSE-02). Every
+  copies elsewhere survive: a process started by the 8.3 path reports
+  that path (CLOSE-02; one started through a junction reported the
+  resolved path, so the text matched there). Every
   process is opened with `PROCESS_QUERY_LIMITED_INFORMATION` only and a
   match again with the action's access, so the deferred action does not
   hold terminate handles to unrelated processes. The paths

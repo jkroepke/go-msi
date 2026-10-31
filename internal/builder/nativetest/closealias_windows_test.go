@@ -69,9 +69,10 @@ func imagePath(pid int) string {
 
 // TestMsiexecClosesAliases checks CLOSE-02: a copy of a package program
 // started by another path to the same file, its short 8.3 form or a
-// junction to the install dir, is ended by the uninstall as well. The
-// process keeps the path it was started by, so a match by the path text
-// alone missed both; the DLL compares the file's identity.
+// junction to the install dir, is ended by the uninstall as well. A copy
+// started by the short name reports that path, which a match by the path
+// text alone missed; the DLL compares the file's identity. One started
+// through the junction reported the resolved path on the CI runner.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestMsiexecClosesAliases(t *testing.T) {
