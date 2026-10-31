@@ -598,7 +598,7 @@ func TestConvertUpgradeFloor(t *testing.T) {
     </Upgrade>
     <Property Id="PREVIOUSFOUND" Secure="yes" />`,
 			removal,
-			[]string{"allowSameVersion: true", "minVersion: 0.18.0", "includeMin: false", "property: PREVIOUSFOUND", "older version than 0.18.0", noNewer},
+			[]string{"allowSameVersion: true", "minVersion: 0.18.0", "includeMin: false", "property: PREVIOUSFOUND", "up to and including 0.18.0", noNewer},
 			[]string{handMade, "migrateFeatures", "property: WIX_UPGRADE_DETECTED"},
 		},
 		"default property": {
@@ -636,6 +636,17 @@ func TestConvertUpgradeFloor(t *testing.T) {
 			removal,
 			[]string{"minVersion: 0.18.0", "newerProperty: NEWERFOUND"},
 			[]string{handMade, noNewer},
+		},
+		"newer detection of another product": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="PREVIOUSFOUND" />
+    </Upgrade>
+    <Upgrade Id="11111111-2222-3333-4444-555555555555">
+      <UpgradeVersion Minimum="1.2.0" IncludeMinimum="no" OnlyDetect="yes" Property="OTHERFOUND" />
+    </Upgrade>`,
+			removal,
+			[]string{"minVersion: 0.18.0", "older version than 0.18.0", noNewer},
+			[]string{handMade},
 		},
 		"without RemoveExistingProducts": {
 			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">

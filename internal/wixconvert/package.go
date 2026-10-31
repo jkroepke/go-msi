@@ -438,8 +438,12 @@ func (c *converter) floorRow(upgrade *omap, kid *elem) bool {
 			upgrade.set("includeMin", false)
 		}
 
-		c.todof(upgrade, "minVersion", kid.line, "an older version than %s stays installed next to this one",
-			c.value(kid, "Minimum"))
+		older := "an older version than %s stays installed next to this one"
+		if kid.no("IncludeMinimum") {
+			older = "a version up to and including %s stays installed next to this one"
+		}
+
+		c.todof(upgrade, "minVersion", kid.line, older, c.value(kid, "Minimum"))
 	}
 
 	if !c.detectsNewer() {
@@ -495,9 +499,16 @@ func (c *converter) schedulesRemoval() bool {
 // detectsNewer reports whether the source has its own row that detects
 // newer versions of the package, which msi-builder writes too.
 func (c *converter) detectsNewer() bool {
+	upgradeCode := strings.Trim(strings.ToLower(c.pkg.attr("UpgradeCode")), "{}")
+
 	for _, upgradeElem := range c.upgrades {
+		if strings.Trim(strings.ToLower(upgradeElem.attr("Id")), "{}") != upgradeCode {
+			continue
+		}
+
 		for _, kid := range upgradeElem.kids {
-			if kid.is("UpgradeVersion") && kid.yes("OnlyDetect") && kid.attr("Minimum") == c.pkg.attr("Version") && !kid.has("Maximum") {
+			if kid.is("UpgradeVersion") && kid.yes("OnlyDetect") && kid.no("IncludeMinimum") &&
+				kid.attr("Minimum") == c.pkg.attr("Version") && !kid.has("Maximum") {
 				return true
 			}
 		}
