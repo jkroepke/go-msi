@@ -776,12 +776,13 @@ func headerResources(t *testing.T) []byte {
 }
 
 // TestResourcesInHeaders reads a version resource that lies in the
-// headers, which Windows maps at RVA 0 (FILE-14).
+// headers, which Windows maps at RVA 0: the version, but no languages,
+// as Windows reported (FILE-14).
 func TestResourcesInHeaders(t *testing.T) {
 	t.Parallel()
 
 	info, err := Parse(bytes.NewReader(headerResources(t)))
-	if err != nil || info.FileVersion != "1.2.3.4" || info.Language() != "1033" {
+	if err != nil || info.FileVersion != "1.2.3.4" || info.Language() != "" {
 		t.Errorf("%+v %v", info, err)
 	}
 }

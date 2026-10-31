@@ -101,6 +101,8 @@ type section struct {
 	virtualSize    uint32
 	rawPointer     uint32
 	rawSize        uint32
+	// headers marks the headers, mapped at RVA 0 like a section.
+	headers bool
 }
 
 type image struct {
@@ -261,10 +263,10 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 	}
 
 	// The headers are mapped at RVA 0 up to SizeOfHeaders, and Windows read
-	// a version resource placed there (FILE-14). They come after the
+	// a version resource placed there, without languages (FILE-14). They come after the
 	// sections, which win where a corrupt header overlaps them.
 	headers := order.Uint32(opt[60:])
-	img.sections = append(img.sections, section{virtualSize: headers, rawSize: headers})
+	img.sections = append(img.sections, section{virtualSize: headers, rawSize: headers, headers: true})
 
 	// The size is not checked at all: Windows read the version through a
 	// directory declared with size 0 (FILE-14).
@@ -478,7 +480,9 @@ func versionData(res *resources, dataEntry uint32) ([]byte, bool, error) {
 
 	sec, _ := res.img.section(dataRVA, length)
 
-	return data, dataRVA-sec.virtualAddress < sec.rawSize, nil
+	// Version data in the headers gave the version but no languages on
+	// Windows, as data past a section's raw size does (FILE-14).
+	return data, !sec.headers && dataRVA-sec.virtualAddress < sec.rawSize, nil
 }
 
 func utf16At(b []byte, off int) (string, int) {
