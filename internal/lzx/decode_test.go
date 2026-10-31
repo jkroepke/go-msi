@@ -437,10 +437,12 @@ func TestWindowsFixtures(t *testing.T) {
 		"reject-incomplete-tree":        incompleteTree(),
 		"reject-incomplete-length-tree": incompleteLengthTree(),
 		"reject-offset-beyond-history":  repeatedOffsetMatch(15, 4, 5),
-		// cabinet.dll extracts a match one byte beyond the window, taking
-		// the offset modulo the window size (Windows CI, 2026-10-31); the
-		// reader rejects it, since the window no longer holds that byte.
-		"lenient-offset-beyond-window": repeatedOffsetMatch(15, 1<<15, 1<<15+1),
+		// An offset of the window plus one: cabinet.dll takes it modulo the
+		// window, as offset 1, both right after a full window of bytes
+		// (where it also reaches before the stream's start) and after two;
+		// the reader rejects both, since the window does not hold the byte.
+		"lenient-offset-before-start-at-window": repeatedOffsetMatch(15, 1<<15, 1<<15+1),
+		"lenient-offset-beyond-window":          repeatedOffsetMatch(15, 2<<15, 1<<15+1),
 	}
 
 	for name, stream := range storedPadVariants() {

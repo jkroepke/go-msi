@@ -102,7 +102,8 @@ const lzxFrameSize = 32768
 // that reach the window less 3 to the full window and an E8 translation size
 // of 2^31. Both must reject the reject-* streams (incomplete Huffman trees, a
 // match beyond the decoded bytes). cabinet.dll extracts the lenient-*
-// streams (a match one byte beyond the window), which the reader rejects.
+// streams (a match at the window plus one, read as offset 1), which the
+// reader rejects.
 func TestNativeFDICraftedLZX(t *testing.T) { //nolint:paralleltest // the FDI callbacks share one package state
 	if testing.Short() {
 		t.Skip("native tests run without -short")
@@ -129,11 +130,17 @@ func TestNativeFDICraftedLZX(t *testing.T) { //nolint:paralleltest // the FDI ca
 					t.Fatal("cab.Read accepted a stream it rejects by design")
 				}
 
-				if len(got) == 1 && len(got[0].Data) >= 4 {
-					data := got[0].Data
-					t.Logf("%s: cabinet.dll extracts it, cab.Read rejects it; cabinet.dll wrote % x first, % x last",
-						filepath.Base(path), data[:2], data[len(data)-4:])
+				// The lenient streams end in a two-byte match at the window
+				// plus one, which cabinet.dll copies as offset 1.
+				if len(got) != 1 || len(got[0].Data) != size {
+					t.Fatal(describeExtract(got, size))
 				}
+
+				if data := got[0].Data; data[size-1] != data[size-3] || data[size-2] != data[size-3] {
+					t.Fatal("cabinet.dll no longer copies the match as offset 1")
+				}
+
+				t.Logf("%s: cabinet.dll extracts it with offset 1, cab.Read rejects it", filepath.Base(path))
 
 				return
 			}
