@@ -625,13 +625,7 @@ func (c *converter) emitProperties() {
 
 	for _, elm := range c.properties {
 		propID := elm.attr("Id")
-		if skippedProperty(propID) {
-			continue
-		}
-
-		// msi-builder declares and secures the properties of its upgrade
-		// rows itself, and one in properties fails ICE61.
-		if upgradeProps[propID] && !elm.has("Value") && len(elm.kids) == 0 {
+		if skippedProperty(propID) || upgradeOnly(elm, upgradeProps) {
 			continue
 		}
 
@@ -664,6 +658,13 @@ func (c *converter) emitProperties() {
 	}
 }
 
+// upgradeOnly reports whether a Property only declares one that an
+// upgrade row sets: msi-builder declares and secures those itself, and one
+// in properties fails ICE61.
+func upgradeOnly(elm *elem, upgradeProps map[string]bool) bool {
+	return upgradeProps[elm.attr("Id")] && !elm.has("Value") && len(elm.kids) == 0
+}
+
 // upgradeProperties are the properties that the converted upgrade rows
 // set.
 func (c *converter) upgradeProperties() map[string]bool {
@@ -677,7 +678,11 @@ func (c *converter) upgradeProperties() map[string]bool {
 	props[upgrade.str("property")] = true
 	props[upgrade.str("newerProperty")] = true
 
-	related, _ := upgrade.get("related").([]any)
+	related, ok := upgrade.get("related").([]any)
+	if !ok {
+		related = nil
+	}
+
 	for _, row := range related {
 		if rowMap, ok := row.(*omap); ok {
 			props[rowMap.str("property")] = true
