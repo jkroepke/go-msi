@@ -1749,6 +1749,10 @@ func TestConvertUnscheduledActions(t *testing.T) {
     <CustomAction Id="Launch" FileRef="hello.exe" ExeCommand="" Return="asyncNoWait" />
     <CustomAction Id="Adv" Property="ADV" Value="1" />
     <AdvertiseExecuteSequence><Custom Action="Adv" After="CostFinalize" /></AdvertiseExecuteSequence>
+    <Binary Id="Shared" SourceFile="shared.dll" />
+    <CustomAction Id="Used" BinaryRef="Shared" DllEntry="Run" Execute="deferred" Impersonate="no" />
+    <CustomAction Id="Unused" BinaryRef="Shared" DllEntry="Other" />
+    <InstallExecuteSequence><Custom Action="Used" Before="InstallFinalize" /></InstallExecuteSequence>
   </Package>
 </Wix>`
 
@@ -1762,8 +1766,9 @@ func TestConvertUnscheduledActions(t *testing.T) {
 		"the action Check runs only from the DoAction control event of the dialog LicenseAgreementDlg (line 14)",
 		"no sequence schedules the action Never, so it never runs; convert left it out",
 		"the action Readme runs only from the DoAction control event of the dialog ExitDialog (line 15), which has no " +
-			"counterpart; convert left it out; drop the binary Tools from binaries unless another action uses it",
+			"counterpart; convert left it out; drop the binary Tools from binaries unless something else uses it",
 		"only <AdvertiseExecuteSequence> (line 22), which has no counterpart, schedules the action Adv; convert left it out",
+		"no sequence schedules the action Unused, so it never runs; convert left it out\n",
 		"  enabled: true\n", "  chooseFeatures: true\n",
 	} {
 		if !strings.Contains(out, want) {
@@ -1771,7 +1776,7 @@ func TestConvertUnscheduledActions(t *testing.T) {
 		}
 	}
 
-	if strings.Contains(out, "customActions:") {
+	if strings.Contains(out, "id: Never") || strings.Contains(out, "id: Unused") {
 		t.Errorf("the YAML keeps an unscheduled action:\n%s", out)
 	}
 
@@ -1788,9 +1793,11 @@ func TestConvertUnscheduledActions(t *testing.T) {
 func TestConvertLocalActionRefAndIcon(t *testing.T) {
 	t.Parallel()
 
-	src := `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+	src := `<?define Idx="2"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
     <MajorUpgrade DowngradeErrorMessage="newer" />
+    <Icon Id="App.ico" SourceFile="app.ico" />
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Hello">
         <Component>
@@ -1801,14 +1808,22 @@ func TestConvertLocalActionRefAndIcon(t *testing.T) {
           <ProgId Id="Example.Own" Description="Own icon" Icon="hello.exe">
             <Extension Id="hellown"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
           </ProgId>
+          <ProgId Id="Example.Var" Description="Var icon" Icon="hello.exe" IconIndex="$(var.Idx)">
+            <Extension Id="hellovar"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
+          <ProgId Id="Example.Table" Description="Icon table" Icon="App.ico">
+            <Extension Id="hellotab"><Verb Id="open" Command="Open" TargetFile="hello.exe" Argument="&quot;%1&quot;" /></Extension>
+          </ProgId>
         </Component>
         <Component><File Source="doc.ico" /></Component>
       </Directory>
     </StandardDirectory>
     <Feature Id="Main" Title="Hello"><ComponentRef Id="hello.exe" /><ComponentRef Id="doc.ico" /></Feature>
     <CustomActionRef Id="SaveDir" />
+    <CustomActionRef Id="SetFoo" />
   </Package>
   <Fragment>
+    <SetProperty Id="FOO" Action="SetFoo" Value="bar" Before="CostFinalize" Sequence="execute" />
     <CustomAction Id="SaveDir" Property="SAVED" Value="[INSTALLFOLDER]" />
     <InstallExecuteSequence><Custom Action="SaveDir" Before="InstallFinalize" /></InstallExecuteSequence>
   </Fragment>
@@ -1820,21 +1835,22 @@ func TestConvertLocalActionRefAndIcon(t *testing.T) {
 	}
 
 	out := string(res.YAML)
-	if strings.Contains(out, "SaveDir comes from a WiX extension") {
+	if strings.Contains(out, "comes from a WiX extension") {
 		t.Errorf("a locally defined action is noted as an extension's:\n%s", out)
 	}
 
 	for _, want := range []string{
 		"the ProgId Example.Doc takes its icon from doc.ico", `HKCR\Example.Doc\DefaultIcon = [#doc.ico],0`,
-		"progId: Example.Own\n", "iconIndex: 0\n",
+		"progId: Example.Own\n", "iconIndex: 0\n", "iconIndex: 2\n",
+		"the ProgId Example.Table takes its icon from the <Icon> App.ico, which only advertised ProgIds use",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the YAML lacks %q:\n%s", want, out)
 		}
 	}
 
-	if strings.Count(out, "iconIndex:") != 1 {
-		t.Errorf("want iconIndex only on Example.Own:\n%s", out)
+	if strings.Count(out, "iconIndex:") != 2 {
+		t.Errorf("want iconIndex only on Example.Own and Example.Var:\n%s", out)
 	}
 
 	cfg, err := config.Parse(res.YAML, config.Options{})

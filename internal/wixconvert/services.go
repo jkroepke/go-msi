@@ -789,14 +789,7 @@ func (cc *compConv) progID(elm *elem) { //nolint:cyclop // a flat list of indepe
 	fileType.set("description", conv.value(elm, "Description"))
 
 	if elm.has("Icon") {
-		// Without an IconIndex, DefaultIcon names the file alone, which
-		// Windows reads as its first icon.
-		n, err := strconv.Atoi(elm.attr("IconIndex"))
-		if err != nil {
-			n = 0
-		}
-
-		fileType.set("iconIndex", n)
+		cc.iconIndex(elm, fileType)
 	}
 
 	target := ""
@@ -844,6 +837,28 @@ func (cc *compConv) progID(elm *elem) { //nolint:cyclop // a flat list of indepe
 	conv.pendingTypes = append(conv.pendingTypes, pendingType{e: elm, comp: cc.cp, target: target, out: fileType, parent: cc.out})
 }
 
+// iconIndex sets a ProgId's icon index. Without an IconIndex, DefaultIcon
+// names the file alone, which Windows reads as its first icon.
+func (cc *compConv) iconIndex(elm *elem, fileType *omap) {
+	if !elm.has("IconIndex") {
+		fileType.set("iconIndex", 0)
+
+		return
+	}
+
+	text := strings.TrimSpace(cc.c.literal(elm.attr("IconIndex")))
+
+	n, err := strconv.Atoi(text)
+	if err != nil {
+		cc.c.todof(fileType, "", elm.line, "the ProgId %s has the icon index %q, which is no number; set iconIndex by hand",
+			elm.attr("Id"), text)
+
+		return
+	}
+
+	fileType.set("iconIndex", n)
+}
+
 // pendingType is a ProgId that goes onto the file its verbs start, once
 // every file is known.
 type pendingType struct {
@@ -885,15 +900,25 @@ func (c *converter) typeIconNote(pending pendingType, file *fileRef) {
 	}
 
 	pending.out.del("iconIndex")
+
+	progID := pending.e.attr("Id")
+	if !slices.ContainsFunc(c.files, func(f *fileRef) bool { return f.key == icon }) {
+		c.todof(pending.out, "", pending.e.line, "the ProgId %s takes its icon from the <Icon> %s, which only advertised "+
+			"ProgIds use; install the icon as a file and add the DefaultIcon key HKCR\\%s\\DefaultIcon as a registry value "+
+			"naming it", progID, icon, progID)
+
+		return
+	}
+
 	c.todof(pending.out, "", pending.e.line, "the ProgId %s takes its icon from %s, not from the file it opens; "+
 		"iconIndex only picks an icon of that file, so add the DefaultIcon key as a registry value "+
-		"(HKCR\\%s\\DefaultIcon = [#%s],%s)", pending.e.attr("Id"), icon, pending.e.attr("Id"), icon, iconIndexText(pending.e))
+		"(HKCR\\%s\\DefaultIcon = [#%s],%s)", progID, icon, progID, icon, c.iconIndexText(pending.e))
 }
 
 // iconIndexText returns a ProgId's icon index, 0 when it gives none.
-func iconIndexText(elm *elem) string {
+func (c *converter) iconIndexText(elm *elem) string {
 	if elm.has("IconIndex") {
-		return elm.attr("IconIndex")
+		return strings.TrimSpace(c.literal(elm.attr("IconIndex")))
 	}
 
 	return "0"
