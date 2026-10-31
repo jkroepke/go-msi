@@ -604,7 +604,10 @@ func TestConvertUpgradeFloor(t *testing.T) {
 		"default property": {
 			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
       <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="OLDERVERSIONBEINGUPGRADED" />
-    </Upgrade>`,
+      <UpgradeVersion Minimum="1.2.0" IncludeMinimum="no" OnlyDetect="yes" Property="NEWERVERSIONDETECTED" />
+    </Upgrade>
+    <Property Id="OLDERVERSIONBEINGUPGRADED" Secure="yes" />
+    <Property Id="NEWERVERSIONDETECTED" Secure="yes" />`,
 			removal,
 			[]string{"allowSameVersion: false", "minVersion: 0.18.0", "migrateFeatures: false"},
 			[]string{handMade, "includeMin", "property: OLDERVERSIONBEINGUPGRADED"},

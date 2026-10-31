@@ -675,8 +675,8 @@ func (c *converter) upgradeProperties() map[string]bool {
 		return props
 	}
 
-	props[upgrade.str("property")] = true
-	props[upgrade.str("newerProperty")] = true
+	props[cmp.Or(upgrade.str("property"), config.DefaultUpgradeProperty)] = true
+	props[cmp.Or(upgrade.str("newerProperty"), config.DefaultNewerProperty)] = true
 
 	related, ok := upgrade.get("related").([]any)
 	if !ok {
