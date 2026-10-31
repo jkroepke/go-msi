@@ -475,7 +475,7 @@ func TestAddProblemCutsWholeRunes(t *testing.T) {
 func TestUnicodeNameLimits(t *testing.T) {
 	t.Parallel()
 
-	table := strings.Repeat("表", 11) // 33 UTF-8 bytes
+	table := strings.Repeat("表", 11)  // 33 UTF-8 bytes
 	column := strings.Repeat("列", 30) // 90 UTF-8 bytes
 	tbl := &Table{Name: table, Columns: []Column{Col(column, "s72", true)}, Rows: [][]any{{"x"}}}
 
@@ -493,10 +493,12 @@ func TestUnicodeNameLimits(t *testing.T) {
 		t.Errorf("table %q did not read back", table)
 	}
 
-	// The limits still hold in characters.
+	// The limits still hold in characters, and the encoded stream name
+	// adds its prefix: 31 such characters are one unit too many.
 	for name, bad := range map[string]*Table{
-		"table":  {Name: strings.Repeat("表", MaxTableName+1), Columns: []Column{Col("K", "s72", true)}},
-		"column": {Name: "T", Columns: []Column{Col(strings.Repeat("列", maxColumnName+1), "s72", true)}},
+		"table":         {Name: strings.Repeat("表", MaxTableName+1), Columns: []Column{Col("K", "s72", true)}},
+		"encoded table": {Name: strings.Repeat("表", MaxTableName), Columns: []Column{Col("K", "s72", true)}},
+		"column":        {Name: "T", Columns: []Column{Col(strings.Repeat("列", maxColumnName+1), "s72", true)}},
 	} {
 		if _, err := (&Database{Codepage: 65001, Tables: []*Table{bad}}).Marshal(Options{}); err == nil {
 			t.Errorf("%s name over the limit accepted", name)
