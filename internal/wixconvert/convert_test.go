@@ -582,23 +582,29 @@ func TestConvertRemoveFolderExDirectory(t *testing.T) {
 func TestConvertUpgradeFloor(t *testing.T) {
 	t.Parallel()
 
-	const handMade = "is a hand-made major upgrade"
+	const (
+		handMade = "is a hand-made major upgrade"
+		removal  = `<InstallExecuteSequence><RemoveExistingProducts After="InstallValidate" /></InstallExecuteSequence>`
+		noNewer  = "does not detect newer versions"
+	)
 
 	for name, tc := range map[string]struct {
-		rows      string
-		want, not []string
+		rows, sequence string
+		want, not      []string
 	}{
 		"floor": {
 			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
       <UpgradeVersion Minimum="0.18.0" IncludeMinimum="no" Maximum="1.2.0" IncludeMaximum="yes" MigrateFeatures="yes" Property="PREVIOUSFOUND" />
     </Upgrade>`,
-			[]string{"allowSameVersion: true", "minVersion: 0.18.0", "includeMin: false", "property: PREVIOUSFOUND", "older version than 0.18.0"},
+			removal,
+			[]string{"allowSameVersion: true", "minVersion: 0.18.0", "includeMin: false", "property: PREVIOUSFOUND", "older version than 0.18.0", noNewer},
 			[]string{handMade, "migrateFeatures", "property: WIX_UPGRADE_DETECTED"},
 		},
 		"default property": {
 			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
       <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="OLDERVERSIONBEINGUPGRADED" />
     </Upgrade>`,
+			removal,
 			[]string{"allowSameVersion: false", "minVersion: 0.18.0", "migrateFeatures: false"},
 			[]string{handMade, "includeMin", "property: OLDERVERSIONBEINGUPGRADED"},
 		},
@@ -606,37 +612,59 @@ func TestConvertUpgradeFloor(t *testing.T) {
 			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
       <UpgradeVersion Minimum="0.0.0" Maximum="1.2.0" Property="PREVIOUSFOUND" />
     </Upgrade>`,
-			[]string{"allowSameVersion: false", "property: PREVIOUSFOUND"},
-			[]string{handMade, "minVersion", "older version than"},
+			removal,
+			[]string{"allowSameVersion: false", "property: PREVIOUSFOUND", noNewer},
+			[]string{handMade, "minVersion: ", "older version than"},
 		},
 		"minimum at this version": {
 			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
       <UpgradeVersion Minimum="1.2.0" Maximum="1.2.0" IncludeMaximum="yes" Property="PREVIOUSFOUND" />
     </Upgrade>`,
+			removal,
 			[]string{handMade},
-			[]string{"minVersion"},
+			[]string{"minVersion: "},
+		},
+		"own newer detection": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="PREVIOUSFOUND" />
+      <UpgradeVersion Minimum="1.2.0" IncludeMinimum="no" OnlyDetect="yes" Property="NEWERFOUND" />
+    </Upgrade>`,
+			removal,
+			[]string{"minVersion: 0.18.0", "newerProperty: NEWERFOUND"},
+			[]string{handMade, noNewer},
+		},
+		"without RemoveExistingProducts": {
+			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+      <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="PREVIOUSFOUND" />
+    </Upgrade>`,
+			"",
+			[]string{handMade},
+			[]string{"minVersion: "},
 		},
 		"maximum below this version": {
 			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
       <UpgradeVersion Minimum="0.18.0" Maximum="1.0.0" Property="PREVIOUSFOUND" />
     </Upgrade>`,
+			removal,
 			[]string{handMade},
-			[]string{"minVersion"},
+			[]string{"minVersion: "},
 		},
 		"next to a MajorUpgrade": {
 			`<MajorUpgrade DowngradeErrorMessage="newer" />
     <Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
       <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Property="PREVIOUSFOUND" />
     </Upgrade>`,
+			removal,
 			[]string{handMade},
-			[]string{"minVersion"},
+			[]string{"minVersion: "},
 		},
 		"language": {
 			`<Upgrade Id="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
       <UpgradeVersion Minimum="0.18.0" Maximum="1.2.0" Language="1033" Property="PREVIOUSFOUND" />
     </Upgrade>`,
+			removal,
 			[]string{handMade},
-			[]string{"minVersion"},
+			[]string{"minVersion: "},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -654,6 +682,7 @@ func TestConvertUpgradeFloor(t *testing.T) {
       </Component>
     </Feature>
     <SetProperty Id="X" Value="1" After="AppSearch" Condition="WIX_UPGRADE_DETECTED" Sequence="execute" />
+    ` + tc.sequence + `
   </Package>
 </Wix>`
 

@@ -218,6 +218,7 @@
             },
             "includeMin": {
               "$ref": "#/$defs/bool",
+              "description": "Whether minVersion itself is removed; only with minVersion.",
               "default": true
             },
             "downgrade": {

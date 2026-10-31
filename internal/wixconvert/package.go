@@ -284,8 +284,9 @@ func (c *converter) emitUpgrade() {
 	}
 
 	text := c.allText()
-	// Without a MajorUpgrade WiX never sets WIX_UPGRADE_DETECTED, so a
-	// hand-made row keeps its own property.
+	// A hand-made row that became upgrade.minVersion keeps its own
+	// property: without a MajorUpgrade, WiX does not set
+	// WIX_UPGRADE_DETECTED for it.
 	if strings.Contains(text, "WIX_UPGRADE_DETECTED") && !c.floorSeen {
 		upgrade.set("property", "WIX_UPGRADE_DETECTED")
 	}
@@ -403,7 +404,7 @@ func (c *converter) ownUpgradeRow(upgrade *omap, kid *elem) bool {
 			"check the conditions that test it", kid.attr("Property"))
 	case !kid.yes("OnlyDetect"):
 		c.todof(upgrade, "", kid.line, "an UpgradeVersion for the package's own UpgradeCode (versions %s to %s) is a hand-made major upgrade; "+
-			"msi-builder writes its own, which removes every older version and never a newer one (downgrade: allow installs "+
+			"msi-builder writes its own, which removes every older version (down to upgrade.minVersion) and never a newer one (downgrade: allow installs "+
 			"next to a newer version), check the upgrade keys",
 			orAny(c.value(kid, "Minimum")), orAny(c.value(kid, "Maximum")))
 	default:
@@ -437,9 +438,13 @@ func (c *converter) floorRow(upgrade *omap, kid *elem) bool {
 			upgrade.set("includeMin", false)
 		}
 
-		c.todof(upgrade, "minVersion", kid.line, "an older version than %s stays installed next to this one; "+
-			"msi-builder also refuses to install over a newer version (downgrade: ignore installs next to it)",
+		c.todof(upgrade, "minVersion", kid.line, "an older version than %s stays installed next to this one",
 			c.value(kid, "Minimum"))
+	}
+
+	if !c.detectsNewer() {
+		c.todof(upgrade, "", kid.line, "the WiX package does not detect newer versions; msi-builder refuses to install "+
+			"over one (downgrade: ignore installs next to it)")
 	}
 
 	if !kid.yes("MigrateFeatures") {
@@ -462,7 +467,7 @@ func (c *converter) floorRow(upgrade *omap, kid *elem) bool {
 // this version, up to this version, in a package without MajorUpgrade.
 func (c *converter) isFloorRow(kid *elem) bool {
 	if c.major != nil || c.floorSeen || kid.yes("OnlyDetect") || !kid.has("Minimum") || !kid.has("Property") ||
-		newerDetection[kid.attr("Property")] {
+		newerDetection[kid.attr("Property")] || !c.schedulesRemoval() {
 		return false
 	}
 
@@ -472,6 +477,33 @@ func (c *converter) isFloorRow(kid *elem) bool {
 	}
 
 	return !slices.ContainsFunc([]string{"Language", "ExcludeLanguages", "RemoveFeatures"}, kid.has)
+}
+
+// schedulesRemoval reports whether the source schedules
+// RemoveExistingProducts in InstallExecuteSequence; without it a hand-made
+// Upgrade row only detects the old version.
+func (c *converter) schedulesRemoval() bool {
+	for _, seq := range c.sequences {
+		if sequenceNames[seq.name] == seqExecute && slices.ContainsFunc(seq.kids, func(e *elem) bool { return e.is("RemoveExistingProducts") }) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// detectsNewer reports whether the source has its own row that detects
+// newer versions of the package, which msi-builder writes too.
+func (c *converter) detectsNewer() bool {
+	for _, upgradeElem := range c.upgrades {
+		for _, kid := range upgradeElem.kids {
+			if kid.is("UpgradeVersion") && kid.yes("OnlyDetect") && kid.attr("Minimum") == c.pkg.attr("Version") && !kid.has("Maximum") {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // noFloor reports whether a Minimum lets every older version through: an

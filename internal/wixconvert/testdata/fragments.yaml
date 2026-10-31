@@ -19,12 +19,7 @@ product:
   upgradeCode: 5d9b2f3a-7c1e-4b8d-9f0a-2e6c4a8b1d37
 package:
   platform: x64
-upgrade:
-  allowSameVersion: false
-  # TODO(line 38): an older version than 0.0.1 stays installed next to this one; msi-builder also refuses to install over a newer version (downgrade: ignore installs next to it)
-  minVersion: 0.0.1
-  migrateFeatures: false
-  property: OLDERFOUND
+# TODO(line 38): an UpgradeVersion for the package's own UpgradeCode (versions 0.0.1 to 1.0.0) is a hand-made major upgrade; msi-builder writes its own, which removes every older version (down to upgrade.minVersion) and never a newer one (downgrade: allow installs next to a newer version), check the upgrade keys
 installDir:
   id: INSTALLFOLDER
   name: Hello
