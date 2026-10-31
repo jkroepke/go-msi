@@ -29,13 +29,18 @@ features:
       - { condition: ASSOC <> 1, default: disabled }
       - { condition: VersionNT64, level: 5 }
     components: [{ files: [{ source: b.txt }] }]
+  - id: Extra
+    default: disabled
+    conditions:
+      - { condition: EXTRA = 1, default: on }
+    components: [{ files: [{ source: c.txt }] }]
 `), config.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	cfg.BaseDir = t.TempDir()
-	for _, name := range []string{"a.txt", "b.txt"} {
+	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
 		if err := os.WriteFile(filepath.Join(cfg.BaseDir, name), []byte(name), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -55,7 +60,12 @@ features:
 
 	slices.Sort(got)
 
-	want := []string{"Assoc0NOT Installed AND (ASSOC <> 1)", "Assoc1NOT Installed AND (ASSOC = 1)", "Assoc5NOT Installed AND (VersionNT64)"}
+	// A row that enables a disabled feature also holds after the first
+	// install, so that the uninstall removes the feature (INST-06).
+	want := []string{
+		"Assoc0NOT Installed AND (ASSOC <> 1)", "Assoc1NOT Installed AND (ASSOC = 1)", "Assoc5NOT Installed AND (VersionNT64)",
+		"Extra1Installed OR (EXTRA = 1)",
+	}
 	if !slices.Equal(got, want) {
 		t.Errorf("Condition rows %q, want %q", got, want)
 	}

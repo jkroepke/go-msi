@@ -222,11 +222,29 @@ type FeatureCondition struct { //nolint:govet // field order is the YAML key ord
 	Level   *int   `yaml:"level"`
 }
 
-// FullCondition returns the Condition row's condition: the condition
-// applies to first installs only, because a feature that is disabled
-// (level 0) when the product is removed keeps its files (INST-05).
-func (c *FeatureCondition) FullCondition() string {
+// FullCondition returns the Condition row's condition for a feature whose
+// own level is base. A row that disables the feature applies to first
+// installs only, because a feature that is disabled (level 0) when the
+// product is removed keeps its files (INST-05). A row that enables a
+// feature whose own level is 0 also holds on every later run, because the
+// engine leaves a level-0 feature alone, so the uninstall would keep it
+// (INST-06); its maintenance runs then follow the installed state.
+func (c *FeatureCondition) FullCondition(base int) string {
+	if base == 0 && c.Value() != 0 {
+		return "Installed OR (" + c.Condition + ")"
+	}
+
 	return "NOT Installed AND (" + c.Condition + ")"
+}
+
+// BaseLevel returns the feature's own level: Level, or the level of
+// Default when the defaults have not been applied.
+func (f *Feature) BaseLevel() int {
+	if f.Level != nil {
+		return *f.Level
+	}
+
+	return defaultLevel(f.Default)
 }
 
 // Value returns the level the condition sets: Level, or the level of

@@ -621,7 +621,12 @@ features:
   builder writes each row as `NOT Installed AND (<condition>)`: the engine
   evaluates the rows at every run, also with `ADDLOCAL` and at the
   uninstall, and a feature that a row disables when the product is removed
-  keeps its files (INST-05). The conditions therefore
+  keeps its files (INST-05). A row that enables a feature whose own level
+  is 0 (`default: disabled`) is written as `Installed OR (<condition>)`
+  instead: with the first-install guard the feature fell back to level 0
+  at `msiexec /x`, which left it, its files and the product installed and
+  still returned 0 (INST-06). In maintenance runs such a feature follows
+  its installed state. The conditions therefore
   decide first installs and, in part, major upgrades; a feature disabled at the
   first install can be added later with `ADDLOCAL`. A major upgrade
   without the property drops a feature whose `disabled` condition is then
@@ -630,8 +635,8 @@ features:
   installed it, and stayed absent when the old version had left it out,
   even with its condition true; one that the old version had disabled
   followed its condition. A condition with `default: off` was not tested
-  in an upgrade. A condition cannot use `Installed`, which the guard
-  makes always false.
+  in an upgrade. A condition cannot use `Installed`, which the builder
+  adds itself.
   When several conditions are true, the higher level won (INST-05).
 - Every component is in at least one feature (ICE21). A component used by
   two features is defined once in `components` and named by ID in both.

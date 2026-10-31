@@ -17,7 +17,8 @@ import (
 // level comes from Condition rows: Assoc is level 3 (not installed at the
 // default INSTALLLEVEL 1), turned on by ASSOC=1 and disabled otherwise, as
 // a real installer's file associations; Both has two true conditions; Soft
-// is level 3 and turned on by SOFT=1, without a disabled row.
+// is level 3 and turned on by SOFT=1, without a disabled row; Extra is
+// disabled (level 0) and turned on by EXTRA=1.
 const featureConditionsConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderFeatureConditions, manufacturer: msi-builder tests, version: %s, upgradeCode: 2b7e4c19-5d3a-4f60-8e1b-9c0a7d6f3e52 }
 package: { platform: x64 }
@@ -25,6 +26,7 @@ installDir: { name: MsiBuilderFeatureConditions }
 properties:
   ASSOC: { secure: true }
   SOFT: { secure: true }
+  EXTRA: { secure: true }
 features:
   - id: Base
     components: [{ files: [{ source: app.exe }] }]
@@ -44,6 +46,11 @@ features:
     conditions:
       - { condition: SOFT = 1, default: on }
     components: [{ files: [{ source: soft.txt }] }]
+  - id: Extra
+    default: disabled
+    conditions:
+      - { condition: EXTRA = 1, default: on }
+    components: [{ files: [{ source: extra.txt }] }]
 `
 
 // featureConditionStep is one msiexec run of TestMsiexecFeatureConditions
@@ -56,9 +63,12 @@ type featureConditionStep struct {
 }
 
 // TestMsiexecFeatureConditions installs, changes, upgrades and removes a
-// package with Condition rows (INST-05). The builder ANDs NOT Installed onto
-// every row: without it, a feature that its condition disabled at the
-// uninstall kept its files after the product was gone.
+// package with Condition rows (INST-05, INST-06). The builder ANDs NOT
+// Installed onto every row that disables a feature: without it, a feature
+// that its condition disabled at the uninstall kept its files after the
+// product was gone. A row that enables a disabled feature gets Installed OR
+// instead: with NOT Installed the feature fell back to level 0 at the
+// uninstall, and msiexec /x left it and the product installed.
 //
 //nolint:paralleltest // msiexec runs one installation at a time
 func TestMsiexecFeatureConditions(t *testing.T) {
@@ -72,6 +82,7 @@ func TestMsiexecFeatureConditions(t *testing.T) {
 		"assoc.txt": []byte("assoc"),
 		"both.txt":  []byte("both"),
 		"soft.txt":  []byte("soft"),
+		"extra.txt": []byte("extra"),
 	}
 	packages := []string{
 		buildConfig(t, mkdir(t, dir, "v1"), "v1", fmt.Sprintf(featureConditionsConfig, "1.0.0"), inputs),
@@ -87,7 +98,7 @@ func TestMsiexecFeatureConditions(t *testing.T) {
 		_ = os.RemoveAll(folder)
 	}
 
-	app, assoc, both, soft := "app.exe", "assoc.txt", "both.txt", "soft.txt"
+	app, assoc, both, soft, extra := "app.exe", "assoc.txt", "both.txt", "soft.txt", "extra.txt"
 
 	for _, sequence := range [][]featureConditionStep{
 		{
@@ -127,6 +138,20 @@ func TestMsiexecFeatureConditions(t *testing.T) {
 			// Assoc, which v1 had disabled, follows its row.
 			{"install v1", false, nil, []string{app}},
 			{"upgrade to v2 ASSOC=1 SOFT=1", true, []string{"ASSOC=1", "SOFT=1"}, []string{app, assoc}},
+			{"uninstall v2", true, []string{"/x"}, nil},
+		},
+		{
+			// INST-06: Extra is disabled unless EXTRA=1; the uninstall and
+			// the repair without the property still reach it.
+			{"install EXTRA=1", false, []string{"EXTRA=1"}, []string{app, extra}},
+			{"repair /fa without EXTRA", false, []string{"/fa"}, []string{app, extra}},
+			{"uninstall without EXTRA", false, []string{"/x"}, nil},
+		},
+		{
+			// INST-06: the old product's removal during an upgrade reaches
+			// Extra too; the new product follows its row.
+			{"install v1 EXTRA=1", false, []string{"EXTRA=1"}, []string{app, extra}},
+			{"upgrade to v2 without EXTRA", true, nil, []string{app}},
 			{"uninstall v2", true, []string{"/x"}, nil},
 		},
 	} {
@@ -169,7 +194,7 @@ func featureConditionRun(t *testing.T, dir, folder string, packages []string, st
 
 	var files []string
 
-	for _, file := range []string{"app.exe", "assoc.txt", "both.txt", "soft.txt"} {
+	for _, file := range []string{"app.exe", "assoc.txt", "both.txt", "soft.txt", "extra.txt"} {
 		if present(filepath.Join(folder, file)) {
 			files = append(files, file)
 		}
