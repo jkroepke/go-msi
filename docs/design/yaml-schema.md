@@ -257,7 +257,8 @@ Above 5.0 every platform fails with 1613 on Windows Installer 5.0, the
 current engine, so it is rejected.
 
 `perUser` packages are checked for ICE105: no services, no HKLM registry
-values, no no-impersonate actions and no per-machine directories.
+values, no no-impersonate actions and no per-machine directories. A dual
+package may run a no-impersonate action with `scope: perMachine` (CA-09).
 
 #### Install scope
 
@@ -336,6 +337,28 @@ out of a per-user install, and the builder passes that warning on; it
 reported nothing for them in a `perMachineOrUser` package and nothing for
 the machine variable in either (ENVVAR-03). HKU values were not tested,
 and a standard user's install was tested with an HKLM value only.
+
+A custom action with `scope: perMachine` runs only per machine, and one
+with `scope: perUser` only per user: the builder adds `ALLUSERS=1` or `NOT
+ALLUSERS` to the condition of each of its schedules (and of the data
+action of a `run` action). Only a `perMachine` action may have
+`impersonate: false`, so an action that changes the machine as LocalSystem
+is left out of every per-user install, also one that an administrator
+runs elevated, and a standard user's per-user install needs no elevation
+for it (CA-09). A scoped action runs in the execute sequences only: in the
+UI sequence the scope page sets `ALLUSERS` back to 2.
+
+```yaml
+customActions:
+  - id: RegisterMachine
+    run: { command: '"[#tool.exe]" register --all-users' }
+    execute: deferred
+    impersonate: false
+    scope: perMachine                # left out of a per-user install
+    return: check
+    schedule:
+      - { sequence: execute, after: InstallFiles, when: install }
+```
 
 ### 4.3 `upgrade`
 
@@ -1967,7 +1990,9 @@ package, a DLL or no Windows program. How long the engine keeps the
 temporary file of an `asyncNoWait` action is not tested.
 
 Options: `execute` (default `immediate`), `impersonate` (default `true`;
-`false` needs a deferred action), `return` (required for `exec`,
+`false` needs a deferred action, and in a dual package `scope: perMachine`),
+`scope` (`perMachine` or `perUser`, dual packages only, see "Install
+scope"), `return` (required for `exec`,
 `execProperty`, `exe` and `run`, default `check` otherwise), `hideTarget`, `once`
 (`firstSequence`, `oncePerProcess`, `clientRepeat`), `progress`.
 

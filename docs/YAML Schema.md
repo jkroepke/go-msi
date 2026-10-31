@@ -687,6 +687,26 @@ components:
       - { root: HKLM, key: Software\Example Corp\Hello, name: Path, value: '[INSTALLDIR]' }
 ```
 
+A custom action that must run as LocalSystem, which only an all-users
+install can do, gets `scope: perMachine` too; a per-user install leaves it
+out:
+
+```yaml
+package:
+  platform: x64
+  scope: perMachineOrUser
+
+customActions:
+  - id: RegisterMachine
+    run: { command: '"[#hello.exe]" --register' }
+    execute: deferred
+    impersonate: false
+    scope: perMachine
+    return: check
+    schedule:
+      - { sequence: execute, after: InstallFiles, when: install }
+```
+
 ### Ask for a restart
 
 ```yaml
