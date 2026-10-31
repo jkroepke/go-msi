@@ -137,7 +137,7 @@
             "string",
             "number"
           ],
-          "description": "major.minor; Page Count is major × 100 + minor.",
+          "description": "major.minor, or a major alone such as 5 for 5.0; Page Count is major × 100 + minor.",
           "default": "5.0"
         },
         "codepage": {
