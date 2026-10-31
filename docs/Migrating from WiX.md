@@ -689,10 +689,13 @@ overwrites a value given on the command line. In msi-builder the command
 line wins, and the search result is used only when the property is still
 empty.
 
-A `Launch` that refuses newer versions, such as
-`NOT NEWERVERSIONDETECTED` next to a hand-made `Upgrade`, is not a launch
-condition in msi-builder: `upgrade.downgrade: error` (the default) writes it,
-and its message is `upgrade.downgradeMessage`. `convert` moves it there.
+A `Launch` whose condition is exactly `NOT <newer property>`, such as
+`NOT NEWERVERSIONDETECTED` next to a hand-made `Upgrade`, is the launch
+condition that `upgrade.downgrade: error` (the default) writes itself, so it
+cannot also be a `launchConditions` entry: its message is
+`upgrade.downgradeMessage`, and `convert` moves it there. Any other
+condition, such as `NOT NEWERVERSIONDETECTED OR Installed`, stays a launch
+condition, and so does every condition when downgrades are allowed.
 
 ## Custom actions
 

@@ -99,6 +99,8 @@ func TestValidateAccepted(t *testing.T) {
 		// No row of its own unless downgrade is error.
 		"newer launch condition with downgrade allow": strings.Replace(base, "upgrade: {}", "upgrade: {downgrade: allow}", 1) + appComponent +
 			"launchConditions: [{condition: NOT NEWERVERSIONDETECTED, message: newer}]\n",
+		"newer launch condition without upgrade": strings.Replace(base, "upgrade: {}", "upgrade: false", 1) + appComponent +
+			"launchConditions: [{condition: NOT NEWERVERSIONDETECTED, message: newer}]\n",
 		"newer launch condition with downgrade ignore": strings.Replace(base, "upgrade: {}", "upgrade: {downgrade: ignore}", 1) + appComponent +
 			"launchConditions: [{condition: NOT NEWERVERSIONDETECTED, message: newer}]\n",
 		"close true": base + strings.Replace(appComponent, "      - source: app.exe\n", "      - {source: app.exe, close: true}\n", 1),

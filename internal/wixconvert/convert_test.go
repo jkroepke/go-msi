@@ -792,6 +792,24 @@ func TestConvertDowngradeLaunchCondition(t *testing.T) {
 			[]string{"downgrade: allow", "condition: NOT NEWERVERSIONDETECTED"},
 			[]string{"downgradeMessage"},
 		},
+		"preprocessor variable": {
+			`<?define NP = "NEWERVERSIONDETECTED" ?>
+    <MajorUpgrade DowngradeErrorMessage="x" />
+    <Launch Condition="NOT $(var.NP)" Message="newer" />`,
+			[]string{"downgradeMessage: x", `its message "newer" is left out`},
+			[]string{"launchConditions"},
+		},
+		"no upgrade elements": {
+			`<Launch Condition="NOT NEWERVERSIONDETECTED" Message="newer" />`,
+			[]string{"downgradeMessage: newer", "with upgrade: false, add it back to launchConditions"},
+			[]string{"launchConditions:"},
+		},
+		"not exactly the block": {
+			handMade + `
+    <Launch Condition="NOT NEWERVERSIONDETECTED OR Installed" Message="newer" />`,
+			[]string{"condition: NOT NEWERVERSIONDETECTED OR Installed"},
+			[]string{"downgradeMessage"},
+		},
 		"other property": {
 			handMade + `
     <Launch Condition="NOT OTHERFOUND" Message="other" />`,
@@ -843,6 +861,30 @@ func TestConvertDowngradeLaunchCondition(t *testing.T) {
 				t.Errorf("the converted file does not validate: %v\n%s", err, yaml)
 			}
 		})
+	}
+}
+
+// TestConvertV3DowngradeCondition checks that a v3 Condition element under
+// Product that repeats the downgrade block becomes upgrade.downgradeMessage.
+func TestConvertV3DowngradeCondition(t *testing.T) {
+	t.Parallel()
+
+	src := `<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Hello" Manufacturer="Example" Version="1.0.0" UpgradeCode="3f2504e0-4f89-41d3-9a0c-0305e82c3301">
+    <Package InstallScope="perMachine" Platform="x64" />
+    <MajorUpgrade DowngradeErrorMessage="newer" />
+    <Condition Message="newer"> NOT WIX_DOWNGRADE_DETECTED </Condition>
+  </Product>
+</Wix>`
+
+	res, err := wixconvert.Convert(strings.NewReader(src), wixconvert.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	yaml := string(res.YAML)
+	if !strings.Contains(yaml, "downgradeMessage: newer") || strings.Contains(yaml, "launchConditions") {
+		t.Errorf("the condition was not folded into downgradeMessage:\n%s", yaml)
 	}
 }
 

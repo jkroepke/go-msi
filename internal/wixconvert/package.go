@@ -846,14 +846,18 @@ func (c *converter) fileSearch(elm *elem, found *omap) {
 
 func (c *converter) emitLaunchConditions() {
 	for _, elm := range c.launches {
-		cond := c.value(elm, "Condition")
+		raw := elm.attr("Condition")
 		if elm.is("Condition") { // v3: the condition is the text
-			cond = c.expand(elm, strings.TrimSpace(elm.text))
+			raw = strings.TrimSpace(elm.text)
 		}
 
-		if c.downgradeCondition(cond, elm) {
+		// The fold compares the condition as the package gets it, with
+		// the defines filled in.
+		if c.downgradeCondition(c.literal(raw), elm) {
 			continue
 		}
+
+		cond := c.expand(elm, raw)
 
 		c.out.add("launchConditions", newMap().set("condition", cond).set("message", c.value(elm, "Message")))
 	}
@@ -874,6 +878,11 @@ func (c *converter) downgradeCondition(cond string, elm *elem) bool {
 	}
 
 	msg := c.value(elm, "Message")
+
+	if c.major == nil && len(c.upgrades) == 0 {
+		c.todof(upgrade, "downgradeMessage", elm.line, "the launch condition %s became upgrade.downgradeMessage; "+
+			"with upgrade: false, add it back to launchConditions", cond)
+	}
 
 	switch upgrade.str("downgradeMessage") {
 	case "", msg:
