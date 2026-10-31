@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/jkroepke/msi-builder/internal/cfb"
 	"github.com/jkroepke/msi-builder/internal/summary"
@@ -448,5 +449,22 @@ func TestSummaryStreamReserved(t *testing.T) {
 
 	if _, err := database.Marshal(Options{}); err == nil {
 		t.Error("Marshal accepted a summary stream in Sources")
+	}
+}
+
+// TestAddProblemCutsWholeRunes checks that a long problem is cut before a
+// character, never inside one.
+func TestAddProblemCutsWholeRunes(t *testing.T) {
+	t.Parallel()
+
+	for pad := range 4 {
+		var database Database
+
+		addProblem(&database, strings.Repeat("a", maxProblemLength-pad)+strings.Repeat("日", 200))
+
+		got := database.Problems[0]
+		if !utf8.ValidString(got) || !strings.HasSuffix(got, "...") || len(got) > maxProblemLength+3 {
+			t.Errorf("pad %d: cut problem %q is not whole runes within the limit", pad, got[max(0, len(got)-12):])
+		}
 	}
 }
