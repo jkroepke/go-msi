@@ -180,15 +180,18 @@ built-in ones and five more, with no third-party library:
 |---|---|
 | `var "NAME"` / `var "NAME" "default"` | The variable from `--var`, then from the environment with `--env`, else the default; without a default an unset variable is an error |
 | `has "NAME"` | Whether `var "NAME"` finds a value |
-| `quote S` | `S` as a double-quoted YAML string, so any value arrives as given |
+| `quote S` | `S` as a double-quoted YAML string, with `${` written as `$${`, so any value arrives as given |
 | `indent N S` | `S` with every line after the first indented by `N` spaces |
-| `split SEP S` | The parts of `S` between each `SEP`, for `{{ range split ";" (var "LANGS") }}`; an empty `S` has none |
+| `split SEP S` | The parts of `S` between each `SEP`, for `{{ range split ";" (var "LANGS") }}`; an empty `S` has none, and an empty `SEP` is an error |
 
 The template does not see `vars`: the block is YAML that only exists after
-rendering. `${NAME}` references pass through the template unchanged and are
-replaced afterwards as described above. A template may write at most
-16 MiB. `msi-builder render` prints the rendered file, so the line of a YAML
-error can be found in it.
+rendering. The rendered text then goes through `${NAME}` substitution as
+described above, so a `${…}` that a template writes is replaced too; `quote`
+escapes it. Every error with a line after rendering (YAML, substitution,
+unknown keys) names a line of the rendered text, which `msi-builder render`
+prints. A template may write at most 16 MiB, but that does not bound the
+time or memory it takes: a template is code, so render only files from a
+source you trust, as you would run a build script.
 
 ```text
 package:

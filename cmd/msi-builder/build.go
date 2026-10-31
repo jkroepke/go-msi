@@ -43,7 +43,7 @@ type loadFlags struct {
 
 func (l *loadFlags) register(cmd *cobra.Command) {
 	l.vars = make(vars)
-	cmd.Flags().Var(l.vars, "var", "set a variable referenced as ${NAME}; repeatable")
+	cmd.Flags().Var(l.vars, "var", "set a variable referenced as ${NAME}, and as {{ .NAME }} with --template; repeatable")
 	cmd.Flags().BoolVar(&l.env, "env", false, "let environment variables fill ${NAME} references")
 	cmd.Flags().BoolVar(&l.template, "template", false, "render the file with Go text/template before parsing it")
 	mustComplete(cmd.RegisterFlagCompletionFunc("var", cobra.NoFileCompletions))

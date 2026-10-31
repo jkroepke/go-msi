@@ -74,7 +74,7 @@ versioning after 1.0.
   standard table definitions, PE version resources, the condition grammar,
   checks of formatted strings,
   sequence numbering, code pages and the wizard bitmaps.
-- [`cmd/msi-builder`](cmd/msi-builder): CLI with `build`, `validate`, `inspect`, `convert`,
+- [`cmd/msi-builder`](cmd/msi-builder): CLI with `build`, `validate`, `render`, `inspect`, `convert`,
   `sign`, `verify`, `completion` and `version`, built on `spf13/cobra`.
 - [`internal/wixconvert`](internal/wixconvert): the best-effort WiX `.wxs` to
   YAML converter behind `msi-builder convert`, on `encoding/xml` only. It

@@ -45,6 +45,8 @@ func TestTemplateFlag(t *testing.T) {
 		t.Errorf("validate --template: exit %d, stderr %q", code, stderr.String())
 	}
 
+	stdout.Reset()
+
 	if code := run([]string{"render", "--var", "ARCH=arm64", yaml}, &stdout, &stderr); code != 0 {
 		t.Fatalf("render: exit %d, stderr %q", code, stderr.String())
 	}

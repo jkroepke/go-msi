@@ -44,7 +44,7 @@ func Load(path string, opts Options) (*Config, error) {
 }
 
 // Parse parses a YAML document, substitutes variables and applies defaults.
-func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
+func Parse(data []byte, opts Options) (*Config, error) {
 	if opts.Template {
 		rendered, err := Render(data, opts)
 		if err != nil {
@@ -54,9 +54,28 @@ func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one 
 		data = rendered
 	}
 
+	cfg, err := parseRendered(data, opts)
+
+	switch {
+	case err == nil:
+		return cfg, nil
+	case opts.Template:
+		// Lines in YAML and substitution errors are those of the output.
+		return nil, fmt.Errorf("%w (lines of the rendered file; print it with msi-builder render)", err)
+	case bytes.Contains(data, []byte("{{")):
+		// Template syntax in a plain file either fails as YAML or, as a
+		// flow mapping, fails to decode.
+		return nil, fmt.Errorf("%w (the file contains {{: pass --template to render Go template syntax)", err)
+	default:
+		return nil, err
+	}
+}
+
+// parseRendered is Parse after rendering.
+func parseRendered(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one pass in a fixed order; splitting would scatter it
 	var doc yaml.Node
 	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, yamlErr(err, data, opts.Template)
+		return nil, err //nolint:wrapcheck // yaml errors carry the line
 	}
 
 	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
@@ -122,20 +141,6 @@ func Parse(data []byte, opts Options) (*Config, error) { //nolint:cyclop // one 
 	ApplyDefaults(cfg)
 
 	return cfg, nil
-}
-
-// yamlErr adds a hint to a YAML syntax error: with a template its lines are
-// those of the rendered text, and without one a "{{" may be template syntax
-// written in a file that was not rendered.
-func yamlErr(err error, data []byte, template bool) error {
-	switch {
-	case template:
-		return fmt.Errorf("%w (lines of the rendered file; print it with msi-builder render)", err)
-	case bytes.Contains(data, []byte("{{")):
-		return fmt.Errorf("%w (the file contains {{: pass --template to render Go template syntax)", err)
-	default:
-		return err
-	}
 }
 
 // fileVars returns the file's vars and the line of each value. A value

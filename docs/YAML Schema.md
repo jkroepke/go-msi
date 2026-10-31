@@ -100,8 +100,9 @@ msi-builder render --var ARCH=arm64 msi.yaml   # print the rendered YAML
 `{{ var "ARCH" "x64" }}` also reads the environment with `--env` and falls
 back to `x64`. `{{ has "ARCH" }}` tests whether it is set, and
 `{{ quote ... }}` writes any value as a YAML string. The template does not see
-`vars:`, and `${NAME}` is replaced after rendering as usual. A YAML error
-names a line of the rendered file, which `msi-builder render` prints.
+`vars:`, and `${NAME}` is replaced after rendering as usual. An error with a
+line number names a line of the rendered file, which `msi-builder render`
+prints. A template is code: only build templates from a source you trust.
 Without `--template`, `{{` is plain text. The details are in the
 [design document](design/yaml-schema.md#311-templates).
 

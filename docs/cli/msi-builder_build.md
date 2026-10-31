@@ -42,7 +42,7 @@ msi-builder build [flags] msi.yaml
       --template               render the file with Go text/template before parsing it
       --timestamp-url string   RFC 3161 time-stamping authority
       --url string             more-information link of the signature
-      --var NAME=VALUE         set a variable referenced as ${NAME}; repeatable
+      --var NAME=VALUE         set a variable referenced as ${NAME}, and as {{ .NAME }} with --template; repeatable
 ```
 
 ## See also

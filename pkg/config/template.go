@@ -15,8 +15,8 @@ import (
 // as {{ range 1000000000 }} could fill the memory.
 const maxRendered = 16 << 20
 
-// maxIndent caps the indent function, whose spaces are allocated before
-// they reach the capped output.
+// maxIndent caps the indent function, so one call cannot allocate a huge
+// string. It does not bound a template's memory: a template is code.
 const maxIndent = 1024
 
 // errRenderedTooLarge is returned when a template writes more than
@@ -31,10 +31,14 @@ var errRenderedTooLarge = fmt.Errorf("the template writes more than %d bytes", m
 //   - var NAME [DEFAULT]: the variable from Vars, then from LookupEnv, else
 //     DEFAULT; without a DEFAULT an unset variable is an error.
 //   - has NAME: whether var NAME finds a value.
-//   - quote S: S as a double-quoted YAML string.
+//   - quote S: S as a double-quoted YAML string, with ${ written as $${ so
+//     that the ${NAME} substitution after rendering leaves it as it is.
 //   - indent N S: S with every line after the first indented by N spaces.
 //   - split SEP S: the parts of S between each SEP, for a range over a list
-//     such as --var LANGS=en;de; an empty S has no parts.
+//     such as --var LANGS=en;de; an empty S has no parts, and SEP must not
+//     be empty.
+//
+// The rendered text then goes through ${NAME} substitution like any file.
 //
 // The file's vars block is not seen by the template: it is YAML that only
 // exists after rendering. ${NAME} references pass through unchanged. The
@@ -82,17 +86,7 @@ func templateFuncs(opts Options) template.FuncMap {
 
 			return ok
 		},
-		"quote": func(value string) (string, error) {
-			// json.Marshal would replace invalid bytes silently.
-			if !utf8.ValidString(value) {
-				return "", errors.New("quote: the value is not valid UTF-8")
-			}
-
-			// A JSON string is a YAML double-quoted scalar.
-			out, err := json.Marshal(value)
-
-			return string(out), err
-		},
+		"quote": quote,
 		"indent": func(n int, s string) (string, error) {
 			if n < 0 || n > maxIndent {
 				return "", fmt.Errorf("indent: %d is not between 0 and %d", n, maxIndent)
@@ -100,14 +94,40 @@ func templateFuncs(opts Options) template.FuncMap {
 
 			return strings.ReplaceAll(s, "\n", "\n"+strings.Repeat(" ", n)), nil
 		},
-		"split": func(sep, s string) []string {
-			if s == "" {
-				return nil
+		"split": func(sep, list string) ([]string, error) {
+			if sep == "" {
+				return nil, errors.New("split: the separator is empty")
 			}
 
-			return strings.Split(s, sep)
+			if list == "" {
+				return nil, nil
+			}
+
+			return strings.Split(list, sep), nil
 		},
 	}
+}
+
+// quote writes value as a double-quoted YAML string. ${ becomes $${, which
+// the ${NAME} substitution after rendering turns back into ${.
+func quote(value string) (string, error) {
+	// json.Marshal would replace invalid bytes silently.
+	if !utf8.ValidString(value) {
+		return "", errors.New("quote: the value is not valid UTF-8")
+	}
+
+	// A JSON string is a YAML double-quoted scalar; HTML escaping would
+	// only make the rendered file harder to read.
+	var buf bytes.Buffer
+
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+
+	if err := enc.Encode(strings.ReplaceAll(value, "${", "$${")); err != nil {
+		return "", err //nolint:wrapcheck // encoding a string does not fail
+	}
+
+	return strings.TrimSuffix(buf.String(), "\n"), nil
 }
 
 // lookup finds a variable for a template: from Vars, then from LookupEnv.
@@ -123,11 +143,13 @@ func (o Options) lookup(name string) (string, bool) {
 	return "", false
 }
 
-// templateErr drops the "template: msi.yaml:" prefix that text/template puts
-// in front of every message, so an error reads "template: line 3: ...".
+// templateErr drops the template name that text/template puts in every
+// message, which Load already names, so an error reads
+// "template: line 3:5: at <.ARCH>: ...".
 func templateErr(err error) error {
 	msg := strings.TrimPrefix(err.Error(), "template: ")
 	msg = strings.TrimPrefix(msg, "msi.yaml:")
+	msg = strings.Replace(msg, `executing "msi.yaml" at `, "at ", 1)
 
 	if line, rest, ok := strings.Cut(msg, ":"); ok && line != "" && strings.Trim(line, "0123456789") == "" {
 		return fmt.Errorf("line %s:%s", line, rest)

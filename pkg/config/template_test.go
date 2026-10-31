@@ -1,6 +1,8 @@
 package config_test
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -106,7 +108,7 @@ func TestTemplateErrors(t *testing.T) {
 		"missing key": {
 			doc:  templated,
 			opts: config.Options{Vars: map[string]string{"VERSION": "1"}, Template: true},
-			want: `template: line 8:15: executing "msi.yaml" at <.ARCH>: map has no entry for key "ARCH"`,
+			want: `template: line 8:15: at <.ARCH>: map has no entry for key "ARCH"`,
 		},
 		"var without default": {
 			doc:  "schema: msi-builder/v1\nx: {{ var \"NOPE\" }}\n",
@@ -132,6 +134,26 @@ func TestTemplateErrors(t *testing.T) {
 			doc:  "x: {{ var \"V\" | quote }}\n",
 			opts: config.Options{Vars: map[string]string{"V": "\xff"}, Template: true},
 			want: "not valid UTF-8",
+		},
+		"nil vars": {
+			doc:  "x: {{ .X }}\n",
+			opts: config.Options{Template: true},
+			want: `map has no entry for key "X"`,
+		},
+		"empty separator": {
+			doc:  "x: {{ split \"\" \"abc\" }}\n",
+			opts: config.Options{Template: true},
+			want: "the separator is empty",
+		},
+		"substitution line": {
+			doc:  "schema: msi-builder/v1\n{{- \"\" }}\nproduct:\n  name: ${NOPE}\n",
+			opts: config.Options{Template: true},
+			want: "undefined variable ${NOPE} (lines of the rendered file",
+		},
+		"decodes without template": {
+			doc:  "schema: msi-builder/v1\nproduct:\n  name: {{ .ARCH }}\n",
+			opts: config.Options{},
+			want: "pass --template",
 		},
 		"rendered yaml": {
 			doc:  "schema: msi-builder/v1\n{{ \"a: [\" }}\n",
@@ -173,5 +195,46 @@ func TestTemplateHas(t *testing.T) {
 
 	if !strings.HasPrefix(string(out), "a: unset\n") || !strings.HasSuffix(string(out), "d:\n") {
 		t.Errorf("got %q", out)
+	}
+}
+
+// TestTemplateQuote checks that quote delivers values as given, also ones
+// that look like ${NAME} references or HTML.
+func TestTemplateQuote(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"${Y}", "$${Y}", "a<b&c>", `"q" \ x`, "line\nbreak", ""} {
+		doc := strings.Replace(base, "manufacturer: Example", `manufacturer: {{ var "V" | quote }}`, 1) + appComponent
+
+		cfg, err := config.Parse([]byte(doc), config.Options{Vars: map[string]string{"V": value}, Template: true})
+		if err != nil {
+			t.Errorf("%q: %v", value, err)
+
+			continue
+		}
+
+		if cfg.Product.Manufacturer != value {
+			t.Errorf("%q arrives as %q", value, cfg.Product.Manufacturer)
+		}
+	}
+
+	out, err := config.Render([]byte(`{{ quote "a<b" }}`), config.Options{})
+	if err != nil || string(out) != `"a<b"` {
+		t.Errorf("got %q, %v", out, err)
+	}
+}
+
+// TestTemplateLoad checks that Load names the file in a template error.
+func TestTemplateLoad(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "app.yaml")
+	if err := os.WriteFile(path, []byte("x: {{ .X }}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := config.Load(path, config.Options{Template: true})
+	if err == nil || !strings.HasPrefix(err.Error(), path+": template: line 1:6: at <.X>:") {
+		t.Errorf("got %v", err)
 	}
 }
