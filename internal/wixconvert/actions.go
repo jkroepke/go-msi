@@ -53,6 +53,12 @@ func (c *converter) placements() map[string][]any {
 		if !ok {
 			c.todof(nil, "", seq.line, "<%s> has no counterpart", seq.name)
 
+			for _, entry := range seq.kids {
+				if id := entry.attr("Action"); entry.is("Custom") && c.otherSequences[id] == nil {
+					c.otherSequences[id] = seq
+				}
+			}
+
 			continue
 		}
 
@@ -166,6 +172,7 @@ func (c *converter) emitActions() {
 	c.quietExecCommands()
 	reanchor := c.reanchor(byAction)
 	progress := c.progress()
+	scheduled := c.scheduledBinaries(byAction)
 
 	for _, custom := range c.actionOrder {
 		actionID := custom.attr("Id")
@@ -178,8 +185,15 @@ func (c *converter) emitActions() {
 			continue
 		}
 
-		c.setProgress(action, actionID, progress)
 		reanchor(actionID, byAction[actionID])
+
+		if len(byAction[actionID]) == 0 {
+			c.unscheduledAction(custom, scheduled)
+
+			continue
+		}
+
+		c.setProgress(action, actionID, progress)
 		action.set("schedule", byAction[actionID])
 		delete(byAction, actionID)
 		c.extensionAnchors(action, custom, byAction, sides)
@@ -407,6 +421,59 @@ func anchorText(placement *omap) string {
 	}
 
 	return keyAfter + " " + placement.str(keyAfter)
+}
+
+// unscheduledAction notes a custom action that no sequence schedules,
+// which msi-builder refuses: one that only a DoAction control event runs,
+// or one that never runs.
+func (c *converter) unscheduledAction(custom *elem, scheduled map[string]bool) {
+	actionID := custom.attr("Id")
+
+	// The action's binary stays in binaries, which nothing may use now.
+	binary := ""
+	if id := actionBinary(custom); id != "" && !scheduled[id] {
+		binary = "; drop the binary " + id + " from binaries unless something else uses it"
+	}
+
+	if publish := c.doActions[actionID]; publish != nil {
+		where := "a dialog"
+		if dialog := publish.attr("Dialog"); dialog != "" {
+			where = "the dialog " + dialog
+		}
+
+		c.todof(nil, "", custom.line, "the action %s runs only from the DoAction control event of %s (line %d), which has "+
+			"no counterpart; convert left it out%s", actionID, where, publish.line, binary)
+
+		return
+	}
+
+	if seq := c.otherSequences[actionID]; seq != nil {
+		c.todof(nil, "", custom.line, "only <%s> (line %d), which has no counterpart, schedules the action %s; convert left it out%s",
+			seq.name, seq.line, actionID, binary)
+
+		return
+	}
+
+	c.todof(nil, "", custom.line, "no sequence schedules the action %s, so it never runs; convert left it out%s", actionID, binary)
+}
+
+// actionBinary returns the Binary a custom action runs, if any.
+func actionBinary(custom *elem) string {
+	return custom.attr("BinaryRef") + custom.attr("BinaryKey")
+}
+
+// scheduledBinaries returns the binaries that scheduled custom actions
+// run, before emitActions takes the schedules out of byAction.
+func (c *converter) scheduledBinaries(byAction map[string][]any) map[string]bool {
+	scheduled := make(map[string]bool)
+
+	for id, custom := range c.actions {
+		if binary := actionBinary(custom); binary != "" && len(byAction[id]) > 0 {
+			scheduled[binary] = true
+		}
+	}
+
+	return scheduled
 }
 
 // skipAction reports whether a custom action is left out of
@@ -1043,12 +1110,15 @@ func (c *converter) setter(setter *elem) (*omap, []any) {
 	return action, schedule
 }
 
-// emitActionRefs notes references to actions of WiX extensions.
+// emitActionRefs notes references to actions of WiX extensions. A
+// reference to an action that the file defines itself, such as one in a
+// Fragment, needs nothing: the action converts with its definition.
 func (c *converter) emitActionRefs() {
 	for _, ref := range c.actionRefs {
 		refID := ref.attr("Id")
 
 		switch {
+		case c.actions[refID] != nil || c.isSetter(refID):
 		case strings.Contains(refID, "BroadcastEnvironmentChange"):
 			c.todof(nil, "", ref.line,
 				"drop %s: Windows Installer announces environment changes itself", refID)
