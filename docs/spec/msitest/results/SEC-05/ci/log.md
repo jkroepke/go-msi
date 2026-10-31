@@ -1,4 +1,4 @@
-# SEC-04: remembered grant accounts of per-user installs (CI)
+# SEC-05: remembered grant accounts of per-user installs (CI)
 
 - Runner: GitHub `windows-latest` (Windows Server 2025), 2026-10-30
 - Tests: `TestMsiexecGrantsPerUser` and `TestNonAdminGrantsPerUser` in

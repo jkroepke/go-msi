@@ -17,7 +17,7 @@ import (
 )
 
 // grantUserConfig is a per-user package that grants rights on a folder in
-// the user's local AppData to an account from a property (SEC-04).
+// the user's local AppData to an account from a property (SEC-05).
 const grantUserConfig = `schema: msi-builder/v1
 product: { name: MsiBuilderGrantUser, manufacturer: msi-builder tests, version: 1.0.0, upgradeCode: 9d4a6e21-5b7c-4f38-8e1a-3c6b0d2f7a95 }
 package: { platform: x64, scope: perUser, compression: none }
@@ -38,7 +38,7 @@ components:
 const userAccountsKey = `Software\msi-builder\GrantAccounts\`
 
 // TestMsiexecGrantsPerUser installs grantUserConfig as the administrator
-// (SEC-04): the account from the property is remembered in the user's hive,
+// (SEC-05): the account from the property is remembered in the user's hive,
 // not in HKLM, a repair without the property grants to it, and the removal
 // forgets it.
 //
@@ -64,7 +64,7 @@ func TestMsiexecGrantsPerUser(t *testing.T) {
 	msiexecQuiet(t, filepath.Join(dir, "install.log"), "/i", path, `SVC_ACCOUNT=BUILTIN\Guests`)
 
 	sddl := objectSDDL(t, data)
-	t.Logf("SEC-04: per-user folder after the install: %s", sddl)
+	t.Logf("SEC-05: per-user folder after the install: %s", sddl)
 
 	if !strings.Contains(sddl, "(A;OICI;0x1301bf;;;BG)") {
 		t.Errorf("the folder has no modify ACE for Guests: %s", sddl)
@@ -93,7 +93,7 @@ func TestMsiexecGrantsPerUser(t *testing.T) {
 }
 
 // TestNonAdminGrantsPerUser installs grantUserConfig as a standard user
-// (SEC-04): the commit action, which runs as that user, remembers the
+// (SEC-05): the commit action, which runs as that user, remembers the
 // account in the user's hive, so a repair without the property grants to it,
 // and the removal forgets it.
 //
@@ -114,7 +114,7 @@ func TestNonAdminGrantsPerUser(t *testing.T) {
 	}
 
 	log := grepLog(readLog(install), "BuilderGrant")
-	t.Logf("SEC-04 as %s, install:\n%s", user.name, log)
+	t.Logf("SEC-05 as %s, install:\n%s", user.name, log)
 
 	if !strings.Contains(log, "BuilderGrant: granted") || strings.Contains(log, "cannot remember") {
 		t.Errorf("install: the grant or the remembered account failed\n%s", log)
@@ -146,7 +146,7 @@ func TestNonAdminGrantsPerUser(t *testing.T) {
 // repairWithPlantedAccount plants BUILTIN\Users as the remembered account
 // of a per-machine product in the administrator's own hive, where a
 // per-user install would keep it, and repairs the product with ALLUSERS=""
-// and no account (SEC-04): the DLL follows the context the product is
+// and no account (SEC-05): the DLL follows the context the product is
 // registered in, so the folder gets no grant for Users and the account
 // remembered in HKLM is used. The log shows whether the engine kept
 // ALLUSERS empty, so that the per-user marker reached the DLL.
@@ -172,7 +172,7 @@ func repairWithPlantedAccount(t *testing.T, dir, path, productCode, folder strin
 	err := cmd.Run()
 
 	text := readLog(log)
-	t.Logf("SEC-04: repair with ALLUSERS=\"\" of a per-machine product: %v\n%s", err, grepLog(text, "BuilderGrant", "ALLUSERS"))
+	t.Logf("SEC-05: repair with ALLUSERS=\"\" of a per-machine product: %v\n%s", err, grepLog(text, "BuilderGrant", "ALLUSERS"))
 
 	if err != nil {
 		t.Fatalf("the repair with ALLUSERS=\"\" failed: %v", err)

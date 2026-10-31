@@ -381,7 +381,7 @@ func TestMsiexecGrants(t *testing.T) {
 	}
 
 	// ALLUSERS="" on a repair cannot make LocalSystem take the account from
-	// a key in the user's hive (SEC-04).
+	// a key in the user's hive (SEC-05).
 	repairWithPlantedAccount(t, dir, path, res.ProductCode, data)
 
 	msiexecQuiet(t, filepath.Join(dir, "uninstall.log"), "/x", path)
