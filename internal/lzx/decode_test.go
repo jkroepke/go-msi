@@ -426,19 +426,20 @@ func TestDecoderRejectsIncompleteTree(t *testing.T) {
 // TestWindowsFixtures keeps the streams in testdata/windows in step with the
 // code that crafts them. internal/cab's native tests extract them through
 // cabinet.dll, and expect both cabinet.dll and the reader to fail on the
-// ones named reject-*. MSI_BUILDER_UPDATE_SNAPSHOTS=1 rewrites them.
+// ones named reject-*, and only the reader on the ones named lenient-*.
+// MSI_BUILDER_UPDATE_SNAPSHOTS=1 rewrites them.
 func TestWindowsFixtures(t *testing.T) {
 	t.Parallel()
 
 	fixtures := map[string]*crafted{
-		"stored-pad-next-frame":  storedPadNextFrame(),
-		"e8-size-2gib":           e8LargeSize(),
-		"reject-incomplete-tree": incompleteTree(),
-		// The decoder rejects these; whether cabinet.dll does is what the
-		// native test finds out.
+		"stored-pad-next-frame":         storedPadNextFrame(),
+		"e8-size-2gib":                  e8LargeSize(),
+		"reject-incomplete-tree":        incompleteTree(),
 		"reject-incomplete-length-tree": incompleteLengthTree(),
-		"reject-offset-beyond-window":   repeatedOffsetMatch(15, 1<<15, 1<<15+1),
 		"reject-offset-beyond-history":  repeatedOffsetMatch(15, 4, 5),
+		// cabinet.dll extracts a match one byte beyond the window; the
+		// reader rejects it, since the window no longer holds that byte.
+		"lenient-offset-beyond-window": repeatedOffsetMatch(15, 1<<15, 1<<15+1),
 	}
 
 	for name, stream := range storedPadVariants() {
