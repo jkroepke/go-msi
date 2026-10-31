@@ -72,8 +72,8 @@ func TestMsiGetFileVersionAgrees(t *testing.T) {
 	}
 
 	// cutTranslation ends the resource section's raw data after the first
-	// of two languages, inside VirtualSize: Windows either zero-fills the
-	// rest or refuses it, and Parse must do the same.
+	// of two languages, inside VirtualSize; rounded up to FileAlignment it
+	// still holds both.
 	cutTranslation := func(t *testing.T) []byte {
 		t.Helper()
 
@@ -119,11 +119,13 @@ func TestMsiGetFileVersionAgrees(t *testing.T) {
 		"languages 1033,1031,2057":      langs(1033, 1031, 2057),
 		"languages 2057,1033,1031":      langs(2057, 1033, 1031),
 		"languages 1033,1033,1031":      langs(1033, 1033, 1031),
+		"languages 1033,1031,1033":      langs(1033, 1031, 1033),
 		"no translations":               func(*testing.T) []byte { return testpe.Build(testpe.Options{FileVersion: "0.32.0.5"}) },
 		"no version resource":           func(*testing.T) []byte { return testpe.Build(testpe.Options{}) },
 		"resource section raw size 0":   patch(testRsrcSection+16, 0),
 		"translation past its Var":      shrinkTranslation,
 		"raw data ends in Translation":  cutTranslation,
+		"resource section raw size 1":   patch(testRsrcSection+16, 1),
 		"NumberOfRvaAndSizes 0":         patch(testResourceDir-20, 0),
 		"NumberOfRvaAndSizes 2":         patch(testResourceDir-20, 2),
 		"wValueLength 65535":            versionHeader(2, 0xFFFF),

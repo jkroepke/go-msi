@@ -26,7 +26,9 @@ func TestSyntheticPE(t *testing.T) {
 		t.Errorf("version: %+v", info)
 	}
 
-	if info.Language() != "1033,1031" {
+	// Stored 1033,1031,1033: duplicates dropped, last first, as Windows
+	// lists them (FILE-14).
+	if info.Language() != "1031,1033" {
 		t.Errorf("language %q", info.Language())
 	}
 
@@ -234,6 +236,22 @@ func TestLargeResourceRange(t *testing.T) {
 
 	if rdr.read > 64<<10 {
 		t.Errorf("read %d bytes of a %d-byte resource directory", rdr.read, size)
+	}
+}
+
+// TestRawDataRoundedToFileAlignment ends the resource section's raw data
+// one byte in. Windows rounds SizeOfRawData up to FileAlignment (0x200
+// here), which covers the whole resource, so the version is still read.
+func TestRawDataRoundedToFileAlignment(t *testing.T) {
+	t.Parallel()
+
+	info, err := Parse(bytes.NewReader(corruptImage(t, testRsrcSection+16, 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if info.FileVersion != "1.2.3.4" || info.Language() != "1033" {
+		t.Errorf("%+v", info)
 	}
 }
 

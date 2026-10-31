@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -105,6 +106,9 @@ type section struct {
 type image struct {
 	r        io.ReaderAt
 	sections []section
+	// fileAlign is the optional header's FileAlignment when it is a power
+	// of two from 512 to 64 KiB, otherwise 1.
+	fileAlign uint64
 }
 
 // section returns the section that holds size bytes at rva.
@@ -130,16 +134,17 @@ func (im *image) read(rva, size uint32) ([]byte, error) {
 		return nil, fmt.Errorf("pe: RVA %#x is not in any section", rva)
 	}
 
-	// Only the first SizeOfRawData bytes of a section come from the file;
-	// the loader fills the rest of its VirtualSize with zeros. Bytes past
-	// the raw data belong to whatever follows in the file, so they are
-	// never read: that part of the range reads as zeros, as when Windows
-	// maps the image.
+	// Only the first SizeOfRawData bytes of a section, rounded up to
+	// FileAlignment, come from the file; the rest of its VirtualSize reads
+	// as zeros, never as the bytes that follow in the file. Windows did
+	// both: a raw size of 0 gave no version, one that ended inside the
+	// Translation value still gave every language (FILE-14).
 	rel := uint64(rva - sec.virtualAddress)
+	rawSize := (uint64(sec.rawSize) + im.fileAlign - 1) / im.fileAlign * im.fileAlign
 	fileBacked := uint64(0)
 
-	if rel < uint64(sec.rawSize) {
-		fileBacked = min(uint64(size), uint64(sec.rawSize)-rel)
+	if rel < rawSize {
+		fileBacked = min(uint64(size), rawSize-rel)
 	}
 
 	off := int64(sec.rawPointer) + int64(rel) //nolint:gosec // both fit in 33 bits
@@ -241,7 +246,10 @@ func Parse(rdr io.ReaderAt) (*Info, error) { //nolint:cyclop // one pass over th
 		return nil, fmt.Errorf("pe: section headers: %w", err)
 	}
 
-	img := &image{r: rdr}
+	img := &image{r: rdr, fileAlign: 1}
+	if align := uint64(order.Uint32(opt[36:])); align >= 512 && align <= 0x10000 && align&(align-1) == 0 {
+		img.fileAlign = align
+	}
 
 	for i := range numSections {
 		s := secs[40*i:]
@@ -455,13 +463,20 @@ func parseVarFileInfo(data []byte, off int, info *Info) {
 		if key == "Translation" && koff+valueLen <= end {
 			seen := make(map[int]bool)
 
+			var langs []int
+
 			for p := koff; p+4 <= koff+valueLen; p += 4 {
 				lang := int(order.Uint16(data[p:]))
 				if !seen[lang] {
 					seen[lang] = true
-					info.Languages = append(info.Languages, lang)
+					langs = append(langs, lang)
 				}
 			}
+
+			// MsiGetFileVersionW lists the languages last first: stored
+			// 1033,1031,2057 came back as 2057,1031,1033 (FILE-14).
+			slices.Reverse(langs)
+			info.Languages = append(info.Languages, langs...)
 		}
 
 		off = align4(off + varLen)
