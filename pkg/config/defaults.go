@@ -22,6 +22,10 @@ const (
 	DefaultDowngradeMessage = "A later version of [ProductName] is already installed. Setup will now exit."
 	DefaultRestartDelay     = time.Minute
 
+	// downgradeError is the upgrade.downgrade value that refuses newer
+	// versions with a launch condition.
+	downgradeError = "error"
+
 	// ShowNormal, ShowMaximized and ShowMinimized are the window states of a
 	// shortcut's show setting.
 	ShowNormal    = "normal"
@@ -239,7 +243,7 @@ func defaultUpgrade(upg *Upgrade) {
 	defaultIncludeMin(upg)
 
 	if upg.Downgrade == "" {
-		upg.Downgrade = "error"
+		upg.Downgrade = downgradeError
 	}
 
 	if upg.DowngradeMessage == "" {

@@ -1950,11 +1950,36 @@ func (v *validator) properties(cfg *Config) {
 	}
 }
 
+// launchConditions checks the launch conditions. The condition is the
+// LaunchCondition table's primary key, so two rows with the same condition
+// cannot both be written; that includes the row downgrade: error adds.
 func (v *validator) launchConditions(cfg *Config) {
-	for i, lc := range cfg.LaunchConditions {
-		p := fmt.Sprintf("launchConditions[%d]", i)
-		v.required(p+".condition", lc.Condition)
-		v.required(p+".message", lc.Message)
+	seen := make(map[string]string)
+
+	if upg := cfg.Upgrade; upg != nil && !upg.Disabled && upg.Downgrade == downgradeError && upg.NewerProperty != "" {
+		seen["NOT "+upg.NewerProperty] = "upgrade.downgrade: error"
+	}
+
+	for i, launch := range cfg.LaunchConditions {
+		launchPath := fmt.Sprintf("launchConditions[%d]", i)
+		v.required(launchPath+".message", launch.Message)
+
+		if v.required(launchPath+".condition", launch.Condition) {
+			v.uniqueLaunchCondition(launchPath+".condition", launch.Condition, seen)
+			seen[launch.Condition] = cmp.Or(seen[launch.Condition], launchPath)
+		}
+	}
+}
+
+// uniqueLaunchCondition reports a condition that seen already holds.
+func (v *validator) uniqueLaunchCondition(fieldPath, cond string, seen map[string]string) {
+	switch other, dup := seen[cond]; {
+	case !dup:
+	case strings.HasPrefix(other, "upgrade."):
+		v.errorf(fieldPath, "%s already adds the launch condition %q; remove this entry and set "+
+			"upgrade.downgradeMessage to its message", other, cond)
+	default:
+		v.errorf(fieldPath, "the condition %q is already used by %s", cond, other)
 	}
 }
 

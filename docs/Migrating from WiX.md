@@ -689,6 +689,19 @@ overwrites a value given on the command line. In msi-builder the command
 line wins, and the search result is used only when the property is still
 empty.
 
+A `Launch` whose condition is exactly `NOT <newer property>`, such as
+`NOT NEWERVERSIONDETECTED` next to a hand-made `Upgrade`, is the launch
+condition that `upgrade.downgrade: error` (the default) writes itself, so it
+cannot also be a `launchConditions` entry: its message is
+`upgrade.downgradeMessage`, and `convert` moves it there. When the
+`MajorUpgrade` has a `DowngradeErrorMessage`, that message stays, and when
+the two messages differ a `# TODO` names the one left out. When the file has
+no upgrade elements at all, a `# TODO` reminds you to add the launch
+condition back if you set `upgrade: false`. Any other condition, such as
+`NOT NEWERVERSIONDETECTED OR Installed`, stays a launch condition, and so
+does every condition when downgrades are allowed or when the property
+belongs to another product's `Upgrade` row.
+
 ## Custom actions
 
 Each `CustomAction` becomes an entry of `customActions`, and its `Custom`
