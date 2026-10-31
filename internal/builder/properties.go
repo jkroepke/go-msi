@@ -447,33 +447,8 @@ func (b *build) locate(path, signature string, search *config.Search, folder boo
 // keyPath does for another product's, file by default.
 func (b *build) componentLocatorType(path, guid, keyPath string) int {
 	kind := keyPath
-
 	if compID, own := b.guids[guid]; own {
-		info := b.components[compID]
-
-		// A shortcuts-only component is keyed on its HKCU value
-		// (shortcuts.go), which info does not record.
-		if info.attributes&compRegistryKeyPath != 0 || shortcutsOnly(info.cfg) {
-			if keyPath != "" {
-				b.errorf(path+".keyPath", "component %s of this package has a registry key path, not %s", compID, keyPath)
-			} else {
-				b.warnf(path+".guid", "component %s of this package has a registry key path, which is not a folder; "+
-					"search a component keyed on a file or on its folder", compID)
-			}
-
-			return locatorFile
-		}
-
-		ownKind := config.SearchFile
-		if info.keyPath == nil {
-			ownKind = config.SearchDirectory
-		}
-
-		if keyPath != "" && keyPath != ownKind {
-			b.errorf(path+".keyPath", "component %s of this package has a %s key path, not %s", compID, ownKind, keyPath)
-		}
-
-		kind = ownKind
+		kind = b.ownKeyPathKind(path, compID, keyPath)
 	}
 
 	if kind == config.SearchDirectory {
@@ -481,6 +456,39 @@ func (b *build) componentLocatorType(path, guid, keyPath string) int {
 	}
 
 	return locatorFile
+}
+
+// ownKeyPathKind returns what the key path of a component of this package
+// is, file or directory, and reports a keyPath that contradicts it. A
+// registry key path searches as a file, with a warning.
+func (b *build) ownKeyPathKind(path, compID, keyPath string) string {
+	info := b.components[compID]
+
+	// A shortcuts-only component is keyed on its HKCU value (shortcuts.go),
+	// which info does not record.
+	if info.attributes&compRegistryKeyPath != 0 || shortcutsOnly(info.cfg) {
+		if keyPath != "" {
+			b.errorf(path+".keyPath", "component %s of this package has a registry key path, not %s", compID, keyPath)
+
+			return config.SearchFile
+		}
+
+		b.warnf(path+".guid", "component %s of this package has a registry key path, which is not a folder; "+
+			"search a component keyed on a file or on its folder", compID)
+
+		return config.SearchFile
+	}
+
+	kind := config.SearchFile
+	if info.keyPath == nil {
+		kind = config.SearchDirectory
+	}
+
+	if keyPath != "" && keyPath != kind {
+		b.errorf(path+".keyPath", "component %s of this package has a %s key path, not %s", compID, kind, keyPath)
+	}
+
+	return kind
 }
 
 // locateParent writes the folder search a DrLocator row is relative to and
